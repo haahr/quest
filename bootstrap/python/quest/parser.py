@@ -257,8 +257,5 @@ class Parser:
                 return None, pos
             matched_arguments.append(result)
 
-        try:
-            node = rule.action(*matched_arguments)
-            return node, current_pos
-        except Exception:
-            return None, pos
+        node = rule.action(*matched_arguments)
+        return node, current_pos

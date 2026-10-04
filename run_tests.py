@@ -27,6 +27,7 @@ SKIP_PHASE_PATTERN = re.compile(r"\(\*\s*@skip-phase:\s*([^*]+?)\s*\*\)", re.IGN
 ARGS_PATTERN = re.compile(r"\(\*\s*@args:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 ENV_PATTERN = re.compile(r"\(\*\s*@env:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 EXIT_PATTERN = re.compile(r"\(\*\s*@exit:\s*([0-9]+)\s*\*\)", re.IGNORECASE)
+TIMEOUT_PATTERN = re.compile(r"\(\*\s*@timeout:\s*([0-9.]+)\s*\*\)", re.IGNORECASE)
 STDIN_PATTERN = re.compile(r"\(\*\s*@stdin:(?:[ \t]*\r?\n)?(.*?)\*\)", re.DOTALL | re.IGNORECASE)
 
 
@@ -37,11 +38,12 @@ class TestDirectives:
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     exit_code: int = 0
+    timeout: Optional[float] = None
     stdin_data: Optional[str] = None
 
 
 def parse_test_directives(source_file: Path) -> TestDirectives:
-    """Extracts test directives (@skip-phase, @args, @env, @exit, @stdin) from comments."""
+    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin) from comments."""
     text = source_file.read_text(encoding="utf-8")
 
     skipped: set[str] = set()
@@ -73,6 +75,10 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
     for match in EXIT_PATTERN.finditer(text):
         exit_code = int(match.group(1))
 
+    custom_timeout: Optional[float] = None
+    for match in TIMEOUT_PATTERN.finditer(text):
+        custom_timeout = float(match.group(1))
+
     stdin_chunks: list[str] = []
     for match in STDIN_PATTERN.finditer(text):
         stdin_chunks.append(match.group(1))
@@ -83,6 +89,7 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
         args=args,
         env=env,
         exit_code=exit_code,
+        timeout=custom_timeout,
         stdin_data=stdin_data,
     )
 
@@ -128,6 +135,7 @@ def run_single_golden_test(
     phase_name: str,
     update_golden: bool = False,
     python_executable: str = sys.executable,
+    timeout: float = 30.0,
 ) -> bool:
     golden_base = golden_dir_for_phase(phase_name)
     rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
@@ -139,6 +147,7 @@ def run_single_golden_test(
 
     directives = parse_test_directives(source_file)
     expected_exit = directives.exit_code if phase_name in ("interpret", "run_c_compiled") else 0
+    effective_timeout = directives.timeout if directives.timeout is not None else timeout
 
     command = [
         python_executable,
@@ -164,14 +173,25 @@ def run_single_golden_test(
     if directives.env and phase_name in ("interpret", "run_c_compiled"):
         environment.update(directives.env)
 
-    process = subprocess.run(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        input=directives.stdin_data if phase_name in ("interpret", "run_c_compiled") else None,
-        env=environment,
-    )
+    try:
+        process = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            input=directives.stdin_data if phase_name in ("interpret", "run_c_compiled") else None,
+            env=environment,
+            timeout=effective_timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        print(f"  [FAIL] {phase_name}:{test_id} (TIMED OUT after {effective_timeout:.1f}s)")
+        stderr = exc.stderr if isinstance(exc.stderr, str) else (
+            exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+        )
+        if stderr:
+            for line in stderr.strip().splitlines()[:15]:
+                print(f"    {line}")
+        return False
 
     if update_golden:
         if process.returncode == expected_exit:
@@ -283,6 +303,12 @@ def main() -> int:
         default="/opt/homebrew/opt/python@3.11/libexec/bin/python",
         help="Python binary to use.",
     )
+    arg_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Timeout in seconds for each individual test run (default: 30.0s).",
+    )
 
     args = arg_parser.parse_args()
 
@@ -301,7 +327,7 @@ def main() -> int:
     passed_errors = 0
 
     print(f"Running tests with Python: {python_executable}")
-    print(f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}\n")
+    print(f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}, Timeout: {args.timeout}s\n")
 
     # 1. Run Golden Tests (if suite is 'golden' or 'all')
     if suite_mode in ("golden", "all"):
@@ -333,6 +359,7 @@ def main() -> int:
                         phase,
                         update_golden=args.update_golden,
                         python_executable=python_executable,
+                        timeout=args.timeout,
                     ):
                         passed_golden += 1
             print()
@@ -374,6 +401,7 @@ def main() -> int:
                 total_errors += 1
                 directives = parse_test_directives(error_file)
                 golden_err_file = golden_error_file_for_test(error_file, phase)
+                effective_timeout = directives.timeout if directives.timeout is not None else args.timeout
                 passed, report = run_error_test(
                     source_file=error_file,
                     target_phase=phase,
@@ -385,6 +413,7 @@ def main() -> int:
                     extra_args=directives.args,
                     env_vars=directives.env,
                     stdin_data=directives.stdin_data,
+                    timeout=effective_timeout,
                 )
                 if passed:
                     passed_errors += 1

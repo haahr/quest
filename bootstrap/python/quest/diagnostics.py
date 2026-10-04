@@ -104,6 +104,33 @@ class Diagnostic:
             error_code=error_code,
         )
 
+    @classmethod
+    def make_from_exception(
+        cls,
+        exc: Exception,
+        offset: Optional[int] = 0,
+        length: int = 1,
+        notes: Optional[list[str]] = None,
+    ) -> Diagnostic:
+        """Constructs an ERROR diagnostic from an Exception, capturing its full traceback."""
+        import traceback
+        tb_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        tb_formatted = "".join(tb_lines).strip()
+        all_notes = list(notes or [])
+        if tb_formatted:
+            all_notes.append(f"Python traceback:\n{tb_formatted}")
+        label = (
+            DiagnosticLabel(offset=offset, length=length, is_primary=True)
+            if offset is not None
+            else None
+        )
+        return cls(
+            severity=Severity.ERROR,
+            message=str(exc) or type(exc).__name__,
+            primary_label=label,
+            notes=all_notes,
+        )
+
 
 class QuestCompilerError(Exception):
     """Base class for all Quest compilation and evaluation errors."""
@@ -175,6 +202,32 @@ class QuestTypeError(QuestCompilerError):
             offset=self.offset if self.offset is not None else 0,
             length=len_val,
             help_text=self.help_text,
+            notes=self.notes,
+        )
+
+
+class TypeRecursionLimitExceeded(QuestTypeError):
+    """Raised when type analysis step/recursion limit is exceeded (deterministic loop safety)."""
+
+    def __init__(
+        self,
+        message: str = "Type analysis step limit exceeded (infinite type recursion detected)",
+        offset: int = 0,
+        length: int = 1,
+    ) -> None:
+        super().__init__(
+            message=f"Fatal compiler error: {message}",
+            offset=offset,
+            length=length,
+            notes=["Compiler terminated to prevent infinite recursion during typechecking."],
+        )
+
+    def to_diagnostic(self, length: Optional[int] = None) -> Diagnostic:
+        len_val = length if length is not None else self.length
+        return Diagnostic.make_fatal(
+            message=self.message,
+            offset=self.offset,
+            length=len_val,
             notes=self.notes,
         )
 
@@ -304,7 +357,11 @@ class DiagnosticRenderer:
 
         # Explanatory notes and actionable help
         for note in diag.notes:
-            lines.append(f"  = note: {note}")
+            note_lines = str(note).splitlines()
+            if note_lines:
+                lines.append(f"  = note: {note_lines[0]}")
+                for nl in note_lines[1:]:
+                    lines.append(f"          {nl}")
         if diag.help_text:
             lines.append(f"  = help: {diag.help_text}")
         for sugg in diag.suggestions:

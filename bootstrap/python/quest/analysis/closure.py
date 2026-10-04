@@ -7,9 +7,11 @@ from typing import Any, Optional
 
 from quest.typed_ast import (
     TypedBlock,
+    TypedCase,
     TypedExprStmt,
     TypedFor,
     TypedFun,
+    TypedInspect,
     TypedLetValue,
     TypedModule,
     TypedTry,
@@ -43,7 +45,7 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
     seen: set[str] = set()
 
     def walk(node: Any, bound: set[str]) -> None:
-        if node is None:
+        if node is None or isinstance(node, QType):
             return
         match node:
             case TypedVar(name=name, type_val=t):
@@ -85,6 +87,20 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
                     walk(br.body, br_bound)
                 if else_b:
                     walk(else_b, bound)
+            case TypedCase(target=tgt, branches=branches, else_branch=else_b):
+                walk(tgt, bound)
+                for br in branches:
+                    br_bound = bound | ({br.binder.name} if br.binder else set())
+                    walk(br.body, br_bound)
+                if else_b:
+                    walk(else_b, bound)
+            case TypedInspect(target=tgt, branches=branches, else_branch=else_b):
+                walk(tgt, bound)
+                for br in branches:
+                    br_bound = bound | {b.name for b in br.binders}
+                    walk(br.body, br_bound)
+                if else_b:
+                    walk(else_b, bound)
             case _:
                 if isinstance(node, (list, tuple)):
                     for item in node:
@@ -110,7 +126,7 @@ def analyze_closures(
 
     def scan(node: Any) -> None:
         nonlocal lambda_counter, current_module
-        if node is None:
+        if node is None or isinstance(node, QType):
             return
         if isinstance(node, TypedModule):
             old_mod = current_module

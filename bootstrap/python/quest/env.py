@@ -207,8 +207,9 @@ def allocate_symbol_id() -> int:
 class Environment:
     """Manages the active lexical scope stack, built-in definitions, and module linkages."""
 
-    def __init__(self):
+    def __init__(self, sink: Optional[Any] = None):
         self._symbol_counter: int = 0
+        self.sink = sink
         self.base_scope: Scope = Scope(parent=None, name="base")
         self.global_scope: Scope = Scope(parent=self.base_scope, name="global")
         self.current_scope: Scope = self.global_scope
@@ -221,6 +222,7 @@ class Environment:
         self.linked_objects: list[Path] = []
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []
+        self.subtype_cache: dict[tuple[int, int], bool] = {}
         self.options: Optional[Any] = None
         self._init_builtins()
 

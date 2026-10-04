@@ -774,7 +774,18 @@ def build_quest_grammar() -> None:
     # Def [Rec] TypeDecl
     TYPE_SIGNATURE.add_rule(
         (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
-        lambda def_token, rec_token, type_declaration: type_declaration,
+        lambda def_token, rec_token, type_declaration: (
+            ast.DefTypeBinding(
+                name=type_declaration.name,
+                type_val=type_declaration.type_val,
+                params=type_declaration.params,
+                bound=type_declaration.bound,
+                is_rec=bool(rec_token),
+                offset=def_token.offset,
+            )
+            if rec_token
+            else type_declaration
+        ),
     )
     # [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals)
     TYPE_SIGNATURE.add_rule(

@@ -1,0 +1,813 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('location') 'Location' ('questlang/common/location') 'questlang/common/Location')
+        (ImportItem ('ast') 'Ast' ('questlang/syntax/ast') 'questlang/syntax/Ast')
+        (ImportItem ('astprint') 'AstPrint' ('questlang/syntax/astprint') 'questlang/syntax/AstPrint')
+        (ImportItem ('vector') 'Vector' ('collections/vector') 'collections/Vector')
+        (ImportItem ('maybe') 'Maybe' ('util/maybe') 'util/Maybe')
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (LetValueBinding
+      :name 'wOut'
+      :value (ExprSelect
+        :target (ExprId 'writer')
+        :field 'output'
+      )
+    )
+    (LetValueBinding
+      :name 'printStr'
+      :value (ExprBlock
+        :bindings (
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'writer')
+                :field 'putString'
+              )
+              :args (
+                (ExprId 'wOut')
+                (ExprId 's')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'writer')
+                :field 'putString'
+              )
+              :args (
+                (ExprId 'wOut')
+                (ExprString '\n' '"\\n"')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'sp'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'location')
+          :field 'span'
+        )
+        :args (
+          (ExprString 'test.quest' '"test.quest"')
+          (ExprInt 0 '0')
+          (ExprInt 0 '0')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'makeId'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'exprId'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'name')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('ast' 'Expr'))
+    )
+    (LetValueBinding
+      :name 'makeInt'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'exprInt'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'val')
+          (ExprId 'lexeme')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'val'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'lexeme'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('ast' 'Expr'))
+    )
+    (LetValueBinding
+      :name 'makeTypePath'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'typePathSimple'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'name')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('ast' 'TypeExpr'))
+    )
+    (LetValueBinding
+      :name 'makeInfix'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'exprInfix'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'left')
+          (ExprId 'op')
+          (ExprId 'right')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'left'
+          :type_annot (TypePath ('ast' 'Expr'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'op'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'right'
+          :type_annot (TypePath ('ast' 'Expr'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('ast' 'Expr'))
+    )
+    (LetValueBinding
+      :name 'makeApp'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'args'
+            :value (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'vector')
+                :field 'new'
+              )
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('ast' 'Expr'))
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'vector')
+                :field 'append'
+              )
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('ast' 'Expr'))
+                )
+                (ExprId 'args')
+                (ExprId 'arg')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'ast')
+                :field 'exprApp'
+              )
+              :args (
+                (ExprId 'sp')
+                (ExprId 'fn')
+                (ExprId 'args')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'fn'
+          :type_annot (TypePath ('ast' 'Expr'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'arg'
+          :type_annot (TypePath ('ast' 'Expr'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('ast' 'Expr'))
+    )
+    (LetValueBinding
+      :name 'makeFormalParam'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'formalParam'
+        )
+        :args (
+          (ExprId 'name')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'maybe')
+              :field 'some'
+            )
+            :args (
+              (TypeArgument
+                :type_val (TypePath ('ast' 'TypeExpr'))
+              )
+              (ExprApp
+                :func (ExprId 'makeTypePath')
+                :args (
+                  (ExprId 'typeName')
+                )
+              )
+            )
+          )
+          (ExprOption
+            :tag 'modeValue'
+            :option_type (TypePath ('ast' 'ParamMode'))
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'typeName'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('ast' 'FormalParam'))
+    )
+    (LetValueBinding
+      :name 'valX'
+      :value (ExprApp
+        :func (ExprId 'makeInt')
+        :args (
+          (ExprInt 42 '42')
+          (ExprString '42' '"42"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'typeInt'
+      :value (ExprApp
+        :func (ExprId 'makeTypePath')
+        :args (
+          (ExprString 'Int' '"Int"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'declX'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makeDecl'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprOption
+            :tag 'declLetVal'
+            :option_type (TypePath ('ast' 'ExprForm'))
+            :payload (ExprTuple
+              :fields (
+                (TupleBinding
+                  :name 'name'
+                  :value (ExprString 'x' '"x"')
+                )
+                (TupleBinding
+                  :name 'value'
+                  :value (ExprId 'valX')
+                )
+                (TupleBinding
+                  :name 'params'
+                  :value (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'vector')
+                      :field 'new'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('ast' 'FormalParam'))
+                      )
+                    )
+                  )
+                )
+                (TupleBinding
+                  :name 'typeAnnot'
+                  :value (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'maybe')
+                      :field 'some'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('ast' 'TypeExpr'))
+                      )
+                      (ExprId 'typeInt')
+                    )
+                  )
+                )
+                (TupleBinding
+                  :name 'isRec'
+                  :value (ExprBool False)
+                )
+                (TupleBinding
+                  :name 'isVar'
+                  :value (ExprBool False)
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('ast' 'Decl'))
+    )
+    (LetValueBinding
+      :name 'phraseX'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makePhrase'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprOption
+            :tag 'phraseDecl'
+            :option_type (TypePath ('ast' 'PhraseForm'))
+            :payload (ExprTuple
+              :fields (
+                (TupleBinding
+                  :name 'decl'
+                  :value (ExprId 'declX')
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('ast' 'Phrase'))
+    )
+    (LetValueBinding
+      :name 'phrases1'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('ast' 'Phrase'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('ast' 'Phrase'))
+          )
+          (ExprId 'phrases1')
+          (ExprId 'phraseX')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'prog1'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makeProgram'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'phrases1')
+        )
+      )
+      :type_annot (TypePath ('ast' 'Program'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printStr')
+        :args (
+          (ExprString '=== Test 1: Simple Let Binding ===' '"=== Test 1: Simple Let Binding ==="')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printStr')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'astprint')
+              :field 'dump'
+            )
+            :args (
+              (ExprId 'prog1')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'condExpr'
+      :value (ExprApp
+        :func (ExprId 'makeInfix')
+        :args (
+          (ExprApp
+            :func (ExprId 'makeId')
+            :args (
+              (ExprString 'n' '"n"')
+            )
+          )
+          (ExprString 'is' '"is"')
+          (ExprApp
+            :func (ExprId 'makeInt')
+            :args (
+              (ExprInt 0 '0')
+              (ExprString '0' '"0"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'thenExpr'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'declExprStmt'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprApp
+            :func (ExprId 'makeInt')
+            :args (
+              (ExprInt 1 '1')
+              (ExprString '1' '"1"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'recArg'
+      :value (ExprApp
+        :func (ExprId 'makeInfix')
+        :args (
+          (ExprApp
+            :func (ExprId 'makeId')
+            :args (
+              (ExprString 'n' '"n"')
+            )
+          )
+          (ExprString '-' '"-"')
+          (ExprApp
+            :func (ExprId 'makeInt')
+            :args (
+              (ExprInt 1 '1')
+              (ExprString '1' '"1"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'recCall'
+      :value (ExprApp
+        :func (ExprId 'makeApp')
+        :args (
+          (ExprApp
+            :func (ExprId 'makeId')
+            :args (
+              (ExprString 'fact' '"fact"')
+            )
+          )
+          (ExprId 'recArg')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'multExpr'
+      :value (ExprApp
+        :func (ExprId 'makeInfix')
+        :args (
+          (ExprApp
+            :func (ExprId 'makeId')
+            :args (
+              (ExprString 'n' '"n"')
+            )
+          )
+          (ExprString '*' '"*"')
+          (ExprId 'recCall')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'elseExpr'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'declExprStmt'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'multExpr')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'ifExpr'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makeExpr'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprOption
+            :tag 'exprIf'
+            :option_type (TypePath ('ast' 'ExprForm'))
+            :payload (ExprTuple
+              :fields (
+                (TupleBinding
+                  :name 'cond'
+                  :value (ExprId 'condExpr')
+                )
+                (TupleBinding
+                  :name 'thenBranch'
+                  :value (ExprId 'thenExpr')
+                )
+                (TupleBinding
+                  :name 'elsifs'
+                  :value (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'vector')
+                      :field 'new'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('ast' 'ElsifBranch'))
+                      )
+                    )
+                  )
+                )
+                (TupleBinding
+                  :name 'elseBranch'
+                  :value (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'maybe')
+                      :field 'some'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('ast' 'Expr'))
+                      )
+                      (ExprId 'elseExpr')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'factParams'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('ast' 'FormalParam'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('ast' 'FormalParam'))
+          )
+          (ExprId 'factParams')
+          (ExprApp
+            :func (ExprId 'makeFormalParam')
+            :args (
+              (ExprString 'n' '"n"')
+              (ExprString 'Int' '"Int"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'declFact'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makeDecl'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprOption
+            :tag 'declLetVal'
+            :option_type (TypePath ('ast' 'ExprForm'))
+            :payload (ExprTuple
+              :fields (
+                (TupleBinding
+                  :name 'name'
+                  :value (ExprString 'fact' '"fact"')
+                )
+                (TupleBinding
+                  :name 'value'
+                  :value (ExprId 'ifExpr')
+                )
+                (TupleBinding
+                  :name 'params'
+                  :value (ExprId 'factParams')
+                )
+                (TupleBinding
+                  :name 'typeAnnot'
+                  :value (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'maybe')
+                      :field 'some'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('ast' 'TypeExpr'))
+                      )
+                      (ExprApp
+                        :func (ExprId 'makeTypePath')
+                        :args (
+                          (ExprString 'Int' '"Int"')
+                        )
+                      )
+                    )
+                  )
+                )
+                (TupleBinding
+                  :name 'isRec'
+                  :value (ExprBool True)
+                )
+                (TupleBinding
+                  :name 'isVar'
+                  :value (ExprBool False)
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('ast' 'Decl'))
+    )
+    (LetValueBinding
+      :name 'phraseFact'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makePhrase'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprOption
+            :tag 'phraseDecl'
+            :option_type (TypePath ('ast' 'PhraseForm'))
+            :payload (ExprTuple
+              :fields (
+                (TupleBinding
+                  :name 'decl'
+                  :value (ExprId 'declFact')
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('ast' 'Phrase'))
+    )
+    (LetValueBinding
+      :name 'phrases2'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('ast' 'Phrase'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('ast' 'Phrase'))
+          )
+          (ExprId 'phrases2')
+          (ExprId 'phraseFact')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'prog2'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'ast')
+          :field 'makeProgram'
+        )
+        :args (
+          (ExprId 'sp')
+          (ExprId 'phrases2')
+        )
+      )
+      :type_annot (TypePath ('ast' 'Program'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printStr')
+        :args (
+          (ExprString '=== Test 2: Recursive Fact Function ===' '"=== Test 2: Recursive Fact Function ==="')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printStr')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'astprint')
+              :field 'dump'
+            )
+            :args (
+              (ExprId 'prog2')
+            )
+          )
+        )
+      )
+    )
+  )
+)

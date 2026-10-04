@@ -74,6 +74,7 @@ def parse_type_string(type_str: str) -> QType:
         return base_types[cleaned]
 
     try:
+        from quest.diagnostics import QuestCompilerError
         from quest.elaborate_types import elaborate_type
         from quest.env import Environment
         from quest.grammar import parse_quest_program
@@ -85,7 +86,7 @@ def parse_type_string(type_str: str) -> QType:
         ast_type = parse_quest_program(tokens, source_map, target="Type")
         env = Environment()
         return elaborate_type(ast_type, env)
-    except Exception:
+    except (QuestCompilerError, ValueError):
         return DYNAMIC_TYPE
 
 
@@ -210,7 +211,7 @@ def jsog_decode(raw_json: str) -> QDynamicVal:
     """Deserializes a JSON string with JSOG references into a QDynamicVal."""
     try:
         data = json.loads(raw_json)
-    except Exception:
+    except json.JSONDecodeError:
         raise QuestException(DYNAMIC_ERROR_EXC)
 
     if not isinstance(data, dict) or "@type" not in data or "@value" not in data:

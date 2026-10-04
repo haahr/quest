@@ -1,0 +1,2138 @@
+(* Quest Self-Hosted Compiler: Canonical AST Pretty-Printer Implementation *)
+
+module astprint : AstPrint
+import
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/common/location : questlang/common/Location
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+export
+    let makePadding(indent: Int): String =
+        begin
+            let b = stringBuilder.new();
+            for i = 1 upto indent do
+                stringBuilder.append(b "  ");
+            end;
+            stringBuilder.toString(b)
+        end;
+
+    let pyRepr(s: String): String =
+        begin
+            let sLen = stringOp.length(s);
+            let var hasSingle = false;
+            let var hasDouble = false;
+            for i = 0 upto {sLen - 1} do
+                let v = ascii.val(stringOp.getChar(s i));
+                if v is 39 then
+                    hasSingle := true;
+                elsif v is 34 then
+                    hasDouble := true;
+                end;
+            end;
+            let quoteChar = if hasSingle andif not(hasDouble) then ascii.char(34) else ascii.char(39) end;
+            let b = stringBuilder.new();
+            stringBuilder.appendChar(b quoteChar);
+            for i = 0 upto {sLen - 1} do
+                let c = stringOp.getChar(s i);
+                let v = ascii.val(c);
+                if v is 92 then
+                    stringBuilder.appendChar(b ascii.char(92));
+                elsif v is 10 then
+                    stringBuilder.append(b "\n");
+                elsif v is 13 then
+                    stringBuilder.append(b "\r");
+                elsif v is 9 then
+                    stringBuilder.append(b "\t");
+                elsif c is quoteChar then
+                    stringBuilder.appendChar(b ascii.char(92));
+                    stringBuilder.appendChar(b quoteChar);
+                else
+                    stringBuilder.appendChar(b c);
+                end;
+            end;
+            stringBuilder.appendChar(b quoteChar);
+            stringBuilder.toString(b)
+        end;
+    let paramModeName(mode: ast.ParamMode): String =
+        case mode
+            when modeValue then "VALUE"
+            when modeVar then "VAR"
+            when modeOut then "OUT"
+        end;
+
+    let dumpStringTuple(items: vector.T(String)): String =
+        begin
+            let n = vector.length(:String items);
+            if n is 0 then
+                "()"
+            else
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(");
+                for i = 0 upto {n - 1} do
+                    if i > 0 then
+                        stringBuilder.append(b " ");
+                    end;
+                    stringBuilder.append(b pyRepr(vector.get(:String items i)));
+                end;
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end
+        end;
+
+    let rec dumpTypeExpr(node: ast.TypeExpr indent: Int showOffsets: Bool): String =
+        begin
+        let dumpQuantifier(q: ast.Quantifier indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(Quantifier
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":name ");
+                stringBuilder.append(b pyRepr(q.name));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":bound ");
+                stringBuilder.append(b dumpTypeExpr(q.bound {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":mode ");
+                stringBuilder.append(b paramModeName(q.mode));
+                stringBuilder.append(b "
+");
+                if q.isType then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":is_type True
+");
+                end;
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpFieldSig(f: ast.FieldSig indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(FieldSig
+");
+                if maybe.isSome(:String f.name) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":name ");
+                    stringBuilder.append(b pyRepr(maybe.unwrap(:String f.name)));
+                    stringBuilder.append(b "
+");
+                end;
+                if maybe.isSome(:ast.TypeExpr f.typeSig) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":type_sig ");
+                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr f.typeSig)
+                        {indent + 1} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":mode ");
+                stringBuilder.append(b paramModeName(f.mode));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpRecordFieldSig(r: ast.RecordFieldSig indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(RecordFieldSig
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":name ");
+                stringBuilder.append(b pyRepr(r.name));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":type_sig ");
+                stringBuilder.append(b dumpTypeExpr(r.typeSig {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                if r.isVar then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":is_var True
+");
+                end;
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpOptionFieldSig(o: ast.OptionFieldSig indent: Int showOffsets: Bool): String =
+            begin
+                let nP = vector.length(:ast.FieldSig o.payloadSig);
+                if nP is 0 then
+                    stringOp.cat("(OptionFieldSig " stringOp.cat(pyRepr(o.tag) " ())"))
+                else
+                    let pad = makePadding(indent);
+                    let cpad = makePadding({indent + 1});
+                    let b = stringBuilder.new();
+                    stringBuilder.append(b "(OptionFieldSig
+");
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":tag ");
+                    stringBuilder.append(b pyRepr(o.tag));
+                    stringBuilder.append(b "
+");
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":payload_sig (
+");
+                    for i = 0 upto {nP - 1} do
+                        stringBuilder.append(b makePadding({indent + 2}));
+                        stringBuilder.append(b dumpFieldSig(vector.get(:ast.FieldSig o.payloadSig i)
+                            {indent + 2} showOffsets));
+                        stringBuilder.append(b "
+");
+                    end;
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ")
+");
+                    stringBuilder.append(b pad);
+                    stringBuilder.append(b ")");
+                    stringBuilder.toString(b)
+                end
+            end;
+
+        let dumpVariantFieldSig(v: ast.VariantFieldSig indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(VariantFieldSig
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":tag ");
+                stringBuilder.append(b pyRepr(v.tag));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":type_sig ");
+                stringBuilder.append(b dumpTypeExpr(v.typeSig {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                if v.isVar then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":is_var True
+");
+                end;
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpTypeFormal(t: ast.TypeFormal indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(TypeFormal
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":name ");
+                stringBuilder.append(b pyRepr(t.name));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":bound ");
+                stringBuilder.append(b dumpTypeExpr(t.bound {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+        let dumpTypeForm(span: location.Span form: ast.TypeForm indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                case form
+                when kindType then
+                        "(KindType)"
+                when kindPower with p then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(KindPower
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":bound ");
+                            stringBuilder.append(b dumpTypeExpr(p.bound {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when kindAll with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(KindAll
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":param_name ");
+                            stringBuilder.append(b pyRepr(a.paramName));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":param_kind ");
+                            stringBuilder.append(b dumpTypeExpr(a.paramKind {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body_kind ");
+                            stringBuilder.append(b dumpTypeExpr(a.bodyKind {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when kindId with k then
+                        stringOp.cat("(KindId " stringOp.cat(pyRepr(k.name) ")"))
+                when kindManifest with m then
+                        stringOp.cat("(KindManifest " stringOp.cat(pyRepr(m.interfaceName)
+                            stringOp.cat(" " stringOp.cat(pyRepr(m.kindName) ")"))))
+                when typePath with p then
+                        stringOp.cat("(TypePath " stringOp.cat(dumpStringTuple(p.path) ")"))
+                when typeAll with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeAll
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":quantifiers (
+");
+                            let nQ = vector.length(:ast.Quantifier a.quantifiers);
+                            for i = 0 upto {nQ - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpQuantifier(vector.get(:ast.Quantifier a.quantifiers i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":result_type ");
+                            stringBuilder.append(b dumpTypeExpr(a.resultType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeTuple with t then
+                        begin
+                            let nF = vector.length(:ast.FieldSig t.fields);
+                            if nF is 0 then
+                                "(TypeTuple ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(TypeTuple
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":fields (
+");
+                                for i = 0 upto {nF - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpFieldSig(vector.get(:ast.FieldSig t.fields i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when typeRecord with r then
+                        begin
+                            let nF = vector.length(:ast.RecordFieldSig r.fields);
+                            if nF is 0 then
+                                "(TypeRecord ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(TypeRecord
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":fields (
+");
+                                for i = 0 upto {nF - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpRecordFieldSig(vector.get(:ast.RecordFieldSig r.fields i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when typeOption with o then
+                        begin
+                            let nV = vector.length(:ast.OptionFieldSig o.variants);
+                            if nV is 0 then
+                                "(TypeOption ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(TypeOption
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":variants (
+");
+                                for i = 0 upto {nV - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    let variantSig = vector.get(:ast.OptionFieldSig o.variants i);
+                                    stringBuilder.append(b dumpOptionFieldSig(variantSig {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when typeVariant with v then
+                        begin
+                            let nF = vector.length(:ast.VariantFieldSig v.fields);
+                            if nF is 0 then
+                                "(TypeVariant ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(TypeVariant
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":fields (
+");
+                                for i = 0 upto {nF - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    let fieldSig = vector.get(:ast.VariantFieldSig v.fields i);
+                                    stringBuilder.append(b dumpVariantFieldSig(fieldSig {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when typeAuto with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeAuto
+");
+                            if maybe.isSome(:String a.typeParam) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":type_param ");
+                                stringBuilder.append(b pyRepr(maybe.unwrap(:String a.typeParam)));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":kind_bound ");
+                            stringBuilder.append(b dumpTypeExpr(a.kindBound {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":signature (
+");
+                            let nS = vector.length(:ast.FieldSig a.signature);
+                            for i = 0 upto {nS - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpFieldSig(vector.get(:ast.FieldSig a.signature i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeFun with f then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeFun
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":params (
+");
+                            let nP = vector.length(:ast.TypeFormal f.params);
+                            for i = 0 upto {nP - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpTypeFormal(vector.get(:ast.TypeFormal f.params i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            if maybe.isSome(:ast.KindExpr f.resultKind) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":result_kind ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr f.resultKind)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpTypeExpr(f.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeRec with r then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeRec
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":var_name ");
+                            stringBuilder.append(b pyRepr(r.varName));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":bound ");
+                            stringBuilder.append(b dumpTypeExpr(r.bound {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpTypeExpr(r.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeApp with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeApp
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":constructor ");
+                            stringBuilder.append(b dumpTypeExpr(a.constructor {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":arguments (
+");
+                            let nA = vector.length(:ast.TypeExpr a.arguments);
+                            for i = 0 upto {nA - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpTypeExpr(vector.get(:ast.TypeExpr a.arguments i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeInfix with i then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeInfix
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":left ");
+                            stringBuilder.append(b dumpTypeExpr(i.left {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":op ");
+                            stringBuilder.append(b pyRepr(i.op));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":right ");
+                            stringBuilder.append(b dumpTypeExpr(i.right {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeArray with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeArray
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":element_type ");
+                            stringBuilder.append(b dumpTypeExpr(a.elementType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeVar with v then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeVar
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":element_type ");
+                            stringBuilder.append(b dumpTypeExpr(v.elementType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeOut with o then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeOut
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":element_type ");
+                            stringBuilder.append(b dumpTypeExpr(o.elementType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when typeManifest with m then
+                        stringOp.cat("(TypeManifest " stringOp.cat(pyRepr(m.moduleName)
+                            stringOp.cat(" " stringOp.cat(pyRepr(m.typeName) ")"))))
+                when typeExternal with e then
+                        stringOp.cat("(TypeExternal " stringOp.cat(pyRepr(e.cType) ")"))
+                end
+            end;
+        dumpTypeForm(node.span node.form indent showOffsets)
+    end;
+    let dumpFormalParam(p: ast.FormalParam indent: Int showOffsets: Bool): String =
+        begin
+            let pad = makePadding(indent);
+            let cpad = makePadding({indent + 1});
+            let b = stringBuilder.new();
+            stringBuilder.append(b "(FormalParam
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":name ");
+            stringBuilder.append(b pyRepr(p.name));
+            stringBuilder.append(b "
+");
+            if maybe.isSome(:ast.TypeExpr p.typeAnnot) then
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":type_annot ");
+                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr p.typeAnnot)
+                    {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+            end;
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":mode ");
+            stringBuilder.append(b paramModeName(p.mode));
+            stringBuilder.append(b "
+");
+            stringBuilder.append(b pad);
+            stringBuilder.append(b ")");
+            stringBuilder.toString(b)
+        end;
+
+
+    let dumpTypeFormal(t: ast.TypeFormal indent: Int showOffsets: Bool): String =
+        begin
+            let pad = makePadding(indent);
+            let cpad = makePadding({indent + 1});
+            let b = stringBuilder.new();
+            stringBuilder.append(b "(TypeFormal
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":name ");
+            stringBuilder.append(b pyRepr(t.name));
+            stringBuilder.append(b "
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":bound ");
+            stringBuilder.append(b dumpTypeExpr(t.bound {indent + 1} showOffsets));
+            stringBuilder.append(b "
+");
+            stringBuilder.append(b pad);
+            stringBuilder.append(b ")");
+            stringBuilder.toString(b)
+        end;
+
+    let rec dumpExpr(node: ast.Expr indent: Int showOffsets: Bool): String =
+        begin
+        let dumpDecl(node: ast.Decl indent: Int showOffsets: Bool): String =
+            dumpExpr(node indent showOffsets);
+        let dumpTupleBinding(bnd: ast.TupleFieldBinding indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(TupleBinding
+");
+                if maybe.isSome(:String bnd.name) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":name ");
+                    stringBuilder.append(b pyRepr(maybe.unwrap(:String bnd.name)));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":value ");
+                stringBuilder.append(b dumpExpr(bnd.value {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                if maybe.isSome(:ast.TypeExpr bnd.typeAnnot) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":type_annot ");
+                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr bnd.typeAnnot)
+                        {indent + 1} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                if bnd.isVar then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":is_var True
+");
+                end;
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpTupleField(field: ast.TupleField indent: Int showOffsets: Bool): String =
+            case field
+                when fieldVal with v then
+                    dumpTupleBinding(v.val indent showOffsets)
+                when fieldDecl with d then
+                    dumpDecl(d.val indent showOffsets)
+            end;
+
+        let dumpRecordBinding(bnd: ast.RecordBinding indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(RecordBinding
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":name ");
+                stringBuilder.append(b pyRepr(bnd.name));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":value ");
+                stringBuilder.append(b dumpExpr(bnd.value {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                if bnd.isVar then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":is_var True
+");
+                end;
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpCaseBranch(br: ast.CaseBranch indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(CaseBranch
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":tags ");
+                stringBuilder.append(b dumpStringTuple(br.tags));
+                stringBuilder.append(b "
+");
+                if maybe.isSome(:String br.binder) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":binder ");
+                    stringBuilder.append(b pyRepr(maybe.unwrap(:String br.binder)));
+                    stringBuilder.append(b "
+");
+                end;
+                if maybe.isSome(:ast.TypeExpr br.binderType) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":binder_type ");
+                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr br.binderType)
+                        {indent + 1} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":body ");
+                stringBuilder.append(b dumpExpr(br.body {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpInspectBranch(br: ast.InspectBranch indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(InspectBranch
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":match_type ");
+                stringBuilder.append(b dumpTypeExpr(br.matchType {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":binders (
+");
+                let nB = vector.length(:ast.InspectBinder br.binders);
+                for i = 0 upto {nB - 1} do
+                    let binder = vector.get(:ast.InspectBinder br.binders i);
+                    if maybe.isSome(:ast.TypeExpr binder.typeAnnot) then
+                        stringBuilder.append(b makePadding({indent + 2}));
+                        stringBuilder.append(b "(
+");
+                        stringBuilder.append(b makePadding({indent + 3}));
+                        stringBuilder.append(b pyRepr(binder.name));
+                        stringBuilder.append(b "
+");
+                        stringBuilder.append(b makePadding({indent + 3}));
+                        stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr binder.typeAnnot)
+                            {indent + 3} showOffsets));
+                        stringBuilder.append(b "
+");
+                        stringBuilder.append(b makePadding({indent + 2}));
+                        stringBuilder.append(b ")
+");
+                    else
+                        stringBuilder.append(b makePadding({indent + 2}));
+                        stringBuilder.append(b "(");
+                        stringBuilder.append(b pyRepr(binder.name));
+                        stringBuilder.append(b " None)
+");
+                    end;
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ")
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":body ");
+                stringBuilder.append(b dumpExpr(br.body {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpTryBranch(br: ast.TryBranch indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(TryBranch
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":exc_pattern ");
+                stringBuilder.append(b dumpExpr(br.excPattern {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                if maybe.isSome(:String br.binder) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":binder ");
+                    stringBuilder.append(b pyRepr(maybe.unwrap(:String br.binder)));
+                    stringBuilder.append(b "
+");
+                end;
+                if maybe.isSome(:ast.TypeExpr br.binderType) then
+                    stringBuilder.append(b cpad);
+                    stringBuilder.append(b ":binder_type ");
+                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr br.binderType)
+                        {indent + 1} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":body ");
+                stringBuilder.append(b dumpExpr(br.body {indent + 1} showOffsets));
+                stringBuilder.append(b "
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end;
+
+        let dumpExprForm(span: location.Span form: ast.ExprForm indent: Int showOffsets: Bool): String =
+            begin
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                case form
+                when exprInt with i then
+                        stringOp.cat("(ExprInt " stringOp.cat(conv.int(i.value)
+                            stringOp.cat(" " stringOp.cat(pyRepr(i.lexeme) ")"))))
+                when exprReal with r then
+                        stringOp.cat("(ExprReal " stringOp.cat(conv.real(r.value)
+                            stringOp.cat(" " stringOp.cat(pyRepr(r.lexeme) ")"))))
+                when exprChar with c then
+                        stringOp.cat("(ExprChar " stringOp.cat(pyRepr(conv.char(c.value))
+                            stringOp.cat(" " stringOp.cat(pyRepr(c.lexeme) ")"))))
+                when exprString with s then
+                        stringOp.cat("(ExprString " stringOp.cat(pyRepr(s.value)
+                            stringOp.cat(" " stringOp.cat(pyRepr(s.lexeme) ")"))))
+                when exprBool with b then
+                        stringOp.cat("(ExprBool " stringOp.cat(if b.value then "True" else "False" end ")"))
+                when exprOk then
+                        "(ExprOk)"
+                when exprId with i then
+                        stringOp.cat("(ExprId " stringOp.cat(pyRepr(i.name) ")"))
+                when exprExternal with e then
+                        stringOp.cat("(ExprExternal " stringOp.cat(pyRepr(e.symbol) ")"))
+                when typeArg with t then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(TypeArgument
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":type_val ");
+                            stringBuilder.append(b dumpTypeExpr(t.typeVal {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when kindArg with k then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(KindArgument
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":kind_val ");
+                            stringBuilder.append(b dumpTypeExpr(k.kindVal {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprBlock with b then
+                        begin
+                            let nB = vector.length(:ast.Decl b.bindings);
+                            if nB is 0 then
+                                "(ExprBlock ())"
+                            else
+                                let sb = stringBuilder.new();
+                                stringBuilder.append(sb "(ExprBlock
+");
+                                stringBuilder.append(sb cpad);
+                                stringBuilder.append(sb ":bindings (
+");
+                                for i = 0 upto {nB - 1} do
+                                    stringBuilder.append(sb makePadding({indent + 2}));
+                                    stringBuilder.append(sb dumpDecl(vector.get(:ast.Decl b.bindings i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(sb "
+");
+                                end;
+                                stringBuilder.append(sb cpad);
+                                stringBuilder.append(sb ")
+");
+                                stringBuilder.append(sb pad);
+                                stringBuilder.append(sb ")");
+                                stringBuilder.toString(sb)
+                            end
+                        end
+                when exprIf with i then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprIf
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":cond ");
+                            stringBuilder.append(b dumpExpr(i.cond {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":then_branch ");
+                            stringBuilder.append(b dumpExpr(i.thenBranch {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            let nEls = vector.length(:ast.ElsifBranch i.elsifs);
+                            if nEls > 0 then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":elsifs (
+");
+                                for k = 0 upto {nEls - 1} do
+                                    let eb = vector.get(:ast.ElsifBranch i.elsifs k);
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b "(
+");
+                                    stringBuilder.append(b makePadding({indent + 3}));
+                                    stringBuilder.append(b dumpExpr(eb.cond {indent + 3} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                    stringBuilder.append(b makePadding({indent + 3}));
+                                    stringBuilder.append(b dumpExpr(eb.thenBranch {indent + 3} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b ")
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            if maybe.isSome(:ast.Expr i.elseBranch) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":else_branch ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr i.elseBranch)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprWhile with w then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprWhile
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":cond ");
+                            stringBuilder.append(b dumpExpr(w.cond {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpExpr(w.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprLoop with l then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprLoop
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpExpr(l.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprExit then
+                        "(ExprExit)"
+                when exprFor with f then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprFor
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":var_name ");
+                            stringBuilder.append(b pyRepr(f.varName));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":start ");
+                            stringBuilder.append(b dumpExpr(f.start {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            if f.isDownto then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":is_downto True
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":stop ");
+                            stringBuilder.append(b dumpExpr(f.stop {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpExpr(f.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprFun with f then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprFun
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":params (
+");
+                            let nP = vector.length(:ast.FormalParam f.params);
+                            for i = 0 upto {nP - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpFormalParam(vector.get(:ast.FormalParam f.params i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            if maybe.isSome(:ast.TypeExpr f.returnType) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":return_type ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr f.returnType)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpExpr(f.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            let nTP = vector.length(:ast.TypeFormal f.typeParams);
+                            if nTP > 0 then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":type_params (
+");
+                                for i = 0 upto {nTP - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpTypeFormal(vector.get(:ast.TypeFormal f.typeParams i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprApp with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprApp
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":func ");
+                            stringBuilder.append(b dumpExpr(a.func {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            let nA = vector.length(:ast.Expr a.args);
+                            if nA > 0 then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":args (
+");
+                                for i = 0 upto {nA - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpExpr(vector.get(:ast.Expr a.args i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprInfix with i then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprInfix
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":left ");
+                            stringBuilder.append(b dumpExpr(i.left {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":op ");
+                            stringBuilder.append(b pyRepr(i.op));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":right ");
+                            stringBuilder.append(b dumpExpr(i.right {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprTuple with t then
+                        begin
+                            let nF = vector.length(:ast.TupleField t.fields);
+                            if nF is 0 then
+                                "(ExprTuple ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(ExprTuple
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":fields (
+");
+                                for i = 0 upto {nF - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpTupleField(vector.get(:ast.TupleField t.fields i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when exprRecord with r then
+                        begin
+                            let nF = vector.length(:ast.RecordBinding r.fields);
+                            if nF is 0 then
+                                "(ExprRecord ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(ExprRecord
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":fields (
+");
+                                for i = 0 upto {nF - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpRecordBinding(vector.get(:ast.RecordBinding r.fields i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when exprArray with a then
+                        begin
+                            let nE = vector.length(:ast.Expr a.elements);
+                            if {nE is 0} andif maybe.isNone(:ast.TypeExpr a.elementType) then
+                                "(ExprArray ())"
+                            else
+                                let b = stringBuilder.new();
+                                stringBuilder.append(b "(ExprArray
+");
+                                if nE > 0 then
+                                    stringBuilder.append(b cpad);
+                                    stringBuilder.append(b ":elements (
+");
+                                    for i = 0 upto {nE - 1} do
+                                        stringBuilder.append(b makePadding({indent + 2}));
+                                        stringBuilder.append(b dumpExpr(vector.get(:ast.Expr a.elements i)
+                                            {indent + 2} showOffsets));
+                                        stringBuilder.append(b "
+");
+                                    end;
+                                    stringBuilder.append(b cpad);
+                                    stringBuilder.append(b ")
+");
+                                end;
+                                if maybe.isSome(:ast.TypeExpr a.elementType) then
+                                    stringBuilder.append(b cpad);
+                                    stringBuilder.append(b ":element_type ");
+                                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr a.elementType)
+                                        {indent + 1} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b pad);
+                                stringBuilder.append(b ")");
+                                stringBuilder.toString(b)
+                            end
+                        end
+                when exprArrayRep with r then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprArrayRep
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":count ");
+                            stringBuilder.append(b dumpExpr(r.count {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":init_val ");
+                            stringBuilder.append(b dumpExpr(r.initVal {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprOption with o then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprOption
+");
+                            if maybe.isSome(:String o.tag) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":tag ");
+                                stringBuilder.append(b pyRepr(maybe.unwrap(:String o.tag)));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":option_type ");
+                            stringBuilder.append(b dumpTypeExpr(o.optionType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            if maybe.isSome(:ast.Expr o.payload) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":payload ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr o.payload)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            if maybe.isSome(:ast.Expr o.ordinalExpr) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":ordinal_expr ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr o.ordinalExpr)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprVariant with v then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprVariant
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":tag ");
+                            stringBuilder.append(b pyRepr(v.tag));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":variant_type ");
+                            stringBuilder.append(b dumpTypeExpr(v.variantType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            if v.isVar then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":is_var True
+");
+                            end;
+                            if maybe.isSome(:ast.Expr v.payload) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":payload ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr v.payload)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprAuto with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprAuto
+");
+                            if maybe.isSome(:ast.AutoWitness a.witness) then
+                                let wit = maybe.unwrap(:ast.AutoWitness a.witness);
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":witness (
+");
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b pyRepr(wit.typeVar));
+                                stringBuilder.append(b "
+");
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                if maybe.isSome(:ast.KindExpr wit.kindBound) then
+                                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr wit.kindBound)
+                                        {indent + 2} showOffsets));
+                                else
+                                    stringBuilder.append(b "None");
+                                end;
+                                stringBuilder.append(b "
+");
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpExpr(wit.witnessVal {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target_type ");
+                            stringBuilder.append(b dumpTypeExpr(a.targetType {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":payload ");
+                            stringBuilder.append(b dumpExpr(a.payload {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprSelect with s then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprSelect
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(s.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":field ");
+                            stringBuilder.append(b pyRepr(s.field));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprIndex with idx then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprIndex
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(idx.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":index ");
+                            stringBuilder.append(b dumpExpr(idx.index {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprIndexAssign with ia then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprIndexAssign
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(ia.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":index ");
+                            stringBuilder.append(b dumpExpr(ia.index {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":value ");
+                            stringBuilder.append(b dumpExpr(ia.value {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprAssign with a then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprAssign
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(a.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":value ");
+                            stringBuilder.append(b dumpExpr(a.value {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprVarCell with vc then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprVarCell
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":value ");
+                            stringBuilder.append(b dumpExpr(vc.value {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprDerefCell with dc then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprDerefCell
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(dc.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprVariantCheck with vc then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprVariantCheck
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(vc.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":tag ");
+                            stringBuilder.append(b pyRepr(vc.tag));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprVariantAssert with va then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprVariantAssert
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(va.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":tag ");
+                            stringBuilder.append(b pyRepr(va.tag));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprCase with c then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprCase
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(c.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":branches (
+");
+                            let nBr = vector.length(:ast.CaseBranch c.branches);
+                            for i = 0 upto {nBr - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpCaseBranch(vector.get(:ast.CaseBranch c.branches i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            if maybe.isSome(:ast.Expr c.elseBranch) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":else_branch ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr c.elseBranch)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprInspect with i then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprInspect
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":target ");
+                            stringBuilder.append(b dumpExpr(i.target {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":branches (
+");
+                            let nBr = vector.length(:ast.InspectBranch i.branches);
+                            for k = 0 upto {nBr - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpInspectBranch(vector.get(:ast.InspectBranch i.branches k)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            if maybe.isSome(:ast.Expr i.elseBranch) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":else_branch ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr i.elseBranch)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprException with e then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprException
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":name ");
+                            stringBuilder.append(b pyRepr(e.name));
+                            stringBuilder.append(b "
+");
+                            if maybe.isSome(:ast.TypeExpr e.typeAnnot) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":type_annot ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr e.typeAnnot)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprRaise with r then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprRaise
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":exc ");
+                            stringBuilder.append(b dumpExpr(r.exc {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            if maybe.isSome(:ast.Expr r.payload) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":payload ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr r.payload)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            if maybe.isSome(:ast.TypeExpr r.asType) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":as_type ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr r.asType)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when exprTry with t then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprTry
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":body ");
+                            stringBuilder.append(b dumpExpr(t.body {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":branches (
+");
+                            let nBr = vector.length(:ast.TryBranch t.branches);
+                            for i = 0 upto {nBr - 1} do
+                                stringBuilder.append(b makePadding({indent + 2}));
+                                stringBuilder.append(b dumpTryBranch(vector.get(:ast.TryBranch t.branches i)
+                                    {indent + 2} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ")
+");
+                            if maybe.isSome(:ast.Expr t.elseBranch) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":else_branch ");
+                                stringBuilder.append(b dumpExpr(maybe.unwrap(:ast.Expr t.elseBranch)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when declLetVal with v then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(LetValueBinding
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":name ");
+                            stringBuilder.append(b pyRepr(v.name));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":value ");
+                            stringBuilder.append(b dumpExpr(v.value {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            let nP = vector.length(:ast.FormalParam v.params);
+                            if nP > 0 then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":params (
+");
+                                for i = 0 upto {nP - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpFormalParam(vector.get(:ast.FormalParam v.params i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            if maybe.isSome(:ast.TypeExpr v.typeAnnot) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":type_annot ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.TypeExpr v.typeAnnot)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            if v.isRec then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":is_rec True
+");
+                            end;
+                            if v.isVar then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":is_var True
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when declLetType with t then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(LetTypeBinding
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":name ");
+                            stringBuilder.append(b pyRepr(t.name));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":type_val ");
+                            stringBuilder.append(b dumpTypeExpr(t.typeVal {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            let nP = vector.length(:ast.TypeFormal t.params);
+                            if nP > 0 then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":params (
+");
+                                for i = 0 upto {nP - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpTypeFormal(vector.get(:ast.TypeFormal t.params i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            if maybe.isSome(:ast.KindExpr t.bound) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":bound ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr t.bound)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            if t.isRec then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":is_rec True
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when declDefType with t then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(DefTypeBinding
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":name ");
+                            stringBuilder.append(b pyRepr(t.name));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":type_val ");
+                            stringBuilder.append(b dumpTypeExpr(t.typeVal {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            let nP = vector.length(:ast.TypeFormal t.params);
+                            if nP > 0 then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":params (
+");
+                                for i = 0 upto {nP - 1} do
+                                    stringBuilder.append(b makePadding({indent + 2}));
+                                    stringBuilder.append(b dumpTypeFormal(vector.get(:ast.TypeFormal t.params i)
+                                        {indent + 2} showOffsets));
+                                    stringBuilder.append(b "
+");
+                                end;
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ")
+");
+                            end;
+                            if maybe.isSome(:ast.KindExpr t.bound) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":bound ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr t.bound)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
+                            if t.isRec then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":is_rec True
+");
+                            end;
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when declDefKind with k then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(DefKindBinding
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":name ");
+                            stringBuilder.append(b pyRepr(k.name));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":kind_val ");
+                            stringBuilder.append(b dumpTypeExpr(k.kindVal {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                when declExprStmt with e then
+                        begin
+                            let b = stringBuilder.new();
+                            stringBuilder.append(b "(ExprStmt
+");
+                            stringBuilder.append(b cpad);
+                            stringBuilder.append(b ":expr ");
+                            stringBuilder.append(b dumpExpr(e.expr {indent + 1} showOffsets));
+                            stringBuilder.append(b "
+");
+                            stringBuilder.append(b pad);
+                            stringBuilder.append(b ")");
+                            stringBuilder.toString(b)
+                        end
+                end
+            end;
+        dumpExprForm(node.span node.form indent showOffsets)
+    end;
+    let dumpDecl(node: ast.Decl indent: Int showOffsets: Bool): String =
+        dumpExpr(node indent showOffsets);
+    let dumpImportItem(item: ast.ImportItem indent: Int showOffsets: Bool): String =
+        begin
+            let b = stringBuilder.new();
+            stringBuilder.append(b "(ImportItem ");
+            stringBuilder.append(b dumpStringTuple(item.names));
+            stringBuilder.append(b " ");
+            stringBuilder.append(b pyRepr(item.interfaceName));
+            if maybe.isSome(:vector.T(String) item.modulePaths) then
+                stringBuilder.append(b " ");
+                stringBuilder.append(b dumpStringTuple(maybe.unwrap(:vector.T(String) item.modulePaths)));
+            end;
+            if maybe.isSome(:String item.interfacePath) then
+                stringBuilder.append(b " ");
+                stringBuilder.append(b pyRepr(maybe.unwrap(:String item.interfacePath)));
+            end;
+            stringBuilder.append(b ")");
+            stringBuilder.toString(b)
+        end;
+
+    let dumpImportPhrase(phrase: ast.ImportPhrase indent: Int showOffsets: Bool): String =
+        begin
+            let nI = vector.length(:ast.ImportItem phrase.items);
+            if nI is 0 then
+                "(ImportPhrase ())"
+            else
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(ImportPhrase
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":items (
+");
+                for i = 0 upto {nI - 1} do
+                    stringBuilder.append(b makePadding({indent + 2}));
+                    stringBuilder.append(b dumpImportItem(vector.get(:ast.ImportItem phrase.items i)
+                        {indent + 2} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ")
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end
+        end;
+
+    let dumpInterfaceDecl(iface: ast.InterfaceDecl indent: Int showOffsets: Bool): String =
+        begin
+            let pad = makePadding(indent);
+            let cpad = makePadding({indent + 1});
+            let b = stringBuilder.new();
+            stringBuilder.append(b "(InterfaceDecl
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":name ");
+            stringBuilder.append(b pyRepr(iface.name));
+            stringBuilder.append(b "
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":signatures (
+");
+            let nS = vector.length(:ast.Decl iface.signatures);
+            for i = 0 upto {nS - 1} do
+                stringBuilder.append(b makePadding({indent + 2}));
+                stringBuilder.append(b dumpDecl(vector.get(:ast.Decl iface.signatures i)
+                    {indent + 2} showOffsets));
+                stringBuilder.append(b "
+");
+            end;
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ")
+");
+            let nImp = vector.length(:ast.ImportItem iface.imports);
+            if nImp > 0 then
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":imports (
+");
+                for i = 0 upto {nImp - 1} do
+                    stringBuilder.append(b makePadding({indent + 2}));
+                    stringBuilder.append(b dumpImportItem(vector.get(:ast.ImportItem iface.imports i)
+                        {indent + 2} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ")
+");
+            end;
+            if iface.isUnsound then
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":is_unsound True
+");
+            end;
+            stringBuilder.append(b pad);
+            stringBuilder.append(b ")");
+            stringBuilder.toString(b)
+        end;
+
+    let dumpModuleDecl(modDecl: ast.ModuleDecl indent: Int showOffsets: Bool): String =
+        begin
+            let pad = makePadding(indent);
+            let cpad = makePadding({indent + 1});
+            let b = stringBuilder.new();
+            stringBuilder.append(b "(ModuleDecl
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":name ");
+            stringBuilder.append(b pyRepr(modDecl.name));
+            stringBuilder.append(b "
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":interface_name ");
+            stringBuilder.append(b pyRepr(modDecl.interfaceName));
+            stringBuilder.append(b "
+");
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ":bindings (
+");
+            let nB = vector.length(:ast.Decl modDecl.bindings);
+            for i = 0 upto {nB - 1} do
+                stringBuilder.append(b makePadding({indent + 2}));
+                stringBuilder.append(b dumpDecl(vector.get(:ast.Decl modDecl.bindings i)
+                    {indent + 2} showOffsets));
+                stringBuilder.append(b "
+");
+            end;
+            stringBuilder.append(b cpad);
+            stringBuilder.append(b ")
+");
+            let nImp = vector.length(:ast.ImportItem modDecl.imports);
+            if nImp > 0 then
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":imports (
+");
+                for i = 0 upto {nImp - 1} do
+                    stringBuilder.append(b makePadding({indent + 2}));
+                    stringBuilder.append(b dumpImportItem(vector.get(:ast.ImportItem modDecl.imports i)
+                        {indent + 2} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ")
+");
+            end;
+            if modDecl.isUnsound then
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":is_unsound True
+");
+            end;
+            stringBuilder.append(b pad);
+            stringBuilder.append(b ")");
+            stringBuilder.toString(b)
+        end;
+
+    let dumpPhrase(node: ast.Phrase indent: Int showOffsets: Bool): String =
+        case node.form
+            when phraseImport with p then
+                dumpImportPhrase(p.phrase indent showOffsets)
+            when phraseInterface with i then
+                dumpInterfaceDecl(i.iface indent showOffsets)
+            when phraseModule with m then
+                dumpModuleDecl(m.modDecl indent showOffsets)
+            when phraseDecl with d then
+                dumpDecl(d.decl indent showOffsets)
+            when phraseExpr with e then
+                dumpExpr(e.expr indent showOffsets)
+        end;
+    let dumpProgram(node: ast.Program indent: Int showOffsets: Bool): String =
+        begin
+            let nP = vector.length(:ast.Phrase node.form.phrases);
+            if nP is 0 then
+                "(Program ())"
+            else
+                let pad = makePadding(indent);
+                let cpad = makePadding({indent + 1});
+                let b = stringBuilder.new();
+                stringBuilder.append(b "(Program
+");
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ":phrases (
+");
+                for i = 0 upto {nP - 1} do
+                    stringBuilder.append(b makePadding({indent + 2}));
+                    stringBuilder.append(b dumpPhrase(vector.get(:ast.Phrase node.form.phrases i)
+                        {indent + 2} showOffsets));
+                    stringBuilder.append(b "
+");
+                end;
+                stringBuilder.append(b cpad);
+                stringBuilder.append(b ")
+");
+                stringBuilder.append(b pad);
+                stringBuilder.append(b ")");
+                stringBuilder.toString(b)
+            end
+        end;
+    let dump(node: ast.Program): String =
+        dumpProgram(node 0 false);
+
+    let dumpWithOptions(node: ast.Program showOffsets: Bool): String =
+        dumpProgram(node 0 showOffsets);
+end;

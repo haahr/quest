@@ -1,5 +1,6 @@
 """Shared helper utilities for Quest unit tests."""
 
+import unittest
 from typing import Any, Optional, Union
 
 from quest import ast
@@ -16,7 +17,26 @@ from quest.pipeline import (
 from quest.runtime import OK_VALUE
 from quest.typechecker import check_expr, synth_expr
 from quest.typed_ast import TypedBinding, TypedExpr, TypedProgram
-from quest.types import QKind, QType
+from quest.types import QKind, QType, is_type_equal
+
+# Patch unittest.TestCase.assertEqual so that comparisons between QType instances
+# use is_type_equal or reference identity ('is') rather than Python's recursive __eq__.
+_original_assertEqual = unittest.TestCase.assertEqual
+
+
+def _qtype_aware_assertEqual(self: unittest.TestCase, first: Any, second: Any, msg: Optional[str] = None) -> None:
+    if isinstance(first, QType) and isinstance(second, QType):
+        if first is second:
+            return
+        env = getattr(self, "env", None)
+        if is_type_equal(first, second, env):
+            return
+        msg = self._formatMessage(msg, f"{first} is not equal to {second}")
+        raise self.failureException(msg)
+    return _original_assertEqual(self, first, second, msg=msg)
+
+
+unittest.TestCase.assertEqual = _qtype_aware_assertEqual
 
 _parser_pipeline = default_pipeline()
 

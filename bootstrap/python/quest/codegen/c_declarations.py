@@ -148,7 +148,7 @@ class CDeclarationEmitter:
                         if isinstance(fun_t, QFunType):
                             m_ident = mangle_module_ident(clean_mod, val_name)
                             ret_type = fun_t.result_type
-                            ret_c = "void" if ret_type == OK_TYPE else (
+                            ret_c = "void" if ret_type is OK_TYPE else (
                                 "QRecordVal"
                                 if isinstance(ret_type, QRecordType)
                                 else self.c_type(ret_type)
@@ -163,7 +163,7 @@ class CDeclarationEmitter:
                         elif quants:
                             m_ident = mangle_module_ident(clean_mod, val_name)
                             ret_type = fun_t
-                            ret_c = "void" if ret_type == OK_TYPE else (
+                            ret_c = "void" if ret_type is OK_TYPE else (
                                 "QRecordVal"
                                 if isinstance(ret_type, QRecordType)
                                 else self.c_type(ret_type)
@@ -235,7 +235,7 @@ class CDeclarationEmitter:
     def emit_evidence_dictionaries(
         self,
         agg_types: list[tuple[str, QType]],
-        needed_dicts: set[tuple[QRecordType, QRecordType]],
+        needed_dicts: Sequence[tuple[QRecordType, QRecordType]],
     ) -> list[str]:
         lines: list[str] = []
         all_records = [t for _, t in agg_types if isinstance(t, QRecordType)]
@@ -280,8 +280,8 @@ class CDeclarationEmitter:
 
     def emit_coercion_tables(
         self,
-        tuple_coercions: set[tuple[QTupleType, QTupleType]],
-        variant_coercions: set[tuple[QVariantType, QVariantType]],
+        tuple_coercions: Sequence[tuple[QTupleType, QTupleType]],
+        variant_coercions: Sequence[tuple[QVariantType, QVariantType]],
     ) -> list[str]:
         lines: list[str] = []
         if tuple_coercions:
@@ -338,7 +338,7 @@ class CDeclarationEmitter:
                 return
             t = t.prune() if hasattr(t, "prune") else t
             t = normalize_type(t)
-            if t in (INT_TYPE, REAL_TYPE, BOOL_TYPE, CHAR_TYPE, STRING_TYPE, OK_TYPE, DYNAMIC_TYPE):
+            if any(t is p for p in (INT_TYPE, REAL_TYPE, BOOL_TYPE, CHAR_TYPE, STRING_TYPE, OK_TYPE, DYNAMIC_TYPE)):
                 return
             if isinstance(t, QTypeVar) and t.name == "Dynamic.T":
                 return
@@ -585,7 +585,7 @@ class CDeclarationEmitter:
         lines: list[str] = []
         if top_vars:
             for name, val, symbol in top_vars:
-                if symbol.type_val != OK_TYPE:
+                if symbol.type_val is not OK_TYPE:
                     c_ident = mangle_ident(name)
                     if isinstance(symbol.type_val, QRecordType):
                         lines.append(f"static QRecordVal {c_ident};")
@@ -610,7 +610,7 @@ class CDeclarationEmitter:
                 quants, inner = self.collect_fun_quantifiers(fun.type_val)
                 ret_type = inner.result_type if isinstance(inner, QFunType) else inner
                 c_name = mangle_ident(name)
-                ret_c = "void" if ret_type == OK_TYPE else (
+                ret_c = "void" if ret_type is OK_TYPE else (
                     "QRecordVal"
                     if isinstance(ret_type, QRecordType)
                     else self.c_type(ret_type)
@@ -628,7 +628,7 @@ class CDeclarationEmitter:
                 if isinstance(ret_type, QAllType):
                     _, inner = self.collect_fun_quantifiers(ret_type)
                     ret_type = inner.result_type if isinstance(inner, QFunType) else inner
-                ret_c = "void" if ret_type == OK_TYPE else (
+                ret_c = "void" if ret_type is OK_TYPE else (
                     "QRecordVal"
                     if isinstance(ret_type, QRecordType)
                     else self.c_type(ret_type)
@@ -654,7 +654,7 @@ class CDeclarationEmitter:
                 tramp_name = f"{c_name}_trampoline"
                 quants, inner = self.collect_fun_quantifiers(fun.type_val)
                 ret_type = inner.result_type if isinstance(inner, QFunType) else inner
-                ret_c = "void" if ret_type == OK_TYPE else (
+                ret_c = "void" if ret_type is OK_TYPE else (
                     "QRecordVal"
                     if isinstance(ret_type, QRecordType)
                     else self.c_type(ret_type)
@@ -666,7 +666,7 @@ class CDeclarationEmitter:
                         ret_c,
                         decls,
                         f"{c_name}({', '.join(forward_args)})",
-                        ret_type == OK_TYPE,
+                        ret_type is OK_TYPE,
                         unused=True,
                     )
                 )

@@ -319,3 +319,9 @@ Python test runner (`run_tests.py`) via focused Quest CLI driver harnesses:
 
 This allows `run_tests.py --phase tokenize` and `run_tests.py --phase parse` to verify the self-hosted frontend
 against all existing language tests before moving to Milestone 2.
+
+> [!NOTE] Compiler & Typechecker Performance Observation
+> During Milestone 1 verification of multi-module suites (e.g. `tests/source/questlang/syntax_ast.quest`), the
+> performance of the bootstrap compiler—specifically the typechecker during complex recursive type subtyping across
+> imported modules, as well as multi-module C compilation—looks problematic (~30s+ runtime per test). We will want to
+> investigate if further performance improvements and algorithmic optimizations are possible.

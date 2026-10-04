@@ -495,6 +495,12 @@ def _load_precompiled_transitive_deps(
         if manifest:
             for imp_m in manifest.imported_modules:
                 mod_name = imp_m.name
+                from quest.builtins import BuiltinModuleRegistry
+                is_builtin = (
+                    BuiltinModuleRegistry.get_interface(mod_name, env) is not None
+                    or BuiltinModuleRegistry.get_runtime_module(mod_name) is not None
+                    or BuiltinModuleRegistry.get_runtime_module(mod_name.lower()) is not None
+                )
                 dep_obj: Optional[Path] = None
                 if out_root is not None:
                     cand = out_root / f"{mod_name.lower()}.o"
@@ -518,7 +524,7 @@ def _load_precompiled_transitive_deps(
                     cand = DEFAULT_PROJECT_DIR / f"{mod_name.lower()}.o"
                     if cand.is_file():
                         dep_obj = cand.resolve()
-                if dep_obj is None:
+                if dep_obj is None and not is_builtin:
                     canon_key = mod_name.lower()
                     if canon_key not in _COMPILING_MODULES:
                         mod_file = resolve_module_file(mod_name, env.current_dir, env.include_paths)
@@ -527,13 +533,14 @@ def _load_precompiled_transitive_deps(
                             try:
                                 from quest.module_compiler import compile_hierarchical_module
                                 root = out_root if out_root is not None else DEFAULT_LIB_DIR
-                                _, compiled_o = compile_hierarchical_module(
+                                comp_res = compile_hierarchical_module(
                                     mod_name,
                                     output_dir=root,
                                     current_dir=env.current_dir,
                                     include_paths=env.include_paths,
                                     emit_deps=True,
                                 )
+                                compiled_o = comp_res.o_file if hasattr(comp_res, "o_file") else comp_res[1]
                                 if compiled_o and compiled_o.is_file():
                                     dep_obj = compiled_o.resolve()
                             finally:
@@ -553,76 +560,78 @@ def _load_precompiled_transitive_deps(
         ]
         for dep_file in dep_candidates:
             if dep_file.is_file():
-                try:
-                    prereqs = parse_dep_file(dep_file)
-                    for prereq in prereqs:
-                        dep_obj: Optional[Path] = None
-                        if out_root is not None:
-                            cand = out_root / prereq
+                prereqs = parse_dep_file(dep_file)
+                for prereq in prereqs:
+                    mod_name_check = prereq[:-2] if prereq.endswith(".o") else prereq
+                    from quest.builtins import BuiltinModuleRegistry
+                    is_builtin_check = (
+                        BuiltinModuleRegistry.get_interface(mod_name_check, env) is not None
+                        or BuiltinModuleRegistry.get_runtime_module(mod_name_check) is not None
+                        or BuiltinModuleRegistry.get_runtime_module(mod_name_check.lower()) is not None
+                    )
+                    dep_obj: Optional[Path] = None
+                    if out_root is not None:
+                        cand = out_root / prereq
+                        if cand.is_file():
+                            dep_obj = cand.resolve()
+                    if dep_obj is None and env.current_dir is not None:
+                        cand = env.current_dir / prereq
+                        if cand.is_file():
+                            dep_obj = cand.resolve()
+                    if dep_obj is None:
+                        for inc in env.include_paths:
+                            cand = Path(inc) / prereq
                             if cand.is_file():
                                 dep_obj = cand.resolve()
-                        if dep_obj is None and env.current_dir is not None:
-                            cand = env.current_dir / prereq
-                            if cand.is_file():
-                                dep_obj = cand.resolve()
-                        if dep_obj is None:
-                            for inc in env.include_paths:
-                                cand = Path(inc) / prereq
-                                if cand.is_file():
-                                    dep_obj = cand.resolve()
-                                    break
-                        if dep_obj is None:
-                            mod_name = prereq[:-2] if prereq.endswith(".o") else prereq
-                            canon_key = mod_name.lower()
-                            if canon_key not in _COMPILING_MODULES:
-                                mod_file = resolve_module_file(mod_name, env.current_dir, env.include_paths)
-                                if mod_file and mod_file.is_file():
-                                    _COMPILING_MODULES.add(canon_key)
-                                    try:
-                                        from quest.module_compiler import compile_hierarchical_module
-                                        root = out_root if out_root is not None else DEFAULT_LIB_DIR
-                                        _, compiled_o = compile_hierarchical_module(
-                                            mod_name,
-                                            output_dir=root,
-                                            current_dir=env.current_dir,
-                                            include_paths=env.include_paths,
-                                            emit_deps=True,
-                                        )
-                                        if compiled_o and compiled_o.is_file():
-                                            dep_obj = compiled_o.resolve()
-                                    finally:
-                                        _COMPILING_MODULES.discard(canon_key)
+                                break
+                    if dep_obj is None and not is_builtin_check:
+                        mod_name = prereq[:-2] if prereq.endswith(".o") else prereq
+                        canon_key = mod_name.lower()
+                        if canon_key not in _COMPILING_MODULES:
+                            mod_file = resolve_module_file(mod_name, env.current_dir, env.include_paths)
+                            if mod_file and mod_file.is_file():
+                                _COMPILING_MODULES.add(canon_key)
+                                try:
+                                    from quest.module_compiler import compile_hierarchical_module
+                                    root = out_root if out_root is not None else DEFAULT_LIB_DIR
+                                    comp_res = compile_hierarchical_module(
+                                        mod_name,
+                                        output_dir=root,
+                                        current_dir=env.current_dir,
+                                        include_paths=env.include_paths,
+                                        emit_deps=True,
+                                    )
+                                    compiled_o = comp_res.o_file if hasattr(comp_res, "o_file") else comp_res[1]
+                                    if compiled_o and compiled_o.is_file():
+                                        dep_obj = compiled_o.resolve()
+                                finally:
+                                    _COMPILING_MODULES.discard(canon_key)
 
-                        if dep_obj is not None and dep_obj.is_file():
-                            if dep_obj not in env.linked_objects:
-                                env.linked_objects.append(dep_obj)
-                            mod_name = prereq[:-2] if prereq.endswith(".o") else prereq
-                            env.precompiled_modules.add(mod_name)
-                            _load_precompiled_transitive_deps(dep_obj, None, env, out_root, visited=visited)
-                    return
-                except Exception:
-                    pass
+                    if dep_obj is not None and dep_obj.is_file():
+                        if dep_obj not in env.linked_objects:
+                            env.linked_objects.append(dep_obj)
+                        mod_name = prereq[:-2] if prereq.endswith(".o") else prereq
+                        env.precompiled_modules.add(mod_name)
+                        _load_precompiled_transitive_deps(dep_obj, None, env, out_root, visited=visited)
+                return
 
     # 2. Fallback: parse .mod.quest if available
     if file_path and file_path.is_file():
-        try:
-            source_text = file_path.read_text(encoding="utf-8")
-            source_map = SourceMap(source_text, str(file_path))
-            tokenizer = Tokenizer(source_text, str(file_path))
-            tokens = tokenizer.tokenize_all()
-            prog = parse_quest_program(tokens, source_map)
-            if (
-                isinstance(prog, ast.Program)
-                and len(prog.phrases) == 1
-                and isinstance(prog.phrases[0], ast.ModuleDecl)
-            ):
-                for imp in prog.phrases[0].imports:
-                    iface_path = imp.effective_interface_path
-                    for iname, mpath in zip(imp.names, imp.effective_module_paths):
-                        if mpath not in env.precompiled_modules and mpath not in env.loaded_modules_ast:
-                            load_module(mpath, iface_path, env)
-        except Exception:
-            pass
+        source_text = file_path.read_text(encoding="utf-8")
+        source_map = SourceMap(source_text, str(file_path))
+        tokenizer = Tokenizer(source_text, str(file_path))
+        tokens = tokenizer.tokenize_all()
+        prog = parse_quest_program(tokens, source_map)
+        if (
+            isinstance(prog, ast.Program)
+            and len(prog.phrases) == 1
+            and isinstance(prog.phrases[0], ast.ModuleDecl)
+        ):
+            for imp in prog.phrases[0].imports:
+                iface_path = imp.effective_interface_path
+                for iname, mpath in zip(imp.names, imp.effective_module_paths):
+                    if mpath not in env.precompiled_modules and mpath not in env.loaded_modules_ast:
+                        load_module(mpath, iface_path, env)
 
 
 def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
@@ -705,15 +714,12 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             ]
             for dep_file in dep_candidates:
                 if dep_file.is_file():
-                    try:
-                        for prereq in parse_dep_file(dep_file):
-                            cand = out_root / prereq
-                            if cand.is_file():
-                                sources.append(cand)
-                            elif (DEFAULT_LIB_DIR / prereq).is_file():
-                                sources.append(DEFAULT_LIB_DIR / prereq)
-                    except Exception:
-                        pass
+                    for prereq in parse_dep_file(dep_file):
+                        cand = out_root / prereq
+                        if cand.is_file():
+                            sources.append(cand)
+                        elif (DEFAULT_LIB_DIR / prereq).is_file():
+                            sources.append(DEFAULT_LIB_DIR / prereq)
 
         if _is_artifact_stale(obj_file, sources) and file_path is not None:
             from quest.module_compiler import compile_hierarchical_module

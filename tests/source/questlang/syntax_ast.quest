@@ -1,0 +1,118 @@
+(* Self-Hosted Quest Compiler: Test AST and AST Pretty-Printer Modules *)
+(* @timeout: 60.0 *)
+
+import
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/astprint : questlang/syntax/AstPrint
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    writer : Writer
+;
+
+let wOut = writer.output;
+
+let printStr(s: String): Ok =
+    begin
+        writer.putString(wOut s);
+        writer.putString(wOut "\n");
+    end;
+
+let sp = location.span("test.quest" 0 0);
+
+(* Helper functions to build AST nodes conveniently *)
+let makeId(name: String): ast.Expr =
+    ast.exprId(sp name);
+
+let makeInt(val: Int lexeme: String): ast.Expr =
+    ast.exprInt(sp val lexeme);
+
+let makeTypePath(name: String): ast.TypeExpr =
+    ast.typePathSimple(sp name);
+
+let makeInfix(left: ast.Expr op: String right: ast.Expr): ast.Expr =
+    ast.exprInfix(sp left op right);
+
+let makeApp(fn: ast.Expr arg: ast.Expr): ast.Expr =
+    begin
+        let args = vector.new(:ast.Expr);
+        vector.append(:ast.Expr args arg);
+        ast.exprApp(sp fn args)
+    end;
+
+let makeFormalParam(name: String typeName: String): ast.FormalParam =
+    ast.formalParam(name maybe.some(:ast.TypeExpr makeTypePath(typeName)) option modeValue of ast.ParamMode end);
+
+(* Test 1: Simple let binding: let x: Int = 42; *)
+let valX = makeInt(42 "42");
+let typeInt = makeTypePath("Int");
+
+let declX: ast.Decl =
+    ast.makeDecl(sp option declLetVal of ast.ExprForm with
+        let name = "x"
+        let value = valX
+        let params = vector.new(:ast.FormalParam)
+        let typeAnnot = maybe.some(:ast.TypeExpr typeInt)
+        let isRec = false
+        let isVar = false
+    end);
+
+let phraseX: ast.Phrase =
+    ast.makePhrase(sp option phraseDecl of ast.PhraseForm with
+        let decl = declX
+    end);
+
+let phrases1 = vector.new(:ast.Phrase);
+vector.append(:ast.Phrase phrases1 phraseX);
+
+let prog1: ast.Program =
+    ast.makeProgram(sp phrases1);
+
+printStr("=== Test 1: Simple Let Binding ===");
+printStr(astprint.dump(prog1));
+
+(* Test 2: Recursive factorial function:
+ * let rec fact(n: Int): Int =
+ *     if n is 0 then 1 else {n * fact({n - 1})} end;
+ *)
+let condExpr = makeInfix(makeId("n") "is" makeInt(0 "0"));
+let thenExpr = ast.declExprStmt(sp makeInt(1 "1"));
+
+let recArg = makeInfix(makeId("n") "-" makeInt(1 "1"));
+let recCall = makeApp(makeId("fact") recArg);
+let multExpr = makeInfix(makeId("n") "*" recCall);
+let elseExpr = ast.declExprStmt(sp multExpr);
+
+let ifExpr = ast.makeExpr(sp option exprIf of ast.ExprForm with
+    let cond = condExpr
+    let thenBranch = thenExpr
+    let elsifs = vector.new(:ast.ElsifBranch)
+    let elseBranch = maybe.some(:ast.Expr elseExpr)
+end);
+
+let factParams = vector.new(:ast.FormalParam);
+vector.append(:ast.FormalParam factParams makeFormalParam("n" "Int"));
+
+let declFact: ast.Decl =
+    ast.makeDecl(sp option declLetVal of ast.ExprForm with
+        let name = "fact"
+        let value = ifExpr
+        let params = factParams
+        let typeAnnot = maybe.some(:ast.TypeExpr makeTypePath("Int"))
+        let isRec = true
+        let isVar = false
+    end);
+
+let phraseFact: ast.Phrase =
+    ast.makePhrase(sp option phraseDecl of ast.PhraseForm with
+        let decl = declFact
+    end);
+
+let phrases2 = vector.new(:ast.Phrase);
+vector.append(:ast.Phrase phrases2 phraseFact);
+
+let prog2: ast.Program =
+    ast.makeProgram(sp phrases2);
+
+printStr("=== Test 2: Recursive Fact Function ===");
+printStr(astprint.dump(prog2));

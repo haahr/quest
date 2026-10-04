@@ -260,7 +260,9 @@ class ModuleBuilder:
         self.registry._interfaces[self.iface_name] = self.scope
         rec = QRecord(self.record_dict)
         self.registry._modules[self.mod_name] = rec
-        self.registry._module_types[self.mod_name] = self.registry._build_record_type_from_scope(self.scope)
+        self.registry._module_types[self.mod_name] = self.registry._build_record_type_from_scope(
+            self.scope, provenance=self.mod_name
+        )
         self.registry._module_asts[self.mod_name] = TypedModule(
             name=self.mod_name,
             interface_name=self.iface_name,
@@ -1741,10 +1743,11 @@ class BuiltinModuleRegistry:
         })
 
     @classmethod
-    def _build_record_type_from_scope(cls, scope: Scope) -> QRecordType:
+    def _build_record_type_from_scope(cls, scope: Scope, provenance: Optional[str] = None) -> QRecordType:
         """Constructs a QRecordType matching the values exposed by an interface scope."""
         fields = [
             QRecordField(name=name, type_val=sym.type_val)
             for name, sym in scope.values.items()
         ]
-        return QRecordType(tuple(fields))
+        return QRecordType(tuple(fields), provenance=provenance)
+

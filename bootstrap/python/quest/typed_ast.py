@@ -23,6 +23,7 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     TYPE_KIND,
+    format_type_compact,
     qtype_dump,
 )
 from quest.env import (
@@ -43,7 +44,7 @@ class TypedNode:
     """Base class for all typed Quest AST nodes with unified S-expression formatting."""
     offset: int = field(default=0, kw_only=True)
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         """Returns inline summary tokens (e.g. literal values, names)."""
         return ""
 
@@ -55,18 +56,22 @@ class TypedNode:
         """Controls whether :type <type_val> is automatically appended to the header."""
         return hasattr(self, "type_val")
 
-    def dump(self, indent: int = 0) -> str:
+    def dump(self, indent: int = 0, env: Optional[Any] = None) -> str:
         """Recursively formats this node into a canonical 2-space indented S-expression."""
         child_pad = "  " * (indent + 1)
 
         # 1. Construct header parts
         parts = [self.__class__.__name__]
-        extra = self.dump_header()
+        try:
+            extra = self.dump_header(env=env)
+        except TypeError:
+            extra = self.dump_header()
         if extra:
             parts.append(extra)
 
         if self.dump_show_type():
-            parts.append(f":type {getattr(self, 'type_val')}")
+            t_val = getattr(self, "type_val")
+            parts.append(f":type {format_type_compact(t_val, env=env)}")
 
         header_str = " ".join(parts)
         children = self.dump_children()
@@ -79,7 +84,7 @@ class TypedNode:
         lines = [f"({header_str}"]
         for label, child in children:
             if isinstance(child, TypedNode):
-                lines.append(f"{child_pad}{label} {child.dump(indent + 1)}")
+                lines.append(f"{child_pad}{label} {child.dump(indent + 1, env=env)}")
             elif isinstance(child, (tuple, list)):
                 if not child:
                     lines.append(f"{child_pad}{label} ()")
@@ -87,7 +92,7 @@ class TypedNode:
                     lines.append(f"{child_pad}{label} (")
                     for elem in child:
                         if isinstance(elem, TypedNode):
-                            lines.append(f"{child_pad}  {elem.dump(indent + 2)}")
+                            lines.append(f"{child_pad}  {elem.dump(indent + 2, env=env)}")
                         else:
                             lines.append(f"{child_pad}  {elem}")
                     lines.append(f"{child_pad})")
@@ -219,8 +224,11 @@ class TypedFun(TypedExpr):
     body: TypedExpr
     type_val: QFunType
 
-    def dump_header(self) -> str:
-        params_str = " ".join(f"('{p.name}' : {p.type_val})" for p in self.params)
+    def dump_header(self, env: Optional[Any] = None) -> str:
+        params_str = " ".join(
+            f"('{p.name}' : {format_type_compact(p.type_val, env=env)})"
+            for p in self.params
+        )
         return f":params ({params_str})"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -245,8 +253,8 @@ class TypedTypeApp(TypedExpr):
     type_args: tuple[QType, ...]
     type_val: QType
 
-    def dump_header(self) -> str:
-        targs_str = " ".join(str(t) for t in self.type_args)
+    def dump_header(self, env: Optional[Any] = None) -> str:
+        targs_str = " ".join(format_type_compact(t, env=env) for t in self.type_args)
         return f"[{targs_str}]"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -747,9 +755,9 @@ class TypedLetValue(TypedBinding):
     symbol: ValueSymbol
     is_rec: bool = False
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         rec_tag = " :rec" if self.is_rec else ""
-        return f"'{self.name}'{rec_tag} :type {self.symbol.type_val}"
+        return f"'{self.name}'{rec_tag} :type {format_type_compact(self.symbol.type_val, env=env)}"
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":value", self.value)]
@@ -765,8 +773,8 @@ class TypedNativeBinding(TypedBinding):
     type_val: QType
     pass_type_descriptors: bool = False
 
-    def dump_header(self) -> str:
-        return f"'{self.name}' -> '{self.symbol}' :type {self.type_val}"
+    def dump_header(self, env: Optional[Any] = None) -> str:
+        return f"'{self.name}' -> '{self.symbol}' :type {format_type_compact(self.type_val, env=env)}"
 
 
 @dataclass(frozen=True)
@@ -873,6 +881,6 @@ class TypedProgram(TypedNode):
 # 10. Canonical S-Expression Pretty Printer (typed_ast_dump)
 # ============================================================================
 
-def typed_ast_dump(node: TypedNode, indent: int = 0) -> str:
+def typed_ast_dump(node: TypedNode, indent: int = 0, env: Optional[Any] = None) -> str:
     """Formats a TypedNode into a canonical 2-space indented S-expression string."""
-    return node.dump(indent)
+    return node.dump(indent, env=env)

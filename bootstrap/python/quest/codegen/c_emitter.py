@@ -127,6 +127,7 @@ from quest.types import (
     resolve_record_bound,
     resolve_variant_bound,
     resolve_option_bound,
+    is_type_equal,
 )
 
 
@@ -180,9 +181,9 @@ class CEmitter:
         self.lifted_lambdas: list[LambdaInfo] = []
         self.current_env_vars: dict[str, str] = {}
         self.record_ctx = RecordNamingContext()
-        self.needed_dicts: set[tuple[QRecordType, QRecordType]] = set()
-        self.tuple_coercions: set[tuple[QTupleType, QTupleType]] = set()
-        self.variant_coercions: set[tuple[QVariantType, QVariantType]] = set()
+        self.needed_dicts: list[tuple[QRecordType, QRecordType]] = []
+        self.tuple_coercions: list[tuple[QTupleType, QTupleType]] = []
+        self.variant_coercions: list[tuple[QVariantType, QVariantType]] = []
         self.param_dict_names: dict[str, str] = {}
         self.var_dict_names: dict[str, str] = {}
         self.top_funs_dict: dict[str, tuple[TypedFun, Any]] = {}
@@ -194,7 +195,7 @@ class CEmitter:
         self.pointer_params: set[str] = set()
         self.adapter_defs: list[str] = []
         self.adapter_decls: list[str] = []
-        self.adapter_cache: dict[tuple[QType, QType], str] = {}
+        self.adapter_cache: dict[tuple[Any, ...], Any] = {}
         self.analysis: Optional[CProgramAnalysis] = None
 
     @staticmethod
@@ -215,19 +216,19 @@ class CEmitter:
         """Returns the C expression evaluating to `const QTypeDescriptor *` for type `t`."""
         t = t.prune() if hasattr(t, "prune") else t
         t = normalize_type(t)
-        if t == INT_TYPE:
+        if t is INT_TYPE:
             return "&quest_type_Int"
-        if t == REAL_TYPE:
+        if t is REAL_TYPE:
             return "&quest_type_Real"
-        if t == BOOL_TYPE:
+        if t is BOOL_TYPE:
             return "&quest_type_Bool"
-        if t == CHAR_TYPE:
+        if t is CHAR_TYPE:
             return "&quest_type_Char"
-        if t == STRING_TYPE:
+        if t is STRING_TYPE:
             return "&quest_type_String"
-        if t == OK_TYPE:
+        if t is OK_TYPE:
             return "&quest_type_Ok"
-        if t == DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
+        if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
             return "&quest_type_Dynamic"
         if isinstance(t, QTupleType) and not t.fields:
             return "&quest_type_EmptyTuple"
@@ -278,7 +279,11 @@ class CEmitter:
             return False
         t_fields = {f.name: f.type_val for f in t.fields}
         for fld in val.fields:
-            if fld.name not in t_fields or t_fields[fld.name] != fld.value.type_val:
+            if fld.name not in t_fields:
+                return False
+            tf = t_fields[fld.name]
+            vf = fld.value.type_val
+            if tf is not vf and not is_type_equal(tf, vf, self.env):
                 return False
         return True
 
@@ -294,7 +299,7 @@ class CEmitter:
 
     def _param_c_decl(self, p: TypedParam, ident: str) -> str:
         ptr = " *" if getattr(p, "is_out", False) or getattr(p, "is_var", False) else " "
-        c_t = "QVal" if p.type_val == OK_TYPE else self.c_type(p.type_val)
+        c_t = "QVal" if p.type_val is OK_TYPE else self.c_type(p.type_val)
         return f"{c_t}{ptr}{ident}"
 
     def _param_signatures(
@@ -370,7 +375,11 @@ class CEmitter:
             actual_t = self._effective_record_type(expr)
         else:
             actual_t = expr
-        if isinstance(actual_t, QRecordType) and actual_t != target_type:
+        if (
+            isinstance(actual_t, QRecordType)
+            and actual_t is not target_type
+            and not is_type_equal(actual_t, target_type, self.env)
+        ):
             d_name = self.record_ctx.offset_dict_instance_name(target_type, actual_t)
             return f"((QRecordVal){{ .val = {c_expr}.val, .dict = (const void *)&{d_name} }})"
         return c_expr
@@ -405,7 +414,8 @@ class CEmitter:
         if (
             isinstance(target_type, QTupleType)
             and isinstance(src_type, QTupleType)
-            and src_type != target_type
+            and src_type is not target_type
+            and not is_type_equal(src_type, target_type, self.env)
         ):
             return self._coerce_tuple_val(c_val, src_type, target_type, lines, dest=dest)
 
@@ -415,7 +425,11 @@ class CEmitter:
             or (var_b := resolve_variant_bound(target_type)) is not None
         ):
             var_t = target_type if isinstance(target_type, QVariantType) else var_b
-            if isinstance(src_type, QVariantType) and src_type != var_t:
+            if (
+                isinstance(src_type, QVariantType)
+                and src_type is not var_t
+                and not is_type_equal(src_type, var_t, self.env)
+            ):
                 return self._emit_variant_upcast(c_val, src_type, var_t, lines, dest=dest)
             if dest is not None:
                 lines.append(f"{dest} = {c_val};")
@@ -456,7 +470,7 @@ class CEmitter:
         zero_init: bool = False,
     ) -> str:
         """Lowers expr via emit_to into a fresh temporary variable and returns its identifier."""
-        if expr.type_val == OK_TYPE:
+        if expr.type_val is OK_TYPE:
             self.emit_to(expr, None, lines)
             return "((void)0)"
         tmp = self.fresh_tmp(prefix)
@@ -506,7 +520,7 @@ class CEmitter:
         if orig_fn_ptr == target_fn_ptr:
             return c_closure
 
-        cache_key = (orig_t, target_t)
+        cache_key = (str(orig_t), str(target_t))
         if cache_key in self.adapter_cache:
             adapt_fn_name = self.adapter_cache[cache_key]
         else:
@@ -521,14 +535,14 @@ class CEmitter:
             tgt_ret_t = inner_tgt.result_type if isinstance(inner_tgt, QFunType) else OK_TYPE
             orig_ret_t = inner_orig.result_type if isinstance(inner_orig, QFunType) else OK_TYPE
 
-            ret_c = "void" if tgt_ret_t == OK_TYPE else self.c_type(tgt_ret_t)
+            ret_c = "void" if tgt_ret_t is OK_TYPE else self.c_type(tgt_ret_t)
 
             param_decls = ["void *_raw_env"]
             call_args = []
             for idx, tp in enumerate(tgt_params):
                 op = orig_params[idx] if idx < len(orig_params) else tp
                 arg_name = f"qv_arg_{idx}"
-                tp_c = "QVal" if tp.type_val == OK_TYPE else self.c_type(tp.type_val)
+                tp_c = "QVal" if tp.type_val is OK_TYPE else self.c_type(tp.type_val)
                 param_decls.append(f"{tp_c} {arg_name}")
 
                 tp_tag = qtype_to_c_type(tp.type_val, self.record_ctx)
@@ -552,7 +566,7 @@ class CEmitter:
             tgt_ret_tag = qtype_to_c_type(tgt_ret_t, self.record_ctx)
             orig_ret_tag = qtype_to_c_type(orig_ret_t, self.record_ctx)
 
-            if tgt_ret_t == OK_TYPE:
+            if tgt_ret_t is OK_TYPE:
                 fn_body.append(f"    {call_expr};")
                 fn_body.append("    return;")
             elif tgt_ret_tag == "QVal" and orig_ret_tag != "QVal":
@@ -582,7 +596,7 @@ class CEmitter:
             return c_func
 
         num_descs = len(descriptor_args)
-        cache_key = ("type_app", orig_t, target_t, num_descs)
+        cache_key = ("type_app", str(orig_t), str(target_t), num_descs)
         if cache_key in self.adapter_cache:
             adapt_fn_name, env_struct_name = self.adapter_cache[cache_key]
         else:
@@ -595,7 +609,7 @@ class CEmitter:
             tgt_quants, inner_tgt = self._collect_fun_quantifiers(target_t)
             tgt_params = inner_tgt.params if isinstance(inner_tgt, QFunType) else ()
             ret_t = inner_tgt.result_type if isinstance(inner_tgt, QFunType) else OK_TYPE
-            ret_c = "void" if ret_t == OK_TYPE else self.c_type(ret_t)
+            ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
 
             self.adapter_decls.append(
                 f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{num_descs}]; }} {env_struct_name};"
@@ -605,7 +619,7 @@ class CEmitter:
             for q in tgt_quants:
                 param_decls.append(f"const QTypeDescriptor *descriptor_{q.name}")
             for idx, p in enumerate(tgt_params):
-                p_c = "QVal" if p.type_val == OK_TYPE else self.c_type(p.type_val)
+                p_c = "QVal" if p.type_val is OK_TYPE else self.c_type(p.type_val)
                 param_decls.append(f"{p_c} qv_arg_{idx}")
 
             sig = ", ".join(param_decls)
@@ -627,7 +641,7 @@ class CEmitter:
                 call_args.append(f"qv_arg_{idx}")
 
             call_expr = f"(({orig_fn_ptr})(_env->orig->fn))({', '.join(call_args)})"
-            if ret_t == OK_TYPE:
+            if ret_t is OK_TYPE:
                 fn_body.append(f"    {call_expr};")
                 fn_body.append("    return;")
             else:
@@ -686,9 +700,19 @@ class CEmitter:
         def _field_can_direct_cast(sf: QType, tf: QType) -> bool:
             if qtype_to_c_type(sf, self.record_ctx) != qtype_to_c_type(tf, self.record_ctx):
                 return False
-            if isinstance(tf, QRecordType) and isinstance(sf, QRecordType) and sf != tf:
+            if (
+                isinstance(tf, QRecordType)
+                and isinstance(sf, QRecordType)
+                and sf is not tf
+                and not is_type_equal(sf, tf, self.env)
+            ):
                 return False
-            if isinstance(tf, QVariantType) and isinstance(sf, QVariantType) and sf != tf:
+            if (
+                isinstance(tf, QVariantType)
+                and isinstance(sf, QVariantType)
+                and sf is not tf
+                and not is_type_equal(sf, tf, self.env)
+            ):
                 return False
             if isinstance(tf, (QFunType, QAllType)) and isinstance(sf, (QFunType, QAllType)):
                 if _closure_fn_ptr_type(tf, self.record_ctx) != _closure_fn_ptr_type(sf, self.record_ctx):
@@ -743,7 +767,8 @@ class CEmitter:
             elif (
                 isinstance(tgt_vf.type_val, QTupleType)
                 and isinstance(src_vf.type_val, QTupleType)
-                and src_vf.type_val != tgt_vf.type_val
+                and src_vf.type_val is not tgt_vf.type_val
+                and not is_type_equal(src_vf.type_val, tgt_vf.type_val, self.env)
             ):
                 coerced = self._coerce_tuple_val(
                     src_field_access, src_vf.type_val, tgt_vf.type_val, lines
@@ -752,7 +777,8 @@ class CEmitter:
             elif (
                 isinstance(tgt_vf.type_val, QRecordType)
                 and isinstance(src_vf.type_val, QRecordType)
-                and src_vf.type_val != tgt_vf.type_val
+                and src_vf.type_val is not tgt_vf.type_val
+                and not is_type_equal(src_vf.type_val, tgt_vf.type_val, self.env)
             ):
                 d_name = self.record_ctx.offset_dict_instance_name(
                     tgt_vf.type_val, src_vf.type_val
@@ -764,7 +790,8 @@ class CEmitter:
             elif (
                 isinstance(tgt_vf.type_val, QVariantType)
                 and isinstance(src_vf.type_val, QVariantType)
-                and src_vf.type_val != tgt_vf.type_val
+                and src_vf.type_val is not tgt_vf.type_val
+                and not is_type_equal(src_vf.type_val, tgt_vf.type_val, self.env)
             ):
                 v_up = self._emit_variant_upcast(
                     src_field_access, src_vf.type_val, tgt_vf.type_val, lines
@@ -783,7 +810,7 @@ class CEmitter:
     ) -> None:
         """Emits function return handling with appropriate subtyping coercions."""
         call_args = ", ".join(param_c_names) if param_c_names else ""
-        if ret_type == OK_TYPE:
+        if ret_type is OK_TYPE:
             if isinstance(body, TypedExternal):
                 fn_lines.append(f"{body.symbol}({call_args});")
             else:
@@ -928,12 +955,13 @@ class CEmitter:
         elif (
             isinstance(ret_type, QTupleType)
             and isinstance(target_type, QTupleType)
-            and ret_type != target_type
+            and ret_type is not target_type
+            and not is_type_equal(ret_type, target_type, self.env)
         ):
             call_str = self._coerce_tuple_val(call_str, ret_type, target_type, lines)
 
         if writebacks:
-            if target_type == OK_TYPE:
+            if target_type is OK_TYPE:
                 lines.append(f"{call_str};")
                 for wb in writebacks:
                     lines.append(wb)
@@ -946,7 +974,7 @@ class CEmitter:
                     lines.append(wb)
                 return ret_tmp
 
-        if target_type == OK_TYPE:
+        if target_type is OK_TYPE:
             lines.append(f"{call_str};")
             return "((void)0)"
         return call_str
@@ -974,7 +1002,7 @@ class CEmitter:
             return binding.inline_template.format(*c_args)
         elif binding.symbol:
             call_str = f"{binding.symbol}({', '.join(c_args)})"
-            if expr_type == OK_TYPE:
+            if expr_type is OK_TYPE:
                 lines.append(f"{call_str};")
                 return "((void)0)"
             if (
@@ -988,17 +1016,17 @@ class CEmitter:
 
     def _emit_array_get(self, c_arr: str, c_idx: str, elem_t: QType) -> str:
         """Emits C expression to extract an element of type elem_t from a QArray slot."""
-        if elem_t in (INT_TYPE, BOOL_TYPE, CHAR_TYPE):
+        if any(elem_t is p for p in (INT_TYPE, BOOL_TYPE, CHAR_TYPE)):
             return f"({c_arr}->data[{c_idx}].i)"
-        elif elem_t == REAL_TYPE:
+        elif elem_t is REAL_TYPE:
             return f"({c_arr}->data[{c_idx}].r)"
         elif isinstance(elem_t, QRecordType) or resolve_record_bound(elem_t) is not None:
             return f"({c_arr}->data[{c_idx}])"
         elif isinstance(elem_t, QVariantType) or resolve_variant_bound(elem_t) is not None:
             return f"({c_arr}->data[{c_idx}])"
         elif (
-            elem_t == STRING_TYPE
-            or elem_t == DYNAMIC_TYPE
+            elem_t is STRING_TYPE
+            or elem_t is DYNAMIC_TYPE
             or (isinstance(elem_t, QTypeVar) and elem_t.name == "Dynamic.T")
             or isinstance(
                 elem_t,
@@ -1162,7 +1190,7 @@ class CEmitter:
         for l in lambdas:
             quants, inner_t = self._collect_fun_quantifiers(l.fun.type_val)
             ret_type = inner_t.result_type if isinstance(inner_t, QFunType) else inner_t
-            ret_c = "void" if ret_type == OK_TYPE else self.c_type(ret_type)
+            ret_c = "void" if ret_type is OK_TYPE else self.c_type(ret_type)
             decls: list[str] = []
             for q in quants:
                 decls.append(f"const QTypeDescriptor *descriptor_{q.name}")
@@ -1295,7 +1323,7 @@ class CEmitter:
             for name, fun, _sym in top_funs:
                 quants, params, body, ret_type = self._collect_fun_params(fun)
                 c_name = mangle_ident(name)
-                ret_c = "void" if ret_type == OK_TYPE else self.c_type(ret_type)
+                ret_c = "void" if ret_type is OK_TYPE else self.c_type(ret_type)
                 decls, _ = self._param_signatures(params, quants)
                 param_sig = "void" if not decls else ", ".join(decls)
                 lines.append(f"static Q_UNUSED {ret_c} {c_name}({param_sig}) {{")
@@ -1540,7 +1568,7 @@ class CEmitter:
             lines.append("")
 
         for vname, vval, vsym in mod_vars:
-            if vsym.type_val != OK_TYPE:
+            if vsym.type_val is not OK_TYPE:
                 m_ident = mangle_module_ident(clean_mod, vname)
                 lines.append(f"static {self.c_type(vsym.type_val)} {m_ident};")
 
@@ -1551,7 +1579,7 @@ class CEmitter:
         for fname, ffun, fsym in mod_funs:
             m_ident = mangle_module_ident(clean_mod, fname)
             quants, params, _, ret_type = self._collect_fun_params(ffun)
-            int_ret_c = "void" if ret_type == OK_TYPE else self.c_type(ret_type)
+            int_ret_c = "void" if ret_type is OK_TYPE else self.c_type(ret_type)
             quant_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
             param_decls = quant_decls + [
                 self._param_c_decl(p, mangle_module_ident(clean_mod, p.name))
@@ -1574,7 +1602,7 @@ class CEmitter:
                 if isinstance(exp_fun, QFunType):
                     exp_ret_t = exp_fun.result_type
                     exp_params = exp_fun.params
-                    exp_ret_c = "void" if exp_ret_t == OK_TYPE else self.c_type(exp_ret_t)
+                    exp_ret_c = "void" if exp_ret_t is OK_TYPE else self.c_type(exp_ret_t)
                     if exp_ret_c != int_ret_c or len(exp_params) != len(params):
                         needs_adapter = True
                     else:
@@ -1585,7 +1613,7 @@ class CEmitter:
                 else:
                     exp_ret_t = exp_fun
                     exp_params = ()
-                    exp_ret_c = "void" if exp_ret_t == OK_TYPE else self.c_type(exp_ret_t)
+                    exp_ret_c = "void" if exp_ret_t is OK_TYPE else self.c_type(exp_ret_t)
                     if exp_ret_c != int_ret_c or len(params) != 0:
                         needs_adapter = True
 
@@ -1613,7 +1641,7 @@ class CEmitter:
                         exp_ret_c,
                         exp_param_decls,
                         f"{m_ident}({', '.join(tramp_call_args)})",
-                        exp_ret_t == OK_TYPE,
+                        exp_ret_t is OK_TYPE,
                     )
                 )
                 lines.append("")
@@ -1640,7 +1668,7 @@ class CEmitter:
                         int_ret_c,
                         param_decls,
                         f"{m_ident}({', '.join(f_args)})",
-                        ret_type == OK_TYPE,
+                        ret_type is OK_TYPE,
                     )
                 )
                 lines.append("")
@@ -1659,7 +1687,7 @@ class CEmitter:
                     base_fun = nb.type_val
                 params = base_fun.params if isinstance(base_fun, QFunType) else ()
                 ret_type = base_fun.result_type if isinstance(base_fun, QFunType) else OK_TYPE
-                ret_c = "void" if ret_type == OK_TYPE else self.c_type(ret_type)
+                ret_c = "void" if ret_type is OK_TYPE else self.c_type(ret_type)
                 quant_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
                 param_decls = quant_decls + [
                     f"{self.c_type(p.type_val)} qv_p_{p.name}" for p in params
@@ -1680,7 +1708,7 @@ class CEmitter:
                         ret_c,
                         param_decls,
                         call_expr,
-                        ret_type == OK_TYPE,
+                        ret_type is OK_TYPE,
                         unused_vars=unused_vars,
                     )
                 )
@@ -1692,7 +1720,7 @@ class CEmitter:
                     lines.append(f"{ret_c} {fn_name}({fn_sig}) {{")
                     for uv in unused_vars:
                         lines.append(f"    (void){uv};")
-                    if ret_type == OK_TYPE:
+                    if ret_type is OK_TYPE:
                         lines.append(f"    {call_expr};")
                         lines.append("    return;")
                     else:
@@ -1738,7 +1766,7 @@ class CEmitter:
                     exp_ret_c,
                     linkage,
                 ) = fun_adapters[fname]
-                int_ret_c = "void" if int_ret_t == OK_TYPE else self.c_type(int_ret_t)
+                int_ret_c = "void" if int_ret_t is OK_TYPE else self.c_type(int_ret_t)
                 fun_lines.append(f"static {int_ret_c} {impl_ident}({int_sig}) {{")
                 fn_lines: list[str] = []
                 for q in quants:
@@ -1771,9 +1799,9 @@ class CEmitter:
                     else:
                         adapter_args.append(ep_name)
                 args_str = ", ".join(adapter_args)
-                if int_ret_t == OK_TYPE:
+                if int_ret_t is OK_TYPE:
                     fun_lines.append(f"    {impl_ident}({args_str});")
-                    if exp_ret_t != OK_TYPE:
+                    if exp_ret_t is not OK_TYPE:
                         fun_lines.append("    return ((QVal){ .p = NULL });")
                     else:
                         fun_lines.append("    return;")
@@ -1787,7 +1815,7 @@ class CEmitter:
                 fun_lines.append("}")
                 fun_lines.append("")
             else:
-                ret_c = "void" if ret_type == OK_TYPE else self.c_type(ret_type)
+                ret_c = "void" if ret_type is OK_TYPE else self.c_type(ret_type)
                 quant_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
                 param_decls = quant_decls + [
                     self._param_c_decl(p, mangle_module_ident(clean_mod, p.name))
@@ -1887,7 +1915,7 @@ class CEmitter:
                 case TypedLetValue(name=vname, value=vval, symbol=vsym):
                     if any(vname == mv[0] for mv in mod_vars):
                         m_ident = mangle_module_ident(clean_mod, vname)
-                        if vsym.type_val == OK_TYPE:
+                        if vsym.type_val is OK_TYPE:
                             mod_emitter.emit_to(vval, None, init_lines)
                         else:
                             mod_emitter.emit_to(vval, m_ident, init_lines)
@@ -1987,7 +2015,7 @@ class CEmitter:
 
                 c_ident = mangle_ident(name)
                 phrase_lines: list[str] = []
-                if symbol.type_val == OK_TYPE:
+                if symbol.type_val is OK_TYPE:
                     lines.append(f"    // inlined {name}")
                     self.emit_to(val, None, phrase_lines)
                 else:
@@ -2000,32 +2028,32 @@ class CEmitter:
                     lines.append(f"    quest_print_val({wrap}, {type_str});")
                 elif should_print_result:
                     var_str = "var " if symbol.is_var else ""
-                    if symbol.type_val == OK_TYPE:
+                    if symbol.type_val is OK_TYPE:
                         msg = f"let {var_str}{name}:Ok = ok"
                         lines.append(f"    puts({_c_string_literal(msg)});")
                     elif isinstance(symbol.type_val, (QFunType, QAllType)):
                         type_str = str(symbol.type_val)
                         msg = f"let {var_str}{name}:{type_str} = <fun>"
                         lines.append(f"    puts({_c_string_literal(msg)});")
-                    elif symbol.type_val == INT_TYPE:
+                    elif symbol.type_val is INT_TYPE:
                         lines.append(
                             f'    printf("let {var_str}{name}:Int = %lld\\n", (long long){c_ident});'
                         )
-                    elif symbol.type_val == REAL_TYPE:
+                    elif symbol.type_val is REAL_TYPE:
                         lines.append(
                             f'    if ({c_ident} == (double)(int64_t){c_ident}) '
                             f'printf("let {var_str}{name}:Real = %.1f\\n", {c_ident}); '
                             f'else printf("let {var_str}{name}:Real = %g\\n", {c_ident});'
                         )
-                    elif symbol.type_val == BOOL_TYPE:
+                    elif symbol.type_val is BOOL_TYPE:
                         lines.append(
                             f'    printf("let {var_str}{name}:Bool = %s\\n", {c_ident} ? "true" : "false");'
                         )
-                    elif symbol.type_val == CHAR_TYPE:
+                    elif symbol.type_val is CHAR_TYPE:
                         lines.append(
                             f'    printf("let {var_str}{name}:Char = \'%c\'\\n", (char){c_ident});'
                         )
-                    elif symbol.type_val == STRING_TYPE:
+                    elif symbol.type_val is STRING_TYPE:
                         lines.append(
                             f'    printf("let {var_str}{name}:String = \\"%s\\"\\n", '
                             f'{c_ident} ? {c_ident}->data : "");'
@@ -2087,7 +2115,7 @@ class CEmitter:
     def _emit_expr_phrase(self, expr: TypedExpr, lines: list[str], is_last: bool = False) -> None:
         expr_type = expr.type_val
         phrase_lines: list[str] = []
-        if expr_type == OK_TYPE:
+        if expr_type is OK_TYPE:
             self.emit_to(expr, None, phrase_lines)
             _append_block(lines, phrase_lines)
             return
@@ -2172,7 +2200,7 @@ class CEmitter:
                 elif (
                     isinstance(target_t, QVariantType)
                     and isinstance(val.type_val, QVariantType)
-                    and val.type_val != target_t
+                    and val.type_val is not target_t
                 ):
                     c_val = self.emit_val(val, lines)
                     self._emit_variant_upcast(c_val, val.type_val, target_t, lines, dest=c_tgt)
@@ -2287,9 +2315,9 @@ class CEmitter:
                 elem_t = expr.type_val
                 if isinstance(elem_t, (QVarType, QOutType)):
                     elem_t = elem_t.element_type
-                if elem_t in (INT_TYPE, BOOL_TYPE, CHAR_TYPE):
+                if any(elem_t is p for p in (INT_TYPE, BOOL_TYPE, CHAR_TYPE)):
                     return f"(&({c_arr}->data[{c_idx}].i))"
-                elif elem_t == REAL_TYPE:
+                elif elem_t is REAL_TYPE:
                     return f"(&({c_arr}->data[{c_idx}].r))"
                 elif isinstance(elem_t, QRecordType) or resolve_record_bound(elem_t) is not None:
                     return f"(&({c_arr}->data[{c_idx}]))"
@@ -2392,7 +2420,7 @@ class CEmitter:
                         ):
                             c_args = [self.emit_val(a, lines) for a in args]
                             call_str = f"{binding.value.symbol}({', '.join(c_args)})"
-                            if expr.type_val == OK_TYPE:
+                            if expr.type_val is OK_TYPE:
                                 lines.append(f"{call_str};")
                                 return "((void)0)"
                             return call_str
@@ -2581,7 +2609,7 @@ class CEmitter:
                     match b:
                         case TypedLetValue(name=name, value=val, symbol=symbol):
                             c_ident = mangle_ident(name)
-                            if symbol.type_val == OK_TYPE:
+                            if symbol.type_val is OK_TYPE:
                                 self.emit_to(val, None, block_lines)
                             else:
                                 c_type = self.c_type(symbol.type_val)
@@ -2818,6 +2846,12 @@ class CEmitter:
                                 )
                                 if self.c_type(f_type) == "QVal" and self.c_type(elem.type_val) != "QVal":
                                     c_elem = _qval_wrap(c_elem, elem.type_val)
+                                elif (
+                                    self.c_type(f_type).endswith("*")
+                                    and self.c_type(elem.type_val).endswith("*")
+                                    and self.c_type(f_type) != self.c_type(elem.type_val)
+                                ):
+                                    c_elem = f"({self.c_type(f_type)})({c_elem})"
                                 lines.append(f"{target_dest}->u.{tag}._{i} = {c_elem};")
                         elif isinstance(pt, QRecordType) and isinstance(payload, TypedRecord):
                             for f in payload.fields:
@@ -2873,6 +2907,13 @@ class CEmitter:
                                         and self.c_type(f.type_val) != "QVal"
                                     ):
                                         field_src = _qval_unwrap(field_src, f.type_val, self)
+                                    elif (
+                                        opt_f_t is not None
+                                        and self.c_type(opt_f_t).endswith("*")
+                                        and self.c_type(f.type_val).endswith("*")
+                                        and self.c_type(opt_f_t) != self.c_type(f.type_val)
+                                    ):
+                                        field_src = f"({self.c_type(f.type_val)})({field_src})"
                                     branch_lines.append(f"{b_name}->_{i} = {field_src};")
                             elif isinstance(b_type, QRecordType):
                                 s_rec = self.record_struct_name(b_type)
@@ -3014,7 +3055,7 @@ class CEmitter:
 
             case _:
                 val = self.emit_val(expr, lines)
-                if dest is not None and expr.type_val != OK_TYPE:
+                if dest is not None and expr.type_val is not OK_TYPE:
                     lines.append(f"{dest} = {val};")
                 elif val != "((void)0)":
                     lines.append(f"{val};")

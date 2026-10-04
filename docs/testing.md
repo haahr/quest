@@ -164,6 +164,13 @@ input) can specify host execution requirements via top-level comment directives:
   `typecheck`) must still exit with `0`. The test runner validates that the process exits with the specified code,
   while verifying standard output against `<test>.out`.
 
+- **Process Timeout (`(* @timeout: ... *)`)**:
+  Overrides the default per-test timeout (default: 30.0 seconds) for tests that compile large modular suites:
+  ```quest
+  (* @timeout: 60.0 *)
+  ```
+  The test runner applies this timeout to each phase invoked for the test.
+
 - **Standard Input (`(* @stdin: ... *)`)**:
   Supplies standard input data to the running program using a multi-line comment block:
   ```quest

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from quest.types import (
     BOOL_TYPE,
     CHAR_TYPE,
@@ -35,6 +37,7 @@ from quest.types import (
     resolve_record_bound,
     resolve_variant_bound,
     resolve_option_bound,
+    is_type_equal,
 )
 
 SYMBOL_MANGLE_MAP: dict[str, str] = {
@@ -122,7 +125,7 @@ def normalize_type(t: QType) -> QType:
     t = t.prune() if hasattr(t, "prune") else t
     if isinstance(t, QTypeApp):
         evaled = t.evaluate_lazily()
-        if evaled != t and isinstance(evaled, (QTupleType, QRecordType)):
+        if evaled is not t and isinstance(evaled, (QTupleType, QRecordType)):
             return evaled
     return t
 
@@ -157,24 +160,32 @@ def is_word_type(t: QType) -> bool:
 
 def type_to_c_tag(t: QType) -> str:
     """Produces a deterministic, valid C identifier component for a QType."""
+    raw = _type_to_c_tag_raw(t)
+    if len(raw) > 64:
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+        return f"{raw[:24]}_{digest}"
+    return raw
+
+
+def _type_to_c_tag_raw(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
     t = resolve_type_bound(t)
     t = normalize_type(t)
     if is_word_type(t):
         return "Word"
-    if t == INT_TYPE:
+    if t is INT_TYPE:
         return "Int"
-    if t == REAL_TYPE:
+    if t is REAL_TYPE:
         return "Real"
-    if t == BOOL_TYPE:
+    if t is BOOL_TYPE:
         return "Bool"
-    if t == CHAR_TYPE:
+    if t is CHAR_TYPE:
         return "Char"
-    if t == STRING_TYPE:
+    if t is STRING_TYPE:
         return "String"
-    if t == OK_TYPE:
+    if t is OK_TYPE:
         return "Ok"
-    if t == DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
+    if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
         return "Dynamic"
     if isinstance(t, QExternalType):
         return t.name.replace(".", "_") if t.name else t.c_type.replace("*", "").strip()
@@ -288,19 +299,19 @@ def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
     t = normalize_type(t)
     if is_word_type(t):
         return "uint64_t"
-    if t == INT_TYPE:
+    if t is INT_TYPE:
         return "QInt"
-    if t == REAL_TYPE:
+    if t is REAL_TYPE:
         return "QReal"
-    if t == BOOL_TYPE:
+    if t is BOOL_TYPE:
         return "QBool"
-    if t == CHAR_TYPE:
+    if t is CHAR_TYPE:
         return "QChar"
-    if t == STRING_TYPE:
+    if t is STRING_TYPE:
         return "QString *"
-    if t == OK_TYPE:
+    if t is OK_TYPE:
         return "void"
-    if t == DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
+    if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
         return "QDynamic *"
     if isinstance(t, QExternalType):
         return t.c_type
@@ -340,17 +351,17 @@ def qtype_to_name_str(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
     if is_word_type(t):
         return "Word.T"
-    if t == INT_TYPE:
+    if t is INT_TYPE:
         return "Int"
-    if t == REAL_TYPE:
+    if t is REAL_TYPE:
         return "Real"
-    if t == BOOL_TYPE:
+    if t is BOOL_TYPE:
         return "Bool"
-    if t == CHAR_TYPE:
+    if t is CHAR_TYPE:
         return "Char"
-    if t == STRING_TYPE:
+    if t is STRING_TYPE:
         return "String"
-    if t == OK_TYPE:
+    if t is OK_TYPE:
         return "Ok"
     if isinstance(t, QExternalType):
         return t.name or t.c_type
@@ -402,7 +413,7 @@ def qval_wrap(expr_str: str, t: QType) -> str:
     t = normalize_type(t)
     if qtype_to_c_type(t) == "QVal":
         return expr_str
-    if t == OK_TYPE:
+    if t is OK_TYPE:
         return "Q_OK_VAL"
     if isinstance(t, QRecordType) or resolve_record_bound(t) is not None:
         return f"((QVal){{ .p = (void *)quest_record_box({expr_str}) }})"
@@ -410,9 +421,9 @@ def qval_wrap(expr_str: str, t: QType) -> str:
         return f"((QVal){{ .p = (void *)quest_variant_box({expr_str}) }})"
     if is_word_type(t):
         return f"((QVal){{ .u = (uint64_t)({expr_str}) }})"
-    if t == INT_TYPE or t == BOOL_TYPE or t == CHAR_TYPE:
+    if t is INT_TYPE or t is BOOL_TYPE or t is CHAR_TYPE:
         return f"((QVal){{ .i = (int64_t)({expr_str}) }})"
-    if t == REAL_TYPE:
+    if t is REAL_TYPE:
         return f"((QVal){{ .r = (double)({expr_str}) }})"
     return f"((QVal){{ .p = (void *)({expr_str}) }})"
 
@@ -430,11 +441,11 @@ def qval_unwrap(qval_expr: str, t: QType, ctx: Optional[RecordNamingContext] = N
         return f"(*((QVariantVal *)({qval_expr}.p)))"
     if is_word_type(t):
         return f"({qval_expr}.u)"
-    if t in (INT_TYPE, BOOL_TYPE, CHAR_TYPE):
+    if t is INT_TYPE or t is BOOL_TYPE or t is CHAR_TYPE:
         return f"({qval_expr}.i)"
-    if t == REAL_TYPE:
+    if t is REAL_TYPE:
         return f"({qval_expr}.r)"
-    if t == OK_TYPE:
+    if t is OK_TYPE:
         return "((void)0)"
     c_t = qtype_to_c_type(t, ctx)
     return f"(({c_t})({qval_expr}.p))"
@@ -449,7 +460,7 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
         cur_type = cur_type.body
 
     if isinstance(cur_type, QFunType):
-        if cur_type.result_type == OK_TYPE:
+        if cur_type.result_type is OK_TYPE:
             ret_c = "void"
         elif isinstance(cur_type.result_type, QRecordType):
             ret_c = "QRecordVal"
@@ -462,14 +473,14 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
         for p in cur_type.params:
             if getattr(p, "is_out", False) or getattr(p, "is_var", False):
                 param_types.append(f"{qtype_to_c_type(p.type_val, ctx)} *")
-            elif p.type_val == OK_TYPE:
+            elif p.type_val is OK_TYPE:
                 param_types.append("QVal")
             else:
                 param_types.append(qtype_to_c_type(p.type_val, ctx))
         sig = ", ".join(param_types)
         return f"{ret_c} (*)({sig})"
 
-    ret_c = "void" if cur_type == OK_TYPE else (
+    ret_c = "void" if cur_type is OK_TYPE else (
         "QRecordVal" if isinstance(cur_type, QRecordType)
         else qtype_to_c_type(cur_type, ctx)
     )
@@ -485,7 +496,10 @@ def is_record_subtype(s: QType, t: QType) -> bool:
         return False
     s_fields = {f.name: f.type_val for f in s.fields}
     for f in t.fields:
-        if f.name not in s_fields or s_fields[f.name] != f.type_val:
+        if f.name not in s_fields:
+            return False
+        s_f_type = s_fields[f.name]
+        if s_f_type is not f.type_val and not is_type_equal(s_f_type, f.type_val):
             return False
     return True
 
@@ -508,7 +522,10 @@ def is_variant_subtype(s: QType, t: QType) -> bool:
         return False
     t_map = {v.name: v.type_val for v in t.variants}
     for v in s.variants:
-        if v.name not in t_map or v.type_val != t_map[v.name]:
+        if v.name not in t_map:
+            return False
+        t_v_type = t_map[v.name]
+        if v.type_val is not t_v_type and not is_type_equal(v.type_val, t_v_type):
             return False
     return True
 

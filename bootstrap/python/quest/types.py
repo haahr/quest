@@ -5,7 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
-from quest.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
+from quest.diagnostics import (
+    Diagnostic,
+    DiagnosticRenderer,
+    QuestCompilerError,
+    TypeRecursionLimitExceeded,
+)
+
+# Deterministic safety bounds to prevent infinite recursion during type analysis
+MAX_SUBTYPE_FUEL = 10_000
+MAX_TYPE_EXPANSION_DEPTH = 500
 
 
 # ============================================================================
@@ -134,8 +143,17 @@ class QType:
         """Performs capture-avoiding substitution using symbol_id keys."""
         return self
 
+    def format(self, env: Optional[Any] = None) -> str:
+        """Formats this type into a readable string, utilizing env aliases and bounded recursions."""
+        return format_type_compact(self, env=env)
+
     def __str__(self) -> str:
         return self.__class__.__name__
+
+    def __eq__(self, other: Any) -> bool:
+        raise NotImplementedError(
+            "Do not use Python == on Quest types; use is_type_equal(t1, t2, env) or reference identity ('is')"
+        )
 
 
 # ============================================================================
@@ -203,7 +221,7 @@ class QExceptionType(QType):
         return QExceptionType(payload_type=self.payload_type.substitute(subst))
 
     def __str__(self) -> str:
-        if self.payload_type == OK_TYPE:
+        if self.payload_type is OK_TYPE:
             return "Exception"
         return f"Exception({self.payload_type})"
 
@@ -402,6 +420,7 @@ class QRecordField:
 class QRecordType(QType):
     """Unordered record type with structural subtyping: Record [var] x: T ... end."""
     fields: tuple[QRecordField, ...]
+    provenance: Optional[str] = field(default=None, compare=False)
 
     def get_field(self, name: str) -> Optional[QRecordField]:
         for field_entry in self.fields:
@@ -410,9 +429,11 @@ class QRecordType(QType):
         return None
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QRecordType(tuple(f.substitute(subst) for f in self.fields))
+        return QRecordType(tuple(f.substitute(subst) for f in self.fields), provenance=self.provenance)
 
     def __str__(self) -> str:
+        if self.provenance:
+            return f"Module '{self.provenance}'"
         fields_str = " ".join(str(f) for f in self.fields)
         return f"Record {fields_str} end" if fields_str else "Record end"
 
@@ -824,7 +845,7 @@ class QPathType(QType):
 
     def substitute(self, subst: dict[int, QType]) -> QType:
         new_bound = self.bound.substitute_types(subst)
-        if new_bound != self.bound:
+        if new_bound is not self.bound:
             return QPathType(
                 root_name=self.root_name,
                 root_symbol_id=self.root_symbol_id,
@@ -1025,40 +1046,79 @@ def is_subtype(
     sup: QType,
     env: Optional[Any] = None,
     trail: Optional[set[tuple[int, int]]] = None,
+    fuel: int = MAX_SUBTYPE_FUEL,
 ) -> bool:
-    """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle detection."""
+    """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle detection and fuel limit."""
+    if sub is sup:
+        return True
+
+    if fuel <= 0:
+        raise TypeRecursionLimitExceeded(
+            f"Subtyping proof exceeded step limit of {MAX_SUBTYPE_FUEL} steps "
+            f"while checking ({sub} <: {sup})"
+        )
+    fuel -= 1
+
     if trail is None:
         trail = set()
+
+    type_pair = (id(sub), id(sup))
+
+    # 0a. Check persistent session memo cache
+    cache = getattr(env, "subtype_cache", None) if env is not None else None
+    if cache is not None:
+        cached = cache.get(type_pair)
+        if cached is not None:
+            return cached
+
+    # 0b. Coinductive cycle detection for recursive types before lazy unfolding
+    if type_pair in trail:
+        return True
+    if isinstance(sub, (QRecType, QRecGroupType)) or isinstance(sup, (QRecType, QRecGroupType)):
+        trail.add(type_pair)
 
     # 1. Evaluate both types lazily to expose outermost constructors
     sub_lazy = sub.evaluate_lazily(env)
     sup_lazy = sup.evaluate_lazily(env)
 
-    # 2. Reflexivity & identical instances
-    if sub_lazy == sup_lazy:
+    # 2. Reflexivity & identical instances (no Python structural == on QType)
+    if sub_lazy is sup_lazy:
+        if cache is not None and not trail:
+            cache[type_pair] = True
         return True
     if (
-        isinstance(sub_lazy, (QTypeVar, QAbstractType))
-        and isinstance(sup_lazy, (QTypeVar, QAbstractType))
+        isinstance(sub_lazy, (QTypeVar, QAbstractType, QPathType))
+        and isinstance(sup_lazy, (QTypeVar, QAbstractType, QPathType))
         and sub_lazy.symbol_id == sup_lazy.symbol_id
     ):
+        if cache is not None and not trail:
+            cache[type_pair] = True
+        return True
+    if (
+        isinstance(sub_lazy, (QIntType, QRealType, QBoolType, QCharType, QStringType, QOkType, QDynamicType))
+        and type(sub_lazy) is type(sup_lazy)
+    ):
+        if cache is not None and not trail:
+            cache[type_pair] = True
         return True
 
     # 2b. Bottom type: subtype of all types
     if isinstance(sub_lazy, QBottomType):
+        if cache is not None and not trail:
+            cache[type_pair] = True
         return True
 
     # 3. Metavariable resolution & unification
     if isinstance(sub_lazy, QTypeMeta):
         pruned = sub_lazy.prune()
         if pruned is not sub_lazy:
-            return is_subtype(pruned, sup_lazy, env, trail)
+            return is_subtype(pruned, sup_lazy, env, trail, fuel)
         sub_lazy.instance = sup_lazy
         return True
     if isinstance(sup_lazy, QTypeMeta):
         pruned = sup_lazy.prune()
         if pruned is not sup_lazy:
-            return is_subtype(sub_lazy, pruned, env, trail)
+            return is_subtype(sub_lazy, pruned, env, trail, fuel)
         sup_lazy.instance = sub_lazy
         return True
 
@@ -1074,7 +1134,7 @@ def is_subtype(
     # 6. Type Variable bound checking
     if isinstance(sub_lazy, (QTypeVar, QAbstractType, QPathType)):
         if sub_lazy.bound and isinstance(sub_lazy.bound, QPowerKind):
-            if is_subtype(sub_lazy.bound.bound, sup_lazy, env, trail):
+            if is_subtype(sub_lazy.bound.bound, sup_lazy, env, trail, fuel):
                 return True
 
     # 7. Pattern matching across type pairs
@@ -1098,7 +1158,7 @@ def is_subtype(
                     if s_f.name != t_f.name:
                         return False
                     if isinstance(t_f.bound, QPowerKind):
-                        if not is_subtype(s_f.type_val, t_f.bound.bound, env, trail):
+                        if not is_subtype(s_f.type_val, t_f.bound.bound, env, trail, fuel):
                             return False
                     subst = {t_f.symbol_id: s_f.type_val}
                     for rem_idx in range(idx + 1, len(curr_sup_fields)):
@@ -1109,14 +1169,14 @@ def is_subtype(
                     if t_f.is_var:
                         if not s_f.is_var:
                             return False
-                        if not (is_subtype(s_f.type_val, t_f.type_val, env, trail)
-                                and is_subtype(t_f.type_val, s_f.type_val, env, trail)):
+                        if not (is_subtype(s_f.type_val, t_f.type_val, env, trail, fuel)
+                                and is_subtype(t_f.type_val, s_f.type_val, env, trail, fuel)):
                             return False
                     else:
-                        if not is_subtype(s_f.type_val, t_f.type_val, env, trail):
+                        if not is_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
                             return False
                 elif isinstance(s_f, QTupleTypeBinding) and isinstance(t_f, QTupleTypeBinding):
-                    if s_f.name != t_f.name or not is_subtype(s_f.type_val, t_f.type_val, env, trail):
+                    if s_f.name != t_f.name or not is_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
                         return False
                 else:
                     return False
@@ -1131,11 +1191,11 @@ def is_subtype(
                 if sup_field.is_var:
                     if not sub_field.is_var:
                         return False
-                    if not (is_subtype(sub_field.type_val, sup_field.type_val, env, trail)
-                            and is_subtype(sup_field.type_val, sub_field.type_val, env, trail)):
+                    if not (is_subtype(sub_field.type_val, sup_field.type_val, env, trail, fuel)
+                            and is_subtype(sup_field.type_val, sub_field.type_val, env, trail, fuel)):
                         return False
                 else:
-                    if not is_subtype(sub_field.type_val, sup_field.type_val, env, trail):
+                    if not is_subtype(sub_field.type_val, sup_field.type_val, env, trail, fuel):
                         return False
             return True
 
@@ -1149,11 +1209,11 @@ def is_subtype(
                     if sup_var.type_val is None:
                         return False
                     if sub_var.is_var or sup_var.is_var:
-                        if not (is_subtype(sub_var.type_val, sup_var.type_val, env, trail)
-                                and is_subtype(sup_var.type_val, sub_var.type_val, env, trail)):
+                        if not (is_subtype(sub_var.type_val, sup_var.type_val, env, trail, fuel)
+                                and is_subtype(sup_var.type_val, sub_var.type_val, env, trail, fuel)):
                             return False
                     else:
-                        if not is_subtype(sub_var.type_val, sup_var.type_val, env, trail):
+                        if not is_subtype(sub_var.type_val, sup_var.type_val, env, trail, fuel):
                             return False
                 elif sup_var.type_val is not None:
                     return False
@@ -1168,7 +1228,7 @@ def is_subtype(
                 if sub_opt.payload_type is not None:
                     if sup_opt.payload_type is None:
                         return False
-                    if not is_subtype(sub_opt.payload_type, sup_opt.payload_type, env, trail):
+                    if not is_subtype(sub_opt.payload_type, sup_opt.payload_type, env, trail, fuel):
                         return False
                 elif sup_opt.payload_type is not None:
                     return False
@@ -1182,33 +1242,39 @@ def is_subtype(
                 if s_param.is_var or t_param.is_var:
                     if s_param.is_var != t_param.is_var:
                         return False
-                    if not (is_subtype(t_param.type_val, s_param.type_val, env, trail)
-                            and is_subtype(s_param.type_val, t_param.type_val, env, trail)):
+                    if not (is_subtype(t_param.type_val, s_param.type_val, env, trail, fuel)
+                            and is_subtype(s_param.type_val, t_param.type_val, env, trail, fuel)):
                         return False
                 elif s_param.is_out or t_param.is_out:
                     if s_param.is_out != t_param.is_out:
                         return False
-                    if not is_subtype(s_param.type_val, t_param.type_val, env, trail):
+                    if not is_subtype(s_param.type_val, t_param.type_val, env, trail, fuel):
                         return False
                 else:
-                    if not is_subtype(t_param.type_val, s_param.type_val, env, trail):
+                    if not is_subtype(t_param.type_val, s_param.type_val, env, trail, fuel):
                         return False
-            return is_subtype(sub_lazy.result_type, sup_lazy.result_type, env, trail)
+            return is_subtype(sub_lazy.result_type, sup_lazy.result_type, env, trail, fuel)
 
         # References (Var) & Arrays: invariant element type
         case (QVarType(element_type=s_elem), QVarType(element_type=t_elem)) | \
              (QArrayType(element_type=s_elem), QArrayType(element_type=t_elem)):
-            return (is_subtype(s_elem, t_elem, env, trail)
-                    and is_subtype(t_elem, s_elem, env, trail))
+            if s_elem is t_elem:
+                return True
+            return (is_subtype(s_elem, t_elem, env, trail, fuel)
+                    and is_subtype(t_elem, s_elem, env, trail, fuel))
 
         # Out parameters: contravariant
         case (QOutType(element_type=s_elem), QOutType(element_type=t_elem)):
-            return is_subtype(t_elem, s_elem, env, trail)
+            if s_elem is t_elem:
+                return True
+            return is_subtype(t_elem, s_elem, env, trail, fuel)
 
         # Exceptions: invariant payload type
         case (QExceptionType(payload_type=s_pay), QExceptionType(payload_type=t_pay)):
-            return (is_subtype(s_pay, t_pay, env, trail)
-                    and is_subtype(t_pay, s_pay, env, trail))
+            if s_pay is t_pay:
+                return True
+            return (is_subtype(s_pay, t_pay, env, trail, fuel)
+                    and is_subtype(t_pay, s_pay, env, trail, fuel))
 
         # Universal Quantifiers (Kernel F<:): bounds match, body covariant
         case (QAllType(), QAllType()):
@@ -1222,7 +1288,21 @@ def is_subtype(
                 t_bound_renamed = t_q.bound.substitute_types(subst)
                 if not is_kind_equal(s_q.bound, t_bound_renamed, env):
                     return False
-            return is_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail)
+            return is_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
+
+        # Type Functions (Type Operators): parameter kinds match, bodies subtype under substitution
+        case (QTypeFun(), QTypeFun()):
+            if len(sub_lazy.params) != len(sup_lazy.params):
+                return False
+            subst = {
+                t_p.symbol_id: QTypeVar(s_p.name, s_p.symbol_id, s_p.bound)
+                for s_p, t_p in zip(sub_lazy.params, sup_lazy.params)
+            }
+            for s_p, t_p in zip(sub_lazy.params, sup_lazy.params):
+                t_bound_renamed = t_p.bound.substitute_types(subst)
+                if not is_kind_equal(s_p.bound, t_bound_renamed, env):
+                    return False
+            return is_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
 
         # Type operator application (e.g. List.T(A))
         case (
@@ -1231,10 +1311,12 @@ def is_subtype(
         ):
             if len(s_args) != len(t_args) or not is_type_equal(s_c, t_c, env):
                 return False
-            return all(
-                is_subtype(sa, ta, env, trail) and is_subtype(ta, sa, env, trail)
-                for sa, ta in zip(s_args, t_args)
-            )
+            for sa, ta in zip(s_args, t_args):
+                if sa is ta:
+                    continue
+                if not (is_subtype(sa, ta, env, trail, fuel) and is_subtype(ta, sa, env, trail, fuel)):
+                    return False
+            return True
 
         # External Types: structural equality on underlying C type
         case (QExternalType(c_type=sub_c), QExternalType(c_type=sup_c)):
@@ -1255,7 +1337,7 @@ def is_subkind(sub: QKind, sup: QKind, env: Optional[Any] = None) -> bool:
     sup_lazy = sup.evaluate_lazily(env)
 
     # 1. Reflexivity
-    if sub_lazy == sup_lazy:
+    if sub_lazy is sup_lazy:
         return True
 
     # 2. Binary pattern matching
@@ -1382,17 +1464,22 @@ def is_type_contractive(
     recursive_var_ids: set[int],
     env: Optional[Any] = None,
     seen_aliases: Optional[set[int]] = None,
+    depth: int = 0,
 ) -> bool:
-    """Verifies that `qtype` is contractive in all variable IDs in `recursive_var_ids` (C \succ X).
+    """Verifies that `qtype` is contractive in all variable IDs in `recursive_var_ids` (C \\succ X).
 
     According to Cardelli & Longo (1991, Section 2.4/2.9) and MacQueen, Plotkin & Sethi (1986):
     - Primitive types (Int, Bool, Top, etc.) are contractive in all X.
     - Type variable Y is contractive in X iff Y != X.
     - Type constructors (Record, Tuple, Option, Variant, Fun, Array, Var, Out) are contractive in X.
-    - Universal quantifier All(X':K)B is contractive in X iff X not free in K and B \succ X.
-    - Type application (λ(X':K)B)(A) is contractive in X iff the beta-reduced body \succ X.
-    - Recursive type Rec(X')B is contractive in X iff B \succ X' and B \succ X.
+    - Universal quantifier All(X':K)B is contractive in X iff X not free in K and B \\succ X.
+    - Type application (λ(X':K)B)(A) is contractive in X iff the beta-reduced body \\succ X.
+    - Recursive type Rec(X')B is contractive in X iff B \\succ X' and B \\succ X.
     """
+    if depth > MAX_TYPE_EXPANSION_DEPTH:
+        raise TypeRecursionLimitExceeded(
+            f"Type contractiveness check exceeded recursion depth of {MAX_TYPE_EXPANSION_DEPTH}"
+        )
     seen = seen_aliases or set()
     qtype_lazy = qtype.evaluate_lazily(env)
 
@@ -1403,7 +1490,7 @@ def is_type_contractive(
             if env is not None and hasattr(env, "lookup_type_by_id"):
                 sym = env.lookup_type_by_id(sym_id)
                 if sym is not None and sym.definition is not None and sym_id not in seen:
-                    return is_type_contractive(sym.definition, recursive_var_ids, env, seen | {sym_id})
+                    return is_type_contractive(sym.definition, recursive_var_ids, env, seen | {sym_id}, depth + 1)
             return True
 
         case QTypeMeta(name=mname):
@@ -1412,22 +1499,24 @@ def is_type_contractive(
             if env is not None and hasattr(env, "lookup_type"):
                 sym = env.lookup_type(mname)
                 if sym is not None and sym.definition is not None and sym.symbol_id not in seen:
-                    return is_type_contractive(sym.definition, recursive_var_ids, env, seen | {sym.symbol_id})
+                    return is_type_contractive(
+                        sym.definition, recursive_var_ids, env, seen | {sym.symbol_id}, depth + 1
+                    )
             return True
 
         case QRecType(symbol_id=inner_id, body=inner_body):
             return (
-                is_type_contractive(inner_body, {inner_id}, env, seen)
-                and is_type_contractive(inner_body, recursive_var_ids, env, seen)
+                is_type_contractive(inner_body, {inner_id}, env, seen, depth + 1)
+                and is_type_contractive(inner_body, recursive_var_ids, env, seen, depth + 1)
             )
 
         case QRecGroupType(bindings=bindings, active_index=active_idx):
             all_group_ids = {b[1] for b in bindings}
             active_body = bindings[active_idx][3]
-            return is_type_contractive(active_body, recursive_var_ids | all_group_ids, env, seen)
+            return is_type_contractive(active_body, recursive_var_ids | all_group_ids, env, seen, depth + 1)
 
         case QAllType(quantifiers=quants, body=body):
-            return is_type_contractive(body, recursive_var_ids, env, seen)
+            return is_type_contractive(body, recursive_var_ids, env, seen, depth + 1)
 
         case QTypeApp(constructor=ctor, arguments=args):
             ctor_lazy = ctor.evaluate_lazily(env)
@@ -1435,9 +1524,9 @@ def is_type_contractive(
                 case QTypeAbs(symbol_id=param_sym, body=body):
                     subst = {param_sym: args[0]} if args else {}
                     reduced = body.substitute_types(subst)
-                    return is_type_contractive(reduced, recursive_var_ids, env, seen)
+                    return is_type_contractive(reduced, recursive_var_ids, env, seen, depth + 1)
                 case _:
-                    return is_type_contractive(ctor_lazy, recursive_var_ids, env, seen)
+                    return is_type_contractive(ctor_lazy, recursive_var_ids, env, seen, depth + 1)
 
         case (
             QRecordType()
@@ -1946,14 +2035,11 @@ def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptio
                 subst = {p.symbol_id: arg for p, arg in zip(ctor.params, curr.arguments)}
                 curr = ctor.body.substitute(subst)
                 continue
-            else:
-                try:
-                    curr_lazy = curr.evaluate_lazily(env)
-                    if curr_lazy != curr:
-                        curr = curr_lazy
-                        continue
-                except Exception:
-                    pass
+            elif env is not None:
+                curr_lazy = curr.evaluate_lazily(env)
+                if not isinstance(curr_lazy, QTypeApp):
+                    curr = curr_lazy
+                    continue
         if (
             isinstance(curr, (QTypeVar, QAbstractType, QPathType))
             and isinstance(curr.bound, QPowerKind)
@@ -1965,13 +2051,204 @@ def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptio
             curr = curr.bound.bound
             continue
         if env is not None:
-            try:
-                curr_lazy = curr.evaluate_lazily(env)
-                if curr_lazy != curr:
-                    curr = curr_lazy
-                    continue
-            except Exception:
-                pass
+            curr_lazy = curr.evaluate_lazily(env)
+            if curr_lazy is not curr and type(curr_lazy) is not type(curr):
+                curr = curr_lazy
+                continue
         return None
+
+
+def format_type_compact(
+    t: Union[QType, QKind, None],
+    env: Optional[Any] = None,
+    visited_ids: Optional[set[int]] = None,
+    depth: int = 0,
+) -> str:
+    """Formats a QType or QKind into a compact, human-readable string with alias awareness and bounded recursion."""
+    if t is None:
+        return ""
+    if visited_ids is None:
+        visited_ids = set()
+
+    # 1. Alias lookup from environment (Option B: Name/Alias priority)
+    # Check if this type object or its symbol corresponds to a declared type alias in env or an imported interface
+    if env is not None and isinstance(t, QType):
+        alias_name = getattr(env, "lookup_alias_for_type", None)
+        if callable(alias_name):
+            found_alias = alias_name(t)
+            if found_alias:
+                return found_alias
+        # Check if t matches an interface type symbol
+        interfaces = getattr(env, "_interfaces", None)
+        if isinstance(interfaces, dict):
+            # Prioritize clean, short interface names (e.g. 'Ast' over full paths)
+            for iface_name, iface_scope in interfaces.items():
+                if "/" in iface_name:
+                    continue
+                types_dict = getattr(iface_scope, "types", None)
+                if isinstance(types_dict, dict):
+                    for name, sym in types_dict.items():
+                        if sym.definition is not None and sym.definition is t:
+                            return f"{iface_name}.{name}"
+
+    # 2. Primitives and Singletons
+    if t is INT_TYPE:
+        return "Int"
+    if t is REAL_TYPE:
+        return "Real"
+    if t is BOOL_TYPE:
+        return "Bool"
+    if t is CHAR_TYPE:
+        return "Char"
+    if t is STRING_TYPE:
+        return "String"
+    if t is OK_TYPE:
+        return "Ok"
+    if t is DYNAMIC_TYPE:
+        return "Dynamic"
+    if t is BOTTOM_TYPE:
+        return "Bottom"
+    if t is EXCEPTION_TYPE:
+        return "Exception"
+    if t is TYPE_KIND:
+        return "TYPE"
+
+    # 3. Kinds
+    if isinstance(t, QPowerKind):
+        return f"POWER({format_type_compact(t.bound, env, visited_ids, depth)})"
+    if isinstance(t, QAllKind):
+        p_str = format_type_compact(t.param_kind, env, visited_ids, depth)
+        r_str = format_type_compact(t.result_kind, env, visited_ids, depth)
+        return f"All({t.param_name} :: {p_str}) {r_str}"
+
+    # 4. Symbol identifiers and paths
+    if isinstance(t, (QTypeVar, QAbstractType)):
+        return t.name
+    if isinstance(t, QPathType):
+        return f"{t.root_name}.{t.field_name}"
+    if isinstance(t, QExternalType):
+        return t.name if t.name else f'external "{t.c_type}"'
+
+    # 5. Type constructor containers
+    if isinstance(t, QArrayType):
+        return f"Array({format_type_compact(t.element_type, env, visited_ids, depth)})"
+    if isinstance(t, QVarType):
+        return f"Var({format_type_compact(t.element_type, env, visited_ids, depth)})"
+    if isinstance(t, QOutType):
+        return f"Out({format_type_compact(t.element_type, env, visited_ids, depth)})"
+
+    # 6. Type Application
+    if isinstance(t, QTypeApp):
+        ctor_str = format_type_compact(t.constructor, env, visited_ids, depth)
+        args_str = " ".join(format_type_compact(arg, env, visited_ids, depth) for arg in t.arguments)
+        return f"{ctor_str}({args_str})" if args_str else f"{ctor_str}()"
+
+    # 7. Type-level Functions
+    if isinstance(t, QTypeFun):
+        if depth > 2:
+            return "Fun(...)"
+        params_str = " ".join(
+            f"{p.name} :: {format_type_compact(p.bound, env, visited_ids, depth + 1)}"
+            for p in t.params
+        )
+        body_str = format_type_compact(t.body, env, visited_ids, depth + 1)
+        return f"Fun({params_str}) {body_str}"
+
+    # 8. Function Type
+    if isinstance(t, QFunType):
+        if depth > 3:
+            return "Fun(...)"
+        p_items = []
+        for p in t.params:
+            prefix = "var " if p.is_var else ("out " if p.is_out else "")
+            t_s = format_type_compact(p.type_val, env, visited_ids, depth + 1)
+            p_items.append(f"{prefix}{p.name}: {t_s}" if p.name else t_s)
+        params_str = " ".join(p_items)
+        res_str = format_type_compact(t.result_type, env, visited_ids, depth + 1)
+        return f"Fun({params_str}): {res_str}"
+
+    # 9. All Quantifier Type
+    if isinstance(t, QAllType):
+        if depth > 3:
+            return "All(...) ..."
+        quants_str = " ".join(str(q) for q in t.quantifiers)
+        body_str = format_type_compact(t.body, env, visited_ids, depth + 1)
+        return f"All({quants_str}) {body_str}"
+
+    # 10. Records (Module check first)
+    if isinstance(t, QRecordType):
+        if t.provenance:
+            return f"Module '{t.provenance}'"
+        if depth > 3:
+            return "Record ... end"
+        f_strs = " ".join(
+            f"{'var ' if f.is_var else ''}{f.name}: {format_type_compact(f.type_val, env, visited_ids, depth + 1)}"
+            for f in t.fields
+        )
+        return f"Record {f_strs} end" if f_strs else "Record end"
+
+    # 11. Tuples
+    if isinstance(t, QTupleType):
+        if depth > 3:
+            return "Tuple ... end"
+        f_parts: list[str] = []
+        for f in t.fields:
+            if isinstance(f, QTupleField):
+                var_p = "var " if f.is_var else ""
+                t_str = format_type_compact(f.type_val, env, visited_ids, depth + 1)
+                f_parts.append(f"{var_p}{f.name}: {t_str}" if f.name else f"{var_p}{t_str}")
+            elif isinstance(f, QTupleTypeBinding):
+                t_str = format_type_compact(f.type_val, env, visited_ids, depth + 1)
+                f_parts.append(f"Let {f.name} = {t_str}")
+            elif isinstance(f, QTupleTypeFormal):
+                k_str = format_type_compact(f.bound, env, visited_ids, depth + 1)
+                f_parts.append(f"Type {f.name} :: {k_str}")
+            else:
+                f_parts.append(str(f))
+        elems_str = " ".join(f_parts)
+        return f"Tuple {elems_str} end" if elems_str else "Tuple end"
+
+    # 12. Variants and Options
+    if isinstance(t, QVariantType):
+        if depth > 3:
+            return "Variant ... end"
+        v_strs = " ".join(
+            f"{'var ' if v.is_var else ''}{v.name}: {format_type_compact(v.type_val, env, visited_ids, depth + 1)}"
+            if v.type_val is not OK_TYPE and v.type_val is not None else v.name
+            for v in t.variants
+        )
+        return f"Variant {v_strs} end" if v_strs else "Variant end"
+
+    if isinstance(t, QOptionType):
+        if depth > 3:
+            return "Option ... end"
+        o_strs = " ".join(
+            f"{o.name} with {format_type_compact(o.payload_type, env, visited_ids, depth + 1)}"
+            if o.payload_type is not None else o.name
+            for o in t.options
+        )
+        return f"Option {o_strs} end" if o_strs else "Option end"
+
+    # 13. Recursive Types (Bounded unfold / self-reference handling)
+    if isinstance(t, QRecType):
+        if t.symbol_id in visited_ids or depth > 1:
+            return t.var_name
+        visited_ids = visited_ids | {t.symbol_id}
+        b_str = format_type_compact(t.bound, env, visited_ids, depth + 1)
+        body_str = format_type_compact(t.body, env, visited_ids, depth + 1)
+        return f"Rec({t.var_name} :: {b_str}) {body_str}"
+
+    if isinstance(t, QRecGroupType):
+        if t.current_symbol_id in visited_ids or depth > 1:
+            return t.current_name
+        return f"RecGroup({t.current_name})"
+
+    return str(t)
+
+
+# Disallow Python == across all QType subclasses, directing callers to is_type_equal or reference identity ('is')
+for _cls in list(globals().values()):
+    if isinstance(_cls, type) and issubclass(_cls, QType) and _cls is not QType:
+        _cls.__eq__ = QType.__eq__
 
 

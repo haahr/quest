@@ -717,11 +717,12 @@ class QTypeValue(QValue):
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, QTypeValue):
-            return self.type_val == other.type_val and self.name == other.name
+            from quest.types import is_type_equal
+            return (self.type_val is other.type_val or is_type_equal(self.type_val, other.type_val)) and self.name == other.name
         return False
 
     def __hash__(self) -> int:
-        return hash((self.type_val, self.name))
+        return hash((id(self.type_val), self.name))
 
 
 # ============================================================================
@@ -746,7 +747,8 @@ def qvalue_is(v1: QValue, v2: QValue) -> bool:
         return v1.value == v2.value  # type: ignore[attr-defined]
     if isinstance(v1, QTypeValue):
         assert isinstance(v2, QTypeValue)
-        return v1.type_val == v2.type_val
+        from quest.types import is_type_equal
+        return v1.type_val is v2.type_val or is_type_equal(v1.type_val, v2.type_val)
 
     # For all other types: pointer identity
     return v1 is v2
@@ -780,7 +782,8 @@ def qvalue_structural_eq(
 
     if isinstance(v1, QTypeValue):
         assert isinstance(v2, QTypeValue)
-        return v1.type_val == v2.type_val
+        from quest.types import is_type_equal
+        return v1.type_val is v2.type_val or is_type_equal(v1.type_val, v2.type_val)
 
     if isinstance(v1, QRecord):
         assert isinstance(v2, QRecord)

@@ -2127,7 +2127,7 @@ class TypeElaborator:
         if expr.payload is not None:
             payload_typed = self.check_expr(expr.payload, exc_type.payload_type, env, loop_depth)
         else:
-            if exc_type.payload_type != OK_TYPE:
+            if exc_type.payload_type is not OK_TYPE:
                 raise TypeError(
                     f"Exception '{exc_type}' requires a payload of type '{exc_type.payload_type}'",
                     offset=expr.offset,

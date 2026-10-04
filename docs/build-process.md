@@ -181,6 +181,18 @@ A `.qi` file contains the complete type signature of an interface:
 - Exported type declarations (abstract types, manifest definitions, records, variants, options).
 - Exported value signatures and parameter modes (`val`, `var`, `out`).
 
+#### 4.2.1. Type Alias Preservation and Size Compactness
+To avoid exponential code expansion and multi-megabyte interface metadata files:
+- **Alias Preservation:** When formatting type signatures and manifest definitions into `.qi` files, the interface
+  compiler maintains an aliases dictionary of local and imported type names (e.g. `ast.TypeExpr`, `ast.Expr`,
+  `FormalParam`). Any semantic type matching a known alias is serialized compactly using its alias name rather than
+  expanding its full underlying structural definition.
+- **Two-Pass Type Deserialization:** When loading `.qi` files in `load_interface_from_qi_file`, type declarations are
+  processed in two passes:
+  1. *Symbol Registration Pass:* All type symbols are declared with fresh symbol IDs and kinds into the interface scope.
+  2. *Definition Elaboration Pass:* Concrete manifest type strings are parsed and elaborated with all interface types
+     already visible in scope. This enables forward and mutual references among types without undefined type errors.
+
 ### 4.3. Quest Module Metadata (`.qm`)
 A `.qm` file records the build manifest for an implementation module or main routine:
 - `name`: Canonical module name (e.g. `"util/path"`) or `"<main>"`.
@@ -544,3 +556,6 @@ The log records structured timestamps, queue transitions, staleness evaluations,
 8. **Explicit Module Isolation vs. Main Routine Ergonomics:** Modules and interfaces strictly adhere to Cardelli's
    *Typeful Programming* explicit import declarations, while main routines discover implicit standard library helper
    modules automatically post-analysis.
+9. **Test Harness Timeout Enforcement:** The end-to-end test runner (`run_tests.py`) enforces a configurable per-test
+   execution timeout (defaulting to 30.0 seconds via `--timeout`). Any individual test process that hangs or exceeds
+   this deadline is terminated immediately with a failure, preventing runaway builds or deadlocks.

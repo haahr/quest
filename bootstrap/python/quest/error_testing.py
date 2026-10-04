@@ -143,8 +143,9 @@ def execute_phase(
     extra_args: Optional[list[str]] = None,
     env_vars: Optional[dict[str, str]] = None,
     stdin_data: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> tuple[int, str, str]:
-    """Executes the compiler driver up to the specified phase."""
+    """Executes the compiler driver up to the specified phase with an optional timeout."""
     driver_script = root_dir / "bootstrap" / "python" / "quest_driver.py"
     command = [
         python_executable,
@@ -165,15 +166,27 @@ def execute_phase(
     if env_vars:
         env.update(env_vars)
 
-    process = subprocess.run(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        input=stdin_data,
-        env=env,
-    )
-    return process.returncode, process.stdout, process.stderr
+    try:
+        process = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            input=stdin_data,
+            env=env,
+            timeout=timeout,
+        )
+        return process.returncode, process.stdout, process.stderr
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else (
+            exc.stdout.decode("utf-8", errors="replace") if exc.stdout else ""
+        )
+        stderr = exc.stderr if isinstance(exc.stderr, str) else (
+            exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+        )
+        timeout_msg = f"Phase '{phase_name}' timed out after {timeout} seconds"
+        full_err = f"{stderr}\n{timeout_msg}" if stderr else timeout_msg
+        return -1, stdout, full_err
 
 
 def run_error_test(
@@ -188,13 +201,15 @@ def run_error_test(
     env_vars: Optional[dict[str, str]] = None,
     stdin_data: Optional[str] = None,
     phase_configs: Optional[dict] = None,
+    timeout: Optional[float] = None,
 ) -> tuple[bool, str]:
-    """Runs an error test with precursor validation and pattern-based or diagnostic matching."""
+    """Runs an error test with precursor validation, timeout, and pattern-based or diagnostic matching."""
     # Step 1: Precursor Phase Validation
     for pre_phase in precursor_phases:
         rc, _, stderr = execute_phase(
             pre_phase, source_file, python_executable, root_dir,
             extra_args=extra_args, env_vars=env_vars, stdin_data=stdin_data,
+            timeout=timeout,
         )
         if rc != 0 or parse_actual_diagnostics(stderr):
             err_msg = stderr.strip() if stderr.strip() else f"exited with code {rc}"
@@ -207,7 +222,10 @@ def run_error_test(
     rc, stdout, stderr = execute_phase(
         target_phase, source_file, python_executable, root_dir,
         extra_args=extra_args, env_vars=env_vars, stdin_data=stdin_data,
+        timeout=timeout,
     )
+    if rc == -1 and f"timed out after {timeout} seconds" in stderr:
+        return False, f"Target phase '{target_phase}' timed out after {timeout}s"
     if rc == 0:
         return False, f"Expected error in phase '{target_phase}', but command succeeded with return code 0"
 

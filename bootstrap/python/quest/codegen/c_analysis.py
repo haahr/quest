@@ -56,6 +56,7 @@ from quest.types import (
     resolve_record_bound,
     resolve_variant_bound,
     resolve_option_bound,
+    is_type_equal,
 )
 
 
@@ -77,9 +78,9 @@ class CProgramAnalysis:
     sorted_modules: list[TypedModule]
     agg_types: list[tuple[str, QType]]
     variant_types: list[QVariantType]
-    needed_dicts: set[tuple[QRecordType, QRecordType]]
-    tuple_coercions: set[tuple[QTupleType, QTupleType]]
-    variant_coercions: set[tuple[QVariantType, QVariantType]]
+    needed_dicts: list[tuple[QRecordType, QRecordType]]
+    tuple_coercions: list[tuple[QTupleType, QTupleType]]
+    variant_coercions: list[tuple[QVariantType, QVariantType]]
     top_funs: list[tuple[str, TypedFun, Any]]
     top_vars: list[tuple[str, TypedExpr, Any]]
     top_fun_names: set[str]
@@ -303,10 +304,15 @@ def find_specialization_calls(
 ) -> list[tuple[str, tuple[QType, ...]]]:
     """Finds all polymorphic function calls needing call-site specialization."""
     calls: list[tuple[str, tuple[QType, ...]]] = []
+    visited_node_ids: set[int] = set()
 
     def scan(n: Any) -> None:
-        if n is None:
+        if n is None or isinstance(n, QType):
             return
+        n_id = id(n)
+        if n_id in visited_node_ids:
+            return
+        visited_node_ids.add(n_id)
         match n:
             case TypedApp(func=f, args=args):
                 effective_func = f
@@ -344,10 +350,19 @@ def find_specialization_calls(
 
 
 def collect_aggregate_types(
-    node: Any, ctx: RecordNamingContext
-) -> tuple[list[tuple[str, QType]], list[QVariantType]]:
+    node: Any,
+    ctx: RecordNamingContext,
+    visited_names: Optional[set[str]] = None,
+    visited_type_ids: Optional[set[int]] = None,
+    visited_node_ids: Optional[set[int]] = None,
+) -> tuple[list[tuple[str, QType]], list[QVariantType], list[QType]]:
     """Traverses an AST to find all unique aggregate types (tuples, records, options, variants)."""
-    visited_names: set[str] = set()
+    if visited_names is None:
+        visited_names = set()
+    if visited_type_ids is None:
+        visited_type_ids = set()
+    if visited_node_ids is None:
+        visited_node_ids = set()
     result: list[tuple[str, QType]] = []
     variant_types: list[QVariantType] = []
     all_types: list[QType] = []
@@ -355,6 +370,10 @@ def collect_aggregate_types(
     def visit_type(t: Optional[QType]) -> None:
         if t is None:
             return
+        t_id = id(t)
+        if t_id in visited_type_ids:
+            return
+        visited_type_ids.add(t_id)
         t = normalize_type(t)
         all_types.append(t)
         if isinstance(t, QTupleType):
@@ -381,7 +400,7 @@ def collect_aggregate_types(
                 visited_names.add(name)
                 result.append((name, opt_t))
         elif isinstance(t, QVariantType):
-            if t not in variant_types:
+            if not any(v is t or is_type_equal(v, t) for v in variant_types):
                 variant_types.append(t)
             for v in t.variants:
                 if getattr(v, "type_val", None):
@@ -407,6 +426,10 @@ def collect_aggregate_types(
     def visit_node(n: Any) -> None:
         if n is None:
             return
+        n_id = id(n)
+        if n_id in visited_node_ids:
+            return
+        visited_node_ids.add(n_id)
         if isinstance(n, QType):
             visit_type(n)
         if isinstance(n, TypedLetType) and n.symbol.definition is not None:
@@ -684,80 +707,103 @@ def analyze_program_for_c(
 
     # 3. Aggregate and variant types collection across prog and all specialized functions
     all_program_types: list[QType] = []
-    agg_types, variant_types, p_types = collect_aggregate_types(prog, record_ctx)
+    visited_names: set[str] = set()
+    visited_type_ids: set[int] = set()
+    visited_node_ids: set[int] = set()
+
+    agg_types, variant_types, p_types = collect_aggregate_types(
+        prog, record_ctx, visited_names, visited_type_ids, visited_node_ids
+    )
     all_program_types.extend(p_types)
 
-    agg_names: set[str] = {name for name, _ in agg_types}
     for _, sfun, _ in top_funs:
-        s_agg, s_var, s_types = collect_aggregate_types(sfun, record_ctx)
+        s_agg, s_var, s_types = collect_aggregate_types(
+            sfun, record_ctx, visited_names, visited_type_ids, visited_node_ids
+        )
         all_program_types.extend(s_types)
-        for item in s_agg:
-            if item[0] not in agg_names:
-                agg_names.add(item[0])
-                agg_types.append(item)
+        agg_types.extend(s_agg)
         for v in s_var:
-            if v not in variant_types:
+            if not any(vt is v or is_type_equal(vt, v) for vt in variant_types):
                 variant_types.append(v)
 
     for mod in sorted_modules:
         for b in mod.bindings:
-            b_agg, b_var, b_types = collect_aggregate_types(b, record_ctx)
+            b_agg, b_var, b_types = collect_aggregate_types(
+                b, record_ctx, visited_names, visited_type_ids, visited_node_ids
+            )
             all_program_types.extend(b_types)
-            for item in b_agg:
-                if item[0] not in agg_names:
-                    agg_names.add(item[0])
-                    agg_types.append(item)
+            agg_types.extend(b_agg)
             for v in b_var:
-                if v not in variant_types:
+                if not any(vt is v or is_type_equal(vt, v) for vt in variant_types):
                     variant_types.append(v)
         mod_rec_t = BuiltinModuleRegistry._build_record_type_from_scope(mod.scope)
-        rec_agg, rec_var, rec_types = collect_aggregate_types(mod_rec_t, record_ctx)
+        rec_agg, rec_var, rec_types = collect_aggregate_types(
+            mod_rec_t, record_ctx, visited_names, visited_type_ids, visited_node_ids
+        )
         all_program_types.extend(rec_types)
-        for item in rec_agg:
-            if item[0] not in agg_names:
-                agg_names.add(item[0])
-                agg_types.append(item)
+        agg_types.extend(rec_agg)
         for v in rec_var:
-            if v not in variant_types:
+            if not any(vt is v or is_type_equal(vt, v) for vt in variant_types):
                 variant_types.append(v)
 
     all_records = [t for _, t in agg_types if isinstance(t, QRecordType)]
     all_tuples = [t for _, t in agg_types if isinstance(t, QTupleType)]
 
     # 4. Pre-populate all subtyping coercions
-    needed_dicts: set[tuple[QRecordType, QRecordType]] = set()
-    tuple_coercions: set[tuple[QTupleType, QTupleType]] = set()
-    variant_coercions: set[tuple[QVariantType, QVariantType]] = set()
+    needed_dicts_map: dict[tuple[str, str], tuple[QRecordType, QRecordType]] = {}
+    tuple_coercions_map: dict[tuple[str, str], tuple[QTupleType, QTupleType]] = {}
+    variant_coercions_map: dict[tuple[str, str], tuple[QVariantType, QVariantType]] = {}
 
     for t in all_records:
-        needed_dicts.add((t, t))
+        k = (record_struct_name(t, record_ctx), record_struct_name(t, record_ctx))
+        needed_dicts_map[k] = (t, t)
         for s in all_records:
-            if s != t and is_record_subtype(s, t):
-                needed_dicts.add((t, s))
+            if s is not t and is_record_subtype(s, t):
+                k = (record_struct_name(t, record_ctx), record_struct_name(s, record_ctx))
+                needed_dicts_map[k] = (t, s)
 
     for t in all_tuples:
         for s in all_tuples:
-            if s != t and is_tuple_subtype(s, t):
-                tuple_coercions.add((t, s))
+            if s is not t and is_tuple_subtype(s, t):
+                k = (tuple_struct_name(t), tuple_struct_name(s))
+                tuple_coercions_map[k] = (t, s)
 
     for t in variant_types:
         for s in variant_types:
-            if s != t and is_variant_subtype(s, t):
-                variant_coercions.add((t, s))
+            if s is not t and is_variant_subtype(s, t):
+                k = (type_to_c_tag(t), type_to_c_tag(s))
+                variant_coercions_map[k] = (t, s)
+
+    needed_dicts = list(needed_dicts_map.values())
+    tuple_coercions = list(tuple_coercions_map.values())
+    variant_coercions = list(variant_coercions_map.values())
 
     top_names = top_fun_names | top_var_names
     val_referenced_top_funs = find_val_referenced_top_funs(prog, top_fun_names)
 
     # 5. Closures
     top_fun_objs = {id(f) for _, f, _ in top_funs}
+    for mod in sorted_modules:
+        for b in mod.bindings:
+            if isinstance(b, TypedLetValue) and isinstance(b.value, TypedFun):
+                top_fun_objs.add(id(b.value))
     agnostic_lambdas = analyze_closures(prog, top_fun_objs, top_names)
+    for mod in sorted_modules:
+        if not getattr(mod, "is_precompiled", False):
+            agnostic_lambdas.extend(analyze_closures(mod, top_fun_objs, top_names))
 
     lifted_lambdas: list[CLambdaInfo] = []
     for l in agnostic_lambdas:
-        c_fn_name = f"qv_{l.id}"
+        if l.module_name:
+            clean_mod = mangle_module_name(l.module_name)
+            c_fn_name = f"qv_{clean_mod}_{l.id}"
+            closure_var = f"qv_{clean_mod}_{l.id}_closure" if not l.free_vars else None
+            env_struct = f"struct QEnv_{clean_mod}_{l.id}" if l.free_vars else None
+        else:
+            c_fn_name = f"qv_{l.id}"
+            closure_var = f"qv_{l.id}_closure" if not l.free_vars else None
+            env_struct = f"struct QEnv_{l.id}" if l.free_vars else None
         fvars_tuples = [(v.name, v.type_val) for v in l.free_vars]
-        env_struct = f"struct QEnv_{l.id}" if fvars_tuples else None
-        closure_var = f"qv_{l.id}_closure" if not fvars_tuples else None
         lifted_lambdas.append(
             CLambdaInfo(
                 id=l.id,

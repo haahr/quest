@@ -49,6 +49,16 @@ QTupleComponent (Tuple Components)
   └── QTupleTypeBinding       Manifest type binding: name, type_val, bound
 ```
 
+### 2.1. Module Record Provenance and Type Compaction
+During typechecking and AST serialization, module records track their originating module name or interface identity
+via the `provenance: Optional[str]` field on `QRecordType`. When formatting types for diagnostics or typed AST dumps:
+- Record types with `provenance` format compactly as `Module '<name>'` rather than listing every exported value,
+  function, and type signature.
+- Recursive types (`QRecType`, `QRecGroupType`) bound their unfolding depth and prioritize registered nominal type
+  aliases present in `Environment` (e.g. `Ast.ExprForm`, `Location.Span`, `Writer.T`) to prevent exponential size
+  explosion in typed AST serializations.
+- `format_type_compact(t, env=None)` and `QType.format(env=None)` provide context-sensitive alias compaction.
+
 ---
 
 ## 3. Subtyping and Kind Theory
@@ -66,10 +76,15 @@ Subkinding allows type operators and power kinds to be used wherever broader kin
 In Quest, recursive types are equi-recursive: $\text{Rec}(X::K) T \equiv T[\text{Rec}(X::K) T / X]$.
 No explicit user `fold` or `unfold` operations are required.
 
-To prevent infinite loops when checking subtyping between recursive types ($S \le T$), the subtyping engine:
-1. Evaluates types **lazily**.
-2. Records visited symbol pairs in an **active assumption trail** $\Sigma \vdash (S, T)$.
-3. If the pair $(S, T)$ is encountered again under the same polarity, it is treated as coinductively valid.
+To guarantee that subtyping checks are both terminating and fast ($\le O(N)$ for repeated references) when checking
+recursive and structural types ($S \le T$):
+1. **Identity & Reflexivity Fast Path:** If $S$ and $T$ are identical object references ($S \text{ is } T$),
+   `is_subtype` immediately returns `True`. Similar identity fast paths are applied elementwise in `QTypeApp`,
+   `QVarType`, `QArrayType`, `QOutType`, and `QExceptionType` to bypass exponential pairwise re-evaluations across
+   invariant types.
+2. **Lazy Evaluation:** Evaluates types lazily only as needed to expose outermost constructors.
+3. **Active Assumption Trail ($\Sigma \vdash (S, T)$):** Visited symbol and object ID pairs are recorded in a
+   coinductive trail. If $(S, T)$ is encountered again under recursive unfolding, it is assumed valid by coinduction.
 4. Correctly handles polarity flips during function parameter contravariance.
 
 ### 3.3. Recursive Contractiveness ($C \succ X$)

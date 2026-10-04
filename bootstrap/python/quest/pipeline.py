@@ -109,19 +109,23 @@ class CompilerContext:
                 current_dir = p.parent
                 environment.current_dir = current_dir
                 r_env.current_dir = current_dir
-            except Exception:
-                pass
+            except (OSError, RuntimeError):
+                cwd = Path.cwd()
+                environment.current_dir = cwd
+                r_env.current_dir = cwd
         elif environment.current_dir is None:
             cwd = Path.cwd()
             environment.current_dir = cwd
             r_env.current_dir = cwd
 
         source_map = SourceMap(source_text, file_name)
+        sink = DiagnosticSink()
+        environment.sink = sink
         return cls(
             source_text=source_text,
             file_name=file_name,
             source_map=source_map,
-            sink=DiagnosticSink(),
+            sink=sink,
             env=environment,
             options=opts,
             runtime_env=r_env,
@@ -210,7 +214,7 @@ class ParsePhase(Phase):
             ctx.sink.emit(error.to_diagnostic())
             return None
         except (ValueError, TypeError) as error:
-            ctx.sink.emit(Diagnostic.make_error(str(error), 0))
+            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
@@ -246,7 +250,10 @@ class TypecheckPhase(Phase):
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         if hasattr(output_data, "dump"):
-            return output_data.dump()
+            try:
+                return output_data.dump(env=ctx.env)
+            except TypeError:
+                return output_data.dump()
         return str(output_data)
 
 
@@ -345,7 +352,7 @@ class CodegenCPhase(Phase):
                 case _:
                     return None
         except Exception as error:
-            ctx.sink.emit(Diagnostic.make_error(str(error), 0))
+            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
@@ -392,7 +399,7 @@ class RunCCompiledPhase(Phase):
                 ctx.sink.emit(Diagnostic.make_error(msg, 0))
             return proc.stdout
         except Exception as error:
-            ctx.sink.emit(Diagnostic.make_error(str(error), 0))
+            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None
         finally:
             if bin_path.exists():
@@ -508,6 +515,7 @@ class PhasePipeline:
         """Executes the pipeline on an interactive REPL phrase, preserving context."""
         context = ctx or CompilerContext.create(phrase_text, "<repl>", options=options)
         context.sink = DiagnosticSink()
+        context.env.sink = context.sink
         # Update source_text and source_map for this specific phrase
         context.source_text = phrase_text
         context.source_map = SourceMap(phrase_text, context.file_name)

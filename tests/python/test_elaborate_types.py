@@ -151,7 +151,13 @@ class TestTypeElaboration(unittest.TestCase):
         t_app = elaborate_test_type("Pair(Int String)", self.env)
         self.assertIsInstance(t_app, QTypeApp)
         evaluated = t_app.evaluate_lazily(self.env)
-        self.assertEqual(evaluated, QTupleType((INT_TYPE, STRING_TYPE)))
+        self.assertEqual(
+            evaluated,
+            QTupleType((
+                QTupleField(name="a", type_val=INT_TYPE),
+                QTupleField(name="b", type_val=STRING_TYPE),
+            )),
+        )
 
     def test_elaborate_recursive_type(self):
         # Rec(L::TYPE) Option nil cons with val: Record head: Int tail: L end end end

@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 import quest.ast as ast
 from quest.codegen.c_types import qtype_to_c_type
-from quest.diagnostics import QuestTypeError
+from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol
@@ -55,9 +55,16 @@ from quest.types import (
     QTupleType,
     QType,
     QTypeApp,
+    QTypeFun,
     QTypeVar,
     QVarType,
     QOutType,
+    QRecType,
+    QRecGroupType,
+    QKind,
+    QTypeKind,
+    QPowerKind,
+    QAllKind,
     QVariantField,
     QVariantType,
 )
@@ -83,22 +90,33 @@ C_KEYWORDS = {
 
 
 
-def format_type_for_qi(t: QType) -> str:
-    """Formats a semantic QType into canonical Quest type syntax for .qi metadata."""
+def format_type_for_qi(
+    t: QType | None,
+    aliases: Optional[dict[QType, str]] = None,
+    visited: Optional[set[int]] = None,
+) -> str:
+    """Formats a semantic QType into canonical Quest type syntax for .qi metadata, using aliases when available."""
+    if t is None:
+        return ""
     t = t.prune() if hasattr(t, "prune") else t
-    if t == INT_TYPE:
+    if aliases and t in aliases:
+        return aliases[t]
+    if visited is None:
+        visited = set()
+
+    if t is INT_TYPE:
         return "Int"
-    if t == REAL_TYPE:
+    if t is REAL_TYPE:
         return "Real"
-    if t == BOOL_TYPE:
+    if t is BOOL_TYPE:
         return "Bool"
-    if t == CHAR_TYPE:
+    if t is CHAR_TYPE:
         return "Char"
-    if t == STRING_TYPE:
+    if t is STRING_TYPE:
         return "String"
-    if t == OK_TYPE:
+    if t is OK_TYPE:
         return "Ok"
-    if t == DYNAMIC_TYPE:
+    if t is DYNAMIC_TYPE:
         return "Dynamic.T"
 
     if isinstance(t, QTypeVar):
@@ -109,11 +127,11 @@ def format_type_for_qi(t: QType) -> str:
         return f"{t.module_name}.{t.type_name}"
 
     if isinstance(t, QArrayType):
-        return f"Array({format_type_for_qi(t.element_type)})"
+        return f"Array({format_type_for_qi(t.element_type, aliases, visited)})"
 
     if isinstance(t, QRecordType):
         fields = " ".join(
-            f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val)}"
+            f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val, aliases, visited)}"
             for f in t.fields
         )
         return f"Record {fields} end" if fields else "Record end"
@@ -124,19 +142,19 @@ def format_type_for_qi(t: QType) -> str:
             if isinstance(f, QTupleField):
                 var_p = "var " if f.is_var else ""
                 if f.name:
-                    parts.append(f"{var_p}{f.name}: {format_type_for_qi(f.type_val)}")
+                    parts.append(f"{var_p}{f.name}: {format_type_for_qi(f.type_val, aliases, visited)}")
                 else:
-                    parts.append(f"{var_p}:{format_type_for_qi(f.type_val)}")
+                    parts.append(f"{var_p}:{format_type_for_qi(f.type_val, aliases, visited)}")
             elif isinstance(f, QTupleTypeFormal):
                 parts.append(f"{f.name}::{format_kind_for_qi(f.bound)}")
             elif isinstance(f, QTupleTypeBinding):
                 b_str = f"::{format_kind_for_qi(f.bound)} " if f.bound else ""
-                parts.append(f"Let {f.name}{b_str}= {format_type_for_qi(f.type_val)}")
+                parts.append(f"Let {f.name}{b_str}= {format_type_for_qi(f.type_val, aliases, visited)}")
         return f"Tuple {' '.join(parts)} end" if parts else "Tuple end"
 
     if isinstance(t, QVariantType):
         variants = " ".join(
-            f"{v.name}: {format_type_for_qi(v.type_val)}" if v.type_val != OK_TYPE else v.name
+            f"{v.name}: {format_type_for_qi(v.type_val, aliases, visited)}" if v.type_val is not OK_TYPE else v.name
             for v in t.variants
         )
         return f"Variant {variants} end" if variants else "Variant end"
@@ -147,12 +165,13 @@ def format_type_for_qi(t: QType) -> str:
             if o.payload_type is not None:
                 if isinstance(o.payload_type, QTupleType):
                     parts = [
-                        f"{f.name}: {format_type_for_qi(f.type_val)}" if f.name else format_type_for_qi(f.type_val)
+                        f"{f.name}: {format_type_for_qi(f.type_val, aliases, visited)}"
+                        if f.name else format_type_for_qi(f.type_val, aliases, visited)
                         for f in o.payload_type.fields
                     ]
                     opts.append(f"{o.name} with {' '.join(parts)} end")
                 else:
-                    opts.append(f"{o.name} with {format_type_for_qi(o.payload_type)} end")
+                    opts.append(f"{o.name} with {format_type_for_qi(o.payload_type, aliases, visited)} end")
             else:
                 opts.append(o.name)
         opts_str = " ".join(opts)
@@ -160,41 +179,73 @@ def format_type_for_qi(t: QType) -> str:
 
     if isinstance(t, QFunType):
         params_str = " ".join(
-            f"{p.name}: {format_type_for_qi(p.type_val)}" if p.name else format_type_for_qi(p.type_val)
+            f"{p.name}: {format_type_for_qi(p.type_val, aliases, visited)}"
+            if p.name else format_type_for_qi(p.type_val, aliases, visited)
             for p in t.params
         )
-        return f"All({params_str}) {format_type_for_qi(t.result_type)}"
+        return f"All({params_str}) {format_type_for_qi(t.result_type, aliases, visited)}"
 
     if isinstance(t, QAllType):
         quants_str = " ".join(f"{q.name}::{q.bound}" for q in t.quantifiers)
         if isinstance(t.body, QFunType):
             params_str = " ".join(
-                f"{p.name}: {format_type_for_qi(p.type_val)}" if p.name else format_type_for_qi(p.type_val)
+                f"{p.name}: {format_type_for_qi(p.type_val, aliases, visited)}"
+                if p.name else format_type_for_qi(p.type_val, aliases, visited)
                 for p in t.body.params
             )
-            return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type)}"
-        return f"All({quants_str}) {format_type_for_qi(t.body)}"
+            return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type, aliases, visited)}"
+        return f"All({quants_str}) {format_type_for_qi(t.body, aliases, visited)}"
 
     if isinstance(t, QTypeApp):
-        args_str = " ".join(format_type_for_qi(a) for a in t.arguments)
-        return f"{format_type_for_qi(t.constructor)}({args_str})"
+        args_str = " ".join(format_type_for_qi(a, aliases, visited) for a in t.arguments)
+        ctor_str = format_type_for_qi(t.constructor, aliases, visited)
+        if (
+            isinstance(t.constructor, (QTypeFun, QAllType, QRecType, QRecGroupType))
+            and t.constructor not in (aliases or {})
+        ):
+            ctor_str = f"{{{ctor_str}}}"
+        return f"{ctor_str}({args_str})"
 
     if isinstance(t, QArrayType):
-        return f"Array({format_type_for_qi(t.element_type)})"
+        return f"Array({format_type_for_qi(t.element_type, aliases, visited)})"
 
     if isinstance(t, QVarType):
-        return f"Var({format_type_for_qi(t.value_type)})"
+        return f"Var({format_type_for_qi(t.value_type, aliases, visited)})"
 
     if isinstance(t, QOutType):
-        return f"Out({format_type_for_qi(t.value_type)})"
+        return f"Out({format_type_for_qi(t.value_type, aliases, visited)})"
+
+    if isinstance(t, (QRecType, QRecGroupType)):
+        t_id = id(t)
+        if t_id in visited:
+            return getattr(t, "var_name", getattr(t, "current_name", "RecType"))
+        visited.add(t_id)
+
+    if isinstance(t, QRecType):
+        return (
+            f"Rec({t.var_name} :: {format_kind_for_qi(t.bound)}) "
+            f"{format_type_for_qi(t.body, aliases, visited)}"
+        )
+
+    if isinstance(t, QRecGroupType):
+        # Format the active recursive type definition
+        _, _, bound, body = t.bindings[t.active_index]
+        return (
+            f"Rec({t.current_name} :: {format_kind_for_qi(bound)}) "
+            f"{format_type_for_qi(body, aliases, visited)}"
+        )
 
     return str(t)
 
 
-def format_kind_for_qi(k: ast.Kind | None) -> str:
-    """Formats an AST Kind into a valid Quest syntax string for .qi metadata."""
-    if k is None or isinstance(k, ast.KindType):
+def format_kind_for_qi(k: ast.Kind | QKind | None) -> str:
+    """Formats an AST or semantic Kind into a valid Quest syntax string for .qi metadata."""
+    if k is None or isinstance(k, (ast.KindType, QTypeKind)):
         return "TYPE"
+    if isinstance(k, QPowerKind):
+        return f"POWER({format_type_for_qi(k.bound)})"
+    if isinstance(k, QAllKind):
+        return f"ALL({k.param_name}::{format_kind_for_qi(k.param_kind)}) {format_kind_for_qi(k.result_kind)}"
     match k:
         case ast.KindAll(param_name=pname, param_kind=pkind, body_kind=bkind):
             return f"ALL({pname}::{format_kind_for_qi(pkind)}) {format_kind_for_qi(bkind)}"
@@ -224,7 +275,11 @@ def _parse_and_elaborate_type_in_env(type_str: str, env: Environment) -> QType:
     return elaborate_type(ast_t, env)
 
 
-def compile_interface_to_qi(decl: ast.InterfaceDecl, iface_scope: Scope) -> str:
+def compile_interface_to_qi(
+    decl: ast.InterfaceDecl,
+    iface_scope: Scope,
+    env: Optional[Environment] = None,
+) -> str:
     """Serializes interface declarations to portable JSON/JSOG .qi format using shadow Quest records."""
     imports_elems: list[QString] = []
     for imp in decl.imports:
@@ -243,6 +298,33 @@ def compile_interface_to_qi(decl: ast.InterfaceDecl, iface_scope: Scope) -> str:
     type_records: list[QRecord] = []
     value_records: list[QRecord] = []
 
+    # Build aliases dictionary mapping concrete QType to alias names declared or imported in interface
+    aliases: dict[QType, str] = {}
+    # 1. Imported types: e.g. ast.TypeExpr, ast.Expr, ast.Program
+    if env is not None:
+        for imp in decl.imports:
+            if imp.names:
+                for iname in imp.names:
+                    mod = env.lookup_module(iname) if hasattr(env, "lookup_module") else None
+                    if mod and hasattr(mod, "types"):
+                        for t_name, t_sym in mod.types.items():
+                            if t_sym and t_sym.definition is not None:
+                                if t_sym.definition not in aliases:
+                                    aliases[t_sym.definition] = f"{iname}.{t_name}"
+    # Also check parent scope (imported interface types)
+    if iface_scope.parent is not None:
+        for t_name, t_sym in iface_scope.parent.types.items():
+            if t_sym and t_sym.definition is not None and t_sym.definition not in aliases:
+                aliases[t_sym.definition] = t_name
+
+    # 2. Local type signatures in interface
+    for sig in decl.signatures:
+        if isinstance(sig, (ast.LetTypeBinding, ast.DefTypeBinding)):
+            type_sym = iface_scope.lookup_type_local(sig.name)
+            if type_sym and type_sym.definition is not None:
+                if type_sym.definition not in aliases:
+                    aliases[type_sym.definition] = sig.name
+
     # Collect types
     for sig in decl.signatures:
         if isinstance(sig, ast.TypeFormal):
@@ -257,15 +339,21 @@ def compile_interface_to_qi(decl: ast.InterfaceDecl, iface_scope: Scope) -> str:
                     }
                 )
             )
-        elif isinstance(sig, ast.LetTypeBinding):
+        elif isinstance(sig, (ast.LetTypeBinding, ast.DefTypeBinding)):
             type_sym = iface_scope.lookup_type_local(sig.name)
             concrete_t = type_sym.definition if type_sym and type_sym.definition else None
-            m_type_str = format_type_for_qi(concrete_t) if concrete_t else str(sig.type_val)
+            manifest_aliases = {k: v for k, v in aliases.items() if v != sig.name}
+            m_type_str = (
+                format_type_for_qi(concrete_t, aliases=manifest_aliases)
+                if concrete_t
+                else str(sig.type_val)
+            )
+            kind_str = format_kind_for_qi(type_sym.kind) if type_sym and type_sym.kind else "TYPE"
             type_records.append(
                 QRecord(
                     {
                         "name": QString(sig.name),
-                        "kind": QString("TYPE"),
+                        "kind": QString(kind_str),
                         "isManifest": TRUE_VALUE,
                         "manifestType": QString(m_type_str),
                     }
@@ -274,7 +362,7 @@ def compile_interface_to_qi(decl: ast.InterfaceDecl, iface_scope: Scope) -> str:
         elif isinstance(sig, ast.FieldSig) and sig.name:
             val_sym = iface_scope.lookup_value_local(sig.name)
             val_t = val_sym.type_val if val_sym else None
-            sig_str = format_type_for_qi(val_t) if val_t else ""
+            sig_str = format_type_for_qi(val_t, aliases=aliases) if val_t else ""
             is_poly = isinstance(val_t, QAllType)
             value_records.append(
                 QRecord(
@@ -472,7 +560,7 @@ def compile_interface_file(
     env.current_dir = file_path.parent
     typed_iface = elaborate_interface(decl, env)
 
-    qi_content = compile_interface_to_qi(decl, typed_iface.scope)
+    qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env)
     h_content = compile_interface_to_header(decl, typed_iface.scope)
 
     if build_dir is not None and output_dir is None:
@@ -574,7 +662,9 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                             try:
                                 typed_mod = load_module(mod_path, imp_name, env)
                                 mod_scope = typed_mod.scope
-                            except Exception:
+                            except (QuestCompilerError, OSError) as err:
+                                if getattr(env, "sink", None) is not None:
+                                    env.sink.emit(Diagnostic.make_from_exception(err, 0))
                                 mod_scope = None
 
                         registered_scope = mod_scope if mod_scope is not None else imp_scope
@@ -593,6 +683,8 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
     env.current_scope = iface_scope
     try:
         if "types" in rec.fields and isinstance(rec.fields["types"], QArray):
+            type_records_list: list[tuple[str, bool, str, str, TypeSymbol]] = []
+            # Pass 1: Declare all type symbols with fresh IDs and bound kinds so they are visible in iface_scope
             for t_item in rec.fields["types"].elements:
                 if isinstance(t_item, QRecord):
                     t_name = str(t_item.fields["name"].value)
@@ -606,23 +698,23 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
 
                     bound_kind: QKind = TYPE_KIND
                     if kind_str and kind_str != "TYPE":
-                        try:
-                            bound_kind = _parse_and_elaborate_kind_in_env(kind_str, env)
-                        except Exception:
-                            bound_kind = TYPE_KIND
-
-                    concrete_def = None
-                    if is_manifest and manifest_str:
-                        concrete_def = _parse_and_elaborate_type_in_env(manifest_str, env)
+                        bound_kind = _parse_and_elaborate_kind_in_env(kind_str, env)
 
                     sym_id = env.fresh_symbol_id()
                     type_sym = TypeSymbol(
                         name=t_name,
                         symbol_id=sym_id,
                         kind=bound_kind,
-                        definition=concrete_def,
+                        definition=None,
                     )
                     iface_scope.declare_type(type_sym)
+                    type_records_list.append((t_name, is_manifest, kind_str, manifest_str, type_sym))
+
+            # Pass 2: Elaborate concrete definitions with all interface types in scope
+            for t_name, is_manifest, kind_str, manifest_str, type_sym in type_records_list:
+                if is_manifest and manifest_str:
+                    concrete_def = _parse_and_elaborate_type_in_env(manifest_str, env)
+                    type_sym.definition = concrete_def
 
         # 3. Declare values
         if "values" in rec.fields and isinstance(rec.fields["values"], QArray):
