@@ -106,15 +106,17 @@ The compiler driver differentiates between orchestrating a full build of an appl
   All intermediate artifacts (`.qi`, `q_*.h`, `.qm`, `.c`, `.o`, and `build.log`) reside strictly within a dedicated
   build directory (default `.build/` in the project root, or `--build-dir <dir>`). Source trees (`lib/`, `tests/`) are
   never modified by the build process.
+- **Pipeline C Phases (`--stop-after codegen_c` / `run_c_compiled`, `--emit-c`, `-o` with objects):**
+  These always have a build directory (`--build-dir <dir>`, default `.build/` in the current directory), and every
+  interface and module they depend on is built there by the same build engine as a full application build (§7.3).
+  Nested interface and module compilations inherit the same build directory. Only the main routine itself
+  is handled differently: its C code is kept in memory (or written where `-o` / `--emit-c` say) rather than as
+  `.build/<main>.{c,o,qm}`.
 - **Standalone Unit Compilation (`questc -c unit.int.quest` or `questc -c unit.mod.quest`):**
   - If `--build-dir <dir>` is specified, outputs are routed into `<dir>`.
   - If `-o <path>` is specified, outputs are placed in the directory containing `<path>`.
   - If neither is specified, outputs default to the source file directory (`file_path.parent`). This preserves
     isolated single-file tool workflows and localized unit tests without creating unintended `.build/` trees.
-- **Driver C Phases (`--stop-after codegen_c` / `run_c_compiled`, `--emit-c`, `-o` with objects):**
-  Always use a build directory (default `.build/` in the current directory). Imported modules whose objects are
-  missing or stale, and the headers of imported interfaces (including builtin interfaces such as `Writer`), are
-  compiled into it on demand. Nested interface and module compilations inherit the same build directory.
 
 Compiled artifacts found outside the build directory (for example a `.qi` or `.o` next to a source file) are used only
 when the corresponding source file does not exist (Rule 3 below); otherwise the source is authoritative.
@@ -280,6 +282,12 @@ If an interface is determined to be **out of date**:
 3. If interface compilation fails, compilation aborts with diagnostic messages referencing `I.int.quest`.
 4. Once regenerated, the compiler resumes compiling the dependent unit, reading signatures from the fresh `I.qi`.
 
+These rules are implemented once, by `ensure_interface_artifacts` in `interface_compiler.py`. It is called by
+`load_interface` whenever a unit is typechecked for C compilation, and by the interface compiler for each interface
+an interface imports: a generated header `#include`s its imported interfaces' headers, so those headers must exist in
+the build directory too, even for interfaces the typechecker resolves without loading them (such as builtin
+interfaces like `Writer`).
+
 ---
 
 ## 6. Module Import Handling and Import Discipline
@@ -315,6 +323,8 @@ on runtime helper operations provided by standard library modules (e.g. `string`
 - After compiling a main routine's AST, the compiler driver inspects the analysis phase (`analysis.sorted_modules`)
   to discover any modules referenced implicitly during code generation.
 - These implicitly referenced modules are automatically recorded into `main.qm` under `imported_modules`.
+  (`unit_module_refs` in `build/engine.py` computes this list, explicit imports plus implicit ones, for both full
+  builds and the pipeline's C phases.)
 - The build engine then queues and links them transitively into the final executable just like explicitly imported
   modules.
 
@@ -451,6 +461,52 @@ A critical flaw in naive separate compilation systems is the *Fragile Interface 
 of all interfaces recorded in `imported_interfaces`. If any interface source (`I.int.quest`) is newer than `M.qm`,
 unit `M` is deemed **stale** and recompiled against the updated interface.
 
+### 7.3. One Build Path for Full Builds and Pipeline C Phases
+The driver produces native code from a main routine in two ways: the **full build** (`questc main.quest -o app`,
+`BuildEngine.build_main`) and the **pipeline C phases** (`--stop-after codegen_c` / `run_c_compiled`, which the test
+runner uses, and `quest compile` with `--stop-after` / `--emit-c`). Both delegate everything about dependencies to the
+build engine, so there is exactly one implementation of staleness checks, artifact placement, and object collection:
+
+```
+  Full build (build_main)                          Pipeline C phases
+  ───────────────────────                          ─────────────────
+  main stale? ──yes──> compile_main_unit           Tokenize -> Parse -> Typecheck -> CodegenC
+       │                (typecheck, emit C,                         │
+       │                 write .qm/.c/.o)              unit_module_refs(imports, analysis)
+       │no                      │                                   │
+  read main.qm                  │                                   │
+       │                        │                                   │
+       └──────────┬─────────────┘                                   │
+                  ▼                                                 ▼
+     BuildEngine.build_modules(imported_modules)  <────── link_dependencies(ctx)
+       (queue of §7.1: staleness, compile into build dir,     (run_c_compiled, -o)
+        conformance §6.3, cycle check §8.2)
+                  │
+                  ▼
+     objects to link ──> link_objects (full build) / compile_c_source + run (pipeline)
+```
+
+- **Typechecking never builds modules.** While a unit is typechecked for C compilation, imported modules are typed
+  against their interfaces only (§6), and only interface artifacts are regenerated (§5.1). The typechecker, the module
+  loader, and the C analysis do not compile modules, search for objects, or record objects to link.
+- **The module queue is `BuildEngine.build_modules`.** Given the modules a unit imports (with the interfaces it
+  expects of them), it runs the §7.1 queue over their transitive closure and returns the objects to link: the
+  driver's extra objects first, then one object per module. `build_main` runs it after bringing the main routine
+  up to date; the pipeline runs it through `link_dependencies` (in `pipeline.py`) when a phase needs to link
+  (`run_c_compiled`, or `-o` without a full build).
+- **Which modules a unit needs** comes from `unit_module_refs` (§6.2), shared by `compile_main_unit` and
+  `CodegenCPhase`.
+- **Modules record only explicit imports.** A module's `.qm` lists exactly its import clauses (§6.1), which is what
+  the queue follows.
+
+| Responsibility | Implementation |
+| :--- | :--- |
+| Interface staleness & regeneration (§5) | `interface_compiler.ensure_interface_artifacts` |
+| Module / main staleness (§7.1) | `BuildEngine._unit_staleness` |
+| Module queue, conformance, cycles (§7.1, §6.3, §8.2) | `BuildEngine.build_modules` |
+| Modules a unit links against (§6.2) | `build.engine.unit_module_refs` |
+| Artifact paths under the build directory (§3.2) | `BuildEngine.build_modules`, `ensure_interface_artifacts` |
+
 ---
 
 ## 8. Self-Guarding Idempotent Module Initialization & Linking
@@ -563,6 +619,9 @@ The log records structured timestamps, queue transitions, staleness evaluations,
 8. **Explicit Module Isolation vs. Main Routine Ergonomics:** Modules and interfaces strictly adhere to Cardelli's
    *Typeful Programming* explicit import declarations, while main routines discover implicit standard library helper
    modules automatically post-analysis.
-9. **Test Harness Timeout Enforcement:** The end-to-end test runner (`run_tests.py`) enforces a configurable per-test
+9. **One Build Path:** Full builds and the pipeline's C phases share one implementation of staleness checks,
+   artifact placement, and object collection (§7.3), so a C-phase run from an empty build directory builds
+   everything it links, rather than depending on objects an earlier build left behind.
+10. **Test Harness Timeout Enforcement:** The end-to-end test runner (`run_tests.py`) enforces a configurable per-test
    execution timeout (defaulting to 30.0 seconds via `--timeout`). Any individual test process that hangs or exceeds
    this deadline is terminated immediately with a failure, preventing runaway builds or deadlocks.

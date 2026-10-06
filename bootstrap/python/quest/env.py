@@ -219,7 +219,6 @@ class Environment:
         self.current_dir: Optional[Path] = None
         self.loaded_modules_ast: dict[str, Any] = {}
         self.precompiled_modules: set[str] = set()
-        self.linked_objects: list[Path] = []
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []
         self.subtype_cache: dict[tuple[int, int], bool] = {}
@@ -305,7 +304,6 @@ class Environment:
             "modules": dict(self._modules),
             "loaded_modules_ast": dict(self.loaded_modules_ast),
             "precompiled_modules": set(self.precompiled_modules),
-            "linked_objects": list(self.linked_objects),
             "scope_declarations": list(self.current_scope._declarations),
             "scope_values": dict(self.current_scope._values),
             "scope_types": dict(self.current_scope._types),
@@ -323,8 +321,6 @@ class Environment:
             self.loaded_modules_ast = dict(snap["loaded_modules_ast"])
         if "precompiled_modules" in snap:
             self.precompiled_modules = set(snap["precompiled_modules"])
-        if "linked_objects" in snap:
-            self.linked_objects = list(snap["linked_objects"])
         self.current_scope._declarations = list(snap["scope_declarations"])
         self.current_scope._values = dict(snap["scope_values"])
         self.current_scope._types = dict(snap["scope_types"])

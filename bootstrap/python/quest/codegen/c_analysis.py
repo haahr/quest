@@ -554,11 +554,7 @@ def analyze_program_for_c(
 
 
     linked_stems = {
-        obj.stem
-        for obj in (
-            getattr(env, "linked_objects", [])
-            + getattr(getattr(env, "options", None), "extra_objects", [])
-        )
+        obj.stem for obj in getattr(getattr(env, "options", None), "extra_objects", [])
     } if env is not None else set()
 
     current_unit_modules = {phrase.name for phrase in prog.phrases if isinstance(phrase, TypedModule)}
@@ -611,20 +607,6 @@ def analyze_program_for_c(
             ):
                 from dataclasses import replace
                 all_module_map[k] = replace(mod, is_precompiled=True)
-
-    if env is not None:
-        from quest.module_loader import (
-            _load_precompiled_transitive_deps,
-            ensure_module_object,
-        )
-        for mod in all_module_map.values():
-            if getattr(mod, "is_precompiled", False):
-                obj = ensure_module_object(mod.name, env, interface_name=mod.interface_name or None)
-                if obj is not None and obj.is_file():
-                    if obj not in env.linked_objects:
-                        env.linked_objects.append(obj)
-                    env.precompiled_modules.add(mod.name)
-                    _load_precompiled_transitive_deps(obj, None, env, None)
 
     sorted_modules = topological_sort_modules(list(all_module_map.values()))
 

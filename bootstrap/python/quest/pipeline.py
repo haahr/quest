@@ -42,7 +42,7 @@ from quest.typechecker import (
     elaborate_program,
     synth_expr,
 )
-from quest.typed_ast import TypedBinding, TypedExpr, TypedProgram
+from quest.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedProgram
 from quest.types import KindError, QKind, QType
 
 
@@ -68,9 +68,6 @@ class CompilerOptions:
     build_dir: Optional[Path] = None
     whole_program: bool = False
     emit_deps: bool = False
-    # Compile stale or missing imported modules into build_dir on demand (pipeline C mode). The
-    # BuildEngine schedules units itself and leaves this off.
-    build_dependencies: bool = False
 
 
 @dataclass
@@ -83,6 +80,8 @@ class CompilerContext:
     env: Environment = field(default_factory=Environment)
     options: CompilerOptions = field(default_factory=CompilerOptions)
     runtime_env: RuntimeEnvironment = field(default_factory=RuntimeEnvironment.create_root_env)
+    # Modules the generated C unit links against; set by CodegenCPhase (see link_dependencies).
+    imported_modules: list[Any] = field(default_factory=list)
 
     @classmethod
     def create(
@@ -105,8 +104,6 @@ class CompilerContext:
             # Separate compilation always has a build directory, so that nested interface and module
             # compilations agree on where artifacts live (docs/build-process.md §3.1).
             opts.build_dir = Path(".build")
-        if is_c_compilation_mode(environment):
-            opts.build_dependencies = True
         environment.include_paths = list(opts.include_paths)
         if opts.build_dir and Path(opts.build_dir).resolve() not in [p.resolve() for p in environment.include_paths]:
             environment.include_paths.insert(0, Path(opts.build_dir).resolve())
@@ -355,18 +352,45 @@ class CodegenCPhase(Phase):
             loaded_mods = ctx.env.loaded_modules_ast if ctx.env else None
             match input_data:
                 case TypedProgram():
-                    return emitter.emit_program(input_data, loaded_modules=loaded_mods)
+                    prog = input_data
                 case TypedExpr() | TypedBinding():
                     prog = TypedProgram(phrases=(input_data,))
-                    return emitter.emit_program(prog, loaded_modules=loaded_mods)
                 case _:
                     return None
+            c_code = emitter.emit_program(prog, loaded_modules=loaded_mods)
         except Exception as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None
 
+        from quest.build.engine import unit_module_refs
+
+        import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
+        ctx.imported_modules = unit_module_refs(
+            import_items, emitter.analysis, ctx.env.current_dir, ctx.env.include_paths
+        )
+        return c_code
+
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         return str(output_data) if output_data is not None else ""
+
+
+def link_dependencies(ctx: CompilerContext) -> list[Path]:
+    """Builds the modules a C unit produced by CodegenCPhase imports, returning the objects to link.
+
+    Delegates to the BuildEngine, so that staleness checks, artifact placement, and object collection
+    are the same as for a full application build (docs/build-process.md §7.3).
+    """
+    from quest.build.engine import BuildEngine
+
+    opts = ctx.options
+    engine = BuildEngine(
+        build_dir=opts.build_dir,
+        include_paths=list(opts.include_paths),
+        nogc=opts.nogc,
+        extra_objects=list(opts.extra_objects),
+    )
+    importer = Path(ctx.file_name).stem if not ctx.file_name.startswith("<") else ctx.file_name
+    return engine.build_modules(ctx.imported_modules, importer=importer, current_dir=ctx.env.current_dir)
 
 
 class RunCCompiledPhase(Phase):
@@ -386,12 +410,8 @@ class RunCCompiledPhase(Phase):
         with tempfile.NamedTemporaryFile(suffix="", delete=False) as tmp_file:
             bin_path = Path(tmp_file.name)
 
-        extra_objs = list(ctx.options.extra_objects)
-        for obj in ctx.env.linked_objects:
-            if obj not in extra_objs:
-                extra_objs.append(obj)
-
         try:
+            extra_objs = link_dependencies(ctx)
             compile_c_source(
                 c_code,
                 output_path=bin_path,

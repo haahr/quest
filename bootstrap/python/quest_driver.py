@@ -24,6 +24,7 @@ from quest.pipeline import (
     compile_pipeline,
     default_pipeline,
     full_pipeline,
+    link_dependencies,
 )
 from quest.runtime import QOk, qvalue_to_str
 from quest import shadow
@@ -312,8 +313,6 @@ def run_driver(args: list[str]) -> int:
             mod_name = obj.name.split(".")[0]
             ctx.env.precompiled_modules.add(canon_mod)
             ctx.env.precompiled_modules.add(mod_name)
-            if obj not in ctx.env.linked_objects:
-                ctx.env.linked_objects.append(obj)
         result = pipeline.execute(source_text, file_name, options=options, ctx=ctx)
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
@@ -359,10 +358,7 @@ def run_driver(args: list[str]) -> int:
         output_path = Path(parsed_args.output)
         from quest.codegen import compile_c_source
         try:
-            extra_objs = list(options.extra_objects)
-            for obj in ctx.env.linked_objects:
-                if obj not in extra_objs:
-                    extra_objs.append(obj)
+            extra_objs = link_dependencies(ctx)
             compile_c_source(
                 c_code,
                 output_path=output_path,
@@ -629,8 +625,6 @@ def run_compile(args: list[str]) -> int:
         mod_name = obj.name.split(".")[0]
         ctx.env.precompiled_modules.add(canon_mod)
         ctx.env.precompiled_modules.add(mod_name)
-        if obj not in ctx.env.linked_objects:
-            ctx.env.linked_objects.append(obj)
     result = pipeline.execute(source_text, file_name, options=options, ctx=ctx)
 
     for phase_name in available_phases:
@@ -671,10 +665,7 @@ def run_compile(args: list[str]) -> int:
 
     from quest.codegen import compile_c_source
     try:
-        extra_objs = list(options.extra_objects)
-        for obj in ctx.env.linked_objects:
-            if obj not in extra_objs:
-                extra_objs.append(obj)
+        extra_objs = link_dependencies(ctx)
         compile_c_source(
             c_code,
             output_path=output_path,

@@ -431,12 +431,14 @@ To maintain high performance, modular boundaries, and clean test separation:
    - Whole-program behavior is preserved for `tokenize`, `parse`, `typecheck`, and `interpret`. The AST interpreter
      evaluates modules directly from source.
    - Separate compilation is always used for hierarchical modules during C phases (`codegen_c` and `run_c_compiled`).
-3. **On-Demand Compilation & Build Directory:**
-   - In C compilation modes, the module loader automatically triggers on-demand compilation of hierarchical modules
-     to `.qi`, `.h`, `.c`, and `.o` artifacts.
-   - The build output directory can be explicitly specified via `--build-dir <dir>` (such as `.build/` in test runs).
-     If unspecified, artifacts are compiled alongside the source files in their directory tree.
-   - Artifacts are only rebuilt when stale relative to `.int.quest` and `.mod.quest` source modification timestamps.
+3. **Dependency Building & Build Directory:**
+   - In C compilation modes, typechecking only regenerates stale interface artifacts (`.qi`, `.h`); importers are typed
+     against interfaces. After code generation, the modules the unit needs are built to `.c`, `.o`, and `.qm` by the
+     build engine, exactly as in a full application build (see [build-process.md §7.3](build-process.md)).
+   - The build output directory can be explicitly specified via `--build-dir <dir>` (such as `.build/` in test runs),
+     and defaults to `.build/`.
+   - Artifacts are only rebuilt when stale relative to `.int.quest` and `.mod.quest` source modification timestamps
+     and the interfaces recorded in `.qm` manifests.
 4. **Self-Contained Client External Declarations:**
    - In emitted client C code, the compiler generates self-contained `extern` prototypes for functions, initializers,
      and records of precompiled modules.
@@ -450,7 +452,9 @@ To maintain high performance, modular boundaries, and clean test separation:
 
 ## 10. Module Dependency Tracking (`.deps/` and `--emit-deps`)
 
-Quest supports recording and resolving module dependencies using make-compatible `.d` dependency files:
+Builds track module dependencies with `.qm` manifests (see [build-process.md §4](build-process.md)). For use by
+external build tools, standalone module compilation can also record them in make-compatible `.d` files; the Quest
+build itself does not read them.
 
 ### 10.1. Emitting Dependency Files
 
@@ -466,11 +470,9 @@ Each entry lists the target `.o` file and its immediate prerequisite module `.o`
 
 ### 10.2. Transitive Linker Resolution
 
-When the compiler driver links a binary:
-1. It discovers the directly imported modules from the compilation unit.
-2. For each `.o` file, it looks for `.deps/<stem>.d` (or `<stem>.d` alongside the object).
-3. It recursively parses prerequisite `.o` files to form the transitive closure of all required objects.
-4. All prerequisite object files are supplied to clang during final binary linking.
+When the compiler driver links a binary, the build engine follows the `imported_modules` of each module's `.qm`
+manifest from the compilation unit's direct imports to form the transitive closure of required objects, rebuilding
+stale ones, and supplies them all to clang (see [build-process.md §7](build-process.md)).
 
 ---
 

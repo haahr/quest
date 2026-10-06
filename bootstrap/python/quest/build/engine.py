@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterable, Optional
 
 import quest.ast as ast
 from quest.build.logger import BuildLogger
@@ -31,13 +31,16 @@ from quest.module_loader import (
     load_interface,
     resolve_interface_source_file,
     resolve_module_file,
+    resolve_object_file,
 )
 from quest.pipeline import CompilerOptions
 from quest.tokenizer import Tokenizer
 from quest.tokens import SourceMap
 from quest.typechecker import TypeElaborator
 
-RUNTIME_BUILTINS = {"dynamic"}
+# Modules implemented by the native runtime, mapped to the interface each implements (§4.4).
+RUNTIME_BUILTIN_INTERFACES = {"dynamic": "Dynamic"}
+RUNTIME_BUILTINS = set(RUNTIME_BUILTIN_INTERFACES)
 
 
 class BuildError(Exception):
@@ -86,6 +89,50 @@ def detect_module_cycle(graph: dict[str, list[str]]) -> Optional[list[str]]:
             if cycle:
                 return cycle
     return None
+
+
+def unit_module_refs(
+    import_items: Iterable[Any],
+    analysis: Optional[Any],
+    current_dir: Optional[Path],
+    include_paths: list[Path],
+) -> list[ImportedModuleRef]:
+    """Returns the modules a compiled C unit links against, with the interfaces it expects of them.
+
+    These are the explicitly imported modules plus any module the C analysis treated as precompiled
+    (e.g. standard library modules a main routine uses without importing them, §6.2).
+    """
+    refs: list[ImportedModuleRef] = []
+    seen: set[str] = set()
+
+    def _add(name: str, interface: str) -> None:
+        if name in seen:
+            return
+        seen.add(name)
+        refs.append(ImportedModuleRef(name=name, interface=interface))
+
+    for it in import_items:
+        iface_path = it.effective_interface_path
+        iface_src = resolve_interface_source_file(iface_path, current_dir, include_paths)
+        canon_iface = canonicalize_interface_name(iface_src, include_paths, iface_path)
+        for iname, mpath in zip(it.names, it.effective_module_paths):
+            mod_ref = mpath if mpath else iname
+            mod_src = resolve_module_file(mod_ref, current_dir, include_paths)
+            _add(canonicalize_module_name(mod_src, include_paths, mod_ref), canon_iface)
+
+    if analysis is not None:
+        for mod in analysis.sorted_modules:
+            if not getattr(mod, "is_precompiled", False) or mod.name.lower() in RUNTIME_BUILTINS:
+                continue
+            mod_src = resolve_module_file(mod.name, current_dir, include_paths)
+            canon_mod = canonicalize_module_name(mod_src, include_paths, mod.name)
+            canon_iface = ""
+            if mod.interface_name:
+                iface_src = resolve_interface_source_file(mod.interface_name, current_dir, include_paths)
+                canon_iface = canonicalize_interface_name(iface_src, include_paths, mod.interface_name)
+            _add(canon_mod, canon_iface)
+
+    return refs
 
 
 class BuildEngine:
@@ -167,60 +214,32 @@ class BuildEngine:
             include_paths=search_paths,
         )
 
-        imported_modules: list[ImportedModuleRef] = []
         imported_interfaces: list[ImportedInterfaceRef] = []
+        import_items = [
+            it for phrase in ast_prog.phrases if isinstance(phrase, ast.ImportPhrase) for it in phrase.items
+        ]
 
-        for phrase in ast_prog.phrases:
-            if isinstance(phrase, ast.ImportPhrase):
-                for it in phrase.items:
-                    iface_path = it.effective_interface_path
-                    self.logger.log("RESOLVE INTERFACE", f"'{iface_path}'")
-                    if env.lookup_interface(iface_path) is None and env.lookup_interface(it.interface_name) is None:
-                        load_interface(iface_path, env)
-                    imp_src = resolve_interface_source_file(iface_path, env.current_dir, env.include_paths)
-                    canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path)
-                    imp_mtime = imp_src.stat().st_mtime if imp_src and imp_src.is_file() else 0.0
-                    imported_interfaces.append(
-                        ImportedInterfaceRef(
-                            name=canon_imp_iface,
-                            source=str(imp_src.resolve()) if imp_src else "",
-                            mtime=imp_mtime,
-                        )
-                    )
-                    for iname, mpath in zip(it.names, it.effective_module_paths):
-                        mod_ref = mpath if mpath else iname
-                        mod_src = resolve_module_file(mod_ref, env.current_dir, env.include_paths)
-                        canon_mod_ref = canonicalize_module_name(mod_src, env.include_paths, mod_ref)
-                        imported_modules.append(ImportedModuleRef(name=canon_mod_ref, interface=canon_imp_iface))
+        for it in import_items:
+            iface_path = it.effective_interface_path
+            self.logger.log("RESOLVE INTERFACE", f"'{iface_path}'")
+            if env.lookup_interface(iface_path) is None and env.lookup_interface(it.interface_name) is None:
+                load_interface(iface_path, env)
+            imp_src = resolve_interface_source_file(iface_path, env.current_dir, env.include_paths)
+            canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path)
+            imp_mtime = imp_src.stat().st_mtime if imp_src and imp_src.is_file() else 0.0
+            imported_interfaces.append(
+                ImportedInterfaceRef(
+                    name=canon_imp_iface,
+                    source=str(imp_src.resolve()) if imp_src else "",
+                    mtime=imp_mtime,
+                )
+            )
 
         typed_prog = TypeElaborator(env=env).elaborate_program(ast_prog, env=env)
         emitter = CEmitter(echo=False, env=env)
         c_code = emitter.emit_program(typed_prog)
 
-        if emitter.analysis is not None:
-            existing_mod_names = {m.name for m in imported_modules}
-            for mod in emitter.analysis.sorted_modules:
-                if getattr(mod, "is_precompiled", False) and mod.name != "dynamic":
-                    mod_src = resolve_module_file(mod.name, env.current_dir, env.include_paths)
-                    canon_mod_name = canonicalize_module_name(mod_src, env.include_paths, mod.name)
-                    if canon_mod_name not in existing_mod_names:
-                        iface_src = (
-                            resolve_interface_source_file(mod.interface_name, env.current_dir, env.include_paths)
-                            if mod.interface_name
-                            else None
-                        )
-                        canon_iface_name = (
-                            canonicalize_interface_name(iface_src, env.include_paths, mod.interface_name)
-                            if mod.interface_name
-                            else ""
-                        )
-                        imported_modules.append(
-                            ImportedModuleRef(
-                                name=canon_mod_name,
-                                interface=canon_iface_name,
-                            )
-                        )
-                        existing_mod_names.add(canon_mod_name)
+        imported_modules = unit_module_refs(import_items, emitter.analysis, env.current_dir, env.include_paths)
 
         self.logger.log("EMIT C", str(c_path))
         c_path.write_text(c_code, encoding="utf-8")
@@ -247,6 +266,24 @@ class BuildEngine:
         write_qm(manifest, qm_path)
 
         return (c_path, o_path, qm_path, imported_modules)
+
+    def _unit_staleness(self, source: Path, qm_path: Path, c_path: Path, o_path: Path) -> Optional[str]:
+        """Returns why a unit with a source file must be recompiled, or None if it is up to date (§7.1)."""
+        if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
+            return f"missing artifacts in {qm_path.parent}"
+        src_mtime = source.stat().st_mtime
+        if (
+            src_mtime > qm_path.stat().st_mtime
+            or src_mtime > c_path.stat().st_mtime
+            or c_path.stat().st_mtime > o_path.stat().st_mtime
+        ):
+            return "source file newer than artifacts"
+        manifest = read_qm(qm_path)
+        if manifest is None:
+            return f"cannot parse {qm_path}"
+        if is_manifest_stale(manifest, qm_path):
+            return "manifest indicates stale"
+        return None
 
     def build_main(
         self,
@@ -276,17 +313,78 @@ class BuildEngine:
             f"target={main_file} mode=separate build_dir={self.build_dir}",
         )
 
-        work_queue: deque[tuple[str, str, Optional[Path]]] = deque()
-        # Queue item: (kind, name, source_path)
-        work_queue.append(("main", main_file.stem, main_file))
-        self.logger.log("QUEUE INIT", f"enqueued main routine '{main_file.stem}'")
+        item_name = main_file.stem
+        self.logger.log("QUEUE INIT", f"enqueued main routine '{item_name}'")
+        self.logger.log("POP QUEUE", f"'{item_name}' (kind=main)")
+        qm_path = self.build_dir / f"{item_name}.qm"
+        c_path = self.build_dir / f"{item_name}.c"
+        o_path = self.build_dir / f"{item_name}.o"
+
+        compiled_units: list[str] = []
+        reason = self._unit_staleness(main_file, qm_path, c_path, o_path)
+        if reason is not None:
+            self.logger.log("EVAL STALENESS", f"'{item_name}' -> STALE ({reason})")
+            self.logger.log("COMPILE MAIN", f"'{item_name}'")
+            _, _, _, imported_mods = self.compile_main_unit(main_file)
+            compiled_units.append(item_name)
+        else:
+            self.logger.log("EVAL STALENESS", f"'{item_name}' -> UP TO DATE")
+            manifest = read_qm(qm_path)
+            assert manifest is not None
+            imported_mods = manifest.imported_modules
+
+        module_objects = self.build_modules(
+            imported_mods,
+            importer=item_name,
+            current_dir=main_file.parent,
+            compiled_units=compiled_units,
+        )
+        n_extra = len(self.extra_objects)
+        linked_objects = module_objects[:n_extra] + [o_path] + module_objects[n_extra:]
+
+        # Native link
+        self.logger.log("HOST LINK", f"linking {len(linked_objects)} objects into {target_bin}")
+        link_objects(
+            linked_objects,
+            output_binary=target_bin,
+            nogc=self.nogc,
+            compiler_path=self.compiler_path,
+            extra_flags=self.extra_c_flags,
+        )
+        self.logger.log("BUILD COMPLETE", f"exit_code=0 binary={target_bin}")
+
+        return BuildResult(
+            output_binary=target_bin,
+            compiled_units=compiled_units,
+            linked_objects=linked_objects,
+            exit_code=0,
+        )
+
+    def build_modules(
+        self,
+        roots: list[ImportedModuleRef],
+        importer: str,
+        current_dir: Optional[Path] = None,
+        compiled_units: Optional[list[str]] = None,
+    ) -> list[Path]:
+        """Brings the transitive closure of modules imported by a unit up to date (§7.1).
+
+        `roots` are the modules the unit `importer` imports, with the interfaces it expects of them.
+        Stale or missing modules are (re)compiled into the build directory, interface conformance and
+        acyclicity are verified, and the objects to link are returned: the engine's extra objects
+        first, then one object per module in queue order. The importer's own object is not included.
+        Names of recompiled modules are appended to `compiled_units` when given.
+        """
+        if compiled_units is None:
+            compiled_units = []
+        search_paths = self._get_search_paths(current_dir)
+        work_queue: deque[str] = deque()
 
         discovered_modules: set[str] = set()
         linked_objects: list[Path] = list(self.extra_objects)
         for obj in self.extra_objects:
             discovered_modules.add(obj.stem)
             discovered_modules.add(obj.stem.lower())
-        compiled_units: list[str] = []
         module_graph: dict[str, list[str]] = {}
         expected_interfaces: dict[str, list[tuple[str, str]]] = {}
         module_manifests: dict[str, ModuleManifest] = {}
@@ -307,7 +405,7 @@ class BuildEngine:
                 expected_interfaces.setdefault(stem_name, []).append((importer, expected_iface))
 
             if norm_name in RUNTIME_BUILTINS:
-                builtin_iface = "Dynamic" if norm_name == "dynamic" else mod_name
+                builtin_iface = RUNTIME_BUILTIN_INTERFACES[norm_name]
                 if not interfaces_conform(builtin_iface, expected_iface):
                     raise BuildError(
                         f"Type error: '{importer}' imports module '{mod_name}' as interface "
@@ -349,201 +447,130 @@ class BuildEngine:
                     f"'{mod_key}' implements '{manifest_iface}', satisfies '{exp_iface}' (from {importer})",
                 )
 
+        def _enqueue_imports(item_name: str, imported_mods: list[ImportedModuleRef]) -> None:
+            for dep in imported_mods:
+                _record_expected_interface(item_name, dep.name, dep.interface)
+                norm_dep = dep.name.lower()
+                if norm_dep in RUNTIME_BUILTINS:
+                    continue
+                if dep.name not in discovered_modules and norm_dep not in discovered_modules:
+                    discovered_modules.add(dep.name)
+                    discovered_modules.add(norm_dep)
+                    self.logger.log("ENQUEUE MODULE", f"'{dep.name}' (from {item_name} import)")
+                    work_queue.append(dep.name)
+
+        _enqueue_imports(importer, roots)
+
         while work_queue:
-            kind, item_name, source_path = work_queue.popleft()
-            self.logger.log("POP QUEUE", f"'{item_name}' (kind={kind})")
+            item_name = work_queue.popleft()
+            self.logger.log("POP QUEUE", f"'{item_name}' (kind=module)")
 
-            if kind == "main":
-                assert source_path is not None
-                stem = source_path.stem
-                qm_path = self.build_dir / f"{stem}.qm"
-                c_path = self.build_dir / f"{stem}.c"
-                o_path = self.build_dir / f"{stem}.o"
+            mod_src = resolve_module_file(item_name, current_dir, search_paths)
 
-                stale = False
-                reason = ""
-                if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
-                    stale = True
-                    reason = f"missing artifacts in {self.build_dir}"
-                elif (
-                    source_path.stat().st_mtime > qm_path.stat().st_mtime
-                    or source_path.stat().st_mtime > c_path.stat().st_mtime
-                    or c_path.stat().st_mtime > o_path.stat().st_mtime
-                ):
-                    stale = True
-                    reason = "source file newer than artifacts"
-                else:
-                    manifest = read_qm(qm_path)
-                    if manifest is None:
-                        stale = True
-                        reason = f"cannot parse {qm_path}"
-                    else:
-                        stale = is_manifest_stale(manifest, qm_path)
-                        reason = "manifest indicates stale" if stale else ""
+            canon_name = canonicalize_module_path(mod_src, search_paths) if mod_src else item_name.lower()
+            if "/" in canon_name:
+                target_sub = self.build_dir / Path(canon_name).parent
+            else:
+                target_sub = self.build_dir
+            target_sub.mkdir(parents=True, exist_ok=True)
+            stem = Path(canon_name).name.lower()
 
-                if stale:
-                    self.logger.log("EVAL STALENESS", f"'{item_name}' -> STALE ({reason})")
-                    self.logger.log("COMPILE MAIN", f"'{item_name}'")
-                    _, _, _, imported_mods = self.compile_main_unit(source_path)
-                    compiled_units.append(item_name)
-                else:
-                    self.logger.log("EVAL STALENESS", f"'{item_name}' -> UP TO DATE")
-                    manifest = read_qm(qm_path)
-                    assert manifest is not None
-                    imported_mods = manifest.imported_modules
+            qm_path = target_sub / f"{stem}.qm"
+            c_path = target_sub / f"{stem}.c"
+            o_path = target_sub / f"{stem}.o"
 
-                if o_path not in linked_objects:
-                    linked_objects.append(o_path)
-
-                for dep in imported_mods:
-                    _record_expected_interface(item_name, dep.name, dep.interface)
-                    norm_dep = dep.name.lower()
-                    if norm_dep in RUNTIME_BUILTINS:
-                        continue
-                    if dep.name not in discovered_modules and norm_dep not in discovered_modules:
-                        discovered_modules.add(dep.name)
-                        discovered_modules.add(norm_dep)
-                        self.logger.log("ENQUEUE MODULE", f"'{dep.name}' (from main import)")
-                        work_queue.append(("module", dep.name, None))
-
-            elif kind == "module":
-                search_paths = self._get_search_paths(main_file.parent)
-                mod_src = resolve_module_file(item_name, main_file.parent, search_paths)
-
-                canon_name = canonicalize_module_path(mod_src, search_paths) if mod_src else item_name.lower()
-                if "/" in canon_name:
-                    target_sub = self.build_dir / Path(canon_name).parent
-                else:
-                    target_sub = self.build_dir
-                target_sub.mkdir(parents=True, exist_ok=True)
-                stem = Path(canon_name).name.lower()
-
-                qm_path = target_sub / f"{stem}.qm"
-                c_path = target_sub / f"{stem}.c"
-                o_path = target_sub / f"{stem}.o"
-
-                # Check collision with colocated .quest
-                if mod_src is not None:
-                    colocated_quest = mod_src.parent / f"{stem}.quest"
-                    if colocated_quest.is_file():
-                        raise BuildError(
-                            f"Conflict: colocated module '{mod_src.name}' and main routine "
-                            f"'{colocated_quest.name}' cannot coexist at '{mod_src.parent}'"
-                        )
-
-                stale = False
-                reason = ""
-                if mod_src is None:
-                    found_obj: Optional[Path] = None
-                    for obj in self.extra_objects:
-                        if obj.stem.lower() in (stem, item_name.lower()):
-                            found_obj = obj
-                            break
-                    if found_obj is None:
-                        from quest.module_loader import resolve_object_file
-                        found_obj = resolve_object_file(item_name, main_file.parent, search_paths)
-                    if found_obj is not None and found_obj.is_file():
-                        o_path = found_obj
-                        qm_cand = found_obj.with_suffix(".qm")
-                        if qm_cand.is_file():
-                            qm_path = qm_cand
-                        stale = False
-                    elif qm_path.is_file() and o_path.is_file():
-                        stale = False
-                    else:
-                        raise BuildError(
-                            f"Undefined module '{item_name}': cannot find source file "
-                            f"or precompiled object in {search_paths}"
-                        )
-                else:
-                    if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
-                        stale = True
-                        reason = f"missing artifacts in {target_sub}"
-                    elif (
-                        mod_src.stat().st_mtime > qm_path.stat().st_mtime
-                        or mod_src.stat().st_mtime > c_path.stat().st_mtime
-                        or c_path.stat().st_mtime > o_path.stat().st_mtime
-                    ):
-                        stale = True
-                        reason = "module source newer than artifacts"
-                    else:
-                        manifest = read_qm(qm_path)
-                        if manifest is None:
-                            stale = True
-                            reason = f"cannot parse {qm_path}"
-                        else:
-                            stale = is_manifest_stale(manifest, qm_path)
-                            reason = "manifest indicates stale" if stale else ""
-
-                if stale:
-                    assert mod_src is not None
-                    self.logger.log("EVAL STALENESS", f"'{item_name}' -> STALE ({reason})")
-                    self.logger.log("COMPILE MODULE", f"'{item_name}'")
-                    compile_module_file(
-                        mod_src,
-                        output_dir=target_sub,
-                        include_paths=search_paths,
-                        build_dir=self.build_dir,
-                        nogc=self.nogc,
-                        compiler_path=self.compiler_path,
-                        extra_c_flags=self.extra_c_flags,
+            # Check collision with colocated .quest
+            if mod_src is not None:
+                colocated_quest = mod_src.parent / f"{stem}.quest"
+                if colocated_quest.is_file():
+                    raise BuildError(
+                        f"Conflict: colocated module '{mod_src.name}' and main routine "
+                        f"'{colocated_quest.name}' cannot coexist at '{mod_src.parent}'"
                     )
-                    compiled_units.append(item_name)
-                    manifest = read_qm(qm_path)
-                else:
-                    self.logger.log("EVAL STALENESS", f"'{item_name}' -> UP TO DATE")
-                    manifest = read_qm(qm_path) if qm_path.is_file() else None
 
-                if manifest is not None:
-                    module_manifests[item_name.lower()] = manifest
-                    module_manifests[stem] = manifest
-                    if manifest.name:
-                        module_manifests[manifest.name] = manifest
-                        module_manifests[manifest.name.lower()] = manifest
-                    _verify_module_interface(item_name.lower(), manifest.interface)
-                    if stem != item_name.lower():
-                        _verify_module_interface(stem, manifest.interface)
-                    if manifest.name and manifest.name not in (item_name.lower(), stem):
-                        _verify_module_interface(manifest.name, manifest.interface)
-                    if manifest.name and manifest.name.lower() not in (item_name.lower(), stem):
-                        _verify_module_interface(manifest.name.lower(), manifest.interface)
+            reason: Optional[str] = None
+            if mod_src is None:
+                # Binary distribution: a prebuilt object (and .qm) without source is up to date.
+                found_obj: Optional[Path] = None
+                for obj in self.extra_objects:
+                    if obj.stem.lower() in (stem, item_name.lower()):
+                        found_obj = obj
+                        break
+                if found_obj is None:
+                    found_obj = resolve_object_file(item_name, current_dir, search_paths)
+                if found_obj is not None and found_obj.is_file():
+                    o_path = found_obj
+                    qm_cand = found_obj.with_suffix(".qm")
+                    if qm_cand.is_file():
+                        qm_path = qm_cand
+                elif not (qm_path.is_file() and o_path.is_file()):
+                    raise BuildError(
+                        f"Undefined module '{item_name}': cannot find source file "
+                        f"or precompiled object in {search_paths}"
+                    )
+            else:
+                reason = self._unit_staleness(mod_src, qm_path, c_path, o_path)
 
-                imported_mods: list[ImportedModuleRef] = manifest.imported_modules if manifest else []
+            if reason is not None:
+                assert mod_src is not None
+                self.logger.log("EVAL STALENESS", f"'{item_name}' -> STALE ({reason})")
+                self.logger.log("COMPILE MODULE", f"'{item_name}'")
+                compile_module_file(
+                    mod_src,
+                    output_dir=target_sub,
+                    include_paths=search_paths,
+                    build_dir=self.build_dir,
+                    nogc=self.nogc,
+                    compiler_path=self.compiler_path,
+                    extra_c_flags=self.extra_c_flags,
+                )
+                compiled_units.append(item_name)
+                manifest = read_qm(qm_path)
+            else:
+                self.logger.log("EVAL STALENESS", f"'{item_name}' -> UP TO DATE")
+                manifest = read_qm(qm_path) if qm_path.is_file() else None
 
-                if o_path not in linked_objects:
-                    linked_objects.append(o_path)
+            if manifest is not None:
+                module_manifests[item_name.lower()] = manifest
+                module_manifests[stem] = manifest
+                if manifest.name:
+                    module_manifests[manifest.name] = manifest
+                    module_manifests[manifest.name.lower()] = manifest
+                _verify_module_interface(item_name.lower(), manifest.interface)
+                if stem != item_name.lower():
+                    _verify_module_interface(stem, manifest.interface)
+                if manifest.name and manifest.name not in (item_name.lower(), stem):
+                    _verify_module_interface(manifest.name, manifest.interface)
+                if manifest.name and manifest.name.lower() not in (item_name.lower(), stem):
+                    _verify_module_interface(manifest.name.lower(), manifest.interface)
 
-                module_graph[item_name] = [dep.name for dep in imported_mods]
+            imported_mods: list[ImportedModuleRef] = manifest.imported_modules if manifest else []
 
-                for dep in imported_mods:
-                    _record_expected_interface(item_name, dep.name, dep.interface)
-                    norm_dep = dep.name.lower()
-                    if norm_dep in RUNTIME_BUILTINS:
-                        continue
-                    if dep.name not in discovered_modules and norm_dep not in discovered_modules:
-                        discovered_modules.add(dep.name)
-                        discovered_modules.add(norm_dep)
-                        self.logger.log("ENQUEUE MODULE", f"'{dep.name}' (from {item_name} import)")
-                        work_queue.append(("module", dep.name, None))
+            if o_path not in linked_objects:
+                linked_objects.append(o_path)
+
+            module_graph[item_name] = [dep.name for dep in imported_mods]
+            _enqueue_imports(item_name, imported_mods)
 
         self.logger.log("QUEUE EMPTY", f"transitive closure verified ({len(linked_objects)} units)")
 
         # Verify all expected interface constraints across the transitive closure
         for mod_name, reqs in expected_interfaces.items():
             if mod_name in RUNTIME_BUILTINS:
-                for importer, exp_iface in reqs:
-                    if not interfaces_conform(mod_name, exp_iface):
+                builtin_iface = RUNTIME_BUILTIN_INTERFACES[mod_name]
+                for importer_name, exp_iface in reqs:
+                    if not interfaces_conform(builtin_iface, exp_iface):
                         raise BuildError(
-                            f"Type error: '{importer}' imports module '{mod_name}' as interface "
-                            f"'{exp_iface}', but builtin module '{mod_name}' implements interface '{mod_name}'"
+                            f"Type error: '{importer_name}' imports module '{mod_name}' as interface "
+                            f"'{exp_iface}', but builtin module '{mod_name}' implements interface '{builtin_iface}'"
                         )
                 continue
             manifest = module_manifests.get(mod_name)
             if manifest and manifest.interface:
-                for importer, exp_iface in reqs:
+                for importer_name, exp_iface in reqs:
                     if not interfaces_conform(manifest.interface, exp_iface):
                         raise BuildError(
-                            f"Type error: '{importer}' imports module '{mod_name}' as interface "
+                            f"Type error: '{importer_name}' imports module '{mod_name}' as interface "
                             f"'{exp_iface}', but module '{mod_name}' implements interface '{manifest.interface}'"
                         )
 
@@ -553,20 +580,4 @@ class BuildEngine:
             cycle_str = " -> ".join(cycle)
             raise BuildError(f"Cyclic module dependency detected: {cycle_str}")
 
-        # Native link
-        self.logger.log("HOST LINK", f"linking {len(linked_objects)} objects into {target_bin}")
-        link_objects(
-            linked_objects,
-            output_binary=target_bin,
-            nogc=self.nogc,
-            compiler_path=self.compiler_path,
-            extra_flags=self.extra_c_flags,
-        )
-        self.logger.log("BUILD COMPLETE", f"exit_code=0 binary={target_bin}")
-
-        return BuildResult(
-            output_binary=target_bin,
-            compiled_units=compiled_units,
-            linked_objects=linked_objects,
-            exit_code=0,
-        )
+        return linked_objects

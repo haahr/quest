@@ -303,102 +303,18 @@ def compile_module_file(
     else:
         output_dir = Path(output_dir).resolve()
 
-    from quest.module_loader import _COMPILING_MODULES
-
-    canon_key = canon_name.lower()
-    _COMPILING_MODULES.add(canon_key)
-    try:
-        return compile_module(
-            decl,
-            env,
-            output_dir=output_dir,
-            include_paths=env.include_paths,
-            compiler_path=compiler_path,
-            nogc=nogc,
-            extra_c_flags=extra_c_flags,
-            source_map=source_map,
-            stem_name=stem,
-            canonical_name=canon_name,
-            emit_deps=emit_deps,
-            source_file=mod_path,
-            build_dir=build_dir,
-        )
-    finally:
-        _COMPILING_MODULES.discard(canon_key)
-
-
-def compile_hierarchical_module(
-    canonical_name: str,
-    output_dir: Path,
-    current_dir: Optional[Path] = None,
-    include_paths: Optional[list[Path]] = None,
-    compiler_path: Optional[str] = None,
-    nogc: bool = False,
-    extra_c_flags: Optional[list[str]] = None,
-    emit_deps: bool = False,
-    build_dir: Optional[Path] = None,
-) -> tuple[Optional[Path], Optional[Path], Path, Path]:
-    """Compiles a module (and its same-named interface, if any) by canonical name into output_dir.
-
-    build_dir is inherited by the nested compilations, so that interfaces and modules they load
-    are found in and written to the same build directory. A module whose interface is not a
-    same-named .int.quest (e.g. lib/string.mod.quest implementing the builtin StringOp) is compiled
-    alone; its interface is resolved by the module compilation itself.
-
-    Returns (qi_file, h_file, c_file, o_file); qi_file and h_file are None when no interface was compiled.
-    """
-    from quest.interface_compiler import compile_interface_file
-    from quest.module_loader import (
-        resolve_interface_source_file,
-        resolve_module_file,
-    )
-
-    inc_paths = list(include_paths) if include_paths else []
-    out_dir = Path(output_dir).resolve()
-
-    mod_path = resolve_module_file(canonical_name, current_dir, inc_paths)
-    if mod_path is None:
-        raise QuestTypeError(f"Cannot resolve module file for '{canonical_name}'")
-    intf_src_path = resolve_interface_source_file(canonical_name, current_dir, inc_paths)
-
-    target_subdir = out_dir / Path(canonical_name).parent if "/" in canonical_name else out_dir
-    target_subdir.mkdir(parents=True, exist_ok=True)
-
-    search_paths = list(inc_paths)
-    if out_dir not in search_paths:
-        search_paths.append(out_dir)
-
-    stem = Path(canonical_name).name.lower()
-    target_h = target_subdir / f"{stem}.h"
-    target_qi = target_subdir / f"{stem}.qi"
-    h_file: Optional[Path] = None
-    qi_file: Optional[Path] = None
-    if intf_src_path is None:
-        pass
-    elif (
-        target_h.is_file()
-        and target_qi.is_file()
-        and target_h.stat().st_mtime >= intf_src_path.stat().st_mtime
-        and target_qi.stat().st_mtime >= intf_src_path.stat().st_mtime
-    ):
-        h_file = target_h
-        qi_file = target_qi
-    else:
-        h_file, qi_file = compile_interface_file(
-            intf_src_path,
-            output_dir=target_subdir,
-            include_paths=search_paths,
-            build_dir=build_dir,
-        )
-    c_file, o_file = compile_module_file(
-        mod_path,
-        output_dir=target_subdir,
-        include_paths=search_paths,
+    return compile_module(
+        decl,
+        env,
+        output_dir=output_dir,
+        include_paths=env.include_paths,
         compiler_path=compiler_path,
         nogc=nogc,
         extra_c_flags=extra_c_flags,
+        source_map=source_map,
+        stem_name=stem,
+        canonical_name=canon_name,
         emit_deps=emit_deps,
+        source_file=mod_path,
         build_dir=build_dir,
     )
-    return (qi_file, h_file, c_file, o_file)
-

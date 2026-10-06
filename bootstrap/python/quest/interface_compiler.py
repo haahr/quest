@@ -629,22 +629,56 @@ def ensure_interface_artifacts(
     current_dir: Optional[Path],
     include_paths: list[Path],
     build_dir: Path,
-) -> None:
-    """Compiles interface `name` to .h/.qi in build_dir if it has a source and they are missing or stale."""
+    file_path: Optional[Path] = None,
+) -> tuple[Path, Path, str]:
+    """Regenerates interface `name`'s .qi and C header under build_dir if stale (docs/build-process.md §5).
+
+    file_path is the result of resolve_interface_file, when the caller already has it. Returns
+    (qi_file, h_file, canonical_name); the files may not exist if the interface has neither a source
+    nor prebuilt artifacts (e.g. builtin interfaces).
+    """
     from quest.module_loader import (
-        _is_artifact_stale,
         canonicalize_module_path,
+        resolve_interface_file,
         resolve_interface_source_file,
     )
 
+    if file_path is None:
+        file_path = resolve_interface_file(name, current_dir, include_paths)
     src = resolve_interface_source_file(name, current_dir, include_paths)
-    if src is None:
-        return
-    canon_name = canonicalize_module_path(src, include_paths)
+    if src is None and file_path is not None and file_path.name.endswith(".int.quest"):
+        src = file_path
+
+    canon_name = canonicalize_module_path(src, include_paths) if src else name.lower()
     target_dir = build_dir / Path(canon_name).parent if "/" in canon_name else build_dir
     stem = Path(canon_name).name.lower()
-    if _is_artifact_stale(target_dir / f"{stem}.qi", [src]) or _is_artifact_stale(target_dir / f"{stem}.h", [src]):
-        compile_interface_file(src, output_dir=target_dir, include_paths=include_paths, build_dir=build_dir)
+    qi_file = target_dir / f"{stem}.qi"
+    h_file = target_dir / f"{stem}.h"
+
+    if not qi_file.is_file() and file_path is not None and file_path.suffix == ".qi":
+        cand_h = file_path.with_suffix(".h")
+        if cand_h.is_file():
+            qi_file, h_file = file_path, cand_h
+
+    # Rule 3: without a source, existing artifacts are up to date (binary distribution).
+    if src is None or not src.is_file():
+        return qi_file, h_file, canon_name
+    # Rules 1 and 2: artifacts missing or older than the source are out of date.
+    src_mtime = src.stat().st_mtime
+    if (
+        not qi_file.is_file()
+        or not h_file.is_file()
+        or src_mtime > qi_file.stat().st_mtime
+        or src_mtime > h_file.stat().st_mtime
+    ):
+        target_dir.mkdir(parents=True, exist_ok=True)
+        search_paths = list(include_paths)
+        if build_dir not in search_paths:
+            search_paths.insert(0, build_dir)
+        h_file, qi_file = compile_interface_file(
+            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir
+        )
+    return qi_file, h_file, canon_name
 
 
 def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:

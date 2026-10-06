@@ -51,20 +51,6 @@ def is_c_compilation_mode(env: Environment) -> bool:
     return False
 
 
-def _is_artifact_stale(artifact: Path, sources: list[Path]) -> bool:
-    """Returns True if artifact does not exist or any source file has a newer mtime."""
-    if not artifact.is_file():
-        return True
-    try:
-        art_mtime = artifact.stat().st_mtime
-        for src in sources:
-            if src.is_file() and src.stat().st_mtime > art_mtime:
-                return True
-        return False
-    except OSError:
-        return True
-
-
 def resolve_interface_file(
     name: str,
     current_dir: Optional[Path],
@@ -313,48 +299,10 @@ def load_interface(name: str, env: Environment) -> Scope:
             out_root = file_path.parents[rel_parts - 1].resolve()
         else:
             out_root = (env.current_dir or Path.cwd()).resolve()
-        if "/" in canon_name:
-            target_sub = out_root / Path(canon_name).parent
-        else:
-            target_sub = out_root
-
-        stem = Path(canon_name).name.lower()
-        qi_file = target_sub / f"{stem}.qi"
-        h_file = target_sub / f"{stem}.h"
-
-        if not qi_file.is_file() and file_path and file_path.suffix == ".qi":
-            cand_h = file_path.with_suffix(".h")
-            if cand_h.is_file():
-                qi_file = file_path
-                h_file = cand_h
-
-        # 3-way staleness check (§5 of docs/build-process.md)
-        stale = False
-        if int_src and int_src.is_file():
-            if not qi_file.is_file() or not h_file.is_file():
-                # Rule 2: source exists, artifacts incomplete -> OUT OF DATE
-                stale = True
-            else:
-                # Rule 1: source and artifacts exist -> compare timestamps
-                src_mtime = int_src.stat().st_mtime
-                if src_mtime > qi_file.stat().st_mtime or src_mtime > h_file.stat().st_mtime:
-                    stale = True
-        elif qi_file and qi_file.is_file() and h_file and h_file.is_file():
-            # Rule 3: binary distribution mode (artifacts exist, no source) -> UP TO DATE
-            stale = False
-
-        if stale and int_src and int_src.is_file():
-            from quest.interface_compiler import compile_interface_file
-            target_sub.mkdir(parents=True, exist_ok=True)
-            search_paths = list(env.include_paths)
-            if out_root not in search_paths:
-                search_paths.insert(0, out_root)
-            h_file, qi_file = compile_interface_file(
-                int_src,
-                output_dir=target_sub,
-                include_paths=search_paths,
-                build_dir=out_root,
-            )
+        from quest.interface_compiler import ensure_interface_artifacts
+        qi_file, _, canon_name = ensure_interface_artifacts(
+            name, env.current_dir, env.include_paths, out_root, file_path
+        )
 
         if qi_file and qi_file.is_file():
             from quest.interface_compiler import load_interface_from_qi_file
@@ -449,178 +397,6 @@ def load_interface(name: str, env: Environment) -> Scope:
         env.current_dir = saved_dir
 
 
-def parse_dep_file(dep_file: Path) -> list[str]:
-    """Parses a Makefile .d file and returns the list of prerequisite paths."""
-    text = dep_file.read_text(encoding="utf-8")
-    prereqs: list[str] = []
-    in_prereqs = False
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" in line and not in_prereqs:
-            _, rhs = line.split(":", 1)
-            in_prereqs = True
-            line = rhs.strip()
-        if in_prereqs:
-            if line.endswith("\\"):
-                line = line[:-1].strip()
-            for part in line.split():
-                if part.endswith(".o") and part not in prereqs:
-                    prereqs.append(part)
-    return prereqs
-
-
-_COMPILING_MODULES: set[str] = set()
-
-
-def ensure_module_object(
-    name: str,
-    env: Environment,
-    interface_name: Optional[str] = None,
-    out_root: Optional[Path] = None,
-    build: Optional[bool] = None,
-) -> Optional[Path]:
-    """Returns the object file for module `name`, (re)compiling it into the build directory if stale.
-
-    Compilation happens only when `build` is true (default: the build_dependencies compiler option);
-    otherwise an up-to-date or stale object in the build directory is returned as is, if present.
-
-    When the module's source exists and a build directory is in effect, the only acceptable object is
-    the one in the build directory; stray objects elsewhere (e.g. next to the source) are ignored.
-    Without a source (binary distribution) or without a build directory (standalone compilation),
-    falls back to searching for a prebuilt object.
-    """
-    src = resolve_module_file(name, env.current_dir, env.include_paths)
-    build_dir = out_root if out_root is not None else getattr(getattr(env, "options", None), "build_dir", None)
-    if src is None or build_dir is None:
-        if out_root is not None:
-            cand = out_root / f"{name.lower()}.o"
-            if cand.is_file():
-                return cand.resolve()
-        return resolve_object_file(name, env.current_dir, env.include_paths)
-
-    root = Path(build_dir).resolve()
-    canon_name = canonicalize_module_path(src, env.include_paths)
-    obj_file = root / f"{canon_name}.o"
-
-    sources: list[Path] = [src]
-    intf_src = resolve_interface_source_file(interface_name or canon_name, env.current_dir, env.include_paths)
-    if intf_src is not None and intf_src.is_file():
-        sources.append(intf_src)
-    if obj_file.is_file():
-        for dep_file in (obj_file.parent / ".deps" / f"{obj_file.stem}.d", obj_file.with_suffix(".d")):
-            if dep_file.is_file():
-                for prereq in parse_dep_file(dep_file):
-                    cand = root / prereq
-                    if cand.is_file():
-                        sources.append(cand)
-
-    if build is None:
-        build = bool(getattr(getattr(env, "options", None), "build_dependencies", False))
-    canon_key = canon_name.lower()
-    if build and _is_artifact_stale(obj_file, sources) and canon_key not in _COMPILING_MODULES:
-        from quest.module_compiler import compile_hierarchical_module
-        _COMPILING_MODULES.add(canon_key)
-        try:
-            compile_hierarchical_module(
-                canon_name,
-                output_dir=root,
-                current_dir=env.current_dir,
-                include_paths=env.include_paths,
-                emit_deps=True,
-                build_dir=root,
-            )
-        finally:
-            _COMPILING_MODULES.discard(canon_key)
-
-    return obj_file.resolve() if obj_file.is_file() else None
-
-
-def _is_builtin_module(name: str, env: Environment) -> bool:
-    from quest.builtins import BuiltinModuleRegistry
-    return (
-        BuiltinModuleRegistry.get_interface(name, env) is not None
-        or BuiltinModuleRegistry.get_runtime_module(name) is not None
-        or BuiltinModuleRegistry.get_runtime_module(name.lower()) is not None
-    )
-
-
-def _load_precompiled_transitive_deps(
-    obj_file: Optional[Path],
-    file_path: Optional[Path],
-    env: Environment,
-    out_root: Optional[Path] = None,
-    visited: Optional[set[Path]] = None,
-) -> None:
-    """Discovers and loads transitive module dependencies from a .d file or fallback source."""
-    if obj_file is None or not obj_file.is_file():
-        return
-    if visited is None:
-        visited = set()
-    obj_resolved = obj_file.resolve()
-    if obj_resolved in visited:
-        return
-    visited.add(obj_resolved)
-
-    # 1. Try reading from .qm manifest first
-    qm_cand = obj_file.with_suffix(".qm")
-    if qm_cand.is_file():
-        from quest.build.manifest import read_qm
-        manifest = read_qm(qm_cand)
-        if manifest:
-            for imp_m in manifest.imported_modules:
-                mod_name = imp_m.name
-                dep_obj = ensure_module_object(
-                    mod_name, env, out_root=out_root, build=None if _is_builtin_module(mod_name, env) else True
-                )
-                if dep_obj is not None and dep_obj.is_file():
-                    if dep_obj not in env.linked_objects:
-                        env.linked_objects.append(dep_obj)
-                    env.precompiled_modules.add(mod_name)
-                    _load_precompiled_transitive_deps(dep_obj, None, env, out_root, visited=visited)
-            return
-
-    # 2. Fallback: try reading from .deps/<stem>.d (or alongside .o)
-    if obj_file is not None and obj_file.is_file():
-        dep_candidates = [
-            obj_file.parent / ".deps" / f"{obj_file.stem}.d",
-            obj_file.with_suffix(".d"),
-        ]
-        for dep_file in dep_candidates:
-            if dep_file.is_file():
-                prereqs = parse_dep_file(dep_file)
-                for prereq in prereqs:
-                    mod_name = prereq[:-2] if prereq.endswith(".o") else prereq
-                    dep_obj = ensure_module_object(
-                    mod_name, env, out_root=out_root, build=None if _is_builtin_module(mod_name, env) else True
-                )
-                    if dep_obj is not None and dep_obj.is_file():
-                        if dep_obj not in env.linked_objects:
-                            env.linked_objects.append(dep_obj)
-                        env.precompiled_modules.add(mod_name)
-                        _load_precompiled_transitive_deps(dep_obj, None, env, out_root, visited=visited)
-                return
-
-    # 2. Fallback: parse .mod.quest if available
-    if file_path and file_path.is_file():
-        source_text = file_path.read_text(encoding="utf-8")
-        source_map = SourceMap(source_text, str(file_path))
-        tokenizer = Tokenizer(source_text, str(file_path))
-        tokens = tokenizer.tokenize_all()
-        prog = parse_quest_program(tokens, source_map)
-        if (
-            isinstance(prog, ast.Program)
-            and len(prog.phrases) == 1
-            and isinstance(prog.phrases[0], ast.ModuleDecl)
-        ):
-            for imp in prog.phrases[0].imports:
-                iface_path = imp.effective_interface_path
-                for iname, mpath in zip(imp.names, imp.effective_module_paths):
-                    if mpath not in env.precompiled_modules and mpath not in env.loaded_modules_ast:
-                        load_module(mpath, iface_path, env)
-
-
 def _declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
     """Returns the name declared by `module <name>` in file_path, else the last segment of canon_name."""
     fallback = canon_name.split("/")[-1]
@@ -692,34 +468,12 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
     if name in env.precompiled_modules or canon_name in env.precompiled_modules:
         return _synthesize_precompiled_module()
 
-    # Hierarchical module separate compilation in C compilation mode
-    if is_c_compilation_mode(env) and ("/" in canon_name or "/" in name):
-        opts = getattr(env, "options", None)
-        build_dir = getattr(opts, "build_dir", None)
-        if build_dir is not None:
-            out_root = Path(build_dir).resolve()
-        elif file_path is not None:
-            rel_parts = len(Path(canon_name).parts)
-            out_root = file_path.parents[rel_parts - 1].resolve()
-        else:
-            out_root = (env.current_dir or Path.cwd()).resolve()
-
-        if file_path is not None:
-            obj_file = ensure_module_object(
-                name, env, interface_name=expected_interface, out_root=out_root, build=True
-            )
-        else:
-            obj_file = out_root / f"{canon_name}.o"
-
-        if obj_file is not None and obj_file.is_file():
-            if obj_file not in env.linked_objects:
-                env.linked_objects.append(obj_file)
-            env.precompiled_modules.add(name)
-            env.precompiled_modules.add(canon_name)
-            if out_root not in env.include_paths:
-                env.include_paths.insert(0, out_root)
-            _load_precompiled_transitive_deps(obj_file, file_path, env, out_root)
-            return _synthesize_precompiled_module()
+    # Separate compilation of hierarchical modules: importers are typed against the module's interface.
+    # Building its object is left to the BuildEngine (docs/build-process.md §7.3).
+    if is_c_compilation_mode(env) and ("/" in canon_name or "/" in name) and file_path is not None:
+        env.precompiled_modules.add(name)
+        env.precompiled_modules.add(canon_name)
+        return _synthesize_precompiled_module()
 
     if file_path is None:
         from quest.builtins import BuiltinModuleRegistry
@@ -730,11 +484,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
 
         obj_file = resolve_object_file(name, env.current_dir, env.include_paths)
         if obj_file is not None or name in env.precompiled_modules:
-            if obj_file is not None and obj_file not in env.linked_objects:
-                env.linked_objects.append(obj_file)
             env.precompiled_modules.add(name)
-            src_file = resolve_module_file(name, env.current_dir, env.include_paths)
-            _load_precompiled_transitive_deps(obj_file, src_file, env, None)
             return _synthesize_precompiled_module()
 
         searched = [str(env.current_dir)] if env.current_dir else []
