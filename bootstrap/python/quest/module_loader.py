@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import quest.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.diagnostics import QuestCompilerError, QuestTypeError
 from quest.grammar import parse_quest_program
-from quest.tokens import SourceMap
+from quest.tokens import SourceMap, TokenKind
 from quest.tokenizer import Tokenizer
 
 if TYPE_CHECKING:
@@ -621,6 +621,21 @@ def _load_precompiled_transitive_deps(
                         load_module(mpath, iface_path, env)
 
 
+def _declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
+    """Returns the name declared by `module <name>` in file_path, else the last segment of canon_name."""
+    fallback = canon_name.split("/")[-1]
+    if file_path is None or not file_path.is_file():
+        return fallback
+    try:
+        tokens = Tokenizer(file_path.read_text(encoding="utf-8"), str(file_path)).tokenize_all()
+    except (OSError, QuestCompilerError):
+        return fallback
+    for tok, nxt in zip(tokens, tokens[1:]):
+        if tok.kind == TokenKind.KW_MODULE:
+            return nxt.lexeme
+    return fallback
+
+
 def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
     """Loads, validates, and elaborates a module from a .mod.quest file."""
     if name in env.loaded_modules_ast:
@@ -648,7 +663,10 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             target_interface_scope = load_interface(expected_interface, env)
 
         from quest.modules import create_module_export_scope
-        module_export_scope = create_module_export_scope(canon_name, target_interface_scope, env)
+        # Name opaque exported types after the module's declared name, as elaborating its source does.
+        module_export_scope = create_module_export_scope(
+            _declared_module_name(file_path, canon_name), target_interface_scope, env
+        )
         env.register_module(canon_name, module_export_scope)
         if name != canon_name:
             env.register_module(name, module_export_scope)
@@ -790,6 +808,12 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         temp_scope = Scope(parent=env.base_scope, name=f"temp_load_{decl.name}")
         env.current_scope = temp_scope
         typed_mod = elaborate_module(decl, env)
+
+        # elaborate_module registers the export scope under the declared name; importers look it up by
+        # the path they imported, so register it there too (different directories may reuse a name).
+        env.register_module(name, typed_mod.scope)
+        if canon_name != name:
+            env.register_module(canon_name, typed_mod.scope)
 
         env.loaded_modules_ast[name] = typed_mod
         if decl.name != name:

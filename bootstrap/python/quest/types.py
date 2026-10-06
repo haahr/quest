@@ -58,7 +58,8 @@ class QPowerKind(QKind):
         return QPowerKind(self.bound.evaluate_lazily(env))
 
     def substitute_types(self, subst: dict[int, QType]) -> QKind:
-        return QPowerKind(self.bound.substitute(subst))
+        bound = self.bound.substitute(subst)
+        return self if bound is self.bound else QPowerKind(bound)
 
     def __str__(self) -> str:
         return f"<: {self.bound}"
@@ -85,19 +86,27 @@ class QAllKind(QKind):
             active_subst = {k: v for k, v in subst.items() if k != self.param_id}
         else:
             active_subst = subst
+        param_kind = self.param_kind.substitute_kinds(subst)
+        result_kind = self.result_kind.substitute_kinds(active_subst)
+        if param_kind is self.param_kind and result_kind is self.result_kind:
+            return self
         return QAllKind(
             param_name=self.param_name,
             param_id=self.param_id,
-            param_kind=self.param_kind.substitute_kinds(subst),
-            result_kind=self.result_kind.substitute_kinds(active_subst),
+            param_kind=param_kind,
+            result_kind=result_kind,
         )
 
     def substitute_types(self, subst: dict[int, QType]) -> QKind:
+        param_kind = self.param_kind.substitute_types(subst)
+        result_kind = self.result_kind.substitute_types(subst)
+        if param_kind is self.param_kind and result_kind is self.result_kind:
+            return self
         return QAllKind(
             param_name=self.param_name,
             param_id=self.param_id,
-            param_kind=self.param_kind.substitute_types(subst),
-            result_kind=self.result_kind.substitute_types(subst),
+            param_kind=param_kind,
+            result_kind=result_kind,
         )
 
     def __str__(self) -> str:
@@ -126,6 +135,11 @@ class QKindVar(QKind):
 
 # Canonical singletons for kinds
 TYPE_KIND = QTypeKind()
+
+
+def _all_same(new: Any, old: Any) -> bool:
+    """True if two equal-length sequences hold identical objects; substitute returns self then."""
+    return all(a is b for a, b in zip(new, old))
 
 
 # ============================================================================
@@ -218,7 +232,8 @@ class QExceptionType(QType):
         return self
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QExceptionType(payload_type=self.payload_type.substitute(subst))
+        payload = self.payload_type.substitute(subst)
+        return self if payload is self.payload_type else QExceptionType(payload_type=payload)
 
     def __str__(self) -> str:
         if self.payload_type is OK_TYPE:
@@ -260,7 +275,8 @@ class QTupleField:
     is_var: bool = False
 
     def substitute(self, subst: dict[int, QType]) -> QTupleField:
-        return QTupleField(name=self.name, type_val=self.type_val.substitute(subst), is_var=self.is_var)
+        type_val = self.type_val.substitute(subst)
+        return self if type_val is self.type_val else QTupleField(name=self.name, type_val=type_val, is_var=self.is_var)
 
     def __str__(self) -> str:
         var_prefix = "var " if self.is_var else ""
@@ -277,11 +293,10 @@ class QTupleTypeFormal:
     bound: QKind
 
     def substitute(self, subst: dict[int, QType]) -> QTupleTypeFormal:
-        return QTupleTypeFormal(
-            name=self.name,
-            symbol_id=self.symbol_id,
-            bound=self.bound.substitute_types(subst),
-        )
+        bound = self.bound.substitute_types(subst)
+        if bound is self.bound:
+            return self
+        return QTupleTypeFormal(name=self.name, symbol_id=self.symbol_id, bound=bound)
 
     def __str__(self) -> str:
         return f"{self.name}::{self.bound}"
@@ -295,11 +310,11 @@ class QTupleTypeBinding:
     bound: Optional[QKind] = None
 
     def substitute(self, subst: dict[int, QType]) -> QTupleTypeBinding:
-        return QTupleTypeBinding(
-            name=self.name,
-            type_val=self.type_val.substitute(subst),
-            bound=self.bound.substitute_types(subst) if self.bound else None,
-        )
+        type_val = self.type_val.substitute(subst)
+        bound = self.bound.substitute_types(subst) if self.bound else None
+        if type_val is self.type_val and bound is self.bound:
+            return self
+        return QTupleTypeBinding(name=self.name, type_val=type_val, bound=bound)
 
     def __str__(self) -> str:
         bound_str = f"::{self.bound} " if self.bound else ""
@@ -394,6 +409,8 @@ class QTupleType(QType):
                 new_fields.append(f.substitute(curr_subst))
             else:
                 new_fields.append(f)
+        if _all_same(new_fields, self.fields):
+            return self
         return QTupleType(tuple(new_fields))
 
     def __str__(self) -> str:
@@ -409,7 +426,8 @@ class QRecordField:
     is_var: bool = False
 
     def substitute(self, subst: dict[int, QType]) -> QRecordField:
-        return QRecordField(name=self.name, type_val=self.type_val.substitute(subst), is_var=self.is_var)
+        type_val = self.type_val.substitute(subst)
+        return self if type_val is self.type_val else QRecordField(name=self.name, type_val=type_val, is_var=self.is_var)
 
     def __str__(self) -> str:
         var_prefix = "var " if self.is_var else ""
@@ -429,7 +447,8 @@ class QRecordType(QType):
         return None
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QRecordType(tuple(f.substitute(subst) for f in self.fields), provenance=self.provenance)
+        fields = tuple(f.substitute(subst) for f in self.fields)
+        return self if _all_same(fields, self.fields) else QRecordType(fields, provenance=self.provenance)
 
     def __str__(self) -> str:
         if self.provenance:
@@ -446,11 +465,10 @@ class QVariantField:
     is_var: bool = False
 
     def substitute(self, subst: dict[int, QType]) -> QVariantField:
-        return QVariantField(
-            name=self.name,
-            type_val=self.type_val.substitute(subst) if self.type_val else None,
-            is_var=self.is_var,
-        )
+        type_val = self.type_val.substitute(subst) if self.type_val else None
+        if type_val is self.type_val:
+            return self
+        return QVariantField(name=self.name, type_val=type_val, is_var=self.is_var)
 
     def __str__(self) -> str:
         var_prefix = "var " if self.is_var else ""
@@ -471,7 +489,8 @@ class QVariantType(QType):
         return None
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QVariantType(tuple(v.substitute(subst) for v in self.variants))
+        variants = tuple(v.substitute(subst) for v in self.variants)
+        return self if _all_same(variants, self.variants) else QVariantType(variants)
 
     def __str__(self) -> str:
         variants_str = " ".join(str(v) for v in self.variants)
@@ -485,10 +504,8 @@ class QOptionField:
     payload_type: Optional[QType] = None
 
     def substitute(self, subst: dict[int, QType]) -> QOptionField:
-        return QOptionField(
-            name=self.name,
-            payload_type=self.payload_type.substitute(subst) if self.payload_type else None,
-        )
+        payload = self.payload_type.substitute(subst) if self.payload_type else None
+        return self if payload is self.payload_type else QOptionField(name=self.name, payload_type=payload)
 
     def __str__(self) -> str:
         if self.payload_type:
@@ -508,7 +525,8 @@ class QOptionType(QType):
         return None
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QOptionType(tuple(o.substitute(subst) for o in self.options))
+        options = tuple(o.substitute(subst) for o in self.options)
+        return self if _all_same(options, self.options) else QOptionType(options)
 
     def __str__(self) -> str:
         options_str = " ".join(str(o) for o in self.options)
@@ -528,12 +546,10 @@ class QParam:
     is_out: bool = False
 
     def substitute(self, subst: dict[int, QType]) -> QParam:
-        return QParam(
-            name=self.name,
-            type_val=self.type_val.substitute(subst),
-            is_var=self.is_var,
-            is_out=self.is_out,
-        )
+        type_val = self.type_val.substitute(subst)
+        if type_val is self.type_val:
+            return self
+        return QParam(name=self.name, type_val=type_val, is_var=self.is_var, is_out=self.is_out)
 
     def __str__(self) -> str:
         prefix = "var " if self.is_var else ("out " if self.is_out else "")
@@ -547,10 +563,11 @@ class QFunType(QType):
     result_type: QType
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QFunType(
-            params=tuple(p.substitute(subst) for p in self.params),
-            result_type=self.result_type.substitute(subst),
-        )
+        params = tuple(p.substitute(subst) for p in self.params)
+        result_type = self.result_type.substitute(subst)
+        if result_type is self.result_type and _all_same(params, self.params):
+            return self
+        return QFunType(params=params, result_type=result_type)
 
     def __str__(self) -> str:
         params_str = " ".join(str(p) for p in self.params)
@@ -563,7 +580,8 @@ class QVarType(QType):
     element_type: QType
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QVarType(self.element_type.substitute(subst))
+        element_type = self.element_type.substitute(subst)
+        return self if element_type is self.element_type else QVarType(element_type)
 
     def __str__(self) -> str:
         return f"Var({self.element_type})"
@@ -575,7 +593,8 @@ class QArrayType(QType):
     element_type: QType
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QArrayType(self.element_type.substitute(subst))
+        element_type = self.element_type.substitute(subst)
+        return self if element_type is self.element_type else QArrayType(element_type)
 
     def __str__(self) -> str:
         return f"Array({self.element_type})"
@@ -587,7 +606,8 @@ class QOutType(QType):
     element_type: QType
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QOutType(self.element_type.substitute(subst))
+        element_type = self.element_type.substitute(subst)
+        return self if element_type is self.element_type else QOutType(element_type)
 
     def __str__(self) -> str:
         return f"Out({self.element_type})"
@@ -605,11 +625,10 @@ class QQuantifier:
     bound: QKind
 
     def substitute(self, subst: dict[int, QType]) -> QQuantifier:
-        return QQuantifier(
-            name=self.name,
-            symbol_id=self.symbol_id,
-            bound=self.bound.substitute_types(subst),
-        )
+        bound = self.bound.substitute_types(subst)
+        if bound is self.bound:
+            return self
+        return QQuantifier(name=self.name, symbol_id=self.symbol_id, bound=bound)
 
     def __str__(self) -> str:
         if isinstance(self.bound, QPowerKind):
@@ -627,10 +646,11 @@ class QAllType(QType):
         # Avoid capturing bound quantifiers
         bound_ids = {q.symbol_id for q in self.quantifiers}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
-        return QAllType(
-            quantifiers=tuple(q.substitute(subst) for q in self.quantifiers),
-            body=self.body.substitute(active_subst),
-        )
+        quantifiers = tuple(q.substitute(subst) for q in self.quantifiers)
+        body = self.body.substitute(active_subst)
+        if body is self.body and _all_same(quantifiers, self.quantifiers):
+            return self
+        return QAllType(quantifiers=quantifiers, body=body)
 
     def __str__(self) -> str:
         quants = " ".join(str(q) for q in self.quantifiers)
@@ -650,11 +670,14 @@ class QAutoType(QType):
             active_subst = {k: v for k, v in subst.items() if k != self.symbol_id}
         else:
             active_subst = subst
+        signature = tuple(f.substitute(active_subst) for f in self.signature)
+        if _all_same(signature, self.signature):
+            return self
         return QAutoType(
             type_param=self.type_param,
             symbol_id=self.symbol_id,
             kind_bound=self.kind_bound,
-            signature=tuple(f.substitute(active_subst) for f in self.signature),
+            signature=signature,
         )
 
     def __str__(self) -> str:
@@ -682,7 +705,8 @@ class QTypeFun(QType):
     def substitute(self, subst: dict[int, QType]) -> QType:
         bound_ids = {p.symbol_id for p in self.params}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
-        return QTypeFun(params=self.params, body=self.body.substitute(active_subst))
+        body = self.body.substitute(active_subst)
+        return self if body is self.body else QTypeFun(params=self.params, body=body)
 
     def __str__(self) -> str:
         params_str = " ".join(str(p) for p in self.params)
@@ -708,10 +732,11 @@ class QTypeApp(QType):
         return QTypeApp(constructor=ctor, arguments=self.arguments)
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        return QTypeApp(
-            constructor=self.constructor.substitute(subst),
-            arguments=tuple(arg.substitute(subst) for arg in self.arguments),
-        )
+        constructor = self.constructor.substitute(subst)
+        arguments = tuple(arg.substitute(subst) for arg in self.arguments)
+        if constructor is self.constructor and _all_same(arguments, self.arguments):
+            return self
+        return QTypeApp(constructor=constructor, arguments=arguments)
 
     def __str__(self) -> str:
         args_str = " ".join(str(a) for a in self.arguments)
@@ -742,12 +767,10 @@ class QRecType(QType):
             active_subst = {k: v for k, v in subst.items() if k != self.symbol_id}
         else:
             active_subst = subst
-        return QRecType(
-            var_name=self.var_name,
-            symbol_id=self.symbol_id,
-            bound=self.bound,
-            body=self.body.substitute(active_subst),
-        )
+        body = self.body.substitute(active_subst)
+        if body is self.body:
+            return self
+        return QRecType(var_name=self.var_name, symbol_id=self.symbol_id, bound=self.bound, body=body)
 
     def __str__(self) -> str:
         return f"Rec({self.var_name} :: {self.bound}) {self.body}"
@@ -783,10 +806,10 @@ class QRecGroupType(QType):
     def substitute(self, subst: dict[int, QType]) -> QType:
         bound_ids = {b[1] for b in self.bindings}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
-        new_bindings = tuple(
-            (b[0], b[1], b[2], b[3].substitute(active_subst))
-            for b in self.bindings
-        )
+        new_bodies = tuple(b[3].substitute(active_subst) for b in self.bindings)
+        if all(nb is b[3] for nb, b in zip(new_bodies, self.bindings)):
+            return self
+        new_bindings = tuple((b[0], b[1], b[2], nb) for b, nb in zip(self.bindings, new_bodies))
         return QRecGroupType(bindings=new_bindings, active_index=self.active_index)
 
     def __str__(self) -> str:
