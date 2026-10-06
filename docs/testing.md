@@ -276,3 +276,35 @@ bidirectional matching:
 | **Golden Tests** | Valid end-to-end outputs | `python3 run_tests.py` |
 | **Error Tests** | Semantic diagnostic verification | `python3 run_tests.py --errors` |
 | **Update Goldens** | Refresh golden output files | `python3 run_tests.py --update-golden` |
+
+---
+
+## 5. Test Suite Performance
+
+### 5.1. Where the Time Goes
+Measured 2026-10-06 on the full golden and error suites (about 160 s in total, each phase timed separately with a
+fresh build directory):
+
+| Part | Time | Notes |
+| :--- | ---: | :--- |
+| `run_c_compiled` (58 tests) | 77 s | Every link recompiles the C runtime (~0.4 s); includes the cold `ast`/`astprint` module build |
+| Error suite (85 tests) | 42 s | Each test starts the compiler 2-5 times (precursor phases plus the target phase) |
+| `typecheck` / `interpret` | 14 s / 14 s | |
+| `tokenize` / `parse` | 7 s / 7 s | Almost entirely process startup |
+
+Starting one compiler process costs about 0.12 s (mostly importing the `quest` package), and a full run starts roughly
+370 processes for the golden tests, plus more for the error tests.
+
+### 5.2. Possible Speedups (largest first)
+1. **Run tests in parallel.** `run_tests.py` runs one test at a time. Six to eight workers could plausibly bring the
+   suite under a minute. The shared build directory then needs care: either build the library modules once before
+   starting the workers, or give each worker its own build directory.
+2. **Build the C runtime once per run.** Every link recompiles `runtime/quest_runtime.c` and
+   `runtime/quest_serialization.c` from source at `-O2` (about 0.39 s), costing roughly 25-30 s across the C tests and
+   C error tests. Compiling them once into the build directory and linking the object files would recover most of it.
+3. **Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own
+   process to confirm that it passes (section 3.4), although the target-phase run already executes those phases in the
+   same process. If the target run's diagnostics recorded which phase failed, one process per test would suffice,
+   probably cutting the error suite by half to two-thirds.
+4. **Reuse build artifacts safely.** `--build-dir .build` already skips rebuilding library modules, but it is only safe
+   once compiled artifacts record the compiler version that produced them, so that a compiler change invalidates them.

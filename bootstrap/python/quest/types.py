@@ -1670,8 +1670,43 @@ def check_kind(type_val: QType, expected_kind: QKind, env: Optional[Any] = None)
         )
 
 
+# Kinds synthesized during the current top-level kind check, keyed by node identity. Elaborated types
+# are DAGs (aliases are shared), so without this every shared subterm is re-checked on every path to it.
+_kind_memo: Optional[dict[int, tuple[QType, QKind]]] = None
+_kind_memo_env: Optional[Any] = None
+
+
 def synth_kind(type_val: QType, env: Optional[Any] = None) -> QKind:
-    """Synthesizes the most specific minimal kind K for type_val in the given environment."""
+    """Synthesizes the most specific minimal kind K for type_val in the given environment.
+
+    Results are memoized for the duration of the outermost call. That is sound because a node's kind
+    depends only on the node and the binders in scope, which have unique symbol ids, so a shared node
+    has the same kind wherever it occurs. Metavariables are not memoized (their kind follows their
+    solution), and a nested call with a different environment bypasses the memo.
+    """
+    global _kind_memo, _kind_memo_env
+    if isinstance(type_val, QTypeMeta):
+        return _synth_kind_uncached(type_val, env)
+    if _kind_memo is not None:
+        if env is not _kind_memo_env:
+            return _synth_kind_uncached(type_val, env)
+        hit = _kind_memo.get(id(type_val))
+        if hit is not None and hit[0] is type_val:
+            return hit[1]
+        kind = _synth_kind_uncached(type_val, env)
+        _kind_memo[id(type_val)] = (type_val, kind)
+        return kind
+
+    _kind_memo, _kind_memo_env = {}, env
+    try:
+        kind = _synth_kind_uncached(type_val, env)
+    finally:
+        _kind_memo, _kind_memo_env = None, None
+    return kind
+
+
+def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
+    """Synthesizes the kind of type_val; recursive checks go through the memoizing synth_kind."""
     match type_val:
         case (QIntType() | QRealType() | QBoolType() | QCharType() | QStringType()
               | QOkType() | QDynamicType() | QExceptionType() | QExternalType()):
