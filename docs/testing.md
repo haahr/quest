@@ -121,6 +121,14 @@ python3 run_tests.py --update-golden
 
 If stdout does not match the golden file, `run_tests.py` prints a unified diff detailing the exact mismatch.
 
+**Hermetic C builds:** C phases build into a fresh temporary build directory for each run (shared by the tests of that
+run and deleted afterwards), so results never depend on artifacts left by earlier compiler versions. Pass
+`--build-dir <dir>` to reuse a build directory across runs for speed.
+
+**Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
+type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables
+every check. See `bootstrap/python/quest/shadow.py`.
+
 ### 2.4. Phase Skipping Directives (`(* @skip-phase: ... *)`)
 For language features that are fully supported in the tree-walking Python interpreter but not yet implemented in the
 C compilation backend (or for tests specific to certain phases), tests can include in-file phase skipping directives:

@@ -40,6 +40,7 @@ from quest.codegen.c_types import (
 )
 from quest.types import (
     QAllType,
+    QKind,
     QArrayType,
     QFunType,
     QOptionType,
@@ -124,7 +125,8 @@ def find_val_referenced_top_funs(prog: TypedProgram, top_fun_names: set[str]) ->
     referenced: set[str] = set()
 
     def scan(node: Any) -> None:
-        if node is None:
+        # Types and kinds never contain typed-AST nodes; walking them (as DAGs unfolded into trees) is costly.
+        if node is None or isinstance(node, (QType, QKind)):
             return
         match node:
             case TypedApp(func=f, args=args):
@@ -497,6 +499,8 @@ def analyze_program_for_c(
             needed_builtin_modules.append(iname)
 
     def _scan_for_builtin_vars(n: Any) -> None:
+        if isinstance(n, (QType, QKind)):
+            return
         if isinstance(n, TypedVar) and n.name in known_builtins:
             if n.name not in needed_builtin_modules:
                 needed_builtin_modules.append(n.name)
@@ -611,11 +615,11 @@ def analyze_program_for_c(
     if env is not None:
         from quest.module_loader import (
             _load_precompiled_transitive_deps,
-            resolve_object_file,
+            ensure_module_object,
         )
         for mod in all_module_map.values():
             if getattr(mod, "is_precompiled", False):
-                obj = resolve_object_file(mod.name, env.current_dir, env.include_paths)
+                obj = ensure_module_object(mod.name, env, interface_name=mod.interface_name or None)
                 if obj is not None and obj.is_file():
                     if obj not in env.linked_objects:
                         env.linked_objects.append(obj)
@@ -789,6 +793,9 @@ def analyze_program_for_c(
                 top_fun_objs.add(id(b.value))
     agnostic_lambdas = analyze_closures(prog, top_fun_objs, top_names)
     for mod in sorted_modules:
+        # Modules that are phrases of prog were already covered by analyze_closures(prog).
+        if mod.name in current_unit_modules:
+            continue
         if not getattr(mod, "is_precompiled", False):
             agnostic_lambdas.extend(analyze_closures(mod, top_fun_objs, top_names))
 
@@ -815,6 +822,11 @@ def analyze_program_for_c(
                 module_name=l.module_name,
             )
         )
+
+    lifted_names = [l.c_fn_name for l in lifted_lambdas]
+    if len(lifted_names) != len(set(lifted_names)):
+        dupes = sorted({n for n in lifted_names if lifted_names.count(n) > 1})
+        raise AssertionError(f"Duplicate lifted lambdas in C analysis: {', '.join(dupes)}")
 
     lambda_info_by_id = {id(l.fun): l for l in lifted_lambdas}
 

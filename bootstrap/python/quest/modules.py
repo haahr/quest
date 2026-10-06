@@ -266,6 +266,7 @@ def elaborate_module(
                         module_internal_scope.declare_kind(kind_symbol)
                         continue
                 from quest.module_loader import (
+                    ensure_module_object,
                     is_c_compilation_mode,
                     load_module,
                     resolve_module_file,
@@ -282,7 +283,7 @@ def elaborate_module(
                             source_interface_scope, provenance=local_name
                         )
                     registered_scope = mod_scope if mod_scope is not None else source_interface_scope
-                    obj_file = resolve_object_file(mod_path, env.current_dir, env.include_paths)
+                    obj_file = ensure_module_object(mod_path, env, interface_name=iface_path)
                     if obj_file is not None and obj_file.is_file():
                         if obj_file not in env.linked_objects:
                             env.linked_objects.append(obj_file)
@@ -468,6 +469,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
             # import mod1, mod2: Interface
             for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
                 from quest.module_loader import (
+                    ensure_module_object,
                     is_c_compilation_mode,
                     load_module,
                     resolve_module_file,
@@ -485,7 +487,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                             iface_scope, provenance=local_mod_name
                         )
                     registered_scope = mod_scope if mod_scope is not None else iface_scope
-                    obj_file = resolve_object_file(mod_path, env.current_dir, env.include_paths)
+                    obj_file = ensure_module_object(mod_path, env, interface_name=iface_path)
                     if obj_file is not None and obj_file.is_file():
                         if obj_file not in env.linked_objects:
                             env.linked_objects.append(obj_file)

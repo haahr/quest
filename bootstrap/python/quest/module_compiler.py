@@ -214,8 +214,8 @@ def compile_module(
                     if obj_rel not in dep_objects:
                         dep_objects.append(obj_rel)
                 else:
-                    obj_cand = resolve_object_file(canon, env.current_dir, env.include_paths)
-                    if obj_cand is not None:
+                    # A module with a source is always a dependency, even before its object is built.
+                    if f_path is not None or resolve_object_file(canon, env.current_dir, env.include_paths) is not None:
                         obj_rel = f"{canon.lower()}.o"
                         if obj_rel not in dep_objects:
                             dep_objects.append(obj_rel)
@@ -336,14 +336,19 @@ def compile_hierarchical_module(
     nogc: bool = False,
     extra_c_flags: Optional[list[str]] = None,
     emit_deps: bool = False,
-) -> tuple[Path, Path, Path, Path]:
-    """Compiles a hierarchical interface and module by canonical name into output_dir.
+    build_dir: Optional[Path] = None,
+) -> tuple[Optional[Path], Optional[Path], Path, Path]:
+    """Compiles a module (and its same-named interface, if any) by canonical name into output_dir.
 
-    Returns (qi_file, h_file, c_file, o_file).
+    build_dir is inherited by the nested compilations, so that interfaces and modules they load
+    are found in and written to the same build directory. A module whose interface is not a
+    same-named .int.quest (e.g. lib/string.mod.quest implementing the builtin StringOp) is compiled
+    alone; its interface is resolved by the module compilation itself.
+
+    Returns (qi_file, h_file, c_file, o_file); qi_file and h_file are None when no interface was compiled.
     """
     from quest.interface_compiler import compile_interface_file
     from quest.module_loader import (
-        resolve_interface_file,
         resolve_interface_source_file,
         resolve_module_file,
     )
@@ -351,15 +356,10 @@ def compile_hierarchical_module(
     inc_paths = list(include_paths) if include_paths else []
     out_dir = Path(output_dir).resolve()
 
-    intf_src_path = resolve_interface_source_file(canonical_name, current_dir, inc_paths)
-    if intf_src_path is None:
-        intf_src_path = resolve_interface_file(canonical_name, current_dir, inc_paths)
-    if intf_src_path is None:
-        raise QuestTypeError(f"Cannot resolve interface file for '{canonical_name}'")
-
     mod_path = resolve_module_file(canonical_name, current_dir, inc_paths)
     if mod_path is None:
         raise QuestTypeError(f"Cannot resolve module file for '{canonical_name}'")
+    intf_src_path = resolve_interface_source_file(canonical_name, current_dir, inc_paths)
 
     target_subdir = out_dir / Path(canonical_name).parent if "/" in canonical_name else out_dir
     target_subdir.mkdir(parents=True, exist_ok=True)
@@ -371,9 +371,10 @@ def compile_hierarchical_module(
     stem = Path(canonical_name).name.lower()
     target_h = target_subdir / f"{stem}.h"
     target_qi = target_subdir / f"{stem}.qi"
-    if intf_src_path.suffix == ".qi":
-        h_file = target_h
-        qi_file = target_qi
+    h_file: Optional[Path] = None
+    qi_file: Optional[Path] = None
+    if intf_src_path is None:
+        pass
     elif (
         target_h.is_file()
         and target_qi.is_file()
@@ -387,6 +388,7 @@ def compile_hierarchical_module(
             intf_src_path,
             output_dir=target_subdir,
             include_paths=search_paths,
+            build_dir=build_dir,
         )
     c_file, o_file = compile_module_file(
         mod_path,
@@ -396,6 +398,7 @@ def compile_hierarchical_module(
         nogc=nogc,
         extra_c_flags=extra_c_flags,
         emit_deps=emit_deps,
+        build_dir=build_dir,
     )
     return (qi_file, h_file, c_file, o_file)
 

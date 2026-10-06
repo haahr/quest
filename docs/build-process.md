@@ -111,6 +111,13 @@ The compiler driver differentiates between orchestrating a full build of an appl
   - If `-o <path>` is specified, outputs are placed in the directory containing `<path>`.
   - If neither is specified, outputs default to the source file directory (`file_path.parent`). This preserves
     isolated single-file tool workflows and localized unit tests without creating unintended `.build/` trees.
+- **Driver C Phases (`--stop-after codegen_c` / `run_c_compiled`, `--emit-c`, `-o` with objects):**
+  Always use a build directory (default `.build/` in the current directory). Imported modules whose objects are
+  missing or stale, and the headers of imported interfaces (including builtin interfaces such as `Writer`), are
+  compiled into it on demand. Nested interface and module compilations inherit the same build directory.
+
+Compiled artifacts found outside the build directory (for example a `.qi` or `.o` next to a source file) are used only
+when the corresponding source file does not exist (Rule 3 below); otherwise the source is authoritative.
 
 ```
 quest/

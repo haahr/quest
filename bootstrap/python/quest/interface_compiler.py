@@ -90,17 +90,46 @@ C_KEYWORDS = {
 
 
 
+class TypeAliasTable:
+    """Maps type objects, by identity, to the alias names they were declared or imported under.
+
+    Quest types do not support Python ==, so aliases are recognized only when a type is the very
+    object bound to the alias (as elaboration of an alias reference produces).
+    """
+
+    def __init__(self) -> None:
+        self._entries: dict[int, tuple[QType, str]] = {}
+
+    def add(self, t: QType, name: str) -> None:
+        """Records name for t unless t already has an alias."""
+        self._entries.setdefault(id(t), (t, name))
+
+    def get(self, t: QType) -> Optional[str]:
+        entry = self._entries.get(id(t))
+        return entry[1] if entry is not None and entry[0] is t else None
+
+    def __contains__(self, t: QType) -> bool:
+        return self.get(t) is not None
+
+    def without_name(self, name: str) -> "TypeAliasTable":
+        """Returns a copy omitting entries whose alias is name."""
+        result = TypeAliasTable()
+        result._entries = {k: v for k, v in self._entries.items() if v[1] != name}
+        return result
+
+
 def format_type_for_qi(
     t: QType | None,
-    aliases: Optional[dict[QType, str]] = None,
+    aliases: Optional[TypeAliasTable] = None,
     visited: Optional[set[int]] = None,
 ) -> str:
     """Formats a semantic QType into canonical Quest type syntax for .qi metadata, using aliases when available."""
     if t is None:
         return ""
     t = t.prune() if hasattr(t, "prune") else t
-    if aliases and t in aliases:
-        return aliases[t]
+    alias = aliases.get(t) if aliases is not None else None
+    if alias is not None:
+        return alias
     if visited is None:
         visited = set()
 
@@ -201,7 +230,7 @@ def format_type_for_qi(
         ctor_str = format_type_for_qi(t.constructor, aliases, visited)
         if (
             isinstance(t.constructor, (QTypeFun, QAllType, QRecType, QRecGroupType))
-            and t.constructor not in (aliases or {})
+            and (aliases is None or t.constructor not in aliases)
         ):
             ctor_str = f"{{{ctor_str}}}"
         return f"{ctor_str}({args_str})"
@@ -299,7 +328,7 @@ def compile_interface_to_qi(
     value_records: list[QRecord] = []
 
     # Build aliases dictionary mapping concrete QType to alias names declared or imported in interface
-    aliases: dict[QType, str] = {}
+    aliases = TypeAliasTable()
     # 1. Imported types: e.g. ast.TypeExpr, ast.Expr, ast.Program
     if env is not None:
         for imp in decl.imports:
@@ -309,21 +338,19 @@ def compile_interface_to_qi(
                     if mod and hasattr(mod, "types"):
                         for t_name, t_sym in mod.types.items():
                             if t_sym and t_sym.definition is not None:
-                                if t_sym.definition not in aliases:
-                                    aliases[t_sym.definition] = f"{iname}.{t_name}"
+                                aliases.add(t_sym.definition, f"{iname}.{t_name}")
     # Also check parent scope (imported interface types)
     if iface_scope.parent is not None:
         for t_name, t_sym in iface_scope.parent.types.items():
-            if t_sym and t_sym.definition is not None and t_sym.definition not in aliases:
-                aliases[t_sym.definition] = t_name
+            if t_sym and t_sym.definition is not None:
+                aliases.add(t_sym.definition, t_name)
 
     # 2. Local type signatures in interface
     for sig in decl.signatures:
         if isinstance(sig, (ast.LetTypeBinding, ast.DefTypeBinding)):
             type_sym = iface_scope.lookup_type_local(sig.name)
             if type_sym and type_sym.definition is not None:
-                if type_sym.definition not in aliases:
-                    aliases[type_sym.definition] = sig.name
+                aliases.add(type_sym.definition, sig.name)
 
     # Collect types
     for sig in decl.signatures:
@@ -342,7 +369,7 @@ def compile_interface_to_qi(
         elif isinstance(sig, (ast.LetTypeBinding, ast.DefTypeBinding)):
             type_sym = iface_scope.lookup_type_local(sig.name)
             concrete_t = type_sym.definition if type_sym and type_sym.definition else None
-            manifest_aliases = {k: v for k, v in aliases.items() if v != sig.name}
+            manifest_aliases = aliases.without_name(sig.name)
             m_type_str = (
                 format_type_for_qi(concrete_t, aliases=manifest_aliases)
                 if concrete_t
@@ -560,6 +587,14 @@ def compile_interface_file(
     env.current_dir = file_path.parent
     typed_iface = elaborate_interface(decl, env)
 
+    if build_dir is not None:
+        # The generated header #includes the headers of imported interfaces, so they must exist in the
+        # build directory too, including those of builtin interfaces that are never loaded from source.
+        for imp in decl.imports:
+            ensure_interface_artifacts(
+                imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve()
+            )
+
     qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env)
     h_content = compile_interface_to_header(decl, typed_iface.scope)
 
@@ -587,6 +622,29 @@ def compile_interface_file(
     h_path.write_text(h_content, encoding="utf-8")
 
     return h_path, qi_path
+
+
+def ensure_interface_artifacts(
+    name: str,
+    current_dir: Optional[Path],
+    include_paths: list[Path],
+    build_dir: Path,
+) -> None:
+    """Compiles interface `name` to .h/.qi in build_dir if it has a source and they are missing or stale."""
+    from quest.module_loader import (
+        _is_artifact_stale,
+        canonicalize_module_path,
+        resolve_interface_source_file,
+    )
+
+    src = resolve_interface_source_file(name, current_dir, include_paths)
+    if src is None:
+        return
+    canon_name = canonicalize_module_path(src, include_paths)
+    target_dir = build_dir / Path(canon_name).parent if "/" in canon_name else build_dir
+    stem = Path(canon_name).name.lower()
+    if _is_artifact_stale(target_dir / f"{stem}.qi", [src]) or _is_artifact_stale(target_dir / f"{stem}.h", [src]):
+        compile_interface_file(src, output_dir=target_dir, include_paths=include_paths, build_dir=build_dir)
 
 
 def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:

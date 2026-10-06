@@ -68,6 +68,9 @@ class CompilerOptions:
     build_dir: Optional[Path] = None
     whole_program: bool = False
     emit_deps: bool = False
+    # Compile stale or missing imported modules into build_dir on demand (pipeline C mode). The
+    # BuildEngine schedules units itself and leaves this off.
+    build_dependencies: bool = False
 
 
 @dataclass
@@ -97,6 +100,13 @@ class CompilerContext:
 
         # Wire include_paths and current_dir
         environment.options = opts
+        from quest.module_loader import is_c_compilation_mode
+        if opts.build_dir is None and is_c_compilation_mode(environment):
+            # Separate compilation always has a build directory, so that nested interface and module
+            # compilations agree on where artifacts live (docs/build-process.md §3.1).
+            opts.build_dir = Path(".build")
+        if is_c_compilation_mode(environment):
+            opts.build_dependencies = True
         environment.include_paths = list(opts.include_paths)
         if opts.build_dir and Path(opts.build_dir).resolve() not in [p.resolve() for p in environment.include_paths]:
             environment.include_paths.insert(0, Path(opts.build_dir).resolve())

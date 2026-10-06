@@ -5,8 +5,10 @@ import difflib
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -136,6 +138,8 @@ def run_single_golden_test(
     update_golden: bool = False,
     python_executable: str = sys.executable,
     timeout: float = 30.0,
+    build_dir: Optional[Path] = None,
+    driver_args: Optional[list[str]] = None,
 ) -> bool:
     golden_base = golden_dir_for_phase(phase_name)
     rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
@@ -155,8 +159,11 @@ def run_single_golden_test(
         "--stop-after",
         phase_name,
     ]
+    if driver_args:
+        command.extend(driver_args)
     if phase_name in ("codegen_c", "run_c_compiled"):
-        build_dir = ROOT_DIR / ".build"
+        if build_dir is None:
+            build_dir = ROOT_DIR / ".build"
         build_dir.mkdir(parents=True, exist_ok=True)
         command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
@@ -310,7 +317,41 @@ def main() -> int:
         help="Timeout in seconds for each individual test run (default: 30.0s).",
     )
 
+    arg_parser.add_argument(
+        "--build-dir",
+        help="Build directory for C phases, reused across runs (default: a fresh temporary directory per run, "
+        "so that results never depend on artifacts from earlier compiler versions).",
+    )
+    arg_parser.add_argument(
+        "--shadow",
+        action="append",
+        default=[],
+        metavar="CHECK",
+        help="Run the compiler with --shadow-CHECK (repeatable; 'all' enables every shadow-mode cross-check).",
+    )
+
     args = arg_parser.parse_args()
+
+    if args.build_dir:
+        build_dir = Path(args.build_dir).resolve()
+        temp_build_dir: Optional[Path] = None
+    else:
+        temp_build_dir = Path(tempfile.mkdtemp(prefix="quest-test-build-"))
+        build_dir = temp_build_dir
+    driver_args = [f"--shadow-{check}" for check in args.shadow]
+    try:
+        return run_all_tests(args, available_phases, build_dir, driver_args)
+    finally:
+        if temp_build_dir is not None:
+            shutil.rmtree(temp_build_dir, ignore_errors=True)
+
+
+def run_all_tests(
+    args: argparse.Namespace,
+    available_phases: list[str],
+    build_dir: Path,
+    driver_args: list[str],
+) -> int:
 
     # Determine suite mode
     suite_mode = "errors" if args.errors else args.suite
@@ -327,7 +368,8 @@ def main() -> int:
     passed_errors = 0
 
     print(f"Running tests with Python: {python_executable}")
-    print(f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}, Timeout: {args.timeout}s\n")
+    print(f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}, Timeout: {args.timeout}s")
+    print(f"Build dir: {build_dir}" + (f", Driver args: {' '.join(driver_args)}" if driver_args else "") + "\n")
 
     # 1. Run Golden Tests (if suite is 'golden' or 'all')
     if suite_mode in ("golden", "all"):
@@ -360,6 +402,8 @@ def main() -> int:
                         update_golden=args.update_golden,
                         python_executable=python_executable,
                         timeout=args.timeout,
+                        build_dir=build_dir,
+                        driver_args=driver_args,
                     ):
                         passed_golden += 1
             print()
@@ -414,6 +458,8 @@ def main() -> int:
                     env_vars=directives.env,
                     stdin_data=directives.stdin_data,
                     timeout=effective_timeout,
+                    build_dir=build_dir,
+                    driver_args=driver_args,
                 )
                 if passed:
                     passed_errors += 1

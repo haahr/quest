@@ -26,6 +26,7 @@ from quest.pipeline import (
     full_pipeline,
 )
 from quest.runtime import QOk, qvalue_to_str
+from quest import shadow
 from quest.tokens import SourceMap
 
 
@@ -154,7 +155,9 @@ def run_driver(args: list[str]) -> int:
         help="Deprecated: module dependencies are recorded in .qm manifests.",
     )
 
+    shadow.add_arguments(arg_parser)
     parsed_args = arg_parser.parse_args(driver_args)
+    shadow.apply_arguments(parsed_args)
 
     # Determine input source and extra objects
     is_inline_code = parsed_args.code is not None
@@ -484,7 +487,9 @@ def run_compile(args: list[str]) -> int:
         help="Deprecated: module dependencies are recorded in .qm manifests.",
     )
 
+    shadow.add_arguments(arg_parser)
     parsed_args = arg_parser.parse_args(args)
+    shadow.apply_arguments(parsed_args)
 
     # Determine input source and extra objects
     is_inline_code = parsed_args.code is not None

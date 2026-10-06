@@ -144,6 +144,8 @@ def execute_phase(
     env_vars: Optional[dict[str, str]] = None,
     stdin_data: Optional[str] = None,
     timeout: Optional[float] = None,
+    build_dir: Optional[Path] = None,
+    driver_args: Optional[list[str]] = None,
 ) -> tuple[int, str, str]:
     """Executes the compiler driver up to the specified phase with an optional timeout."""
     driver_script = root_dir / "bootstrap" / "python" / "quest_driver.py"
@@ -153,8 +155,11 @@ def execute_phase(
         "--stop-after",
         phase_name,
     ]
+    if driver_args:
+        command.extend(driver_args)
     if phase_name in ("codegen_c", "run_c_compiled"):
-        build_dir = root_dir / ".build"
+        if build_dir is None:
+            build_dir = root_dir / ".build"
         build_dir.mkdir(parents=True, exist_ok=True)
         command.extend(["--build-dir", str(build_dir)])
     if extra_args:
@@ -202,6 +207,8 @@ def run_error_test(
     stdin_data: Optional[str] = None,
     phase_configs: Optional[dict] = None,
     timeout: Optional[float] = None,
+    build_dir: Optional[Path] = None,
+    driver_args: Optional[list[str]] = None,
 ) -> tuple[bool, str]:
     """Runs an error test with precursor validation, timeout, and pattern-based or diagnostic matching."""
     # Step 1: Precursor Phase Validation
@@ -209,7 +216,7 @@ def run_error_test(
         rc, _, stderr = execute_phase(
             pre_phase, source_file, python_executable, root_dir,
             extra_args=extra_args, env_vars=env_vars, stdin_data=stdin_data,
-            timeout=timeout,
+            timeout=timeout, build_dir=build_dir, driver_args=driver_args,
         )
         if rc != 0 or parse_actual_diagnostics(stderr):
             err_msg = stderr.strip() if stderr.strip() else f"exited with code {rc}"
@@ -222,7 +229,7 @@ def run_error_test(
     rc, stdout, stderr = execute_phase(
         target_phase, source_file, python_executable, root_dir,
         extra_args=extra_args, env_vars=env_vars, stdin_data=stdin_data,
-        timeout=timeout,
+        timeout=timeout, build_dir=build_dir, driver_args=driver_args,
     )
     if rc == -1 and f"timed out after {timeout} seconds" in stderr:
         return False, f"Target phase '{target_phase}' timed out after {timeout}s"
