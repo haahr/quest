@@ -1,0 +1,35 @@
+(* Implicit type arguments (Cardelli, The Quest Language and System §4): type applications may be
+   omitted when the arguments or the type required by the context determine them. *)
+
+import list: List;
+import writer: Writer;
+import conv: Conv;
+
+(* Inferred from the types of the arguments: cons(3 tail) *)
+let tail = list.cons(:Int 2 list.nil(:Int));
+let fromArgs = list.cons(3 tail);
+
+(* Inferred from the type required by this instance of cons: cons(3 nil()) *)
+let fromContext = list.cons(3 list.nil());
+
+(* Inferred from a declared type *)
+let declared: list.T(Int) = list.nil();
+
+(* nil() in the first argument is inferred once the second argument fixes cons's type argument *)
+let nested = list.cons(list.nil() list.cons(list.cons(1 list.nil()) list.nil()));
+
+(* Explicit type arguments remain available *)
+let explicit = list.cons(:Int 4 list.nil(:Int));
+
+writer.putString(writer.output conv.int(list.length(fromArgs)));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(list.head(fromContext)));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.bool(list.null(declared)));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(list.length(nested)));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.bool(list.null(list.head(nested))));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(list.head(explicit)));
+writer.putString(writer.output "\n");

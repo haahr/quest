@@ -665,7 +665,7 @@ class TestStandardLibraryModules(unittest.TestCase):
         import dynamic: Dynamic;
         let d = dynamic.new(123);
         let copied = dynamic.copy(d);
-        let extracted = dynamic.be(copied);
+        let extracted = dynamic.be(:Int copied);
         extracted;
         """
         self.assertEqual(run_quest_code(code), QInt(123))

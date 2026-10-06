@@ -1055,6 +1055,39 @@ class QTypeMeta(QType):
         return f"QTypeMeta({self.name})"
 
 
+def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
+    """Returns the unsolved metavariables occurring in t (looking through solved ones), in order."""
+    import dataclasses
+
+    found: list[QTypeMeta] = []
+    visited: set[int] = set()
+
+    def visit(node: Any) -> None:
+        if node is None or isinstance(node, (str, int, bool)) or id(node) in visited:
+            return
+        visited.add(id(node))
+        if isinstance(node, QTypeMeta):
+            pruned = node.prune()
+            if pruned is node:
+                found.append(node)
+            else:
+                visit(pruned)
+        elif isinstance(node, (tuple, list)):
+            for item in node:
+                visit(item)
+        elif dataclasses.is_dataclass(node):
+            for f in dataclasses.fields(node):
+                visit(getattr(node, f.name))
+
+    visit(t)
+    return found
+
+
+def resolve_metas(t: QType) -> QType:
+    """Replaces solved metavariables in t by their solutions (substitution prunes them)."""
+    return t.substitute({})
+
+
 # ============================================================================
 # 9. Equi-Recursive Subtyping and Type Equivalence
 # ============================================================================
@@ -1064,11 +1097,45 @@ def is_type_equal(t1: QType, t2: QType, env: Optional[Any] = None) -> bool:
     return is_subtype(t1, t2, env) and is_subtype(t2, t1, env)
 
 
+class SubtypeTrail:
+    """Coinductive assumptions of one subtyping proof: pairs (sub, sup) currently assumed to hold.
+
+    Named type variables are keyed by symbol and everything else by object identity. The trail keeps
+    every keyed object alive for the duration of the proof, so that an id can never be reused by a
+    different (temporary) type and match an assumption it was not part of.
+    """
+
+    __slots__ = ("_assumed", "_keep_alive")
+
+    def __init__(self) -> None:
+        self._assumed: set[tuple[Any, Any]] = set()
+        self._keep_alive: list[QType] = []
+
+    @staticmethod
+    def key(t: QType) -> tuple[Any, ...]:
+        if isinstance(t, (QTypeVar, QAbstractType)):
+            return ("var", t.symbol_id)
+        if isinstance(t, QPathType):
+            return ("path", t.root_symbol_id, t.field_name)
+        return ("obj", id(t))
+
+    def pair(self, sub: QType, sup: QType) -> tuple[Any, Any]:
+        return (self.key(sub), self.key(sup))
+
+    def __contains__(self, pair: tuple[Any, Any]) -> bool:
+        return pair in self._assumed
+
+    def assume(self, pair: tuple[Any, Any], sub: QType, sup: QType) -> None:
+        self._assumed.add(pair)
+        self._keep_alive.append(sub)
+        self._keep_alive.append(sup)
+
+
 def is_subtype(
     sub: QType,
     sup: QType,
     env: Optional[Any] = None,
-    trail: Optional[set[tuple[int, int]]] = None,
+    trail: Optional[SubtypeTrail] = None,
     fuel: int = MAX_SUBTYPE_FUEL,
 ) -> bool:
     """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle detection and fuel limit."""
@@ -1083,22 +1150,14 @@ def is_subtype(
     fuel -= 1
 
     if trail is None:
-        trail = set()
+        trail = SubtypeTrail()
 
-    type_pair = (id(sub), id(sup))
-
-    # 0a. Check persistent session memo cache
-    cache = getattr(env, "subtype_cache", None) if env is not None else None
-    if cache is not None:
-        cached = cache.get(type_pair)
-        if cached is not None:
-            return cached
-
-    # 0b. Coinductive cycle detection for recursive types before lazy unfolding
+    # 0. Coinductive cycle detection for recursive types before lazy unfolding
+    type_pair = trail.pair(sub, sup)
     if type_pair in trail:
         return True
     if isinstance(sub, (QRecType, QRecGroupType)) or isinstance(sup, (QRecType, QRecGroupType)):
-        trail.add(type_pair)
+        trail.assume(type_pair, sub, sup)
 
     # 1. Evaluate both types lazily to expose outermost constructors
     sub_lazy = sub.evaluate_lazily(env)
@@ -1106,29 +1165,21 @@ def is_subtype(
 
     # 2. Reflexivity & identical instances (no Python structural == on QType)
     if sub_lazy is sup_lazy:
-        if cache is not None and not trail:
-            cache[type_pair] = True
         return True
     if (
         isinstance(sub_lazy, (QTypeVar, QAbstractType, QPathType))
         and isinstance(sup_lazy, (QTypeVar, QAbstractType, QPathType))
-        and sub_lazy.symbol_id == sup_lazy.symbol_id
+        and SubtypeTrail.key(sub_lazy) == SubtypeTrail.key(sup_lazy)
     ):
-        if cache is not None and not trail:
-            cache[type_pair] = True
         return True
     if (
         isinstance(sub_lazy, (QIntType, QRealType, QBoolType, QCharType, QStringType, QOkType, QDynamicType))
         and type(sub_lazy) is type(sup_lazy)
     ):
-        if cache is not None and not trail:
-            cache[type_pair] = True
         return True
 
     # 2b. Bottom type: subtype of all types
     if isinstance(sub_lazy, QBottomType):
-        if cache is not None and not trail:
-            cache[type_pair] = True
         return True
 
     # 3. Metavariable resolution & unification
@@ -1147,12 +1198,10 @@ def is_subtype(
 
     # 4. Top types: in Quest, any proper type is a subtype of itself or upper bounds
     # 5. Coinductive trail check
-    sub_id = getattr(sub_lazy, "symbol_id", id(sub_lazy))
-    sup_id = getattr(sup_lazy, "symbol_id", id(sup_lazy))
-    pair = (sub_id, sup_id)
+    pair = trail.pair(sub_lazy, sup_lazy)
     if pair in trail:
         return True
-    trail.add(pair)
+    trail.assume(pair, sub_lazy, sup_lazy)
 
     # 6. Type Variable bound checking
     if isinstance(sub_lazy, (QTypeVar, QAbstractType, QPathType)):

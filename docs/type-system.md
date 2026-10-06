@@ -353,7 +353,15 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   matching `case v ... end` inspect the bound variant type to validate variant tags and payload types.
 - **Subkinding and Type Argument Inference:** When instantiating a bounded quantifier implicitly or explicitly, type
   arguments are validated against the upper bound via `is_subkind(POWER(Actual), POWER(Bound)) <=> Actual <: Bound`.
-  Unconstrained bounded type variables default to their upper bound rather than `Int`.
+- **Implicit Type Arguments (Cardelli, *The Quest Language and System* §4):** Type applications may be omitted when
+  the context is sufficiently informative. A polymorphic call instantiates its quantifiers with metavariables, which
+  are solved first from the types of the arguments (`cons(3 tail)`) and then from the type required of the call by
+  its context (`cons(3 nil())`, where the argument position requires `List(Int)`). An empty application `nil()` of a
+  polymorphic constant instantiates it the same way. A type argument that is still unknown is an error ("in
+  isolation, `nil()` does not express enough information"), so `let x = nil()` is rejected; there is no defaulting.
+  The one exception is a call whose expected type still depends on the enclosing call's unknown type arguments
+  (`nil()` in `cons(nil() tail)`): it defers its own to the enclosing call, which reports any that remain unknown.
+  Metavariables never escape the outermost call.
 
 ### 6.10. Function Signatures and Recursive Bindings (`let rec`)
 - **Explicit Parameter Types:** Function parameters are syntactically signatures ($S$). In Quest, every value

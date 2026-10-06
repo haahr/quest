@@ -40,6 +40,8 @@ from quest.types import (
     type_mentions_symbol_ids,
     QType,
     QTypeMeta,
+    resolve_metas,
+    unsolved_metas,
     QTypeVar,
     QVarType,
     QVariantField,
@@ -176,6 +178,35 @@ def check_no_escaping_path_types(
 # Bidirectional Typechecker & Elaboration Engine
 # ============================================================================
 
+def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
+    """Rebuilds a typed AST with solved metavariables in its types replaced by their solutions."""
+    import dataclasses
+    import quest.typed_ast as typed_ast_module
+
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    result = node
+    if isinstance(node, QType):
+        result = resolve_metas(node)
+    elif isinstance(node, tuple):
+        items = tuple(_resolve_typed_metas(item, memo) for item in node)
+        if any(a is not b for a, b in zip(items, node)):
+            result = items
+    elif dataclasses.is_dataclass(node) and type(node).__module__ == typed_ast_module.__name__:
+        changes = {}
+        for f in dataclasses.fields(node):
+            if f.init:
+                old = getattr(node, f.name)
+                new = _resolve_typed_metas(old, memo)
+                if new is not old:
+                    changes[f.name] = new
+        if changes:
+            result = dataclasses.replace(node, **changes)
+    memo[key] = result
+    return result
+
+
 class TypeElaborator:
     """Stateful term elaboration and bidirectional typechecker for Quest AST expressions and bindings."""
 
@@ -183,6 +214,9 @@ class TypeElaborator:
         self.env: Environment = env if env is not None else Environment()
         self.loop_depth: int = loop_depth
         self.function_depth: int = 0
+        # Implicit type arguments of the polymorphic call whose arguments are being checked, as
+        # (metavariable, quantifier, call offset); nested calls may defer theirs to it.
+        self._pending_type_args: Optional[list[tuple[QTypeMeta, QQuantifier, int]]] = None
 
     @contextmanager
     def scope(self, name: str = "local") -> Iterator[Scope]:
@@ -282,6 +316,17 @@ class TypeElaborator:
     ) -> TypedExpr:
         """Synthesizes expr and asserts that the synthesized type is a subtype of expected_type."""
         typed = self.synth_expr(expr, env, loop_depth)
+        return self._require_subtype(expr, typed, expected_type, env, type_desc)
+
+    def _require_subtype(
+        self,
+        expr: ast.Expr,
+        typed: TypedExpr,
+        expected_type: QType,
+        env: Environment,
+        type_desc: Optional[str] = None,
+    ) -> TypedExpr:
+        """Asserts that the type of an elaborated expression is a subtype of expected_type."""
         if not is_subtype(typed.type_val, expected_type, env):
             prefix = "Type mismatch: synthesized" if type_desc is None else f"{type_desc}"
             raise TypeError(
@@ -546,7 +591,13 @@ class TypeElaborator:
             case ast.ExprExternal(symbol=symbol, offset=off):
                 return TypedExternal(symbol=symbol, type_val=expected_type, offset=off)
 
-            # 13. Subsumption: synthesize minimal type and check subtyping (S <= T)
+            # 13. Application: the type required by the context can determine implicit type arguments
+            #     (Cardelli, The Quest Language and System §4: cons(3 nil()))
+            case ast.ExprApp():
+                typed = self._synth_app_expr(expr, env, loop_depth, expected_type=expected_type)
+                return self._require_subtype(expr, typed, expected_type, env)
+
+            # 14. Subsumption: synthesize minimal type and check subtyping (S <= T)
             case _:
                 return self._check_subsumption(expr, expected_type, env, loop_depth)
 
@@ -890,7 +941,13 @@ class TypeElaborator:
             )
 
 
-    def _synth_app_expr(self, expr: ast.ExprApp, env: Environment, loop_depth: int) -> TypedExpr:
+    def _synth_app_expr(
+        self,
+        expr: ast.ExprApp,
+        env: Environment,
+        loop_depth: int,
+        expected_type: Optional[QType] = None,
+    ) -> TypedExpr:
         """Synthesizes a function application, handling polymorphic type inference, var, and out params."""
         # Special built-in monadic operator: ordinal (Cardelli §4.5)
         if isinstance(expr.func, ast.ExprId) and expr.func.name == "ordinal":
@@ -916,7 +973,7 @@ class TypeElaborator:
 
         # 1. Polymorphic function call (QAllType)
         if isinstance(fn_type, QAllType):
-            return self._synth_polymorphic_app(expr, func_typed, fn_type, env, loop_depth)
+            return self._synth_polymorphic_app(expr, func_typed, fn_type, env, loop_depth, expected_type)
 
         # 2. Monomorphic function call (QFunType)
         if isinstance(fn_type, QFunType):
@@ -1113,8 +1170,16 @@ class TypeElaborator:
         all_type: QAllType,
         env: Environment,
         loop_depth: int,
+        expected_type: Optional[QType] = None,
     ) -> TypedExpr:
-        """Instantiates a polymorphic function using explicit type arguments or metavariable inference."""
+        """Instantiates a polymorphic function using explicit type arguments or metavariable inference.
+
+        Following Cardelli (The Quest Language and System §4), omitted type arguments are inferred from
+        the types of the arguments and, failing that, from the type required by the context
+        (expected_type). A type argument that cannot be inferred is an error, except that a call whose
+        expected type still depends on the enclosing call's unsolved type arguments defers its own to
+        that call (e.g. nil() in cons(nil() tail)).
+        """
         # 1. Check for explicit type / kind arguments (e.g. f(:Int 42), id(:Int))
         num_targs = 0
         while num_targs < len(expr.args) and isinstance(
@@ -1181,7 +1246,7 @@ class TypeElaborator:
             )
             if isinstance(inst_lazy, QAllType):
                 return self._synth_polymorphic_app(
-                    remaining_call, typed_type_app, inst_lazy, env, loop_depth
+                    remaining_call, typed_type_app, inst_lazy, env, loop_depth, expected_type
                 )
             if isinstance(inst_lazy, QFunType):
                 return self._synth_monomorphic_app(
@@ -1194,7 +1259,9 @@ class TypeElaborator:
 
         # 2. Metavariable inference for implicit type arguments
         fn_body = all_type.body.evaluate_lazily(env)
-        if not isinstance(fn_body, QFunType):
+        # An empty application of a polymorphic constant instantiates it (Cardelli: nil()).
+        is_instantiation = not isinstance(fn_body, QFunType)
+        if is_instantiation and expr.args:
             raise TypeError(
                 f"Polymorphic body is '{fn_body}', not a function type",
                 offset=expr.offset,
@@ -1205,32 +1272,57 @@ class TypeElaborator:
             meta_map[q.symbol_id] = QTypeMeta(name=f"?{q.name}")
 
         instantiated_fn = fn_body.substitute(meta_map)
-        assert isinstance(instantiated_fn, QFunType)
+        result_type = instantiated_fn if is_instantiation else instantiated_fn.result_type
 
-        typed_args = self._check_call_args(
-            expr.args, instantiated_fn.params, env, loop_depth, expr.offset
-        )
+        # This call's type arguments, plus any that calls nested in its arguments defer to it.
+        type_args: list[tuple[QTypeMeta, QQuantifier, int]] = [
+            (meta_map[q.symbol_id], q, expr.offset) for q in all_type.quantifiers
+        ]
+        enclosing_type_args = self._pending_type_args
+        self._pending_type_args = type_args
+        try:
+            typed_args = [] if is_instantiation else self._check_call_args(
+                expr.args, instantiated_fn.params, env, loop_depth, expr.offset
+            )
+        finally:
+            self._pending_type_args = enclosing_type_args
 
-        resolved_targs = []
-        for q in all_type.quantifiers:
-            meta = meta_map[q.symbol_id]
+        if expected_type is not None and any(m.prune() is m for m, _, _ in type_args):
+            # Inference from the type required by this instance (a failed match is reported by the caller).
+            is_subtype(result_type, expected_type, env)
+
+        unsolved = [entry for entry in type_args if entry[0].prune() is entry[0]]
+        if unsolved:
+            if enclosing_type_args is not None and expected_type is not None and unsolved_metas(expected_type):
+                enclosing_type_args.extend(unsolved)
+            else:
+                names = ", ".join(f"'{q.name}'" for _, q, _ in unsolved)
+                plural = "s" if len(unsolved) > 1 else ""
+                raise TypeError(
+                    f"Cannot infer type argument{plural} {names} from the arguments or the expected type; "
+                    f"supply {'them' if plural else 'it'} explicitly",
+                    offset=unsolved[0][2],
+                )
+
+        for meta, q, offset in type_args:
             solved = meta.prune()
-            if solved is meta:
-                if isinstance(q.bound, QPowerKind):
-                    solved = q.bound.bound
-                else:
-                    solved = INT_TYPE
-            elif isinstance(q.bound, QPowerKind):
+            if solved is not meta and isinstance(q.bound, QPowerKind):
+                solved = resolve_metas(solved)
                 if not is_subtype(solved, q.bound.bound, env):
                     raise TypeError(
                         f"Inferred type argument '{solved}' is not a subtype of bound '{q.bound.bound}'",
-                        offset=expr.offset,
+                        offset=offset,
                     )
-            resolved_targs.append(solved)
 
-        final_subst = {q.symbol_id: resolved_targs[i] for i, q in enumerate(all_type.quantifiers)}
-        final_fn = instantiated_fn.substitute(final_subst)
-        assert isinstance(final_fn, QFunType)
+        resolved_targs = [resolve_metas(meta_map[q.symbol_id]) for q in all_type.quantifiers]
+        final_fn = resolve_metas(instantiated_fn)
+        if self._pending_type_args is None:
+            # Arguments elaborated in check mode (e.g. an array literal checked against Array(?A)) and
+            # nested calls that deferred to this one still refer to the now-solved metavariables.
+            memo: dict[int, Any] = {}
+            typed_args = [_resolve_typed_metas(a, memo) for a in typed_args]
+            leaked = unsolved_metas(final_fn) + [m for t in resolved_targs for m in unsolved_metas(t)]
+            assert not leaked, f"Metavariables escaped polymorphic call inference: {leaked}"
 
         typed_type_app = TypedTypeApp(
             func=func_typed,
@@ -1238,7 +1330,10 @@ class TypeElaborator:
             type_val=final_fn,
             offset=expr.offset,
         )
+        if is_instantiation:
+            return typed_type_app
 
+        assert isinstance(final_fn, QFunType)
         return TypedApp(
             func=typed_type_app,
             args=tuple(typed_args),
