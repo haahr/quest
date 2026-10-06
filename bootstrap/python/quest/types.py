@@ -756,8 +756,16 @@ class QRecType(QType):
     body: QType
 
     def unfold_lazily(self) -> QType:
-        """Unfolds Rec(X) T lazily by substituting Rec(X) T for X in T."""
-        return self.body.substitute({self.symbol_id: self})
+        """Unfolds Rec(X) T lazily by substituting Rec(X) T for X in T.
+
+        The unfolding is a pure function of this immutable node, so it is computed once and cached;
+        since it refers back to self, repeated unfoldings share one finite object graph.
+        """
+        unfolded = self.__dict__.get("_unfolded")
+        if unfolded is None:
+            unfolded = self.body.substitute({self.symbol_id: self})
+            object.__setattr__(self, "_unfolded", unfolded)
+        return unfolded
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self.unfold_lazily().evaluate_lazily(env)
@@ -791,14 +799,30 @@ class QRecGroupType(QType):
     def current_name(self) -> str:
         return self.bindings[self.active_index][0]
 
+    def siblings(self) -> tuple[QRecGroupType, ...]:
+        """One node per binding of this group (self at active_index), shared by all of them."""
+        siblings = self.__dict__.get("_siblings")
+        if siblings is None:
+            siblings = tuple(
+                self if idx == self.active_index else QRecGroupType(bindings=self.bindings, active_index=idx)
+                for idx in range(len(self.bindings))
+            )
+            for node in siblings:
+                object.__setattr__(node, "_siblings", siblings)
+        return siblings
+
     def unfold_lazily(self) -> QType:
-        """Unfolds the active mutually recursive binding lazily."""
-        subst = {
-            binding[1]: QRecGroupType(bindings=self.bindings, active_index=idx)
-            for idx, binding in enumerate(self.bindings)
-        }
-        body = self.bindings[self.active_index][3]
-        return body.substitute(subst)
+        """Unfolds the active mutually recursive binding lazily.
+
+        Cached like QRecType.unfold_lazily; substituting the shared sibling nodes keeps the unfoldings
+        of all bindings of the group within one finite object graph.
+        """
+        unfolded = self.__dict__.get("_unfolded")
+        if unfolded is None:
+            subst = {binding[1]: node for binding, node in zip(self.bindings, self.siblings())}
+            unfolded = self.bindings[self.active_index][3].substitute(subst)
+            object.__setattr__(self, "_unfolded", unfolded)
+        return unfolded
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self.unfold_lazily().evaluate_lazily(env)
