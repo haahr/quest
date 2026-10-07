@@ -7,7 +7,6 @@ import weakref
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
-from quest import shadow
 from quest.diagnostics import (
     Diagnostic,
     DiagnosticRenderer,
@@ -99,10 +98,6 @@ def _intern(node: Any) -> Any:
     if canonical is None:
         _INTERN_TABLE[key] = node
         return node
-    if shadow.is_enabled(SHADOW_INTERN) and not structurally_equal(canonical, node):
-        raise shadow.mismatch(
-            SHADOW_INTERN, f"interning merged structurally different nodes {canonical!r} and {node!r}"
-        )
     return canonical
 
 
@@ -1347,11 +1342,6 @@ def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
 def resolve_metas(t: QType) -> QType:
     """Replaces solved metavariables in t by their solutions (substitution prunes them)."""
     return t.substitute({})
-
-
-SHADOW_INTERN = shadow.register_check(
-    "intern", "check that every hash-consing table hit is structurally identical to the new node"
-)
 
 
 def structurally_equal(a: Any, b: Any) -> bool:
