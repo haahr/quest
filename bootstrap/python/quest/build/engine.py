@@ -16,6 +16,7 @@ from quest.build.manifest import (
     ModuleManifest,
     is_manifest_stale,
     read_qm,
+    unit_staleness,
     write_qm,
 )
 from quest.codegen import compile_c_to_object, link_objects
@@ -270,21 +271,7 @@ class BuildEngine:
 
     def _unit_staleness(self, source: Path, qm_path: Path, c_path: Path, o_path: Path) -> Optional[str]:
         """Returns why a unit with a source file must be recompiled, or None if it is up to date (§7.1)."""
-        if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
-            return f"missing artifacts in {qm_path.parent}"
-        src_mtime = source.stat().st_mtime
-        if (
-            src_mtime > qm_path.stat().st_mtime
-            or src_mtime > c_path.stat().st_mtime
-            or c_path.stat().st_mtime > o_path.stat().st_mtime
-        ):
-            return "source file newer than artifacts"
-        manifest = read_qm(qm_path)
-        if manifest is None:
-            return f"cannot parse {qm_path}"
-        if is_manifest_stale(manifest, qm_path):
-            return "manifest indicates stale"
-        return None
+        return unit_staleness(source, qm_path, c_path, o_path)
 
     def build_main(
         self,

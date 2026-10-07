@@ -296,7 +296,8 @@ def run_driver(args: list[str]) -> int:
         target_args=target_args,
         expected_exit=parsed_args.expected_exit,
         extra_objects=extra_objects,
-        build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else None,
+        # Every phase reuses (and builds) interface and module artifacts here (docs/build-process.md §5.2.4).
+        build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
         whole_program=parsed_args.whole_program,
         emit_deps=parsed_args.emit_deps,
     )
@@ -614,7 +615,8 @@ def run_compile(args: list[str]) -> int:
         nogc=parsed_args.nogc,
         print_result=parsed_args.print_result,
         extra_objects=extra_objects,
-        build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else None,
+        # Every phase reuses (and builds) interface and module artifacts here (docs/build-process.md §5.2.4).
+        build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
         whole_program=parsed_args.whole_program,
     )
 

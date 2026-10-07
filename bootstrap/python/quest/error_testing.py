@@ -157,11 +157,11 @@ def execute_phase(
     ]
     if driver_args:
         command.extend(driver_args)
-    if phase_name in ("codegen_c", "run_c_compiled"):
-        if build_dir is None:
-            build_dir = root_dir / ".build"
-        build_dir.mkdir(parents=True, exist_ok=True)
-        command.extend(["--build-dir", str(build_dir)])
+    # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
+    if build_dir is None:
+        build_dir = root_dir / ".build"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    command.extend(["--build-dir", str(build_dir)])
     if extra_args:
         command.extend(extra_args)
     command.append(str(source_file))

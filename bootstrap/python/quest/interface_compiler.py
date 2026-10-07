@@ -508,8 +508,12 @@ def compile_interface_file(
     output_dir: Optional[Path] = None,
     include_paths: Optional[list[Path]] = None,
     build_dir: Optional[Path] = None,
+    header: bool = True,
 ) -> tuple[Path, Path]:
-    """Compiles a .int.quest file to .h and .qi files."""
+    """Compiles a .int.quest file to .qi and, unless header is False, .h files.
+
+    Only C compilation needs headers; typecheck and interpret runs build just the .qi.
+    """
     try:
         source_text = file_path.read_text(encoding="utf-8")
     except OSError as err:
@@ -536,19 +540,23 @@ def compile_interface_file(
         b_dir = Path(build_dir).resolve()
         if b_dir not in env.include_paths:
             env.include_paths.insert(0, b_dir)
+        # Imported interfaces are loaded from their (fresh or rebuilt) artifacts in the same build directory
+        # rather than re-elaborated from source in every nested compilation.
+        from quest.pipeline import CompilerOptions
+        env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
     env.current_dir = file_path.parent
-    typed_iface = elaborate_interface(decl, env)
 
     if build_dir is not None:
         # The generated header #includes the headers of imported interfaces, so they must exist in the
         # build directory too, including those of builtin interfaces that are never loaded from source.
         for imp in decl.imports:
             ensure_interface_artifacts(
-                imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve()
+                imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve(),
+                header=header,
             )
+    typed_iface = elaborate_interface(decl, env)
 
     qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env)
-    h_content = compile_interface_to_header(decl, typed_iface.scope)
 
     if build_dir is not None and output_dir is None:
         from quest.module_loader import canonicalize_module_path
@@ -571,7 +579,8 @@ def compile_interface_file(
     h_path.parent.mkdir(parents=True, exist_ok=True)
 
     qi_path.write_text(qi_content, encoding="utf-8")
-    h_path.write_text(h_content, encoding="utf-8")
+    if header:
+        h_path.write_text(compile_interface_to_header(decl, typed_iface.scope), encoding="utf-8")
 
     return h_path, qi_path
 
@@ -582,6 +591,7 @@ def ensure_interface_artifacts(
     include_paths: list[Path],
     build_dir: Path,
     file_path: Optional[Path] = None,
+    header: bool = True,
 ) -> tuple[Path, Path, str]:
     """Regenerates interface `name`'s .qi and C header under build_dir if stale (docs/build-process.md §5).
 
@@ -608,13 +618,16 @@ def ensure_interface_artifacts(
     h_file = target_dir / f"{stem}.h"
 
     def current(qi: Path, h: Path) -> bool:
-        """Rules 1 and 2 plus the ABI version: both artifacts exist, are fresh, and match this compiler."""
-        if not qi.is_file() or not h.is_file() or not has_current_abi(qi):
+        """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, and match this compiler.
+
+        The header is required only when one is wanted (C compilation).
+        """
+        if not qi.is_file() or (header and not h.is_file()) or not has_current_abi(qi):
             return False
         if src is None or not src.is_file():
             return True
         src_mtime = src.stat().st_mtime
-        return src_mtime <= qi.stat().st_mtime and src_mtime <= h.stat().st_mtime
+        return src_mtime <= qi.stat().st_mtime and (not header or src_mtime <= h.stat().st_mtime)
 
     # Fresh artifacts found elsewhere on the search path (e.g. next to the source, from a standalone
     # compilation) are used like those in the build directory.
@@ -634,7 +647,7 @@ def ensure_interface_artifacts(
         if build_dir not in search_paths:
             search_paths.insert(0, build_dir)
         h_file, qi_file = compile_interface_file(
-            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir
+            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir, header=header
         )
     return qi_file, h_file, canon_name
 

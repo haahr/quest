@@ -89,6 +89,7 @@ class TestObjectLinking(unittest.TestCase):
             str(self.o_file),
             "-o", str(out_bin),
             "-I", str(self.dir_path),
+            "--build-dir", str(self.dir_path / ".build"),
         ])
         self.assertEqual(ret, 0)
         self.assertTrue(out_bin.exists())
@@ -116,6 +117,7 @@ class TestObjectLinking(unittest.TestCase):
             str(main_file),
             "-o", str(out_bin),
             "-I", str(self.dir_path),
+            "--build-dir", str(self.dir_path / ".build"),
         ])
         self.assertEqual(ret, 0)
         self.assertTrue(out_bin.exists())
@@ -145,6 +147,7 @@ class TestObjectLinking(unittest.TestCase):
             str(self.o_file),
             "-o", str(out_bin),
             "-I", str(self.dir_path),
+            "--build-dir", str(self.dir_path / ".build"),
         ])
         self.assertEqual(ret, 0)
         self.assertTrue(out_bin.exists())
@@ -173,6 +176,7 @@ class TestObjectLinking(unittest.TestCase):
             str(self.o_file),
             "-o", str(out_bin),
             "-I", str(self.dir_path),
+            "--build-dir", str(self.dir_path / ".build"),
         ])
         self.assertEqual(ret, 0)
         self.assertTrue(out_bin.exists())
@@ -198,6 +202,7 @@ class TestObjectLinking(unittest.TestCase):
             "--emit-c",
             "-o", str(c_out_file),
             "-I", str(self.dir_path),
+            "--build-dir", str(self.dir_path / ".build"),
         ])
         self.assertEqual(ret, 0)
         c_src = c_out_file.read_text(encoding="utf-8")

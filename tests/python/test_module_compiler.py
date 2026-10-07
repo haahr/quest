@@ -331,6 +331,7 @@ class TestModuleCompiler(unittest.TestCase):
             "--stop-after", "run_c_compiled",
             str(main_file),
             "-I", str(self.dir_path),
+            "--build-dir", str(self.dir_path / ".build"),
         ])
         self.assertEqual(res, 0)
 

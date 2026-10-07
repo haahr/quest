@@ -290,8 +290,7 @@ the build directory too, even for interfaces the typechecker resolves without lo
 interfaces like `Writer`).
 
 ### 5.2. An ABI Version and Trusting Fresh Artifacts
-**Status:** §5.2.1–5.2.3 are implemented (`quest/build/abi.py`, `tests/abi/`); typechecking from artifacts (§5.2.4) is
-not yet.
+**Status:** implemented (`quest/build/abi.py`, `tests/abi/`, and §5.2.4 in `module_loader.py`).
 
 The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `q_<stem>.h` instead of
 re-elaborating an `.int.quest`, and `.qm`, `.c`, and `.o` instead of recompiling a `.mod.quest` or main routine.
@@ -377,15 +376,22 @@ older object, whereas a forgotten bump for a layout or calling-convention change
 The corpus concentrates on the silent kind.
 
 #### 5.2.4. Using Artifacts Outside C Compilation
-Today the typecheck and interpret phases parse and elaborate every imported interface and module from source on
-every run, including the full module-against-interface conformance check; on a program importing the self-hosted
-`ast` and `astprint` modules this is nearly all of the typecheck time. Under the rules above:
-- **Interfaces:** any phase can load a fresh `.qi` instead of elaborating the `.int.quest`.
-- **Modules, when typechecking:** a module with a fresh `.qm` (and fresh `.qi` for its interface) can be typed
-  through its interface alone, without elaborating its body or re-proving conformance; this is what separate C
-  compilation already does (`separately_compiled_module_scope`).
-- **Modules, when interpreting:** the interpreter executes module bodies, so it still needs their source; only their
-  interfaces can come from `.qi`. (Caching elaborated module bodies would be a separate design.)
+Every driver run has a build directory (`--build-dir`, default `.build/` in the current directory), not only C
+compilations, and the typecheck and interpret phases use it too:
+- **Interfaces:** every phase loads an imported interface from its `.qi`, building or rebuilding it first when it is
+  missing or stale. Typecheck and interpret runs build only the `.qi`; generating the C header is costly and only C
+  compilation needs it, so a C build rebuilds an interface whose header is missing or older than its source.
+- **Modules, when typechecking only** (`--stop-after typecheck`): a module whose `.qm`, `.c`, and `.o` are fresh, in
+  the build directory or next to its source, is typed through its interface alone, without elaborating its body or
+  re-proving conformance, as separate C compilation does (`separately_compiled_module_scope`). Without fresh
+  artifacts the module is elaborated from source; a typecheck never invokes the C compiler.
+- **Modules, when interpreting:** the interpreter executes module bodies (it reuses the module trees elaborated while
+  typechecking), so they are always elaborated from source; only their interfaces come from `.qi`. Caching elaborated
+  module bodies would be a separate design.
+
+Programs that drive the compiler through its API (`CompilerOptions` without a `build_dir`) keep elaborating from
+source. On the `syntax_ast` test, which imports the self-hosted `ast` and `astprint` modules, a typecheck takes about
+0.8 s from source and 0.3 s once a C build has produced the module artifacts.
 
 Typecheck dumps must not depend on whether an interface came from source or from `.qi`. Alias reference nodes
 (`docs/type-system.md` §2.2) keep alias names across the `.qi` round trip, and

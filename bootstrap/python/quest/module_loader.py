@@ -286,10 +286,11 @@ def load_interface(name: str, env: Environment) -> Scope:
 
     file_path = resolve_interface_file(name, env.current_dir, env.include_paths)
 
-    # 3-way staleness check and on-demand interface compilation in C compilation mode
-    if is_c_compilation_mode(env):
-        opts = getattr(env, "options", None)
-        build_dir = getattr(opts, "build_dir", None)
+    # With a build directory (every driver run) or in C compilation mode, the interface is loaded from its
+    # .qi, which is rebuilt first if stale (docs/build-process.md §5).
+    opts = getattr(env, "options", None)
+    build_dir = getattr(opts, "build_dir", None)
+    if is_c_compilation_mode(env) or build_dir is not None:
         int_src = resolve_interface_source_file(name, env.current_dir, env.include_paths)
         if int_src is None and file_path and file_path.name.endswith(".int.quest"):
             int_src = file_path
@@ -309,7 +310,7 @@ def load_interface(name: str, env: Environment) -> Scope:
             out_root = (env.current_dir or Path.cwd()).resolve()
         from quest.interface_compiler import ensure_interface_artifacts
         qi_file, _, canon_name = ensure_interface_artifacts(
-            name, env.current_dir, env.include_paths, out_root, file_path
+            name, env.current_dir, env.include_paths, out_root, file_path, header=is_c_compilation_mode(env)
         )
 
         if qi_file and qi_file.is_file():
@@ -420,6 +421,26 @@ def _declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
     return fallback
 
 
+def _is_typecheck_only(env: Environment) -> bool:
+    opts = getattr(env, "options", None)
+    return getattr(opts, "stop_after", None) == "typecheck" and not is_c_compilation_mode(env)
+
+
+def _has_fresh_module_artifacts(file_path: Path, canon_name: str, env: Environment) -> bool:
+    """True if module source file_path has up-to-date .qm/.c/.o in the build directory or beside it."""
+    from quest.build.manifest import unit_staleness
+
+    build_dir = getattr(getattr(env, "options", None), "build_dir", None)
+    stem = Path(canon_name).name.lower()
+    candidates = [file_path.parent]
+    if build_dir is not None:
+        root = Path(build_dir).resolve()
+        candidates.insert(0, root / Path(canon_name).parent if "/" in canon_name else root)
+    return any(
+        unit_staleness(file_path, d / f"{stem}.qm", d / f"{stem}.c", d / f"{stem}.o") is None for d in candidates
+    )
+
+
 def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
     """Loads, validates, and elaborates a module from a .mod.quest file."""
     if name in env.loaded_modules_ast:
@@ -479,6 +500,13 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
     # Separate compilation of hierarchical modules: importers are typed against the module's interface.
     # Building its object is left to the BuildEngine (docs/build-process.md §7.3).
     if is_c_compilation_mode(env) and ("/" in canon_name or "/" in name) and file_path is not None:
+        env.precompiled_modules.add(name)
+        env.precompiled_modules.add(canon_name)
+        return _synthesize_precompiled_module()
+
+    # A typecheck-only run types a module with fresh artifacts through its interface alone, without
+    # elaborating its body (docs/build-process.md §5.2.4). Interpreting needs module bodies.
+    if file_path is not None and _is_typecheck_only(env) and _has_fresh_module_artifacts(file_path, canon_name, env):
         env.precompiled_modules.add(name)
         env.precompiled_modules.add(canon_name)
         return _synthesize_precompiled_module()

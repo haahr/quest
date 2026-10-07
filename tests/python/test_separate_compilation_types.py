@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 DRIVER = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
+sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 FIXTURES = {
     "geo/coord.int.quest": """
@@ -197,6 +198,55 @@ class TestSeparateCompilationTypes(unittest.TestCase):
                     proc = self._driver(*args, str(self.root / program))
                     self.assertNotEqual(proc.returncode, 0, proc.stdout)
                     self.assertIn(message, proc.stderr)
+
+    def _pipeline_env(self, program: str, stop_after: str):
+        """Runs the pipeline in-process with the test's build directory and returns its environment."""
+        from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
+
+        source = (self.root / program).read_text(encoding="utf-8")
+        options = CompilerOptions(stop_after=stop_after, include_paths=[self.root], build_dir=self.build_dir)
+        ctx = CompilerContext.create(source, str(self.root / program), options=options)
+        result = default_pipeline().execute(source, str(self.root / program), options=options, ctx=ctx)
+        self.assertTrue(result.success, [d.message for d in result.diagnostics])
+        return ctx.env
+
+    def test_typecheck_from_artifacts_matches_source(self) -> None:
+        program = str(self.root / "uses_geo.quest")
+        cold = self._driver("--stop-after", "typecheck", "--build-dir", str(self.build_dir), program)
+        built = self._driver("--stop-after", "run_c_compiled", "--build-dir", str(self.build_dir), program)
+        self.assertEqual(built.returncode, 0, built.stderr)
+        warm = self._driver("--stop-after", "typecheck", "--build-dir", str(self.build_dir), program)
+        self.assertEqual((cold.returncode, warm.returncode), (0, 0), cold.stderr + warm.stderr)
+        self.assertEqual(warm.stdout, cold.stdout)
+        # Without a build directory everything is elaborated from source.
+        from quest.pipeline import CompilerOptions, default_pipeline
+
+        source = (self.root / "uses_geo.quest").read_text(encoding="utf-8")
+        result = default_pipeline().execute(
+            source, program, options=CompilerOptions(stop_after="typecheck", include_paths=[self.root])
+        )
+        self.assertEqual(result.dump_outputs["typecheck"].rstrip("\n"), warm.stdout.rstrip("\n"))
+
+    def test_typecheck_only_uses_fresh_module_artifacts(self) -> None:
+        built = self._driver(
+            "--stop-after", "run_c_compiled", "--build-dir", str(self.build_dir), str(self.root / "uses_geo.quest")
+        )
+        self.assertEqual(built.returncode, 0, built.stderr)
+        env = self._pipeline_env("uses_geo.quest", "typecheck")
+        self.assertTrue(env.loaded_modules_ast["geo/coord"].is_precompiled)
+        # Interpreting needs the module bodies, so they are still elaborated from source.
+        env = self._pipeline_env("uses_geo.quest", "interpret")
+        self.assertFalse(env.loaded_modules_ast["geo/coord"].is_precompiled)
+
+    def test_stale_module_artifacts_are_not_used(self) -> None:
+        built = self._driver(
+            "--stop-after", "run_c_compiled", "--build-dir", str(self.build_dir), str(self.root / "uses_geo.quest")
+        )
+        self.assertEqual(built.returncode, 0, built.stderr)
+        coord = self.root / "geo" / "coord.mod.quest"
+        os.utime(coord, (coord.stat().st_atime, coord.stat().st_mtime + 10))
+        env = self._pipeline_env("uses_geo.quest", "typecheck")
+        self.assertFalse(env.loaded_modules_ast["geo/coord"].is_precompiled)
 
     def test_abstract_types_of_one_module_agree(self) -> None:
         proc = self._driver(
