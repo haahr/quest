@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import dataclasses
+import weakref
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
+from quest import shadow
 from quest.diagnostics import (
     Diagnostic,
     DiagnosticRenderer,
@@ -56,10 +59,86 @@ def _init_free_vars(node: Any, *parts: Any, bound_ids: Any = ()) -> None:
 
 
 # ============================================================================
+# 0b. Hash-Consing
+# ============================================================================
+#
+# Types, kinds, and their components are hash-consed: constructing a node returns the canonical
+# object for its structure, so structurally identical nodes are one object and `is` decides
+# structural identity. The key is the class and every field, display-only fields included (record
+# provenance, binder and path names), so two nodes that would print differently are never merged.
+# Child nodes appear in keys by identity, which is sound because they are canonical already.
+# Nodes containing a metavariable are not interned: a metavariable is mutable, and a node that is
+# shared must not change meaning when one inside it is solved. The table holds canonical nodes
+# weakly, so types no longer referenced can be freed.
+
+_INTERN_TABLE: "weakref.WeakValueDictionary[tuple[Any, ...], Any]" = weakref.WeakValueDictionary()
+
+
+class _NotInternable(Exception):
+    """A field value that cannot be part of an interning key."""
+
+
+def _intern_key_part(value: Any) -> Any:
+    if isinstance(type(value), _InternedNode):
+        return (_InternedNode, id(value))
+    if isinstance(value, tuple):
+        return (tuple, tuple(_intern_key_part(v) for v in value))
+    if value is None or isinstance(value, (str, int)):  # bool is an int: (type, value) keeps them apart
+        return (type(value), value)
+    raise _NotInternable(type(value).__name__)
+
+
+def _intern(node: Any) -> Any:
+    if getattr(node, "_has_meta", False):
+        return node
+    try:
+        key = (type(node),) + tuple(_intern_key_part(getattr(node, f.name)) for f in dataclasses.fields(node))
+    except _NotInternable:
+        return node
+    canonical = _INTERN_TABLE.get(key)
+    if canonical is None:
+        _INTERN_TABLE[key] = node
+        return node
+    if shadow.is_enabled(SHADOW_INTERN) and not structurally_equal(canonical, node):
+        raise shadow.mismatch(
+            SHADOW_INTERN, f"interning merged structurally different nodes {canonical!r} and {node!r}"
+        )
+    return canonical
+
+
+def distinct_alias_definition(t: Optional[QType]) -> Optional[QType]:
+    """Returns a private, non-canonical copy of t's top node, to serve as one alias's definition.
+
+    The printer recognizes an alias by the identity of its definition. Hash-consing would make
+    structurally identical definitions of different aliases one object (Def Expr = Node(ExprForm)
+    and Def Decl = Node(ExprForm)), so each alias declaration keeps its own top node; everything
+    below it stays canonical. A definition that is already an alias copy (an alias re-exported
+    through a module) is kept, and primitive singletons such as INT_TYPE are never copied.
+    """
+    if t is None or t._has_meta or t.__dict__.get("_alias_of") is not None:
+        return t
+    if any(t is p for p in _PRIMITIVE_SINGLETONS):
+        return t
+    copy = object.__new__(type(t))
+    for f in dataclasses.fields(t):
+        object.__setattr__(copy, f.name, getattr(t, f.name))
+    _set_free_vars(copy, t._fv, t._has_meta)
+    object.__setattr__(copy, "_alias_of", t)
+    return copy
+
+
+class _InternedNode(type):
+    """Metaclass returning the canonical (hash-consed) instance for each constructed node."""
+
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        return _intern(super().__call__(*args, **kwargs))
+
+
+# ============================================================================
 # 1. Kinds (Level 2)
 # ============================================================================
 
-class QKind:
+class QKind(metaclass=_InternedNode):
     """Base class for all Quest kinds."""
 
     _fv: frozenset[int] = _NO_FREE_VARS
@@ -193,7 +272,7 @@ def _all_same(new: Any, old: Any) -> bool:
 # 2. Base Semantic Type (Level 1)
 # ============================================================================
 
-class QType:
+class QType(metaclass=_InternedNode):
     """Base class for all semantic Quest types."""
 
     _fv: frozenset[int] = _NO_FREE_VARS
@@ -324,13 +403,18 @@ DYNAMIC_TYPE = QDynamicType()
 BOTTOM_TYPE = QBottomType()
 EXCEPTION_TYPE = QExceptionType()
 
+# Compared by identity throughout the compiler (t is INT_TYPE), so never copied for alias definitions.
+_PRIMITIVE_SINGLETONS: tuple[QType, ...] = (
+    INT_TYPE, REAL_TYPE, BOOL_TYPE, CHAR_TYPE, STRING_TYPE, OK_TYPE, DYNAMIC_TYPE, BOTTOM_TYPE, EXCEPTION_TYPE,
+)
+
 
 # ============================================================================
 # 4. Composite Types (Tuples, Records, Variants, Options)
 # ============================================================================
 
 @dataclass(frozen=True)
-class QTupleField:
+class QTupleField(metaclass=_InternedNode):
     """A single (optionally named) value component in an ordered tuple type: [name:] T."""
     name: Optional[str]
     type_val: QType
@@ -351,7 +435,7 @@ class QTupleField:
 
 
 @dataclass(frozen=True)
-class QTupleTypeFormal:
+class QTupleTypeFormal(metaclass=_InternedNode):
     """A type formal component in an ordered tuple type: X::K."""
     name: str
     symbol_id: int
@@ -371,7 +455,7 @@ class QTupleTypeFormal:
 
 
 @dataclass(frozen=True)
-class QTupleTypeBinding:
+class QTupleTypeBinding(metaclass=_InternedNode):
     """A manifest type definition inside a tuple signature: Let X::K = T."""
     name: str
     type_val: QType
@@ -500,7 +584,7 @@ class QTupleType(QType):
 
 
 @dataclass(frozen=True)
-class QRecordField:
+class QRecordField(metaclass=_InternedNode):
     """A single field inside a record type."""
     name: str
     type_val: QType
@@ -545,7 +629,7 @@ class QRecordType(QType):
 
 
 @dataclass(frozen=True)
-class QVariantField:
+class QVariantField(metaclass=_InternedNode):
     """A tagged branch inside a variant type."""
     name: str
     type_val: Optional[QType] = None
@@ -591,7 +675,7 @@ class QVariantType(QType):
 
 
 @dataclass(frozen=True)
-class QOptionField:
+class QOptionField(metaclass=_InternedNode):
     """A tagged case inside an option type."""
     name: str
     payload_type: Optional[QType] = None
@@ -637,7 +721,7 @@ class QOptionType(QType):
 # ============================================================================
 
 @dataclass(frozen=True)
-class QParam:
+class QParam(metaclass=_InternedNode):
     """Formal parameter to a function."""
     name: str
     type_val: QType
@@ -732,7 +816,7 @@ class QOutType(QType):
 # ============================================================================
 
 @dataclass(frozen=True)
-class QQuantifier:
+class QQuantifier(metaclass=_InternedNode):
     """Type quantifier in All(X::K) T or All(X <: Bound) T."""
     name: str
     symbol_id: int
@@ -813,7 +897,7 @@ class QAutoType(QType):
 
 
 @dataclass(frozen=True)
-class QTypeFormal:
+class QTypeFormal(metaclass=_InternedNode):
     """Formal type parameter for a type-level function: Fun(X::K) T."""
     name: str
     symbol_id: int
@@ -939,15 +1023,19 @@ class QRecGroupType(QType):
         return self.bindings[self.active_index][0]
 
     def siblings(self) -> tuple[QRecGroupType, ...]:
-        """One node per binding of this group (self at active_index), shared by all of them."""
+        """The canonical node for each binding of this group, shared by all of them."""
         siblings = self.__dict__.get("_siblings")
         if siblings is None:
             siblings = tuple(
-                self if idx == self.active_index else QRecGroupType(bindings=self.bindings, active_index=idx)
-                for idx in range(len(self.bindings))
+                QRecGroupType(bindings=self.bindings, active_index=idx) for idx in range(len(self.bindings))
             )
-            for node in siblings:
-                object.__setattr__(node, "_siblings", siblings)
+            existing = siblings[0].__dict__.get("_siblings")
+            if existing is not None:
+                siblings = existing
+            else:
+                for node in siblings:
+                    object.__setattr__(node, "_siblings", siblings)
+            object.__setattr__(self, "_siblings", siblings)
         return siblings
 
     def unfold_lazily(self) -> QType:
@@ -1261,13 +1349,17 @@ def resolve_metas(t: QType) -> QType:
     return t.substitute({})
 
 
+SHADOW_INTERN = shadow.register_check(
+    "intern", "check that every hash-consing table hit is structurally identical to the new node"
+)
+
+
 def structurally_equal(a: Any, b: Any) -> bool:
     """True if two types (or kinds, or components) have identical structure, field by field.
 
     Metavariables compare by identity after pruning. This is not type equivalence (see
     is_type_equal); it is used to cross-check optimizations that must not change any structure.
     """
-    import dataclasses
 
     assumed: set[tuple[int, int]] = set()
 

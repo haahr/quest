@@ -93,9 +93,11 @@ class TestSubtypeTrail(unittest.TestCase):
         self.assertNotEqual(SubtypeTrail.key(p1), SubtypeTrail.key(QPathType("x", 3, "U", TYPE_KIND)))
 
     def test_structural_types_are_keyed_by_identity(self) -> None:
-        t1 = QTupleType((INT_TYPE,))
-        t2 = QTupleType((INT_TYPE,))
-        self.assertNotEqual(SubtypeTrail.key(t1), SubtypeTrail.key(t2))
+        # Types are hash-consed, so identity is structural identity. (Keep the objects alive: a freed
+        # object's id can be reused, which is exactly what the trail guards against.)
+        one, one_again, two = QTupleType((INT_TYPE,)), QTupleType((INT_TYPE,)), QTupleType((INT_TYPE, INT_TYPE))
+        self.assertEqual(SubtypeTrail.key(one), SubtypeTrail.key(one_again))
+        self.assertNotEqual(SubtypeTrail.key(one), SubtypeTrail.key(two))
 
     def test_assumed_types_stay_alive(self) -> None:
         trail = SubtypeTrail()

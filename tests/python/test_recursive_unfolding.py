@@ -60,8 +60,8 @@ class TestRecursiveUnfolding(unittest.TestCase):
         rec = _int_list()
         rec.unfold_lazily()
         self.assertEqual([f.name for f in dataclasses.fields(rec)], ["var_name", "symbol_id", "bound", "body"])
-        copy = dataclasses.replace(rec)
-        self.assertNotIn("_unfolded", copy.__dict__)
+        # Rebuilding the node yields the canonical (hash-consed) object, cache included.
+        self.assertIs(dataclasses.replace(rec), rec)
 
     def test_recursive_types_compare_equal(self) -> None:
         self.assertTrue(is_type_equal(_int_list(), _int_list()))

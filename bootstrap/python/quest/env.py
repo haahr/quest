@@ -27,6 +27,7 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     TYPE_KIND,
+    distinct_alias_definition,
 )
 
 
@@ -71,12 +72,16 @@ class TypeSymbol(Symbol):
     definition: Optional[QType] = None
 
     def __setattr__(self, name: str, value: Any) -> None:
-        # A symbol id must mean one thing for the life of the process (it is looked up globally), so a
-        # definition may be supplied after declaration (None -> T) but never replaced.
-        if name == "definition" and "definition" in self.__dict__:
-            current = self.__dict__["definition"]
-            if current is not None and value is not current:
+        if name == "definition":
+            # A symbol id must mean one thing for the life of the process (it is looked up globally), so
+            # a definition may be supplied after declaration (None -> T) but never replaced.
+            current = self.__dict__.get("definition")
+            if current is not None:
+                if value is current or current.__dict__.get("_alias_of") is value:
+                    return
                 raise RuntimeError(f"Type symbol '{self.name}' (#{self.symbol_id}) is already defined")
+            # Each alias keeps its own definition object, so that it prints under its own name.
+            value = distinct_alias_definition(value)
         super().__setattr__(name, value)
 
     @property

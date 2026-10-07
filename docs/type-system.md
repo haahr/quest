@@ -66,6 +66,13 @@ place during inference. Several parts of the type checker depend on how type obj
 - **No Python equality.** `==` on a `QType` raises. Use `is_type_equal(t1, t2, env)` for semantic (equi-recursive)
   equivalence, or `is` for identity. `structurally_equal(a, b)` compares field by field, for cross-checking
   optimizations; it is not type equivalence.
+- **Hash-consing.** Types, kinds, and their components (fields, parameters, quantifiers, type formals) are interned:
+  constructing a node returns the canonical object for its structure (a metaclass on `QType`, `QKind`, and the
+  component classes looks it up in a weak table), so for interned nodes `is` decides structural identity. The key is
+  the class plus every field, including display-only ones (record `provenance`, binder and path names), so two nodes
+  that would print differently are never merged. Child nodes enter keys by identity, since they are canonical already.
+  Nodes containing a metavariable are not interned: a shared node must not change meaning when a metavariable inside
+  it is solved.
 - **Named binders.** Binders (`Rec`, `All`, `Fun`, `Auto`, tuple type formals, recursive groups) and type variables
   carry globally unique symbol ids (`allocate_symbol_id`), not de Bruijn indices. Substitution relies on that
   uniqueness rather than renaming, and alpha-equivalent types elaborated separately (two `All(X) X->X`) are distinct
@@ -73,6 +80,12 @@ place during inference. Several parts of the type checker depend on how type obj
 - **Identity carries meaning.** An alias reference elaborates to the very object bound to the alias, and the printer
   (`format_type_compact`) recognizes aliases by identity (`Ast.Expr`, `Location.Span`). `is_subtype` returns
   immediately for identical objects. Both depend on preserving sharing.
+- **Each alias has its own definition object.** Hash-consing alone would make structurally identical definitions of
+  different aliases one object (`Def Expr = Node(ExprForm)` and `Def Decl = Node(ExprForm)` in `Ast`), and the printer
+  would then show one name for both. So a `TypeSymbol` stores a private, non-canonical copy of its definition's top
+  node (`distinct_alias_definition`); everything below it stays canonical. A definition that is already such a copy
+  (an alias re-exported through a module) is kept, and primitive singletons such as `INT_TYPE` are never copied.
+  This is an interim measure; see "Planned" below.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at
   construction (`__post_init__`) its free variables, `_fv`: the symbol ids a substitution could replace inside it,
   following exactly the binder rules of its `_substitute_full` method. It also records `_has_meta`, whether it contains
@@ -92,8 +105,17 @@ place during inference. Several parts of the type checker depend on how type obj
 - **Metavariables stay inside one call.** They are created for a polymorphic call's implicit type arguments and are
   all resolved, in the result type and the elaborated arguments, before the outermost call returns (§6.9).
 
-Planned next: hash-consing types, so that structurally identical types are one object, followed by a subtype cache
-keyed by those canonical objects.
+Planned:
+1. **A subtype cache** keyed by canonical objects. It caches `False` results always (extra coinductive assumptions
+   can only make more judgments provable), `True` results only when they did not depend on assumptions still open on
+   the trail, and never a pair involving a metavariable.
+2. **Alias reference nodes**, replacing identity-based alias recognition and the private definition copies above.
+   Elaborating a reference to an alias would produce a node that carries the alias's name and symbol and points to
+   its definition. Type evaluation (`evaluate_lazily`), and hence subtyping, looks straight through it; the printer
+   and the `.qi` writer print its name; hash-consing keeps different aliases apart because the name is part of the
+   key. This would also make alias names survive `.qi` round trips, copies, and re-elaboration, and print the name as
+   written in the source (`location.Span` rather than `Location.Span`). Code that inspects types without evaluating
+   them first, notably in C code generation, has to look through the new node, so this needs its own shadow check.
 
 ---
 
