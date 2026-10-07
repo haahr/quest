@@ -35,6 +35,7 @@ from quest.runtime import (
     QWriter,
 )
 from quest.types import (
+    strip_aliases,
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
@@ -194,14 +195,14 @@ def jsog_encode(dyn: QDynamicVal) -> str:
 
         if isinstance(val, QDynamicVal):
             return {
-                "@type": str(val.type_val),
+                "@type": str(strip_aliases(val.type_val)),
                 "@value": encode_val(val.value),
             }
 
         raise QuestException(DYNAMIC_ERROR_EXC)
 
     envelope = {
-        "@type": str(dyn.type_val),
+        "@type": str(strip_aliases(dyn.type_val)),
         "@value": encode_val(dyn.value),
     }
     return json.dumps(envelope, separators=(",", ":"))

@@ -8,7 +8,7 @@ from quest.env import Environment, ValueSymbol
 from quest.typed_ast import TypedExprStmt, TypedLetValue
 from quest.typechecker import TypeElaborator
 from quest.types import BOOL_TYPE, DYNAMIC_TYPE, INT_TYPE, OK_TYPE
-from helpers import parse_expr, parse_phrase
+from tests.python.helpers import parse_expr, parse_phrase
 
 
 class TestTypeElaborator(unittest.TestCase):

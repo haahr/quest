@@ -7,6 +7,8 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
+import tests.python.helpers  # noqa: F401  (makes assertEqual compare types with is_type_equal)
+
 from quest.types import (
     BOOL_TYPE,
     CHAR_TYPE,

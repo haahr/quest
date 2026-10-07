@@ -15,6 +15,7 @@ from quest.pipeline import CompilerContext, default_pipeline
 from quest.runtime import QClosure, QInt, QTuple, QTypeValue
 from quest.diagnostics import QuestTypeError
 from quest.types import (
+    unalias,
     INT_TYPE,
     OK_TYPE,
     STRING_TYPE,
@@ -251,7 +252,7 @@ class TestExistentialTuplesPhase3(unittest.TestCase):
 
         t1_sym = ctx.env.current_scope.lookup_value("t1")
         self.assertIsNotNone(t1_sym)
-        t1_type = t1_sym.type_val
+        t1_type = unalias(t1_sym.type_val)  # declared as `t1: T`, a reference to the alias T
         self.assertIsInstance(t1_type, QTupleType)
         self.assertTrue(t1_type.is_existential)
 

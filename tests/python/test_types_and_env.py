@@ -7,7 +7,10 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
+import tests.python.helpers  # noqa: F401  (makes assertEqual compare types with is_type_equal)
+
 from quest.types import (
+    is_type_contractive,
     TYPE_KIND,
     INT_TYPE,
     REAL_TYPE,
@@ -146,6 +149,11 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         )
         with self.assertRaises(KindError):
             check_kind_well_formed(QPowerKind(pair_ctor), env)
+
+        # An application of an opaque type operator is contractive unless the operator is the recursive variable
+        op = QTypeVar("F", 3, QAllKind(param_name="A", param_id=4, param_kind=TYPE_KIND, result_kind=TYPE_KIND))
+        self.assertTrue(is_type_contractive(QTypeApp(op, (INT_TYPE,)), {99}))
+        self.assertFalse(is_type_contractive(QTypeApp(op, (INT_TYPE,)), {3}))
 
         # Operator kinds ALL(A::TYPE) TYPE are well-formed, with or without an environment
         operator_kind = QAllKind(param_name="A", param_id=2, param_kind=TYPE_KIND, result_kind=TYPE_KIND)

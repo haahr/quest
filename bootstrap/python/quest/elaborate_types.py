@@ -7,6 +7,7 @@ from typing import Any, Optional, Union
 import quest.ast as ast
 from quest.types import (
     TYPE_KIND,
+    alias_reference,
     KindError,
     QKind,
     QTypeKind,
@@ -129,7 +130,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 if sym is None:
                     raise KindError(f"Undefined type '{name}' at offset {offset}")
                 if sym.definition is not None:
-                    return sym.definition
+                    return alias_reference(name, sym.symbol_id, sym.definition)
                 return QTypeVar(name=sym.name, symbol_id=sym.symbol_id, bound=sym.kind)
 
             if len(path) >= 2:
@@ -152,7 +153,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                             f"at offset {offset}"
                         )
                     if sym.definition is not None:
-                        return sym.definition
+                        return alias_reference(".".join(path), sym.symbol_id, sym.definition)
                     return QTypeVar(name=".".join(path), symbol_id=sym.symbol_id, bound=sym.kind)
 
                 # 2. Value binding lookup for path-dependent types (e.g. x.A or x.y.A)
@@ -483,7 +484,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     f"at offset {offset}"
                 )
             if sym.definition is not None:
-                return sym.definition
+                return alias_reference(f"{mname}_{tname}", sym.symbol_id, sym.definition)
             return QTypeVar(
                 name=f"{mname}_{tname}",
                 symbol_id=sym.symbol_id,

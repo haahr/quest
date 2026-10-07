@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 
 from quest.types import (
+    QAliasType,
+    strip_aliases,
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
@@ -157,6 +159,7 @@ def normalize_type(t: QType) -> QType:
     reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type.
     """
     t = t.prune() if hasattr(t, "prune") else t
+    t = strip_aliases(t)
     if isinstance(t, QTypeApp):
         reduced = _beta_reduce_head(t)
         if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
@@ -170,6 +173,7 @@ def normalize_type(t: QType) -> QType:
 def resolve_type_bound(t: QType) -> QType:
     """Unwraps upper bounds for path types and type variables bounded by POWER(T)."""
     curr = t.prune() if hasattr(t, "prune") else t
+    curr = strip_aliases(curr)
     visited = set()
     while isinstance(curr, (QTypeVar, QAbstractType, QPathType)) and isinstance(curr.bound, QPowerKind):
         sym_id = getattr(curr, "symbol_id", id(curr))
@@ -206,6 +210,7 @@ def type_to_c_tag(t: QType) -> str:
 
 def _type_to_c_tag_raw(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
+    t = strip_aliases(t)
     t = resolve_type_bound(t)
     t = normalize_type(t)
     if is_word_type(t):
@@ -332,6 +337,7 @@ class RecordNamingContext:
 def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
     """Maps a semantic Quest QType to its corresponding C scalar or pointer type representation."""
     t = t.prune() if hasattr(t, "prune") else t
+    t = strip_aliases(t)
     t = resolve_type_bound(t)
     t = normalize_type(t)
     if is_word_type(t):
@@ -386,6 +392,8 @@ def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
 def qtype_to_name_str(t: QType) -> str:
     """Returns the human-readable Quest type name string for runtime diagnostics and printing."""
     t = t.prune() if hasattr(t, "prune") else t
+    if isinstance(t, QAliasType):
+        return t.name
     if is_word_type(t):
         return "Word.T"
     if t is INT_TYPE:

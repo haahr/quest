@@ -37,6 +37,7 @@ from quest.codegen.c_types import (
     tuple_struct_name,
     type_to_c_tag,
 )
+from quest.env import ValueSymbol
 from quest.typed_ast import (
     TypedApp,
     TypedArray,
@@ -97,6 +98,8 @@ from quest.typed_ast import (
     TypedWhile,
 )
 from quest.types import (
+    QKind,
+    strip_aliases,
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
@@ -158,6 +161,58 @@ def _append_block(lines: list[str], block: list[str], indent: int = 4) -> None:
     pad = " " * indent
     for line in block:
         lines.append(f"{pad}{line}" if line.strip() else line)
+
+
+def _strip_typed_aliases(node: Any, memo: dict[int, Any]) -> Any:
+    """Rebuilds a typed AST with alias reference nodes removed from all of its types."""
+    import dataclasses
+    import quest.typed_ast as typed_ast_module
+
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    result = node
+    if isinstance(node, (QType, QKind)):
+        result = strip_aliases(node, memo)
+    elif isinstance(node, tuple):
+        items = tuple(_strip_typed_aliases(item, memo) for item in node)
+        if any(a is not b for a, b in zip(items, node)):
+            result = items
+    elif isinstance(node, ValueSymbol):
+        stripped_type = strip_aliases(node.type_val, memo)
+        if stripped_type is not node.type_val:
+            result = dataclasses.replace(node, type_val=stripped_type)
+            result._display_type = node.type_val
+    elif dataclasses.is_dataclass(node) and type(node).__module__ == typed_ast_module.__name__:
+        changes = {}
+        for f in dataclasses.fields(node):
+            if f.init:
+                old = getattr(node, f.name)
+                new = _strip_typed_aliases(old, memo)
+                if new is not old:
+                    changes[f.name] = new
+        if changes:
+            result = dataclasses.replace(node, **changes)
+            if "type_val" in changes:
+                object.__setattr__(result, "_display_type", node.type_val)
+    memo[key] = result
+    return result
+
+
+def _display_type(node: Any) -> QType:
+    """The type of a node or symbol as the source wrote it, for printing results (aliases included)."""
+    return node.__dict__.get("_display_type", node.type_val)
+
+
+def _strip_aliases_for_codegen(
+    prog: TypedProgram, loaded_modules: Optional[dict[str, TypedModule]]
+) -> tuple[TypedProgram, Optional[dict[str, TypedModule]]]:
+    """C code generation works on alias-free types: alias reference nodes only serve printing."""
+    memo: dict[int, Any] = {}
+    stripped_prog = _strip_typed_aliases(prog, memo)
+    if loaded_modules is None:
+        return stripped_prog, None
+    return stripped_prog, {name: _strip_typed_aliases(mod, memo) for name, mod in loaded_modules.items()}
 
 
 class CEmitter:
@@ -1247,6 +1302,7 @@ class CEmitter:
         loaded_modules: Optional[dict[str, TypedModule]] = None,
     ) -> str:
         """Translates a TypedProgram into a full standard C99 source file string."""
+        prog, loaded_modules = _strip_aliases_for_codegen(prog, loaded_modules)
         analysis = analyze_program_for_c(prog, self.record_ctx, loaded_modules, env=self.env)
         self._apply_analysis(analysis)
         decl_emitter = self._create_decl_emitter()
@@ -1439,7 +1495,8 @@ class CEmitter:
         exported_funs: Optional[set[str]] = None,
     ) -> str:
         """Translates a standalone TypedModule into a C99 source string (no main function)."""
-        prog = TypedProgram(phrases=(mod,))
+        prog, loaded_modules = _strip_aliases_for_codegen(TypedProgram(phrases=(mod,)), loaded_modules)
+        mod = prog.phrases[0]
         analysis = analyze_program_for_c(prog, self.record_ctx, loaded_modules, env=self.env)
         self._apply_analysis(analysis)
         decl_emitter = self._create_decl_emitter()
@@ -2008,11 +2065,11 @@ class CEmitter:
             case TypedLetValue(name=name, value=val, symbol=symbol):
                 if isinstance(val, TypedFun):
                     if self.echo:
-                        type_str = _c_string_literal(qtype_to_name_str(symbol.type_val))
+                        type_str = _c_string_literal(qtype_to_name_str(_display_type(symbol)))
                         lines.append(f"    quest_print_val(((QVal){{ .u = 0 }}), {type_str});")
                     elif should_print_result:
                         var_str = "var " if symbol.is_var else ""
-                        type_str = str(symbol.type_val)
+                        type_str = str(_display_type(symbol))
                         msg = f"let {var_str}{name}:{type_str} = <fun>"
                         lines.append(f"    puts({_c_string_literal(msg)});")
                     return
@@ -2028,7 +2085,7 @@ class CEmitter:
                 _append_block(lines, phrase_lines)
                 if self.echo:
                     wrap = _qval_wrap(c_ident, symbol.type_val)
-                    type_str = _c_string_literal(qtype_to_name_str(symbol.type_val))
+                    type_str = _c_string_literal(qtype_to_name_str(_display_type(symbol)))
                     lines.append(f"    quest_print_val({wrap}, {type_str});")
                 elif should_print_result:
                     var_str = "var " if symbol.is_var else ""
@@ -2036,7 +2093,7 @@ class CEmitter:
                         msg = f"let {var_str}{name}:Ok = ok"
                         lines.append(f"    puts({_c_string_literal(msg)});")
                     elif isinstance(symbol.type_val, (QFunType, QAllType)):
-                        type_str = str(symbol.type_val)
+                        type_str = str(_display_type(symbol))
                         msg = f"let {var_str}{name}:{type_str} = <fun>"
                         lines.append(f"    puts({_c_string_literal(msg)});")
                     elif symbol.type_val is INT_TYPE:
@@ -2063,12 +2120,12 @@ class CEmitter:
                             f'{c_ident} ? {c_ident}->data : "");'
                         )
                     elif isinstance(symbol.type_val, QTupleType) and symbol.type_val.is_existential:
-                        type_str = str(symbol.type_val)
+                        type_str = str(_display_type(symbol))
                         val_str = self._format_existential_tuple_val(symbol.type_val)
                         msg = f"let {var_str}{name}:{type_str} = {val_str}"
                         lines.append(f"    puts({_c_string_literal(msg)});")
                     else:
-                        type_str = str(symbol.type_val)
+                        type_str = str(_display_type(symbol))
                         msg = f"let {var_str}{name}:{type_str} = <val>"
                         lines.append(f"    puts({_c_string_literal(msg)});")
 
@@ -2096,7 +2153,7 @@ class CEmitter:
                         lines.append(f"    {s}" if s.strip() else s)
                     if self.echo:
                         wrap = _qval_wrap(c_ident, exc_node.type_val)
-                        type_str = _c_string_literal(qtype_to_name_str(exc_node.type_val))
+                        type_str = _c_string_literal(qtype_to_name_str(_display_type(exc_node)))
                         lines.append(f"    quest_print_val({wrap}, {type_str});")
                     elif should_print_result:
                         lines.append(f"    puts({_c_string_literal(f'exception {name}')});")
@@ -2131,7 +2188,7 @@ class CEmitter:
         _append_block(lines, phrase_lines)
         if self.echo or is_last:
             wrap = _qval_wrap(tmp, expr_type)
-            type_str = _c_string_literal(qtype_to_name_str(expr_type))
+            type_str = _c_string_literal(qtype_to_name_str(_display_type(expr)))
             lines.append(f"    quest_print_val({wrap}, {type_str});")
 
     def emit_val(self, expr: TypedExpr, lines: list[str]) -> str:

@@ -42,7 +42,7 @@
             )))))
     (TypedLetType 'BigRec' :kind TYPE)
     (TypedLetType 'SmallRec' :kind TYPE)
-    (TypedLetValue 'br' :type Record x: Int y: Int z: Int end
+    (TypedLetValue 'br' :type BigRec
       :value (TypedRecord :type Record x: Int y: Int z: Int end
         :fields (
           (TypedRecordField 'x'
@@ -54,15 +54,15 @@
         )))
     (TypedLetValue 'dRec' :type Dynamic.T
       :value (TypedApp :type Dynamic.T
-        :func (TypedTypeApp [Record x: Int y: Int z: Int end] :type Fun(a: Record x: Int y: Int z: Int end): Dynamic.T
+        :func (TypedTypeApp [BigRec] :type Fun(a: BigRec): Dynamic.T
           :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
-          (TypedVar 'br' :type Record x: Int y: Int z: Int end)
+          (TypedVar 'br' :type BigRec)
         )))
-    (TypedLetValue 'sr' :type Record x: Int y: Int end
-      :value (TypedApp :type Record x: Int y: Int end
-        :func (TypedTypeApp [Record x: Int y: Int end] :type Fun(d: Dynamic.T): Record x: Int y: Int end
+    (TypedLetValue 'sr' :type SmallRec
+      :value (TypedApp :type SmallRec
+        :func (TypedTypeApp [SmallRec] :type Fun(d: Dynamic.T): SmallRec
           :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
@@ -74,13 +74,13 @@
         :args (
           (TypedInfix '+' :type Int
             :left (TypedSelect 'x' :type Int
-              :target (TypedVar 'sr' :type Record x: Int y: Int end))
+              :target (TypedVar 'sr' :type SmallRec))
             :right (TypedSelect 'y' :type Int
-              :target (TypedVar 'sr' :type Record x: Int y: Int end)))
+              :target (TypedVar 'sr' :type SmallRec)))
         )))
     (TypedLetType 'PermRec' :kind TYPE)
     (TypedLetType 'OrderedRec' :kind TYPE)
-    (TypedLetValue 'pr' :type Record b: Int a: Int end
+    (TypedLetValue 'pr' :type PermRec
       :value (TypedRecord :type Record b: Int a: Int end
         :fields (
           (TypedRecordField 'b'
@@ -90,15 +90,15 @@
         )))
     (TypedLetValue 'dPerm' :type Dynamic.T
       :value (TypedApp :type Dynamic.T
-        :func (TypedTypeApp [Record b: Int a: Int end] :type Fun(a: Record b: Int a: Int end): Dynamic.T
+        :func (TypedTypeApp [PermRec] :type Fun(a: PermRec): Dynamic.T
           :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
-          (TypedVar 'pr' :type Record b: Int a: Int end)
+          (TypedVar 'pr' :type PermRec)
         )))
-    (TypedLetValue 'ord' :type Record a: Int b: Int end
-      :value (TypedApp :type Record a: Int b: Int end
-        :func (TypedTypeApp [Record a: Int b: Int end] :type Fun(d: Dynamic.T): Record a: Int b: Int end
+    (TypedLetValue 'ord' :type OrderedRec
+      :value (TypedApp :type OrderedRec
+        :func (TypedTypeApp [OrderedRec] :type Fun(d: Dynamic.T): OrderedRec
           :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
@@ -110,18 +110,18 @@
         :args (
           (TypedInfix '*' :type Int
             :left (TypedSelect 'a' :type Int
-              :target (TypedVar 'ord' :type Record a: Int b: Int end))
+              :target (TypedVar 'ord' :type OrderedRec))
             :right (TypedInfix '+' :type Int
               :left (TypedInt 10 :type Int)
               :right (TypedSelect 'b' :type Int
-                :target (TypedVar 'ord' :type Record a: Int b: Int end))))
+                :target (TypedVar 'ord' :type OrderedRec))))
         )))
     (TypedLetType 'InnerBig' :kind TYPE)
     (TypedLetType 'InnerSmall' :kind TYPE)
     (TypedLetType 'OuterBig' :kind TYPE)
     (TypedLetType 'OuterSmall' :kind TYPE)
-    (TypedLetValue 'ob' :type Record inner: Record x: Int y: Int end tag: String end
-      :value (TypedRecord :type Record inner: Record x: Int y: Int end tag: String end
+    (TypedLetValue 'ob' :type OuterBig
+      :value (TypedRecord :type Record inner: InnerBig tag: String end
         :fields (
           (TypedRecordField 'inner'
             :value (TypedRecord :type Record x: Int y: Int end
@@ -136,15 +136,15 @@
         )))
     (TypedLetValue 'dNest' :type Dynamic.T
       :value (TypedApp :type Dynamic.T
-        :func (TypedTypeApp [Record inner: Record x: Int y: Int end tag: String end] :type Fun(a: Record inner: Record x: Int y: Int end tag: String end): Dynamic.T
+        :func (TypedTypeApp [OuterBig] :type Fun(a: OuterBig): Dynamic.T
           :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
-          (TypedVar 'ob' :type Record inner: Record x: Int y: Int end tag: String end)
+          (TypedVar 'ob' :type OuterBig)
         )))
-    (TypedLetValue 'os' :type Record inner: Record x: Int end tag: String end
-      :value (TypedApp :type Record inner: Record x: Int end tag: String end
-        :func (TypedTypeApp [Record inner: Record x: Int end tag: String end] :type Fun(d: Dynamic.T): Record inner: Record x: Int end tag: String end
+    (TypedLetValue 'os' :type OuterSmall
+      :value (TypedApp :type OuterSmall
+        :func (TypedTypeApp [OuterSmall] :type Fun(d: Dynamic.T): OuterSmall
           :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
@@ -155,8 +155,8 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedSelect 'x' :type Int
-            :target (TypedSelect 'inner' :type Record x: Int end
-              :target (TypedVar 'os' :type Record inner: Record x: Int end tag: String end)))
+            :target (TypedSelect 'inner' :type InnerSmall
+              :target (TypedVar 'os' :type OuterSmall)))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -165,7 +165,7 @@
         :args (
           (TypedVar 'wOut' :type Writer.T)
           (TypedSelect 'tag' :type String
-            :target (TypedVar 'os' :type Record inner: Record x: Int end tag: String end))
+            :target (TypedVar 'os' :type OuterSmall))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -177,20 +177,20 @@
         )))
     (TypedLetType 'VarSmall' :kind TYPE)
     (TypedLetType 'VarBig' :kind TYPE)
-    (TypedLetValue 'va' :type Variant a: Int end
-      :value (TypedVariant 'a' :type Variant a: Int end
+    (TypedLetValue 'va' :type VarSmall
+      :value (TypedVariant 'a' :type VarSmall
         :payload (TypedInt 55 :type Int)))
     (TypedLetValue 'dVar' :type Dynamic.T
       :value (TypedApp :type Dynamic.T
-        :func (TypedTypeApp [Variant a: Int end] :type Fun(a: Variant a: Int end): Dynamic.T
+        :func (TypedTypeApp [VarSmall] :type Fun(a: VarSmall): Dynamic.T
           :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
-          (TypedVar 'va' :type Variant a: Int end)
+          (TypedVar 'va' :type VarSmall)
         )))
-    (TypedLetValue 'vb' :type Variant a: Int b: String end
-      :value (TypedApp :type Variant a: Int b: String end
-        :func (TypedTypeApp [Variant a: Int b: String end] :type Fun(d: Dynamic.T): Variant a: Int b: String end
+    (TypedLetValue 'vb' :type VarBig
+      :value (TypedApp :type VarBig
+        :func (TypedTypeApp [VarBig] :type Fun(d: Dynamic.T): VarBig
           :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
             :target (TypedVar 'dynamic' :type Module 'dynamic')))
         :args (
@@ -198,7 +198,7 @@
         )))
     (TypedExprStmt
       :expr (TypedCase :type Ok
-        :target (TypedVar 'vb' :type Variant a: Int b: String end)
+        :target (TypedVar 'vb' :type VarBig)
         :branches (
           (TypedCaseBranch tags=(a) :binder 'n'
             :body (TypedApp :type Ok
@@ -212,19 +212,19 @@
           :args (
             (TypedInt 0 :type Int)
           ))))
-    (TypedLetValue 'classify' :type Fun(d: Dynamic.T): Int
-      :value (TypedFun :params (('d' : Dynamic.T)) :type Fun(d: Dynamic.T): Int
+    (TypedLetValue 'classify' :type Fun(d: Dynamic): Int
+      :value (TypedFun :params (('d' : Dynamic)) :type Fun(d: Dynamic): Int
         :body (TypedInspect :type Int
-          :target (TypedVar 'd' :type Dynamic.T)
+          :target (TypedVar 'd' :type Dynamic)
           :branches (
             (TypedInspectBranch match=Int
               :body (TypedVar 'n' :type Int))
-            (TypedInspectBranch match=Record x: Int y: Int end
+            (TypedInspectBranch match=SmallRec
               :body (TypedInfix '+' :type Int
                 :left (TypedSelect 'x' :type Int
-                  :target (TypedVar 'r' :type Record x: Int y: Int end))
+                  :target (TypedVar 'r' :type SmallRec))
                 :right (TypedSelect 'y' :type Int
-                  :target (TypedVar 'r' :type Record x: Int y: Int end))))
+                  :target (TypedVar 'r' :type SmallRec))))
           )
           :else (TypedInt 999 :type Int))))
     (TypedExprStmt
@@ -232,7 +232,7 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'classify' :type Fun(d: Dynamic.T): Int)
+            :func (TypedVar 'classify' :type Fun(d: Dynamic): Int)
             :args (
               (TypedApp :type Dynamic.T
                 :func (TypedTypeApp [Int] :type Fun(a: Int): Dynamic.T
@@ -248,7 +248,7 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'classify' :type Fun(d: Dynamic.T): Int)
+            :func (TypedVar 'classify' :type Fun(d: Dynamic): Int)
             :args (
               (TypedVar 'dRec' :type Dynamic.T)
             ))
@@ -258,7 +258,7 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'classify' :type Fun(d: Dynamic.T): Int)
+            :func (TypedVar 'classify' :type Fun(d: Dynamic): Int)
             :args (
               (TypedApp :type Dynamic.T
                 :func (TypedTypeApp [String] :type Fun(a: String): Dynamic.T
@@ -269,8 +269,8 @@
                 ))
             ))
         )))
-    (TypedLetValue 'testMismatch' :type Fun(d: Dynamic.T): Int
-      :value (TypedFun :params (('d' : Dynamic.T)) :type Fun(d: Dynamic.T): Int
+    (TypedLetValue 'testMismatch' :type Fun(d: Dynamic): Int
+      :value (TypedFun :params (('d' : Dynamic)) :type Fun(d: Dynamic): Int
         :body (TypedTry :type Int
           :body (TypedBlock :type Int
             :bindings (
@@ -280,7 +280,7 @@
                     :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
                       :target (TypedVar 'dynamic' :type Module 'dynamic')))
                   :args (
-                    (TypedVar 'd' :type Dynamic.T)
+                    (TypedVar 'd' :type Dynamic)
                   )))
             )
             :result (TypedInt 1 :type Int))
@@ -296,7 +296,7 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'testMismatch' :type Fun(d: Dynamic.T): Int)
+            :func (TypedVar 'testMismatch' :type Fun(d: Dynamic): Int)
             :args (
               (TypedApp :type Dynamic.T
                 :func (TypedTypeApp [String] :type Fun(a: String): Dynamic.T

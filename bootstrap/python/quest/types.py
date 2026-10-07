@@ -103,27 +103,6 @@ def _intern(node: Any) -> Any:
     return canonical
 
 
-def distinct_alias_definition(t: Optional[QType]) -> Optional[QType]:
-    """Returns a private, non-canonical copy of t's top node, to serve as one alias's definition.
-
-    The printer recognizes an alias by the identity of its definition. Hash-consing would make
-    structurally identical definitions of different aliases one object (Def Expr = Node(ExprForm)
-    and Def Decl = Node(ExprForm)), so each alias declaration keeps its own top node; everything
-    below it stays canonical. A definition that is already an alias copy (an alias re-exported
-    through a module) is kept, and primitive singletons such as INT_TYPE are never copied.
-    """
-    if t is None or t._has_meta or t.__dict__.get("_alias_of") is not None:
-        return t
-    if any(t is p for p in _PRIMITIVE_SINGLETONS):
-        return t
-    copy = object.__new__(type(t))
-    for f in dataclasses.fields(t):
-        object.__setattr__(copy, f.name, getattr(t, f.name))
-    _set_free_vars(copy, t._fv, t._has_meta)
-    object.__setattr__(copy, "_alias_of", t)
-    return copy
-
-
 class _InternedNode(type):
     """Metaclass returning the canonical (hash-consed) instance for each constructed node."""
 
@@ -400,10 +379,12 @@ DYNAMIC_TYPE = QDynamicType()
 BOTTOM_TYPE = QBottomType()
 EXCEPTION_TYPE = QExceptionType()
 
-# Compared by identity throughout the compiler (t is INT_TYPE), so never copied for alias definitions.
-_PRIMITIVE_SINGLETONS: tuple[QType, ...] = (
-    INT_TYPE, REAL_TYPE, BOOL_TYPE, CHAR_TYPE, STRING_TYPE, OK_TYPE, DYNAMIC_TYPE, BOTTOM_TYPE, EXCEPTION_TYPE,
-)
+# The names under which the environment declares the primitive types (Environment._init_builtins).
+_BUILTIN_PRIMITIVE_NAMES: dict[str, QType] = {
+    "Int": INT_TYPE, "Real": REAL_TYPE, "Bool": BOOL_TYPE, "Char": CHAR_TYPE, "String": STRING_TYPE,
+    "Ok": OK_TYPE, "Dynamic": DYNAMIC_TYPE, "Exception": EXCEPTION_TYPE,
+}
+
 
 
 # ============================================================================
@@ -1138,6 +1119,106 @@ class QPathType(QType):
         return f"{self.root_name}.{self.field_name}"
 
 
+@dataclass(frozen=True)
+class QAliasType(QType):
+    """A reference to a type alias, as written in the source (Span, location.Span, ast.Expr).
+
+    The node is transparent: evaluation (and so subtyping and kinding) looks straight through it to
+    the alias's definition, its target. It exists so that the printer and the .qi writer can show the
+    name that was written. Hash-consing keeps references to different aliases (or the same alias
+    spelled differently) apart, because the name and symbol are part of the key. C code generation
+    never sees alias nodes; they are stripped at the codegen boundary (strip_aliases).
+    """
+    name: str
+    symbol_id: int
+    target: QType
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.target)
+
+    def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
+        if isinstance(self.target, QRecType):
+            return self.unfold_lazily().evaluate_lazily(env)
+        return self.target.evaluate_lazily(env)
+
+    def unfold_lazily(self) -> QType:
+        """Unfolds an alias of a recursive type through the alias: Rec(X) T, named N, unfolds to T[N/X].
+
+        Equivalent to unfolding the target (the alias equals it), but recursive occurrences keep
+        printing as the alias's name. Cached like QRecType.unfold_lazily; the unfolding refers back to
+        this node, so it stays a finite object graph.
+        """
+        unfolded = self.__dict__.get("_unfolded")
+        if unfolded is None:
+            assert isinstance(self.target, QRecType)
+            unfolded = self.target.body.substitute({self.target.symbol_id: self})
+            object.__setattr__(self, "_unfolded", unfolded)
+        return unfolded
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
+        target = self.target.substitute(subst)
+        # A substitution that changes the target leaves a type that is no longer the named alias.
+        return self if target is self.target else target
+
+    def __str__(self) -> str:
+        return self.name
+
+
+def alias_reference(name: str, symbol_id: int, target: QType) -> QType:
+    """The elaboration of a reference to the alias `name`: an alias node, except for builtin primitives.
+
+    A primitive's own name (Int, Ok, ...) is declared as a type symbol defined as the primitive; it is
+    not a user alias and prints the same either way, so its references elaborate to the primitive.
+    """
+    if _BUILTIN_PRIMITIVE_NAMES.get(name) is target:
+        return target
+    return QAliasType(name=name, symbol_id=symbol_id, target=target)
+
+
+def unalias(t: QType) -> QType:
+    """Looks through alias reference nodes at the top of t."""
+    while isinstance(t, QAliasType):
+        t = t.target
+    return t
+
+
+# strip_aliases results for canonical nodes, which are immutable: (node, result) by id(node).
+_STRIPPED: dict[int, tuple[Any, Any]] = {}
+
+
+def strip_aliases(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
+    """Rebuilds a type (or kind, or component) with every alias reference replaced by its target."""
+    if memo is None:
+        memo = {}
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    cached = _STRIPPED.get(key)
+    if cached is not None and cached[0] is node:
+        return cached[1]
+    result = node
+    if isinstance(node, QAliasType):
+        result = strip_aliases(node.target, memo)
+    elif isinstance(node, QTypeMeta):
+        pruned = node.prune()
+        result = node if pruned is node else strip_aliases(pruned, memo)
+    elif isinstance(node, tuple):
+        items = tuple(strip_aliases(item, memo) for item in node)
+        if any(a is not b for a, b in zip(items, node)):
+            result = items
+    elif isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
+        values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
+        stripped = {k: strip_aliases(v, memo) for k, v in values.items()}
+        if any(stripped[k] is not values[k] for k in values):
+            result = QTupleType(stripped["fields"]) if isinstance(node, QTupleType) else type(node)(**stripped)
+    memo[key] = result
+    if isinstance(type(node), _InternedNode) and not getattr(node, "_has_meta", False):
+        if len(_STRIPPED) > 200_000:
+            _STRIPPED.clear()
+        _STRIPPED[key] = (node, result)
+    return result
+
+
 def find_path_types(typ: QType) -> list[QPathType]:
     """Finds all QPathType instances occurring anywhere within a QType."""
     result: list[QPathType] = []
@@ -1196,6 +1277,8 @@ def find_path_types(typ: QType) -> list[QPathType]:
                 visit(b[3])
         elif isinstance(t, QExceptionType):
             visit(t.payload_type)
+        elif isinstance(t, QAliasType):
+            visit(t.target)
 
     visit(typ)
     return result
@@ -1252,6 +1335,8 @@ def type_mentions_symbol_ids(typ: QType, sym_ids: set[int]) -> bool:
             return any(visit(b[3]) for b in t.bindings)
         elif isinstance(t, QExceptionType):
             return visit(t.payload_type)
+        elif isinstance(t, QAliasType):
+            return visit(t.target)
         return False
 
     return visit(typ)
@@ -1983,15 +2068,10 @@ def is_type_contractive(
         case QAllType(quantifiers=quants, body=body):
             return is_type_contractive(body, recursive_var_ids, env, seen, depth + 1)
 
-        case QTypeApp(constructor=ctor, arguments=args):
-            ctor_lazy = ctor.evaluate_lazily(env)
-            match ctor_lazy:
-                case QTypeAbs(symbol_id=param_sym, body=body):
-                    subst = {param_sym: args[0]} if args else {}
-                    reduced = body.substitute_types(subst)
-                    return is_type_contractive(reduced, recursive_var_ids, env, seen, depth + 1)
-                case _:
-                    return is_type_contractive(ctor_lazy, recursive_var_ids, env, seen, depth + 1)
+        case QTypeApp(constructor=ctor):
+            # evaluate_lazily has already beta-reduced applications of type functions, so the
+            # constructor here is opaque; the application is contractive if the constructor is.
+            return is_type_contractive(ctor.evaluate_lazily(env), recursive_var_ids, env, seen, depth + 1)
 
         case (
             QRecordType()
@@ -2179,6 +2259,9 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
         case QAbstractType(bound=bound) | QPathType(bound=bound):
             check_kind_well_formed(bound, env)
             return bound
+
+        case QAliasType(target=target):
+            return synth_kind(target, env)
 
         case QTypeMeta():
             pruned = type_val.prune()
@@ -2480,7 +2563,7 @@ def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecor
     curr = t
     visited = set()
     while True:
-        curr_lazy = curr.evaluate_lazily(env) if env is not None else curr
+        curr_lazy = curr.evaluate_lazily(env) if env is not None else unalias(curr)
         if isinstance(curr_lazy, QRecordType):
             return curr_lazy
         if (
@@ -2501,7 +2584,7 @@ def resolve_variant_bound(t: QType, env: Optional[Any] = None) -> Optional[QVari
     curr = t
     visited = set()
     while True:
-        curr_lazy = curr.evaluate_lazily(env) if env is not None else curr
+        curr_lazy = curr.evaluate_lazily(env) if env is not None else unalias(curr)
         if isinstance(curr_lazy, QVariantType):
             return curr_lazy
         if (
@@ -2522,6 +2605,7 @@ def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptio
     curr = t
     visited = set()
     while True:
+        curr = unalias(curr)
         if isinstance(curr, QOptionType):
             return curr
         if isinstance(curr, QRecType):
@@ -2570,26 +2654,9 @@ def format_type_compact(
     if visited_ids is None:
         visited_ids = set()
 
-    # 1. Alias lookup from environment (Option B: Name/Alias priority)
-    # Check if this type object or its symbol corresponds to a declared type alias in env or an imported interface
-    if env is not None and isinstance(t, QType):
-        alias_name = getattr(env, "lookup_alias_for_type", None)
-        if callable(alias_name):
-            found_alias = alias_name(t)
-            if found_alias:
-                return found_alias
-        # Check if t matches an interface type symbol
-        interfaces = getattr(env, "_interfaces", None)
-        if isinstance(interfaces, dict):
-            # Prioritize clean, short interface names (e.g. 'Ast' over full paths)
-            for iface_name, iface_scope in interfaces.items():
-                if "/" in iface_name:
-                    continue
-                types_dict = getattr(iface_scope, "types", None)
-                if isinstance(types_dict, dict):
-                    for name, sym in types_dict.items():
-                        if sym.definition is not None and sym.definition is t:
-                            return f"{iface_name}.{name}"
+    # 1. Alias references print as written
+    if isinstance(t, QAliasType):
+        return t.name
 
     # 2. Primitives and Singletons
     if t is INT_TYPE:
