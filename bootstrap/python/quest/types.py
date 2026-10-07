@@ -8,7 +8,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
-from quest import shadow
 
 from quest.diagnostics import (
     Diagnostic,
@@ -1415,11 +1414,6 @@ def structurally_equal(a: Any, b: Any) -> bool:
 
 _SUBTYPE_CACHE: dict[tuple[int, int, bool], tuple[QType, QType, bool]] = {}
 _SUBTYPE_CACHE_LIMIT = 250_000
-_subtype_cache_enabled = True
-
-SHADOW_SUBTYPE_CACHE = shadow.register_check(
-    "subtype-cache", "recompute every subtype cache hit without the cache and compare"
-)
 
 
 def clear_subtype_cache() -> None:
@@ -1427,13 +1421,9 @@ def clear_subtype_cache() -> None:
 
 
 def _subtype_cache_lookup(sub: QType, sup: QType, env: Optional[Any]) -> Optional[bool]:
-    if not _subtype_cache_enabled:
-        return None
     entry = _SUBTYPE_CACHE.get((id(sub), id(sup), env is None))
     if entry is None or entry[0] is not sub or entry[1] is not sup:
         return None
-    if shadow.is_enabled(SHADOW_SUBTYPE_CACHE):
-        _shadow_check_subtype_cache(sub, sup, env, entry[2])
     return entry[2]
 
 
@@ -1447,8 +1437,6 @@ def _subtype_cache_store(sub: QType, sup: QType, env: Optional[Any], result: boo
 
 def _commit_proof(trail: SubtypeTrail, result: bool, env: Optional[Any]) -> None:
     """Enters a finished top-level proof's results in the cache (see the comment above)."""
-    if not _subtype_cache_enabled:
-        return
     if result:
         for sub, sup, r in trail.results:
             _subtype_cache_store(sub, sup, env, r)
@@ -1458,20 +1446,6 @@ def _commit_proof(trail: SubtypeTrail, result: bool, env: Optional[Any]) -> None
         for sub, sup, r in trail.results:
             if not r:
                 _subtype_cache_store(sub, sup, env, False)
-
-
-def _shadow_check_subtype_cache(sub: QType, sup: QType, env: Optional[Any], cached: bool) -> None:
-    global _subtype_cache_enabled
-    _subtype_cache_enabled = False
-    try:
-        fresh = _prove_subtype(sub, sup, env, SubtypeTrail(), MAX_SUBTYPE_FUEL)
-    finally:
-        _subtype_cache_enabled = True
-    if fresh != cached:
-        raise shadow.mismatch(
-            SHADOW_SUBTYPE_CACHE,
-            f"cached ({sub} <: {sup}) = {cached}, but recomputing without the cache gives {fresh}",
-        )
 
 
 def is_type_equal(t1: QType, t2: QType, env: Optional[Any] = None) -> bool:
