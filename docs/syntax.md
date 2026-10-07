@@ -130,8 +130,10 @@ Quest supports listfix syntax for functions consuming array arguments:
 - List aggregates similarly use listfix syntax with the `list` constructor (`list of 1 2 3 end`, `list of end`).
 
 ### 3.6. Curried Signatures & Anonymous Tuple Fields
-- **Curried Signatures:** Functions and function types support multiple parameter lists:
-  `fun(x: Int)(y: Int): Int x + y` and `Fun(x: Int)(y: Int): Int`.
+- **Curried Signatures:** Functions and function-valued formals support multiple parameter lists:
+  `fun(x: Int)(y: Int): Int x + y` and `f(x: Int)(y: Int): Int`, whose type is
+  `All(x: Int) All(y: Int) Int`. (`Fun(...)` is only for type operators, whose parameters are
+  type formals such as `A::TYPE` or `A <: B`.)
 - **Anonymous Fields:** Tuple types and signatures allow anonymous fields:
   `Tuple :Int :Real end` or `Tuple x:Int :Var(Real) :Out(String) end`.
 

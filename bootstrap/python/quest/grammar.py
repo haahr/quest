@@ -61,6 +61,7 @@ TYPE_DECL = SyntaxTarget("TypeDecl")
 VALUE_DECL = SyntaxTarget("ValueDecl")
 FORMAL_PARAM = SyntaxTarget("FormalParam")
 TYPE_FORMAL = SyntaxTarget("TypeFormal")
+TYPE_FORMALS = SyntaxTarget("TypeFormals")
 QUANTIFIER = SyntaxTarget("Quantifier")
 
 CASE_BRANCHES = SyntaxTarget("CaseBranches")
@@ -80,7 +81,7 @@ ALL_SYNTAX_TARGETS: tuple[SyntaxTarget, ...] = (
     KIND, PRIMARY_KIND,
     TYPE, POSTFIX_TYPE, POSTFIX_TYPE_OP, PRIMARY_TYPE, TYPE_SIGNATURE, VALUE_SIGNATURE, OPTION_SIGNATURE, SIGNATURE,
     VALUE, POSTFIX_VALUE, POSTFIX_OP, PRIMARY_VALUE, INFIX_OP, BINDING, TYPE_BINDING, VALUE_BINDING,
-    KIND_DECL, TYPE_DECL, VALUE_DECL, FORMAL_PARAM, TYPE_FORMAL, QUANTIFIER,
+    KIND_DECL, TYPE_DECL, VALUE_DECL, FORMAL_PARAM, TYPE_FORMAL, TYPE_FORMALS, QUANTIFIER,
     CASE_BRANCHES, CASE_BRANCH, INSPECT_BRANCHES, INSPECT_BRANCH, TRY_BRANCHES, TRY_BRANCH,
     HAS_TYPE, HAS_MUT_TYPE, HAS_KIND,
 )
@@ -438,20 +439,7 @@ def _build_type_decl(
     kind_bound: Optional[ast.Kind],
     type_node: ast.Type,
 ) -> ast.LetTypeBinding:
-    all_formals: list[ast.TypeFormal] = []
-    for grp in param_groups:
-        sigs = grp[1]
-        for sig in sigs:
-            if isinstance(sig, ast.TypeFormal):
-                all_formals.append(sig)
-            elif isinstance(sig, ast.FieldSig):
-                all_formals.append(
-                    ast.TypeFormal(
-                        name=sig.name or "_",
-                        bound=ast.KindType(offset=sig.offset),
-                        offset=sig.offset,
-                    )
-                )
+    all_formals = [formal for grp in param_groups for formal in grp[1]]
     type_fun = ast.TypeFun(
         params=tuple(all_formals),
         result_kind=kind_bound,
@@ -662,18 +650,11 @@ def build_quest_grammar() -> None:
             offset=auto_token.offset,
         ),
     )
-    # Fun ( Signature ) [HasKind] Type
+    # Fun ( TypeFormals ) [HasKind] Type
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_FUN_TYPE), T(TK.LPAREN), SIGNATURE, T(TK.RPAREN), Opt(HAS_KIND), TYPE),
-        lambda fun_token, left_paren, signatures, right_paren, kind_bound, body_type: ast.TypeFun(
-            params=tuple(
-                ast.TypeFormal(
-                    name=getattr(sig, "name", "_"),
-                    bound=getattr(sig, "bound", ast.KindType(offset=left_paren.offset)),
-                    offset=getattr(sig, "offset", left_paren.offset),
-                )
-                for sig in signatures
-            ),
+        (T(TK.KW_FUN_TYPE), T(TK.LPAREN), TYPE_FORMALS, T(TK.RPAREN), Opt(HAS_KIND), TYPE),
+        lambda fun_token, left_paren, formals, right_paren, kind_bound, body_type: ast.TypeFun(
+            params=formals,
             result_kind=kind_bound,
             body=body_type,
             offset=fun_token.offset,
@@ -824,12 +805,18 @@ def build_quest_grammar() -> None:
         ),
     )
     # [IdeList] HasKind
-    TYPE_SIGNATURE.add_rule(
+    TYPE_SIGNATURE.add_rule((TYPE_FORMAL,), lambda formals: formals)
+    TYPE_FORMAL.add_rule(
         (Opt(IDE_LIST), HAS_KIND),
         lambda identifiers, kind_bound: tuple(
             ast.TypeFormal(name=name, bound=kind_bound, offset=kind_bound.offset)
             for name in (identifiers or ("_",))
         ),
+    )
+    # Operator parameters (Fun and Let X(...)) are type formals only: X::K or X <: T
+    TYPE_FORMALS.add_rule(
+        (Rep(TYPE_FORMAL),),
+        lambda formal_groups: tuple(formal for group in formal_groups for formal in group),
     )
     # HasMutType (Anonymous tuple/signature field :Int or :Var(Int) or :Out(Int))
     TYPE_SIGNATURE.add_rule(
@@ -1362,7 +1349,7 @@ def build_quest_grammar() -> None:
     )
 
     TYPE_DECL.add_rule(
-        (IDE, Rep(T(TK.LPAREN), SIGNATURE, T(TK.RPAREN)), Opt(HAS_KIND), T(TK.EQUAL), TYPE),
+        (IDE, Rep(T(TK.LPAREN), TYPE_FORMALS, T(TK.RPAREN)), Opt(HAS_KIND), T(TK.EQUAL), TYPE),
         lambda ident_token, param_groups, kind_bound, equal_token, type_node: (
             _build_type_decl(ident_token, param_groups, kind_bound, type_node)
             if param_groups
