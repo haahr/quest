@@ -118,10 +118,9 @@ The compiler driver differentiates between orchestrating a full build of an appl
   - If neither is specified, outputs default to the source file directory (`file_path.parent`). This preserves
     isolated single-file tool workflows and localized unit tests without creating unintended `.build/` trees.
 
-Compiled artifacts found outside the build directory (for example a `.qi` or `.o` next to a source file) are currently
-used only when the corresponding source file does not exist (Rule 3 below); otherwise the source is authoritative.
-This was a stopgap against stale artifacts; §5.2 proposes returning to the intended model, in which fresh artifacts
-(checked by timestamps and an ABI version) are used even when their sources exist.
+Compiled artifacts found outside the build directory (for example a `.qi`/`.h` or `.qm`/`.c`/`.o` left next to a source
+file by a standalone compilation) are used like those in the build directory when they are fresh: at least as new
+as their sources and recording the running compiler's ABI version (§5.2).
 
 ```
 quest/
@@ -290,8 +289,9 @@ an interface imports: a generated header `#include`s its imported interfaces' he
 the build directory too, even for interfaces the typechecker resolves without loading them (such as builtin
 interfaces like `Writer`).
 
-### 5.2. Proposal: An ABI Version and Trusting Fresh Artifacts
-**Status: proposed, not implemented.**
+### 5.2. An ABI Version and Trusting Fresh Artifacts
+**Status:** §5.2.1–5.2.3 are implemented (`quest/build/abi.py`, `tests/abi/`); typechecking from artifacts (§5.2.4) is
+not yet.
 
 The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `q_<stem>.h` instead of
 re-elaborating an `.int.quest`, and `.qm`, `.c`, and `.o` instead of recompiling a `.mod.quest` or main routine.
@@ -312,11 +312,15 @@ Two distinct concerns are involved:
 
 #### 5.2.1. The ABI Version
 Every `.qi` and `.qm` records:
-- **`abi`: the artifact contract version,** declared as an ordinary constant (`ABI_VERSION`) by every Quest compiler.
-  The Python and self-hosted compilers implement the same contract, so artifacts from either are interchangeable at
-  the same version. A packaged compiler carries the constant in its code; nothing reads compiler sources at run time.
-- **`producer`: the compiler that wrote the artifact** (for example `quest-bootstrap 0.3` or `questc 0.1`). It is
-  informational, for diagnostics only, and never affects whether an artifact is used.
+- **`abi`: the artifact contract version,** an integer starting at 1, declared as an ordinary constant
+  (`ABI_VERSION`) by every Quest compiler. The Python and self-hosted compilers implement the same contract, so
+  artifacts from either are interchangeable at the same version. A packaged compiler carries the constant in its
+  code; nothing reads compiler sources at run time. The two compilers declare the constant separately and the corpus
+  test (§5.2.3) keeps them in step. That is not fully satisfying: if the self-hosted compiler gains a Makefile, it
+  should generate its constant from the Python compiler's (`bootstrap/python/quest/build/abi.py`).
+- **`producer`: the compiler that wrote the artifact,** its name and an ordinary version number bumped by hand (for
+  example `quest-bootstrap 0.1` or `questc 0.1`). It is informational, for diagnostics only, and never affects
+  whether an artifact is used.
 
 The ABI version covers:
 - the layout and meaning of `.qi` and `.qm` files, including the syntax and meaning of the type strings in `.qi`;
@@ -327,7 +331,7 @@ The ABI version covers:
 - the runtime interface generated code uses (`runtime/quest_runtime.h`).
 
 Placement:
-- **`.qi`:** two new fields, `abi: String` and `producer: String`, in the `QI_SCHEMA_TYPE_STR` record. Because the
+- **`.qi`:** two new fields, `abi: Int` and `producer: String`, in the `QI_SCHEMA_TYPE_STR` record. Because the
   schema type itself changes, older `.qi` files no longer match it on load and are treated as stale.
 - **`q_<stem>.h`:** a leading comment `/* quest abi <version> producer <producer> */`, for diagnosis only. A header is
   produced together with its `.qi`, and its freshness is decided by the `.qi`.
@@ -347,18 +351,30 @@ dependents are rebuilt by the existing transitive invalidation rule (§7.2).
 
 #### 5.2.3. Keeping the ABI Version Honest
 A version number is only as reliable as the discipline of bumping it, so a test enforces it. A checked-in ABI corpus
-records, for every library interface and module and for the test suite's modules:
-- the generated `.qi` files and `q_<stem>.h` headers, with paths normalized;
-- the mangled symbols the generated C defines and references;
+(`tests/abi/corpus`) records, for a frozen snapshot of every interface in the library and in `questlang/`
+(`tests/abi/inputs`):
+- the generated `.qi` files and `q_<stem>.h` headers, with the producer stamp and comments left out;
 - a digest of `runtime/quest_runtime.h`.
 
-The test regenerates the corpus and fails if anything differs while `ABI_VERSION` is unchanged ("artifact contract
+The inputs are a snapshot, not the live library, so that the corpus changes only when the compiler's output for the
+same input changes; editing a library interface is a source change, not a contract change.
+`python tests/abi/corpus.py --update` regenerates the corpus after a bump, and `--refresh-inputs` re-snapshots the
+interfaces first.
+
+`tests/python/test_abi_corpus.py` regenerates the corpus and fails if anything differs while `ABI_VERSION` is unchanged ("artifact contract
 changed: bump ABI_VERSION and update the corpus"). Reading compiler and runtime sources here is a test's business, not
 the compiler's. Once the self-hosted compiler exists, the same corpus serves as a cross-check: at the same ABI
 version, both compilers must produce the same `.qi` and `.qm` files and compatible headers.
 
 What this misses: a contract change that nothing in the corpus exercises. The corpus covers the whole library and the
-test modules, and grows when a gap is found.
+test suite's interfaces, and grows when a gap is found.
+
+The corpus deliberately leaves out the link-level surface between units: the symbols each unit defines and references
+that no header declares, such as module initialization functions and module records (each `.c` declares those of its
+dependencies with `extern`). Changing them is still an ABI change and needs a bump; renaming module records from
+`qv_m` to `qm_m` was one. But a forgotten bump there fails loudly, as an undefined symbol when linking against an
+older object, whereas a forgotten bump for a layout or calling-convention change links and then misbehaves silently.
+The corpus concentrates on the silent kind.
 
 #### 5.2.4. Using Artifacts Outside C Compilation
 Today the typecheck and interpret phases parse and elaborate every imported interface and module from source on

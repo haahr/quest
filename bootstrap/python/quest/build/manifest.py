@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from quest.build.abi import ABI_VERSION, PRODUCER
+
 
 @dataclass
 class ImportedModuleRef:
@@ -36,10 +38,16 @@ class ModuleManifest:
     object: str
     imported_modules: list[ImportedModuleRef] = field(default_factory=list)
     imported_interfaces: list[ImportedInterfaceRef] = field(default_factory=list)
+    # The artifact contract version and compiler the artifacts were produced with (docs/build-process.md §5.2);
+    # None when read from a manifest that records none.
+    abi: Optional[int] = ABI_VERSION
+    producer: Optional[str] = PRODUCER
 
     def to_dict(self) -> dict[str, Any]:
         """Serializes manifest to a dictionary."""
         return {
+            "abi": self.abi,
+            "producer": self.producer,
             "name": self.name,
             "interface": self.interface,
             "source": self.source,
@@ -70,6 +78,8 @@ class ModuleManifest:
             object=data.get("object", ""),
             imported_modules=imported_modules,
             imported_interfaces=imported_interfaces,
+            abi=data.get("abi") if isinstance(data.get("abi"), int) else None,
+            producer=data.get("producer"),
         )
 
 
@@ -97,6 +107,8 @@ def read_qm(path: Path) -> Optional[ModuleManifest]:
 
 def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
     """Checks whether the compiled artifacts for a module or main routine are out of date."""
+    if manifest.abi != ABI_VERSION:
+        return True
     obj_path = Path(manifest.object)
     if not obj_path.is_file():
         return True

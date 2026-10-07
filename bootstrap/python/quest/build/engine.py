@@ -9,6 +9,7 @@ from typing import Any, Iterable, Optional
 
 import quest.ast as ast
 from quest.build.logger import BuildLogger
+from quest.build.abi import has_current_abi, incompatible_artifact_message
 from quest.build.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
@@ -503,6 +504,8 @@ class BuildEngine:
                     qm_cand = found_obj.with_suffix(".qm")
                     if qm_cand.is_file():
                         qm_path = qm_cand
+                        if not has_current_abi(qm_cand):
+                            raise BuildError(incompatible_artifact_message(qm_cand))
                 elif not (qm_path.is_file() and o_path.is_file()):
                     raise BuildError(
                         f"Undefined module '{item_name}': cannot find source file "
@@ -510,6 +513,13 @@ class BuildEngine:
                     )
             else:
                 reason = self._unit_staleness(mod_src, qm_path, c_path, o_path)
+                if reason is not None:
+                    # Fresh artifacts next to the source (from a standalone compilation) are used like
+                    # those in the build directory (docs/build-process.md §5.2).
+                    beside = [mod_src.parent / f"{stem}{ext}" for ext in (".qm", ".c", ".o")]
+                    if beside[0] != qm_path and self._unit_staleness(mod_src, *beside) is None:
+                        qm_path, c_path, o_path = beside
+                        reason = None
 
             if reason is not None:
                 assert mod_src is not None

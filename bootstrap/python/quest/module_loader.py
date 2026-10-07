@@ -56,12 +56,16 @@ def resolve_interface_file(
     current_dir: Optional[Path],
     include_paths: list[Path],
 ) -> Optional[Path]:
-    """Finds <name.lower()>.int.quest, or <name.lower()>.qi when no source exists, on the search path."""
-    # A compiled .qi is used only when no source exists (binary distribution). With a source, stray
-    # artifacts must not change the result; C compilation finds its .qi in the build directory itself.
+    """Finds interface `name` on the search path: a fresh .qi if there is one, else its .int.quest.
+
+    A .qi is fresh when it records this compiler's ABI version and is at least as new as the source
+    (docs/build-process.md §5.2). Without a source, the first .qi found is returned whatever its ABI
+    version; loading it reports an incompatible one.
+    """
+    from quest.build.abi import has_current_abi
+
     source_file = resolve_interface_source_file(name, current_dir, include_paths)
-    if source_file is not None:
-        return source_file
+    source_mtime = source_file.stat().st_mtime if source_file is not None else None
 
     stem = name.lower()
     dirs_to_check: list[Path] = []
@@ -79,10 +83,14 @@ def resolve_interface_file(
 
     for d in dirs_to_check:
         qi_candidate = d / f"{stem}.qi"
-        if qi_candidate.is_file():
+        if not qi_candidate.is_file():
+            continue
+        if source_mtime is None:
+            return qi_candidate.resolve()
+        if has_current_abi(qi_candidate) and qi_candidate.stat().st_mtime >= source_mtime:
             return qi_candidate.resolve()
 
-    return None
+    return source_file
 
 
 def resolve_interface_source_file(

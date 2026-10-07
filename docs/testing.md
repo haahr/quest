@@ -125,6 +125,12 @@ If stdout does not match the golden file, `run_tests.py` prints a unified diff d
 run and deleted afterwards), so results never depend on artifacts left by earlier compiler versions. Pass
 `--build-dir <dir>` to reuse a build directory across runs for speed.
 
+**ABI corpus:** `tests/python/test_abi_corpus.py` fails when the generated interface artifacts (`.qi` files and C
+headers for a frozen snapshot of the library's interfaces) change without a bump of `ABI_VERSION`
+(`docs/build-process.md` §5.2.3). After an intended contract change, bump the version and run
+`python tests/abi/corpus.py --update`; to snapshot newer library interfaces, run `python tests/abi/corpus.py
+--refresh-inputs`.
+
 **Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
 type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables
 every check. See `bootstrap/python/quest/shadow.py`.

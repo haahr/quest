@@ -1,0 +1,70 @@
+#ifndef QUEST_INTF_DIAGNOSTICS_H
+#define QUEST_INTF_DIAGNOSTICS_H
+#include "quest_runtime.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "questlang/common/location.h"
+#include "collections/vector.h"
+#include "util/maybe.h"
+#include "writer.h"
+#ifndef QUEST_TYPE_QOption_fatal_error_warning_info_TYPEDEF
+#define QUEST_TYPE_QOption_fatal_error_warning_info_TYPEDEF
+typedef struct QOption_fatal_error_warning_info QOption_fatal_error_warning_info;
+#endif
+#ifndef QUEST_TYPE_QTuple_String_Int_Int_TYPEDEF
+#define QUEST_TYPE_QTuple_String_Int_Int_TYPEDEF
+typedef struct QTuple_String_Int_Int QTuple_String_Int_Int;
+#endif
+#ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_TYPEDEF
+#define QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_TYPEDEF
+typedef struct QTuple_QTuple_String_Int_Int_String_Bool QTuple_QTuple_String_Int_Int_String_Bool;
+#endif
+#ifndef QUEST_TYPE_QOption_fatal_error_warning_info_DEFINED
+#define QUEST_TYPE_QOption_fatal_error_warning_info_DEFINED
+struct QOption_fatal_error_warning_info {
+    int64_t tag;
+};
+#endif
+#ifndef QUEST_TYPE_QTuple_String_Int_Int_DEFINED
+#define QUEST_TYPE_QTuple_String_Int_Int_DEFINED
+struct QTuple_String_Int_Int {
+    QString * _0;
+    QInt _1;
+    QInt _2;
+};
+#endif
+#ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_DEFINED
+#define QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_DEFINED
+struct QTuple_QTuple_String_Int_Int_String_Bool {
+    QTuple_String_Int_Int * _0;
+    QString * _1;
+    QBool _2;
+};
+#endif
+typedef QOption_fatal_error_warning_info * quest_type_Diagnostics_Severity;
+typedef QTuple_QTuple_String_Int_Int_String_Bool * quest_type_Diagnostics_Label;
+typedef QVal quest_type_Diagnostics_Diagnostic;
+typedef QVal (*quest_sig_Diagnostics_make)(QOption_fatal_error_warning_info * sev, QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_Diagnostics_fatal)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_Diagnostics_error)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_Diagnostics_warning)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_Diagnostics_info)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QOption_fatal_error_warning_info * (*quest_sig_Diagnostics_severity)(QVal d);
+typedef QString * (*quest_sig_Diagnostics_message)(QVal d);
+typedef QTuple_String_Int_Int * (*quest_sig_Diagnostics_span)(QVal d);
+typedef QVal (*quest_sig_Diagnostics_labels)(QVal d);
+typedef QVal (*quest_sig_Diagnostics_notes)(QVal d);
+typedef QVal (*quest_sig_Diagnostics_help)(QVal d);
+typedef QVal (*quest_sig_Diagnostics_code)(QVal d);
+typedef void (*quest_sig_Diagnostics_addLabel)(QVal d, QTuple_String_Int_Int * sp, QString * msg, QBool isPrimary);
+typedef void (*quest_sig_Diagnostics_addNote)(QVal d, QString * note);
+typedef void (*quest_sig_Diagnostics_setHelp)(QVal d, QString * h);
+typedef void (*quest_sig_Diagnostics_setCode)(QVal d, QString * c);
+typedef QString * (*quest_sig_Diagnostics_severityString)(QOption_fatal_error_warning_info * sev);
+typedef QString * (*quest_sig_Diagnostics_format)(QVal d, QVal sm);
+typedef void (*quest_sig_Diagnostics_render)(QVal d, QVal sm, QWriter * w);
+#ifdef __cplusplus
+}
+#endif
+#endif
