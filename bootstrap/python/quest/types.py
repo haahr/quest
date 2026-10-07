@@ -1508,11 +1508,6 @@ def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
             check_kind(bound, TYPE_KIND, env)
             return
 
-        case QOperatorKind(param_name=pname, param_kind=pkind, result_kind=rkind):
-            check_kind_well_formed(pkind, env)
-            check_kind_well_formed(rkind, env)
-            return
-
         case QAllKind(
             param_name=param_name,
             param_id=param_id,

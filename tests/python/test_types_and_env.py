@@ -147,6 +147,11 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         with self.assertRaises(KindError):
             check_kind_well_formed(QPowerKind(pair_ctor), env)
 
+        # Operator kinds ALL(A::TYPE) TYPE are well-formed, with or without an environment
+        operator_kind = QAllKind(param_name="A", param_id=2, param_kind=TYPE_KIND, result_kind=TYPE_KIND)
+        check_kind_well_formed(operator_kind, env)
+        check_kind_well_formed(operator_kind)
+
     def test_kind_synthesis_primitives_and_composites(self):
         env = Environment()
         # Primitives
