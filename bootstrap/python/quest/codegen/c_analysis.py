@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from typing import Any, Optional
 
 from quest.analysis.closure import LambdaAnalysis, analyze_closures
@@ -467,6 +467,77 @@ def collect_aggregate_types(
 
     visit_node(node)
     return result, variant_types, all_types
+
+
+def _rename_symbol_refs(node: Any, renames: dict[int, str], memo: dict[int, Any]) -> Any:
+    """Returns `node` with each TypedVar whose symbol is in `renames` renamed, sharing unchanged subtrees."""
+    if isinstance(node, (tuple, list)):
+        items = [_rename_symbol_refs(n, renames, memo) for n in node]
+        if all(new is old for new, old in zip(items, node)):
+            return node
+        return type(node)(items)
+    if not isinstance(node, TypedNode):
+        return node
+    if id(node) in memo:
+        return memo[id(node)]
+    if isinstance(node, TypedVar):
+        new_name = renames.get(node.symbol.symbol_id)
+        result = node if new_name is None else replace(node, name=new_name)
+    else:
+        changes = {}
+        for f in fields(node):
+            if not f.init:
+                continue
+            old = getattr(node, f.name)
+            new = _rename_symbol_refs(old, renames, memo)
+            if new is not old:
+                changes[f.name] = new
+        result = replace(node, **changes) if changes else node
+    memo[id(node)] = result
+    return result
+
+
+def rename_shadowing_top_level_bindings(prog: TypedProgram) -> TypedProgram:
+    """Gives each top-level `let` that reuses an earlier top-level name a fresh name.
+
+    The C backend maps top-level names to file-scope C variables and functions, so a later binding of a
+    name must not share its C identifier with an earlier one. References are renamed by symbol, so code
+    that saw the earlier binding keeps referring to it. Display text uses the symbol's name, which is
+    unchanged. A Quest identifier never contains '_', so the suffix cannot collide with a user name.
+    """
+    bound: set[str] = set()
+    shadow_counts: dict[str, int] = {}
+    renames: dict[int, str] = {}
+    for phrase in prog.phrases:
+        match phrase:
+            case TypedLetValue(name=name, symbol=symbol):
+                if name in bound:
+                    shadow_counts[name] = shadow_counts.get(name, 0) + 1
+                    renames[symbol.symbol_id] = f"{name}__S{shadow_counts[name]}"
+                bound.add(name)
+            case TypedImport(items=items):
+                for item in items:
+                    bound.update(item.names)
+                    bound.update(item.effective_module_paths)
+            case TypedModule(name=name, bindings=bindings):
+                bound.add(name)
+                bound.update(b.name for b in bindings if isinstance(b, (TypedLetValue, TypedException)) and b.name)
+            case TypedException(name=name) | TypedExprStmt(expr=TypedException(name=name)):
+                if name:
+                    bound.add(name)
+            case _:
+                pass
+    if not renames:
+        return prog
+    memo: dict[int, Any] = {}
+    phrases = tuple(_rename_symbol_refs(p, renames, memo) for p in prog.phrases)
+    renamed = [
+        replace(p, name=renames[p.symbol.symbol_id])
+        if isinstance(p, TypedLetValue) and p.symbol.symbol_id in renames
+        else p
+        for p in phrases
+    ]
+    return replace(prog, phrases=tuple(renamed))
 
 
 def analyze_program_for_c(

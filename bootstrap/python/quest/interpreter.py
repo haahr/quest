@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
+from quest.env import ValueSymbol
 from quest.runtime import (
     FALSE_VALUE,
     OK_VALUE,
@@ -198,6 +199,12 @@ class RuntimeEnvironment:
     def __init__(self, parent: Optional[RuntimeEnvironment] = None):
         self.parent = parent
         self.bindings: dict[str, QValue] = {}
+        # Bindings that came from a typed declaration are also keyed by their symbol, so a reference resolves to
+        # the declaration the typechecker saw even after a later declaration in the same frame reuses the name.
+        # A reference whose symbol was never defined that way (an import, a parameter, a builtin) resolves by
+        # name among the bindings that were defined without a symbol.
+        self.symbol_bindings: dict[int, QValue] = {}
+        self.unsymbolled_bindings: dict[str, QValue] = {}
         if parent is not None:
             self.evaluated_modules: dict[str, Any] = parent.evaluated_modules
             self.include_paths: list[Path] = parent.include_paths
@@ -219,9 +226,27 @@ class RuntimeEnvironment:
             raise QuestRuntimeError("Cannot pop root runtime scope")
         return self.parent
 
-    def define(self, name: str, value: QValue) -> None:
+    def define(self, name: str, value: QValue, symbol: Optional[ValueSymbol] = None) -> None:
         """Binds a variable in the current innermost scope frame."""
         self.bindings[name] = value
+        if symbol is not None:
+            self.symbol_bindings[symbol.symbol_id] = value
+        else:
+            self.unsymbolled_bindings[name] = value
+
+    def lookup_symbol(self, symbol: ValueSymbol, offset: Optional[int] = None) -> QValue:
+        """Resolves a typed reference: by its symbol if some frame defined it, otherwise by name."""
+        frame: Optional[RuntimeEnvironment] = self
+        while frame is not None:
+            if symbol.symbol_id in frame.symbol_bindings:
+                return frame.symbol_bindings[symbol.symbol_id]
+            frame = frame.parent
+        frame = self
+        while frame is not None:
+            if symbol.name in frame.unsymbolled_bindings:
+                return frame.unsymbolled_bindings[symbol.name]
+            frame = frame.parent
+        raise QuestRuntimeError(f"Undefined runtime symbol '{symbol.name}'", offset=offset)
 
     def lookup(self, name: str, offset: Optional[int] = None) -> QValue:
         """Resolves a variable recursively outward from innermost to outermost scope."""
@@ -239,6 +264,8 @@ class RuntimeEnvironment:
                 curr.assign(new_value)
             else:
                 self.bindings[name] = new_value
+                if name in self.unsymbolled_bindings:
+                    self.unsymbolled_bindings[name] = new_value
             return
         if self.parent is not None:
             self.parent.assign(name, new_value, offset)
@@ -249,12 +276,16 @@ class RuntimeEnvironment:
         """Captures a shallow copy of the current bindings and parent pointer."""
         return {
             "bindings": dict(self.bindings),
+            "symbol_bindings": dict(self.symbol_bindings),
+            "unsymbolled_bindings": dict(self.unsymbolled_bindings),
             "parent": self.parent,
         }
 
     def restore(self, snap: dict[str, Any]) -> None:
         """Restores bindings and parent from a previous snapshot."""
         self.bindings = dict(snap["bindings"])
+        self.symbol_bindings = dict(snap["symbol_bindings"])
+        self.unsymbolled_bindings = dict(snap["unsymbolled_bindings"])
         self.parent = snap["parent"]
 
     @classmethod
@@ -484,8 +515,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             return BuiltinModuleRegistry.resolve_external_symbol(symbol)
 
         # 2. Variables & Mutable References
-        case TypedVar(name=name, offset=offset):
-            return env.lookup(name, offset=offset)
+        case TypedVar(symbol=symbol, offset=offset):
+            return env.lookup_symbol(symbol, offset=offset)
 
         case TypedVarCell(value=val):
             return QRef(eval_expr(val, env))
@@ -538,8 +569,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         case TypedAssign(target=tgt, value=val, offset=offset):
             rhs_val = eval_expr(val, env)
             match tgt:
-                case TypedVar(name=name):
-                    cell = env.lookup(name, offset=offset)
+                case TypedVar(name=name, symbol=symbol):
+                    cell = env.lookup_symbol(symbol, offset=offset)
                     if isinstance(cell, QRef):
                         cell.assign(rhs_val)
                     else:
@@ -1048,13 +1079,13 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                     env=env,
                     name=name,
                 )
-                env.define(name, closure)
+                env.define(name, closure, symbol)
                 return closure
             val = eval_expr(value, env)
             if symbol.is_var:
-                env.define(name, QRef(val))
+                env.define(name, QRef(val), symbol)
             else:
-                env.define(name, val)
+                env.define(name, val, symbol)
             return val
 
         case TypedLetType() | TypedDefKind() | TypedInterface():

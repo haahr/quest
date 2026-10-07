@@ -229,6 +229,33 @@ def create_module_export_scope(
     return module_export_scope
 
 
+def _check_no_rebinding(decl: ast.ModuleDecl) -> None:
+    """Rejects a module body that binds a value, type, or kind name it has already bound or imported."""
+    bound: dict[str, set[str]] = {"value": set(), "type": set(), "kind": set()}
+    for imp in decl.imports:
+        bound["value"].update(imp.names)
+    for b in decl.bindings:
+        match b:
+            case (
+                ast.LetValueBinding(name=name)
+                | ast.ExprException(name=name)
+                | ast.ExprStmt(expr=ast.ExprException(name=name))
+            ):
+                namespace = "value"
+            case ast.LetTypeBinding(name=name):
+                namespace = "type"
+            case ast.DefKindBinding(name=name):
+                namespace = "kind"
+            case _:
+                continue
+        if name in bound[namespace]:
+            raise QuestTypeError(
+                f"Module '{decl.name}' binds {namespace} '{name}' more than once",
+                offset=b.offset,
+            )
+        bound[namespace].add(name)
+
+
 def elaborate_module(
     decl: ast.ModuleDecl,
     env: Environment,
@@ -347,6 +374,7 @@ def elaborate_module(
         )
         typed_bindings.append(TypedImport(items=typed_items, offset=decl.offset))
     try:
+        _check_no_rebinding(decl)
         for b in decl.bindings:
             typed_b = binding_elaborator(b, env, 0)
             typed_bindings.append(typed_b)

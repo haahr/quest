@@ -1,0 +1,82 @@
+(* Language: Shadowing top-level bindings and imports *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+let printString(s: String): Ok =
+    begin
+        writer.putString(wOut s);
+        writer.putString(wOut "\n")
+    end;
+
+(* 1. A function sees the binding in scope at its definition, even after a shadowing of another type *)
+let x = 1;
+let f(): Int = x;
+let x = "s";
+printInt(f());
+printString(x);
+
+(* 2. A shadowing definition's right-hand side sees the earlier binding *)
+let n = 10;
+let n = n + 1;
+let n = n * 2;
+printInt(n);
+
+(* 3. Shadowing a function; earlier callers and function values keep the earlier one *)
+let g(): Int = 1;
+let callG(): Int = g();
+let gValue = g;
+let g(): String = "two";
+printInt(callG());
+printInt(gValue());
+printString(g());
+
+(* 4. Shadowing a recursive function *)
+let rec count(k: Int): Int = if k <= 0 then 0 else 1 + count(k - 1) end;
+let countFive(): Int = count(5);
+let rec count(k: Int): Int = if k <= 0 then 0 else 10 + count(k - 1) end;
+printInt(countFive());
+printInt(count(5));
+
+(* 5. Shadowing a mutable variable *)
+let var v = 1;
+let bumpV(): Ok =
+    begin
+        v := v + 10;
+        ok
+    end;
+let readV(): Int = v;
+let var v = 100;
+bumpV();
+v := v + 1;
+printInt(readV());
+printInt(v);
+
+(* 6. A lambda captures the binding in scope at its creation *)
+let base = 5;
+let addBase = fun(y: Int): Int y + base;
+let base = 1000;
+printInt(addBase(1));
+printInt(base);
+
+(* 7. Shadowing inside a block *)
+let blockResult =
+    begin
+        let y = 1;
+        let getY(): Int = y;
+        let y = 2;
+        getY() + y * 10
+    end;
+printInt(blockResult);
+
+(* 8. Shadowing an import; earlier users of the import keep it *)
+let showInt(i: Int): String = conv.int(i);
+let conv = 3;
+printString(showInt(conv + 1));
+printInt(conv);

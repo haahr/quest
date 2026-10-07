@@ -10,6 +10,7 @@ from quest.codegen.c_analysis import (
     CLambdaInfo,
     CProgramAnalysis,
     analyze_program_for_c,
+    rename_shadowing_top_level_bindings,
     collect_fun_quantifiers,
     topological_sort_modules,
 )
@@ -1303,6 +1304,7 @@ class CEmitter:
     ) -> str:
         """Translates a TypedProgram into a full standard C99 source file string."""
         prog, loaded_modules = _strip_aliases_for_codegen(prog, loaded_modules)
+        prog = rename_shadowing_top_level_bindings(prog)
         analysis = analyze_program_for_c(prog, self.record_ctx, loaded_modules, env=self.env)
         self._apply_analysis(analysis)
         decl_emitter = self._create_decl_emitter()
@@ -2062,7 +2064,10 @@ class CEmitter:
         """Translates a top-level binding or expression phrase."""
         should_print_result = self.print_result and is_last
         match phrase:
-            case TypedLetValue(name=name, value=val, symbol=symbol):
+            case TypedLetValue(name=binding_name, value=val, symbol=symbol):
+                # A shadowing binding has a renamed node (see rename_shadowing_top_level_bindings); show the
+                # source name.
+                name = symbol.name
                 if isinstance(val, TypedFun):
                     if self.echo:
                         type_str = _c_string_literal(qtype_to_name_str(_display_type(symbol)))
@@ -2074,7 +2079,7 @@ class CEmitter:
                         lines.append(f"    puts({_c_string_literal(msg)});")
                     return
 
-                c_ident = mangle_ident(name)
+                c_ident = mangle_ident(binding_name)
                 phrase_lines: list[str] = []
                 if symbol.type_val is OK_TYPE:
                     lines.append(f"    // inlined {name}")
@@ -2671,8 +2676,24 @@ class CEmitter:
 
             case TypedBlock(bindings=bindings, result=result):
                 lines.append("{")
-                block_lines: list[str] = []
+                # A binding that reuses a name declared earlier in this block starts a nested C scope, so the
+                # two get separate C variables and C's own scoping resolves later references to the new one.
+                scopes: list[list[str]] = [[]]
+                declared: set[str] = set()
                 for b in bindings:
+                    match b:
+                        case (
+                            TypedLetValue(name=bound_name)
+                            | TypedException(name=bound_name)
+                            | TypedExprStmt(expr=TypedException(name=bound_name))
+                        ) if bound_name:
+                            if bound_name in declared:
+                                scopes.append([])
+                                declared = set()
+                            declared.add(bound_name)
+                        case _:
+                            pass
+                    block_lines = scopes[-1]
                     match b:
                         case TypedLetValue(name=name, value=val, symbol=symbol):
                             c_ident = mangle_ident(name)
@@ -2703,8 +2724,14 @@ class CEmitter:
                             self.emit_to(inner, None, block_lines)
                         case _:
                             pass
-                self.emit_to(result, dest, block_lines)
-                _append_block(lines, block_lines)
+                self.emit_to(result, dest, scopes[-1])
+                inner_lines = scopes[-1]
+                for outer_lines in reversed(scopes[:-1]):
+                    outer_lines.append("{")
+                    _append_block(outer_lines, inner_lines)
+                    outer_lines.append("}")
+                    inner_lines = outer_lines
+                _append_block(lines, inner_lines)
                 lines.append("}")
 
             case TypedWhile(cond=cond, body=body):
