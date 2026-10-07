@@ -1694,6 +1694,27 @@ def check_kind(type_val: QType, expected_kind: QKind, env: Optional[Any] = None)
         )
 
 
+def _shadow_check_type_var_kind(type_var: QTypeVar, sym: Optional[Any], env: Any) -> None:
+    """Under --shadow-symbols, checks that the old scope-chain resolution gives the same kind."""
+    from quest import shadow
+    from quest.env import SHADOW_SYMBOLS
+
+    if not shadow.is_enabled(SHADOW_SYMBOLS):
+        return
+    old = env._lookup_type_by_id_scoped(type_var.symbol_id)
+    if old is None:
+        old = env.lookup_type(type_var.name)
+    new_kind = sym.kind if sym is not None else None
+    old_kind = old.kind if old is not None else None
+    if new_kind is not old_kind and not (new_kind is not None and old_kind is not None
+                                         and is_kind_equal(new_kind, old_kind, env)):
+        raise shadow.mismatch(
+            SHADOW_SYMBOLS,
+            f"kind of type variable {type_var.name} (#{type_var.symbol_id}): global index gives "
+            f"{new_kind}, scope chain gives {old_kind}",
+        )
+
+
 # Kinds synthesized during the current top-level kind check, keyed by node identity. Elaborated types
 # are DAGs (aliases are shared), so without this every shared subterm is re-checked on every path to it.
 _kind_memo: Optional[dict[int, tuple[QType, QKind]]] = None
@@ -1803,6 +1824,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
                 sym = env.lookup_type_by_id(sym_id)
                 if sym is None:
                     sym = env.lookup_type(name)
+                _shadow_check_type_var_kind(type_val, sym, env)
                 if sym is not None:
                     return sym.kind
             raise KindError(f"Unbound type variable '{name}' (#{sym_id})")
