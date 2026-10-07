@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
+from quest import shadow
 from quest.diagnostics import (
     Diagnostic,
     DiagnosticRenderer,
@@ -18,11 +19,52 @@ MAX_TYPE_EXPANSION_DEPTH = 500
 
 
 # ============================================================================
+# 0. Free-Variable Metadata
+# ============================================================================
+#
+# Every type node (and every component and kind) records, at construction, the symbol ids that a
+# substitution could replace inside it (_fv) and whether it contains a metavariable (_has_meta).
+# These mirror exactly what each substitute method does: a binder removes its own id from the
+# substitution for the parts it scopes over, and parts that substitute leaves alone (such as the
+# bounds of a QTypeFun's formals) contribute nothing. QType.substitute uses them to return a node
+# untouched, without traversal, when no free variable is substituted. A node containing a
+# metavariable is never skipped, because the metavariable may later be solved to anything.
+
+_NO_FREE_VARS: frozenset[int] = frozenset()
+
+
+def _set_free_vars(node: Any, free: Any, has_meta: bool) -> None:
+    object.__setattr__(node, "_fv", frozenset(free) if free else _NO_FREE_VARS)
+    object.__setattr__(node, "_has_meta", has_meta)
+
+
+def _free_vars_of(parts: Any) -> tuple[set[int], bool]:
+    """Union of the free variables of parts (None entries are skipped)."""
+    free: set[int] = set()
+    has_meta = False
+    for part in parts:
+        if part is not None:
+            free |= part._fv
+            has_meta = has_meta or part._has_meta
+    return free, has_meta
+
+
+def _init_free_vars(node: Any, *parts: Any, bound_ids: Any = ()) -> None:
+    """Sets node's free variables to those of parts, minus bound_ids."""
+    free, has_meta = _free_vars_of(parts)
+    free.difference_update(bound_ids)
+    _set_free_vars(node, free, has_meta)
+
+
+# ============================================================================
 # 1. Kinds (Level 2)
 # ============================================================================
 
 class QKind:
     """Base class for all Quest kinds."""
+
+    _fv: frozenset[int] = _NO_FREE_VARS
+    _has_meta: bool = False
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QKind:
         """Evaluates kind aliases lazily on demand."""
@@ -54,6 +96,9 @@ class QPowerKind(QKind):
     """The power kind POWER(bound) / <: bound (all subtypes of bound)."""
     bound: QType
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.bound)
+
     def evaluate_lazily(self, env: Optional[Any] = None) -> QKind:
         return QPowerKind(self.bound.evaluate_lazily(env))
 
@@ -72,6 +117,9 @@ class QAllKind(QKind):
     param_id: int
     param_kind: QKind
     result_kind: QKind
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.param_kind, self.result_kind)
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QKind:
         return QAllKind(
@@ -149,12 +197,26 @@ def _all_same(new: Any, old: Any) -> bool:
 class QType:
     """Base class for all semantic Quest types."""
 
+    _fv: frozenset[int] = _NO_FREE_VARS
+    _has_meta: bool = False
+
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         """Evaluates type aliases and applications lazily to expose the outermost constructor."""
         return self
 
     def substitute(self, subst: dict[int, QType]) -> QType:
-        """Performs capture-avoiding substitution using symbol_id keys."""
+        """Performs capture-avoiding substitution using symbol_id keys.
+
+        Returns self, without traversal, when no free variable of this type is substituted.
+        """
+        if not self._has_meta and self._fv.isdisjoint(subst):
+            if shadow.is_enabled(SHADOW_SUBSTITUTE):
+                _shadow_check_substitute(self, subst)
+            return self
+        return self._substitute_full(subst)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
+        """Substitution by traversal; subclasses with parts override it."""
         return self
 
     def format(self, env: Optional[Any] = None) -> str:
@@ -228,10 +290,13 @@ class QExceptionType(QType):
     """Exception type, optionally carrying a payload type (defaults to Ok)."""
     payload_type: QType = field(default_factory=lambda: OK_TYPE)
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.payload_type)
+
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         payload = self.payload_type.substitute(subst)
         return self if payload is self.payload_type else QExceptionType(payload_type=payload)
 
@@ -274,6 +339,9 @@ class QTupleField:
     type_val: QType
     is_var: bool = False
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.type_val)
+
     def substitute(self, subst: dict[int, QType]) -> QTupleField:
         type_val = self.type_val.substitute(subst)
         return self if type_val is self.type_val else QTupleField(name=self.name, type_val=type_val, is_var=self.is_var)
@@ -292,6 +360,9 @@ class QTupleTypeFormal:
     symbol_id: int
     bound: QKind
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.bound)
+
     def substitute(self, subst: dict[int, QType]) -> QTupleTypeFormal:
         bound = self.bound.substitute_types(subst)
         if bound is self.bound:
@@ -308,6 +379,9 @@ class QTupleTypeBinding:
     name: str
     type_val: QType
     bound: Optional[QKind] = None
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.type_val, self.bound)
 
     def substitute(self, subst: dict[int, QType]) -> QTupleTypeBinding:
         type_val = self.type_val.substitute(subst)
@@ -337,6 +411,16 @@ class QTupleType(QType):
             else:
                 normalized.append(QTupleField(name=None, type_val=item))
         object.__setattr__(self, "fields", tuple(normalized))
+        # A type formal's bound sees the substitution; later fields do not see the formal's id.
+        free: set[int] = set()
+        bound_ids: set[int] = set()
+        has_meta = False
+        for f in self.fields:
+            free |= f._fv - bound_ids
+            has_meta = has_meta or f._has_meta
+            if isinstance(f, QTupleTypeFormal):
+                bound_ids.add(f.symbol_id)
+        _set_free_vars(self, free, has_meta)
 
     @property
     def components(self) -> tuple[QTupleComponent, ...]:
@@ -396,7 +480,7 @@ class QTupleType(QType):
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         curr_subst = dict(subst)
         new_fields: list[QTupleComponent] = []
         for f in self.fields:
@@ -425,6 +509,9 @@ class QRecordField:
     type_val: QType
     is_var: bool = False
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.type_val)
+
     def substitute(self, subst: dict[int, QType]) -> QRecordField:
         type_val = self.type_val.substitute(subst)
         return self if type_val is self.type_val else QRecordField(name=self.name, type_val=type_val, is_var=self.is_var)
@@ -440,13 +527,16 @@ class QRecordType(QType):
     fields: tuple[QRecordField, ...]
     provenance: Optional[str] = field(default=None, compare=False)
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, *self.fields)
+
     def get_field(self, name: str) -> Optional[QRecordField]:
         for field_entry in self.fields:
             if field_entry.name == name:
                 return field_entry
         return None
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         fields = tuple(f.substitute(subst) for f in self.fields)
         return self if _all_same(fields, self.fields) else QRecordType(fields, provenance=self.provenance)
 
@@ -463,6 +553,9 @@ class QVariantField:
     name: str
     type_val: Optional[QType] = None
     is_var: bool = False
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.type_val)
 
     def substitute(self, subst: dict[int, QType]) -> QVariantField:
         type_val = self.type_val.substitute(subst) if self.type_val else None
@@ -482,13 +575,16 @@ class QVariantType(QType):
     """Variant type: Variant tag1: T1 ... end."""
     variants: tuple[QVariantField, ...]
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, *self.variants)
+
     def get_variant(self, name: str) -> Optional[QVariantField]:
         for v in self.variants:
             if v.name == name:
                 return v
         return None
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         variants = tuple(v.substitute(subst) for v in self.variants)
         return self if _all_same(variants, self.variants) else QVariantType(variants)
 
@@ -502,6 +598,9 @@ class QOptionField:
     """A tagged case inside an option type."""
     name: str
     payload_type: Optional[QType] = None
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.payload_type)
 
     def substitute(self, subst: dict[int, QType]) -> QOptionField:
         payload = self.payload_type.substitute(subst) if self.payload_type else None
@@ -518,13 +617,16 @@ class QOptionType(QType):
     """Option type: Option tag1 tag2 with T end."""
     options: tuple[QOptionField, ...]
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, *self.options)
+
     def get_option(self, name: str) -> Optional[QOptionField]:
         for opt in self.options:
             if opt.name == name:
                 return opt
         return None
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         options = tuple(o.substitute(subst) for o in self.options)
         return self if _all_same(options, self.options) else QOptionType(options)
 
@@ -545,6 +647,9 @@ class QParam:
     is_var: bool = False
     is_out: bool = False
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.type_val)
+
     def substitute(self, subst: dict[int, QType]) -> QParam:
         type_val = self.type_val.substitute(subst)
         if type_val is self.type_val:
@@ -562,7 +667,10 @@ class QFunType(QType):
     params: tuple[QParam, ...]
     result_type: QType
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _init_free_vars(self, *self.params, self.result_type)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         params = tuple(p.substitute(subst) for p in self.params)
         result_type = self.result_type.substitute(subst)
         if result_type is self.result_type and _all_same(params, self.params):
@@ -579,7 +687,10 @@ class QVarType(QType):
     """Mutable reference cell type: Var(T)."""
     element_type: QType
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.element_type)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         element_type = self.element_type.substitute(subst)
         return self if element_type is self.element_type else QVarType(element_type)
 
@@ -592,7 +703,10 @@ class QArrayType(QType):
     """Mutable array type: Array(T)."""
     element_type: QType
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.element_type)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         element_type = self.element_type.substitute(subst)
         return self if element_type is self.element_type else QArrayType(element_type)
 
@@ -605,7 +719,10 @@ class QOutType(QType):
     """Write-only output parameter type: Out(T)."""
     element_type: QType
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.element_type)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         element_type = self.element_type.substitute(subst)
         return self if element_type is self.element_type else QOutType(element_type)
 
@@ -623,6 +740,9 @@ class QQuantifier:
     name: str
     symbol_id: int
     bound: QKind
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.bound)
 
     def substitute(self, subst: dict[int, QType]) -> QQuantifier:
         bound = self.bound.substitute_types(subst)
@@ -642,7 +762,14 @@ class QAllType(QType):
     quantifiers: tuple[QQuantifier, ...]
     body: QType
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        # Quantifier bounds see the whole substitution; the body does not see the quantified ids.
+        free, has_meta = _free_vars_of(self.quantifiers)
+        body_free = set(self.body._fv)
+        body_free.difference_update(q.symbol_id for q in self.quantifiers)
+        _set_free_vars(self, free | body_free, has_meta or self.body._has_meta)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         # Avoid capturing bound quantifiers
         bound_ids = {q.symbol_id for q in self.quantifiers}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
@@ -665,7 +792,10 @@ class QAutoType(QType):
     kind_bound: QKind
     signature: tuple[QRecordField, ...]
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _init_free_vars(self, *self.signature, bound_ids=(self.symbol_id,))
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         if self.symbol_id in subst:
             active_subst = {k: v for k, v in subst.items() if k != self.symbol_id}
         else:
@@ -702,7 +832,10 @@ class QTypeFun(QType):
     params: tuple[QTypeFormal, ...]
     body: QType
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.body, bound_ids=[p.symbol_id for p in self.params])
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         bound_ids = {p.symbol_id for p in self.params}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
         body = self.body.substitute(active_subst)
@@ -719,6 +852,9 @@ class QTypeApp(QType):
     constructor: QType
     arguments: tuple[QType, ...]
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.constructor, *self.arguments)
+
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         ctor = self.constructor.evaluate_lazily(env)
         if isinstance(ctor, QExceptionType) and len(self.arguments) == 1:
@@ -731,7 +867,7 @@ class QTypeApp(QType):
             return ctor.body.substitute(subst).evaluate_lazily(env)
         return QTypeApp(constructor=ctor, arguments=self.arguments)
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         constructor = self.constructor.substitute(subst)
         arguments = tuple(arg.substitute(subst) for arg in self.arguments)
         if constructor is self.constructor and _all_same(arguments, self.arguments):
@@ -755,6 +891,9 @@ class QRecType(QType):
     bound: QKind
     body: QType
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.body, bound_ids=(self.symbol_id,))
+
     def unfold_lazily(self) -> QType:
         """Unfolds Rec(X) T lazily by substituting Rec(X) T for X in T.
 
@@ -770,7 +909,7 @@ class QRecType(QType):
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self.unfold_lazily().evaluate_lazily(env)
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         if self.symbol_id in subst:
             active_subst = {k: v for k, v in subst.items() if k != self.symbol_id}
         else:
@@ -790,6 +929,9 @@ class QRecGroupType(QType):
     # Each entry: (name, symbol_id, bound_kind, body_type)
     bindings: tuple[tuple[str, int, QKind, QType], ...]
     active_index: int = 0
+
+    def __post_init__(self) -> None:
+        _init_free_vars(self, *(b[3] for b in self.bindings), bound_ids=[b[1] for b in self.bindings])
 
     @property
     def current_symbol_id(self) -> int:
@@ -827,7 +969,7 @@ class QRecGroupType(QType):
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self.unfold_lazily().evaluate_lazily(env)
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         bound_ids = {b[1] for b in self.bindings}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
         new_bodies = tuple(b[3].substitute(active_subst) for b in self.bindings)
@@ -847,6 +989,9 @@ class QTypeVar(QType):
     symbol_id: int
     bound: Optional[QKind] = None
 
+    def __post_init__(self) -> None:
+        _set_free_vars(self, (self.symbol_id,), False)
+
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         if env is not None:
             sym = env.lookup_type_by_id(self.symbol_id) if hasattr(env, "lookup_type_by_id") else None
@@ -854,7 +999,7 @@ class QTypeVar(QType):
                 return sym.definition.evaluate_lazily(env)
         return self
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         return subst.get(self.symbol_id, self)
 
     def __str__(self) -> str:
@@ -868,7 +1013,10 @@ class QAbstractType(QType):
     symbol_id: int
     bound: QKind
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def __post_init__(self) -> None:
+        _set_free_vars(self, (self.symbol_id,), False)
+
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         return subst.get(self.symbol_id, self)
 
     def __str__(self) -> str:
@@ -883,6 +1031,9 @@ class QPathType(QType):
     field_name: str
     bound: QKind = field(compare=False)
 
+    def __post_init__(self) -> None:
+        _init_free_vars(self, self.bound)
+
     @property
     def symbol_id(self) -> int:
         return hash((self.root_symbol_id, self.field_name))
@@ -890,7 +1041,7 @@ class QPathType(QType):
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         new_bound = self.bound.substitute_types(subst)
         if new_bound is not self.bound:
             return QPathType(
@@ -1031,6 +1182,7 @@ def type_mentions_symbol_ids(typ: QType, sym_ids: set[int]) -> bool:
 class QTypeMeta(QType):
     """Mutable type metavariable (?T_1) for local bidirectional unification."""
     _counter: int = 0
+    _has_meta: bool = True
 
     def __init__(self, bound: QKind = TYPE_KIND, name: Optional[str] = None):
         QTypeMeta._counter += 1
@@ -1060,7 +1212,7 @@ class QTypeMeta(QType):
             return pruned.evaluate_lazily(env)
         return self
 
-    def substitute(self, subst: dict[int, QType]) -> QType:
+    def _substitute_full(self, subst: dict[int, QType]) -> QType:
         pruned = self.prune()
         if pruned is not self:
             return pruned.substitute(subst)
@@ -1110,6 +1262,55 @@ def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
 def resolve_metas(t: QType) -> QType:
     """Replaces solved metavariables in t by their solutions (substitution prunes them)."""
     return t.substitute({})
+
+
+def structurally_equal(a: Any, b: Any) -> bool:
+    """True if two types (or kinds, or components) have identical structure, field by field.
+
+    Metavariables compare by identity after pruning. This is not type equivalence (see
+    is_type_equal); it is used to cross-check optimizations that must not change any structure.
+    """
+    import dataclasses
+
+    assumed: set[tuple[int, int]] = set()
+
+    def eq(x: Any, y: Any) -> bool:
+        if x is y:
+            return True
+        if isinstance(x, QTypeMeta):
+            x = x.prune()
+        if isinstance(y, QTypeMeta):
+            y = y.prune()
+        if x is y:
+            return True
+        if isinstance(x, QTypeMeta) or isinstance(y, QTypeMeta) or type(x) is not type(y):
+            return False
+        if isinstance(x, (tuple, list)):
+            return len(x) == len(y) and all(eq(xi, yi) for xi, yi in zip(x, y))
+        if dataclasses.is_dataclass(x):
+            key = (id(x), id(y))
+            if key in assumed:
+                return True
+            assumed.add(key)
+            return all(eq(getattr(x, f.name), getattr(y, f.name)) for f in dataclasses.fields(x))
+        return x == y
+
+    return eq(a, b)
+
+
+SHADOW_SUBSTITUTE = shadow.register_check(
+    "substitute", "compare substitutions skipped by free-variable metadata with full traversal"
+)
+
+
+def _shadow_check_substitute(t: QType, subst: dict[int, QType]) -> None:
+    full = t._substitute_full(subst)
+    if not structurally_equal(full, t):
+        raise shadow.mismatch(
+            SHADOW_SUBSTITUTE,
+            f"substitution of {sorted(subst)} skipped for {t!r} (free variables {sorted(t._fv)}), "
+            f"but full traversal gives {full!r}",
+        )
 
 
 # ============================================================================

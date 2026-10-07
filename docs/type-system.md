@@ -59,6 +59,42 @@ via the `provenance: Optional[str]` field on `QRecordType`. When formatting type
   explosion in typed AST serializations.
 - `format_type_compact(t, env=None)` and `QType.format(env=None)` provide context-sensitive alias compaction.
 
+### 2.2. Type Representation: Immutability, Identity, and Sharing
+Semantic types are immutable values (frozen dataclasses), except for metavariables (`QTypeMeta`), which are solved in
+place during inference. Several parts of the type checker depend on how type objects are built and shared:
+
+- **No Python equality.** `==` on a `QType` raises. Use `is_type_equal(t1, t2, env)` for semantic (equi-recursive)
+  equivalence, or `is` for identity. `structurally_equal(a, b)` compares field by field, for cross-checking
+  optimizations; it is not type equivalence.
+- **Named binders.** Binders (`Rec`, `All`, `Fun`, `Auto`, tuple type formals, recursive groups) and type variables
+  carry globally unique symbol ids (`allocate_symbol_id`), not de Bruijn indices. Substitution relies on that
+  uniqueness rather than renaming, and alpha-equivalent types elaborated separately (two `All(X) X->X`) are distinct
+  objects, so each prints with the names written in its source.
+- **Identity carries meaning.** An alias reference elaborates to the very object bound to the alias, and the printer
+  (`format_type_compact`) recognizes aliases by identity (`Ast.Expr`, `Location.Span`). `is_subtype` returns
+  immediately for identical objects. Both depend on preserving sharing.
+- **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at
+  construction (`__post_init__`) its free variables, `_fv`: the symbol ids a substitution could replace inside it,
+  following exactly the binder rules of its `_substitute_full` method. It also records `_has_meta`, whether it contains
+  a metavariable. `QType.substitute` returns the node itself, without traversal, when no free variable is substituted
+  and it contains no metavariable (a metavariable could later be solved to anything). When it does traverse, a node
+  whose parts all come back unchanged is still returned as itself. Free variables are purely syntactic: aliases are
+  not expanded.
+- **Recursive types unfold once.** `QRecType.unfold_lazily` and `QRecGroupType.unfold_lazily` cache their result on
+  the node. The unfolding refers back to the node, and the members of a recursive group share one tuple of sibling
+  nodes (`QRecGroupType.siblings`), so repeated unfolding stays within one finite object graph.
+- **Kinds are synthesized once per check.** `synth_kind` memoizes results by node identity for the duration of the
+  outermost kind check, since elaborated types are DAGs and a node's kind depends only on the node and the binders in
+  scope.
+- **Symbols resolve globally.** `Environment.lookup_type_by_id` uses one process-wide index from symbol id to
+  `TypeSymbol`, so a type variable means the same thing in every scope. A `TypeSymbol`'s `definition` may be supplied
+  once after declaration (`None` to a type) but never replaced.
+- **Metavariables stay inside one call.** They are created for a polymorphic call's implicit type arguments and are
+  all resolved, in the result type and the elaborated arguments, before the outermost call returns (§6.9).
+
+Planned next: hash-consing types, so that structurally identical types are one object, followed by a subtype cache
+keyed by those canonical objects.
+
 ---
 
 ## 3. Subtyping and Kind Theory
@@ -83,8 +119,11 @@ recursive and structural types ($S \le T$):
    `QVarType`, `QArrayType`, `QOutType`, and `QExceptionType` to bypass exponential pairwise re-evaluations across
    invariant types.
 2. **Lazy Evaluation:** Evaluates types lazily only as needed to expose outermost constructors.
-3. **Active Assumption Trail ($\Sigma \vdash (S, T)$):** Visited symbol and object ID pairs are recorded in a
-   coinductive trail. If $(S, T)$ is encountered again under recursive unfolding, it is assumed valid by coinduction.
+3. **Active Assumption Trail ($\Sigma \vdash (S, T)$):** Pairs under proof are recorded in a coinductive trail
+   (`SubtypeTrail`). If $(S, T)$ is encountered again under recursive unfolding, it is assumed valid by coinduction.
+   Named type variables are keyed by symbol id, path types by root and field, and all other types by object identity;
+   the trail keeps every keyed object alive for the duration of the proof, so a freed temporary's id can never be
+   reused by an unrelated type and match its assumption.
 4. Correctly handles polarity flips during function parameter contravariance.
 
 ### 3.3. Recursive Contractiveness ($C \succ X$)
@@ -221,7 +260,8 @@ Compilation state is maintained across lexical scopes:
 - **`Symbol`:**
   - `ValueSymbol(name, symbol_id, type_val, is_var, is_out)`: Every value symbol has a unique auto-incrementing
     integer `symbol_id` used for path-dependent root identity and scope escape tracking.
-  - `TypeSymbol(name, symbol_id, kind, definition)`
+  - `TypeSymbol(name, symbol_id, kind, definition)`: resolved by `symbol_id` through a process-wide index,
+    independent of the current scope (§2.2).
   - `KindSymbol(name, symbol_id, kind)`
 - **Stateless Manifest vs. Abstract Types:**
   Type transparency is controlled structurally without ambient mode flags:
@@ -454,4 +494,3 @@ The `StringOp` interface and `string` module provide substring comparison:
 - [TheQuestLanguageAndSystem.md](TheQuestLanguageAndSystem.md): Cardelli (1990) language manual.
 - [ASemanticBasisForQuest.md](ASemanticBasisForQuest.md): Cardelli & Longo (1991) formal semantics.
 - [TypefulProgramming.md](TypefulProgramming.md): Cardelli (1989/1993) language specification.
-- [c-representation.md](c-representation.md): C runtime representations and type erasure design.
