@@ -15,33 +15,33 @@
     (TypedLetValue 'first' :type All(F :: KOp) Fun(x: F(Int)): F(Int)
       :value (TypedFun :params (('x' : F(Int))) :type All(F :: KOp) Fun(x: F(Int)): F(Int)
         :body (TypedVar 'x' :type F(Int))))
-    (TypedLetValue 'p' :type Fun(A :: TYPE) Tuple first: A second: A end(Int)
+    (TypedLetValue 'p' :type Twice(Int)
       :value (TypedTuple :type Tuple first: Int second: Int end
         :elements (
           (TypedInt 1 :type Int)
           (TypedInt 2 :type Int)
         )))
-    (TypedLetValue 'q' :type Fun(A :: TYPE) Tuple first: A second: A end(Int)
-      :value (TypedApp :type Fun(A :: TYPE) Tuple first: A second: A end(Int)
-        :func (TypedTypeApp [Fun(A :: TYPE) Tuple first: A second: A end] :type Fun(x: Fun(A :: TYPE) Tuple first: A second: A end(Int)): Fun(A :: TYPE) Tuple first: A second: A end(Int)
+    (TypedLetValue 'q' :type Twice(Int)
+      :value (TypedApp :type Twice(Int)
+        :func (TypedTypeApp [Twice] :type Fun(x: Twice(Int)): Twice(Int)
           :func (TypedVar 'first' :type All(F :: KOp) Fun(x: F(Int)): F(Int)))
         :args (
-          (TypedVar 'p' :type Fun(A :: TYPE) Tuple first: A second: A end(Int))
+          (TypedVar 'p' :type Twice(Int))
         )))
-    (TypedLetValue 'local' :type Fun(B :: TYPE) Tuple item: B end(Int)
-      :value (TypedBlock :type Fun(B :: TYPE) Tuple item: B end(Int)
+    (TypedLetValue 'local' :type Box(Num)
+      :value (TypedBlock :type Box(Num)
         :bindings (
           (TypedDefKind 'KLocal' :kind ALL(B :: TYPE) TYPE)
           (TypedLetType 'Box' :kind KLocal)
-          (TypedLetValue 'unbox' :type All(G :: KLocal) Fun(y: G(Int)): G(Int)
-            :value (TypedFun :params (('y' : G(Int))) :type All(G :: KLocal) Fun(y: G(Int)): G(Int)
-              :body (TypedVar 'y' :type G(Int))))
+          (TypedLetValue 'unbox' :type All(G :: KLocal) Fun(y: G(Num)): G(Num)
+            :value (TypedFun :params (('y' : G(Num))) :type All(G :: KLocal) Fun(y: G(Num)): G(Num)
+              :body (TypedVar 'y' :type G(Num))))
         )
-        :result (TypedApp :type Fun(B :: TYPE) Tuple item: B end(Int)
-          :func (TypedTypeApp [Fun(B :: TYPE) Tuple item: B end] :type Fun(y: Fun(B :: TYPE) Tuple item: B end(Int)): Fun(B :: TYPE) Tuple item: B end(Int)
-            :func (TypedVar 'unbox' :type All(G :: KLocal) Fun(y: G(Int)): G(Int)))
+        :result (TypedApp :type Box(Num)
+          :func (TypedTypeApp [Box] :type Fun(y: Box(Num)): Box(Num)
+            :func (TypedVar 'unbox' :type All(G :: KLocal) Fun(y: G(Num)): G(Num)))
           :args (
-            (TypedTuple :type Tuple item: Int end
+            (TypedTuple :type Tuple item: Num end
               :elements (
                 (TypedInt 7 :type Int)
               ))
@@ -53,12 +53,12 @@
         )
         :result (TypedFun :params (('y' : G(Int))) :type All(G :: KEscaping) Fun(y: G(Int)): G(Int)
           :body (TypedVar 'y' :type G(Int)))))
-    (TypedLetValue 'r' :type Fun(A :: TYPE) Tuple first: A second: A end(Int)
-      :value (TypedApp :type Fun(A :: TYPE) Tuple first: A second: A end(Int)
-        :func (TypedTypeApp [Fun(A :: TYPE) Tuple first: A second: A end] :type Fun(y: Fun(A :: TYPE) Tuple first: A second: A end(Int)): Fun(A :: TYPE) Tuple first: A second: A end(Int)
+    (TypedLetValue 'r' :type Twice(Int)
+      :value (TypedApp :type Twice(Int)
+        :func (TypedTypeApp [Twice] :type Fun(y: Twice(Int)): Twice(Int)
           :func (TypedVar 'poly' :type All(G :: KEscaping) Fun(y: G(Int)): G(Int)))
         :args (
-          (TypedVar 'p' :type Fun(A :: TYPE) Tuple first: A second: A end(Int))
+          (TypedVar 'p' :type Twice(Int))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -72,7 +72,7 @@
               :target (TypedVar 'conv' :type Module 'conv'))
             :args (
               (TypedSelect 'second' :type Int
-                :target (TypedVar 'q' :type Fun(A :: TYPE) Tuple first: A second: A end(Int)))
+                :target (TypedVar 'q' :type Twice(Int)))
             ))
         )))
     (TypedExprStmt
@@ -95,8 +95,8 @@
             :func (TypedSelect 'int' :type Fun(n: Int): String
               :target (TypedVar 'conv' :type Module 'conv'))
             :args (
-              (TypedSelect 'item' :type Int
-                :target (TypedVar 'local' :type Fun(B :: TYPE) Tuple item: B end(Int)))
+              (TypedSelect 'item' :type Num
+                :target (TypedVar 'local' :type Box(Num)))
             ))
         )))
     (TypedExprStmt
@@ -120,7 +120,7 @@
               :target (TypedVar 'conv' :type Module 'conv'))
             :args (
               (TypedSelect 'first' :type Int
-                :target (TypedVar 'r' :type Fun(A :: TYPE) Tuple first: A second: A end(Int)))
+                :target (TypedVar 'r' :type Twice(Int)))
             ))
         )))
     (TypedExprStmt

@@ -28,7 +28,6 @@ from quest.types import (
     STRING_TYPE,
     TYPE_KIND,
     clear_subtype_cache,
-    distinct_alias_definition,
 )
 
 
@@ -78,11 +77,9 @@ class TypeSymbol(Symbol):
             # a definition may be supplied after declaration (None -> T) but never replaced.
             current = self.__dict__.get("definition")
             if current is not None:
-                if value is current or current.__dict__.get("_alias_of") is value:
+                if value is current:
                     return
                 raise RuntimeError(f"Type symbol '{self.name}' (#{self.symbol_id}) is already defined")
-            # Each alias keeps its own definition object, so that it prints under its own name.
-            value = distinct_alias_definition(value)
             if value is not None and self.__dict__.get("symbol_id") in _TYPE_IDS_SEEN_UNDEFINED:
                 clear_subtype_cache()
         super().__setattr__(name, value)

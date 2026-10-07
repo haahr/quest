@@ -48,6 +48,7 @@ from quest.runtime import (
     qvalue_to_str,
 )
 from quest.types import (
+    unalias,
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
@@ -1157,6 +1158,7 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
     """Formats a runtime value with respect to its static type (Cardelli §5.3)."""
     if typ is None:
         return qvalue_to_str(val)
+    typ = unalias(typ)
 
     if isinstance(typ, QPathType):
         return "<hidden>"
@@ -1179,7 +1181,7 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
             elif isinstance(comp, QTupleField):
                 if elem_idx < len(val.elements):
                     elem = val.elements[elem_idx]
-                    if isinstance(comp.type_val, (QPathType, QTypeVar)):
+                    if isinstance(unalias(comp.type_val), (QPathType, QTypeVar)):
                         elem_str = "<hidden>"
                     else:
                         elem_str = format_value_with_type(elem, comp.type_val)

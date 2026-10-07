@@ -41,6 +41,7 @@ QType (Level 1)
   ├── Polymorphic & Operators QAllType, QAutoType, QTypeFun, QTypeApp
   ├── Recursive Types         QRecType, QRecGroupType
   ├── Variables & Paths       QTypeVar, QPathType, QAbstractType
+  ├── Alias References        QAliasType (transparent; prints the alias name as written)
   └── Metavariables           QTypeMeta (local bidirectional inference)
 
 QTupleComponent (Tuple Components)
@@ -54,9 +55,8 @@ During typechecking and AST serialization, module records track their originatin
 via the `provenance: Optional[str]` field on `QRecordType`. When formatting types for diagnostics or typed AST dumps:
 - Record types with `provenance` format compactly as `Module '<name>'` rather than listing every exported value,
   function, and type signature.
-- Recursive types (`QRecType`, `QRecGroupType`) bound their unfolding depth and prioritize registered nominal type
-  aliases present in `Environment` (e.g. `Ast.ExprForm`, `Location.Span`, `Writer.T`) to prevent exponential size
-  explosion in typed AST serializations.
+- Recursive types (`QRecType`, `QRecGroupType`) bound their unfolding depth, and references to type aliases print
+  under the alias's name as written (§2.2), which keeps typed AST serializations from exploding in size.
 - `format_type_compact(t, env=None)` and `QType.format(env=None)` provide context-sensitive alias compaction.
 
 ### 2.2. Type Representation: Immutability, Identity, and Sharing
@@ -77,15 +77,21 @@ place during inference. Several parts of the type checker depend on how type obj
   carry globally unique symbol ids (`allocate_symbol_id`), not de Bruijn indices. Substitution relies on that
   uniqueness rather than renaming, and alpha-equivalent types elaborated separately (two `All(X) X->X`) are distinct
   objects, so each prints with the names written in its source.
-- **Identity carries meaning.** An alias reference elaborates to the very object bound to the alias, and the printer
-  (`format_type_compact`) recognizes aliases by identity (`Ast.Expr`, `Location.Span`). `is_subtype` returns
-  immediately for identical objects. Both depend on preserving sharing.
-- **Each alias has its own definition object.** Hash-consing alone would make structurally identical definitions of
-  different aliases one object (`Def Expr = Node(ExprForm)` and `Def Decl = Node(ExprForm)` in `Ast`), and the printer
-  would then show one name for both. So a `TypeSymbol` stores a private, non-canonical copy of its definition's top
-  node (`distinct_alias_definition`); everything below it stays canonical. A definition that is already such a copy
-  (an alias re-exported through a module) is kept, and primitive singletons such as `INT_TYPE` are never copied.
-  This is an interim measure; see "Planned" below.
+- **Alias references.** A reference to a type alias elaborates to a `QAliasType` node carrying the name as written at
+  the reference (`Span` inside the interface that declares it, `location.Span` or `ast.Expr` from an importing
+  module), the alias's symbol, and its target (the definition). The node is transparent: evaluation
+  (`evaluate_lazily`), and so subtyping and kinding, looks straight through it, and an alias of a recursive type
+  unfolds through the alias so that recursive occurrences keep the name. The printer and the `.qi` writer print the
+  name, so alias names survive `.qi` round trips and copies; hash-consing keeps references to different aliases (or
+  one alias spelled differently) apart, since the name is part of the key. A type that is merely structurally equal
+  to an alias, without coming from a reference to it, prints structurally. References to the builtin primitive names
+  (`Int`, `Ok`, ...) elaborate to the primitives themselves (`alias_reference`). A substitution that changes an
+  alias's target drops the alias node.
+- **Alias nodes never reach C code generation.** `CEmitter.emit_program` and `emit_module` rebuild the typed AST,
+  and the value symbols it references, without alias nodes (`strip_aliases`); the codegen type functions also strip
+  defensively. The stripped copies remember their original types, so printed results (`let x:T = ...`) show alias
+  names exactly as the interpreter does. Types serialized by `dynamic.extern` are written without alias names, so
+  that they read back on their own.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at
   construction (`__post_init__`) its free variables, `_fv`: the symbol ids a substitution could replace inside it,
   following exactly the binder rules of its `_substitute_full` method. It also records `_has_meta`, whether it contains
@@ -105,15 +111,6 @@ place during inference. Several parts of the type checker depend on how type obj
   after declaration (`None` to a type) but never replaced.
 - **Metavariables stay inside one call.** They are created for a polymorphic call's implicit type arguments and are
   all resolved, in the result type and the elaborated arguments, before the outermost call returns (§6.9).
-
-Planned:
-- **Alias reference nodes**, replacing identity-based alias recognition and the private definition copies above.
-  Elaborating a reference to an alias would produce a node that carries the alias's name and symbol and points to
-  its definition. Type evaluation (`evaluate_lazily`), and hence subtyping, looks straight through it; the printer
-  and the `.qi` writer print its name; hash-consing keeps different aliases apart because the name is part of the
-  key. This would also make alias names survive `.qi` round trips, copies, and re-elaboration, and print the name as
-  written in the source (`location.Span` rather than `Location.Span`). Code that inspects types without evaluating
-  them first, notably in C code generation, has to look through the new node, so this needs its own shadow check.
 
 ---
 

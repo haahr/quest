@@ -11,6 +11,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.env import Environment, TypeSymbol
 from quest.types import (
+    QAliasType,
+    alias_reference,
+    is_subtype,
+    strip_aliases,
+    unalias,
     INT_TYPE,
     STRING_TYPE,
     TYPE_KIND,
@@ -53,44 +58,49 @@ class TestHashConsing(unittest.TestCase):
         self.assertIs(dataclasses.replace(t), t)
 
 
-class TestAliasDefinitions(unittest.TestCase):
-    def test_each_alias_has_its_own_definition_object(self) -> None:
+class TestAliasReferences(unittest.TestCase):
+    def test_references_to_different_aliases_stay_apart(self) -> None:
+        node = QTupleType((INT_TYPE, STRING_TYPE))
+        expr = QAliasType("ast.Expr", 101, node)
+        decl = QAliasType("ast.Decl", 102, node)
+        self.assertIsNot(expr, decl)
+        self.assertIs(expr, QAliasType("ast.Expr", 101, node))
+        self.assertIsNot(expr, QAliasType("Expr", 101, node))  # spelled differently
+        self.assertEqual(format_type_compact(expr), "ast.Expr")
+        self.assertEqual(format_type_compact(decl), "ast.Decl")
+
+    def test_alias_references_are_transparent(self) -> None:
         env = Environment()
-        node = QTypeApp(QTypeVar("Node", env.fresh_symbol_id(), TYPE_KIND), (INT_TYPE,))
-        expr = TypeSymbol("Expr", env.fresh_symbol_id(), TYPE_KIND, definition=node)
-        decl = TypeSymbol("Decl", env.fresh_symbol_id(), TYPE_KIND, definition=node)
-        self.assertIsNot(expr.definition, decl.definition)
-        self.assertTrue(structurally_equal(expr.definition, decl.definition))
-        self.assertTrue(is_type_equal(expr.definition, decl.definition, env))
+        node = QTupleType((INT_TYPE, STRING_TYPE))
+        expr = QAliasType("Expr", 101, node)
+        self.assertIs(expr.evaluate_lazily(env), node)
+        self.assertIs(unalias(expr), node)
+        self.assertTrue(is_type_equal(expr, QAliasType("Decl", 102, node), env))
+        self.assertTrue(is_subtype(node, expr, env))
 
-    def test_reexported_alias_keeps_the_same_definition_object(self) -> None:
-        env = Environment()
-        span = TypeSymbol("Span", env.fresh_symbol_id(), TYPE_KIND, definition=QTupleType((STRING_TYPE, INT_TYPE)))
-        exported = TypeSymbol("Span", env.fresh_symbol_id(), TYPE_KIND, definition=span.definition)
-        self.assertIs(exported.definition, span.definition)
+    def test_builtin_primitive_names_are_not_alias_nodes(self) -> None:
+        self.assertIs(alias_reference("Int", 1, INT_TYPE), INT_TYPE)
+        self.assertIsInstance(alias_reference("Count", 2, INT_TYPE), QAliasType)
 
-    def test_primitive_singletons_are_not_copied(self) -> None:
-        sym = TypeSymbol("Count", Environment().fresh_symbol_id(), TYPE_KIND, definition=INT_TYPE)
-        self.assertIs(sym.definition, INT_TYPE)
+    def test_strip_aliases(self) -> None:
+        node = QTupleType((INT_TYPE, STRING_TYPE))
+        t = QArrayType(QAliasType("Pair", 103, node))
+        self.assertIs(strip_aliases(t), QArrayType(node))
+        self.assertIs(strip_aliases(QArrayType(node)), QArrayType(node))
 
-    def test_late_definition_is_copied_and_write_once(self) -> None:
+    def test_substitution_that_changes_the_target_drops_the_alias(self) -> None:
+        a = QTypeVar("A", 104, TYPE_KIND)
+        alias = QAliasType("Box", 105, QTupleType((a,)))
+        self.assertIs(alias.substitute({999: INT_TYPE}), alias)
+        self.assertIs(alias.substitute({104: INT_TYPE}), QTupleType((INT_TYPE,)))
+
+    def test_definitions_are_canonical_and_write_once(self) -> None:
         sym = TypeSymbol("T", Environment().fresh_symbol_id(), TYPE_KIND)
         pair = QTupleType((INT_TYPE, INT_TYPE))
         sym.definition = pair
-        self.assertIsNot(sym.definition, pair)
-        sym.definition = pair  # the same definition again is allowed
+        self.assertIs(sym.definition, pair)
         with self.assertRaises(RuntimeError):
             sym.definition = QTupleType((STRING_TYPE,))
-
-    def test_aliases_print_under_their_own_names(self) -> None:
-        env = Environment()
-        scope = env.current_scope
-        node = QTupleType((INT_TYPE, STRING_TYPE))
-        scope.declare_type(TypeSymbol("Expr", env.fresh_symbol_id(), TYPE_KIND, definition=node))
-        scope.declare_type(TypeSymbol("Decl", env.fresh_symbol_id(), TYPE_KIND, definition=node))
-        env.register_interface("Ast", scope)
-        self.assertEqual(format_type_compact(scope.lookup_type("Expr").definition, env), "Ast.Expr")
-        self.assertEqual(format_type_compact(scope.lookup_type("Decl").definition, env), "Ast.Decl")
 
 
 if __name__ == "__main__":

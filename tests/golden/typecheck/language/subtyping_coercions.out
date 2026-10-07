@@ -38,14 +38,14 @@
             )))))
     (TypedLetType 'BigTuple' :kind TYPE)
     (TypedLetType 'SmallTuple' :kind TYPE)
-    (TypedLetValue 'getFirstTwo' :type Fun(t: Tuple x: Int y: Int end): Int
-      :value (TypedFun :params (('t' : Tuple x: Int y: Int end)) :type Fun(t: Tuple x: Int y: Int end): Int
+    (TypedLetValue 'getFirstTwo' :type Fun(t: SmallTuple): Int
+      :value (TypedFun :params (('t' : SmallTuple)) :type Fun(t: SmallTuple): Int
         :body (TypedInfix '+' :type Int
           :left (TypedSelect 'x' :type Int
-            :target (TypedVar 't' :type Tuple x: Int y: Int end))
+            :target (TypedVar 't' :type SmallTuple))
           :right (TypedSelect 'y' :type Int
-            :target (TypedVar 't' :type Tuple x: Int y: Int end)))))
-    (TypedLetValue 'bt' :type Tuple x: Int y: Int z: Int end
+            :target (TypedVar 't' :type SmallTuple)))))
+    (TypedLetValue 'bt' :type BigTuple
       :value (TypedTuple :type Tuple x: Int y: Int z: Int end
         :elements (
           (TypedInt 10 :type Int)
@@ -57,21 +57,21 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'getFirstTwo' :type Fun(t: Tuple x: Int y: Int end): Int)
+            :func (TypedVar 'getFirstTwo' :type Fun(t: SmallTuple): Int)
             :args (
-              (TypedVar 'bt' :type Tuple x: Int y: Int z: Int end)
+              (TypedVar 'bt' :type BigTuple)
             ))
         )))
     (TypedLetType 'BigRec' :kind TYPE)
     (TypedLetType 'SmallRec' :kind TYPE)
-    (TypedLetValue 'sumXY' :type Fun(r: Record x: Int y: Int end): Int
-      :value (TypedFun :params (('r' : Record x: Int y: Int end)) :type Fun(r: Record x: Int y: Int end): Int
+    (TypedLetValue 'sumXY' :type Fun(r: SmallRec): Int
+      :value (TypedFun :params (('r' : SmallRec)) :type Fun(r: SmallRec): Int
         :body (TypedInfix '+' :type Int
           :left (TypedSelect 'x' :type Int
-            :target (TypedVar 'r' :type Record x: Int y: Int end))
+            :target (TypedVar 'r' :type SmallRec))
           :right (TypedSelect 'y' :type Int
-            :target (TypedVar 'r' :type Record x: Int y: Int end)))))
-    (TypedLetValue 'br' :type Record x: Int y: Int z: Int end
+            :target (TypedVar 'r' :type SmallRec)))))
+    (TypedLetValue 'br' :type BigRec
       :value (TypedRecord :type Record x: Int y: Int z: Int end
         :fields (
           (TypedRecordField 'x'
@@ -86,21 +86,21 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'sumXY' :type Fun(r: Record x: Int y: Int end): Int)
+            :func (TypedVar 'sumXY' :type Fun(r: SmallRec): Int)
             :args (
-              (TypedVar 'br' :type Record x: Int y: Int z: Int end)
+              (TypedVar 'br' :type BigRec)
             ))
         )))
     (TypedLetType 'OrderedRec' :kind TYPE)
-    (TypedLetValue 'getA' :type Fun(r: Record a: Int b: Int end): Int
-      :value (TypedFun :params (('r' : Record a: Int b: Int end)) :type Fun(r: Record a: Int b: Int end): Int
+    (TypedLetValue 'getA' :type Fun(r: OrderedRec): Int
+      :value (TypedFun :params (('r' : OrderedRec)) :type Fun(r: OrderedRec): Int
         :body (TypedInfix '*' :type Int
           :left (TypedSelect 'a' :type Int
-            :target (TypedVar 'r' :type Record a: Int b: Int end))
+            :target (TypedVar 'r' :type OrderedRec))
           :right (TypedInfix '+' :type Int
             :left (TypedInt 10 :type Int)
             :right (TypedSelect 'b' :type Int
-              :target (TypedVar 'r' :type Record a: Int b: Int end))))))
+              :target (TypedVar 'r' :type OrderedRec))))))
     (TypedLetValue 'permuted' :type Record b: Int a: Int end
       :value (TypedRecord :type Record b: Int a: Int end
         :fields (
@@ -114,27 +114,27 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'getA' :type Fun(r: Record a: Int b: Int end): Int)
+            :func (TypedVar 'getA' :type Fun(r: OrderedRec): Int)
             :args (
               (TypedVar 'permuted' :type Record b: Int a: Int end)
             ))
         )))
-    (TypedLetValue 'applyRec' :type Fun(f: Fun(r: Record x: Int y: Int end): Int r: Record x: Int y: Int z: Int end): Int
-      :value (TypedFun :params (('f' : Fun(r: Record x: Int y: Int end): Int) ('r' : Record x: Int y: Int z: Int end)) :type Fun(f: Fun(r: Record x: Int y: Int end): Int r: Record x: Int y: Int z: Int end): Int
+    (TypedLetValue 'applyRec' :type Fun(f: Fun(r: SmallRec): Int r: BigRec): Int
+      :value (TypedFun :params (('f' : Fun(r: SmallRec): Int) ('r' : BigRec)) :type Fun(f: Fun(r: SmallRec): Int r: BigRec): Int
         :body (TypedApp :type Int
-          :func (TypedVar 'f' :type Fun(r: Record x: Int y: Int end): Int)
+          :func (TypedVar 'f' :type Fun(r: SmallRec): Int)
           :args (
-            (TypedVar 'r' :type Record x: Int y: Int z: Int end)
+            (TypedVar 'r' :type BigRec)
           ))))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedApp :type Int
-            :func (TypedVar 'applyRec' :type Fun(f: Fun(r: Record x: Int y: Int end): Int r: Record x: Int y: Int z: Int end): Int)
+            :func (TypedVar 'applyRec' :type Fun(f: Fun(r: SmallRec): Int r: BigRec): Int)
             :args (
-              (TypedVar 'sumXY' :type Fun(r: Record x: Int y: Int end): Int)
-              (TypedVar 'br' :type Record x: Int y: Int z: Int end)
+              (TypedVar 'sumXY' :type Fun(r: SmallRec): Int)
+              (TypedVar 'br' :type BigRec)
             ))
         )))
   ))
