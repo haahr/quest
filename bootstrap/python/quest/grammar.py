@@ -256,6 +256,20 @@ def _build_option_payload(with_binding: Any, offset: int) -> Optional[ast.Expr]:
 
 
 
+def _build_kind_all(all_token: Token, left_paren: Token, signatures: tuple[Any, ...], body: ast.Kind) -> ast.Kind:
+    """Curries ALL(A,B::K1 C::K2) K into ALL(A::K1) ALL(B::K1) ALL(C::K2) K (Cardelli's ALL(TypeSignature)Kind)."""
+    kind = body
+    for i in reversed(range(len(signatures))):
+        sig = signatures[i]
+        kind = ast.KindAll(
+            param_name=getattr(sig, "name", "_"),
+            param_kind=getattr(sig, "bound", ast.KindType(offset=left_paren.offset)),
+            body_kind=kind,
+            offset=all_token.offset if i == 0 else getattr(sig, "offset", left_paren.offset),
+        )
+    return kind
+
+
 def _build_curried_field_sig(
     var_token: Optional[Token],
     out_token: Optional[Token],
@@ -512,20 +526,9 @@ def build_quest_grammar() -> None:
     # ------------------------------------------------------------------------
     # ALL ( TypeSignature ) Kind
     KIND.add_rule(
-        (T(TK.KW_ALL_KIND), T(TK.LPAREN), TYPE_SIGNATURE, T(TK.RPAREN), KIND),
-        lambda all_token, left_paren, signature, right_paren, kind_body: ast.KindAll(
-            param_name=getattr(
-                signature[0] if isinstance(signature, tuple) and signature else signature,
-                "name",
-                "_",
-            ),
-            param_kind=getattr(
-                signature[0] if isinstance(signature, tuple) and signature else signature,
-                "bound",
-                ast.KindType(offset=left_paren.offset),
-            ),
-            body_kind=kind_body,
-            offset=all_token.offset,
+        (T(TK.KW_ALL_KIND), T(TK.LPAREN), SIGNATURE, T(TK.RPAREN), KIND),
+        lambda all_token, left_paren, signatures, right_paren, kind_body: _build_kind_all(
+            all_token, left_paren, signatures, kind_body
         ),
     )
     # PRIMARY_KIND

@@ -1,0 +1,25 @@
+(* Language: ALL(TypeSignature) Kind with several parameters (Typeful Programming §5.1) *)
+
+(* 1. Church booleans at the type level: ALL(Then,Else::TYPE)TYPE is ALL(Then::TYPE) ALL(Else::TYPE) TYPE *)
+DEF BOOL = ALL(Then,Else::TYPE)TYPE;
+Let True::BOOL = Fun(Then,Else::TYPE) Then;
+Let False::BOOL = Fun(Then,Else::TYPE) Else;
+Let Cond(If::BOOL Then,Else::TYPE)::TYPE = If(Then Else);
+
+let t: Cond(True Int String) = 3;
+let f: Cond(False Int String) = "three";
+
+(* 2. Several parameter groups in one signature *)
+DEF K3 = ALL(A::TYPE B,C::TYPE) TYPE;
+Let Third::K3 = Fun(A::TYPE B,C::TYPE) C;
+let c: Third(Int Bool String) = "third";
+
+(* Cond and Third reduce to the selected type, so the values flow back into plain Int and String. *)
+let tInt: Int = t;
+let fString: String = f;
+let cString: String = c;
+
+let allPassed =
+    {tInt is 3}
+    /\ string.equal(fString "three")
+    /\ string.equal(cString "third");

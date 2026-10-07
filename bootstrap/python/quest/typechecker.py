@@ -49,8 +49,10 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     TYPE_KIND,
+    KindError,
     check_kind,
     is_subkind,
+    synth_kind,
     is_subtype,
     is_type_equal,
     resolve_record_bound,
@@ -177,6 +179,21 @@ def check_no_escaping_path_types(
 # ============================================================================
 # Bidirectional Typechecker & Elaboration Engine
 # ============================================================================
+
+def _check_type_arg_kind(what: str, targ: QType, bound: QKind, env: Environment, offset: int) -> None:
+    """Checks that a type argument (explicit or inferred) has a kind within its quantifier's bound."""
+    bound_lazy = bound.evaluate_lazily(env)
+    if isinstance(bound_lazy, QPowerKind):
+        if not is_subtype(targ, bound_lazy.bound, env):
+            raise KindError(f"{what} '{targ}' is not a subtype of bound '{bound_lazy.bound}'", offset=offset)
+        return
+    kind = synth_kind(targ, env)
+    if not is_subkind(kind, bound_lazy, env):
+        raise KindError(
+            f"{what} '{targ}' has kind '{kind}', which is not a subkind of '{bound_lazy}'",
+            offset=offset,
+        )
+
 
 def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
     """Rebuilds a typed AST with solved metavariables in its types replaced by their solutions."""
@@ -1202,12 +1219,9 @@ class TypeElaborator:
                 targ_ast = expr.args[i]
                 if isinstance(targ_ast, ast.TypeArgument):
                     targ_val = elaborate_type(targ_ast.type_val, env)
-                    if isinstance(q.bound, QPowerKind):
-                        if not is_subtype(targ_val, q.bound.bound, env):
-                            raise TypeError(
-                                f"Type argument '{targ_val}' is not a subtype of bound '{q.bound.bound}'",
-                                offset=targ_ast.offset,
-                            )
+                    _check_type_arg_kind(
+                        "Type argument", targ_val, q.bound.substitute(subst), env, targ_ast.offset
+                    )
                     subst[q.symbol_id] = targ_val
                     resolved_targs.append(targ_val)
                 elif isinstance(targ_ast, ast.KindArgument):
@@ -1306,13 +1320,9 @@ class TypeElaborator:
 
         for meta, q, offset in type_args:
             solved = meta.prune()
-            if solved is not meta and isinstance(q.bound, QPowerKind):
-                solved = resolve_metas(solved)
-                if not is_subtype(solved, q.bound.bound, env):
-                    raise TypeError(
-                        f"Inferred type argument '{solved}' is not a subtype of bound '{q.bound.bound}'",
-                        offset=offset,
-                    )
+            if solved is not meta:
+                bound = q.bound.substitute(meta_map).substitute({})  # prunes the solved metavariables
+                _check_type_arg_kind("Inferred type argument", resolve_metas(solved), bound, env, offset)
 
         resolved_targs = [resolve_metas(meta_map[q.symbol_id]) for q in all_type.quantifiers]
         final_fn = resolve_metas(instantiated_fn)
