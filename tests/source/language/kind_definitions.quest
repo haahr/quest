@@ -1,0 +1,35 @@
+(* Kind definitions (DEF) as bounds of type definitions and quantifiers, including a kind declared
+   in a block and used after it. *)
+
+import writer: Writer;
+import conv: Conv;
+
+DEF KOp = ALL(A::TYPE) TYPE;
+DEF KBase = TYPE;
+
+Let Twice::KOp = Fun(A::TYPE) Tuple first: A second: A end;
+Let Num::KBase = Int;
+
+let first(F::KOp x: F(Int)): F(Int) = x;
+let p: Twice(Int) = tuple let first = 1 let second = 2 end;
+let q = first(:Twice p);
+
+let local = begin
+    DEF KLocal = ALL(B::TYPE) TYPE;
+    Let Box::KLocal = Fun(B::TYPE) Tuple item: B end;
+    let unbox(G::KLocal y: G(Num)): G(Num) = y;
+    unbox(:Box tuple let item = 7 end)
+end;
+
+let poly = begin
+    DEF KEscaping = ALL(B::TYPE) TYPE;
+    fun(G::KEscaping y: G(Int)): G(Int) y
+end;
+let r = poly(:Twice p);
+
+writer.putString(writer.output conv.int(q.second));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(local.item));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(r.first));
+writer.putString(writer.output "\n");

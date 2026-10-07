@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
+from quest import shadow
 from quest.types import (
     BOOL_TYPE,
     CHAR_TYPE,
@@ -112,6 +113,12 @@ class KindSymbol(Symbol):
 # Every declared type symbol, by symbol id. Symbol ids are unique for the life of the process
 # (allocate_symbol_id), so a type variable can be resolved in O(1) regardless of the current scope.
 _TYPE_SYMBOLS_BY_ID: dict[int, TypeSymbol] = {}
+# Likewise every declared kind symbol.
+_KIND_SYMBOLS_BY_ID: dict[int, KindSymbol] = {}
+
+SHADOW_KIND_SYMBOLS = shadow.register_check(
+    "kind-symbols", "compare the global kind-symbol index with the old scope-chain lookup"
+)
 
 class Scope:
     """A single lexical scope frame maintaining ordered declarations."""
@@ -159,6 +166,7 @@ class Scope:
         self._declarations.append(symbol)
         self._kinds[symbol.name] = symbol
         self._kinds_by_id[symbol.symbol_id] = symbol
+        _KIND_SYMBOLS_BY_ID[symbol.symbol_id] = symbol
         return symbol
 
     # --- Local Lookups ---
@@ -285,6 +293,21 @@ class Environment:
         return self.current_scope.lookup_kind(name)
 
     def lookup_kind_by_id(self, symbol_id: int) -> Optional[KindSymbol]:
+        sym = _KIND_SYMBOLS_BY_ID.get(symbol_id)
+        if shadow.is_enabled(SHADOW_KIND_SYMBOLS):
+            scoped = self._lookup_kind_by_id_scoped(symbol_id)
+            # A kind symbol always has a kind, so "not visible" (the kind variable stays opaque) and
+            # "found" (it expands) behave differently and count as a mismatch.
+            if (sym is None) != (scoped is None) or (sym is not None and sym.kind is not scoped.kind):
+                raise shadow.mismatch(
+                    SHADOW_KIND_SYMBOLS,
+                    f"kind symbol #{symbol_id}: global index gives {sym!r}, scope chain gives {scoped!r} "
+                    f"(current scope {self.current_scope!r})",
+                )
+        return sym
+
+    def _lookup_kind_by_id_scoped(self, symbol_id: int) -> Optional[KindSymbol]:
+        """Reference implementation: the scope chain, then every registered interface."""
         sym = self.current_scope.lookup_kind_by_id(symbol_id)
         if sym is not None:
             return sym

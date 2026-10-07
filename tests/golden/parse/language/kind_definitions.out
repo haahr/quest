@@ -1,0 +1,439 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (DefKindBinding
+      :name 'KOp'
+      :kind_val (KindAll
+        :param_name 'A'
+        :param_kind (KindType)
+        :body_kind (KindType)
+      )
+    )
+    (DefKindBinding
+      :name 'KBase'
+      :kind_val (KindType)
+    )
+    (LetTypeBinding
+      :name 'Twice'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+        :body (TypeTuple
+          :fields (
+            (FieldSig
+              :name 'first'
+              :type_sig (TypePath ('A'))
+              :mode VALUE
+            )
+            (FieldSig
+              :name 'second'
+              :type_sig (TypePath ('A'))
+              :mode VALUE
+            )
+          )
+        )
+      )
+      :bound (KindId 'KOp')
+    )
+    (LetTypeBinding
+      :name 'Num'
+      :type_val (TypePath ('Int'))
+      :bound (KindId 'KBase')
+    )
+    (LetValueBinding
+      :name 'first'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypeApp
+              :constructor (TypePath ('F'))
+              :arguments (
+                (TypePath ('Int'))
+              )
+            )
+            :mode VALUE
+          )
+        )
+        :return_type (TypeApp
+          :constructor (TypePath ('F'))
+          :arguments (
+            (TypePath ('Int'))
+          )
+        )
+        :body (ExprId 'x')
+        :type_params (
+          (TypeFormal
+            :name 'F'
+            :bound (KindId 'KOp')
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'F'
+            :bound (KindId 'KOp')
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypeApp
+                :constructor (TypePath ('F'))
+                :arguments (
+                  (TypePath ('Int'))
+                )
+              )
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypeApp
+          :constructor (TypePath ('F'))
+          :arguments (
+            (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'p'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'first'
+            :value (ExprInt 1 '1')
+          )
+          (TupleBinding
+            :name 'second'
+            :value (ExprInt 2 '2')
+          )
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('Twice'))
+        :arguments (
+          (TypePath ('Int'))
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'q'
+      :value (ExprApp
+        :func (ExprId 'first')
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Twice'))
+          )
+          (ExprId 'p')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'local'
+      :value (ExprBlock
+        :bindings (
+          (DefKindBinding
+            :name 'KLocal'
+            :kind_val (KindAll
+              :param_name 'B'
+              :param_kind (KindType)
+              :body_kind (KindType)
+            )
+          )
+          (LetTypeBinding
+            :name 'Box'
+            :type_val (TypeFun
+              :params (
+                (TypeFormal
+                  :name 'B'
+                  :bound (KindType)
+                )
+              )
+              :body (TypeTuple
+                :fields (
+                  (FieldSig
+                    :name 'item'
+                    :type_sig (TypePath ('B'))
+                    :mode VALUE
+                  )
+                )
+              )
+            )
+            :bound (KindId 'KLocal')
+          )
+          (LetValueBinding
+            :name 'unbox'
+            :value (ExprFun
+              :params (
+                (FormalParam
+                  :name 'y'
+                  :type_annot (TypeApp
+                    :constructor (TypePath ('G'))
+                    :arguments (
+                      (TypePath ('Num'))
+                    )
+                  )
+                  :mode VALUE
+                )
+              )
+              :return_type (TypeApp
+                :constructor (TypePath ('G'))
+                :arguments (
+                  (TypePath ('Num'))
+                )
+              )
+              :body (ExprId 'y')
+              :type_params (
+                (TypeFormal
+                  :name 'G'
+                  :bound (KindId 'KLocal')
+                )
+              )
+            )
+            :type_annot (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'G'
+                  :bound (KindId 'KLocal')
+                  :mode VALUE
+                  :is_type True
+                )
+                (Quantifier
+                  :name 'y'
+                  :bound (KindPower
+                    :bound (TypeApp
+                      :constructor (TypePath ('G'))
+                      :arguments (
+                        (TypePath ('Num'))
+                      )
+                    )
+                  )
+                  :mode VALUE
+                )
+              )
+              :result_type (TypeApp
+                :constructor (TypePath ('G'))
+                :arguments (
+                  (TypePath ('Num'))
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprId 'unbox')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Box'))
+                )
+                (ExprTuple
+                  :fields (
+                    (TupleBinding
+                      :name 'item'
+                      :value (ExprInt 7 '7')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'poly'
+      :value (ExprBlock
+        :bindings (
+          (DefKindBinding
+            :name 'KEscaping'
+            :kind_val (KindAll
+              :param_name 'B'
+              :param_kind (KindType)
+              :body_kind (KindType)
+            )
+          )
+          (ExprStmt
+            :expr (ExprFun
+              :params (
+                (FormalParam
+                  :name 'y'
+                  :type_annot (TypeApp
+                    :constructor (TypePath ('G'))
+                    :arguments (
+                      (TypePath ('Int'))
+                    )
+                  )
+                  :mode VALUE
+                )
+              )
+              :return_type (TypeApp
+                :constructor (TypePath ('G'))
+                :arguments (
+                  (TypePath ('Int'))
+                )
+              )
+              :body (ExprId 'y')
+              :type_params (
+                (TypeFormal
+                  :name 'G'
+                  :bound (KindId 'KEscaping')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprApp
+        :func (ExprId 'poly')
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Twice'))
+          )
+          (ExprId 'p')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprSelect
+                :target (ExprId 'q')
+                :field 'second'
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprString ' ' '" "')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprSelect
+                :target (ExprId 'local')
+                :field 'item'
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprString ' ' '" "')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprSelect
+                :target (ExprId 'r')
+                :field 'first'
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprString '\n' '"\\n"')
+        )
+      )
+    )
+  )
+)
