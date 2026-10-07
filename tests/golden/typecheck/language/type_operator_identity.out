@@ -46,15 +46,15 @@
                 :then (TypedString ' ok\n' :type String)
                 :else (TypedString ' FAILED\n' :type String))
             )))))
-    (TypedLetValue 'x' :type Fun(A :: TYPE) A(Int)
+    (TypedLetValue 'x' :type Id(Int)
       :value (TypedInt 3 :type Int))
-    (TypedLetValue 'y' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)
+    (TypedLetValue 'y' :type Cond(True Int String)
       :value (TypedInt 3 :type Int))
-    (TypedLetValue 's' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y Int String)
+    (TypedLetValue 's' :type Cond(False Int String)
       :value (TypedString 's' :type String))
-    (TypedLetValue 'b' :type Fun(A :: TYPE) A(Bool)
+    (TypedLetValue 'b' :type Id(Bool)
       :value (TypedBool true))
-    (TypedLetValue 'c' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Char Int)
+    (TypedLetValue 'c' :type Cond(True Char Int)
       :value (TypedChar 'q' :type Char))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -62,7 +62,7 @@
         :args (
           (TypedString 'var-id' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVar 'x' :type Fun(A :: TYPE) A(Int))
+            :left (TypedVar 'x' :type Id(Int))
             :right (TypedInt 3 :type Int))
         )))
     (TypedExprStmt
@@ -71,8 +71,8 @@
         :args (
           (TypedString 'var-cond' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVar 'y' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))
-            :right (TypedVar 'x' :type Fun(A :: TYPE) A(Int)))
+            :left (TypedVar 'y' :type Cond(True Int String))
+            :right (TypedVar 'x' :type Id(Int)))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -81,7 +81,7 @@
           (TypedString 'var-isnot' :type String)
           (TypedInfix 'isnot' :type Bool
             :left (TypedInt 4 :type Int)
-            :right (TypedVar 'x' :type Fun(A :: TYPE) A(Int)))
+            :right (TypedVar 'x' :type Id(Int)))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -89,7 +89,7 @@
         :args (
           (TypedString 'var-bool' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVar 'b' :type Fun(A :: TYPE) A(Bool))
+            :left (TypedVar 'b' :type Id(Bool))
             :right (TypedBool true))
         )))
     (TypedExprStmt
@@ -98,13 +98,13 @@
         :args (
           (TypedString 'var-char' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVar 'c' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Char Int))
+            :left (TypedVar 'c' :type Cond(True Char Int))
             :right (TypedChar 'q' :type Char))
         )))
     (TypedLetValue 'sum' :type Int
       :value (TypedInfix '+' :type Int
-        :left (TypedVar 'x' :type Fun(A :: TYPE) A(Int))
-        :right (TypedVar 'y' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))))
+        :left (TypedVar 'x' :type Id(Int))
+        :right (TypedVar 'y' :type Cond(True Int String))))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'check' :type Fun(name: String passed: Bool): Ok)
@@ -114,19 +114,19 @@
             :left (TypedVar 'sum' :type Int)
             :right (TypedInt 6 :type Int))
         )))
-    (TypedLetValue 'inc' :type Fun(n: Fun(A :: TYPE) A(Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)
-      :value (TypedFun :params (('n' : Fun(A :: TYPE) A(Int))) :type Fun(n: Fun(A :: TYPE) A(Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)
+    (TypedLetValue 'inc' :type Fun(n: Id(Int)): Cond(True Int String)
+      :value (TypedFun :params (('n' : Id(Int))) :type Fun(n: Id(Int)): Cond(True Int String)
         :body (TypedInfix '+' :type Int
-          :left (TypedVar 'n' :type Fun(A :: TYPE) A(Int))
+          :left (TypedVar 'n' :type Id(Int))
           :right (TypedInt 1 :type Int))))
-    (TypedLetValue 'twice' :type Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)): Fun(A :: TYPE) A(Int)
-      :value (TypedFun :params (('n' : Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))) :type Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)): Fun(A :: TYPE) A(Int)
+    (TypedLetValue 'twice' :type Fun(n: Cond(True Int String)): Id(Int)
+      :value (TypedFun :params (('n' : Cond(True Int String))) :type Fun(n: Cond(True Int String)): Id(Int)
         :body (TypedInfix '*' :type Int
-          :left (TypedVar 'n' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))
+          :left (TypedVar 'n' :type Cond(True Int String))
           :right (TypedInt 2 :type Int))))
-    (TypedLetValue 'pick' :type All(B :: Sel) Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int)
-      :value (TypedFun :params (('n' : Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int))) :type All(B :: Sel) Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int)
-        :body (TypedVar 'n' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int))))
+    (TypedLetValue 'pick' :type All(B :: Sel) Fun(n: Cond(B Int Int)): Cond(B Int Int)
+      :value (TypedFun :params (('n' : Cond(B Int Int))) :type All(B :: Sel) Fun(n: Cond(B Int Int)): Cond(B Int Int)
+        :body (TypedVar 'n' :type Cond(B Int Int))))
     (TypedLetValue 'idf' :type All(T :: TYPE) Fun(v: T): T
       :value (TypedFun :params (('v' : T)) :type All(T :: TYPE) Fun(v: T): T
         :body (TypedVar 'v' :type T)))
@@ -136,10 +136,10 @@
         :args (
           (TypedString 'result' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)
-              :func (TypedVar 'inc' :type Fun(n: Fun(A :: TYPE) A(Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))
+            :left (TypedApp :type Cond(True Int String)
+              :func (TypedVar 'inc' :type Fun(n: Id(Int)): Cond(True Int String))
               :args (
-                (TypedVar 'x' :type Fun(A :: TYPE) A(Int))
+                (TypedVar 'x' :type Id(Int))
               ))
             :right (TypedInt 4 :type Int))
         )))
@@ -149,10 +149,10 @@
         :args (
           (TypedString 'param' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(A :: TYPE) A(Int)
-              :func (TypedVar 'twice' :type Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)): Fun(A :: TYPE) A(Int))
+            :left (TypedApp :type Id(Int)
+              :func (TypedVar 'twice' :type Fun(n: Cond(True Int String)): Id(Int))
               :args (
-                (TypedVar 'y' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))
+                (TypedVar 'y' :type Cond(True Int String))
               ))
             :right (TypedInt 6 :type Int))
         )))
@@ -162,9 +162,9 @@
         :args (
           (TypedString 'operator-param' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Int)
-              :func (TypedTypeApp [Fun(X :: TYPE Y :: TYPE) X] :type Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Int)
-                :func (TypedVar 'pick' :type All(B :: Sel) Fun(n: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(B Int Int)))
+            :left (TypedApp :type Cond(True Int Int)
+              :func (TypedTypeApp [True] :type Fun(n: Cond(True Int Int)): Cond(True Int Int)
+                :func (TypedVar 'pick' :type All(B :: Sel) Fun(n: Cond(B Int Int)): Cond(B Int Int)))
               :args (
                 (TypedInt 5 :type Int)
               ))
@@ -176,20 +176,20 @@
         :args (
           (TypedString 'poly' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(A :: TYPE) A(Int)
-              :func (TypedTypeApp [Fun(A :: TYPE) A(Int)] :type Fun(v: Fun(A :: TYPE) A(Int)): Fun(A :: TYPE) A(Int)
+            :left (TypedApp :type Id(Int)
+              :func (TypedTypeApp [Id(Int)] :type Fun(v: Id(Int)): Id(Int)
                 :func (TypedVar 'idf' :type All(T :: TYPE) Fun(v: T): T))
               :args (
-                (TypedVar 'x' :type Fun(A :: TYPE) A(Int))
+                (TypedVar 'x' :type Id(Int))
               ))
             :right (TypedInt 3 :type Int))
         )))
-    (TypedLetValue 'apply' :type Fun(g: Fun(n: Fun(A :: TYPE) A(Int)): Fun(A :: TYPE) A(Int) v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)): Fun(A :: TYPE) A(Int)
-      :value (TypedFun :params (('g' : Fun(n: Fun(A :: TYPE) A(Int)): Fun(A :: TYPE) A(Int)) ('v' : Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))) :type Fun(g: Fun(n: Fun(A :: TYPE) A(Int)): Fun(A :: TYPE) A(Int) v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)): Fun(A :: TYPE) A(Int)
-        :body (TypedApp :type Fun(A :: TYPE) A(Int)
-          :func (TypedVar 'g' :type Fun(n: Fun(A :: TYPE) A(Int)): Fun(A :: TYPE) A(Int))
+    (TypedLetValue 'apply' :type Fun(g: Fun(n: Id(Int)): Id(Int) v: Cond(True Int Bool)): Id(Int)
+      :value (TypedFun :params (('g' : Fun(n: Id(Int)): Id(Int)) ('v' : Cond(True Int Bool))) :type Fun(g: Fun(n: Id(Int)): Id(Int) v: Cond(True Int Bool)): Id(Int)
+        :body (TypedApp :type Id(Int)
+          :func (TypedVar 'g' :type Fun(n: Id(Int)): Id(Int))
           :args (
-            (TypedVar 'v' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))
+            (TypedVar 'v' :type Cond(True Int Bool))
           ))))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -197,16 +197,16 @@
         :args (
           (TypedString 'closure' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(A :: TYPE) A(Int)
-              :func (TypedVar 'apply' :type Fun(g: Fun(n: Fun(A :: TYPE) A(Int)): Fun(A :: TYPE) A(Int) v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)): Fun(A :: TYPE) A(Int))
+            :left (TypedApp :type Id(Int)
+              :func (TypedVar 'apply' :type Fun(g: Fun(n: Id(Int)): Id(Int) v: Cond(True Int Bool)): Id(Int))
               :args (
-                (TypedVar 'inc' :type Fun(n: Fun(A :: TYPE) A(Int)): Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))
+                (TypedVar 'inc' :type Fun(n: Id(Int)): Cond(True Int String))
                 (TypedInt 9 :type Int)
               ))
             :right (TypedInt 10 :type Int))
         )))
-    (TypedLetValue 'arr' :type Array(Fun(A :: TYPE) A(Int))
-      :value (TypedArray :type Array(Fun(A :: TYPE) A(Int))
+    (TypedLetValue 'arr' :type Array(Id(Int))
+      :value (TypedArray :type Array(Id(Int))
         :elements (
           (TypedInt 1 :type Int)
           (TypedInt 2 :type Int)
@@ -218,14 +218,14 @@
         :args (
           (TypedString 'array-get' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedIndex :type Fun(A :: TYPE) A(Int)
-              :target (TypedVar 'arr' :type Array(Fun(A :: TYPE) A(Int)))
+            :left (TypedIndex :type Id(Int)
+              :target (TypedVar 'arr' :type Array(Id(Int)))
               :index (TypedInt 1 :type Int))
             :right (TypedInt 2 :type Int))
         )))
     (TypedExprStmt
       :expr (TypedIndexAssign
-        :target (TypedVar 'arr' :type Array(Fun(A :: TYPE) A(Int)))
+        :target (TypedVar 'arr' :type Array(Id(Int)))
         :index (TypedInt 2 :type Int)
         :value (TypedInt 30 :type Int)))
     (TypedExprStmt
@@ -234,13 +234,13 @@
         :args (
           (TypedString 'array-set' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedIndex :type Fun(A :: TYPE) A(Int)
-              :target (TypedVar 'arr' :type Array(Fun(A :: TYPE) A(Int)))
+            :left (TypedIndex :type Id(Int)
+              :target (TypedVar 'arr' :type Array(Id(Int)))
               :index (TypedInt 2 :type Int))
             :right (TypedInt 30 :type Int))
         )))
-    (TypedLetValue 'rep' :type Fun(A :: TYPE) Array(Fun(A :: TYPE) A(A))(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int))
-      :value (TypedArrayRep :type Array(Fun(A :: TYPE) A(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int)))
+    (TypedLetValue 'rep' :type IdArr(Cond(False String Int))
+      :value (TypedArrayRep :type Array(Id(Cond(False String Int)))
         :count (TypedInt 4 :type Int)
         :init (TypedInt 7 :type Int)))
     (TypedExprStmt
@@ -249,8 +249,8 @@
         :args (
           (TypedString 'array-rep' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedIndex :type Fun(A :: TYPE) A(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int))
-              :target (TypedVar 'rep' :type Fun(A :: TYPE) Array(Fun(A :: TYPE) A(A))(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int)))
+            :left (TypedIndex :type Id(Cond(False String Int))
+              :target (TypedVar 'rep' :type IdArr(Cond(False String Int)))
               :index (TypedInt 3 :type Int))
             :right (TypedInt 7 :type Int))
         )))
@@ -261,16 +261,16 @@
           (TypedString 'array-size' :type String)
           (TypedInfix 'is' :type Bool
             :left (TypedApp :type Int
-              :func (TypedTypeApp [Fun(A :: TYPE) A(Int)] :type Fun(array: Array(Fun(A :: TYPE) A(Int))): Int
+              :func (TypedTypeApp [Id(Int)] :type Fun(array: Array(Id(Int))): Int
                 :func (TypedSelect 'size' :type All(A :: TYPE) Fun(array: Array(A)): Int
                   :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
               :args (
-                (TypedVar 'rep' :type Fun(A :: TYPE) Array(Fun(A :: TYPE) A(A))(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int)))
+                (TypedVar 'rep' :type IdArr(Cond(False String Int)))
               ))
             :right (TypedInt 4 :type Int))
         )))
-    (TypedLetValue 't' :type Tuple first: Fun(A :: TYPE) A(Int) second: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int) end
-      :value (TypedTuple :type Tuple first: Fun(A :: TYPE) A(Int) second: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int) end
+    (TypedLetValue 't' :type Tuple first: Id(Int) second: Cond(False String Int) end
+      :value (TypedTuple :type Tuple first: Id(Int) second: Cond(False String Int) end
         :elements (
           (TypedInt 5 :type Int)
           (TypedInt 6 :type Int)
@@ -281,12 +281,12 @@
         :args (
           (TypedString 'tuple' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedSelect 'second' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int)
-              :target (TypedVar 't' :type Tuple first: Fun(A :: TYPE) A(Int) second: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Int) end))
+            :left (TypedSelect 'second' :type Cond(False String Int)
+              :target (TypedVar 't' :type Tuple first: Id(Int) second: Cond(False String Int) end))
             :right (TypedInt 6 :type Int))
         )))
-    (TypedLetValue 'r' :type Record a: Fun(A :: TYPE) A(Int) var v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end
-      :value (TypedRecord :type Record a: Fun(A :: TYPE) A(Int) var v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end
+    (TypedLetValue 'r' :type Record a: Id(Int) var v: Cond(True Int Bool) end
+      :value (TypedRecord :type Record a: Id(Int) var v: Cond(True Int Bool) end
         :fields (
           (TypedRecordField 'a'
             :value (TypedInt 8 :type Int))
@@ -299,17 +299,17 @@
         :args (
           (TypedString 'record' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedSelect 'a' :type Fun(A :: TYPE) A(Int)
-              :target (TypedVar 'r' :type Record a: Fun(A :: TYPE) A(Int) var v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end))
+            :left (TypedSelect 'a' :type Id(Int)
+              :target (TypedVar 'r' :type Record a: Id(Int) var v: Cond(True Int Bool) end))
             :right (TypedInt 8 :type Int))
         )))
     (TypedExprStmt
       :expr (TypedAssign
-        :target (TypedSelect 'v' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)
-          :target (TypedVar 'r' :type Record a: Fun(A :: TYPE) A(Int) var v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end))
+        :target (TypedSelect 'v' :type Cond(True Int Bool)
+          :target (TypedVar 'r' :type Record a: Id(Int) var v: Cond(True Int Bool) end))
         :value (TypedInfix '+' :type Int
-          :left (TypedSelect 'v' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)
-            :target (TypedVar 'r' :type Record a: Fun(A :: TYPE) A(Int) var v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end))
+          :left (TypedSelect 'v' :type Cond(True Int Bool)
+            :target (TypedVar 'r' :type Record a: Id(Int) var v: Cond(True Int Bool) end))
           :right (TypedInt 1 :type Int))))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -317,25 +317,25 @@
         :args (
           (TypedString 'record-var' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedSelect 'v' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)
-              :target (TypedVar 'r' :type Record a: Fun(A :: TYPE) A(Int) var v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end))
+            :left (TypedSelect 'v' :type Cond(True Int Bool)
+              :target (TypedVar 'r' :type Record a: Id(Int) var v: Cond(True Int Bool) end))
             :right (TypedInt 10 :type Int))
         )))
-    (TypedLetValue 'bump' :type Fun(var n: Fun(A :: TYPE) A(Int)): Ok
-      :value (TypedFun :params (('n' : Fun(A :: TYPE) A(Int))) :type Fun(var n: Fun(A :: TYPE) A(Int)): Ok
+    (TypedLetValue 'bump' :type Fun(var n: Id(Int)): Ok
+      :value (TypedFun :params (('n' : Id(Int))) :type Fun(var n: Id(Int)): Ok
         :body (TypedAssign
-          :target (TypedVar 'n' :type Var(Fun(A :: TYPE) A(Int)))
+          :target (TypedVar 'n' :type Var(Id(Int)))
           :value (TypedInfix '+' :type Int
-            :left (TypedDerefCell :type Fun(A :: TYPE) A(Int)
-              :target (TypedVar 'n' :type Var(Fun(A :: TYPE) A(Int))))
+            :left (TypedDerefCell :type Id(Int)
+              :target (TypedVar 'n' :type Var(Id(Int))))
             :right (TypedInt 1 :type Int)))))
-    (TypedLetValue 'cell' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)
+    (TypedLetValue 'cell' :type Cond(True Int String)
       :value (TypedInt 1 :type Int))
     (TypedExprStmt
       :expr (TypedApp :type Ok
-        :func (TypedVar 'bump' :type Fun(var n: Fun(A :: TYPE) A(Int)): Ok)
+        :func (TypedVar 'bump' :type Fun(var n: Id(Int)): Ok)
         :args (
-          (TypedVar 'cell' :type Var(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)))
+          (TypedVar 'cell' :type Var(Cond(True Int String)))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -343,16 +343,16 @@
         :args (
           (TypedString 'ref-var' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedDerefCell :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)
-              :target (TypedVar 'cell' :type Var(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String))))
+            :left (TypedDerefCell :type Cond(True Int String)
+              :target (TypedVar 'cell' :type Var(Cond(True Int String))))
             :right (TypedInt 2 :type Int))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
-        :func (TypedVar 'bump' :type Fun(var n: Fun(A :: TYPE) A(Int)): Ok)
+        :func (TypedVar 'bump' :type Fun(var n: Id(Int)): Ok)
         :args (
-          (TypedIndexRef [] (ref) :type Var(Fun(A :: TYPE) A(Int))
-            :target (TypedVar 'arr' :type Array(Fun(A :: TYPE) A(Int)))
+          (TypedIndexRef [] (ref) :type Var(Id(Int))
+            :target (TypedVar 'arr' :type Array(Id(Int)))
             :index (TypedInt 0 :type Int))
         )))
     (TypedExprStmt
@@ -361,12 +361,12 @@
         :args (
           (TypedString 'ref-array' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedIndex :type Fun(A :: TYPE) A(Int)
-              :target (TypedVar 'arr' :type Array(Fun(A :: TYPE) A(Int)))
+            :left (TypedIndex :type Id(Int)
+              :target (TypedVar 'arr' :type Array(Id(Int)))
               :index (TypedInt 0 :type Int))
             :right (TypedInt 2 :type Int))
         )))
-    (TypedLetValue 'half' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Real)
+    (TypedLetValue 'half' :type Cond(False String Real)
       :value (TypedReal 2.5 :type Real))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -374,23 +374,23 @@
         :args (
           (TypedString 'real' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVar 'half' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y String Real))
+            :left (TypedVar 'half' :type Cond(False String Real))
             :right (TypedReal 2.5 :type Real))
         )))
-    (TypedLetValue 'str' :type Fun(A :: TYPE) A(String)
+    (TypedLetValue 'str' :type Id(String)
       :value (TypedString 'abc' :type String))
-    (TypedLetValue 'str2' :type Fun(A :: TYPE) A(String)
-      :value (TypedVar 'str' :type Fun(A :: TYPE) A(String)))
+    (TypedLetValue 'str2' :type Id(String)
+      :value (TypedVar 'str' :type Id(String)))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'check' :type Fun(name: String passed: Bool): Ok)
         :args (
           (TypedString 'string' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVar 'str' :type Fun(A :: TYPE) A(String))
-            :right (TypedVar 'str2' :type Fun(A :: TYPE) A(String)))
+            :left (TypedVar 'str' :type Id(String))
+            :right (TypedVar 'str2' :type Id(String)))
         )))
-    (TypedLetValue 'whole' :type Fun(A :: TYPE) A(Array(Int))
+    (TypedLetValue 'whole' :type Id(Array(Int))
       :value (TypedArray :type Array(Int)
         :elements (
           (TypedInt 4 :type Int)
@@ -403,12 +403,12 @@
           (TypedString 'id-array' :type String)
           (TypedInfix 'is' :type Bool
             :left (TypedIndex :type Int
-              :target (TypedVar 'whole' :type Fun(A :: TYPE) A(Array(Int)))
+              :target (TypedVar 'whole' :type Id(Array(Int)))
               :index (TypedInt 1 :type Int))
             :right (TypedInt 5 :type Int))
         )))
-    (TypedLetValue 'm' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))
-      :value (TypedVariant 'some' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))
+    (TypedLetValue 'm' :type Maybe(Id(Int))
+      :value (TypedVariant 'some' :type Maybe(Id(Int))
         :payload (TypedInt 11 :type Int)))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -416,7 +416,7 @@
         :args (
           (TypedString 'variant-tag' :type String)
           (TypedVariantCheck 'some' :type Bool
-            :target (TypedVar 'm' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))))
+            :target (TypedVar 'm' :type Maybe(Id(Int))))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -424,17 +424,17 @@
         :args (
           (TypedString 'variant-payload' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedVariantAssert 'some' :type Fun(A :: TYPE) A(Int)
-              :target (TypedVar 'm' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))))
+            :left (TypedVariantAssert 'some' :type Id(Int)
+              :target (TypedVar 'm' :type Maybe(Id(Int))))
             :right (TypedInt 11 :type Int))
         )))
-    (TypedLetValue 'unwrap' :type Fun(v: Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))): Fun(A :: TYPE) A(Int)
-      :value (TypedFun :params (('v' : Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int)))) :type Fun(v: Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))): Fun(A :: TYPE) A(Int)
-        :body (TypedCase :type Fun(A :: TYPE) A(Int)
-          :target (TypedVar 'v' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int)))
+    (TypedLetValue 'unwrap' :type Fun(v: Maybe(Id(Int))): Id(Int)
+      :value (TypedFun :params (('v' : Maybe(Id(Int)))) :type Fun(v: Maybe(Id(Int))): Id(Int)
+        :body (TypedCase :type Id(Int)
+          :target (TypedVar 'v' :type Maybe(Id(Int)))
           :branches (
             (TypedCaseBranch tags=(some) :binder 'n'
-              :body (TypedVar 'n' :type Fun(A :: TYPE) A(Int)))
+              :body (TypedVar 'n' :type Id(Int)))
           )
           :else (TypedInt 0 :type Int))))
     (TypedExprStmt
@@ -443,37 +443,37 @@
         :args (
           (TypedString 'variant-case' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(A :: TYPE) A(Int)
-              :func (TypedVar 'unwrap' :type Fun(v: Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))): Fun(A :: TYPE) A(Int))
+            :left (TypedApp :type Id(Int)
+              :func (TypedVar 'unwrap' :type Fun(v: Maybe(Id(Int))): Id(Int))
               :args (
-                (TypedVar 'm' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int)))
+                (TypedVar 'm' :type Maybe(Id(Int)))
               ))
             :right (TypedInt 11 :type Int))
         )))
-    (TypedLetValue 'mv' :type Fun(A :: TYPE) Variant none some: A end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))
-      :value (TypedVariant 'none' :type Fun(A :: TYPE) Variant none some: A end(Int)
+    (TypedLetValue 'mv' :type Maybe(Cond(True Int Bool))
+      :value (TypedVariant 'none' :type Maybe(Int)
         :payload (TypedOk)))
     (TypedExprStmt
       :expr (TypedAssign
-        :target (TypedVar 'mv' :type Var(Fun(A :: TYPE) Variant none some: A end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))))
-        :value (TypedVar 'm' :type Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int)))))
+        :target (TypedVar 'mv' :type Var(Maybe(Cond(True Int Bool))))
+        :value (TypedVar 'm' :type Maybe(Id(Int)))))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'check' :type Fun(name: String passed: Bool): Ok)
         :args (
           (TypedString 'variant-assign' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(A :: TYPE) A(Int)
-              :func (TypedVar 'unwrap' :type Fun(v: Fun(A :: TYPE) Variant none some: A end(Fun(A :: TYPE) A(Int))): Fun(A :: TYPE) A(Int))
+            :left (TypedApp :type Id(Int)
+              :func (TypedVar 'unwrap' :type Fun(v: Maybe(Id(Int))): Id(Int))
               :args (
-                (TypedDerefCell :type Fun(A :: TYPE) Variant none some: A end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))
-                  :target (TypedVar 'mv' :type Var(Fun(A :: TYPE) Variant none some: A end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)))))
+                (TypedDerefCell :type Maybe(Cond(True Int Bool))
+                  :target (TypedVar 'mv' :type Var(Maybe(Cond(True Int Bool)))))
               ))
             :right (TypedInt 11 :type Int))
         )))
-    (TypedLetValue 'o' :type Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(A :: TYPE) A(Int))
-      :value (TypedOption 'some' :type Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(A :: TYPE) A(Int))
-        :payload (TypedTuple :type Tuple v: Fun(A :: TYPE) A(Int) end
+    (TypedLetValue 'o' :type Opt(Id(Int))
+      :value (TypedOption 'some' :type Opt(Id(Int))
+        :payload (TypedTuple :type Tuple v: Id(Int) end
           :elements (
             (TypedInt 12 :type Int)
           ))))
@@ -483,7 +483,7 @@
         :args (
           (TypedString 'option-tag' :type String)
           (TypedVariantCheck 'some' :type Bool
-            :target (TypedVar 'o' :type Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(A :: TYPE) A(Int))))
+            :target (TypedVar 'o' :type Opt(Id(Int))))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -491,19 +491,19 @@
         :args (
           (TypedString 'option-payload' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedSelect 'v' :type Fun(A :: TYPE) A(Int)
-              :target (TypedVariantAssert 'some' :type Tuple Int v: Fun(A :: TYPE) A(Int) end
-                :target (TypedVar 'o' :type Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(A :: TYPE) A(Int)))))
+            :left (TypedSelect 'v' :type Id(Int)
+              :target (TypedVariantAssert 'some' :type Tuple Int v: Id(Int) end
+                :target (TypedVar 'o' :type Opt(Id(Int)))))
             :right (TypedInt 12 :type Int))
         )))
-    (TypedLetValue 'optVal' :type Fun(p: Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))): Fun(A :: TYPE) A(Int)
-      :value (TypedFun :params (('p' : Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)))) :type Fun(p: Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))): Fun(A :: TYPE) A(Int)
-        :body (TypedCase :type Fun(A :: TYPE) A(Int)
-          :target (TypedVar 'p' :type Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)))
+    (TypedLetValue 'optVal' :type Fun(p: Opt(Cond(True Int Bool))): Id(Int)
+      :value (TypedFun :params (('p' : Opt(Cond(True Int Bool)))) :type Fun(p: Opt(Cond(True Int Bool))): Id(Int)
+        :body (TypedCase :type Id(Int)
+          :target (TypedVar 'p' :type Opt(Cond(True Int Bool)))
           :branches (
             (TypedCaseBranch tags=(some) :binder 't'
-              :body (TypedSelect 'v' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool)
-                :target (TypedVar 't' :type Tuple v: Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool) end)))
+              :body (TypedSelect 'v' :type Cond(True Int Bool)
+                :target (TypedVar 't' :type Tuple v: Cond(True Int Bool) end)))
           )
           :else (TypedInt 0 :type Int))))
     (TypedExprStmt
@@ -512,10 +512,10 @@
         :args (
           (TypedString 'option-case' :type String)
           (TypedInfix 'is' :type Bool
-            :left (TypedApp :type Fun(A :: TYPE) A(Int)
-              :func (TypedVar 'optVal' :type Fun(p: Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int Bool))): Fun(A :: TYPE) A(Int))
+            :left (TypedApp :type Id(Int)
+              :func (TypedVar 'optVal' :type Fun(p: Opt(Cond(True Int Bool))): Id(Int))
               :args (
-                (TypedVar 'o' :type Fun(A :: TYPE) Option none some with Tuple v: A end end(Fun(A :: TYPE) A(Int)))
+                (TypedVar 'o' :type Opt(Id(Int)))
               ))
             :right (TypedInt 12 :type Int))
         )))
@@ -525,7 +525,7 @@
           :target (TypedVar 'writer' :type Module 'writer'))
         :args (
           (TypedVar 'wOut' :type Writer.T)
-          (TypedVar 's' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) Y Int String))
+          (TypedVar 's' :type Cond(False Int String))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -546,8 +546,8 @@
               :target (TypedVar 'conv' :type Module 'conv'))
             :args (
               (TypedInfix '+' :type Int
-                :left (TypedVar 'x' :type Fun(A :: TYPE) A(Int))
-                :right (TypedVar 'y' :type Fun(B :: Sel X :: TYPE Y :: TYPE) B(X Y)(Fun(X :: TYPE Y :: TYPE) X Int String)))
+                :left (TypedVar 'x' :type Id(Int))
+                :right (TypedVar 'y' :type Cond(True Int String)))
             ))
         )))
     (TypedExprStmt
