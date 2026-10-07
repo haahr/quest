@@ -203,7 +203,7 @@ class TestObjectLinking(unittest.TestCase):
         c_src = c_out_file.read_text(encoding="utf-8")
 
         # 1. Module record and initializer forward declarations
-        self.assertIn("extern QRecordVal qv_counter;", c_src)
+        self.assertIn("extern QRecordVal qm_counter;", c_src)
         self.assertIn("extern void qv_mod_counter_init(void);", c_src)
 
         # 2. Direct function extern declarations

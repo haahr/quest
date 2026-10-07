@@ -101,9 +101,11 @@ $$\text{mangle\_module\_name}(module) = module.\text{lower}().\text{replace}("/"
 
 ### 4.2. Module Record Instance
 Every compiled Quest module produces a single global `QRecordVal` holding its exported interface record:
-- **Definition (in module):** `QRecordVal qv_<clean_mod>;`
-  - E.g. `QRecordVal qv_calc;`, `QRecordVal qv_util__path;`
-- **Import declaration (in consumers):** `extern QRecordVal qv_<clean_mod>;`
+- **Definition (in module):** `QRecordVal qm_<clean_mod>;`
+  - E.g. `QRecordVal qm_calc;`, `QRecordVal qm_util__path;`
+- **Import declaration (in consumers):** `extern QRecordVal qm_<clean_mod>;`
+- Module records use their own `qm_` prefix rather than `qv_`: `qv_<clean_mod>` is also the mangling of a user
+  identifier with the same name as the module (e.g. a top-level `let real` in a program that links module `real`).
 
 ### 4.3. Module Initialization Function & Guard
 Each module defines an idempotent initialization function that initializes imported dependencies before evaluating
@@ -280,7 +282,7 @@ suffixes (`<prefix>_<counter>`):
 | **Symbolic Operator** | `qv_sym_<tokens>` | `let +` | `qv_sym_plus` |
 | **Compound Operator** | `qv_sym_<tokens>` | `let :=` | `qv_sym_colon_equals` |
 | **Module Name** | `lowercase, / -> __, . -> _` | `util/path` | `util__path` |
-| **Module Instance** | `qv_<clean_mod>` | `util/path` | `qv_util__path` |
+| **Module Instance** | `qm_<clean_mod>` | `util/path` | `qm_util__path` |
 | **Module Init Function** | `qv_mod_<clean_mod>_init` | `util/path` | `qv_mod_util__path_init` |
 | **Module Init Flag** | `qv_mod_<clean_mod>_initialized` | `util/path` | `qv_mod_util__path_initialized` |
 | **Module Value** | `qv_<clean_mod>_<name>` | `calc.add` | `qv_calc_add` |

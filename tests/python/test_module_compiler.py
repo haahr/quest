@@ -2,7 +2,7 @@
 
 Tests separate compilation of .mod.quest files into .c and .o, verifying:
 - Dual linkage ABI: direct C functions and closure trampolines
-- Module record variable (QRecordVal qv_<mod>) with external linkage
+- Module record variable (QRecordVal qm_<mod>) with external linkage
 - Idempotent chained module initialization (void qv_mod_<mod>_init(void))
 - Native object linking against host C driver
 - CLI driver invocation (quest -c <file>.mod.quest)
@@ -79,7 +79,7 @@ class TestModuleCompiler(unittest.TestCase):
         # Interface header included
         self.assertIn('#include "counter.h"', c_source)
         # Module record variable declared with external linkage
-        self.assertIn("QRecordVal qv_counter;", c_source)
+        self.assertIn("QRecordVal qm_counter;", c_source)
         # Idempotent initializer declared with external linkage
         self.assertIn("void qv_mod_counter_init(void) {", c_source)
         self.assertIn("if (qv_mod_counter_initialized) return;", c_source)
@@ -147,7 +147,7 @@ class TestModuleCompiler(unittest.TestCase):
         c_source = c_file.read_text(encoding="utf-8")
         # Check forward declaration for base init
         self.assertIn("extern void qv_mod_base_init(void);", c_source)
-        self.assertIn("extern QRecordVal qv_base;", c_source)
+        self.assertIn("extern QRecordVal qm_base;", c_source)
         # Check call to base init inside client init
         self.assertIn("qv_mod_base_init();", c_source)
 
@@ -186,7 +186,7 @@ class TestModuleCompiler(unittest.TestCase):
             '#include "quest_runtime.h"\n'
             '#include "mathops.h"\n'
             '\n'
-            'extern QRecordVal qv_mathops;\n'
+            'extern QRecordVal qm_mathops;\n'
             'extern void qv_mod_mathops_init(void);\n'
             'extern QInt qv_mathops_add(QInt a, QInt b);\n'
             'extern QInt qv_mathops_multiply(QInt a, QInt b);\n'
@@ -200,7 +200,7 @@ class TestModuleCompiler(unittest.TestCase):
             '    QInt prod = qv_mathops_multiply(6, 7);\n'
             '    assert(prod == 42);\n'
             '    /* 2. Closure call through module record */\n'
-            '    assert(qv_mathops.val != NULL);\n'
+            '    assert(qm_mathops.val != NULL);\n'
             '    printf("SUCCESS: %lld, %lld\\n", sum, prod);\n'
             '    return 0;\n'
             '}\n',

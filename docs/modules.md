@@ -225,9 +225,10 @@ translation unit (`.c` file) that compiles directly with standard C99:
    - Neither interfaces nor modules may form cycles. Topological sort order is guaranteed to be unambiguous
      and deterministic.
 2. **Module Export Representation (First-Class `QRecordVal` Fat Pointers):**
-   - Each module `m : I` compiles to a top-level C record variable `static QRecordVal qv_m;`.
+   - Each module `m : I` compiles to a top-level C record variable `static QRecordVal qm_m;`. Module records use
+     their own `qm_` prefix so that they cannot collide with a user identifier of the same name (`qv_m`).
    - The interface `I` specifies the record struct shape `QT_I` containing function pointers, closures, and values.
-   - `qv_m` stores `.val` pointing to the allocated payload struct and `.dict` pointing to the static identity
+   - `qm_m` stores `.val` pointing to the allocated payload struct and `.dict` pointing to the static identity
      evidence dictionary `&offsetdict_I_I`.
 3. **Abstract Type Erasure to `QVal`:**
    - In interface records, abstract types (`T::TYPE`) cannot have known concrete scalar representations across
@@ -361,7 +362,7 @@ Compiling a module implementation (`quest -c counter.mod.quest`) generates both 
        (`qv_<mod>_<func>(...)`), allowing native C calls and optimal direct linking without closure indirection.
      - Trampolines: Small `static` functions (`qv_<mod>_<func>_trampoline`) wrapping direct functions for closure
        dispatch.
-     - Module record: The global module singleton `QRecordVal qv_<mod>;` is declared with external C linkage and
+     - Module record: The global module singleton `QRecordVal qm_<mod>;` is declared with external C linkage and
        populated with closures pointing to trampolines during initialization.
    - **Idempotent Chained Initialization:** Emits an exported initialization routine `void qv_mod_<mod>_init(void)`
      with an internal `initialized` guard. Before executing module expressions, it automatically calls the
@@ -384,7 +385,7 @@ Compiling client code that depends on precompiled modules links `.o` files direc
 2. **Dual Linkage ABI & External Declarations:**
    - In the emitted client C code, precompiled modules emit external declarations for both linkage forms:
      - Direct C functions: `extern <Ret> qv_<mod>_<func>(<Params>);`
-     - Global module record: `extern QRecordVal qv_<mod>;`
+     - Global module record: `extern QRecordVal qm_<mod>;`
      - Initializer: `extern void qv_mod_<mod>_init(void);`
    - Direct calls (`counter.inc(c)`) lower to fast native C calls `qv_counter_inc(c)`.
    - Closure access (`let f = counter.inc; f(c)`) extracts closures from `qv_counter` and dispatches via trampolines.

@@ -525,7 +525,7 @@ Quest modules compile to first-class record values (`QRecordVal`), allowing modu
 manipulated dynamically:
 - **Module State Variable**: Each compiled module emits a static fat pointer:
   ```c
-  static QRecordVal qv_<mod>;
+  static QRecordVal qm_<mod>;
   static bool qv_mod_<mod>_initialized = false;
   static void qv_mod_<mod>_init(void);
   ```

@@ -3,7 +3,7 @@
 Compiles Quest module implementation files (.mod.quest) into:
 1. Standard C99 source (<name>.c) including the interface header and defining
    direct C functions (qv_<mod>_<func>), closure trampolines, module record
-   (QRecordVal qv_<mod>), and idempotent initialization (qv_mod_<mod>_init).
+   (QRecordVal qm_<mod>), and idempotent initialization (qv_mod_<mod>_init).
 2. Native relocatable object file (<name>.o) via the host C compiler.
 """
 

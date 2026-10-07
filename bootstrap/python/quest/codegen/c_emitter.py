@@ -27,6 +27,7 @@ from quest.codegen.c_types import (
     mangle_module_ident,
     mangle_module_name,
     normalize_type,
+    module_record_ident,
     option_struct_name,
     qtype_to_c_type,
     qtype_to_name_str,
@@ -1302,8 +1303,8 @@ class CEmitter:
                             all_module_map[mpath] = mod
                             all_module_map[iname.lower()] = mod
                             all_module_map[mpath.lower()] = mod
-                        self.current_env_vars[iname] = f"qv_{mangle_module_name(mod_ref)}"
-                        self.current_env_vars[mpath] = f"qv_{mangle_module_name(mod_ref)}"
+                        self.current_env_vars[iname] = module_record_ident(mangle_module_name(mod_ref))
+                        self.current_env_vars[mpath] = module_record_ident(mangle_module_name(mod_ref))
         self.all_modules = all_module_map
         # 7. Emit module functions and initializers
         if sorted_modules:
@@ -1356,10 +1357,10 @@ class CEmitter:
                                             )
                                             mod_ref = mpath if mpath else (mod.name if mod is not None else iname)
                                             self.current_env_vars[iname] = (
-                                                f"qv_{mangle_module_name(mod_ref)}"
+                                                module_record_ident(mangle_module_name(mod_ref))
                                             )
                                             self.current_env_vars[mpath] = (
-                                                f"qv_{mangle_module_name(mod_ref)}"
+                                                module_record_ident(mangle_module_name(mod_ref))
                                             )
                         if orig_mod_name in self.module_fun_adapters:
                             for fn_k, fn_impl in self.module_fun_adapters[orig_mod_name].items():
@@ -1552,8 +1553,8 @@ class CEmitter:
                             mod_ref = mpath if mpath else (imp_mod.name if imp_mod is not None else iname)
                             if (standalone or imp_mod is not None) and mod_ref not in mod_imported_mods:
                                 mod_imported_mods.append(mod_ref)
-                            mod_imported_env[iname] = f"qv_{mangle_module_name(mod_ref)}"
-                            mod_imported_env[mpath] = f"qv_{mangle_module_name(mod_ref)}"
+                            mod_imported_env[iname] = module_record_ident(mangle_module_name(mod_ref))
+                            mod_imported_env[mpath] = module_record_ident(mangle_module_name(mod_ref))
                 case TypedException(name=b_name, type_val=b_t) as exc_n:
                     if b_name:
                         mod_vars.append(
@@ -1567,7 +1568,7 @@ class CEmitter:
             for dep in mod_imported_mods:
                 dep_clean = mangle_module_name(dep)
                 lines.append(f"extern void qv_mod_{dep_clean}_init(void);")
-                lines.append(f"extern QRecordVal qv_{dep_clean};")
+                lines.append(f"extern QRecordVal {module_record_ident(dep_clean)};")
             lines.append("")
 
         for vname, vval, vsym in mod_vars:
@@ -1874,7 +1875,7 @@ class CEmitter:
             self.analysis and any(getattr(m, "is_precompiled", False) for m in self.analysis.sorted_modules)
         )
         if standalone:
-            lines.append(f"QRecordVal qv_{clean_mod};")
+            lines.append(f"QRecordVal {module_record_ident(clean_mod)};")
             lines.append(f"static bool qv_mod_{clean_mod}_initialized = false;")
             lines.append(f"void qv_mod_{clean_mod}_init(void) {{")
         elif has_precompiled:
@@ -1908,10 +1909,10 @@ class CEmitter:
                         )
                         mod_ref = mpath if mpath else (mod_obj.name if mod_obj is not None else iname)
                         mod_emitter.current_env_vars[iname] = (
-                            f"qv_{mangle_module_name(mod_ref)}"
+                            module_record_ident(mangle_module_name(mod_ref))
                         )
                         mod_emitter.current_env_vars[mpath] = (
-                            f"qv_{mangle_module_name(mod_ref)}"
+                            module_record_ident(mangle_module_name(mod_ref))
                         )
         for b in mod.bindings:
             match b:
@@ -1972,7 +1973,7 @@ class CEmitter:
                 lines.append(f"    {payload_var}->qf_{fld.name} = {val_str};")
         d_name = self.record_ctx.offset_dict_instance_name(mod_rec_t, mod_rec_t)
         lines.append(
-            f"    qv_{clean_mod} = (QRecordVal){{ .val = (void *){payload_var}, "
+            f"    {module_record_ident(clean_mod)} = (QRecordVal){{ .val = (void *){payload_var}, "
             f".dict = (const void *)&{d_name} }};"
         )
         lines.append("}")

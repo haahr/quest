@@ -13,6 +13,7 @@ from quest.codegen.c_types import (
     mangle_module_ident,
     mangle_module_name,
     normalize_type,
+    module_record_ident,
     option_struct_name,
     record_struct_name,
     tuple_struct_name,
@@ -116,14 +117,14 @@ class CDeclarationEmitter:
             for mod in analysis.sorted_modules:
                 clean_mod = mangle_module_name(mod.name)
                 if getattr(mod, "is_precompiled", False):
-                    lines.append(f"extern QRecordVal qv_{clean_mod};")
+                    lines.append(f"extern QRecordVal {module_record_ident(clean_mod)};")
                     lines.append(f"extern void qv_mod_{clean_mod}_init(void);")
                 elif has_precompiled:
-                    lines.append(f"QRecordVal qv_{clean_mod};")
+                    lines.append(f"QRecordVal {module_record_ident(clean_mod)};")
                     lines.append(f"static bool qv_mod_{clean_mod}_initialized = false;")
                     lines.append(f"void qv_mod_{clean_mod}_init(void);")
                 else:
-                    lines.append(f"static QRecordVal qv_{clean_mod};")
+                    lines.append(f"static QRecordVal {module_record_ident(clean_mod)};")
                     lines.append(f"static bool qv_mod_{clean_mod}_initialized = false;")
                     lines.append(f"static void qv_mod_{clean_mod}_init(void);")
             lines.append("")

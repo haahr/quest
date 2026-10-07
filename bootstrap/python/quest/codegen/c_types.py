@@ -113,6 +113,15 @@ def mangle_module_name(module_name: str) -> str:
     return module_name.lower().replace("/", "__").replace(".", "_")
 
 
+def module_record_ident(clean_mod: str) -> str:
+    """Returns the C identifier of a module's record value, given its mangled module name.
+
+    Module records use their own qm_ prefix: under qv_, the record of module m would be qv_m, which is
+    also the mangling of a user identifier m (for example, a top-level 'let real' and module 'real').
+    """
+    return f"qm_{clean_mod}"
+
+
 def mangle_module_ident(module_name: str, name: str) -> str:
     """Mangles a module-scoped Quest identifier into a C-safe identifier prefixed with qv_<mod>_."""
     clean_mod = mangle_module_name(module_name)
