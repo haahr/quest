@@ -14,8 +14,13 @@ from quest.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
 # ============================================================================
 
 class Construct:
-    """Base class for all PEG grammar constructs."""
+    """Base class for all PEG grammar constructs.
+
+    A silent construct must still match, but its result is not passed to the enclosing
+    rule's action or included in the enclosing sequence's result.
+    """
     can_match_empty: bool = False
+    silent: bool = False
 
     def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
         """Evaluates this construct against the parser at token position pos."""
@@ -26,8 +31,8 @@ class Construct:
 class MatchToken(Construct):
     """Matches a specific terminal TokenKind and optional lexeme."""
     kind: TokenKind
-    lexeme: Optional[str] = None
-    can_match_empty: bool = False
+    lexeme: Opt[str] = None
+    silent: bool = False
 
     def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
         token = parser._peek(pos)
@@ -62,15 +67,22 @@ class SyntaxTarget(Construct):
         return f"SyntaxTarget({self.name!r})"
 
 
+def _sequence_of(items: tuple[Construct, ...]) -> Construct:
+    """Returns a single construct as-is, or a Sequence of several."""
+    return items[0] if len(items) == 1 else Sequence(items)
+
+
 class Optional(Construct):
-    """Matches inner construct(s) 0 or 1 times: [...] in EBNF."""
+    """Matches inner construct(s) 0 or 1 times: [...] in EBNF.
+
+    Evaluates to the inner result, or None if the inner construct does not match. Since a
+    Sequence with one non-silent item yields that item, Optional(silent_keyword, X) is X or None.
+    """
     can_match_empty: bool = True
 
     def __init__(self, *items: Construct):
-        if len(items) == 1:
-            self.inner = items[0]
-        else:
-            self.inner = Sequence(items)
+        self.inner = _sequence_of(items)
+        self.silent = self.inner.silent
 
     def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
         result, new_pos = self.inner.evaluate(parser, pos)
@@ -87,10 +99,7 @@ class Repeated(Construct):
     can_match_empty: bool = True
 
     def __init__(self, *items: Construct):
-        if len(items) == 1:
-            self.inner = items[0]
-        else:
-            self.inner = Sequence(items)
+        self.inner = _sequence_of(items)
 
     def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
         results: list[Any] = []
@@ -108,28 +117,77 @@ class Repeated(Construct):
         return f"Repeated({self.inner!r})"
 
 
-@dataclass(frozen=True)
 class Sequence(Construct):
-    """Matches a sequence of constructs in order."""
-    items: tuple[Construct, ...]
-    can_match_empty: bool = False
+    """Matches a sequence of constructs in order.
 
-    def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
-        items: list[Any] = []
+    Evaluates to the results of its non-silent items: the result itself if there is exactly
+    one, otherwise a tuple of them. A sequence whose items are all silent is itself silent.
+    """
+
+    def __init__(self, items: tuple[Construct, ...]):
+        self.items = items
+        self.silent = all(item.silent for item in items)
+        self._single = sum(not item.silent for item in items) == 1
+
+    def match(self, parser: Parser, pos: int) -> tuple[Opt[list[Any]], int]:
+        """Matches all items, returning the non-silent results (or None on failure)."""
+        results: list[Any] = []
         current_pos = pos
         for item in self.items:
             result, current_pos = item.evaluate(parser, current_pos)
             if result is None and not item.can_match_empty:
                 return None, pos
-            items.append(result)
-        return tuple(items), current_pos
+            if not item.silent:
+                results.append(result)
+        return results, current_pos
+
+    def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
+        results, new_pos = self.match(parser, pos)
+        if results is None:
+            return None, pos
+        return (results[0] if self._single else tuple(results)), new_pos
+
+    def __repr__(self) -> str:
+        return f"Sequence({self.items!r})"
 
 
-@dataclass(frozen=True)
+class SepBy(Construct):
+    """Matches one or more items separated by a (silent) separator: item {sep item}.
+
+    Evaluates to a tuple of the item results. A trailing separator is not consumed.
+    """
+
+    def __init__(self, item: Construct, separator: Construct):
+        self.item = item
+        self.separator = separator
+
+    def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
+        result, current_pos = self.item.evaluate(parser, pos)
+        if result is None:
+            return None, pos
+        results = [result]
+        while True:
+            separator, after_separator = self.separator.evaluate(parser, current_pos)
+            if separator is None:
+                break
+            result, after_item = self.item.evaluate(parser, after_separator)
+            if result is None:
+                break
+            results.append(result)
+            current_pos = after_item
+        return tuple(results), current_pos
+
+    def __repr__(self) -> str:
+        return f"SepBy({self.item!r}, {self.separator!r})"
+
+
 class Rule:
-    """An alternative production rule with a callable semantic action builder."""
-    constructs: tuple[Construct, ...]
-    action: Callable[..., Any]
+    """An alternative production rule: a sequence and the semantic action applied to its
+    non-silent results."""
+
+    def __init__(self, constructs: tuple[Construct, ...], action: Callable[..., Any]):
+        self.sequence = Sequence(constructs)
+        self.action = action
 
 
 # ============================================================================
@@ -240,7 +298,7 @@ class Parser:
 
         for rule in target.rules:
             result, new_pos = self._evaluate_rule(rule, pos)
-            if result is not None or (result is not None and new_pos == pos):
+            if result is not None:
                 self.cache[key] = (result, new_pos)
                 return result, new_pos
 
@@ -248,14 +306,7 @@ class Parser:
         return None, pos
 
     def _evaluate_rule(self, rule: Rule, pos: int) -> tuple[Opt[Any], int]:
-        current_pos = pos
-        matched_arguments: list[Any] = []
-
-        for construct in rule.constructs:
-            result, current_pos = construct.evaluate(self, current_pos)
-            if result is None and not construct.can_match_empty:
-                return None, pos
-            matched_arguments.append(result)
-
-        node = rule.action(*matched_arguments)
-        return node, current_pos
+        arguments, new_pos = rule.sequence.match(self, pos)
+        if arguments is None:
+            return None, pos
+        return rule.action(*arguments), new_pos

@@ -23,6 +23,7 @@ from quest.parser import (
     SyntaxTarget,
     Optional,
     Repeated,
+    SepBy,
     Sequence,
     Rule,
 )
@@ -163,6 +164,7 @@ __all__ = [
     "SyntaxTarget",
     "Optional",
     "Repeated",
+    "SepBy",
     "Sequence",
     "Rule",
     "PROGRAM",

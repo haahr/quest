@@ -205,7 +205,7 @@ Let Decl = Node(DeclForm);
 The parser preserves the architecture of the Python implementation (`bootstrap/python/quest/parser.py` and
 `grammar.py`), separating:
 1. **Engine (`questlang/syntax/parser/engine`):** Generic PEG parser combinators (`MatchToken`, `SyntaxTarget`,
-   `Optional`, `Repeated`, `Sequence`) and packrat memoization tables.
+   `Optional`, `Repeated`, `Sequence`, `SepBy`, with silent tokens) and packrat memoization tables.
 2. **Rules (`questlang/syntax/parser/rules/*`):** Declarative definitions of grammar non-terminals and production rules.
 3. **Actions (`questlang/syntax/parser/actions/*`):** Semantic action callbacks that transform matched tokens and child
    nodes into concrete AST objects.

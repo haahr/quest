@@ -85,11 +85,18 @@ Unclosed block comments at EOF trigger an `Unclosed comment` diagnostic.
 
 ### 3.1. Parsing Expression Grammar (PEG) Framework
 The parser is constructed using composable PEG combinators defined in `bootstrap/python/quest/parser.py`:
-- `MatchToken(kind)`: Matches a single token kind.
-- `Sequence(*targets)`: Evaluates elements sequentially, rolling back on failure.
-- `Choice(*alternatives)`: Ordered choice with short-circuiting.
-- `Repeat(target, min_count)`: Evaluates target repeatedly.
-- `OptionalTarget(target)`: Matches 0 or 1 occurrences.
+- `SyntaxTarget(name)`: A non-terminal. Its rules are tried in order (ordered choice); each rule is a sequence of
+  constructs plus a semantic action called with the sequence's results. Results are memoized per position (packrat).
+- `MatchToken(kind, lexeme=None, silent=False)`: Matches a single token kind (and optionally an exact lexeme).
+- `Sequence(items)`: Matches items in order, rolling back on failure.
+- `Optional(*items)`: Matches 0 or 1 occurrences, yielding `None` when absent.
+- `Repeated(*items)`: Matches 0 or more occurrences, yielding a tuple.
+- `SepBy(item, separator)`: Matches one or more items separated by a separator, yielding a tuple of the items.
+
+A construct marked **silent** (punctuation and keywords whose token the action does not need, written `P(kind)` in
+`grammar.py`) must still match, but its result is left out of the action's arguments and of any enclosing sequence's
+result. A sequence with exactly one non-silent item yields that item itself rather than a 1-tuple, so a
+keyword-introduced optional clause such as `Optional(P(KW_WITH), VALUE)` yields the value or `None`.
 
 ### 3.2. Uniform Right-Associativity & Non-Overloaded Operators
 In Quest, all infix operators share uniform precedence and are strictly **right-associative**:

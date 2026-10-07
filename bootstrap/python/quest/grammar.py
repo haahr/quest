@@ -12,6 +12,7 @@ from quest.parser import (
     Parser,
     Repeated,
     Rule,
+    SepBy,
     SyntaxTarget,
 )
 import quest.ast as ast
@@ -241,19 +242,17 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
     return tuple(result)
 
 
-def _build_option_payload(with_binding: Any, offset: int) -> Optional[ast.Expr]:
-    """Processes phrases inside an option with clause into an expression payload."""
-    if not with_binding or len(with_binding) < 2 or not with_binding[1]:
+def _build_option_payload(with_bindings: Optional[tuple[Any, ...]], offset: int) -> Optional[ast.Expr]:
+    """Processes the phrases of an option's with clause (None if absent) into a payload."""
+    if not with_bindings:
         return None
-    items = with_binding[1]
-    if isinstance(items, tuple):
-        if len(items) == 1 and isinstance(items[0], ast.ExprStmt) and isinstance(items[0].expr, ast.ExprTuple):
-            return items[0].expr
-        fields = _process_tuple_bindings(items)
-        return ast.ExprTuple(fields=fields, offset=offset)
-    if isinstance(items, ast.Expr):
-        return items
-    return None
+    if (
+        len(with_bindings) == 1
+        and isinstance(with_bindings[0], ast.ExprStmt)
+        and isinstance(with_bindings[0].expr, ast.ExprTuple)
+    ):
+        return with_bindings[0].expr
+    return ast.ExprTuple(fields=_process_tuple_bindings(with_bindings), offset=offset)
 
 
 
@@ -281,7 +280,7 @@ def _build_curried_field_sig(
 ) -> tuple[ast.FieldSig, ...]:
     current_type: ast.Type = return_type
     for i in range(len(param_groups) - 1, -1, -1):
-        grp_sigs = param_groups[i][1]
+        grp_sigs = param_groups[i]
         current_type = ast.TypeAll(
             quantifiers=tuple(
                 ast.Quantifier(
@@ -318,11 +317,10 @@ def _build_curried_field_sig(
 
 def _build_curried_fun_expr(
     param_groups: tuple[Any, ...],
-    ret_type: Optional[tuple[Token, ast.Type]],
+    return_type_node: Optional[ast.Type],
     val_expr: ast.Expr,
     offset: int,
 ) -> ast.Expr:
-    return_type_node = ret_type[1] if ret_type else None
     if not param_groups:
         return ast.ExprFun(
             params=(),
@@ -333,7 +331,7 @@ def _build_curried_fun_expr(
         )
     current_body: ast.Expr = val_expr
     for i in range(len(param_groups) - 1, -1, -1):
-        grp_sigs = param_groups[i][1]
+        grp_sigs = param_groups[i]
         type_params = tuple(sig for sig in grp_sigs if isinstance(sig, ast.TypeFormal))
         value_params = tuple(
             ast.FormalParam(name=sig.name, type_annot=sig.type_sig, mode=sig.mode, offset=sig.offset)
@@ -355,10 +353,9 @@ def _build_curried_value_decl(
     var_token: Optional[Token],
     ident_token: Token,
     param_groups: tuple[Any, ...],
-    ret_type: Optional[tuple[Token, ast.Type]],
+    return_type_node: Optional[ast.Type],
     val_expr: ast.Expr,
 ) -> ast.LetValueBinding:
-    return_type_node = ret_type[1] if ret_type else None
     if not param_groups:
         return ast.LetValueBinding(
             name=ident_token.lexeme,
@@ -373,7 +370,7 @@ def _build_curried_value_decl(
     if return_type_node is not None:
         full_type_annot = return_type_node
         for i in range(len(param_groups) - 1, -1, -1):
-            grp_sigs = param_groups[i][1]
+            grp_sigs = param_groups[i]
             full_type_annot = ast.TypeAll(
                 quantifiers=tuple(
                     ast.Quantifier(
@@ -395,7 +392,7 @@ def _build_curried_value_decl(
 
     current_body: ast.Expr = val_expr
     for i in range(len(param_groups) - 1, -1, -1):
-        grp_sigs = param_groups[i][1]
+        grp_sigs = param_groups[i]
         type_params = tuple(sig for sig in grp_sigs if isinstance(sig, ast.TypeFormal))
         value_params = tuple(
             ast.FormalParam(name=sig.name, type_annot=sig.type_sig, mode=sig.mode, offset=sig.offset)
@@ -439,7 +436,7 @@ def _build_type_decl(
     kind_bound: Optional[ast.Kind],
     type_node: ast.Type,
 ) -> ast.LetTypeBinding:
-    all_formals = [formal for grp in param_groups for formal in grp[1]]
+    all_formals = [formal for grp in param_groups for formal in grp]
     type_fun = ast.TypeFun(
         params=tuple(all_formals),
         result_kind=kind_bound,
@@ -467,55 +464,48 @@ def build_quest_grammar() -> None:
     Opt = Optional
     Rep = Repeated
 
+    def P(kind: TokenKind, lexeme: str | None = None) -> MatchToken:
+        """A token that must match but is not passed to the rule's action (punctuation, etc.)."""
+        return MatchToken(kind, lexeme, silent=True)
+
     # ------------------------------------------------------------------------
     # Helper: Identifiers & Lists
     # ------------------------------------------------------------------------
     IDE.add_rule((T(TK.IDENT),), lambda ident_token: ident_token)
     IDE.add_rule((T(TK.SYMBOLIC_INFIX),), lambda token: token)
 
-    # ide , IdeList
+    # IdeList: ide {, ide}
     IDE_LIST.add_rule(
-        (IDE, T(TK.COMMA), IDE_LIST),
-        lambda ident_token, comma_token, rest: (ident_token.lexeme,) + rest,
+        (SepBy(IDE, P(TK.COMMA)),),
+        lambda ident_tokens: tuple(token.lexeme for token in ident_tokens),
     )
-    # ide
-    IDE_LIST.add_rule((IDE,), lambda ident_token: (ident_token.lexeme,))
 
-    # Path: ident / Path | ident
+    # Path: ident {/ ident}
     PATH.add_rule(
-        (T(TK.IDENT), T(TK.SYMBOLIC_INFIX, "/"), PATH),
-        lambda ident, slash, rest: f"{ident.lexeme}/{rest}",
+        (SepBy(T(TK.IDENT), P(TK.SYMBOLIC_INFIX, "/")),),
+        lambda ident_tokens: "/".join(token.lexeme for token in ident_tokens),
     )
-    PATH.add_rule((T(TK.IDENT),), lambda ident: ident.lexeme)
 
-    # PathList: Path , PathList | Path
-    PATH_LIST.add_rule(
-        (PATH, T(TK.COMMA), PATH_LIST),
-        lambda p, comma, rest: (p,) + rest,
-    )
-    PATH_LIST.add_rule((PATH,), lambda p: (p,))
+    # PathList: Path {, Path}
+    PATH_LIST.add_rule((SepBy(PATH, P(TK.COMMA)),), lambda paths: paths)
 
     # ModuleEntry: ident = Path | Path
     MODULE_ENTRY.add_rule(
-        (T(TK.IDENT), T(TK.EQUAL), PATH),
-        lambda ident, eq, path: (ident.lexeme, path),
+        (T(TK.IDENT), P(TK.EQUAL), PATH),
+        lambda ident, path: (ident.lexeme, path),
     )
     MODULE_ENTRY.add_rule((PATH,), lambda path: (path.split("/")[-1], path))
 
-    # ModuleEntryList: ModuleEntry , ModuleEntryList | ModuleEntry
-    MODULE_ENTRY_LIST.add_rule(
-        (MODULE_ENTRY, T(TK.COMMA), MODULE_ENTRY_LIST),
-        lambda m, comma, rest: (m,) + rest,
-    )
-    MODULE_ENTRY_LIST.add_rule((MODULE_ENTRY,), lambda m: (m,))
+    # ModuleEntryList: ModuleEntry {, ModuleEntry}
+    MODULE_ENTRY_LIST.add_rule((SepBy(MODULE_ENTRY, P(TK.COMMA)),), lambda entries: entries)
 
     # ------------------------------------------------------------------------
     # Kinds (Level 2)
     # ------------------------------------------------------------------------
     # ALL ( TypeSignature ) Kind
     KIND.add_rule(
-        (T(TK.KW_ALL_KIND), T(TK.LPAREN), SIGNATURE, T(TK.RPAREN), KIND),
-        lambda all_token, left_paren, signatures, right_paren, kind_body: _build_kind_all(
+        (T(TK.KW_ALL_KIND), T(TK.LPAREN), SIGNATURE, P(TK.RPAREN), KIND),
+        lambda all_token, left_paren, signatures, kind_body: _build_kind_all(
             all_token, left_paren, signatures, kind_body
         ),
     )
@@ -526,15 +516,15 @@ def build_quest_grammar() -> None:
     PRIMARY_KIND.add_rule((T(TK.KW_TYPE),), lambda type_token: ast.KindType(offset=type_token.offset))
     # POWER ( Type )
     PRIMARY_KIND.add_rule(
-        (T(TK.KW_POWER), T(TK.LPAREN), TYPE, T(TK.RPAREN)),
-        lambda power_token, left_paren, bound_type, right_paren: ast.KindPower(
+        (T(TK.KW_POWER), P(TK.LPAREN), TYPE, P(TK.RPAREN)),
+        lambda power_token, bound_type: ast.KindPower(
             bound=bound_type, offset=power_token.offset
         ),
     )
     # ide _ ide (Manifest kind)
     PRIMARY_KIND.add_rule(
-        (T(TK.IDENT), T(TK.UNDERSCORE), T(TK.IDENT)),
-        lambda interface_ident, underscore, kind_ident: ast.KindManifest(
+        (T(TK.IDENT), P(TK.UNDERSCORE), T(TK.IDENT)),
+        lambda interface_ident, kind_ident: ast.KindManifest(
             interface_name=interface_ident.lexeme,
             kind_name=kind_ident.lexeme,
             offset=interface_ident.offset,
@@ -546,10 +536,7 @@ def build_quest_grammar() -> None:
         lambda ident_token: ast.KindId(name=ident_token.lexeme, offset=ident_token.offset),
     )
     # { Kind }
-    PRIMARY_KIND.add_rule(
-        (T(TK.LBRACE), KIND, T(TK.RBRACE)),
-        lambda left_brace, inner_kind, right_brace: inner_kind,
-    )
+    PRIMARY_KIND.add_rule((P(TK.LBRACE), KIND, P(TK.RBRACE)), lambda inner_kind: inner_kind)
 
     # ------------------------------------------------------------------------
     # Types (Level 1)
@@ -569,23 +556,20 @@ def build_quest_grammar() -> None:
         lambda primary_type, operations: fold_type_postfix(primary_type, operations),
     )
 
+    POSTFIX_TYPE_OP.add_rule((P(TK.DOT), T(TK.IDENT)), lambda ident_token: ("dot", ident_token.lexeme))
     POSTFIX_TYPE_OP.add_rule(
-        (T(TK.DOT), T(TK.IDENT)),
-        lambda dot_token, ident_token: ("dot", ident_token.lexeme),
+        (P(TK.LPAREN), Opt(TYPE_BINDING), P(TK.RPAREN)),
+        lambda binding_payload: ("app", binding_payload),
     )
     POSTFIX_TYPE_OP.add_rule(
-        (T(TK.LPAREN), Opt(TYPE_BINDING), T(TK.RPAREN)),
-        lambda left_paren, binding_payload, right_paren: ("app", binding_payload),
-    )
-    POSTFIX_TYPE_OP.add_rule(
-        (T(TK.UNDERSCORE), T(TK.IDENT)),
-        lambda underscore, ident_token: ("manifest", ident_token.lexeme),
+        (P(TK.UNDERSCORE), T(TK.IDENT)),
+        lambda ident_token: ("manifest", ident_token.lexeme),
     )
 
     # All ( Signature ) Type
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_ALL), T(TK.LPAREN), SIGNATURE, T(TK.RPAREN), TYPE),
-        lambda all_token, left_paren, signatures, right_paren, result_type: ast.TypeAll(
+        (T(TK.KW_ALL), T(TK.LPAREN), SIGNATURE, P(TK.RPAREN), TYPE),
+        lambda all_token, left_paren, signatures, result_type: ast.TypeAll(
             quantifiers=tuple(
                 ast.Quantifier(
                     name=getattr(sig, "name", "_") or "_",
@@ -609,25 +593,25 @@ def build_quest_grammar() -> None:
     )
     # Tuple Signature end
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_TUPLE_TYPE), SIGNATURE, T(TK.KW_END)),
-        lambda tuple_token, signatures, end_token: ast.TypeTuple(fields=signatures, offset=tuple_token.offset),
+        (T(TK.KW_TUPLE_TYPE), SIGNATURE, P(TK.KW_END)),
+        lambda tuple_token, signatures: ast.TypeTuple(fields=signatures, offset=tuple_token.offset),
     )
     # Option OptionSignature end
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_OPTION_TYPE), OPTION_SIGNATURE, T(TK.KW_END)),
-        lambda option_token, option_signatures, end_token: ast.TypeOption(
+        (T(TK.KW_OPTION_TYPE), OPTION_SIGNATURE, P(TK.KW_END)),
+        lambda option_token, option_signatures: ast.TypeOption(
             variants=option_signatures, offset=option_token.offset
         ),
     )
     # Record ValueSignature end
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_RECORD_TYPE), VALUE_SIGNATURE, T(TK.KW_END)),
-        lambda record_token, signatures, end_token: ast.TypeRecord(fields=signatures, offset=record_token.offset),
+        (T(TK.KW_RECORD_TYPE), VALUE_SIGNATURE, P(TK.KW_END)),
+        lambda record_token, signatures: ast.TypeRecord(fields=signatures, offset=record_token.offset),
     )
     # Variant ValueSignature end
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_VARIANT_TYPE), VALUE_SIGNATURE, T(TK.KW_END)),
-        lambda variant_token, signatures, end_token: ast.TypeVariant(
+        (T(TK.KW_VARIANT_TYPE), VALUE_SIGNATURE, P(TK.KW_END)),
+        lambda variant_token, signatures: ast.TypeVariant(
             fields=tuple(
                 ast.VariantFieldSig(
                     tag=sig.name,
@@ -642,8 +626,8 @@ def build_quest_grammar() -> None:
     )
     # Auto [ide] HasKind with Signature end
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_AUTO_TYPE), Opt(T(TK.IDENT)), HAS_KIND, T(TK.KW_WITH), SIGNATURE, T(TK.KW_END)),
-        lambda auto_token, ident_token, kind_bound, with_token, signatures, end_token: ast.TypeAuto(
+        (T(TK.KW_AUTO_TYPE), Opt(T(TK.IDENT)), HAS_KIND, P(TK.KW_WITH), SIGNATURE, P(TK.KW_END)),
+        lambda auto_token, ident_token, kind_bound, signatures: ast.TypeAuto(
             type_param=ident_token.lexeme if ident_token else None,
             kind_bound=kind_bound,
             signature=signatures,
@@ -652,8 +636,8 @@ def build_quest_grammar() -> None:
     )
     # Fun ( TypeFormals ) [HasKind] Type
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_FUN_TYPE), T(TK.LPAREN), TYPE_FORMALS, T(TK.RPAREN), Opt(HAS_KIND), TYPE),
-        lambda fun_token, left_paren, formals, right_paren, kind_bound, body_type: ast.TypeFun(
+        (T(TK.KW_FUN_TYPE), P(TK.LPAREN), TYPE_FORMALS, P(TK.RPAREN), Opt(HAS_KIND), TYPE),
+        lambda fun_token, formals, kind_bound, body_type: ast.TypeFun(
             params=formals,
             result_kind=kind_bound,
             body=body_type,
@@ -662,8 +646,8 @@ def build_quest_grammar() -> None:
     )
     # Rec ( ide HasKind ) Type
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_REC_TYPE), T(TK.LPAREN), T(TK.IDENT), HAS_KIND, T(TK.RPAREN), TYPE),
-        lambda rec_token, left_paren, ident_token, kind_bound, right_paren, body_type: ast.TypeRec(
+        (T(TK.KW_REC_TYPE), P(TK.LPAREN), T(TK.IDENT), HAS_KIND, P(TK.RPAREN), TYPE),
+        lambda rec_token, ident_token, kind_bound, body_type: ast.TypeRec(
             var_name=ident_token.lexeme,
             bound=kind_bound,
             body=body_type,
@@ -672,29 +656,29 @@ def build_quest_grammar() -> None:
     )
     # Array ( Type )
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_ARRAY_TYPE), T(TK.LPAREN), TYPE, T(TK.RPAREN)),
-        lambda array_token, left_paren, element_type, right_paren: ast.TypeArray(
+        (T(TK.KW_ARRAY_TYPE), P(TK.LPAREN), TYPE, P(TK.RPAREN)),
+        lambda array_token, element_type: ast.TypeArray(
             element_type=element_type, offset=array_token.offset
         ),
     )
     # Var ( Type )
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_VAR_TYPE), T(TK.LPAREN), TYPE, T(TK.RPAREN)),
-        lambda var_token, left_paren, element_type, right_paren: ast.TypeVar(
+        (T(TK.KW_VAR_TYPE), P(TK.LPAREN), TYPE, P(TK.RPAREN)),
+        lambda var_token, element_type: ast.TypeVar(
             element_type=element_type, offset=var_token.offset
         ),
     )
     # Out ( Type )
     PRIMARY_TYPE.add_rule(
-        (T(TK.KW_OUT_TYPE), T(TK.LPAREN), TYPE, T(TK.RPAREN)),
-        lambda out_token, left_paren, element_type, right_paren: ast.TypeOut(
+        (T(TK.KW_OUT_TYPE), P(TK.LPAREN), TYPE, P(TK.RPAREN)),
+        lambda out_token, element_type: ast.TypeOut(
             element_type=element_type, offset=out_token.offset
         ),
     )
     # ide _ ide (Manifest type)
     PRIMARY_TYPE.add_rule(
-        (T(TK.IDENT), T(TK.UNDERSCORE), T(TK.IDENT)),
-        lambda module_ident, underscore, type_ident: ast.TypeManifest(
+        (T(TK.IDENT), P(TK.UNDERSCORE), T(TK.IDENT)),
+        lambda module_ident, type_ident: ast.TypeManifest(
             module_name=module_ident.lexeme,
             type_name=type_ident.lexeme,
             offset=module_ident.offset,
@@ -710,14 +694,14 @@ def build_quest_grammar() -> None:
         lambda exc_token: ast.TypePath(path=("Exception",), offset=exc_token.offset),
     )
     PRIMARY_TYPE.add_rule(
-        (T(TK.LBRACE), T(TK.SYMBOLIC_INFIX), T(TK.RBRACE)),
-        lambda left_brace, token, right_brace: ast.TypePath(
+        (P(TK.LBRACE), T(TK.SYMBOLIC_INFIX), P(TK.RBRACE)),
+        lambda token: ast.TypePath(
             path=(token.lexeme,), offset=token.offset
         ),
     )
     PRIMARY_TYPE.add_rule(
-        (T(TK.SYMBOLIC_INFIX), T(TK.LPAREN), Opt(TYPE_BINDING), T(TK.RPAREN)),
-        lambda token, left_paren, binding_payload, right_paren: ast.TypeApp(
+        (T(TK.SYMBOLIC_INFIX), P(TK.LPAREN), Opt(TYPE_BINDING), P(TK.RPAREN)),
+        lambda token, binding_payload: ast.TypeApp(
             constructor=ast.TypePath(path=(token.lexeme,), offset=token.offset),
             arguments=(
                 binding_payload
@@ -728,10 +712,7 @@ def build_quest_grammar() -> None:
         ),
     )
     # { Type }
-    PRIMARY_TYPE.add_rule(
-        (T(TK.LBRACE), TYPE, T(TK.RBRACE)),
-        lambda left_brace, inner_type, right_brace: inner_type,
-    )
+    PRIMARY_TYPE.add_rule((P(TK.LBRACE), TYPE, P(TK.RBRACE)), lambda inner_type: inner_type)
     # external "c_type"
     PRIMARY_TYPE.add_rule(
         (T(TK.KW_EXTERNAL), T(TK.STRING_LIT)),
@@ -751,10 +732,7 @@ def build_quest_grammar() -> None:
     )
 
     # DEF KindDecl
-    TYPE_SIGNATURE.add_rule(
-        (T(TK.KW_DEF_KIND), KIND_DECL),
-        lambda def_token, kind_declaration: kind_declaration,
-    )
+    TYPE_SIGNATURE.add_rule((P(TK.KW_DEF_KIND), KIND_DECL), lambda kind_declaration: kind_declaration)
     # Def [Rec] TypeDecl
     TYPE_SIGNATURE.add_rule(
         (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
@@ -777,7 +755,7 @@ def build_quest_grammar() -> None:
             Opt(T(TK.KW_VAR)),
             Opt(T(TK.KW_OUT)),
             IDE_LIST,
-            Rep(T(TK.LPAREN), SIGNATURE, T(TK.RPAREN)),
+            Rep(P(TK.LPAREN), SIGNATURE, P(TK.RPAREN)),
             T(TK.COLON),
             TYPE,
         ),
@@ -826,7 +804,7 @@ def build_quest_grammar() -> None:
 
     # [var] IdeList HasType (Record/Variant type signatures)
     VALUE_SIGNATURE.add_rule(
-        (Rep(Opt(T(TK.KW_VAR)), IDE_LIST, HAS_TYPE, Opt(T(TK.SEMICOLON))),),
+        (Rep(Opt(T(TK.KW_VAR)), IDE_LIST, HAS_TYPE, Opt(P(TK.SEMICOLON))),),
         lambda fields: tuple(
             ast.RecordFieldSig(name=name, type_sig=field[2], is_var=bool(field[0]), offset=field[2].offset)
             for field in fields
@@ -835,11 +813,11 @@ def build_quest_grammar() -> None:
     )
 
     OPTION_SIGNATURE.add_rule(
-        (Rep(IDE_LIST, Opt(T(TK.KW_WITH), SIGNATURE, T(TK.KW_END))),),
+        (Rep(IDE_LIST, Opt(P(TK.KW_WITH), SIGNATURE, P(TK.KW_END))),),
         lambda options: tuple(
             ast.OptionFieldSig(
                 tag=tag,
-                payload_sig=opt[1][1] if opt[1] else (),
+                payload_sig=opt[1] if opt[1] else (),
                 offset=0,
             )
             for opt in options
@@ -850,12 +828,8 @@ def build_quest_grammar() -> None:
     # ------------------------------------------------------------------------
     # Values and Expressions (Level 0)
     # ------------------------------------------------------------------------
-    INFIX_OP.add_rule((T(TK.SYMBOLIC_INFIX),), lambda token: token.lexeme)
-    INFIX_OP.add_rule((T(TK.KW_IS),), lambda token: "is")
-    INFIX_OP.add_rule((T(TK.KW_ISNOT),), lambda token: "isnot")
-    INFIX_OP.add_rule((T(TK.KW_ANDIF),), lambda token: "andif")
-    INFIX_OP.add_rule((T(TK.KW_ORIF),), lambda token: "orif")
-    INFIX_OP.add_rule((T(TK.ASSIGN),), lambda token: ":=")
+    for infix_kind in (TK.SYMBOLIC_INFIX, TK.KW_IS, TK.KW_ISNOT, TK.KW_ANDIF, TK.KW_ORIF, TK.ASSIGN):
+        INFIX_OP.add_rule((T(infix_kind),), lambda token: token.lexeme)
 
     # POSTFIX_VALUE [ InfixOp Value ]
     VALUE.add_rule(
@@ -872,39 +846,22 @@ def build_quest_grammar() -> None:
         lambda primary_expression, operations: fold_value_postfix(primary_expression, operations),
     )
 
+    POSTFIX_OP.add_rule((P(TK.DOT), T(TK.IDENT)), lambda ident_token: ("dot", ident_token.lexeme))
+    POSTFIX_OP.add_rule((P(TK.QUESTION), T(TK.IDENT)), lambda ident_token: ("question", ident_token.lexeme))
+    POSTFIX_OP.add_rule((P(TK.BANG), T(TK.IDENT)), lambda ident_token: ("bang", ident_token.lexeme))
     POSTFIX_OP.add_rule(
-        (T(TK.DOT), T(TK.IDENT)),
-        lambda dot_token, ident_token: ("dot", ident_token.lexeme),
+        (P(TK.LPAREN), Opt(BINDING), P(TK.RPAREN)),
+        lambda binding_payload: ("app", binding_payload),
     )
-    POSTFIX_OP.add_rule(
-        (T(TK.QUESTION), T(TK.IDENT)),
-        lambda question_token, ident_token: ("question", ident_token.lexeme),
-    )
-    POSTFIX_OP.add_rule(
-        (T(TK.BANG), T(TK.IDENT)),
-        lambda bang_token, ident_token: ("bang", ident_token.lexeme),
-    )
-    POSTFIX_OP.add_rule(
-        (T(TK.LPAREN), Opt(BINDING), T(TK.RPAREN)),
-        lambda left_paren, binding_payload, right_paren: ("app", binding_payload),
-    )
-    POSTFIX_OP.add_rule(
-        (T(TK.LBRACKET), VALUE, T(TK.RBRACKET)),
-        lambda left_bracket, index_expr, right_bracket: ("index", index_expr),
-    )
+    POSTFIX_OP.add_rule((P(TK.LBRACKET), VALUE, P(TK.RBRACKET)), lambda index_expr: ("index", index_expr))
     # Listfix application: f of(count init) and f of ... end
     POSTFIX_OP.add_rule(
-        (T(TK.KW_OF), T(TK.LPAREN), VALUE, VALUE, T(TK.RPAREN)),
-        lambda of_token, lp, cnt, init, rp: (
-            "listfix_rep",
-            cnt,
-            init,
-            of_token.offset,
-        ),
+        (T(TK.KW_OF), P(TK.LPAREN), VALUE, VALUE, P(TK.RPAREN)),
+        lambda of_token, cnt, init: ("listfix_rep", cnt, init, of_token.offset),
     )
     POSTFIX_OP.add_rule(
-        (T(TK.KW_OF), Opt(BINDING), T(TK.KW_END)),
-        lambda of_token, bindings, end_token: (
+        (T(TK.KW_OF), Opt(BINDING), P(TK.KW_END)),
+        lambda of_token, bindings: (
             "listfix_elements",
             bindings or (),
             of_token.offset,
@@ -944,13 +901,13 @@ def build_quest_grammar() -> None:
         (
             T(TK.KW_IF),
             VALUE,
-            Opt(T(TK.KW_THEN)),
+            Opt(P(TK.KW_THEN)),
             BINDING,
-            Rep(T(TK.KW_ELSIF), VALUE, Opt(T(TK.KW_THEN)), BINDING),
-            Opt(T(TK.KW_ELSE), BINDING),
-            T(TK.KW_END),
+            Rep(T(TK.KW_ELSIF), VALUE, Opt(P(TK.KW_THEN)), BINDING),
+            Opt(P(TK.KW_ELSE), BINDING),
+            P(TK.KW_END),
         ),
-        lambda if_token, condition, then_token, then_branch, elsifs, else_branch, end_token: ast.ExprIf(
+        lambda if_token, condition, then_branch, elsifs, else_branch: ast.ExprIf(
             cond=condition,
             then_branch=(
                 then_branch
@@ -964,12 +921,12 @@ def build_quest_grammar() -> None:
             elsifs=tuple(
                 (
                     branch[1],
-                    branch[3]
-                    if not isinstance(branch[3], tuple)
+                    branch[2]
+                    if not isinstance(branch[2], tuple)
                     else (
-                        branch[3][0]
-                        if len(branch[3]) == 1
-                        else ast.ExprBlock(bindings=branch[3], offset=branch[0].offset)
+                        branch[2][0]
+                        if len(branch[2]) == 1
+                        else ast.ExprBlock(bindings=branch[2], offset=branch[0].offset)
                     ),
                 )
                 for branch in elsifs
@@ -977,14 +934,14 @@ def build_quest_grammar() -> None:
             if elsifs
             else (),
             else_branch=(
-                else_branch[1]
-                if (else_branch and not isinstance(else_branch[1], tuple))
+                else_branch
+                if (else_branch is not None and not isinstance(else_branch, tuple))
                 else (
-                    else_branch[1][0]
-                    if (else_branch and len(else_branch[1]) == 1)
+                    else_branch[0]
+                    if (else_branch is not None and len(else_branch) == 1)
                     else (
-                        ast.ExprBlock(bindings=else_branch[1], offset=if_token.offset)
-                        if else_branch
+                        ast.ExprBlock(bindings=else_branch, offset=if_token.offset)
+                        if else_branch is not None
                         else None
                     )
                 )
@@ -995,8 +952,8 @@ def build_quest_grammar() -> None:
 
     # begin Binding end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_BEGIN), BINDING, T(TK.KW_END)),
-        lambda begin_token, bindings, end_token: ast.ExprBlock(
+        (T(TK.KW_BEGIN), BINDING, P(TK.KW_END)),
+        lambda begin_token, bindings: ast.ExprBlock(
             bindings=bindings if isinstance(bindings, tuple) else (bindings,),
             offset=begin_token.offset,
         ),
@@ -1004,8 +961,8 @@ def build_quest_grammar() -> None:
 
     # loop Binding end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_LOOP), BINDING, T(TK.KW_END)),
-        lambda loop_token, bindings, end_token: ast.ExprLoop(
+        (T(TK.KW_LOOP), BINDING, P(TK.KW_END)),
+        lambda loop_token, bindings: ast.ExprLoop(
             body=(
                 bindings[0]
                 if isinstance(bindings, tuple) and len(bindings) == 1
@@ -1020,8 +977,8 @@ def build_quest_grammar() -> None:
 
     # while Binding do Binding end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_WHILE), VALUE, T(TK.KW_DO), BINDING, T(TK.KW_END)),
-        lambda while_token, condition, do_token, body_bindings, end_token: ast.ExprWhile(
+        (T(TK.KW_WHILE), VALUE, P(TK.KW_DO), BINDING, P(TK.KW_END)),
+        lambda while_token, condition, body_bindings: ast.ExprWhile(
             cond=condition,
             body=(
                 body_bindings[0]
@@ -1040,18 +997,17 @@ def build_quest_grammar() -> None:
         (
             T(TK.KW_FOR),
             T(TK.IDENT),
-            T(TK.EQUAL),
+            P(TK.EQUAL),
             VALUE,
-            Opt(T(TK.KW_UPTO)),
+            Opt(P(TK.KW_UPTO)),
             Opt(T(TK.KW_DOWNTO)),
             VALUE,
-            T(TK.KW_DO),
+            P(TK.KW_DO),
             BINDING,
-            T(TK.KW_END),
+            P(TK.KW_END),
         ),
         (
-            lambda for_token, ident_token, equal_token, start_val, upto_token, downto_token,
-            stop_val, do_token, body_bindings, end_token: (
+            lambda for_token, ident_token, start_val, downto_token, stop_val, body_bindings: (
                 ast.ExprFor(
                     var_name=ident_token.lexeme,
                     start=start_val,
@@ -1073,7 +1029,7 @@ def build_quest_grammar() -> None:
 
     # fun { ( Signature ) } [: Type] Value
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_FUN), Rep(T(TK.LPAREN), SIGNATURE, T(TK.RPAREN)), Opt(T(TK.COLON), TYPE), VALUE),
+        (T(TK.KW_FUN), Rep(P(TK.LPAREN), SIGNATURE, P(TK.RPAREN)), Opt(P(TK.COLON), TYPE), VALUE),
         lambda fun_token, param_groups, return_type, body_expr: _build_curried_fun_expr(
             param_groups, return_type, body_expr, fun_token.offset
         ),
@@ -1081,8 +1037,8 @@ def build_quest_grammar() -> None:
 
     # tuple Binding end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_TUPLE), BINDING, T(TK.KW_END)),
-        lambda tuple_token, bindings, end_token: ast.ExprTuple(
+        (T(TK.KW_TUPLE), BINDING, P(TK.KW_END)),
+        lambda tuple_token, bindings: ast.ExprTuple(
             fields=_process_tuple_bindings(bindings),
             offset=tuple_token.offset,
         ),
@@ -1090,8 +1046,8 @@ def build_quest_grammar() -> None:
 
     # record ValueBinding end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_RECORD), VALUE_BINDING, T(TK.KW_END)),
-        lambda record_token, bindings, end_token: ast.ExprRecord(
+        (T(TK.KW_RECORD), VALUE_BINDING, P(TK.KW_END)),
+        lambda record_token, bindings: ast.ExprRecord(
             fields=bindings if isinstance(bindings, tuple) else (bindings,),
             offset=record_token.offset,
         ),
@@ -1099,24 +1055,24 @@ def build_quest_grammar() -> None:
 
     # array of ( Binding end | ( Value Value ) )
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_ARRAY), T(TK.KW_OF), T(TK.LPAREN), VALUE, VALUE, T(TK.RPAREN)),
-        lambda array_token, of_token, left_paren, count_expr, init_expr, right_paren: ast.ExprArrayRep(
+        (T(TK.KW_ARRAY), P(TK.KW_OF), P(TK.LPAREN), VALUE, VALUE, P(TK.RPAREN)),
+        lambda array_token, count_expr, init_expr: ast.ExprArrayRep(
             count=count_expr,
             init_val=init_expr,
             offset=array_token.offset,
         ),
     )
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_ARRAY), T(TK.KW_OF), Opt(BINDING), T(TK.KW_END)),
-        lambda array_token, of_token, bindings, end_token: (
+        (T(TK.KW_ARRAY), P(TK.KW_OF), Opt(BINDING), P(TK.KW_END)),
+        lambda array_token, bindings: (
             _build_array_expr(array_token.offset, bindings or ())
         ),
     )
 
     # option (ide | ordinal(Value)) of Type [with Binding] end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_OPTION), IDE, T(TK.KW_OF), TYPE, Opt(T(TK.KW_WITH), BINDING), T(TK.KW_END)),
-        lambda option_token, ide, of_token, option_type, with_binding, end_token: ast.ExprOption(
+        (T(TK.KW_OPTION), IDE, P(TK.KW_OF), TYPE, Opt(P(TK.KW_WITH), BINDING), P(TK.KW_END)),
+        lambda option_token, ide, option_type, with_binding: ast.ExprOption(
             tag=ide.lexeme if hasattr(ide, "lexeme") else str(ide),
             option_type=option_type,
             payload=_build_option_payload(with_binding, option_token.offset),
@@ -1126,16 +1082,16 @@ def build_quest_grammar() -> None:
     PRIMARY_VALUE.add_rule(
         (
             T(TK.KW_OPTION),
-            T(TK.KW_ORDINAL),
-            T(TK.LPAREN),
+            P(TK.KW_ORDINAL),
+            P(TK.LPAREN),
             VALUE,
-            T(TK.RPAREN),
-            T(TK.KW_OF),
+            P(TK.RPAREN),
+            P(TK.KW_OF),
             TYPE,
-            Opt(T(TK.KW_WITH), BINDING),
-            T(TK.KW_END),
+            Opt(P(TK.KW_WITH), BINDING),
+            P(TK.KW_END),
         ),
-        lambda option_token, ord_token, lp, ord_val, rp, of_token, option_type, with_binding, end_token: ast.ExprOption(
+        lambda option_token, ord_val, option_type, with_binding: ast.ExprOption(
             tag=None,
             option_type=option_type,
             payload=_build_option_payload(with_binding, option_token.offset),
@@ -1150,16 +1106,16 @@ def build_quest_grammar() -> None:
             T(TK.KW_VARIANT),
             Opt(T(TK.KW_VAR)),
             T(TK.IDENT),
-            T(TK.KW_OF),
+            P(TK.KW_OF),
             TYPE,
-            Opt(T(TK.KW_WITH), VALUE),
-            T(TK.KW_END),
+            Opt(P(TK.KW_WITH), VALUE),
+            P(TK.KW_END),
         ),
-        lambda variant_token, var_token, ident_token, of_token, variant_type, with_val, end_token: ast.ExprVariant(
+        lambda variant_token, var_token, ident_token, variant_type, payload: ast.ExprVariant(
             tag=ident_token.lexeme,
             variant_type=variant_type,
             is_var=bool(var_token),
-            payload=with_val[1] if with_val else None,
+            payload=payload,
             offset=variant_token.offset,
         ),
     )
@@ -1186,8 +1142,8 @@ def build_quest_grammar() -> None:
 
     # case Binding CaseBranches end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_CASE), VALUE, CASE_BRANCHES, T(TK.KW_END)),
-        lambda case_token, target_expr, branches, end_token: ast.ExprCase(
+        (T(TK.KW_CASE), VALUE, CASE_BRANCHES, P(TK.KW_END)),
+        lambda case_token, target_expr, branches: ast.ExprCase(
             target=target_expr,
             branches=branches[0],
             else_branch=branches[1],
@@ -1197,8 +1153,8 @@ def build_quest_grammar() -> None:
 
     # inspect Binding InspectBranches end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_INSPECT), VALUE, INSPECT_BRANCHES, T(TK.KW_END)),
-        lambda inspect_token, target_expr, branches, end_token: ast.ExprInspect(
+        (T(TK.KW_INSPECT), VALUE, INSPECT_BRANCHES, P(TK.KW_END)),
+        lambda inspect_token, target_expr, branches: ast.ExprInspect(
             target=target_expr,
             branches=branches[0],
             else_branch=branches[1],
@@ -1208,29 +1164,29 @@ def build_quest_grammar() -> None:
 
     # exception ide [: Type] end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_EXCEPTION), T(TK.IDENT), Opt(T(TK.COLON), TYPE), T(TK.KW_END)),
-        lambda exc_token, ident_token, type_annot, end_token: ast.ExprException(
+        (T(TK.KW_EXCEPTION), T(TK.IDENT), Opt(P(TK.COLON), TYPE), P(TK.KW_END)),
+        lambda exc_token, ident_token, type_annot: ast.ExprException(
             name=ident_token.lexeme,
-            type_annot=type_annot[1] if type_annot else None,
+            type_annot=type_annot,
             offset=exc_token.offset,
         ),
     )
 
     # raise Value [with Value] [as Type] end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_RAISE), VALUE, Opt(T(TK.KW_WITH), VALUE), Opt(T(TK.KW_AS), TYPE), T(TK.KW_END)),
-        lambda raise_token, exc_expr, with_val, as_type, end_token: ast.ExprRaise(
+        (T(TK.KW_RAISE), VALUE, Opt(P(TK.KW_WITH), VALUE), Opt(P(TK.KW_AS), TYPE), P(TK.KW_END)),
+        lambda raise_token, exc_expr, payload, as_type: ast.ExprRaise(
             exc=exc_expr,
-            payload=with_val[1] if with_val else None,
-            as_type=as_type[1] if as_type else None,
+            payload=payload,
+            as_type=as_type,
             offset=raise_token.offset,
         ),
     )
 
     # try Binding TryBranches end
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_TRY), BINDING, TRY_BRANCHES, T(TK.KW_END)),
-        lambda try_token, body_bindings, branches, end_token: ast.ExprTry(
+        (T(TK.KW_TRY), BINDING, TRY_BRANCHES, P(TK.KW_END)),
+        lambda try_token, body_bindings, branches: ast.ExprTry(
             body=(
                 body_bindings[0]
                 if isinstance(body_bindings, tuple) and len(body_bindings) == 1
@@ -1247,8 +1203,8 @@ def build_quest_grammar() -> None:
 
     # var ( Value )
     PRIMARY_VALUE.add_rule(
-        (T(TK.KW_VAR), T(TK.LPAREN), VALUE, T(TK.RPAREN)),
-        lambda var_token, left_paren, cell_value, right_paren: ast.ExprVarCell(
+        (T(TK.KW_VAR), P(TK.LPAREN), VALUE, P(TK.RPAREN)),
+        lambda var_token, cell_value: ast.ExprVarCell(
             value=cell_value, offset=var_token.offset
         ),
     )
@@ -1266,15 +1222,15 @@ def build_quest_grammar() -> None:
     )
     # { infix } (Stand-alone infix identifier, e.g. {+})
     PRIMARY_VALUE.add_rule(
-        (T(TK.LBRACE), T(TK.SYMBOLIC_INFIX), T(TK.RBRACE)),
-        lambda left_brace, token, right_brace: ast.ExprId(
+        (P(TK.LBRACE), T(TK.SYMBOLIC_INFIX), P(TK.RBRACE)),
+        lambda token: ast.ExprId(
             name=token.lexeme, offset=token.offset
         ),
     )
     # prefix infix application: +(x y)
     PRIMARY_VALUE.add_rule(
-        (T(TK.SYMBOLIC_INFIX), T(TK.LPAREN), Opt(BINDING), T(TK.RPAREN)),
-        lambda token, left_paren, binding_payload, right_paren: ast.ExprApp(
+        (T(TK.SYMBOLIC_INFIX), P(TK.LPAREN), Opt(BINDING), P(TK.RPAREN)),
+        lambda token, binding_payload: ast.ExprApp(
             func=ast.ExprId(name=token.lexeme, offset=token.offset),
             args=tuple(
                 argument.expr if isinstance(argument, ast.ExprStmt) else argument
@@ -1289,10 +1245,7 @@ def build_quest_grammar() -> None:
     )
 
     # { Value }
-    PRIMARY_VALUE.add_rule(
-        (T(TK.LBRACE), VALUE, T(TK.RBRACE)),
-        lambda left_brace, inner_expr, right_brace: inner_expr,
-    )
+    PRIMARY_VALUE.add_rule((P(TK.LBRACE), VALUE, P(TK.RBRACE)), lambda inner_expr: inner_expr)
 
     # Monadic Operators: not, extent, ordinal (Cardelli §4.2, §4.3, §4.5)
     PRIMARY_VALUE.add_rule(
@@ -1336,8 +1289,8 @@ def build_quest_grammar() -> None:
     # Bindings (Inside Blocks, Tuples, Phrases)
     # ------------------------------------------------------------------------
     BINDING.add_rule(
-        (Rep(PHRASE, Opt(T(TK.SEMICOLON))),),
-        lambda phrases: tuple(phrase[0] for phrase in phrases) if phrases else (),
+        (Rep(PHRASE, Opt(P(TK.SEMICOLON))),),
+        lambda phrases: phrases,
     )
 
     TYPE_BINDING.add_rule(
@@ -1346,11 +1299,11 @@ def build_quest_grammar() -> None:
     )
 
     VALUE_BINDING.add_rule(
-        (Rep(Opt(T(TK.KW_VAR)), T(TK.IDENT), T(TK.EQUAL), VALUE, Opt(T(TK.SEMICOLON))),),
+        (Rep(Opt(T(TK.KW_VAR)), T(TK.IDENT), P(TK.EQUAL), VALUE, Opt(P(TK.SEMICOLON))),),
         lambda items: tuple(
             ast.RecordBinding(
                 name=item[1].lexeme,
-                value=item[3],
+                value=item[2],
                 is_var=bool(item[0]),
                 offset=item[1].offset,
             )
@@ -1362,15 +1315,15 @@ def build_quest_grammar() -> None:
     # Declarations
     # ------------------------------------------------------------------------
     KIND_DECL.add_rule(
-        (IDE, T(TK.EQUAL), KIND),
-        lambda ident_token, equal_token, kind_node: ast.DefKindBinding(
+        (IDE, P(TK.EQUAL), KIND),
+        lambda ident_token, kind_node: ast.DefKindBinding(
             name=ident_token.lexeme, kind_val=kind_node, offset=ident_token.offset
         ),
     )
 
     TYPE_DECL.add_rule(
-        (IDE, Rep(T(TK.LPAREN), TYPE_FORMALS, T(TK.RPAREN)), Opt(HAS_KIND), T(TK.EQUAL), TYPE),
-        lambda ident_token, param_groups, kind_bound, equal_token, type_node: (
+        (IDE, Rep(P(TK.LPAREN), TYPE_FORMALS, P(TK.RPAREN)), Opt(HAS_KIND), P(TK.EQUAL), TYPE),
+        lambda ident_token, param_groups, kind_bound, type_node: (
             _build_type_decl(ident_token, param_groups, kind_bound, type_node)
             if param_groups
             else ast.LetTypeBinding(
@@ -1386,12 +1339,12 @@ def build_quest_grammar() -> None:
         (
             Opt(T(TK.KW_VAR)),
             IDE,
-            Rep(T(TK.LPAREN), SIGNATURE, T(TK.RPAREN)),
-            Opt(T(TK.COLON), TYPE),
-            T(TK.EQUAL),
+            Rep(P(TK.LPAREN), SIGNATURE, P(TK.RPAREN)),
+            Opt(P(TK.COLON), TYPE),
+            P(TK.EQUAL),
             VALUE,
         ),
-        lambda var_token, ident_token, param_groups, ret_type, equal_token, val_expr: (
+        lambda var_token, ident_token, param_groups, ret_type, val_expr: (
             _build_curried_value_decl(var_token, ident_token, param_groups, ret_type, val_expr)
         ),
     )
@@ -1404,23 +1357,23 @@ def build_quest_grammar() -> None:
             Rep(
                 T(TK.KW_WHEN),
                 IDE_LIST,
-                Opt(T(TK.KW_WITH), T(TK.IDENT), Opt(T(TK.COLON), TYPE)),
-                T(TK.KW_THEN),
+                Opt(P(TK.KW_WITH), T(TK.IDENT), Opt(P(TK.COLON), TYPE)),
+                P(TK.KW_THEN),
                 BINDING,
             ),
-            Opt(T(TK.KW_ELSE), BINDING),
+            Opt(P(TK.KW_ELSE), BINDING),
         ),
         lambda branches, else_branch: (
             tuple(
                 ast.CaseBranch(
                     tags=branch[1],
-                    binder=branch[2][1].lexeme if branch[2] else None,
-                    binder_type=branch[2][2][1] if branch[2] and branch[2][2] else None,
+                    binder=branch[2][0].lexeme if branch[2] else None,
+                    binder_type=branch[2][1] if branch[2] else None,
                     body=(
-                        branch[4][0]
-                        if isinstance(branch[4], tuple) and len(branch[4]) == 1
+                        branch[3][0]
+                        if isinstance(branch[3], tuple) and len(branch[3]) == 1
                         else ast.ExprBlock(
-                            bindings=branch[4] if isinstance(branch[4], tuple) else (branch[4],),
+                            bindings=branch[3] if isinstance(branch[3], tuple) else (branch[3],),
                             offset=branch[0].offset,
                         )
                     ),
@@ -1429,14 +1382,11 @@ def build_quest_grammar() -> None:
                 for branch in branches
             ),
             (
-                else_branch[1][0]
-                if (else_branch and isinstance(else_branch[1], tuple) and len(else_branch[1]) == 1)
+                else_branch[0]
+                if (else_branch is not None and len(else_branch) == 1)
                 else (
-                    ast.ExprBlock(
-                        bindings=else_branch[1] if isinstance(else_branch[1], tuple) else (else_branch[1],),
-                        offset=0,
-                    )
-                    if else_branch
+                    ast.ExprBlock(bindings=else_branch, offset=0)
+                    if else_branch is not None
                     else None
                 )
             ),
@@ -1448,26 +1398,26 @@ def build_quest_grammar() -> None:
             Rep(
                 T(TK.KW_WHEN),
                 TYPE,
-                Opt(T(TK.KW_WITH), IDE_LIST, Opt(T(TK.COLON), TYPE)),
-                T(TK.KW_THEN),
+                Opt(P(TK.KW_WITH), IDE_LIST, Opt(P(TK.COLON), TYPE)),
+                P(TK.KW_THEN),
                 BINDING,
             ),
-            Opt(T(TK.KW_ELSE), BINDING),
+            Opt(P(TK.KW_ELSE), BINDING),
         ),
         lambda branches, else_branch: (
             tuple(
                 ast.InspectBranch(
                     match_type=branch[1],
                     binders=(
-                        tuple((name, branch[2][2][1] if branch[2][2] else None) for name in branch[2][1])
+                        tuple((name, branch[2][1]) for name in branch[2][0])
                         if branch[2]
                         else ()
                     ),
                     body=(
-                        branch[4][0]
-                        if isinstance(branch[4], tuple) and len(branch[4]) == 1
+                        branch[3][0]
+                        if isinstance(branch[3], tuple) and len(branch[3]) == 1
                         else ast.ExprBlock(
-                            bindings=branch[4] if isinstance(branch[4], tuple) else (branch[4],),
+                            bindings=branch[3] if isinstance(branch[3], tuple) else (branch[3],),
                             offset=branch[0].offset,
                         )
                     ),
@@ -1476,14 +1426,11 @@ def build_quest_grammar() -> None:
                 for branch in branches
             ),
             (
-                else_branch[1][0]
-                if (else_branch and isinstance(else_branch[1], tuple) and len(else_branch[1]) == 1)
+                else_branch[0]
+                if (else_branch is not None and len(else_branch) == 1)
                 else (
-                    ast.ExprBlock(
-                        bindings=else_branch[1] if isinstance(else_branch[1], tuple) else (else_branch[1],),
-                        offset=0,
-                    )
-                    if else_branch
+                    ast.ExprBlock(bindings=else_branch, offset=0)
+                    if else_branch is not None
                     else None
                 )
             ),
@@ -1495,23 +1442,23 @@ def build_quest_grammar() -> None:
             Rep(
                 T(TK.KW_WHEN),
                 VALUE,
-                Opt(T(TK.KW_WITH), T(TK.IDENT), Opt(T(TK.COLON), TYPE)),
-                T(TK.KW_THEN),
+                Opt(P(TK.KW_WITH), T(TK.IDENT), Opt(P(TK.COLON), TYPE)),
+                P(TK.KW_THEN),
                 BINDING,
             ),
-            Opt(T(TK.KW_ELSE), BINDING),
+            Opt(P(TK.KW_ELSE), BINDING),
         ),
         lambda branches, else_branch: (
             tuple(
                 ast.TryBranch(
                     exc_pattern=branch[1],
-                    binder=branch[2][1].lexeme if branch[2] else None,
-                    binder_type=branch[2][2][1] if branch[2] and branch[2][2] else None,
+                    binder=branch[2][0].lexeme if branch[2] else None,
+                    binder_type=branch[2][1] if branch[2] else None,
                     body=(
-                        branch[4][0]
-                        if isinstance(branch[4], tuple) and len(branch[4]) == 1
+                        branch[3][0]
+                        if isinstance(branch[3], tuple) and len(branch[3]) == 1
                         else ast.ExprBlock(
-                            bindings=branch[4] if isinstance(branch[4], tuple) else (branch[4],),
+                            bindings=branch[3] if isinstance(branch[3], tuple) else (branch[3],),
                             offset=branch[0].offset,
                         )
                     ),
@@ -1520,14 +1467,11 @@ def build_quest_grammar() -> None:
                 for branch in branches
             ),
             (
-                else_branch[1][0]
-                if (else_branch and isinstance(else_branch[1], tuple) and len(else_branch[1]) == 1)
+                else_branch[0]
+                if (else_branch is not None and len(else_branch) == 1)
                 else (
-                    ast.ExprBlock(
-                        bindings=else_branch[1] if isinstance(else_branch[1], tuple) else (else_branch[1],),
-                        offset=0,
-                    )
-                    if else_branch
+                    ast.ExprBlock(bindings=else_branch, offset=0)
+                    if else_branch is not None
                     else None
                 )
             ),
@@ -1537,12 +1481,12 @@ def build_quest_grammar() -> None:
     # ------------------------------------------------------------------------
     # HasType / HasMutType / HasKind
     # ------------------------------------------------------------------------
-    HAS_TYPE.add_rule((T(TK.COLON), TYPE), lambda colon_token, type_node: type_node)
+    HAS_TYPE.add_rule((P(TK.COLON), TYPE), lambda type_node: type_node)
 
     # : Var ( Type )
     HAS_MUT_TYPE.add_rule(
-        (T(TK.COLON), T(TK.KW_VAR_TYPE), T(TK.LPAREN), TYPE, T(TK.RPAREN)),
-        lambda colon, var_tok, lp, type_node, rp: ast.FieldSig(
+        (T(TK.COLON), P(TK.KW_VAR_TYPE), P(TK.LPAREN), TYPE, P(TK.RPAREN)),
+        lambda colon, type_node: ast.FieldSig(
             name=None,
             type_sig=type_node,
             mode=ast.ParamMode.VAR,
@@ -1551,8 +1495,8 @@ def build_quest_grammar() -> None:
     )
     # : Out ( Type )
     HAS_MUT_TYPE.add_rule(
-        (T(TK.COLON), T(TK.KW_OUT_TYPE), T(TK.LPAREN), TYPE, T(TK.RPAREN)),
-        lambda colon, out_tok, lp, type_node, rp: ast.FieldSig(
+        (T(TK.COLON), P(TK.KW_OUT_TYPE), P(TK.LPAREN), TYPE, P(TK.RPAREN)),
+        lambda colon, type_node: ast.FieldSig(
             name=None,
             type_sig=type_node,
             mode=ast.ParamMode.OUT,
@@ -1561,8 +1505,8 @@ def build_quest_grammar() -> None:
     )
     # var : Type
     HAS_MUT_TYPE.add_rule(
-        (T(TK.KW_VAR), T(TK.COLON), TYPE),
-        lambda var_tok, colon, type_node: ast.FieldSig(
+        (T(TK.KW_VAR), P(TK.COLON), TYPE),
+        lambda var_tok, type_node: ast.FieldSig(
             name=None,
             type_sig=type_node,
             mode=ast.ParamMode.VAR,
@@ -1571,8 +1515,8 @@ def build_quest_grammar() -> None:
     )
     # out : Type
     HAS_MUT_TYPE.add_rule(
-        (T(TK.KW_OUT), T(TK.COLON), TYPE),
-        lambda out_tok, colon, type_node: ast.FieldSig(
+        (T(TK.KW_OUT), P(TK.COLON), TYPE),
+        lambda out_tok, type_node: ast.FieldSig(
             name=None,
             type_sig=type_node,
             mode=ast.ParamMode.OUT,
@@ -1594,7 +1538,7 @@ def build_quest_grammar() -> None:
         (T(TK.SUBTYPE), TYPE),
         lambda subtype_token, bound_type: ast.KindPower(bound=bound_type, offset=subtype_token.offset),
     )
-    HAS_KIND.add_rule((T(TK.COLON_COLON), KIND), lambda colon_colon, kind_node: kind_node)
+    HAS_KIND.add_rule((P(TK.COLON_COLON), KIND), lambda kind_node: kind_node)
 
     # ------------------------------------------------------------------------
     # Phrases & Program (Top Level)
@@ -1605,15 +1549,15 @@ def build_quest_grammar() -> None:
             Opt(T(TK.KW_UNSOUND)),
             T(TK.KW_INTERFACE),
             T(TK.IDENT),
-            Opt(T(TK.KW_IMPORT), IMPORT),
-            T(TK.KW_EXPORT),
+            Opt(P(TK.KW_IMPORT), IMPORT),
+            P(TK.KW_EXPORT),
             SIGNATURE,
-            T(TK.KW_END),
+            P(TK.KW_END),
         ),
-        lambda unsound, if_token, ident_token, imports_seq, export_token, signatures, end_token: ast.InterfaceDecl(
+        lambda unsound, if_token, ident_token, imports, signatures: ast.InterfaceDecl(
             name=ident_token.lexeme,
             signatures=signatures if isinstance(signatures, tuple) else (signatures,),
-            imports=imports_seq[1] if imports_seq else (),
+            imports=imports if imports is not None else (),
             is_unsound=bool(unsound),
             offset=if_token.offset,
         ),
@@ -1624,21 +1568,20 @@ def build_quest_grammar() -> None:
             Opt(T(TK.KW_UNSOUND)),
             T(TK.KW_MODULE),
             T(TK.IDENT),
-            T(TK.COLON),
+            P(TK.COLON),
             PATH,
-            Opt(T(TK.KW_IMPORT), IMPORT),
-            T(TK.KW_EXPORT),
+            Opt(P(TK.KW_IMPORT), IMPORT),
+            P(TK.KW_EXPORT),
             BINDING,
-            T(TK.KW_END),
+            P(TK.KW_END),
         ),
         (
-            lambda unsound, module_token, ident_token, colon_token, interface_path,
-            imports_seq, export_token, bindings, end_token: (
+            lambda unsound, module_token, ident_token, interface_path, imports, bindings: (
                 ast.ModuleDecl(
                     name=ident_token.lexeme,
                     interface_name=interface_path,
                     bindings=bindings if isinstance(bindings, tuple) else (bindings,),
-                    imports=imports_seq[1] if imports_seq else (),
+                    imports=imports if imports is not None else (),
                     is_unsound=bool(unsound),
                     offset=module_token.offset,
                 )
@@ -1684,10 +1627,7 @@ def build_quest_grammar() -> None:
         ),
     )
     # DEF KindDecl
-    PHRASE.add_rule(
-        (T(TK.KW_DEF_KIND), KIND_DECL),
-        lambda def_token, kind_declaration: kind_declaration,
-    )
+    PHRASE.add_rule((P(TK.KW_DEF_KIND), KIND_DECL), lambda kind_declaration: kind_declaration)
     # Def [Rec] TypeDecl
     PHRASE.add_rule(
         (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
@@ -1733,8 +1673,8 @@ def build_quest_grammar() -> None:
 
     # 1. Dual alias with =: r1, r2 : Rnd = p1, p2 : IfacePath
     IMPORT_ITEM.add_rule(
-        (IDE_LIST, T(TK.COLON), T(TK.IDENT), T(TK.EQUAL), PATH_LIST, T(TK.COLON), PATH),
-        lambda ides, col1, iface_ident, eq, paths, col2, iface_path: ast.ImportItem(
+        (IDE_LIST, T(TK.COLON), T(TK.IDENT), P(TK.EQUAL), PATH_LIST, P(TK.COLON), PATH),
+        lambda ides, col1, iface_ident, paths, iface_path: ast.ImportItem(
             names=ides,
             interface_name=iface_ident.lexeme,
             module_paths=paths,
@@ -1745,8 +1685,8 @@ def build_quest_grammar() -> None:
 
     # 2. Interface alias with module path: :Rnd = p1, p2 : IfacePath
     IMPORT_ITEM.add_rule(
-        (T(TK.COLON), T(TK.IDENT), T(TK.EQUAL), PATH_LIST, T(TK.COLON), PATH),
-        lambda col1, iface_ident, eq, paths, col2, iface_path: ast.ImportItem(
+        (T(TK.COLON), T(TK.IDENT), P(TK.EQUAL), PATH_LIST, P(TK.COLON), PATH),
+        lambda col1, iface_ident, paths, iface_path: ast.ImportItem(
             names=tuple(p.split("/")[-1] for p in paths),
             interface_name=iface_ident.lexeme,
             module_paths=paths,
@@ -1757,8 +1697,8 @@ def build_quest_grammar() -> None:
 
     # 3. Interface alias, interface-only: :Rnd = :IfacePath
     IMPORT_ITEM.add_rule(
-        (T(TK.COLON), T(TK.IDENT), T(TK.EQUAL), T(TK.COLON), PATH),
-        lambda col1, iface_ident, eq, col2, iface_path: ast.ImportItem(
+        (T(TK.COLON), T(TK.IDENT), P(TK.EQUAL), P(TK.COLON), PATH),
+        lambda col1, iface_ident, iface_path: ast.ImportItem(
             names=(),
             interface_name=iface_ident.lexeme,
             module_paths=None,
@@ -1799,15 +1739,15 @@ def build_quest_grammar() -> None:
     )
 
     IMPORT.add_rule(
-        (Rep(IMPORT_ITEM, Opt(T(TK.SEMICOLON))),),
-        lambda items: tuple(item[0] for item in items),
+        (Rep(IMPORT_ITEM, Opt(P(TK.SEMICOLON))),),
+        lambda items: items,
     )
 
     PROGRAM.add_rule(
-        (Rep(PHRASE, Opt(T(TK.SEMICOLON))),),
+        (Rep(PHRASE, Opt(P(TK.SEMICOLON))),),
         lambda phrases: ast.Program(
-            phrases=tuple(phrase[0] for phrase in phrases),
-            offset=phrases[0][0].offset if phrases else 0,
+            phrases=phrases,
+            offset=phrases[0].offset if phrases else 0,
         ),
     )
 
