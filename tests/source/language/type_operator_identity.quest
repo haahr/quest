@@ -1,0 +1,109 @@
+(* Identity comparisons (is, isnot) on values whose static types are unreduced type-operator
+   applications that reduce to Int and other scalar types, in variables, parameters, results,
+   array elements, tuple and record fields, and references. *)
+
+import arrayOp: ArrayOp;
+import writer: Writer;
+import conv: Conv;
+
+DEF Sel = ALL(X::TYPE) ALL(Y::TYPE) TYPE;
+Let Id(A::TYPE)::TYPE = A;
+Let True::Sel = Fun(X, Y::TYPE) X;
+Let False::Sel = Fun(X, Y::TYPE) Y;
+Let Cond(B::Sel X, Y::TYPE)::TYPE = B(X Y);
+Let IdArr(A::TYPE)::TYPE = Array(Id(A));
+Let Maybe(A::TYPE)::TYPE = Variant none: Ok some: A end;
+Let Opt(A::TYPE)::TYPE = Option none some with v: A end end;
+
+let wOut = writer.output;
+let check(name: String passed: Bool): Ok =
+    begin
+        writer.putString(wOut name);
+        writer.putString(wOut if passed then " ok\n" else " FAILED\n" end)
+    end;
+
+(* 1. Variables *)
+let x: Id(Int) = 3;
+let y: Cond(True Int String) = 3;
+let s: Cond(False Int String) = "s";
+let b: Id(Bool) = true;
+let c: Cond(True Char Int) = 'q';
+check("var-id" x is 3);
+check("var-cond" y is x);
+check("var-isnot" 4 isnot x);
+check("var-bool" b is true);
+check("var-char" c is 'q');
+let sum = x + y;
+check("var-sum" sum is 6);
+
+(* 2. Parameters and results *)
+let inc(n: Id(Int)): Cond(True Int String) = n + 1;
+let twice(n: Cond(True Int String)): Id(Int) = n * 2;
+let pick(B::Sel n: Cond(B Int Int)): Cond(B Int Int) = n;
+let idf(T::TYPE v: T): T = v;
+check("result" inc(x) is 4);
+check("param" twice(y) is 6);
+check("operator-param" pick(:True 5) is 5);
+check("poly" idf(:Id(Int) x) is 3);
+let apply(g(n: Id(Int)): Id(Int) v: Cond(True Int Bool)): Id(Int) = g(v);
+check("closure" apply(inc 9) is 10);
+
+(* 3. Array elements *)
+let arr: Array(Id(Int)) = array of 1 2 3 end;
+check("array-get" arr[1] is 2);
+arr[2] := 30;
+check("array-set" arr[2] is 30);
+let rep: IdArr(Cond(False String Int)) = array of(4 7);
+check("array-rep" rep[3] is 7);
+check("array-size" arrayOp.size(:Id(Int) rep) is 4);
+
+(* 4. Tuple and record fields *)
+let t: Tuple first: Id(Int) second: Cond(False String Int) end = tuple 5 6 end;
+check("tuple" t.second is 6);
+let r: Record a: Id(Int) var v: Cond(True Int Bool) end = record a = 8 var v = 9 end;
+check("record" r.a is 8);
+r.v := r.v + 1;
+check("record-var" r.v is 10);
+
+(* 5. References *)
+let bump(var n: Id(Int)): Ok = n := n + 1;
+let var cell: Cond(True Int String) = 1;
+bump(@cell);
+check("ref-var" cell is 2);
+bump(@arr[0]);
+check("ref-array" arr[0] is 2);
+
+(* 6. Other reduced types *)
+let half: Cond(False String Real) = 2.5;
+check("real" half is 2.5);
+let str: Id(String) = "abc";
+let str2 = str;
+check("string" str is str2);
+let whole: Id(Array(Int)) = array of 4 5 end;
+check("id-array" whole[1] is 5);
+let m: Maybe(Id(Int)) = variant some of Maybe(Id(Int)) with 11 end;
+check("variant-tag" m?some);
+check("variant-payload" m!some is 11);
+let unwrap(v: Maybe(Id(Int))): Id(Int) =
+    case v
+        when some with n then n
+        else 0
+    end;
+check("variant-case" unwrap(m) is 11);
+let var mv: Maybe(Cond(True Int Bool)) = variant none of Maybe(Int) with ok end;
+mv := m;
+check("variant-assign" unwrap(mv) is 11);
+let o = option some of Opt(Id(Int)) with tuple let v = 12 end end;
+check("option-tag" o?some);
+check("option-payload" o!some.v is 12);
+let optVal(p: Opt(Cond(True Int Bool))): Id(Int) =
+    case p
+        when some with t then t.v
+        else 0
+    end;
+check("option-case" optVal(o) is 12);
+
+writer.putString(wOut s);
+writer.putString(wOut " ");
+writer.putString(wOut conv.int(x + y));
+writer.putString(wOut "\n");

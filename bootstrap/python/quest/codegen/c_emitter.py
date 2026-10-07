@@ -1016,6 +1016,7 @@ class CEmitter:
 
     def _emit_array_get(self, c_arr: str, c_idx: str, elem_t: QType) -> str:
         """Emits C expression to extract an element of type elem_t from a QArray slot."""
+        elem_t = normalize_type(elem_t)
         if any(elem_t is p for p in (INT_TYPE, BOOL_TYPE, CHAR_TYPE)):
             return f"({c_arr}->data[{c_idx}].i)"
         elif elem_t is REAL_TYPE:
@@ -1048,6 +1049,7 @@ class CEmitter:
         lines: list[str],
     ) -> str:
         """Emits C expression to allocate and initialize a new array with wide record/variant support."""
+        target_elem_t = normalize_type(target_elem_t)
         if isinstance(target_elem_t, QRecordType) or resolve_record_bound(target_elem_t) is not None:
             c_init = self._coerce_val(c_init, init_expr, target_elem_t, lines)
             return f"quest_array_new_wide_record({c_sz}, {c_init})"
@@ -1068,6 +1070,7 @@ class CEmitter:
         lines: list[str],
     ) -> None:
         """Emits array bounds check and slot assignment with coercion or QVal wrapping."""
+        target_elem_t = normalize_type(target_elem_t)
         lines.append(f"quest_check_array_bounds({c_arr}, {c_idx});")
         if isinstance(target_elem_t, QRecordType) or resolve_record_bound(target_elem_t) is not None:
             c_val = self._coerce_val(c_val, val_expr, target_elem_t, lines)
@@ -2188,6 +2191,7 @@ class CEmitter:
                 target_t = tgt.type_val
                 if isinstance(target_t, (QVarType, QOutType)):
                     target_t = target_t.element_type
+                target_t = normalize_type(target_t)
                 if isinstance(tgt, TypedVar) and tgt.name in self.pointer_params:
                     c_name = self.current_env_vars.get(tgt.name, self.mangle_ident(tgt.name))
                     c_tgt = f"(*{c_name})"
@@ -2199,11 +2203,12 @@ class CEmitter:
                     lines.append(f"{c_tgt} = {coerced};")
                 elif (
                     isinstance(target_t, QVariantType)
-                    and isinstance(val.type_val, QVariantType)
-                    and val.type_val is not target_t
+                    and isinstance(val_t := normalize_type(val.type_val), QVariantType)
+                    and val_t is not target_t
+                    and not is_type_equal(val_t, target_t, self.env)
                 ):
                     c_val = self.emit_val(val, lines)
-                    self._emit_variant_upcast(c_val, val.type_val, target_t, lines, dest=c_tgt)
+                    self._emit_variant_upcast(c_val, val_t, target_t, lines, dest=c_tgt)
                 else:
                     self.emit_to(val, c_tgt, lines)
                 return "((void)0)"
@@ -2213,7 +2218,7 @@ class CEmitter:
 
             case TypedVariantCheck(target=tgt, tag=tag):
                 c_tgt = self.emit_val(tgt, lines)
-                target_t = tgt.type_val
+                target_t = normalize_type(tgt.type_val)
                 if (var_bound := resolve_variant_bound(target_t)) is not None:
                     target_t = var_bound
                 elif (opt_bound := resolve_option_bound(target_t)) is not None:
@@ -2225,7 +2230,7 @@ class CEmitter:
 
             case TypedVariantAssert(target=tgt, tag=tag):
                 c_tgt = self.emit_val(tgt, lines)
-                target_t = tgt.type_val
+                target_t = normalize_type(tgt.type_val)
                 if (var_bound := resolve_variant_bound(target_t)) is not None:
                     target_t = var_bound
                 elif (opt_bound := resolve_option_bound(target_t)) is not None:
@@ -2234,13 +2239,13 @@ class CEmitter:
                 if isinstance(target_t, QOptionType):
                     opt_field = target_t.get_option(tag) if tag is not None else None
                     lines.append(f"if ({c_tgt}->tag != {tag_idx}LL) quest_raise_variant_error();")
-                    tup_type = expr.type_val
+                    tup_type = normalize_type(expr.type_val)
                     tup_struct = tuple_struct_name(tup_type)
                     res_tmp = self.fresh_tmp("_unpacked_opt")
                     lines.append(f"{tup_struct} *{res_tmp} = ({tup_struct} *)quest_alloc(sizeof({tup_struct}));")
                     lines.append(f"{res_tmp}->_0 = {c_tgt}->tag;")
                     if opt_field and opt_field.payload_type:
-                        pt = opt_field.payload_type
+                        pt = normalize_type(opt_field.payload_type)
                         if isinstance(pt, QTupleType):
                             for i, f in enumerate(pt.value_fields):
                                 lines.append(f"{res_tmp}->_{i + 1} = {c_tgt}->u.{tag}._{i};")
@@ -2315,6 +2320,7 @@ class CEmitter:
                 elem_t = expr.type_val
                 if isinstance(elem_t, (QVarType, QOutType)):
                     elem_t = elem_t.element_type
+                elem_t = normalize_type(elem_t)
                 if any(elem_t is p for p in (INT_TYPE, BOOL_TYPE, CHAR_TYPE)):
                     return f"(&({c_arr}->data[{c_idx}].i))"
                 elif elem_t is REAL_TYPE:
@@ -2377,9 +2383,10 @@ class CEmitter:
                         if fld == "new" and len(args) == 2:
                             c_sz = self.emit_val(args[0], lines)
                             c_init = self.emit_val(args[1], lines)
+                            arr_t = normalize_type(expr.type_val)
                             target_elem_t = (
-                                expr.type_val.element_type
-                                if isinstance(expr.type_val, QArrayType)
+                                arr_t.element_type
+                                if isinstance(arr_t, QArrayType)
                                 else args[1].type_val
                             )
                             return self._emit_array_new(c_sz, c_init, args[1], target_elem_t, lines)
@@ -2395,9 +2402,10 @@ class CEmitter:
                             c_arr = self.emit_val(args[0], lines)
                             c_idx = self.emit_val(args[1], lines)
                             c_item = self.emit_val(args[2], lines)
+                            arr_t = normalize_type(args[0].type_val)
                             target_elem_t = (
-                                args[0].type_val.element_type
-                                if isinstance(args[0].type_val, QArrayType)
+                                arr_t.element_type
+                                if isinstance(arr_t, QArrayType)
                                 else args[2].type_val
                             )
                             self._emit_array_set(c_arr, c_idx, c_item, args[2], target_elem_t, lines)
@@ -2536,7 +2544,8 @@ class CEmitter:
                 c_tgt = self.emit_val(tgt, lines)
                 c_idx = self.emit_val(idx, lines)
                 c_val = self.emit_val(val, lines)
-                target_elem_t = tgt.type_val.element_type if isinstance(tgt.type_val, QArrayType) else val.type_val
+                arr_t = normalize_type(tgt.type_val)
+                target_elem_t = arr_t.element_type if isinstance(arr_t, QArrayType) else val.type_val
                 self._emit_array_set(c_tgt, c_idx, c_val, val, target_elem_t, lines)
                 return "((void)0)"
 
@@ -2743,7 +2752,7 @@ class CEmitter:
                     c_type = self.c_type(t)
                     lines.append(f"{c_type} {target_dest};")
                 n = len(elems)
-                elem_t = t.element_type
+                elem_t = normalize_type(normalize_type(t).element_type)
                 if isinstance(elem_t, QRecordType) or resolve_record_bound(elem_t) is not None:
                     lines.append(
                         f"{target_dest} = (QArrayWideRecord *)quest_alloc("
@@ -2783,10 +2792,11 @@ class CEmitter:
                     target_dest = self.fresh_tmp("_arr")
                     c_type = self.c_type(t)
                     lines.append(f"{c_type} {target_dest};")
-                new_expr = self._emit_array_new(c_cnt, c_init, init_v, t.element_type, lines)
+                new_expr = self._emit_array_new(c_cnt, c_init, init_v, normalize_type(t).element_type, lines)
                 lines.append(f"{target_dest} = {new_expr};")
 
             case TypedVariant(tag=tag, payload=payload, type_val=t):
+                t = normalize_type(t)
                 tag_idx = self._tag_index(t, tag)
                 if payload is not None:
                     c_payload = self.emit_val(payload, lines)
@@ -2814,6 +2824,7 @@ class CEmitter:
 
             case TypedOption(tag=tag, payload=payload, ordinal=ordinal, ordinal_expr=ordinal_expr, type_val=t):
                 target_dest = dest
+                t = normalize_type(t)
                 opt_t = t if isinstance(t, QOptionType) else (resolve_option_bound(t) or t)
                 s_name = option_struct_name(opt_t)
                 if target_dest is None:
@@ -2835,7 +2846,7 @@ class CEmitter:
                 if payload is not None and tag is not None:
                     opt_field = opt_t.get_option(tag) if hasattr(opt_t, "get_option") else None
                     if opt_field and opt_field.payload_type:
-                        pt = opt_field.payload_type
+                        pt = normalize_type(opt_field.payload_type)
                         if isinstance(pt, QTupleType) and isinstance(payload, TypedTuple):
                             for i, elem in enumerate(payload.elements):
                                 c_elem = self.emit_val(elem, lines)
@@ -2863,7 +2874,7 @@ class CEmitter:
 
             case TypedCase(target=tgt, branches=branches, else_branch=else_b, type_val=t):
                 c_tgt = self.emit_val(tgt, lines)
-                target_type = tgt.type_val
+                target_type = normalize_type(tgt.type_val)
                 if (var_bound := resolve_variant_bound(target_type)) is not None:
                     target_type = var_bound
                 elif (opt_bound := resolve_option_bound(target_type)) is not None:
@@ -2885,7 +2896,7 @@ class CEmitter:
                     branch_lines: list[str] = []
                     if branch.binder is not None:
                         b_name = mangle_ident(branch.binder.name)
-                        b_type = branch.binder.type_val
+                        b_type = normalize_type(branch.binder.type_val)
                         c_b_type = self.c_type(b_type)
                         branch_lines.append(f"{c_b_type} {b_name};")
                         if isinstance(target_type, QOptionType):
@@ -2893,7 +2904,7 @@ class CEmitter:
                                 s_tup = tuple_struct_name(b_type)
                                 branch_lines.append(f"{b_name} = ({s_tup} *)quest_alloc(sizeof({s_tup}));")
                                 opt_branch = target_type.get_option(branch.tags[0]) if branch.tags else None
-                                opt_pt = opt_branch.payload_type if opt_branch else None
+                                opt_pt = normalize_type(opt_branch.payload_type) if opt_branch else None
                                 for i, f in enumerate(b_type.value_fields):
                                     field_src = f"{c_tgt}->u.{branch.tags[0]}._{i}"
                                     opt_f_t = (

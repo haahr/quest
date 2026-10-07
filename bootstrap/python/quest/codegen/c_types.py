@@ -23,12 +23,15 @@ from quest.types import (
     QPathType,
     QPowerKind,
     QQuantifier,
+    QRecGroupType,
+    QRecType,
     QRecordField,
     QRecordType,
     QTupleField,
     QTupleType,
     QType,
     QTypeApp,
+    QTypeFun,
     QTypeVar,
     QVarType,
     QOutType,
@@ -120,10 +123,35 @@ def mangle_module_ident(module_name: str, name: str) -> str:
     return f"qv_{clean_mod}_{clean_name}"
 
 
+_MAX_BETA_STEPS = 1000
+
+
+def _beta_reduce_head(t: QType) -> QType:
+    """Beta-reduces type operator applications at the head of t, without unfolding recursive types."""
+    for _ in range(_MAX_BETA_STEPS):
+        t = t.prune() if hasattr(t, "prune") else t
+        if not isinstance(t, QTypeApp):
+            return t
+        ctor = _beta_reduce_head(t.constructor)
+        if isinstance(ctor, QExceptionType) and len(t.arguments) == 1:
+            return QExceptionType(payload_type=t.arguments[0])
+        if not isinstance(ctor, QTypeFun) or len(ctor.params) != len(t.arguments):
+            return t
+        t = ctor.body.substitute({formal.symbol_id: arg for formal, arg in zip(ctor.params, t.arguments)})
+    return t
+
+
 def normalize_type(t: QType) -> QType:
-    """Evaluates type applications lazily if they reduce to concrete tuple or record types."""
+    """Reduces type operator applications so that C representations are chosen from the reduced type.
+
+    Applications whose head reduces to a non-recursive type are replaced by that type; applications that
+    reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type.
+    """
     t = t.prune() if hasattr(t, "prune") else t
     if isinstance(t, QTypeApp):
+        reduced = _beta_reduce_head(t)
+        if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
+            return reduced
         evaled = t.evaluate_lazily()
         if evaled is not t and isinstance(evaled, (QTupleType, QRecordType)):
             return evaled
