@@ -1,0 +1,199 @@
+(Program
+  :phrases (
+    (DefKindBinding
+      :name 'BOOL'
+      :kind_val (KindAll
+        :param_name 'Then'
+        :param_kind (KindType)
+        :body_kind (KindAll
+          :param_name 'Else'
+          :param_kind (KindType)
+          :body_kind (KindType)
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'True'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'Then'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'Else'
+            :bound (KindType)
+          )
+        )
+        :body (TypePath ('Then'))
+      )
+      :bound (KindId 'BOOL')
+    )
+    (LetTypeBinding
+      :name 'False'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'Then'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'Else'
+            :bound (KindType)
+          )
+        )
+        :body (TypePath ('Else'))
+      )
+      :bound (KindId 'BOOL')
+    )
+    (LetTypeBinding
+      :name 'Cond'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'If'
+            :bound (KindId 'BOOL')
+          )
+          (TypeFormal
+            :name 'Then'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'Else'
+            :bound (KindType)
+          )
+        )
+        :result_kind (KindType)
+        :body (TypeApp
+          :constructor (TypePath ('If'))
+          :arguments (
+            (TypePath ('Then'))
+            (TypePath ('Else'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 't'
+      :value (ExprInt 3 '3')
+      :type_annot (TypeApp
+        :constructor (TypePath ('Cond'))
+        :arguments (
+          (TypePath ('True'))
+          (TypePath ('Int'))
+          (TypePath ('String'))
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'f'
+      :value (ExprString 'three' '"three"')
+      :type_annot (TypeApp
+        :constructor (TypePath ('Cond'))
+        :arguments (
+          (TypePath ('False'))
+          (TypePath ('Int'))
+          (TypePath ('String'))
+        )
+      )
+    )
+    (DefKindBinding
+      :name 'K3'
+      :kind_val (KindAll
+        :param_name 'A'
+        :param_kind (KindType)
+        :body_kind (KindAll
+          :param_name 'B'
+          :param_kind (KindType)
+          :body_kind (KindAll
+            :param_name 'C'
+            :param_kind (KindType)
+            :body_kind (KindType)
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'Third'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'B'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'C'
+            :bound (KindType)
+          )
+        )
+        :body (TypePath ('C'))
+      )
+      :bound (KindId 'K3')
+    )
+    (LetValueBinding
+      :name 'c'
+      :value (ExprString 'third' '"third"')
+      :type_annot (TypeApp
+        :constructor (TypePath ('Third'))
+        :arguments (
+          (TypePath ('Int'))
+          (TypePath ('Bool'))
+          (TypePath ('String'))
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'tInt'
+      :value (ExprId 't')
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'fString'
+      :value (ExprId 'f')
+      :type_annot (TypePath ('String'))
+    )
+    (LetValueBinding
+      :name 'cString'
+      :value (ExprId 'c')
+      :type_annot (TypePath ('String'))
+    )
+    (LetValueBinding
+      :name 'allPassed'
+      :value (ExprInfix
+        :left (ExprInfix
+          :left (ExprId 'tInt')
+          :op 'is'
+          :right (ExprInt 3 '3')
+        )
+        :op '/\\'
+        :right (ExprInfix
+          :left (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'string')
+              :field 'equal'
+            )
+            :args (
+              (ExprId 'fString')
+              (ExprString 'three' '"three"')
+            )
+          )
+          :op '/\\'
+          :right (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'string')
+              :field 'equal'
+            )
+            :args (
+              (ExprId 'cString')
+              (ExprString 'third' '"third"')
+            )
+          )
+        )
+      )
+    )
+  )
+)
