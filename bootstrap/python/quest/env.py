@@ -27,6 +27,7 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     TYPE_KIND,
+    clear_subtype_cache,
     distinct_alias_definition,
 )
 
@@ -82,6 +83,8 @@ class TypeSymbol(Symbol):
                 raise RuntimeError(f"Type symbol '{self.name}' (#{self.symbol_id}) is already defined")
             # Each alias keeps its own definition object, so that it prints under its own name.
             value = distinct_alias_definition(value)
+            if value is not None and self.__dict__.get("symbol_id") in _TYPE_IDS_SEEN_UNDEFINED:
+                clear_subtype_cache()
         super().__setattr__(name, value)
 
     @property
@@ -114,6 +117,12 @@ class KindSymbol(Symbol):
 _TYPE_SYMBOLS_BY_ID: dict[int, TypeSymbol] = {}
 # Likewise every declared kind symbol.
 _KIND_SYMBOLS_BY_ID: dict[int, KindSymbol] = {}
+
+# Symbol ids that some lookup found undeclared (or, for types, without a definition). Meanings only
+# become more defined, so cached subtyping results can go stale only when one of these ids gains a
+# meaning; the subtype cache is cleared then (see the subtype cache notes in types.py).
+_TYPE_IDS_SEEN_UNDEFINED: set[int] = set()
+_KIND_IDS_SEEN_UNDEFINED: set[int] = set()
 
 class Scope:
     """A single lexical scope frame maintaining ordered declarations."""
@@ -154,6 +163,12 @@ class Scope:
         self._declarations.append(symbol)
         self._types[symbol.name] = symbol
         self._types_by_id[symbol.symbol_id] = symbol
+        previous = _TYPE_SYMBOLS_BY_ID.get(symbol.symbol_id)
+        if symbol.definition is not None and (
+            symbol.symbol_id in _TYPE_IDS_SEEN_UNDEFINED
+            or (previous is not None and previous.definition is not symbol.definition)
+        ):
+            clear_subtype_cache()
         _TYPE_SYMBOLS_BY_ID[symbol.symbol_id] = symbol
         return symbol
 
@@ -161,6 +176,9 @@ class Scope:
         self._declarations.append(symbol)
         self._kinds[symbol.name] = symbol
         self._kinds_by_id[symbol.symbol_id] = symbol
+        previous = _KIND_SYMBOLS_BY_ID.get(symbol.symbol_id)
+        if symbol.symbol_id in _KIND_IDS_SEEN_UNDEFINED or (previous is not None and previous.kind is not symbol.kind):
+            clear_subtype_cache()
         _KIND_SYMBOLS_BY_ID[symbol.symbol_id] = symbol
         return symbol
 
@@ -282,13 +300,19 @@ class Environment:
         return self.current_scope.lookup_type(name)
 
     def lookup_type_by_id(self, symbol_id: int) -> Optional[TypeSymbol]:
-        return _TYPE_SYMBOLS_BY_ID.get(symbol_id)
+        sym = _TYPE_SYMBOLS_BY_ID.get(symbol_id)
+        if sym is None or sym.definition is None:
+            _TYPE_IDS_SEEN_UNDEFINED.add(symbol_id)
+        return sym
 
     def lookup_kind(self, name: str) -> Optional[KindSymbol]:
         return self.current_scope.lookup_kind(name)
 
     def lookup_kind_by_id(self, symbol_id: int) -> Optional[KindSymbol]:
-        return _KIND_SYMBOLS_BY_ID.get(symbol_id)
+        sym = _KIND_SYMBOLS_BY_ID.get(symbol_id)
+        if sym is None:
+            _KIND_IDS_SEEN_UNDEFINED.add(symbol_id)
+        return sym
 
     # --- Interface and Module Registries ---
 

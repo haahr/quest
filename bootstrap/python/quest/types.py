@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import dataclasses
 import weakref
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
+
+from quest import shadow
 
 from quest.diagnostics import (
     Diagnostic,
@@ -1381,9 +1384,109 @@ def structurally_equal(a: Any, b: Any) -> bool:
 # 9. Equi-Recursive Subtyping and Type Equivalence
 # ============================================================================
 
+# ----------------------------------------------------------------------------
+# Subtype cache
+# ----------------------------------------------------------------------------
+#
+# Results of subtyping proofs, keyed by the identities of hash-consed types and whether an environment
+# was given (without one, aliases are not expanded). Entries hold the types they key on, so an id is
+# never reused while its entry exists; pairs involving a metavariable are never cached, because
+# is_subtype solves metavariables as a side effect.
+#
+# Why results are committed only when a top-level proof finishes: is_subtype proves goals about
+# recursive types coinductively. To prove A <: B it assumes A <: B while checking the unfolding, and a
+# recurrence of the pair counts as proved. A nested goal decided while such an assumption is still open
+# may be True only because of it: for A = Rec(X) Record f: X g: Int end and
+# B = Rec(Y) Record f: Y g: String end, field f gives A <: B (assumed) and field g gives
+# Int <: String false, so the conditional True for f is wrong. Nothing about a result can change after
+# a proof finishes (types are immutable, symbols resolve globally, metavariables are excluded); the only
+# hazard is caching a result that depended on an assumption which the proof later refutes. Hence:
+#
+# - When a top-level proof returns True, every pair it decided or assumed is a true fact. In this
+#   implementation a proof succeeds only if every nested goal succeeds (all nested goals are combined
+#   with and; the type-variable bound check that may fail falls through only to False), so the pairs
+#   on the trail form a consistent set of facts (a simulation). All of them are cached as True.
+# - False results are always cached, even when decided mid-proof: extra coinductive assumptions can
+#   only make more goals provable, so a goal that fails with them also fails without them.
+# - Conditional True results of a proof that returns False are discarded.
+#
+# Symbol meanings only become more defined (a definition may arrive once, later than a reference), so
+# the environment clears the cache when an id that some lookup saw as undefined gains a meaning.
+
+_SUBTYPE_CACHE: dict[tuple[int, int, bool], tuple[QType, QType, bool]] = {}
+_SUBTYPE_CACHE_LIMIT = 250_000
+_subtype_cache_enabled = True
+
+SHADOW_SUBTYPE_CACHE = shadow.register_check(
+    "subtype-cache", "recompute every subtype cache hit without the cache and compare"
+)
+
+
+def clear_subtype_cache() -> None:
+    _SUBTYPE_CACHE.clear()
+
+
+def _subtype_cache_lookup(sub: QType, sup: QType, env: Optional[Any]) -> Optional[bool]:
+    if not _subtype_cache_enabled:
+        return None
+    entry = _SUBTYPE_CACHE.get((id(sub), id(sup), env is None))
+    if entry is None or entry[0] is not sub or entry[1] is not sup:
+        return None
+    if shadow.is_enabled(SHADOW_SUBTYPE_CACHE):
+        _shadow_check_subtype_cache(sub, sup, env, entry[2])
+    return entry[2]
+
+
+def _subtype_cache_store(sub: QType, sup: QType, env: Optional[Any], result: bool) -> None:
+    if sub._has_meta or sup._has_meta:
+        return
+    if len(_SUBTYPE_CACHE) >= _SUBTYPE_CACHE_LIMIT:
+        _SUBTYPE_CACHE.clear()
+    _SUBTYPE_CACHE[(id(sub), id(sup), env is None)] = (sub, sup, result)
+
+
+def _commit_proof(trail: SubtypeTrail, result: bool, env: Optional[Any]) -> None:
+    """Enters a finished top-level proof's results in the cache (see the comment above)."""
+    if not _subtype_cache_enabled:
+        return
+    if result:
+        for sub, sup, r in trail.results:
+            _subtype_cache_store(sub, sup, env, r)
+        for sub, sup in trail.assumed_pairs():
+            _subtype_cache_store(sub, sup, env, True)
+    else:
+        for sub, sup, r in trail.results:
+            if not r:
+                _subtype_cache_store(sub, sup, env, False)
+
+
+def _shadow_check_subtype_cache(sub: QType, sup: QType, env: Optional[Any], cached: bool) -> None:
+    global _subtype_cache_enabled
+    _subtype_cache_enabled = False
+    try:
+        fresh = _prove_subtype(sub, sup, env, SubtypeTrail(), MAX_SUBTYPE_FUEL)
+    finally:
+        _subtype_cache_enabled = True
+    if fresh != cached:
+        raise shadow.mismatch(
+            SHADOW_SUBTYPE_CACHE,
+            f"cached ({sub} <: {sup}) = {cached}, but recomputing without the cache gives {fresh}",
+        )
+
+
 def is_type_equal(t1: QType, t2: QType, env: Optional[Any] = None) -> bool:
-    """Checks equi-recursive type equivalence (t1 <: t2 and t2 <: t1)."""
-    return is_subtype(t1, t2, env) and is_subtype(t2, t1, env)
+    """Checks equi-recursive type equivalence (t1 <: t2 and t2 <: t1).
+
+    Both directions form one proof with one trail: once t1 <: t2 succeeds, every pair it assumed holds,
+    so the reverse direction may rely on those assumptions too.
+    """
+    if t1 is t2:
+        return True
+    trail = SubtypeTrail()
+    result = (_prove_subtype(t1, t2, env, trail, MAX_SUBTYPE_FUEL)
+              and _prove_subtype(t2, t1, env, trail, MAX_SUBTYPE_FUEL))
+    _commit_proof(trail, result, env)
+    return result
 
 
 class SubtypeTrail:
@@ -1394,11 +1497,13 @@ class SubtypeTrail:
     different (temporary) type and match an assumption it was not part of.
     """
 
-    __slots__ = ("_assumed", "_keep_alive")
+    __slots__ = ("_assumed", "_keep_alive", "results")
 
     def __init__(self) -> None:
         self._assumed: set[tuple[Any, Any]] = set()
         self._keep_alive: list[QType] = []
+        # (sub, sup, result) for every metavariable-free pair decided during the proof
+        self.results: list[tuple[QType, QType, bool]] = []
 
     @staticmethod
     def key(t: QType) -> tuple[Any, ...]:
@@ -1419,6 +1524,11 @@ class SubtypeTrail:
         self._keep_alive.append(sub)
         self._keep_alive.append(sup)
 
+    def assumed_pairs(self) -> Iterator[tuple[QType, QType]]:
+        """The (sub, sup) pairs assumed during the proof, in order."""
+        it = iter(self._keep_alive)
+        return zip(it, it)
+
 
 def is_subtype(
     sub: QType,
@@ -1427,19 +1537,44 @@ def is_subtype(
     trail: Optional[SubtypeTrail] = None,
     fuel: int = MAX_SUBTYPE_FUEL,
 ) -> bool:
-    """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle detection and fuel limit."""
+    """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle detection and fuel limit.
+
+    A call without a trail is a top-level proof: its results are entered in the subtype cache when it
+    finishes (see _commit_proof).
+    """
+    if trail is not None:
+        return _prove_subtype(sub, sup, env, trail, fuel)
     if sub is sup:
         return True
+    trail = SubtypeTrail()
+    result = _prove_subtype(sub, sup, env, trail, fuel)
+    _commit_proof(trail, result, env)
+    return result
 
+
+def _prove_subtype(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
+    """One subtyping goal within a proof: consults the cache, then records the result on the trail."""
+    if sub is sup:
+        return True
+    cacheable = not (sub._has_meta or sup._has_meta)
+    if cacheable:
+        cached = _subtype_cache_lookup(sub, sup, env)
+        if cached is not None:
+            return cached
+    result = _prove_subtype_step(sub, sup, env, trail, fuel)
+    if cacheable:
+        trail.results.append((sub, sup, result))
+    return result
+
+
+def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
+    """Decides sub <: sup structurally; nested goals go through _prove_subtype."""
     if fuel <= 0:
         raise TypeRecursionLimitExceeded(
             f"Subtyping proof exceeded step limit of {MAX_SUBTYPE_FUEL} steps "
             f"while checking ({sub} <: {sup})"
         )
     fuel -= 1
-
-    if trail is None:
-        trail = SubtypeTrail()
 
     # 0. Coinductive cycle detection for recursive types before lazy unfolding
     type_pair = trail.pair(sub, sup)
@@ -1475,13 +1610,13 @@ def is_subtype(
     if isinstance(sub_lazy, QTypeMeta):
         pruned = sub_lazy.prune()
         if pruned is not sub_lazy:
-            return is_subtype(pruned, sup_lazy, env, trail, fuel)
+            return _prove_subtype(pruned, sup_lazy, env, trail, fuel)
         sub_lazy.instance = sup_lazy
         return True
     if isinstance(sup_lazy, QTypeMeta):
         pruned = sup_lazy.prune()
         if pruned is not sup_lazy:
-            return is_subtype(sub_lazy, pruned, env, trail, fuel)
+            return _prove_subtype(sub_lazy, pruned, env, trail, fuel)
         sup_lazy.instance = sub_lazy
         return True
 
@@ -1495,7 +1630,7 @@ def is_subtype(
     # 6. Type Variable bound checking
     if isinstance(sub_lazy, (QTypeVar, QAbstractType, QPathType)):
         if sub_lazy.bound and isinstance(sub_lazy.bound, QPowerKind):
-            if is_subtype(sub_lazy.bound.bound, sup_lazy, env, trail, fuel):
+            if _prove_subtype(sub_lazy.bound.bound, sup_lazy, env, trail, fuel):
                 return True
 
     # 7. Pattern matching across type pairs
@@ -1519,7 +1654,7 @@ def is_subtype(
                     if s_f.name != t_f.name:
                         return False
                     if isinstance(t_f.bound, QPowerKind):
-                        if not is_subtype(s_f.type_val, t_f.bound.bound, env, trail, fuel):
+                        if not _prove_subtype(s_f.type_val, t_f.bound.bound, env, trail, fuel):
                             return False
                     subst = {t_f.symbol_id: s_f.type_val}
                     for rem_idx in range(idx + 1, len(curr_sup_fields)):
@@ -1530,14 +1665,14 @@ def is_subtype(
                     if t_f.is_var:
                         if not s_f.is_var:
                             return False
-                        if not (is_subtype(s_f.type_val, t_f.type_val, env, trail, fuel)
-                                and is_subtype(t_f.type_val, s_f.type_val, env, trail, fuel)):
+                        if not (_prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel)
+                                and _prove_subtype(t_f.type_val, s_f.type_val, env, trail, fuel)):
                             return False
                     else:
-                        if not is_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
+                        if not _prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
                             return False
                 elif isinstance(s_f, QTupleTypeBinding) and isinstance(t_f, QTupleTypeBinding):
-                    if s_f.name != t_f.name or not is_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
+                    if s_f.name != t_f.name or not _prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
                         return False
                 else:
                     return False
@@ -1552,11 +1687,11 @@ def is_subtype(
                 if sup_field.is_var:
                     if not sub_field.is_var:
                         return False
-                    if not (is_subtype(sub_field.type_val, sup_field.type_val, env, trail, fuel)
-                            and is_subtype(sup_field.type_val, sub_field.type_val, env, trail, fuel)):
+                    if not (_prove_subtype(sub_field.type_val, sup_field.type_val, env, trail, fuel)
+                            and _prove_subtype(sup_field.type_val, sub_field.type_val, env, trail, fuel)):
                         return False
                 else:
-                    if not is_subtype(sub_field.type_val, sup_field.type_val, env, trail, fuel):
+                    if not _prove_subtype(sub_field.type_val, sup_field.type_val, env, trail, fuel):
                         return False
             return True
 
@@ -1570,11 +1705,11 @@ def is_subtype(
                     if sup_var.type_val is None:
                         return False
                     if sub_var.is_var or sup_var.is_var:
-                        if not (is_subtype(sub_var.type_val, sup_var.type_val, env, trail, fuel)
-                                and is_subtype(sup_var.type_val, sub_var.type_val, env, trail, fuel)):
+                        if not (_prove_subtype(sub_var.type_val, sup_var.type_val, env, trail, fuel)
+                                and _prove_subtype(sup_var.type_val, sub_var.type_val, env, trail, fuel)):
                             return False
                     else:
-                        if not is_subtype(sub_var.type_val, sup_var.type_val, env, trail, fuel):
+                        if not _prove_subtype(sub_var.type_val, sup_var.type_val, env, trail, fuel):
                             return False
                 elif sup_var.type_val is not None:
                     return False
@@ -1589,7 +1724,7 @@ def is_subtype(
                 if sub_opt.payload_type is not None:
                     if sup_opt.payload_type is None:
                         return False
-                    if not is_subtype(sub_opt.payload_type, sup_opt.payload_type, env, trail, fuel):
+                    if not _prove_subtype(sub_opt.payload_type, sup_opt.payload_type, env, trail, fuel):
                         return False
                 elif sup_opt.payload_type is not None:
                     return False
@@ -1603,39 +1738,39 @@ def is_subtype(
                 if s_param.is_var or t_param.is_var:
                     if s_param.is_var != t_param.is_var:
                         return False
-                    if not (is_subtype(t_param.type_val, s_param.type_val, env, trail, fuel)
-                            and is_subtype(s_param.type_val, t_param.type_val, env, trail, fuel)):
+                    if not (_prove_subtype(t_param.type_val, s_param.type_val, env, trail, fuel)
+                            and _prove_subtype(s_param.type_val, t_param.type_val, env, trail, fuel)):
                         return False
                 elif s_param.is_out or t_param.is_out:
                     if s_param.is_out != t_param.is_out:
                         return False
-                    if not is_subtype(s_param.type_val, t_param.type_val, env, trail, fuel):
+                    if not _prove_subtype(s_param.type_val, t_param.type_val, env, trail, fuel):
                         return False
                 else:
-                    if not is_subtype(t_param.type_val, s_param.type_val, env, trail, fuel):
+                    if not _prove_subtype(t_param.type_val, s_param.type_val, env, trail, fuel):
                         return False
-            return is_subtype(sub_lazy.result_type, sup_lazy.result_type, env, trail, fuel)
+            return _prove_subtype(sub_lazy.result_type, sup_lazy.result_type, env, trail, fuel)
 
         # References (Var) & Arrays: invariant element type
         case (QVarType(element_type=s_elem), QVarType(element_type=t_elem)) | \
              (QArrayType(element_type=s_elem), QArrayType(element_type=t_elem)):
             if s_elem is t_elem:
                 return True
-            return (is_subtype(s_elem, t_elem, env, trail, fuel)
-                    and is_subtype(t_elem, s_elem, env, trail, fuel))
+            return (_prove_subtype(s_elem, t_elem, env, trail, fuel)
+                    and _prove_subtype(t_elem, s_elem, env, trail, fuel))
 
         # Out parameters: contravariant
         case (QOutType(element_type=s_elem), QOutType(element_type=t_elem)):
             if s_elem is t_elem:
                 return True
-            return is_subtype(t_elem, s_elem, env, trail, fuel)
+            return _prove_subtype(t_elem, s_elem, env, trail, fuel)
 
         # Exceptions: invariant payload type
         case (QExceptionType(payload_type=s_pay), QExceptionType(payload_type=t_pay)):
             if s_pay is t_pay:
                 return True
-            return (is_subtype(s_pay, t_pay, env, trail, fuel)
-                    and is_subtype(t_pay, s_pay, env, trail, fuel))
+            return (_prove_subtype(s_pay, t_pay, env, trail, fuel)
+                    and _prove_subtype(t_pay, s_pay, env, trail, fuel))
 
         # Universal Quantifiers (Kernel F<:): bounds match, body covariant
         case (QAllType(), QAllType()):
@@ -1649,7 +1784,7 @@ def is_subtype(
                 t_bound_renamed = t_q.bound.substitute_types(subst)
                 if not is_kind_equal(s_q.bound, t_bound_renamed, env):
                     return False
-            return is_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
+            return _prove_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
 
         # Type Functions (Type Operators): parameter kinds match, bodies subtype under substitution
         case (QTypeFun(), QTypeFun()):
@@ -1663,7 +1798,7 @@ def is_subtype(
                 t_bound_renamed = t_p.bound.substitute_types(subst)
                 if not is_kind_equal(s_p.bound, t_bound_renamed, env):
                     return False
-            return is_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
+            return _prove_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
 
         # Type operator application (e.g. List.T(A))
         case (
@@ -1675,7 +1810,7 @@ def is_subtype(
             for sa, ta in zip(s_args, t_args):
                 if sa is ta:
                     continue
-                if not (is_subtype(sa, ta, env, trail, fuel) and is_subtype(ta, sa, env, trail, fuel)):
+                if not (_prove_subtype(sa, ta, env, trail, fuel) and _prove_subtype(ta, sa, env, trail, fuel)):
                     return False
             return True
 

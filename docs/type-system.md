@@ -99,23 +99,21 @@ place during inference. Several parts of the type checker depend on how type obj
 - **Kinds are synthesized once per check.** `synth_kind` memoizes results by node identity for the duration of the
   outermost kind check, since elaborated types are DAGs and a node's kind depends only on the node and the binders in
   scope.
-- **Symbols resolve globally.** `Environment.lookup_type_by_id` uses one process-wide index from symbol id to
-  `TypeSymbol`, so a type variable means the same thing in every scope. A `TypeSymbol`'s `definition` may be supplied
-  once after declaration (`None` to a type) but never replaced.
+- **Symbols resolve globally.** `Environment.lookup_type_by_id` and `Environment.lookup_kind_by_id` use process-wide
+  indexes from symbol id to `TypeSymbol` and `KindSymbol`, so type and kind variables mean the same thing in every
+  scope; like types, kinds are fully resolvable at compile time. A `TypeSymbol`'s `definition` may be supplied once
+  after declaration (`None` to a type) but never replaced.
 - **Metavariables stay inside one call.** They are created for a polymorphic call's implicit type arguments and are
   all resolved, in the result type and the elaborated arguments, before the outermost call returns (§6.9).
 
 Planned:
-1. **A subtype cache** keyed by canonical objects. It caches `False` results always (extra coinductive assumptions
-   can only make more judgments provable), `True` results only when they did not depend on assumptions still open on
-   the trail, and never a pair involving a metavariable.
-2. **Alias reference nodes**, replacing identity-based alias recognition and the private definition copies above.
-   Elaborating a reference to an alias would produce a node that carries the alias's name and symbol and points to
-   its definition. Type evaluation (`evaluate_lazily`), and hence subtyping, looks straight through it; the printer
-   and the `.qi` writer print its name; hash-consing keeps different aliases apart because the name is part of the
-   key. This would also make alias names survive `.qi` round trips, copies, and re-elaboration, and print the name as
-   written in the source (`location.Span` rather than `Location.Span`). Code that inspects types without evaluating
-   them first, notably in C code generation, has to look through the new node, so this needs its own shadow check.
+- **Alias reference nodes**, replacing identity-based alias recognition and the private definition copies above.
+  Elaborating a reference to an alias would produce a node that carries the alias's name and symbol and points to
+  its definition. Type evaluation (`evaluate_lazily`), and hence subtyping, looks straight through it; the printer
+  and the `.qi` writer print its name; hash-consing keeps different aliases apart because the name is part of the
+  key. This would also make alias names survive `.qi` round trips, copies, and re-elaboration, and print the name as
+  written in the source (`location.Span` rather than `Location.Span`). Code that inspects types without evaluating
+  them first, notably in C code generation, has to look through the new node, so this needs its own shadow check.
 
 ---
 
@@ -147,6 +145,38 @@ recursive and structural types ($S \le T$):
    the trail keeps every keyed object alive for the duration of the proof, so a freed temporary's id can never be
    reused by an unrelated type and match its assumption.
 4. Correctly handles polarity flips during function parameter contravariance.
+5. **Subtype Cache:** Results are cached process-wide, keyed by the identities of hash-consed types and by whether an
+   environment was given (without one, aliases are not expanded). `is_type_equal` proves both directions as one proof
+   with one trail.
+
+#### Why a proof's results are committed only when it finishes
+During a top-level check, `is_subtype` records each pair it decides; at the end it commits them all if the answer is
+`True`, or only the `False` ones if not.
+
+After a check finishes, nothing about its result can change: types are immutable and hash-consed, symbols resolve
+globally, and pairs involving a metavariable are never cached (`is_subtype` solves metavariables as a side effect). The
+hazard lies inside a proof. Recursive types are compared coinductively: to prove $A \le B$, the pair is assumed while
+the unfolding is checked, and a recurrence of the pair counts as proved. A nested goal decided while such an assumption
+is open may hold only because of it:
+
+```
+A = Rec(X) Record f: X  g: Int    end
+B = Rec(Y) Record f: Y  g: String end
+```
+
+Proving $A \le B$ assumes the pair, checks field `f` (the assumption gives `True`), then checks field `g`
+(`Int <: String` is `False`); the result is `False`, and the `True` for `f` was conditional on a refuted assumption.
+Caching it would be wrong. Hence:
+- **A proof that returns `True`** leaves only true facts behind. A proof succeeds only if every nested goal succeeds
+  (goals are combined with *and*; the one check that may fail and fall through, a type variable's bound, falls through
+  only to `False`), so the pairs it decided or assumed form a consistent set of facts, and all are cached as `True`.
+- **`False` results are always cached**, even when decided mid-proof: extra coinductive assumptions can only make more
+  goals provable, so a goal that fails with them also fails without them.
+- **The conditional `True` results of a proof that returns `False`** are discarded.
+
+Symbol meanings only become more defined (a definition may arrive once, possibly after the symbol was first referenced),
+so the environment remembers symbol ids that a lookup found undeclared or undefined and clears the cache when one of
+them gains a meaning. The cache is also cleared when it exceeds its size limit.
 
 ### 3.3. Recursive Contractiveness ($C \succ X$)
 To guarantee that recursive type definitions have unique solutions and do not produce infinite loops or degenerate
