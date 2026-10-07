@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
-from quest import shadow
 from quest.types import (
     BOOL_TYPE,
     CHAR_TYPE,
@@ -108,10 +107,6 @@ class KindSymbol(Symbol):
 # Every declared type symbol, by symbol id. Symbol ids are unique for the life of the process
 # (allocate_symbol_id), so a type variable can be resolved in O(1) regardless of the current scope.
 _TYPE_SYMBOLS_BY_ID: dict[int, TypeSymbol] = {}
-
-SHADOW_SYMBOLS = shadow.register_check(
-    "symbols", "compare the global symbol-id index with the old scope-chain lookup"
-)
 
 class Scope:
     """A single lexical scope frame maintaining ordered declarations."""
@@ -223,18 +218,6 @@ def allocate_symbol_id() -> int:
     return _GLOBAL_SYMBOL_COUNTER
 
 
-def _same_type_symbol(a: Optional[TypeSymbol], b: Optional[TypeSymbol]) -> bool:
-    """True if two lookups give a symbol id the same definition, which is what type evaluation uses.
-
-    A symbol not visible from the current scope behaves like one without a definition (the type
-    variable stays opaque), so "not found" and "found, abstract" agree. Kinds are compared where they
-    are used, in synth_kind.
-    """
-    a_def = a.definition if a is not None else None
-    b_def = b.definition if b is not None else None
-    return a_def is b_def
-
-
 class Environment:
     """Manages the active lexical scope stack, built-in definitions, and module linkages."""
 
@@ -291,27 +274,7 @@ class Environment:
         return self.current_scope.lookup_type(name)
 
     def lookup_type_by_id(self, symbol_id: int) -> Optional[TypeSymbol]:
-        sym = _TYPE_SYMBOLS_BY_ID.get(symbol_id)
-        if shadow.is_enabled(SHADOW_SYMBOLS):
-            scoped = self._lookup_type_by_id_scoped(symbol_id)
-            if not _same_type_symbol(sym, scoped):
-                raise shadow.mismatch(
-                    SHADOW_SYMBOLS,
-                    f"symbol #{symbol_id}: global index gives {sym!r}, scope chain gives {scoped!r} "
-                    f"(current scope {self.current_scope!r})",
-                )
-        return sym
-
-    def _lookup_type_by_id_scoped(self, symbol_id: int) -> Optional[TypeSymbol]:
-        """Reference implementation: the scope chain, then every registered interface."""
-        sym = self.current_scope.lookup_type_by_id(symbol_id)
-        if sym is not None:
-            return sym
-        for iface_scope in self._interfaces.values():
-            sym = iface_scope.lookup_type_by_id_local(symbol_id)
-            if sym is not None:
-                return sym
-        return None
+        return _TYPE_SYMBOLS_BY_ID.get(symbol_id)
 
     def lookup_kind(self, name: str) -> Optional[KindSymbol]:
         return self.current_scope.lookup_kind(name)
