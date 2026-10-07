@@ -118,8 +118,10 @@ The compiler driver differentiates between orchestrating a full build of an appl
   - If neither is specified, outputs default to the source file directory (`file_path.parent`). This preserves
     isolated single-file tool workflows and localized unit tests without creating unintended `.build/` trees.
 
-Compiled artifacts found outside the build directory (for example a `.qi` or `.o` next to a source file) are used only
-when the corresponding source file does not exist (Rule 3 below); otherwise the source is authoritative.
+Compiled artifacts found outside the build directory (for example a `.qi` or `.o` next to a source file) are currently
+used only when the corresponding source file does not exist (Rule 3 below); otherwise the source is authoritative.
+This was a stopgap against stale artifacts; §5.2 proposes returning to the intended model, in which fresh artifacts
+(checked by timestamps and an ABI version) are used even when their sources exist.
 
 ```
 quest/
@@ -192,10 +194,10 @@ A `.qi` file contains the complete type signature of an interface:
 
 #### 4.2.1. Type Alias Preservation and Size Compactness
 To avoid exponential code expansion and multi-megabyte interface metadata files:
-- **Alias Preservation:** When formatting type signatures and manifest definitions into `.qi` files, the interface
-  compiler maintains an aliases dictionary of local and imported type names (e.g. `ast.TypeExpr`, `ast.Expr`,
-  `FormalParam`). Any semantic type matching a known alias is serialized compactly using its alias name rather than
-  expanding its full underlying structural definition.
+- **Alias Preservation:** References to type aliases are alias reference nodes (`docs/type-system.md` §2.2), and the
+  interface compiler writes them under the name written in the interface source (e.g. `ast.TypeExpr`, `ast.Expr`,
+  `FormalParam`) rather than expanding their definitions. On load the names resolve in the `.qi`'s own imports and
+  declarations, so alias names survive the round trip.
 - **Two-Pass Type Deserialization:** When loading `.qi` files in `load_interface_from_qi_file`, type declarations are
   processed in two passes:
   1. *Symbol Registration Pass:* All type symbols are declared with fresh symbol IDs and kinds into the interface scope.
@@ -287,6 +289,96 @@ These rules are implemented once, by `ensure_interface_artifacts` in `interface_
 an interface imports: a generated header `#include`s its imported interfaces' headers, so those headers must exist in
 the build directory too, even for interfaces the typechecker resolves without loading them (such as builtin
 interfaces like `Writer`).
+
+### 5.2. Proposal: An ABI Version and Trusting Fresh Artifacts
+**Status: proposed, not implemented.**
+
+The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `q_<stem>.h` instead of
+re-elaborating an `.int.quest`, and `.qm`, `.c`, and `.o` instead of recompiling a `.mod.quest` or main routine.
+Freshness is currently judged by timestamps alone (Rules 1–3), which cannot tell whether an artifact was produced
+under the same artifact contract as the running compiler. The stopgap in §3.1 (source always wins outside the build
+directory) avoids trusting such artifacts, at the cost of re-elaborating every imported source on every run.
+
+Two distinct concerns are involved:
+1. **Reusing artifacts.** An artifact can be reused by another compiler, or another version of the same compiler, as
+   long as both agree on the *artifact contract*: the `.qi`/`.qm` formats and the language of the type strings they
+   contain, and the binary interface of the generated code. A correct `.o` produced last month links correctly with
+   today's output if the contract has not changed, regardless of which implementation (the Python bootstrap compiler
+   or the self-hosted compiler) produced it.
+2. **Testing the compiler.** A change to code generation inside an unchanged contract (for example a regression in a
+   function body) is invisible to artifact reuse, and should be: old artifacts remain correct. The compiler's own
+   tests must exercise current code generation, so they build into a fresh directory (`docs/testing.md` §2.3) rather
+   than relying on artifact invalidation.
+
+#### 5.2.1. The ABI Version
+Every `.qi` and `.qm` records:
+- **`abi`: the artifact contract version,** declared as an ordinary constant (`ABI_VERSION`) by every Quest compiler.
+  The Python and self-hosted compilers implement the same contract, so artifacts from either are interchangeable at
+  the same version. A packaged compiler carries the constant in its code; nothing reads compiler sources at run time.
+- **`producer`: the compiler that wrote the artifact** (for example `quest-bootstrap 0.3` or `questc 0.1`). It is
+  informational, for diagnostics only, and never affects whether an artifact is used.
+
+The ABI version covers:
+- the layout and meaning of `.qi` and `.qm` files, including the syntax and meaning of the type strings in `.qi`;
+- the C representation of Quest types (struct layouts, value and pointer representations, evidence dictionaries,
+  type descriptors);
+- symbol name mangling (`docs/name-mangling.md`) and calling conventions, including type-descriptor parameters for
+  polymorphic functions and module initialization (§8);
+- the runtime interface generated code uses (`runtime/quest_runtime.h`).
+
+Placement:
+- **`.qi`:** two new fields, `abi: String` and `producer: String`, in the `QI_SCHEMA_TYPE_STR` record. Because the
+  schema type itself changes, older `.qi` files no longer match it on load and are treated as stale.
+- **`q_<stem>.h`:** a leading comment `/* quest abi <version> producer <producer> */`, for diagnosis only. A header is
+  produced together with its `.qi`, and its freshness is decided by the `.qi`.
+- **`.qm`:** top-level keys `"abi"` and `"producer"`. A `.c`/`.o` pair is produced together with its `.qm`, and its
+  freshness is decided by the `.qm`.
+
+#### 5.2.2. Staleness Rules with the ABI Version
+An artifact is **up to date** when it exists, is at least as new as each source it depends on (Rules 1 and 2 and the
+`.qm` import timestamps, unchanged), **and** its recorded `abi` equals the running compiler's `ABI_VERSION`. A
+missing, unreadable, or different `abi` makes it **out of date**, and it is rebuilt as today. A binary distribution
+(no source, Rule 3) is checked the same way; since it cannot be rebuilt, a mismatch is a compilation error naming
+the artifact and both versions.
+
+With these rules the §3.1 stopgap is removed: a fresh artifact found next to a source file, or on the include path,
+is used like one in the build directory. Rebuilding an interface after an ABI change gives it a newer timestamp, so
+dependents are rebuilt by the existing transitive invalidation rule (§7.2).
+
+#### 5.2.3. Keeping the ABI Version Honest
+A version number is only as reliable as the discipline of bumping it, so a test enforces it. A checked-in ABI corpus
+records, for every library interface and module and for the test suite's modules:
+- the generated `.qi` files and `q_<stem>.h` headers, with paths normalized;
+- the mangled symbols the generated C defines and references;
+- a digest of `runtime/quest_runtime.h`.
+
+The test regenerates the corpus and fails if anything differs while `ABI_VERSION` is unchanged ("artifact contract
+changed: bump ABI_VERSION and update the corpus"). Reading compiler and runtime sources here is a test's business, not
+the compiler's. Once the self-hosted compiler exists, the same corpus serves as a cross-check: at the same ABI
+version, both compilers must produce the same `.qi` and `.qm` files and compatible headers.
+
+What this misses: a contract change that nothing in the corpus exercises. The corpus covers the whole library and the
+test modules, and grows when a gap is found.
+
+#### 5.2.4. Using Artifacts Outside C Compilation
+Today the typecheck and interpret phases parse and elaborate every imported interface and module from source on
+every run, including the full module-against-interface conformance check; on a program importing the self-hosted
+`ast` and `astprint` modules this is nearly all of the typecheck time. Under the rules above:
+- **Interfaces:** any phase can load a fresh `.qi` instead of elaborating the `.int.quest`.
+- **Modules, when typechecking:** a module with a fresh `.qm` (and fresh `.qi` for its interface) can be typed
+  through its interface alone, without elaborating its body or re-proving conformance; this is what separate C
+  compilation already does (`separately_compiled_module_scope`).
+- **Modules, when interpreting:** the interpreter executes module bodies, so it still needs their source; only their
+  interfaces can come from `.qi`. (Caching elaborated module bodies would be a separate design.)
+
+Typecheck dumps must not depend on whether an interface came from source or from `.qi`. Alias reference nodes
+(`docs/type-system.md` §2.2) keep alias names across the `.qi` round trip, and
+`tests/python/test_separate_compilation_types.py` checks that the two paths agree.
+
+#### 5.2.5. Consequences for Testing
+Users get artifact reuse across compiler versions that share an ABI version. The compiler's own test runs keep
+building into a fresh temporary directory by default, so that they always exercise current code generation;
+`--build-dir` remains available to reuse a directory when speed matters more than hermeticity.
 
 ---
 
