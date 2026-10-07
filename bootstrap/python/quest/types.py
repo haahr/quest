@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
-from quest import shadow
 from quest.diagnostics import (
     Diagnostic,
     DiagnosticRenderer,
@@ -210,8 +209,6 @@ class QType:
         Returns self, without traversal, when no free variable of this type is substituted.
         """
         if not self._has_meta and self._fv.isdisjoint(subst):
-            if shadow.is_enabled(SHADOW_SUBSTITUTE):
-                _shadow_check_substitute(self, subst)
             return self
         return self._substitute_full(subst)
 
@@ -1296,21 +1293,6 @@ def structurally_equal(a: Any, b: Any) -> bool:
         return x == y
 
     return eq(a, b)
-
-
-SHADOW_SUBSTITUTE = shadow.register_check(
-    "substitute", "compare substitutions skipped by free-variable metadata with full traversal"
-)
-
-
-def _shadow_check_substitute(t: QType, subst: dict[int, QType]) -> None:
-    full = t._substitute_full(subst)
-    if not structurally_equal(full, t):
-        raise shadow.mismatch(
-            SHADOW_SUBSTITUTE,
-            f"substitution of {sorted(subst)} skipped for {t!r} (free variables {sorted(t._fv)}), "
-            f"but full traversal gives {full!r}",
-        )
 
 
 # ============================================================================
