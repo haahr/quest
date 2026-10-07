@@ -1983,15 +1983,10 @@ def is_type_contractive(
         case QAllType(quantifiers=quants, body=body):
             return is_type_contractive(body, recursive_var_ids, env, seen, depth + 1)
 
-        case QTypeApp(constructor=ctor, arguments=args):
-            ctor_lazy = ctor.evaluate_lazily(env)
-            match ctor_lazy:
-                case QTypeAbs(symbol_id=param_sym, body=body):
-                    subst = {param_sym: args[0]} if args else {}
-                    reduced = body.substitute_types(subst)
-                    return is_type_contractive(reduced, recursive_var_ids, env, seen, depth + 1)
-                case _:
-                    return is_type_contractive(ctor_lazy, recursive_var_ids, env, seen, depth + 1)
+        case QTypeApp(constructor=ctor):
+            # evaluate_lazily has already beta-reduced applications of type functions, so the
+            # constructor here is opaque; the application is contractive if the constructor is.
+            return is_type_contractive(ctor.evaluate_lazily(env), recursive_var_ids, env, seen, depth + 1)
 
         case (
             QRecordType()
