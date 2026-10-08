@@ -224,6 +224,10 @@ class TypedFun(TypedExpr):
     params: tuple[TypedParam, ...]
     body: TypedExpr
     type_val: QFunType
+    # Symbol ids of the function's type parameters as its body refers to them (for a polymorphic function checked
+    # against an expected type, these differ from the expected type's quantifiers), bound at run time by type
+    # applications
+    type_param_ids: tuple[int, ...] = ()
 
     def dump_header(self, env: Optional[Any] = None) -> str:
         params_str = " ".join(

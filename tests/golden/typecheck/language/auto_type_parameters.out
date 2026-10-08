@@ -1,0 +1,281 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'p' :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type Writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'n' :type Int)
+                ))
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 's' :type Fun(text: String): Ok
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type Writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'text' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Boxed' :kind TYPE)
+    (TypedLetType 'Object' :kind TYPE)
+    (TypedLetType 'Car' :kind TYPE)
+    (TypedLetValue 'myCar' :type Car
+      :value (TypedRecord :type Record age: Int fuel: String end
+        :fields (
+          (TypedRecordField 'age'
+            :value (TypedInt 3 :type Int))
+          (TypedRecordField 'fuel'
+            :value (TypedString 'diesel' :type String))
+        )))
+    (TypedLetValue 'box' :type All(A :: TYPE) Fun(x: A): Boxed
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): Boxed
+        :body (TypedAuto :A :type Boxed
+          :payload (TypedTuple :type Tuple a: A end
+            :elements (
+              (TypedVar 'x' :type A)
+            )))))
+    (TypedLetValue 'boxedInt' :type Boxed
+      :value (TypedApp :type Boxed
+        :func (TypedTypeApp [Int] :type Fun(x: Int): Boxed
+          :func (TypedVar 'box' :type All(A :: TYPE) Fun(x: A): Boxed))
+        :args (
+          (TypedInt 42 :type Int)
+        )))
+    (TypedLetValue 'boxedCar' :type Boxed
+      :value (TypedApp :type Boxed
+        :func (TypedTypeApp [Car] :type Fun(x: Car): Boxed
+          :func (TypedVar 'box' :type All(A :: TYPE) Fun(x: A): Boxed))
+        :args (
+          (TypedVar 'myCar' :type Car)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'boxedInt' :type Boxed)
+            :branches (
+              (TypedInspectBranch match=Int
+                :body (TypedSelect 'a' :type Int
+                  :target (TypedVar 'i' :type Tuple a: Int end)))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 's' :type Fun(text: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'boxedCar' :type Boxed)
+            :branches (
+              (TypedInspectBranch match=Car
+                :body (TypedSelect 'fuel' :type String
+                  :target (TypedSelect 'a' :type Car
+                    :target (TypedVar 'c' :type Tuple a: Car end))))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedLetValue 'unbox' :type All(A :: TYPE) Fun(b: Boxed default: A): A
+      :value (TypedFun :params (('b' : Boxed) ('default' : A)) :type All(A :: TYPE) Fun(b: Boxed default: A): A
+        :body (TypedInspect :type A
+          :target (TypedVar 'b' :type Boxed)
+          :branches (
+            (TypedInspectBranch match=A
+              :body (TypedSelect 'a' :type A
+                :target (TypedVar 'x' :type Tuple a: A end)))
+          )
+          :else (TypedVar 'default' :type A))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(b: Boxed default: Int): Int
+              :func (TypedVar 'unbox' :type All(A :: TYPE) Fun(b: Boxed default: A): A))
+            :args (
+              (TypedVar 'boxedInt' :type Boxed)
+              (TypedInt 0 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(b: Boxed default: Int): Int
+              :func (TypedVar 'unbox' :type All(A :: TYPE) Fun(b: Boxed default: A): A))
+            :args (
+              (TypedVar 'boxedCar' :type Boxed)
+              (TypedInfix '-' :type Int
+                :left (TypedInt 0 :type Int)
+                :right (TypedInt 1 :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'age' :type Int
+            :target (TypedApp :type Object
+              :func (TypedTypeApp [Object] :type Fun(b: Boxed default: Object): Object
+                :func (TypedVar 'unbox' :type All(A :: TYPE) Fun(b: Boxed default: A): A))
+              :args (
+                (TypedVar 'boxedCar' :type Boxed)
+                (TypedRecord :type Record age: Int end
+                  :fields (
+                    (TypedRecordField 'age'
+                      :value (TypedInt 0 :type Int))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'boxTwice' :type All(B :: TYPE) Fun(y: B): Tuple first: Boxed second: Boxed end
+      :value (TypedFun :params (('y' : B)) :type All(B :: TYPE) Fun(y: B): Tuple first: Boxed second: Boxed end
+        :body (TypedTuple :type Tuple first: Boxed second: Boxed end
+          :elements (
+            (TypedApp :type Boxed
+              :func (TypedTypeApp [B] :type Fun(x: B): Boxed
+                :func (TypedVar 'box' :type All(A :: TYPE) Fun(x: A): Boxed))
+              :args (
+                (TypedVar 'y' :type B)
+              ))
+            (TypedApp :type Boxed
+              :func (TypedTypeApp [B] :type Fun(x: B): Boxed
+                :func (TypedVar 'box' :type All(A :: TYPE) Fun(x: A): Boxed))
+              :args (
+                (TypedVar 'y' :type B)
+              ))
+          ))))
+    (TypedLetValue 'twice' :type Tuple first: Boxed second: Boxed end
+      :value (TypedApp :type Tuple first: Boxed second: Boxed end
+        :func (TypedTypeApp [String] :type Fun(y: String): Tuple first: Boxed second: Boxed end
+          :func (TypedVar 'boxTwice' :type All(B :: TYPE) Fun(y: B): Tuple first: Boxed second: Boxed end))
+        :args (
+          (TypedString 'twice' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 's' :type Fun(text: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedSelect 'second' :type Boxed
+              :target (TypedVar 'twice' :type Tuple first: Boxed second: Boxed end))
+            :branches (
+              (TypedInspectBranch match=String
+                :body (TypedSelect 'a' :type String
+                  :target (TypedVar 't' :type Tuple a: String end)))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedLetValue 'pack' :type All(A :: TYPE) Fun(x: A): Dynamic
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): Dynamic
+        :body (TypedApp :type Dynamic.T
+          :func (TypedTypeApp [A] :type Fun(a: A): Dynamic.T
+            :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+              :target (TypedVar 'dynamic' :type Module 'dynamic')))
+          :args (
+            (TypedVar 'x' :type A)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(d: Dynamic.T): Int
+              :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedApp :type Dynamic
+                :func (TypedTypeApp [Int] :type Fun(x: Int): Dynamic
+                  :func (TypedVar 'pack' :type All(A :: TYPE) Fun(x: A): Dynamic))
+                :args (
+                  (TypedInt 7 :type Int)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedApp :type Dynamic
+              :func (TypedTypeApp [Car] :type Fun(x: Car): Dynamic
+                :func (TypedVar 'pack' :type All(A :: TYPE) Fun(x: A): Dynamic))
+              :args (
+                (TypedVar 'myCar' :type Car)
+              ))
+            :branches (
+              (TypedInspectBranch match=Object
+                :body (TypedSelect 'age' :type Int
+                  :target (TypedVar 'o' :type Object)))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetType 'Showable' :kind TYPE)
+    (TypedLetValue 'showable' :type All(A :: TYPE) Fun(x: A f: Fun(_: A): String): Showable
+      :value (TypedFun :params (('x' : A) ('f' : Fun(_: A): String)) :type All(A :: TYPE) Fun(x: A f: Fun(_: A): String): Showable
+        :body (TypedAuto :A :type Showable
+          :payload (TypedTuple :type Tuple x: A show: Fun(_: A): String end
+            :elements (
+              (TypedVar 'x' :type A)
+              (TypedVar 'f' :type Fun(_: A): String)
+            )))))
+    (TypedLetValue 'showInt' :type Showable
+      :value (TypedApp :type Showable
+        :func (TypedTypeApp [Int] :type Fun(x: Int f: Fun(_: Int): String): Showable
+          :func (TypedVar 'showable' :type All(A :: TYPE) Fun(x: A f: Fun(_: A): String): Showable))
+        :args (
+          (TypedInt 5 :type Int)
+          (TypedFun :params (('n' : Int)) :type Fun(n: Int): String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedInfix '*' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 10 :type Int))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 's' :type Fun(text: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'showInt' :type Showable)
+            :branches (
+              (TypedInspectBranch match=Int exact
+                :body (TypedApp :type String
+                  :func (TypedSelect 'show' :type Fun(_: Int): String
+                    :target (TypedVar 'i' :type Tuple x: Int show: Fun(_: Int): String end))
+                  :args (
+                    (TypedSelect 'x' :type Int
+                      :target (TypedVar 'i' :type Tuple x: Int show: Fun(_: Int): String end))
+                  )))
+            )
+            :else (TypedString '?' :type String))
+        )))
+  ))

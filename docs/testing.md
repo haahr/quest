@@ -64,6 +64,7 @@ tests/
   │   │   ├── exceptions_try_when.quest
   │   │   ├── existential_packages.quest
   │   │   ├── auto_types.quest
+  │   │   ├── auto_type_parameters.quest
   │   │   ├── record_views.quest
   │   │   ├── nested_record_views.quest
   │   │   ├── function_subtyping.quest

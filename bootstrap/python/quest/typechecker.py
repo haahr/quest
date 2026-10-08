@@ -979,6 +979,7 @@ class TypeElaborator:
                 params=tuple(formal_params),
                 body=body_typed,
                 type_val=fun_type,
+                type_param_ids=tuple(q.symbol_id for q in quants),
                 offset=expr.offset,
             )
 
@@ -995,12 +996,14 @@ class TypeElaborator:
         if isinstance(expected_lazy, QAllType):
             with env.scoped("poly_fun"):
                 meta_map: dict[int, QType] = {}
+                body_type_param_ids: list[int] = []
                 for q in expected_lazy.quantifiers:
                     sym_id = env.fresh_symbol_id()
                     env.current_scope.declare_type(
                         TypeSymbol(name=q.name, symbol_id=sym_id, kind=q.bound)
                     )
                     self._type_param_ids.add(sym_id)
+                    body_type_param_ids.append(sym_id)
                     meta_map[q.symbol_id] = QTypeVar(name=q.name, symbol_id=sym_id, bound=q.bound)
                 inner_exp = expected_lazy.body.substitute(meta_map)
                 if getattr(expr, "type_params", ()):
@@ -1021,6 +1024,7 @@ class TypeElaborator:
                     params=inner_typed.params if isinstance(inner_typed, TypedFun) else (),
                     body=inner_typed.body if isinstance(inner_typed, TypedFun) else inner_typed,
                     type_val=expected_lazy,
+                    type_param_ids=tuple(body_type_param_ids),
                     offset=expr.offset,
                 )
 
@@ -2569,19 +2573,25 @@ class TypeElaborator:
         return target_typed, typed_branches, else_typed
 
     def _check_closed_type(self, t: QType, what: str, offset: int) -> None:
-        """Rejects a type with free type variables (Cardelli §4.6): one that mentions a type parameter
-        of an enclosing polymorphic function or an abstract type projected from a value."""
+        """Checks a type that is used at run time (Cardelli §4.6 requires it to be closed).
+
+        A type parameter of an enclosing polymorphic function is allowed by itself, since its run-time type argument
+        is known when the function runs; a larger type that mentions one is not yet supported, and an abstract type
+        projected from a package value (t.A) has no run-time identity.
+        """
+        _check_no_package_types(t, what, offset)
         free = set(t._fv) & self._type_param_ids
-        paths = find_path_types(strip_aliases(t))
-        if free or paths:
-            names = sorted(
-                {p.root_name + "." + p.field_name for p in paths}
-                | {v.name for v in _type_vars_with_ids(strip_aliases(t), free)}
-            )
-            raise TypeError(
-                f"{what} must be a closed type, but '{t}' mentions the free type variable(s) {', '.join(names)}",
-                offset=offset,
-            )
+        if not free:
+            return
+        bare = unalias(t)
+        if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in self._type_param_ids:
+            return
+        names = sorted({v.name for v in _type_vars_with_ids(strip_aliases(t), free)})
+        raise TypeError(
+            f"{what} can be a type parameter of an enclosing function, but cannot yet mention one inside a larger "
+            f"type: '{t}' mentions {', '.join(names)}",
+            offset=offset,
+        )
 
     def _check_auto_expr(
         self,
