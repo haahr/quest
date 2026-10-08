@@ -1,6 +1,6 @@
 # Quest Dynamic Types & Serialization (`dynamic.extern` / `dynamic.intern`)
 
-This document specifies the design, runtime representation, and JSON/JSOG serialization format for Quest dynamic
+This document specifies the design, runtime representation, and JSON serialization format for Quest dynamic
 types (`Dynamic.T`), implemented in `bootstrap/python/quest/dynamic_json.py` and `bootstrap/python/quest/builtins.py`.
 
 ---
@@ -35,151 +35,205 @@ end;
 
 ---
 
-## 2. Wire Format Specification: JSON/JSOG
 
-The serialization format emitted by `dynamic.extern` and parsed by `dynamic.intern` is standard JSON extended with
-JSOG (JavaScript Object Graph) conventions for cycle detection and sharing.
+## 2. Wire Format, Version 1
 
-### 2.1. Top-Level Type Envelope
-Every serialized dynamic value is wrapped in an explicit top-level envelope:
+> **Status:** designed, not yet implemented. Until it lands, `dynamic.extern` writes an unversioned
+> predecessor in which `@type` is a Quest type expression printed as a string. That form is being replaced
+> because printing a recursive type shares nothing (a single `syntax_ast` type printed as 5 MB), because both
+> readers then need a Quest type parser (the C runtime has only a partial one), and because nested dynamics
+> repeat their whole type. Files in the old form are not read; nobody keeps them until the self-hosted
+> compiler is complete.
+
+A serialized dynamic value is one JSON document that holds a **type table** and a **value**. Every type the
+document mentions is written once, as structured JSON, in the table; types and values refer to table entries by
+index. Values are decoded by following their type, so the value encoding stays close to plain JSON.
+
+### 2.1. Document
+
 ```json
 {
-  "@type": "<TypeString>",
-  "@value": <ValuePayload>
+  "quest": 1,
+  "types": [ <TypeNode>, ... ],
+  "type": <TypeRef>,
+  "value": <Value>
 }
 ```
-- **`@type`**: A canonical string representation of the static type `d.type_val` (e.g. `"Int"`, `"Array(String)"`,
-  `"Record x: Int y: Int end"`).
-- **`@value`**: The JSON serialization of the underlying value `d.value`.
 
-On `dynamic.intern`, the `@type` string is parsed and elaborated using the Quest lexer, parser, and type elaborator
-with the standard prelude environment, reconstructing the `QType` descriptor needed for runtime subtyping in
-`dynamic.be`.
+- **`quest`**: the format version, an integer. A reader rejects versions it does not know (`dynamic.error`).
+  It is independent of the build ABI version (docs/build-process.md §5.2), although `.qi` files use this
+  format, so changing it also bumps the ABI.
+- **`types`**: the type table. Nested dynamic values anywhere in `value` use the same table.
+- **`type`**: the type of the dynamic value.
+- **`value`**: the value, encoded as §2.4 describes for that type.
 
-### 2.2. Serde-Style External Tagging for Variants and Options
-To match idiomatic serialization patterns (e.g., Rust's Serde external tagging):
-- **Variants with a payload**: Serialized as a single-key object where the key is the variant tag:
-  ```json
-  {"error": 404}
-  ```
-- **Unit variants** (payload of type `Ok`): Serialized directly as a string containing the tag name:
-  ```json
-  "success"
-  ```
-- **Options**: Encoded using the same external tagging rules:
-  - `option nil of T end` -> `"nil"`
-  - `option cons with head: 1 tail: ... end` -> `{"cons": {"head": 1, ...}}`
+The top level is not a value, so its keys need no `@`.
 
-### 2.3. Cycle and Sharing Resolution via JSOG (`@id` and `@ref`)
-In memory, Quest data structures (such as mutable records or arrays) can form cycles (e.g., recursive nodes) or
-directed acyclic graphs (DAGs) with shared subgraphs.
+### 2.2. Type References and Type Nodes
 
-Cardelli's specification requires that `extern` and `intern` preserve sharing and circularities within a single
-dynamic object. This is achieved via JSOG annotations:
+A **TypeRef** is either the name of a built-in type, as a string, or a non-negative integer index into
+`types`:
 
-1. **`@id` Definition:**
-   The first time an object that is referenced more than once (or participates in a cycle) is encountered during
-   serialization, an `@id` property is added to its JSON representation:
-   ```json
-   {
-     "@id": "1",
-     "id": 1,
-     "next": { ... }
-   }
-   ```
-2. **`@ref` Reference:**
-   On all subsequent encounters of the identical object, a reference stub is emitted instead of re-serializing the
-   object:
-   ```json
-   {
-     "@ref": "1"
-   }
-   ```
-3. **Cyclic Arrays (`QArray`):**
-   Plain JSON arrays `[...]` cannot carry object properties like `@id`. If a `QArray` participates in a cycle or has
-   multiple incoming references, it is wrapped in an object container:
-   ```json
-   {
-     "@id": "2",
-     "@array": [1, 2, {"@ref": "2"}]
-   }
-   ```
-   Non-cyclic, unshared arrays are emitted as standard JSON lists: `[1, 2, 3]`.
-4. **Tuples (`QTuple`):**
-   Tuples with shared references or cycles are wrapped in `{"@id": "...", "@tuple": [...]}`.
+| Built-in name | Type |
+| :--- | :--- |
+| `"Ok"`, `"Bool"`, `"Char"`, `"String"`, `"Int"`, `"Real"` | the basic types |
+| `"Dynamic"` | `Dynamic.T` |
+| `"Word"` | `Word.T` (externally implemented) |
 
-### 2.4. Mapping of Quest Values to JSON
+A **TypeNode** is a JSON object with exactly one key, naming the type constructor:
 
-| Quest Type / Value | Serialized JSON Format | Notes |
+| Node | Type |
+| :--- | :--- |
+| `{"record": {"<label>": TypeRef, ...}}` | `Record ... end` |
+| `{"tuple": [["<label>", TypeRef], ...]}` | `Tuple ... end` (value components only, in order) |
+| `{"variant": {"<tag>": TypeRef \| null, ...}}` | `Variant ... end`; `null` for a case without a payload |
+| `{"option": {"<tag>": TypeRef \| null, ...}}` | `Option ... end`; `null` for a case without a payload |
+| `{"array": TypeRef}` | `Array(T)` |
+| `{"fun": {"params": [["<label>", TypeRef], ...], "result": TypeRef}}` | a monomorphic function type |
+| `{"exception": TypeRef}` | `Exception(T)` |
+| `{"abstract": "<module path>.<name>", "rep": TypeRef}` | an abstract type exported by a module (§2.3) |
+
+A **label** is a field name, prefixed with `var ` when the field is mutable (`"var next"`). An unnamed tuple
+component has the label `""` (or `"var"` when mutable). Identifiers cannot contain spaces and `var` is a
+keyword, so labels are unambiguous. `Out(T)` does not occur in the types of values.
+
+**Recursive types are cycles in the table.** Quest's recursive types are equi-recursive: two types are equal
+when their infinite unfoldings are, and a recursive type is a finite graph with type constructors at the nodes
+(Typeful Programming §4.7). The table is that graph, so it needs no `Rec` binder: a reference back to an
+enclosing node is the recursion. For example, `Rec(L) Option nil cons with head: Int tail: L end end` is
+
+```json
+"types": [
+  {"option": {"cons": 1, "nil": null}},
+  {"tuple": [["head", "Int"], ["tail", 0]]}
+]
+```
+
+Type operator applications are reduced before writing (`List(Int)` is written as the type it denotes), and
+aliases are written as their meaning.
+
+**Canonical order.** A writer numbers nodes in the order a depth-first walk from the root type first reaches
+them, visiting record fields, variant cases and option cases in sorted order, tuple and parameter components in
+order, and nested dynamics' types in the order their values are written. A writer may share structurally
+identical nodes (hash-consed types make that natural), but a reader must not assume the table is minimal or
+that equal types have one index: types are compared structurally, never by index.
+
+**Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples and
+`Auto`), and type operators themselves have binders that this table does not express. `dynamic.extern`
+raises `dynamic.error` for a type containing one. A later version can add binder nodes.
+
+### 2.3. Abstract Types
+
+Cardelli allows every dynamic value to be externed except readers and writers (Typeful Programming §9.1), and
+requires the type in a dynamic to be *closed*: it may not contain free type variables. A module's abstract type
+`a.T` is closed in that sense, because it is named through the global name space of compiled modules, in which
+`a.T` matches `b.T` precisely when `a` and `b` are the same module (§7.3, the diamond import). An abstract type
+extracted from a local tuple value (`t.A`) depends on that value and is not closed.
+
+- **`dynamic.new` rejects value-dependent abstract types.** The typechecker reports a static error when the type
+  given to `dynamic.new` contains an abstract type whose root is not a module (a let-bound tuple, a parameter, a
+  block variable), since the type would escape its scope.
+- **Module abstract types are written by global name and representation.** A module abstract type is written as
+  `{"abstract": "geo/coord.P", "rep": TypeRef}`: the module's import path, a dot, the type name, and the type
+  that implements it. The writer gets the representation from the module that defines it (in the interpreter,
+  the module's environment; in compiled code, a descriptor the module registers for each exported abstract type).
+- **On `intern`, the representation is checked.** If the reading program links the module `geo/coord`, the
+  abstract type is read as `coord.P` only if the recorded representation is equal (as an equi-recursive type) to
+  that module's actual representation; otherwise `intern` raises `dynamic.error`. This catches a file written
+  by a program linked with an older implementation of the module.
+- **An unlinked module's type stays opaque.** If the reading program does not link the module, the type is
+  reconstructed as an opaque nominal type with the same global name and representation. No static type in the
+  program names it, so `dynamic.be` can only succeed at `Dynamic`-compatible types, and externing it again
+  writes the same node.
+
+Within the language, abstraction is preserved: only `dynamic.be(:coord.P d)` yields the value, and only at type
+`coord.P`. The JSON text does expose the representation, as it exposes every value.
+
+### 2.4. Values
+
+Decoding is directed by the type, so the same JSON shape can mean different things at different types (an array
+is an `Array` or a `Tuple`; a string is a `String`, a `Char` or a payload-free case). A value that does not fit
+its type raises `dynamic.error`.
+
+| Type | JSON | Notes |
 | :--- | :--- | :--- |
-| `Ok` (`ok`) | `"ok"` | Represented as constant string `"ok"`. |
-| `Bool` (`true` / `false`) | `true` / `false` | Native JSON booleans. |
-| `Int` (`123`, `~45`) | `123`, `-45` | Standard JSON integer numbers. |
-| `Real` (`3.14`, `~0.5`) | `3.14`, `-0.5` | Standard JSON float numbers. |
-| `Char` (`'a'`) | `"a"` | Single-character string; type envelope specifies `"Char"`. |
-| `String` (`"hello"`) | `"hello"` | Standard JSON string with standard escaping. |
-| `Record` (`record ... end`) | `{"field": val, ...}` | Object with sorted field keys; adds `@id` if cyclic/shared. |
-| `Tuple` (`tuple ... end`) | `{"@tuple": [val1, ...]}` | Emitted under `@tuple` key to distinguish from records. |
-| `Array` (`array ... end`) | `[elem1, ...]` | Plain list if unshared; `{"@id": "...", "@array": [...]}` if cyclic. |
-| `Variant` (`variant tag ...`) | `{"tag": val}` or `"tag"` | Serde external tagging convention. |
-| `Option` (`option tag ...`) | `{"tag": val}` or `"tag"` | Serde external tagging convention. |
-| `Dynamic.T` (`dynamic.new(...)`) | `{"@type": "...", "@value": ...}` | Nested dynamic envelope. |
-| `Var(T)` / `QRef` | `<value>` | Transparently dereferenced and serialized as inner value. |
+| `Ok` | `null` | |
+| `Bool` | `true` / `false` | |
+| `Int`, `Word.T` | integer | Readers must parse 64-bit integers exactly, not through a double. |
+| `Real` | number | Non-finite values are the strings `"NaN"`, `"Infinity"`, `"-Infinity"`. |
+| `Char` | one-character string | |
+| `String` | string | Standard JSON escaping. |
+| `Record` | `{"<field>": value, ...}` | Keys sorted; exactly the type's fields; `var` fields hold their current value. |
+| `Tuple` | `[value, ...]` | In component order. |
+| `Array(T)` | `[value, ...]` | |
+| `Variant`, `Option` | `"<tag>"` or `{"<tag>": value}` | Serde-style external tagging. A case without a payload, or with payload type `Ok`, is the bare tag. |
+| `Dynamic.T` | `{"@type": TypeRef, "@value": value}` | The nested value's type is in the document's table. |
+| abstract type | the value at its representation type | |
 
-### 2.5. Non-Externable Types & Error Semantics
-According to Cardelli (§9.1), objects bound to input/output devices or containing native runtime state cannot be
-externed:
-- **Prohibited Types:**
-  - Readers (`QReader` / `Reader.T`)
-  - Writers (`QWriter` / `Writer.T`)
-  - Closures (`QClosure`, `QBuiltinFun`)
-- **Error Behavior:**
-  - Invoking `dynamic.extern` on a dynamic value containing any non-externable object immediately raises
-    `dynamic.error` (`QuestException(DYNAMIC_ERROR_EXC)`).
-  - Calling `dynamic.intern` on corrupt JSON, missing envelope keys (`@type`, `@value`), unresolvable `@ref` IDs,
-    or schema mismatches cleanly raises `dynamic.error`.
+### 2.5. Sharing and Cycles
 
-### 2.6. Whitespace & Formatting
-The default output generated by `dynamic.extern` is compact single-line JSON using minimal separators
-(`separators=(',', ':')`). This ensures deterministic output across platforms and optimal streaming performance.
+`extern` and `intern` preserve sharing and circularities within one dynamic value, but not across values
+(Typeful Programming §9.1). Records, tuples and arrays that are reached more than once are written in full the
+first time, with an identifier, and as a reference afterwards:
+
+- A shared record has an `"@id": n` key alongside its fields. Field names never begin with `@`.
+- A shared tuple or array is written as `{"@id": n, "@items": [value, ...]}`; the type says which it is.
+- Every later occurrence is `{"@ref": n}`.
+
+Identifiers are integers, numbered from 1 in the order the writer first reaches the shared objects. Only objects
+reached more than once get one.
+
+### 2.6. Non-Externable Values and Errors
+
+- Readers, writers and closures cannot be externed; nor can values whose type is not encodable (§2.2). `extern`
+  raises `dynamic.error`. (Cardelli allows functions to be externed; that needs a code representation that this
+  format does not have.)
+- `intern` raises `dynamic.error` on malformed JSON, an unknown `quest` version, a type reference out of range,
+  a type node it does not recognize, a value that does not fit its type, an undefined `@ref`, or an abstract type
+  whose representation does not match (§2.3).
+
+### 2.7. Formatting
+
+`extern` writes compact JSON with no whitespace (`separators=(",", ":")`), so output is deterministic across
+the interpreter and compiled code.
 
 ---
 
 ## 3. Implementation Architecture
 
-### 3.1. Two-Pass Encoding (`jsog_encode`)
-Located in `bootstrap/python/quest/dynamic_json.py`:
-- **Pass 1 (Analysis):** Recursively traverses the value graph starting at `dyn.value`, tracking object identities via
-  Python `id()`. Tracks reference counts for composite objects (`QRecord`, `QArray`, `QTuple`).
-- **Pass 2 (Emission):** Assigns sequential string identifiers (`"1"`, `"2"`, ...) to objects with reference count
-  greater than 1. Emits the full object definition with `@id` on the first encounter, and `{"@ref": id}` on all
-  subsequent encounters.
+### 3.1. Writing
 
-### 3.2. Two-Pass Decoding (`jsog_decode`)
-- **Pass 1 (Pre-allocation):** Recursively scans the parsed JSON dictionary/list tree for any object containing an
-  `@id` attribute. Allocates an empty `QRecord`, `QArray`, or `QTuple` instance and stores it in an `id_map`.
-- **Pass 2 (Linking):** Traverses the JSON tree again, populating fields and array elements. Whenever an object
-  containing `{"@ref": id}` is encountered, it is replaced with the pre-allocated instance from `id_map`. This
-  guarantees that self-referential cycles and mutual loops of any depth are restored correctly.
+Writing takes two passes over the value, as now: the first finds objects reached more than once, the second
+writes the value. The type table is filled as the second pass meets each type: the root type, then each nested
+dynamic's type, adding nodes in the canonical order of §2.2. Types are hash-consed, so a writer keyed on node
+identity shares each type node it has already written.
 
-### 3.3. Type Parsing (`parse_type_string`)
-Converts the textual type representation in `@type` back into a `QType` object:
-- Primitive type names (`Int`, `Real`, `Bool`, `Char`, `String`, `Ok`, `Dynamic`) are resolved via a static table.
-- Complex types (`Record ... end`, `Array(...)`, `Variant ... end`, `Option ... end`, `Tuple ... end`) are tokenized
-  with `Tokenizer`, parsed using `parse_quest_program(tokens, symbol_map, target="Type")`, and elaborated in a base
-  type environment.
+### 3.2. Reading
 
-### 3.4. Native C Runtime Implementation (`runtime/quest_serialization.c`)
-The native C implementation provides full format parity with the Python reference:
-- **`quest_dynamic_extern`:** Traverses the pointer graph, identifies cycles and multi-references with an address hash
-  table, and emits JSON/JSOG text using canonical alphabetical record field ordering.
-- **`quest_dynamic_intern`:** Reads characters from a `QReader` using a streaming lexer/parser, consuming exactly one
-  top-level JSON value while preserving unread stream characters in `peek_char`.
-- **Type Descriptor Resolution:** Checks registered static program types (`quest_lookup_type_descriptor_by_name`),
-  falling back to a recursive-descent type expression parser (`quest_parse_type_descriptor`) for dynamically
-  synthesized types.
-- **Two-Pass Deserialization:** Pre-allocates heap memory for all `@id` nodes (`quest_jsog_preallocate`) using natural
-  C struct alignment, and links fields and `@ref` pointers (`quest_jsog_decode_value`).
+Reading also takes two passes, as now: the first allocates every object with an `@id`, the second fills them and
+resolves `@ref`s. Before either, the type table is turned into types:
+
+- **Interpreter** (`bootstrap/python/quest/dynamic_json.py`): builds `QType`s from the graph. A node reached
+  again while it is still being built is a back edge, so the node becomes a recursive type `Rec(X) ...` and the
+  back edge becomes `X`; any choice of binder places gives an equal type. No Quest parser is involved.
+- **C runtime** (`runtime/quest_serialization.c`): builds `QTypeDescriptor`s directly, since descriptors are
+  already graphs: allocate one descriptor per node, then fill in their references. `dynamic.be` keeps comparing
+  descriptors structurally (`quest_is_subtype`).
+
+### 3.3. Descriptors in Generated C
+
+Static descriptors carry the full structure of their type (record and tuple labels with `var` flags, case
+payloads, function parameters and results, and, for an abstract type, its global name and representation), so
+the C writer can produce the type table from them. A descriptor's `.name` is used only in diagnostics, so it
+becomes a short display name instead of the full printed type. Name-based lookup
+(`quest_lookup_type_descriptor_by_name`) and the type-string parser (`quest_parse_type_descriptor`) are
+removed.
+
+### 3.4. `.qi` Files
+
+Interface artifacts are written in this format. Their schema is unchanged: signatures stay Quest-syntax strings
+(`typeSig`, `manifestType`), because they are compiler metadata that need type variables and path types. Only
+the envelope changes, which bumps `ABI_VERSION`.
 
 ---
 
@@ -196,28 +250,46 @@ let d = dynamic.new(:Node n1);
 dynamic.extern(writer.output d);
 ```
 
-**Serialized JSON Output (compact on wire, formatted here for clarity):**
+**Serialized JSON output (compact on the wire, formatted here for clarity):**
 ```json
 {
-  "@type": "Record id: Int var next: Dynamic end",
-  "@value": {
-    "@id": "1",
+  "quest": 1,
+  "types": [
+    {"record": {"id": "Int", "var next": "Dynamic"}}
+  ],
+  "type": 0,
+  "value": {
+    "@id": 1,
     "id": 1,
     "next": {
-      "@type": "Record id: Int var next: Dynamic end",
+      "@type": 0,
       "@value": {
         "id": 2,
-        "next": {
-          "@type": "Record id: Int var next: Dynamic end",
-          "@value": {
-            "@ref": "1"
-          }
-        }
+        "next": {"@type": 0, "@value": {"@ref": 1}}
       }
     }
   }
 }
 ```
 
-When decoded with `dynamic.intern(reader.input)`, `n1.next.next` resolves identically to `n1` in memory, and
-`dynamic.be(:Node d)` succeeds.
+The record type is written once, though three dynamics use it. When decoded with `dynamic.intern(reader.input)`,
+`n1.next.next` is identical to `n1` in memory, and `dynamic.be(:Node d)` succeeds.
+
+### Recursive List
+```quest
+Let Rec IntList = Option nil cons with head: Int tail: IntList end end;
+let l = option cons of IntList with tuple let head = 1 let tail = option nil of IntList end end end;
+dynamic.extern(writer.output dynamic.new(:IntList l));
+```
+
+```json
+{
+  "quest": 1,
+  "types": [
+    {"option": {"cons": 1, "nil": null}},
+    {"tuple": [["head", "Int"], ["tail", 0]]}
+  ],
+  "type": 0,
+  "value": {"cons": [1, "nil"]}
+}
+```
