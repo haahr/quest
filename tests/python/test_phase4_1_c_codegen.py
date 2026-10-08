@@ -1,5 +1,6 @@
 """Unit and integration tests for Phase 4.1 C Code Generation & Runtime."""
 
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -241,7 +242,9 @@ class TestPhase41Codegen(unittest.TestCase):
         bin_path = src_path.with_suffix(".bin")
 
         try:
-            exit_code = run_driver(["compile", str(src_path), "-o", str(bin_path)])
+            exit_code = run_driver([
+                "compile", str(src_path), "-o", str(bin_path), "--build-dir", str(src_path.with_suffix(".build")),
+            ])
             self.assertEqual(exit_code, 0)
             self.assertTrue(bin_path.exists())
 
@@ -249,6 +252,7 @@ class TestPhase41Codegen(unittest.TestCase):
             self.assertEqual(proc.returncode, 0)
             self.assertIn("123 : Int", proc.stdout)
         finally:
+            shutil.rmtree(src_path.with_suffix(".build"), ignore_errors=True)
             if src_path.exists():
                 src_path.unlink()
             if bin_path.exists():

@@ -122,9 +122,10 @@ python3 run_tests.py --update-golden
 
 If stdout does not match the golden file, `run_tests.py` prints a unified diff detailing the exact mismatch.
 
-**Hermetic C builds:** C phases build into a fresh temporary build directory for each run (shared by the tests of that
-run and deleted afterwards), so results never depend on artifacts left by earlier compiler versions. Pass
-`--build-dir <dir>` to reuse a build directory across runs for speed.
+**Hermetic builds:** every phase builds into a fresh temporary build directory for each run (shared by the tests of
+that run and deleted afterwards), so results never depend on artifacts left by earlier runs or compiler versions.
+Pass `--build-dir <dir>` to reuse a build directory across runs for speed. Unit tests that invoke the driver give it
+a build directory inside their own temporary directory, so no test writes into the repository.
 
 **ABI corpus:** `tests/python/test_abi_corpus.py` fails when the generated interface artifacts (`.qi` files and C
 headers for a frozen snapshot of the library's interfaces) change without a bump of `ABI_VERSION`

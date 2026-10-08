@@ -161,11 +161,11 @@ def run_single_golden_test(
     ]
     if driver_args:
         command.extend(driver_args)
-    if phase_name in ("codegen_c", "run_c_compiled"):
-        if build_dir is None:
-            build_dir = ROOT_DIR / ".build"
-        build_dir.mkdir(parents=True, exist_ok=True)
-        command.extend(["--build-dir", str(build_dir)])
+    # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
+    if build_dir is None:
+        build_dir = ROOT_DIR / ".build"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
 

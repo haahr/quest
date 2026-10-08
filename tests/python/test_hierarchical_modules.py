@@ -267,6 +267,7 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
             str(util_dir / "calc.o"),
             "-o", str(out_bin),
             "-I", str(self.root),
+            "--build-dir", str(self.root / ".build"),
         ])
         self.assertEqual(ret, 0)
         self.assertTrue(out_bin.exists())
