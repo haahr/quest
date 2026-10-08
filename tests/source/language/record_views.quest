@@ -1,0 +1,50 @@
+(* Language: records viewed at supertypes keep working when viewed again
+   (C: offset tables come from the record's own layout, not its static type) *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n");
+
+Let Huge = Record a: Int b: Int c: Int d: Int end;
+Let Big = Record b: Int c: Int d: Int end;
+Let Mid = Record c: Int d: Int end;
+Let Small = Record d: Int end;
+let huge: Huge = record a = 1 b = 2 c = 3 d = 4 end;
+
+(* 1. A chain of coercions *)
+let big: Big = huge;
+let mid: Mid = big;
+let small: Small = mid;
+p(mid.c);
+p(small.d);
+
+(* 2. A view passed to a function taking a smaller record *)
+let sumMid(m: Mid): Int = m.c + m.d;
+p(sumMid(big));
+
+(* 3. dynamic.be on a record packaged at a supertype view *)
+let d = dynamic.new(:Mid mid);
+let viaDynamic: Small = dynamic.be(:Small d);
+p(viaDynamic.d);
+
+(* 4. inspect on a Dynamic and on an auto value holding a view *)
+p(inspect d when Small with s then s.d else 0 end);
+Let AnyMid = Auto A<:Mid with a:A end;
+let anyMid: AnyMid = auto :Big with big end;
+p(inspect anyMid when Mid with x then x.a.c * 10 + x.a.d else 0 end);
+
+(* 5. A record field of a tuple, coerced with the tuple *)
+let bigTuple: Tuple r: Big n: Int end = tuple big 5 end;
+let midTuple: Tuple r: Mid n: Int end = bigTuple;
+p(midTuple.r.c + midTuple.n);
+
+(* 6. A bounded polymorphic function returns a view at the caller's type *)
+let same(A <: Mid x: A): A = x;
+let bigAgain: Big = same(:Big big);
+p(bigAgain.b);
+
+(* 7. Serializing a view writes the fields of its type *)
+dynamic.extern(writer.output d);
+writer.putString(writer.output "\n");

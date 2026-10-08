@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import dataclasses
+from dataclasses import dataclass
+from typing import Any, Optional
 
 from quest.types import (
     QAliasType,
@@ -17,6 +20,7 @@ from quest.types import (
     QAbstractType,
     QAllType,
     QArrayType,
+    QAutoType,
     QExceptionType,
     QExternalType,
     QFunType,
@@ -43,6 +47,10 @@ from quest.types import (
     resolve_variant_bound,
     resolve_option_bound,
     is_type_equal,
+    auto_payload_type,
+    QParam,
+    QKind,
+    unalias,
 )
 
 SYMBOL_MANGLE_MAP: dict[str, str] = {
@@ -253,6 +261,8 @@ def _type_to_c_tag_raw(t: QType) -> str:
         return "QVariant_" + ("_".join(tags) if tags else "empty")
     if isinstance(t, QExceptionType):
         return "QException"
+    if isinstance(t, QAutoType):
+        return "Auto_" + type_to_c_tag(auto_payload_type(t))
     if isinstance(t, QOptionType) or (opt_bound := resolve_option_bound(t)) is not None:
         opt_t = t if isinstance(t, QOptionType) else opt_bound
         tags = []
@@ -263,6 +273,223 @@ def _type_to_c_tag_raw(t: QType) -> str:
                 tags.append(o.name)
         return "QOption_" + ("_".join(tags) if tags else "empty")
     return "QVal"
+
+
+def _type_digest(t: QType) -> str:
+    """A short digest of a type's canonical text, telling apart types that type_to_c_tag conflates."""
+    t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
+    return _text_digest(str(t))
+
+
+def _text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def fun_descriptor_tag(t: QType) -> str:
+    """The tag of the runtime descriptor of a function type (QFunType or QAllType).
+
+    type_to_c_tag is QClosure for every function type, which suits struct naming (all closures are represented
+    alike) but not descriptors, which must tell function types apart. Equal types that differ only in the names
+    of their type and value parameters share a tag (see canonical_fun_type).
+    """
+    return "fun_" + _type_digest(canonical_fun_type(t))
+
+
+# ----------------------------------------------------------------------------
+# Runtime type descriptors
+# ----------------------------------------------------------------------------
+
+# Bound type parameters of polymorphic function types are described by placeholders: type variables with reserved
+# symbol ids that stand for de Bruijn indices (quest_type_bound_vars in the runtime).
+_BOUND_VAR_BASE = -(1 << 40)
+_CANONICAL_QUANTIFIER_BASE = -(1 << 41)
+
+
+def bound_var(index: int, bound: Optional[QKind]) -> QTypeVar:
+    """The placeholder for the type parameter with de Bruijn index `index`, keeping its bound (which determines
+    its C representation)."""
+    return QTypeVar(name=f"#{index}", symbol_id=_BOUND_VAR_BASE - index, bound=bound)
+
+
+def bound_var_index(t: QType) -> Optional[int]:
+    """The de Bruijn index of a bound type parameter placeholder, or None for any other type."""
+    if isinstance(t, QTypeVar) and _CANONICAL_QUANTIFIER_BASE < t.symbol_id <= _BOUND_VAR_BASE:
+        return _BOUND_VAR_BASE - t.symbol_id
+    return None
+
+
+def _bound_vars_in(t: Any) -> list[QTypeVar]:
+    """The bound type parameter placeholders occurring in t."""
+    found: dict[int, QTypeVar] = {}
+    seen: set[int] = set()
+
+    def visit(node: Any) -> None:
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, QTypeVar) and bound_var_index(node) is not None:
+            found.setdefault(node.symbol_id, node)
+        if isinstance(node, (tuple, list)):
+            for item in node:
+                visit(item)
+        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+            for f in dataclasses.fields(node):
+                visit(getattr(node, f.name))
+
+    visit(t)
+    return list(found.values())
+
+
+def _shift_bound_vars(t: Any, by: int) -> Any:
+    """t with each bound type parameter placeholder's index raised by `by` (moving t under `by` more binders)."""
+    present = _bound_vars_in(t)
+    if not present or by == 0:
+        return t
+    subst = {bv.symbol_id: bound_var(bound_var_index(bv) + by, bv.bound) for bv in present}
+    return t.substitute_types(subst) if isinstance(t, QKind) else t.substitute(subst)
+
+
+def canonical_fun_type(t: QType) -> QType:
+    """The canonical form of a function type, which equal types share: value parameters lose their names, and the
+    type parameters of a polymorphic function type are replaced by placeholders (de Bruijn indices, counting binders
+    outward from the reference; within one All, the last parameter is 0 in the body and the k-th parameter's bound
+    sees the earlier ones). Nested polymorphic function types are canonicalized when they are described."""
+    t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
+    if isinstance(t, QFunType):
+        return QFunType(
+            params=tuple(QParam(name="", type_val=p.type_val, is_var=p.is_var, is_out=p.is_out) for p in t.params),
+            result_type=t.result_type,
+        )
+    if not isinstance(t, QAllType):
+        return t
+    quants = t.quantifiers
+    n = len(quants)
+    new_quants: list[QQuantifier] = []
+    placeholders: list[QTypeVar] = []
+    for k, q in enumerate(quants):
+        bound = _shift_bound_vars(q.bound, k)
+        bound = bound.substitute_types({quants[j].symbol_id: bound_var(k - 1 - j, new_quants[j].bound) for j in range(k)})
+        new_quants.append(QQuantifier(name=f"${k}", symbol_id=_CANONICAL_QUANTIFIER_BASE - k, bound=bound))
+    body = _shift_bound_vars(t.body, n)
+    for k, q in enumerate(quants):
+        placeholders.append(bound_var(n - 1 - k, new_quants[k].bound))
+    body = body.substitute({q.symbol_id: placeholders[k] for k, q in enumerate(quants)})
+    body = canonical_fun_type(body) if isinstance(body, QFunType) else body
+    return QAllType(quantifiers=tuple(new_quants), body=body)
+
+
+class MissingDescriptorError(Exception):
+    """A type has no runtime type descriptor (such as Var(T) or a type operator)."""
+
+
+@dataclass(frozen=True)
+class DescriptorForm:
+    """How a type is described at run time.
+
+    kind is one of base and bound_var (expr is the descriptor expression), or record, tuple, variant, option,
+    array, exception, fun, and opaque (the descriptor is quest_type_<tag>, describing `type`; an opaque descriptor
+    is compared by `name`).
+    """
+    kind: str
+    tag: str = ""
+    type: Optional[QType] = None
+    name: str = ""
+    expr: str = ""
+    struct: str = ""  # the C struct laid out as `type`, when its name is not derived from `type` itself
+
+    @property
+    def c_expr(self) -> str:
+        return self.expr if self.expr else f"(&quest_type_{self.tag})"
+
+
+_BASE_DESCRIPTORS: dict[int, str] = {}
+
+
+def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> DescriptorForm:
+    """Decides the runtime descriptor of a closed type (type parameters in scope are the emitter's business).
+
+    Each distinct type gets its own tag: tags of compound types include a digest of the type, because C tags
+    conflate types with the same representation (every closure is a QClosure, every type variable a QVal).
+    Recursive types are described by their unfoldings, which refer back to them by tag, so their descriptors are
+    cyclic. Raises MissingDescriptorError for types that have none.
+    """
+    t = t.prune() if hasattr(t, "prune") else t
+    t = normalize_type(strip_aliases(t))
+    if not _BASE_DESCRIPTORS:
+        _BASE_DESCRIPTORS.update({
+            id(INT_TYPE): "&quest_type_Int", id(REAL_TYPE): "&quest_type_Real", id(BOOL_TYPE): "&quest_type_Bool",
+            id(CHAR_TYPE): "&quest_type_Char", id(STRING_TYPE): "&quest_type_String", id(OK_TYPE): "&quest_type_Ok",
+            id(DYNAMIC_TYPE): "&quest_type_Dynamic",
+        })
+    if id(t) in _BASE_DESCRIPTORS:
+        return DescriptorForm("base", expr=_BASE_DESCRIPTORS[id(t)])
+    if isinstance(t, QTypeVar) and t.name == "Dynamic.T":
+        return DescriptorForm("base", expr="&quest_type_Dynamic")
+    if (index := bound_var_index(t)) is not None:
+        return DescriptorForm("bound_var", expr=f"(&quest_type_bound_vars[{index}])")
+    if isinstance(t, QTupleType) and not t.fields:
+        return DescriptorForm("base", expr="&quest_type_EmptyTuple")
+    if isinstance(t, QRecordType) or (rec_b := resolve_record_bound(t)) is not None:
+        rec_t = t if isinstance(t, QRecordType) else rec_b
+        return DescriptorForm("record", tag=record_struct_name(rec_t, ctx), type=rec_t)
+    if isinstance(t, QTupleType):
+        return DescriptorForm("tuple", tag=f"{tuple_struct_name(t)}_{_type_digest(t)}", type=t)
+    if isinstance(t, QVariantType) or (var_b := resolve_variant_bound(t)) is not None:
+        var_t = t if isinstance(t, QVariantType) else var_b
+        return DescriptorForm("variant", tag=f"{type_to_c_tag(var_t)}_{_type_digest(var_t)}", type=var_t)
+    if isinstance(t, QOptionType) or (opt_b := resolve_option_bound(t)) is not None:
+        opt_t = t if isinstance(t, QOptionType) else opt_b
+        described = opt_t
+        if isinstance(t, QRecType):
+            # resolve_option_bound gives the body with the recursion variable free (which names the C struct);
+            # the descriptor describes the unfolding, whose recursive occurrences refer back to t
+            unfolded = unalias(t.unfold_lazily())
+            if isinstance(unfolded, QOptionType):
+                described = unfolded
+        return DescriptorForm(
+            "option",
+            tag=f"{option_struct_name(opt_t)}_{_type_digest(described)}",
+            type=described,
+            struct=option_struct_name(opt_t),
+        )
+    # Records, variants, and options above resolve as the C type mapping does (their structs are named that
+    # way); other recursive types and type applications are described by their unfoldings
+    if isinstance(t, (QRecType, QRecGroupType)) or isinstance(t, QTypeApp):
+        unfolded = t.evaluate_lazily()
+        if unfolded is not t and not isinstance(unfolded, QTypeApp):
+            return descriptor_form(unfolded, ctx)
+        if isinstance(t, QTypeApp):
+            # An application of an abstract type operator (list.T(Int)): opaque, compared by name
+            name = str(t)
+            return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
+        raise MissingDescriptorError(f"no runtime type descriptor for the recursive type '{t}'")
+    if isinstance(t, QArrayType):
+        return DescriptorForm("array", tag=f"array_{_type_digest(t)}", type=t)
+    if isinstance(t, QExceptionType):
+        return DescriptorForm("exception", tag=f"exception_{_type_digest(t)}", type=t)
+    if isinstance(t, (QFunType, QAllType)):
+        canonical = canonical_fun_type(t)
+        return DescriptorForm("fun", tag=f"fun_{_type_digest(canonical)}", type=canonical)
+    if isinstance(t, QExternalType):
+        name = t.name or t.c_type
+        return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(name)}", name=name)
+    if isinstance(t, (QTypeVar, QAbstractType)):
+        return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(t.name)}", name=t.name)
+    if isinstance(t, QPathType):
+        # An abstract type of a package value (t.A): opaque, and distinct for each binding of t
+        name = f"{t.root_name}.{t.field_name}#{t.root_symbol_id}"
+        return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
+    if isinstance(t, QAutoType):
+        return DescriptorForm("opaque", tag=f"{type_to_c_tag(t)}_{_type_digest(t)}", name=str(t))
+    if isinstance(t, (QVarType, QOutType)):
+        # The type of a var or out parameter: described by its element type
+        return descriptor_form(t.element_type, ctx)
+    if isinstance(t, QTypeFun):
+        # A type operator, passed for a higher-kinded type parameter: opaque, compared by name
+        name = str(t)
+        return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
+    raise MissingDescriptorError(f"no runtime type descriptor for type '{t}'")
+
 
 
 def tuple_struct_name(t: QTupleType) -> str:
@@ -287,14 +514,16 @@ class RecordNamingContext:
     """Maintains sequential and alias-based naming for record types and evidence dictionaries."""
 
     def __init__(self) -> None:
-        self.alias_by_shape: dict[tuple[tuple[str, str], ...], str] = {}
-        self.seq_by_shape: dict[tuple[tuple[str, str], ...], str] = {}
-        self.shape_to_canonical_name: dict[tuple[tuple[str, str], ...], str] = {}
+        self.alias_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
+        self.seq_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
+        self.shape_to_canonical_name: dict[tuple[tuple[str, str, str], ...], str] = {}
         self._record_counter = 0
 
-    def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str], ...]:
+    def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
+        # Records share a struct (and so a descriptor) only if their fields have the same types, not merely the same
+        # C representations: type_to_c_tag is QClosure for every function type and QVal for every type variable.
         sorted_fields = sorted(t.fields, key=lambda f: f.name)
-        return tuple((f.name, type_to_c_tag(f.type_val)) for f in sorted_fields)
+        return tuple((f.name, type_to_c_tag(f.type_val), _type_digest(f.type_val)) for f in sorted_fields)
 
     def register_alias(self, alias_name: str, t: QRecordType) -> None:
         key = self._shape_key(t)
@@ -347,6 +576,9 @@ def _qtype_to_c_type_raw(t: QType) -> str:
     if t is OK_TYPE:
         return "void"
     if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
+        return "QDynamic *"
+    if isinstance(t, QAutoType):
+        # An auto value is represented like a Dynamic: its type component's descriptor and its payload
         return "QDynamic *"
     if isinstance(t, QExternalType):
         return t.c_type

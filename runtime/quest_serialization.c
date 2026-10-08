@@ -57,26 +57,7 @@ static QPtrNode *quest_ptr_insert_or_inc(QPtrTable *table, const void *ptr) {
 }
 
 static QVal quest_extract_field_val(const QTypeDescriptor *t, const void *ptr) {
-    if (t == NULL || ptr == NULL) return (QVal){ .p = NULL };
-    switch (t->kind) {
-        case QTYPE_KIND_INT:
-        case QTYPE_KIND_BOOL:
-        case QTYPE_KIND_CHAR:
-            return (QVal){ .i = *(const int64_t *)ptr };
-        case QTYPE_KIND_REAL:
-            return (QVal){ .r = *(const double *)ptr };
-        case QTYPE_KIND_RECORD:
-            return (QVal){ .p = (void *)quest_record_box(*(const QRecordVal *)ptr) };
-        case QTYPE_KIND_VARIANT:
-            return (QVal){ .p = (void *)quest_variant_box(*(const QVariantVal *)ptr) };
-        case QTYPE_KIND_STRING:
-        case QTYPE_KIND_ARRAY:
-        case QTYPE_KIND_DYNAMIC:
-        case QTYPE_KIND_TUPLE:
-        case QTYPE_KIND_OPTION:
-        default:
-            return (QVal){ .p = *(void * const *)ptr };
-    }
+    return quest_slot_read(t, ptr);
 }
 
 static void quest_write_raw(QWriter *wr, const char *s) {
@@ -118,7 +99,8 @@ static void quest_write_json_string(QWriter *wr, const char *s, size_t len) {
 
 static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *table) {
     if (desc == NULL) return;
-    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE) {
+    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE || desc->kind == QTYPE_KIND_EXCEPTION ||
+        desc->kind == QTYPE_KIND_BOUND_VAR) {
         quest_raise_dynamic_error();
     }
 
@@ -149,7 +131,7 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             if (meta != NULL) {
                 for (size_t i = 0; i < meta->field_count; ++i) {
                     const QRecordFieldDescriptor *f = &meta->fields[i];
-                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + f->offset);
+                    QVal f_val = quest_record_field_value(*rec, desc, i);
                     quest_scan_value(f->type, f_val, table);
                 }
             }
@@ -234,7 +216,8 @@ static void quest_emit_value(
         return;
     }
 
-    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE) {
+    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE || desc->kind == QTYPE_KIND_EXCEPTION ||
+        desc->kind == QTYPE_KIND_BOUND_VAR) {
         quest_raise_dynamic_error();
     }
 
@@ -335,7 +318,7 @@ static void quest_emit_value(
                     first = false;
                     quest_write_json_string(wr, f->name, strlen(f->name));
                     quest_writer_put_char(wr, ':');
-                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + f->offset);
+                    QVal f_val = quest_record_field_value(*rec, desc, i);
                     quest_emit_value(f->type, f_val, table, next_id, wr);
                 }
             }
@@ -993,7 +976,8 @@ static const QTypeDescriptor *quest_parse_type_expr(QTypeLexer *lex) {
 
         qsort(fields, count, sizeof(QParsedField), quest_field_cmp);
 
-        size_t offset = 0;
+        /* Fields follow the record header, as in compiled record structs */
+        size_t offset = sizeof(QRecordHeader);
         size_t max_align = sizeof(void *);
         QRecordFieldDescriptor *f_descs = (QRecordFieldDescriptor *)quest_alloc(
             sizeof(QRecordFieldDescriptor) * (count > 0 ? count : 1)
@@ -1240,15 +1224,8 @@ static void quest_jsog_preallocate(QJsonValue *node, const QTypeDescriptor *desc
             } else {
                 size_t sz = (desc && desc->size > 0) ? desc->size : sizeof(void *);
                 void *rec_ptr = quest_alloc(sz);
-                const QRecordTypeDescriptor *meta = desc ? (const QRecordTypeDescriptor *)desc->extra : NULL;
-                size_t f_count = meta ? meta->field_count : 0;
-                size_t *dict = (size_t *)quest_alloc(sizeof(size_t) * (f_count > 0 ? f_count : 1));
-                if (meta) {
-                    for (size_t i = 0; i < f_count; ++i) {
-                        dict[i] = meta->fields[i].offset;
-                    }
-                }
-                quest_id_insert(table, id_str, QID_KIND_RECORD, rec_ptr, dict, desc);
+                ((QRecordHeader *)rec_ptr)->descriptor = desc;
+                quest_id_insert(table, id_str, QID_KIND_RECORD, rec_ptr, quest_record_dict(desc, desc), desc);
             }
         }
 
@@ -1301,26 +1278,7 @@ static void quest_jsog_preallocate(QJsonValue *node, const QTypeDescriptor *desc
 }
 
 static void quest_write_field_val(const QTypeDescriptor *t, void *ptr, QVal val) {
-    if (t == NULL) return;
-    switch (t->kind) {
-        case QTYPE_KIND_INT:
-        case QTYPE_KIND_BOOL:
-        case QTYPE_KIND_CHAR:
-            *(int64_t *)ptr = val.i;
-            break;
-        case QTYPE_KIND_REAL:
-            *(double *)ptr = val.r;
-            break;
-        case QTYPE_KIND_RECORD:
-            *(QRecordVal *)ptr = *(const QRecordVal *)val.p;
-            break;
-        case QTYPE_KIND_VARIANT:
-            *(QVariantVal *)ptr = *(const QVariantVal *)val.p;
-            break;
-        default:
-            *(void **)ptr = val.p;
-            break;
-    }
+    quest_slot_write(t, ptr, val);
 }
 
 static QVal quest_jsog_decode_value(QJsonValue *node, const QTypeDescriptor *desc, QIdTable *table) {
@@ -1394,11 +1352,8 @@ static QVal quest_jsog_decode_value(QJsonValue *node, const QTypeDescriptor *des
             }
             if (rec_buf == NULL) {
                 rec_buf = quest_alloc(desc->size > 0 ? desc->size : sizeof(void *));
-                size_t *d = (size_t *)quest_alloc(sizeof(size_t) * (meta->field_count > 0 ? meta->field_count : 1));
-                for (size_t i = 0; i < meta->field_count; ++i) {
-                    d[i] = meta->fields[i].offset;
-                }
-                rec_dict = d;
+                ((QRecordHeader *)rec_buf)->descriptor = desc;
+                rec_dict = quest_record_dict(desc, desc);
             }
 
             for (size_t i = 0; i < meta->field_count; ++i) {

@@ -1,0 +1,55 @@
+(* Language: function subtyping (contravariant parameters, covariant results), static and at run time
+   (C: closures used at a supertype are wrapped in thunks that convert arguments and results) *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n");
+
+Let Big = Record a: Int b: Int c: Int end;
+Let Small = Record c: Int end;
+let big: Big = record a = 1 b = 2 c = 3 end;
+
+(* 1. A function on a supertype used where one on a subtype is expected, and a covariant result *)
+let small(x: Small): Int = x.c;
+let useBig(h: All(x: Big) Int): Int = h(big);
+p(useBig(small));
+let makeBig(): Big = big;
+let useSmall(h: All() Small): Int = h().c;
+p(useSmall(makeBig));
+let narrow: All(x: Small) Big = fun(x: Small): Big record a = 10 b = 20 c = x.c end;
+let wide: All(x: Big) Small = narrow;
+p(wide(big).c);
+
+(* 2. Higher order: the argument function is itself converted *)
+let applyBig(h: All(x: Big) Int): Int = h(big);
+let applySmall: All(h: All(x: Small) Int) Int = applyBig;
+p(applySmall(small));
+
+(* 3. A function field read through a view of its record *)
+Let HasNarrow = Record f: All(x: Small) Big end;
+Let HasWide = Record f: All(x: Big) Small end;
+let hasNarrow: HasNarrow = record f = narrow end;
+let hasWide: HasWide = hasNarrow;
+p(hasWide.f(big).c);
+
+(* 4. dynamic.be and inspect at a function supertype *)
+let d = dynamic.new(:All(x: Small) Big narrow);
+let fromDynamic: All(x: Big) Small = dynamic.be(:All(x: Big) Small d);
+p(fromDynamic(big).c);
+p(inspect d when All(x: Big) Small with g then g(big).c else 0 end);
+
+(* 5. An auto value whose component is a function, inspected at a function supertype *)
+Let Boxed = Auto A::TYPE with a: A end;
+let boxedNarrow: Boxed = auto :All(x: Small) Big with narrow end;
+p(inspect boxedNarrow when All(x: Big) Small with g then g.a(big).c else 0 end);
+
+(* 6. A function type that is not a supertype does not match *)
+let wrong =
+    try
+        let g: All(x: Small) Int = dynamic.be(:All(x: Small) Int dynamic.new(:All(x: Big) Int fun(x: Big): Int x.a));
+        g(record c = 0 end)
+    when dynamic.error then 0 - 1
+    end;
+p(wrong);

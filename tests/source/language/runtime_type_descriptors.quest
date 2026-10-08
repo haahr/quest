@@ -1,0 +1,69 @@
+(* Language: run-time types of exceptions, recursive types, abstract type applications, and functions,
+   and Tuple end as a supertype of tuples only (C: every type has its own runtime descriptor) *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+import list: List;
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n");
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+
+(* 1. Tuple end is a supertype of every tuple, but not of other types *)
+let whatIs(d: Dynamic): String =
+    inspect d
+    when Tuple end with t then "a tuple"
+    else "not a tuple"
+    end;
+s(whatIs(dynamic.new(:Tuple x: Int end tuple 1 end)));
+s(whatIs(dynamic.new(:Int 1)));
+s(whatIs(dynamic.new(:Record x: Int end record x = 1 end)));
+
+(* 2. Exception types: invariant in their payload *)
+exception Boom: Int end;
+let dBoom = dynamic.new(:Exception(Int) Boom);
+let raised =
+    try
+        raise dynamic.be(:Exception(Int) dBoom) with 42 as Int end
+    when Boom with n then n
+    end;
+p(raised);
+p(inspect dBoom when Exception(String) with e then 1 when Exception(Int) with e then 2 else 0 end);
+
+(* 3. Recursive types, written two ways *)
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+Let Rec OtherList::TYPE = Option nil cons with head: Int tail: OtherList end end;
+let l: IntList = option cons of IntList with 1 option cons of IntList with 2 option nil of IntList end end end;
+let dl = dynamic.new(:IntList l);
+let rec sum(xs: OtherList): Int =
+    case xs when cons with c then c.head + sum(c.tail) when nil then 0 end;
+p(sum(dynamic.be(:OtherList dl)));
+p(inspect dl when Option nil end with o then 1 when IntList with xs then 2 else 0 end);
+
+(* 4. Applications of an abstract type operator are told apart by their arguments *)
+let ints = list.cons(:Int 5 list.nil(:Int));
+let dInts = dynamic.new(:list.T(Int) ints);
+p(inspect dInts when list.T(String) with x then 0 when list.T(Int) with x then list.head(:Int x) else 0 - 1 end);
+
+(* 5. Function types are told apart *)
+let dFun = dynamic.new(:All(n: Int) Int fun(n: Int): Int n * 2);
+p(inspect dFun when All(t: String) Int with f then f("x") when All(m: Int) Int with f then f(21) else 0 end);
+
+(* 6. Polymorphic function types: renamed parameters, subtyping, and views *)
+Let Big = Record a: Int b: Int c: Int end;
+Let Small = Record c: Int end;
+let big: Big = record a = 1 b = 2 c = 3 end;
+let mk(A::TYPE x: A): Big = big;
+let mkSmall: All(B::TYPE y: B) Small = mk;
+p(mkSmall(:Int 0).c);
+let dMk = dynamic.new(:All(A::TYPE x: A) Big mk);
+let fromDynamic: All(C::TYPE z: C) Small = dynamic.be(:All(C::TYPE z: C) Small dMk);
+p(fromDynamic(:String "z").c);
+Let HasMk = Record f: All(A::TYPE x: A) Big end;
+Let HasMkSmall = Record f: All(B::TYPE y: B) Small end;
+let hasMk: HasMk = record f = mk end;
+let hasMkSmall: HasMkSmall = hasMk;
+p(hasMkSmall.f(:Bool true).c);
+let ident(A::TYPE x: A): A = x;
+let dIdent = dynamic.new(:All(A::TYPE x: A) A ident);
+p(dynamic.be(:All(B::TYPE y: B) B dIdent)(:Int 4));

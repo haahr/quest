@@ -485,6 +485,14 @@ Dynamic values package a runtime value together with its static type:
     raises the language exception `dynamic.error`.
 - **Dynamic Inspection:**
   - `inspect d when T1 with v then e1 else e2 end` tests membership against branches dynamically.
+- **Types at run time:** The run-time test uses the static subtyping rules, including function subtyping. Two kinds
+  of type are restricted:
+  - An abstract type of a package value (`t.A`) cannot be the type of a dynamic value (`dynamic.new`, `dynamic.be`,
+    or any function shaped like them) or appear in the type of an `inspect` branch on a Dynamic: its identity is the
+    package's hidden type, which is not known at run time.
+  - An abstract type exported by a module (`list.T(Int)`) is compared by name outside the module, but inside the
+    module it is its representation type, so values given run-time types inside the module do not match the
+    abstract type outside. This keeps the type opaque to clients while letting the module's own code inspect it.
 
 #### 6.10.1. Intensional Type Analysis vs. Pure Type Erasure
 In a pure type erasure model (such as standard System $F_{<:}$ or ML), type parameters are discarded at compile time, leaving runtime code to operate exclusively on untyped representations. However, `Dynamic` requires **Intensional Type Analysis (ITA)** (Harper & Morrisett 1995), because `dynamic.new` and `dynamic.be` inspect types at runtime:
@@ -497,7 +505,58 @@ In a pure type erasure model (such as standard System $F_{<:}$ or ML), type para
 - **Comparison with Java RTTI vs. Erasure:**
   In Java, generic methods are implemented via erasure (`<T> void foo(T x)` erases `T` to `Object`). Java's dynamic operations (`instanceof`, reflection, `getClass()`) do not inspect erased generic parameters; they rely on reified class metadata (`java.lang.Class<T>`) stored in every object's heap header. When Java code needs dynamic operations on an abstract type parameter, it cannot write `new T()` or `x instanceof T`; it forces the programmer to pass an explicit runtime type token (`Class<T> typeToken`). In Quest, `dynamic.new(A::TYPE a:A)` specifies `A` as a formal type parameter, so the compiler automatically passes runtime type descriptors (`const QTypeDescriptor *descriptor_A`) to all quantified functions.
 
-### 6.11. List Module and Type Operator (`list: List`)
+### 6.11. Auto Types and Inspect (Cardelli §4.6, §6.7)
+An auto type `Auto A::K with S end` (`QAutoType`) is the union of the signatures `S[T/A]` over all closed types `T` of
+kind `K`. An auto value pairs such a type `T`, its *type component*, with components matching `S[T/A]`, so that the
+value describes its own shape; `inspect` recovers the type at run time.
+
+```quest
+Let UniformPair = Auto A::TYPE with fst,snd:A end;
+let p: UniformPair = auto :Bool with false true end;
+inspect p
+when Bool with arm then arm.fst \/ arm.snd
+when Int with arm then {arm.fst * arm.snd} isnot 0
+end
+```
+
+- **Construction (`_check_auto_expr`):** `auto [let A [HasKind] =] :T with Binding end` is checked against an
+  expected auto type; its type is never synthesized, since nothing in the value says which components vary with
+  `T`. `T` must be closed and have the auto type's kind (`T <: Object` for `Auto A<:Object ...`), and the binding is
+  checked as a tuple against `Tuple S[T/A] end`. A named type component (`auto let A<:Car = :Car with ... end`) is a
+  transparent alias for `T` inside the binding, and `T` must also have its declared kind. The result is a
+  `TypedAuto`.
+- **Closed types:** the type component of an auto value and the type of every `when` clause of an `inspect` on an
+  auto value must be *closed*: they may not mention a type parameter of an enclosing polymorphic function (the
+  typechecker records these in `_type_param_ids`) or an abstract type projected from a package value (`t.A`, a
+  `QPathType`). Types exported abstractly by modules, such as `writer.T`, are closed: they denote the same type
+  throughout a program. *Possible extension:* the C backend already passes runtime descriptors for type parameters
+  (§6.10.1), so `auto :A with ... end` inside `fun(A::TYPE ...)` could be supported there; the interpreter would
+  need run-time type arguments to match.
+- **Subtyping (§6.7, `_prove_subtype_step`):** `Auto A::K1 with S1 end <: Auto B::K2 with S2 end` when `K1` is a
+  subkind of `K2` and `S1` matches `S2[A/B]` as tuple signatures do (§4.2): a prefix, with the same component names
+  in the same order, covariant immutable components, and invariant `var` components. Thus
+  `Auto A<:Car with a:A end <: Auto A<:Object with a:A end`.
+- **Inspect (`_elaborate_auto_inspect_branches`):** each branch `when T with x then e` binds `x` to the auto value's
+  components with type `Tuple S[T/A] end`, so `x.fst` has type `T`. A binder may be declared with a supertype
+  (`with x: Tuple fst:T end`). The first matching branch is taken; if none matches and there is no `else` branch,
+  `inspect` raises `dynamic.error`. Branch results are joined, or checked against the expected type, as for `case`.
+- **Matching rule (`auto_matches_subtypes`):** Cardelli selects the first branch whose type is a supertype of the
+  type component. Viewing the components at a supertype is sound only when `A` occurs in `S` solely as the whole
+  type of immutable components (`fst,snd:A`, `a:A`), and those are the auto types whose inspect matches by
+  subtyping. For any other signature (such as `x:A show(:A):String`, `l:List(A)`, or one with `var` components) a
+  branch matches only when its type *equals* the type component: if `S` is `f(x:A):Int` and the type component is
+  `Car`, a branch `when Object` would let `f` be applied to an `Object` that is not a `Car`. A typed branch is
+  marked `exact` in the typed AST when it matches by equality.
+
+**Relationship with `Dynamic`.** Cardelli defines `Dynamic_T` as `Auto A::TYPE with a:A end`, and both
+representations are alike in this implementation (a `QDynamic`, see [c-representation.md](c-representation.md) §8.1), but
+`Dynamic` remains a separate built-in: `inspect` on a `Dynamic` binds the contained value itself rather than a
+one-component tuple, and `dynamic.new(A::TYPE a:A)` packages a type *parameter*, which the closedness restriction
+forbids for auto values. `Dynamic.T` could become a library alias for `Auto A::TYPE with a:A end` once auto values
+may have type parameters as their type component (the extension above); `new`, `be`, and the `inspect` binder would
+then be written in terms of auto values (`be(:A d)` is `inspect d when A with x then x.a end`).
+
+### 6.12. List Module and Type Operator (`list: List`)
 The `list` module provides functional, immutable linked lists conforming to interface `List`:
 - **Higher-Kinded Abstract Type:** `List.T :: ALL(A::TYPE)::TYPE`.
 - **Operations:**
@@ -510,7 +569,7 @@ The `list` module provides functional, immutable linked lists conforming to inte
   - `list.enum(:A)(l: list.T(A)) : Array(A)`: Converts list to an array.
   - `list.error : Exception`: Raised on invalid operations (e.g. `head` or `tail` on an empty list).
 
-### 6.12. String Substring Precedence (`StringOp.precedesSub`)
+### 6.13. String Substring Precedence (`StringOp.precedesSub`)
 The `StringOp` interface and `string` module provide substring comparison:
 - `string.precedesSub(s1: String, start1: Int, size1: Int, s2: String, start2: Int, size2: Int) : Bool`
 - Compares slices `s1[start1 : start1 + size1]` and `s2[start2 : start2 + size2]` lexicographically. Raises
@@ -526,6 +585,7 @@ The `StringOp` interface and `string` module provide substring comparison:
 | **Dependent Signatures** | Fields depend on earlier type parameters | Ordered `Scope` incremental elaboration |
 | **Extended Subsignatures** | Prefix & name matching, manifest types | Subsignature rule in `is_subtype` |
 | **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_check_tuple_expr` |
+| **Auto Types** | Run-time type discrimination stays sound | Closed types; subtype matching only for covariant signatures |
 | **Path-Dependent Types** | Abstract identity tied to bindings | `QPathType` with `root_symbol_id` |
 | **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker.py` |
 | **Type $\lambda$-Calculus** | $\beta$-reduction & variable capture | Lazy eval + `QTypeVar` symbol IDs |

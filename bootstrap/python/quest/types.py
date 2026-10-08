@@ -871,7 +871,43 @@ class QAutoType(QType):
 
     def __str__(self) -> str:
         sig_str = " ".join(str(f) for f in self.signature)
+        if isinstance(self.kind_bound, QPowerKind):
+            return f"Auto {self.type_param} <: {self.kind_bound.bound} with {sig_str} end"
         return f"Auto {self.type_param} :: {self.kind_bound} with {sig_str} end"
+
+
+def auto_payload_type(auto: QAutoType, witness: Optional[QType] = None) -> QTupleType:
+    """The tuple type of an auto value's payload: Tuple S[witness] end for the signature S.
+
+    Without a witness, the result is the witness-independent layout used to store payloads, in which the
+    type parameter is an abstract type bounded by the auto type's kind.
+    """
+    if witness is None:
+        witness = QAbstractType(name=auto.type_param, symbol_id=auto.symbol_id, bound=auto.kind_bound)
+    subst = {auto.symbol_id: witness}
+    return QTupleType(tuple(
+        QTupleField(name=f.name, type_val=f.type_val.substitute(subst), is_var=f.is_var)
+        for f in auto.signature
+    ))
+
+
+def auto_matches_subtypes(auto: QAutoType) -> bool:
+    """True if inspect may select a branch whose type is a proper supertype of an auto value's type.
+
+    That is sound only when the type parameter occurs in the signature solely as the whole type of
+    immutable components (fst,snd:A), so that each component may be viewed at the supertype. Otherwise
+    (e.g. f(x:A):Int, l:List(A)) a branch is selected only when the types are equal. A signature with
+    var components also matches exactly, so that the binders always share the auto value's components.
+    """
+    for f in auto.signature:
+        if f.is_var:
+            return False
+        if auto.symbol_id not in f.type_val._fv:
+            continue
+        t = unalias(f.type_val)
+        if not isinstance(t, (QTypeVar, QAbstractType)) or t.symbol_id != auto.symbol_id:
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -1844,6 +1880,26 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                 if not is_kind_equal(s_q.bound, t_bound_renamed, env):
                     return False
             return _prove_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
+
+        # Auto types (Cardelli §6.7): subkind for the type component; for the signature, as for tuples, a
+        # prefix match with matching names, covariant immutable and invariant mutable components
+        case (QAutoType(), QAutoType()):
+            if len(sub_lazy.signature) < len(sup_lazy.signature):
+                return False
+            if not is_subkind(sub_lazy.kind_bound, sup_lazy.kind_bound, env):
+                return False
+            subst = {
+                sup_lazy.symbol_id: QTypeVar(sub_lazy.type_param, sub_lazy.symbol_id, sub_lazy.kind_bound)
+            }
+            for s_f, t_f in zip(sub_lazy.signature, sup_lazy.signature):
+                if s_f.name != t_f.name or s_f.is_var != t_f.is_var:
+                    return False
+                t_type = t_f.type_val.substitute(subst)
+                if not _prove_subtype(s_f.type_val, t_type, env, trail, fuel):
+                    return False
+                if t_f.is_var and not _prove_subtype(t_type, s_f.type_val, env, trail, fuel):
+                    return False
+            return True
 
         # Type Functions (Type Operators): parameter kinds match, bodies subtype under substitution
         case (QTypeFun(), QTypeFun()):

@@ -1,0 +1,263 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'p' :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type Writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'n' :type Int)
+                ))
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetValue 'big' :type Big
+      :value (TypedRecord :type Record a: Int b: Int c: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 1 :type Int))
+          (TypedRecordField 'b'
+            :value (TypedInt 2 :type Int))
+          (TypedRecordField 'c'
+            :value (TypedInt 3 :type Int))
+        )))
+    (TypedLetValue 'small' :type Fun(x: Small): Int
+      :value (TypedFun :params (('x' : Small)) :type Fun(x: Small): Int
+        :body (TypedSelect 'c' :type Int
+          :target (TypedVar 'x' :type Small))))
+    (TypedLetValue 'useBig' :type Fun(h: Fun(x: Big): Int): Int
+      :value (TypedFun :params (('h' : Fun(x: Big): Int)) :type Fun(h: Fun(x: Big): Int): Int
+        :body (TypedApp :type Int
+          :func (TypedVar 'h' :type Fun(x: Big): Int)
+          :args (
+            (TypedVar 'big' :type Big)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'useBig' :type Fun(h: Fun(x: Big): Int): Int)
+            :args (
+              (TypedVar 'small' :type Fun(x: Small): Int)
+            ))
+        )))
+    (TypedLetValue 'makeBig' :type Fun(): Big
+      :value (TypedFun :params () :type Fun(): Big
+        :body (TypedVar 'big' :type Big)))
+    (TypedLetValue 'useSmall' :type Fun(h: Fun(): Small): Int
+      :value (TypedFun :params (('h' : Fun(): Small)) :type Fun(h: Fun(): Small): Int
+        :body (TypedSelect 'c' :type Int
+          :target (TypedApp :type Small
+            :func (TypedVar 'h' :type Fun(): Small)
+            :args ()))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'useSmall' :type Fun(h: Fun(): Small): Int)
+            :args (
+              (TypedVar 'makeBig' :type Fun(): Big)
+            ))
+        )))
+    (TypedLetValue 'narrow' :type Fun(x: Small): Big
+      :value (TypedFun :params (('x' : Small)) :type Fun(x: Small): Big
+        :body (TypedRecord :type Record a: Int b: Int c: Int end
+          :fields (
+            (TypedRecordField 'a'
+              :value (TypedInt 10 :type Int))
+            (TypedRecordField 'b'
+              :value (TypedInt 20 :type Int))
+            (TypedRecordField 'c'
+              :value (TypedSelect 'c' :type Int
+                :target (TypedVar 'x' :type Small)))
+          ))))
+    (TypedLetValue 'wide' :type Fun(x: Big): Small
+      :value (TypedVar 'narrow' :type Fun(x: Small): Big))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedApp :type Small
+              :func (TypedVar 'wide' :type Fun(x: Big): Small)
+              :args (
+                (TypedVar 'big' :type Big)
+              )))
+        )))
+    (TypedLetValue 'applyBig' :type Fun(h: Fun(x: Big): Int): Int
+      :value (TypedFun :params (('h' : Fun(x: Big): Int)) :type Fun(h: Fun(x: Big): Int): Int
+        :body (TypedApp :type Int
+          :func (TypedVar 'h' :type Fun(x: Big): Int)
+          :args (
+            (TypedVar 'big' :type Big)
+          ))))
+    (TypedLetValue 'applySmall' :type Fun(h: Fun(x: Small): Int): Int
+      :value (TypedVar 'applyBig' :type Fun(h: Fun(x: Big): Int): Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'applySmall' :type Fun(h: Fun(x: Small): Int): Int)
+            :args (
+              (TypedVar 'small' :type Fun(x: Small): Int)
+            ))
+        )))
+    (TypedLetType 'HasNarrow' :kind TYPE)
+    (TypedLetType 'HasWide' :kind TYPE)
+    (TypedLetValue 'hasNarrow' :type HasNarrow
+      :value (TypedRecord :type Record f: Fun(x: Small): Big end
+        :fields (
+          (TypedRecordField 'f'
+            :value (TypedVar 'narrow' :type Fun(x: Small): Big))
+        )))
+    (TypedLetValue 'hasWide' :type HasWide
+      :value (TypedVar 'hasNarrow' :type HasNarrow))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedApp :type Small
+              :func (TypedSelect 'f' :type Fun(x: Big): Small
+                :target (TypedVar 'hasWide' :type HasWide))
+              :args (
+                (TypedVar 'big' :type Big)
+              )))
+        )))
+    (TypedLetValue 'd' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [Fun(x: Small): Big] :type Fun(a: Fun(x: Small): Big): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'narrow' :type Fun(x: Small): Big)
+        )))
+    (TypedLetValue 'fromDynamic' :type Fun(x: Big): Small
+      :value (TypedApp :type Fun(x: Big): Small
+        :func (TypedTypeApp [Fun(x: Big): Small] :type Fun(d: Dynamic.T): Fun(x: Big): Small
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'd' :type Dynamic.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedApp :type Small
+              :func (TypedVar 'fromDynamic' :type Fun(x: Big): Small)
+              :args (
+                (TypedVar 'big' :type Big)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'd' :type Dynamic.T)
+            :branches (
+              (TypedInspectBranch match=Fun(x: Big): Small
+                :body (TypedSelect 'c' :type Int
+                  :target (TypedApp :type Small
+                    :func (TypedVar 'g' :type Fun(x: Big): Small)
+                    :args (
+                      (TypedVar 'big' :type Big)
+                    ))))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetType 'Boxed' :kind TYPE)
+    (TypedLetValue 'boxedNarrow' :type Boxed
+      :value (TypedAuto :Fun(x: Small): Big :type Boxed
+        :payload (TypedTuple :type Tuple a: Fun(x: Small): Big end
+          :elements (
+            (TypedVar 'narrow' :type Fun(x: Small): Big)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'boxedNarrow' :type Boxed)
+            :branches (
+              (TypedInspectBranch match=Fun(x: Big): Small
+                :body (TypedSelect 'c' :type Int
+                  :target (TypedApp :type Small
+                    :func (TypedSelect 'a' :type Fun(x: Big): Small
+                      :target (TypedVar 'g' :type Tuple a: Fun(x: Big): Small end))
+                    :args (
+                      (TypedVar 'big' :type Big)
+                    ))))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetValue 'wrong' :type Int
+      :value (TypedTry :type Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'g' :type Fun(x: Small): Int
+              :value (TypedApp :type Fun(x: Small): Int
+                :func (TypedTypeApp [Fun(x: Small): Int] :type Fun(d: Dynamic.T): Fun(x: Small): Int
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type Dynamic.T
+                    :func (TypedTypeApp [Fun(x: Big): Int] :type Fun(a: Fun(x: Big): Int): Dynamic.T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedFun :params (('x' : Big)) :type Fun(x: Big): Int
+                        :body (TypedSelect 'a' :type Int
+                          :target (TypedVar 'x' :type Big)))
+                    ))
+                )))
+          )
+          :result (TypedApp :type Int
+            :func (TypedVar 'g' :type Fun(x: Small): Int)
+            :args (
+              (TypedRecord :type Record c: Int end
+                :fields (
+                  (TypedRecordField 'c'
+                    :value (TypedInt 0 :type Int))
+                ))
+            )))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :body (TypedInfix '-' :type Int
+              :left (TypedInt 0 :type Int)
+              :right (TypedInt 1 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedVar 'wrong' :type Int)
+        )))
+  ))

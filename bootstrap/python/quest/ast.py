@@ -438,9 +438,11 @@ class ExprArrayRep(Expr):
 
 @dataclass(frozen=True)
 class ExprAuto(Expr):
-    witness: Optional[tuple[str, Optional[Kind], Expr]]
-    target_type: Type
+    """auto [let A [HasKind] =] :W with Binding end — an auto value with type component W."""
+    witness_type: Type
     payload: Expr
+    witness_name: Optional[str] = None
+    witness_bound: Optional[Kind] = None
 
 
 # --- Selection, Indexing, and References ---

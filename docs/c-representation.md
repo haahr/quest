@@ -268,7 +268,10 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   packed into an existential tuple with abstract signatures (e.g. `create: Int -> A`), the underlying C function
   pointer types differ (`QInt (*)(void *, QInt)` vs `QVal (*)(void *, QInt)`). The transpiler synthesizes a static
   adaptation thunk (`qv_adapt_<id>`) that forwards the environment, unwraps any `QVal` arguments, calls the concrete
-  function, and wraps abstract return values with `qval_wrap`.
+  function, and wraps abstract return values with `qval_wrap`. The same thunks implement function subtyping: a closure
+  of type `Fun(x: Small): Big` used at `Fun(x: Big): Small` gets a thunk that coerces each argument from the target's
+  parameter type to the closure's (giving the `Big` record a `Small` view) and the result from the closure's result
+  type to the target's, with the ordinary coercions (record views, variant tag maps, nested thunks).
 
 - **Tuple Structural Coercion & Generic Returns:**
   When field types between source and target tuples differ in C representation (due to scalar-to-QVal boxing, closure
@@ -297,7 +300,7 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    ```c
    /* Quest: Let Point = Record x: Int y: Real end */
    typedef struct QT_Point {
-       QRecordHeader header;  /* { const void *descriptor; } (8 bytes, descriptor = NULL) */
+       QRecordHeader header;  /* { const QTypeDescriptor *descriptor; } (8 bytes): the payload's layout */
        QInt          qf_x;
        QReal         qf_y;
    } QT_Point;
@@ -309,14 +312,32 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    typedef struct OffsetDict_Point {
        size_t offset_x;
        size_t offset_y;
+       QRecordStoredTypes stored_types;
    } OffsetDict_Point;
 
    static const OffsetDict_Point offsetdict_Point_Point3D = {
        offsetof(QT_Point3D, qf_x),
-       offsetof(QT_Point3D, qf_y)
+       offsetof(QT_Point3D, qf_y),
+       NULL
    };
    ```
-3. **First-Class Uniform Record Value (`QRecordVal`):**
+   The trailing `stored_types` handles depth subtyping without copying. It is `NULL` when the payload stores every
+   field at the view's type for it; otherwise it is an array giving, for each field the payload stores at a
+   different type (a subtype: a `Record inner: Big end` payload viewed as `Record inner: Small end`), that type's
+   descriptor, and `NULL` for the others. Static tables relate only records whose shared fields have equal types, so
+   their `stored_types` is always `NULL`; the runtime fills it in when it builds a table.
+   The header records the payload's *layout*, the descriptor of the record type it was created with
+   (`&quest_type_QT_Point`); `quest_record_layout(r)` reads it. A value whose static type is `Point` may have a larger
+   layout, such as `Point3D`'s.
+3. **Offset Table Map:** The runtime keeps every offset table in one map keyed by (view type, layout), where the
+   view is the record type the table serves. Coercing a record to a supertype whose layout is not known statically
+   (anything but a record literal) uses it: `quest_record_view(r, &quest_type_<Target>)` keeps the payload and looks
+   up the table for the payload's layout, read from its header. The record's static type is not enough, because it
+   may itself be a view of a larger record. `quest_record_dict(view, layout)` returns the table, building it from the
+   two descriptors on a miss (`NULL` if the layout lacks a field of the view), and `quest_register_record_dict`
+   adds one. A compiled program pre-populates the map in `main` with its static `offsetdict_<Target>_<Source>`
+   tables, registered under (`Target`, `Source`). Deserialization (`dynamic.intern`) takes its tables from the map.
+4. **First-Class Uniform Record Value (`QRecordVal`):**
    - Every record value in variables, function parameters, and returns is represented as a first-class 16-byte struct:
      ```c
      typedef struct QRecordVal {
@@ -325,12 +346,17 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
      } QRecordVal;
      ```
    - On AAPCS64, `QRecordVal` is passed and returned directly in register pairs (`x0, x1`) without heap allocation.
-4. **Field Access:**
+5. **Field Access:**
    - Evaluates dynamic offset from the embedded evidence dictionary:
      ```c
      (*((QFieldType *)((char *)r.val + ((const OffsetDict_Target *)r.dict)->offset_x)))
      ```
-5. **Storage in Aggregates:**
+   - Reading an immutable field whose type is a record, variant, option, or nonempty tuple also checks the table's
+     `stored_types`. When it names a type for the field, the value is converted to its view at the field's type
+     with `quest_convert(v, stored, &quest_type_<FieldType>)`: records get the offset table for the view, variants
+     and options their tags in the field's type, and tuples are copied with converted elements. Scalar, `var`, and
+     other fields are read with the single offset load. `quest_record_field_value` does the same for the runtime.
+6. **Storage in Aggregates:**
    - **Tuples:** Tuple fields of record type store `QRecordVal` inline (16 bytes).
    - **Flat Stride Arrays:** `Array(Record)` and `Array(Variant)` store 16-byte elements directly in contiguous
      memory without individual heap boxing using specialized wide array structures (`QArrayWideRecord` and
@@ -686,8 +712,33 @@ struct QTypeDescriptor {
 - **Variants & Options (`QVariantTypeDescriptor`):** Holds `size_t case_count` and an array of `QVariantCaseDescriptor`
   (`name`, `payload_type`, `tag_index`, `is_var`).
 - **Arrays (`QArrayTypeDescriptor`):** Holds `const QTypeDescriptor *element_type`.
-- **Functions (`QFunTypeDescriptor`):** Holds `size_t param_count`, `QFunParamDescriptor *params`, and
-  `const QTypeDescriptor *result_type`.
+- **Functions (`QFunTypeDescriptor`):** Holds `size_t param_count`, `QFunParamDescriptor *params`,
+  `const QTypeDescriptor *result_type`, and `QFunAdapter adapt`. Each monomorphic function type has its own descriptor
+  (`quest_type_fun_<digest>`, a digest of the type's text, since all closures share the C tag `QClosure`); `adapt`
+  points to the compiled `quest_adapt_fun_<digest>`, which wraps a closure of a subtype in a thunk with this type's C
+  signature that converts arguments and result by descriptor with `quest_convert`. `quest_convert` uses it for
+  function values, so `dynamic.be`, `inspect`, and reads of function fields stored at a subtype adapt closures at run
+  time. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
+  covariant in `out` parameters and the result. Polymorphic function types (`All(A::TYPE x: A) A`) are described the
+  same way, plus `quantifier_count` and `quantifier_bounds`: their type parameters are passed as descriptors before the
+  values (and adapters pass them through), and within the parameter and result types a type parameter is described
+  by `quest_type_bound_vars[i]` (kind `QTYPE_KIND_BOUND_VAR`), where `i` is its de Bruijn index. So types differing
+  only in the names of their type or value parameters have equal descriptors (`canonical_fun_type`), and their
+  subtyping requires equal bounds and compares parameter and result types as above.
+- **Exceptions (`QExceptionTypeDescriptor`):** Holds `payload_type`; subtyping is invariant in it.
+
+##### Choosing a Descriptor (`descriptor_form`)
+Every type the program describes gets its own descriptor, chosen by `descriptor_form` (`codegen/c_types.py`), which
+both descriptor references (`c_type_descriptor`) and descriptor emission use. A type parameter in scope is described
+by the descriptor passed for it. Tags of compound types include a digest of the type's text, because C tags conflate
+types with the same representation. Recursive types (`Rec(X) ...`, recursive type operator applications) are
+described by their unfoldings, which refer back to them, so their descriptors are cyclic; the emitter defines any
+struct that such an unfolding names. Applications of abstract type operators (`list.T(Int)`), type operators passed
+for higher-kinded type parameters, and abstract types of package values (`t.A`, distinguished by binding) are opaque,
+compared by name. Inside the module that implements an abstract type, the type is its representation, so a value
+given a run-time type there carries the representation's descriptor, which does not match the abstract type's
+name outside. A type with no descriptor (such as a type metavariable) is a compile-time error rather than a
+descriptor that matches the wrong values.
 
 ##### Static Compilation (.rodata) vs. Runtime Synthesis
 - **Closed Types in Code:** For all concrete types appearing in the program, the C emitter synthesizes `static const`
@@ -705,7 +756,8 @@ struct QTypeDescriptor {
 ##### Subtyping Verification (`quest_is_subtype`)
 Subtyping checks are unified under `quest_is_subtype(sub, super_type)`:
 - **Identity & Base Types:** Exact descriptor pointer match or matching primitive kind.
-- **Tuples:** Prefix subtyping ($N_{\text{sub}} \ge N_{\text{super}}$ with covariant element types).
+- **Tuples:** Prefix subtyping ($N_{\text{sub}} \ge N_{\text{super}}$ with covariant element types); `Tuple end` is
+  thus a supertype of every tuple, and only of tuples.
 - **Records:** Width subtyping ($S \subseteq R$ where every supertype field is present in the subtype), permutation
   subtyping (field order is irrelevant), depth subtyping on immutable fields ($T_{\text{sub}} <: T_{\text{super}}$),
   and invariance on mutable `var` fields ($T_{\text{sub}} \equiv T_{\text{super}}$).
@@ -720,10 +772,9 @@ When extracting a value from a dynamic package (`dynamic.be[:T](d)` or `inspect 
    `dynamic.error` (or `inspect` falls through to the next branch or `else`).
 2. If exact descriptor match, the payload is returned unchanged.
 3. If structural subtyping holds:
-   - **Record Adaptation (`quest_record_adapt`):** Dynamically synthesizes a new `QRecordVal` fat pointer.
-     Synthesizes an offset dictionary mapping target fields (alphabetical) to source record memory offsets, and
-     recursively adapts nested immutable fields for depth subtyping. Results are memoized in a thread-safe
-     adapter cache.
+   - **Record View (`quest_record_view`):** Keeps the payload and takes the offset table for (target type, the
+     payload's layout) from the offset table map (§5.2), so a record packaged as a view of a larger record is read
+     correctly. (Records nested in the payload keep their own tables.)
    - **Variant Adaptation (`quest_variant_adapt`):** Dynamically remaps the variant tag using a synthesized tag map
      from source branch names to target branch tag indices, and adapts the payload if needed. Memoized in an adapter
      cache.
@@ -888,6 +939,35 @@ static_assert(sizeof(QDynamic) == 16, qdynamic_must_be_16_bytes);
 - `dynamic.extern(w d)` compiles via standard `TypedNativeBinding` to `quest_dynamic_extern(w, d)`.
 - `dynamic.intern(r)` compiles via standard `TypedNativeBinding` to `quest_dynamic_intern(r)`.
 - `dynamic.error` lowers to `(&quest_exc_dynamic_error)`.
+
+### 8.1. Auto Values
+
+An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) is also a `QDynamic *`: `type_desc` is
+the descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
+stored in a layout that does not depend on the type component, that of `Tuple S end` with `A` an abstract type of
+kind `K` (`auto_payload_type(auto_t)`). As for any abstract type, a component of type `A` is a `QVal`, or the
+representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a `QRecordVal`); components
+of other types that mention `A`, such as `show(:A):String`, take the generic form too (here a closure taking a
+`QVal`). Auto types have opaque descriptors `quest_type_Auto_<tag>`, where the tag is that of the stored layout.
+
+- **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
+  with the static tuple coercion (`_coerce_tuple_val`: boxing to `QVal`, closure adapters), and calls
+  `quest_dynamic_new(descriptor_T, payload)`.
+- **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. When every stored component has
+  the representation of the corresponding `S[T/A]` component, or is a `QVal` holding a scalar or pointer of that
+  type, the binder is the stored struct itself, cast to the `Tuple S[T/A] end` struct, so updates of `var`
+  components are shared with the auto value. Otherwise the binder is a converted copy; this is rejected with an
+  error for signatures with `var` components, whose updates would be lost (for example `Auto A::TYPE with a:A var
+  n:Int end` inspected at a record type: give the auto type a bound, `A<:Object`, so that records are stored
+  unboxed).
+- **Inspect, subtype match** (signatures where `A` is only the whole type of immutable components): a branch tests
+  `quest_is_subtype(d->type_desc, descriptor_T)`; the binder is a fresh `Tuple S[T/A] end` struct whose `A`
+  components are converted from the type component to `T` with `quest_dynamic_be` (record and variant adaptation,
+  as for `dynamic.be`) and whose other components are copied.
+- **No match:** without an `else` branch, `quest_raise_dynamic_error()`.
+- **Auto subtyping:** converting `Auto A::K1 with S1 end` to `Auto B::K2 with S2 end` re-stores the payload with
+  `_coerce_tuple_val` from the `S1` layout to the `S2` layout, keeping the type descriptor, when the two stored
+  layouts differ; otherwise the pointer is reused.
 
 ---
 
