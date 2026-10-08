@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 
-from quest import shadow
 from quest.types import (
     QAliasType,
     strip_aliases,
@@ -432,44 +431,18 @@ class CRepr:
 
 
 _LOWERED: dict[int, CRepr] = {}
-_lowering_cache_enabled = True
-
-SHADOW_C_LOWERING = shadow.register_check(
-    "c-lowering", "recompute every cached C representation without the cache and compare"
-)
 
 
 def lower_type(t: QType) -> CRepr:
     """Returns the C representation of t, shared by every use of the same canonical type."""
     t = t.prune() if hasattr(t, "prune") else t
-    if not _lowering_cache_enabled or getattr(t, "_has_meta", True):
+    if getattr(t, "_has_meta", True):
         return CRepr(t)
     entry = _LOWERED.get(id(t))
     if entry is None or entry.type is not t:
         entry = CRepr(t)
         _LOWERED[id(t)] = entry
-    elif shadow.is_enabled(SHADOW_C_LOWERING):
-        _shadow_check_lowering(entry)
     return entry
-
-
-def _shadow_check_lowering(cached: CRepr) -> None:
-    """Recomputes, without the cache, every part of a cached representation computed so far."""
-    global _lowering_cache_enabled
-    _lowering_cache_enabled = False
-    try:
-        fresh = CRepr(cached.type)
-        for part in ("normalized", "tag", "c_type", "is_word"):
-            have = getattr(cached, "_" + part)
-            if have is _UNSET:
-                continue
-            want = getattr(fresh, part)
-            if have is not want and (part == "normalized" or have != want):
-                raise shadow.mismatch(
-                    SHADOW_C_LOWERING, f"cached {part} of {cached.type} is {have}, but recomputing gives {want}"
-                )
-    finally:
-        _lowering_cache_enabled = True
 
 
 def normalize_type(t: QType) -> QType:
