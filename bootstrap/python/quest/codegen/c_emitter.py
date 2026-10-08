@@ -972,6 +972,9 @@ class CEmitter:
     ) -> None:
         """Emits function return handling with appropriate subtyping coercions."""
         call_args = ", ".join(param_c_names) if param_c_names else ""
+        saved_env = dict(self.current_env_vars)
+        if not isinstance(body, TypedExternal):
+            self._declare_local_exceptions(body, fn_lines)
         if ret_type is OK_TYPE:
             if isinstance(body, TypedExternal):
                 fn_lines.append(f"{body.symbol}({call_args});")
@@ -985,6 +988,7 @@ class CEmitter:
                 ret_val = self.emit_val(body, fn_lines)
             coerced = self._coerce_val(ret_val, body, ret_type, fn_lines)
             fn_lines.append(f"return {coerced};")
+        self.current_env_vars = saved_env
 
     def _emit_call_arg(
         self,
@@ -2348,9 +2352,16 @@ class CEmitter:
         return self.current_env_vars.get(name, mangle_ident(name))
 
     def _declare_local_exceptions(self, node: TypedNode, lines: list[str]) -> None:
-        """Declares block-local variables for named exceptions constructed in node."""
+        """Declares local variables for named exceptions constructed in node.
+
+        The local shadows any outer binding of the same name; callers save and restore
+        current_env_vars around the enclosing function body or block. The local is volatile
+        because it may be assigned inside a try body and read by its handler after longjmp.
+        """
         for exc in named_exceptions_in(node):
-            lines.append(f"const QException *{mangle_ident(exc.name)};")
+            c_ident = mangle_ident(exc.name)
+            self.current_env_vars[exc.name] = c_ident
+            lines.append(f"const QException *volatile {c_ident};")
 
     def _emit_expr_phrase(self, expr: TypedExpr, lines: list[str], is_last: bool = False) -> None:
         expr_type = expr.type_val
@@ -2864,6 +2875,7 @@ class CEmitter:
             case TypedBlock(bindings=bindings, result=result):
                 lines.append("{")
                 block_lines: list[str] = []
+                saved_env = dict(self.current_env_vars)
                 for b in bindings:
                     match b:
                         case TypedLetValue(name=name, value=val, symbol=symbol):
@@ -2888,6 +2900,7 @@ class CEmitter:
                             pass
                 self._declare_local_exceptions(result, block_lines)
                 self.emit_to(result, dest, block_lines)
+                self.current_env_vars = saved_env
                 _append_block(lines, block_lines)
                 lines.append("}")
 

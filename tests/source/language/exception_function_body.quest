@@ -1,0 +1,57 @@
+(* Language: Exception expressions in function bodies bind their name in the function's scope *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+(* 1. An exception expression as a function's whole body *)
+let mk(x: Int): Exception(Int) = exception Made: Int end;
+let m1 = mk(1);
+printInt(try raise m1 with 5 as Int end when m1 with n then n end);
+
+(* 2. A name declared inside a try body is visible to that try's handlers *)
+let g(x: Int): Int =
+    try raise exception Inline: Int end with x as Int end when Inline with n then n + 1 end;
+printInt(g(4));
+
+(* 3. Inside a branch of a conditional function body *)
+let h(x: Int): Int =
+    if x > 0 then
+        try raise exception Pos: Int end with x as Int end when Pos with n then n * 2 end
+    else
+        0
+    end;
+printInt(h(8));
+printInt(h(~8));
+
+(* 4. Inside a lambda that captures a variable of the enclosing function *)
+let k(x: Int): Int =
+    begin
+        let catcher = fun(y: Int): Int
+            try raise exception Cap: Int end with y as Int end when Cap with n then n + x end;
+        catcher(10)
+    end;
+printInt(k(1));
+
+(* 5. A lambda raising an exception declared in the enclosing function *)
+let lam(x: Int): Int =
+    begin
+        let e = exception Outer: Int end;
+        let thrower = fun(y: Int): Int
+            if y > 0 then raise Outer with y as Int end else y end;
+        try thrower(x) when e with n then n * 2 end
+    end;
+printInt(lam(21));
+
+(* 6. A function-local exception shadows a top-level exception of the same name *)
+exception Shadow: Int end;
+let sh(x: Int): Int =
+    try raise exception Shadow: Int end with x as Int end when Shadow with n then n end;
+printInt(sh(9));
+printInt(try raise Shadow with 3 as Int end when Shadow with n then n + 30 end);
