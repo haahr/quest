@@ -657,17 +657,24 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             const QFunTypeDescriptor *t = (const QFunTypeDescriptor *)super_type->extra;
             if (s == NULL || t == NULL) { result = (s == t); break; }
             if (s->param_count != t->param_count) { result = false; break; }
+            /* Contravariant value parameters, invariant var parameters, covariant out parameters and result */
             bool match = true;
-            for (size_t i = 0; i < s->param_count; ++i) {
-                if (s->params[i].type != t->params[i].type ||
-                    s->params[i].is_var != t->params[i].is_var ||
-                    s->params[i].is_out != t->params[i].is_out) {
+            for (size_t i = 0; i < s->param_count && match; ++i) {
+                const QFunParamDescriptor *sp = &s->params[i];
+                const QFunParamDescriptor *tp = &t->params[i];
+                if (sp->is_var != tp->is_var || sp->is_out != tp->is_out) {
                     match = false;
-                    break;
+                } else if (sp->is_var) {
+                    match = quest_is_subtype(sp->type, tp->type) && quest_is_subtype(tp->type, sp->type);
+                } else if (sp->is_out) {
+                    match = quest_is_subtype(sp->type, tp->type);
+                } else {
+                    match = quest_is_subtype(tp->type, sp->type);
                 }
             }
             if (match && s->result_type != t->result_type) {
-                match = false;
+                match = s->result_type != NULL && t->result_type != NULL &&
+                        quest_is_subtype(s->result_type, t->result_type);
             }
             result = match;
             break;
@@ -896,6 +903,12 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
             void *dst = quest_alloc(to->size > 0 ? to->size : sizeof(void *));
             quest_convert_elements(v.p, from, dst, to);
             return (QVal){ .p = dst };
+        }
+        case QTYPE_KIND_FUN: {
+            const QFunTypeDescriptor *meta = (const QFunTypeDescriptor *)to->extra;
+            if (v.p == NULL || meta == NULL || meta->adapt == NULL) return v;
+            if (quest_is_subtype(to, from)) return v; /* equal types: nothing to adapt */
+            return (QVal){ .p = meta->adapt((const QClosure *)v.p, from, to) };
         }
         default:
             return v;
@@ -1167,6 +1180,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     QFunTypeDescriptor *meta = (QFunTypeDescriptor *)quest_alloc(meta_size);
     meta->param_count = param_count;
     meta->result_type = result_type;
+    meta->adapt = NULL;
     if (params != NULL && param_count > 0) {
         memcpy((void *)meta->params, params, sizeof(QFunParamDescriptor) * param_count);
     }
@@ -1193,17 +1207,8 @@ QVal quest_dynamic_be(const QTypeDescriptor *target_type_desc, const QDynamic *d
     if (!quest_is_subtype(d->type_desc, target_type_desc)) {
         quest_raise_dynamic_error();
     }
-    /* Coercion and adaptation for aggregates */
-    if (target_type_desc->kind == QTYPE_KIND_RECORD) {
-        QRecordVal viewed = quest_record_view(*(const QRecordVal *)d->payload.p, target_type_desc);
-        if (viewed.dict == NULL) quest_raise_dynamic_error();
-        return (QVal){ .p = quest_record_box(viewed) };
-    }
-    if (target_type_desc->kind == QTYPE_KIND_VARIANT || target_type_desc->kind == QTYPE_KIND_OPTION) {
-        QVariantVal adapted = quest_variant_adapt(d->type_desc, target_type_desc, d->payload);
-        return (QVal){ .p = quest_variant_box(adapted) };
-    }
-    return d->payload;
+    /* View the payload at the target type: records, variants, options, tuples, and functions are converted */
+    return quest_convert(d->payload, d->type_desc, target_type_desc);
 }
 
 QDynamic *quest_dynamic_copy(const QDynamic *d) {

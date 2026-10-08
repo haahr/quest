@@ -15,6 +15,7 @@ from quest.codegen.c_analysis import (
 )
 from quest.codegen.c_declarations import CDeclarationEmitter, emit_trampoline
 from quest.codegen.c_types import (
+    fun_descriptor_tag,
     RecordNamingContext,
     c_char_literal,
     c_string_literal,
@@ -324,8 +325,7 @@ class CEmitter:
             tag = f"opaque_{mangle_ident(t.name)}"
             return f"(&quest_type_{tag})"
         if isinstance(t, (QFunType, QAllType)):
-            tag = f"fun_{type_to_c_tag(t)}"
-            return f"(&quest_type_{tag})"
+            return f"(&quest_type_{fun_descriptor_tag(t)})"
         if isinstance(t, QAutoType):
             return f"(&quest_type_{type_to_c_tag(t)})"
         return "&quest_type_EmptyTuple"
@@ -535,8 +535,7 @@ class CEmitter:
         if (
             isinstance(target_type, (QFunType, QAllType))
             and isinstance(src_type, (QFunType, QAllType))
-            and _closure_fn_ptr_type(target_type, self.record_ctx)
-            != _closure_fn_ptr_type(src_type, self.record_ctx)
+            and self._closure_adaptation_needed(src_type, target_type)
         ):
             res = self._emit_closure_adaptation(c_val, src_type, target_type, lines)
             if dest is not None:
@@ -602,6 +601,29 @@ class CEmitter:
             )
         return tmp_v
 
+    def _closure_adaptation_needed(self, orig_t: QType, target_t: QType) -> bool:
+        """True if a closure of type orig_t needs a thunk to be used at its supertype target_t: when the two C
+        signatures differ (QVal versus concrete representations), or when an argument or the result must be
+        converted between subtypes (records, variants, options, tuples, and functions)."""
+        if _closure_fn_ptr_type(orig_t, self.record_ctx) != _closure_fn_ptr_type(target_t, self.record_ctx):
+            return True
+        if orig_t is target_t or is_type_equal(orig_t, target_t, self.env):
+            return False
+        _, inner_orig = self._collect_fun_quantifiers(orig_t)
+        _, inner_tgt = self._collect_fun_quantifiers(target_t)
+        if not isinstance(inner_orig, QFunType) or not isinstance(inner_tgt, QFunType):
+            return False
+        for op, tp in zip(inner_orig.params, inner_tgt.params):
+            if not (op.is_var or op.is_out) and self._value_conversion_needed(tp.type_val, op.type_val):
+                return True
+        return self._value_conversion_needed(inner_orig.result_type, inner_tgt.result_type)
+
+    def _value_conversion_needed(self, src_t: QType, tgt_t: QType) -> bool:
+        """True if a value of type src_t must be converted to be used at its supertype tgt_t."""
+        return self._may_be_stored_as_subtype(tgt_t) and not (
+            src_t is tgt_t or is_type_equal(src_t, tgt_t, self.env)
+        )
+
     def _emit_closure_adaptation(
         self,
         c_closure: str,
@@ -609,11 +631,12 @@ class CEmitter:
         target_t: QType,
         lines: list[str],
     ) -> str:
-        """Emits an adaptation thunk closure if orig_t and target_t closure signatures differ."""
-        orig_fn_ptr = _closure_fn_ptr_type(orig_t, self.record_ctx)
-        target_fn_ptr = _closure_fn_ptr_type(target_t, self.record_ctx)
-        if orig_fn_ptr == target_fn_ptr:
+        """Wraps a closure of type orig_t for use at its supertype target_t, if needed, in a thunk that converts each
+        argument from target_t's parameter type to orig_t's (parameters are contravariant) and the result from
+        orig_t's result type to target_t's, boxing and unboxing between QVal and concrete representations."""
+        if not self._closure_adaptation_needed(orig_t, target_t):
             return c_closure
+        orig_fn_ptr = _closure_fn_ptr_type(orig_t, self.record_ctx)
 
         cache_key = (str(orig_t), str(target_t))
         if cache_key in self.adapter_cache:
@@ -633,50 +656,116 @@ class CEmitter:
             ret_c = "void" if tgt_ret_t is OK_TYPE else self.c_type(tgt_ret_t)
 
             param_decls = ["void *_raw_env"]
+            body: list[str] = ["QClosure *orig = (QClosure *)_raw_env;"]
             call_args = []
             for idx, tp in enumerate(tgt_params):
                 op = orig_params[idx] if idx < len(orig_params) else tp
                 arg_name = f"qv_arg_{idx}"
+                if tp.is_var or tp.is_out:
+                    param_decls.append(f"{self.c_type(tp.type_val)} *{arg_name}")
+                    call_args.append(arg_name)
+                    continue
                 tp_c = "QVal" if tp.type_val is OK_TYPE else self.c_type(tp.type_val)
                 param_decls.append(f"{tp_c} {arg_name}")
-
-                tp_tag = qtype_to_c_type(tp.type_val, self.record_ctx)
-                op_tag = qtype_to_c_type(op.type_val, self.record_ctx)
-                if tp_tag == "QVal" and op_tag != "QVal":
-                    call_args.append(_qval_unwrap(arg_name, op.type_val, self))
-                elif tp_tag != "QVal" and op_tag == "QVal":
-                    call_args.append(_qval_wrap(arg_name, tp.type_val))
-                else:
+                if tp.type_val is OK_TYPE or op.type_val is OK_TYPE:
                     call_args.append(arg_name)
+                else:
+                    call_args.append(self._coerce_val(arg_name, tp.type_val, op.type_val, body))
 
             sig = ", ".join(param_decls)
             self.adapter_decls.append(f"static Q_UNUSED {ret_c} {adapt_fn_name}({sig});")
-            fn_body: list[str] = [
-                f"static Q_UNUSED {ret_c} {adapt_fn_name}({sig}) {{",
-                "    QClosure *orig = (QClosure *)_raw_env;",
-            ]
             args_str = ", ".join(["orig->env"] + call_args)
             call_expr = f"(({orig_fn_ptr})(orig->fn))({args_str})"
 
-            tgt_ret_tag = qtype_to_c_type(tgt_ret_t, self.record_ctx)
-            orig_ret_tag = qtype_to_c_type(orig_ret_t, self.record_ctx)
-
             if tgt_ret_t is OK_TYPE:
-                fn_body.append(f"    {call_expr};")
-                fn_body.append("    return;")
-            elif tgt_ret_tag == "QVal" and orig_ret_tag != "QVal":
-                wrapped = _qval_wrap(call_expr, orig_ret_t)
-                fn_body.append(f"    return {wrapped};")
-            elif tgt_ret_tag != "QVal" and orig_ret_tag == "QVal":
-                unwrapped = _qval_unwrap(call_expr, tgt_ret_t, self)
-                fn_body.append(f"    return {unwrapped};")
+                body.append(f"{call_expr};")
             else:
-                fn_body.append(f"    return {call_expr};")
+                orig_ret_c = self.c_type(orig_ret_t)
+                body.append(f"{orig_ret_c} qv_result = {call_expr};")
+                body.append(f"return {self._coerce_val('qv_result', orig_ret_t, tgt_ret_t, body)};")
+            fn_body = [f"static Q_UNUSED {ret_c} {adapt_fn_name}({sig}) {{"]
+            fn_body.extend(f"    {line}" for line in body)
             fn_body.append("}")
             fn_body.append("")
             self.adapter_defs.extend(fn_body)
 
         return self._emit_closure_alloc(adapt_fn_name, c_closure, lines, prefix="_adapt_clo")
+
+    def _emit_fun_type_adapters(self, fun_types: Sequence[tuple[str, QFunType]]) -> list[str]:
+        """Defines the adapter of each function type that has a runtime descriptor (QFunAdapter, quest_adapt_<tag>).
+
+        Run-time conversions of a closure to a function type T, by dynamic.be, inspect, or the read of a record field
+        stored at a subtype, are known only to be from some subtype of T. The adapter for T wraps the closure in a
+        thunk with T's C signature, which converts arguments and result as described by the two descriptors. The
+        closure can be called through T's signature because types related by subtyping have the same C
+        representation.
+        """
+        lines: list[str] = []
+        if not fun_types:
+            return lines
+        lines.append("/* Adapters for function types: thunks converting arguments and results by descriptor */")
+        for tag, fun_t in fun_types:
+            ret_t = fun_t.result_type
+            ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
+            param_decls = ["void *_raw_env"]
+            body = [
+                "const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;",
+                "const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;",
+                "const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;",
+                "(void)from;",
+                "(void)to;",
+            ]
+            call_args = ["e->orig->env"]
+            for i, p in enumerate(fun_t.params):
+                name = f"qv_arg_{i}"
+                if p.is_var or p.is_out:
+                    param_decls.append(f"{self.c_type(p.type_val)} *{name}")
+                elif p.type_val is OK_TYPE:
+                    param_decls.append(f"QVal {name}")
+                else:
+                    param_decls.append(f"{self.c_type(p.type_val)} {name}")
+                    if self._may_be_stored_as_subtype(p.type_val):
+                        converted = _qval_unwrap(
+                            f"quest_convert({_qval_wrap(name, p.type_val)}, to->params[{i}].type, "
+                            f"from->params[{i}].type)",
+                            p.type_val,
+                            self,
+                        )
+                        body.append(f"{name} = {converted};")
+                call_args.append(name)
+            call_expr = f"(({_closure_fn_ptr_type(fun_t, self.record_ctx)})(e->orig->fn))({', '.join(call_args)})"
+            if ret_t is OK_TYPE:
+                body.append(f"{call_expr};")
+            elif self._may_be_stored_as_subtype(ret_t):
+                body.append(f"{ret_c} qv_result = {call_expr};")
+                converted = _qval_unwrap(
+                    f"quest_convert({_qval_wrap('qv_result', ret_t)}, from->result_type, to->result_type)",
+                    ret_t,
+                    self,
+                )
+                body.append(f"return {converted};")
+            else:
+                body.append(f"return {call_expr};")
+            thunk = f"quest_thunk_{tag}"
+            lines.append(f"static {ret_c} {thunk}({', '.join(param_decls)}) {{")
+            lines.extend(f"    {line}" for line in body)
+            lines.append("}")
+            lines.append(
+                f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
+                f"const QTypeDescriptor *to) {{"
+            )
+            lines.append("    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv));")
+            lines.append("    e->orig = orig;")
+            lines.append("    e->from = from;")
+            lines.append("    e->to = to;")
+            lines.append("    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure));")
+            lines.append(f"    adapted->fn = (void *){thunk};")
+            lines.append("    adapted->env = e;")
+            lines.append("    return adapted;")
+            lines.append("}")
+            lines.append("")
+        return lines
+
 
     def _emit_type_app_closure(
         self,
@@ -810,7 +899,7 @@ class CEmitter:
             ):
                 return False
             if isinstance(tf, (QFunType, QAllType)) and isinstance(sf, (QFunType, QAllType)):
-                if _closure_fn_ptr_type(tf, self.record_ctx) != _closure_fn_ptr_type(sf, self.record_ctx):
+                if self._closure_adaptation_needed(sf, tf):
                     return False
             return True
 
@@ -852,8 +941,7 @@ class CEmitter:
             elif (
                 isinstance(tgt_vf.type_val, (QFunType, QAllType))
                 and isinstance(src_vf.type_val, (QFunType, QAllType))
-                and _closure_fn_ptr_type(tgt_vf.type_val, self.record_ctx)
-                != _closure_fn_ptr_type(src_vf.type_val, self.record_ctx)
+                and self._closure_adaptation_needed(src_vf.type_val, tgt_vf.type_val)
             ):
                 adapted = self._emit_closure_adaptation(
                     src_field_access, src_vf.type_val, tgt_vf.type_val, lines
@@ -1250,13 +1338,13 @@ class CEmitter:
         return val
 
     def _may_be_stored_as_subtype(self, t: QType) -> bool:
-        """True if a value of type t may be stored in a record field at a different type that is a subtype of t,
-        and so need converting when read: records, variants, options, and nonempty tuples."""
+        """True if a value of type t may be stored at a different type that is a subtype of t, and so need
+        converting when used at t: records, variants, options, nonempty tuples, and (monomorphic) functions."""
         t = normalize_type(t)
         if isinstance(t, QTupleType):
             return bool(t.value_fields)
         return (
-            isinstance(t, (QRecordType, QVariantType, QOptionType))
+            isinstance(t, (QRecordType, QVariantType, QOptionType, QFunType))
             or resolve_record_bound(t) is not None
             or resolve_variant_bound(t) is not None
             or resolve_option_bound(t) is not None
@@ -1313,6 +1401,7 @@ class CEmitter:
                 analysis.all_program_types,
             )
         )
+        lines.extend(self._emit_fun_type_adapters(decl_emitter.emitted_fun_types))
         lines.extend(decl_emitter.emit_environment_structs(self.lifted_lambdas))
         return lines
 

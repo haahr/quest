@@ -168,6 +168,24 @@ class TestRecordDicts(unittest.TestCase):
     assert(quest_convert((QVal){ .p = pair }, &pair_big_desc, &pair_big_desc).p == pair);
 """))
 
+    def test_function_subtyping_is_contravariant_in_parameters(self) -> None:
+        self.assertIn("OK", self.run_c(r"""
+    /* Big <: Mid. Fun(x: Mid): Big <: Fun(x: Big): Mid, and not conversely */
+    QFunParamDescriptor takes_mid[] = { { .type = &mid_desc, .is_var = false, .is_out = false } };
+    QFunParamDescriptor takes_big[] = { { .type = &big_desc, .is_var = false, .is_out = false } };
+    const QTypeDescriptor *mid_to_big = quest_make_fun_descriptor("Fun(x: Mid): Big", 1, takes_mid, &big_desc);
+    const QTypeDescriptor *big_to_mid = quest_make_fun_descriptor("Fun(x: Big): Mid", 1, takes_big, &mid_desc);
+    assert(quest_is_subtype(mid_to_big, big_to_mid));
+    assert(!quest_is_subtype(big_to_mid, mid_to_big));
+    /* var parameters are invariant */
+    QFunParamDescriptor var_mid[] = { { .type = &mid_desc, .is_var = true, .is_out = false } };
+    QFunParamDescriptor var_big[] = { { .type = &big_desc, .is_var = true, .is_out = false } };
+    const QTypeDescriptor *var_mid_fun = quest_make_fun_descriptor("Fun(var x: Mid): Int", 1, var_mid, &quest_type_Int);
+    const QTypeDescriptor *var_big_fun = quest_make_fun_descriptor("Fun(var x: Big): Int", 1, var_big, &quest_type_Int);
+    assert(!quest_is_subtype(var_mid_fun, var_big_fun));
+    assert(!quest_is_subtype(var_big_fun, var_mid_fun));
+"""))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -276,6 +276,21 @@ def _type_to_c_tag_raw(t: QType) -> str:
     return "QVal"
 
 
+def _type_digest(t: QType) -> str:
+    """A short digest of a type's canonical text, telling apart types that type_to_c_tag conflates."""
+    t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
+    return hashlib.sha256(str(t).encode("utf-8")).hexdigest()[:16]
+
+
+def fun_descriptor_tag(t: QType) -> str:
+    """The tag of the runtime descriptor of a function type (QFunType or QAllType).
+
+    type_to_c_tag is QClosure for every function type, which suits struct naming (all closures are represented
+    alike) but not descriptors, which must tell function types apart.
+    """
+    return "fun_" + _type_digest(t)
+
+
 def tuple_struct_name(t: QTupleType) -> str:
     """Returns the C struct tag name for a given QTupleType."""
     return type_to_c_tag(t)
@@ -298,14 +313,16 @@ class RecordNamingContext:
     """Maintains sequential and alias-based naming for record types and evidence dictionaries."""
 
     def __init__(self) -> None:
-        self.alias_by_shape: dict[tuple[tuple[str, str], ...], str] = {}
-        self.seq_by_shape: dict[tuple[tuple[str, str], ...], str] = {}
-        self.shape_to_canonical_name: dict[tuple[tuple[str, str], ...], str] = {}
+        self.alias_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
+        self.seq_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
+        self.shape_to_canonical_name: dict[tuple[tuple[str, str, str], ...], str] = {}
         self._record_counter = 0
 
-    def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str], ...]:
+    def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
+        # Records share a struct (and so a descriptor) only if their fields have the same types, not merely the same
+        # C representations: type_to_c_tag is QClosure for every function type and QVal for every type variable.
         sorted_fields = sorted(t.fields, key=lambda f: f.name)
-        return tuple((f.name, type_to_c_tag(f.type_val)) for f in sorted_fields)
+        return tuple((f.name, type_to_c_tag(f.type_val), _type_digest(f.type_val)) for f in sorted_fields)
 
     def register_alias(self, alias_name: str, t: QRecordType) -> None:
         key = self._shape_key(t)

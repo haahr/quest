@@ -214,9 +214,22 @@ typedef struct QFunParamDescriptor {
     bool                   is_out;
 } QFunParamDescriptor;
 
+/* Makes a closure of function type `to` from closure orig of function type `from`, a subtype of `to`: the result
+ * converts its arguments from `to`'s parameter types to `from`'s and its result from `from`'s result type to `to`'s
+ * (see quest_convert). Compiled code supplies one for each function type it describes. */
+typedef QClosure *(*QFunAdapter)(const QClosure *orig, const QTypeDescriptor *from, const QTypeDescriptor *to);
+
+/* The environment of a closure made by a QFunAdapter */
+typedef struct QFunAdapterEnv {
+    const QClosure        *orig;
+    const QTypeDescriptor *from;
+    const QTypeDescriptor *to;
+} QFunAdapterEnv;
+
 typedef struct QFunTypeDescriptor {
     size_t                    param_count;
     const QTypeDescriptor    *result_type;
+    QFunAdapter               adapt;        /* NULL if values of this type cannot be adapted */
     const QFunParamDescriptor params[];
 } QFunTypeDescriptor;
 
@@ -522,7 +535,8 @@ QVal                   quest_slot_read(const QTypeDescriptor *t, const void *slo
 void                   quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v);
 
 /* Converts v, a value stored at type `from`, to its subtype view at type `to`: records get the offset table for the
- * view, variants and options their tags in `to`, and tuples are copied with their elements converted. */
+ * view, variants and options their tags in `to`, tuples are copied with their elements converted, and functions
+ * are wrapped by `to`'s adapter. */
 QVal                   quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to);
 
 /* The i-th field (in name order) of record value rec viewed at record type `view`, converted to the view's type */

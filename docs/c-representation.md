@@ -268,7 +268,10 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   packed into an existential tuple with abstract signatures (e.g. `create: Int -> A`), the underlying C function
   pointer types differ (`QInt (*)(void *, QInt)` vs `QVal (*)(void *, QInt)`). The transpiler synthesizes a static
   adaptation thunk (`qv_adapt_<id>`) that forwards the environment, unwraps any `QVal` arguments, calls the concrete
-  function, and wraps abstract return values with `qval_wrap`.
+  function, and wraps abstract return values with `qval_wrap`. The same thunks implement function subtyping: a closure
+  of type `Fun(x: Small): Big` used at `Fun(x: Big): Small` gets a thunk that coerces each argument from the target's
+  parameter type to the closure's (giving the `Big` record a `Small` view) and the result from the closure's result
+  type to the target's, with the ordinary coercions (record views, variant tag maps, nested thunks).
 
 - **Tuple Structural Coercion & Generic Returns:**
   When field types between source and target tuples differ in C representation (due to scalar-to-QVal boxing, closure
@@ -709,8 +712,14 @@ struct QTypeDescriptor {
 - **Variants & Options (`QVariantTypeDescriptor`):** Holds `size_t case_count` and an array of `QVariantCaseDescriptor`
   (`name`, `payload_type`, `tag_index`, `is_var`).
 - **Arrays (`QArrayTypeDescriptor`):** Holds `const QTypeDescriptor *element_type`.
-- **Functions (`QFunTypeDescriptor`):** Holds `size_t param_count`, `QFunParamDescriptor *params`, and
-  `const QTypeDescriptor *result_type`.
+- **Functions (`QFunTypeDescriptor`):** Holds `size_t param_count`, `QFunParamDescriptor *params`,
+  `const QTypeDescriptor *result_type`, and `QFunAdapter adapt`. Each monomorphic function type has its own descriptor
+  (`quest_type_fun_<digest>`, a digest of the type's text, since all closures share the C tag `QClosure`); `adapt`
+  points to the compiled `quest_adapt_fun_<digest>`, which wraps a closure of a subtype in a thunk with this type's C
+  signature that converts arguments and result by descriptor with `quest_convert`. `quest_convert` uses it for
+  function values, so `dynamic.be`, `inspect`, and reads of function fields stored at a subtype adapt closures at run
+  time. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
+  covariant in `out` parameters and the result. Polymorphic function types have opaque descriptors compared by name.
 
 ##### Static Compilation (.rodata) vs. Runtime Synthesis
 - **Closed Types in Code:** For all concrete types appearing in the program, the C emitter synthesizes `static const`

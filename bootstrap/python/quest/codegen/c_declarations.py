@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Sequence
 from quest.typed_ast import TypedExpr, TypedFun, TypedRecord
 from quest.codegen.c_analysis import CLambdaInfo, CProgramAnalysis
 from quest.codegen.c_types import (
+    fun_descriptor_tag,
     RecordNamingContext,
     collect_fun_quantifiers,
     mangle_ident,
@@ -94,6 +95,8 @@ class CDeclarationEmitter:
         self.collect_fun_quantifiers = collect_quants_fn or collect_fun_quantifiers
         self.is_exact_record_literal = is_exact_record_literal_fn or (lambda _t, _e: False)
         self.emitted_descriptor_tags: list[str] = []
+        # Function types with descriptors, whose adapters (quest_adapt_<tag>) the emitter must define
+        self.emitted_fun_types: list[tuple[str, QFunType]] = []
 
     def emit_forward_typedefs(self, agg_types: list[tuple[str, QType]]) -> list[str]:
         lines: list[str] = []
@@ -336,7 +339,9 @@ class CDeclarationEmitter:
         variants_and_options: list[tuple[str, Any]] = []
         arrays: list[tuple[str, QArrayType]] = []
         opaques: list[tuple[str, str]] = []
+        funs: list[tuple[str, QFunType]] = []
         seen_tags: set[str] = set()
+        self.emitted_fun_types = funs
 
         def visit(t: Optional[QType]) -> None:
             if t is None:
@@ -408,8 +413,18 @@ class CDeclarationEmitter:
                     seen_tags.add(tag)
                     opaques.append((tag, name))
                 return
-            if isinstance(t, (QFunType, QAllType)):
-                tag = f"fun_{type_to_c_tag(t)}"
+            if isinstance(t, QFunType):
+                tag = fun_descriptor_tag(t)
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    funs.append((tag, t))
+                    for p in t.params:
+                        visit(p.type_val)
+                    visit(t.result_type)
+                return
+            if isinstance(t, QAllType):
+                # Polymorphic function types are compared by name
+                tag = fun_descriptor_tag(t)
                 if tag not in seen_tags:
                     seen_tags.add(tag)
                     opaques.append((tag, str(t)))
@@ -438,7 +453,50 @@ class CDeclarationEmitter:
             lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED;")
         lines.append("")
 
+        if funs:
+            lines.append("/* Adapters for function types (defined after the descriptors) */")
+            for tag, _ in funs:
+                lines.append(
+                    f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
+                    f"const QTypeDescriptor *to);"
+                )
+            lines.append("")
+
         lines.append("/* Static runtime type descriptors for compound and opaque types */")
+        for tag, fun_t in funs:
+            c_name = str(fun_t).replace('"', '\\"')
+            result_desc = desc_fn(fun_t.result_type)
+            n = len(fun_t.params)
+            if n > 0:
+                lines.append("static const struct {")
+                lines.append("    size_t param_count;")
+                lines.append("    const QTypeDescriptor *result_type;")
+                lines.append("    QFunAdapter adapt;")
+                lines.append(f"    const QFunParamDescriptor params[{n}];")
+                lines.append(f"}} qfun_desc_{tag} Q_UNUSED = {{")
+                lines.append(f"    .param_count = {n},")
+                lines.append(f"    .result_type = {result_desc},")
+                lines.append(f"    .adapt = quest_adapt_{tag},")
+                lines.append("    .params = {")
+                for p in fun_t.params:
+                    is_var = "true" if p.is_var else "false"
+                    is_out = "true" if p.is_out else "false"
+                    lines.append(f"        {{ .type = {desc_fn(p.type_val)}, .is_var = {is_var}, .is_out = {is_out} }},")
+                lines.append("    }")
+                lines.append("};")
+            else:
+                lines.append(f"static const QFunTypeDescriptor qfun_desc_{tag} Q_UNUSED = {{")
+                lines.append(f"    .param_count = 0, .result_type = {result_desc}, .adapt = quest_adapt_{tag},")
+                lines.append("};")
+            lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
+            lines.append("    .kind = QTYPE_KIND_FUN,")
+            lines.append(f"    .name = \"{c_name}\",")
+            lines.append("    .size = sizeof(QClosure *),")
+            lines.append("    .alignment = sizeof(void *),")
+            lines.append("    .is_subtype = quest_is_subtype,")
+            lines.append(f"    .extra = &qfun_desc_{tag},")
+            lines.append("};")
+            lines.append("")
         for tag, name in opaques:
             c_name = name.replace('"', '\\"')
             lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")

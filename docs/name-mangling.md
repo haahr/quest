@@ -172,6 +172,8 @@ Calls to polymorphic functions with concrete types (records, variants, tuples) a
 ### 5.4. Type-Application and Coercion Adapters
 When functions are passed through subtype coercions or type applications:
 - **Adapter function:** `qv_adapt_<counter>` or `qv_typeapp_<counter>`
+- **Function type descriptor and adapter:** `quest_type_fun_<digest>`, `quest_adapt_fun_<digest>`, and its thunk
+  `quest_thunk_fun_<digest>`, where `<digest>` is 16 hex digits of a SHA-256 of the function type's text
 - **Adapter environment:** `QTypeAppEnv_qv_typeapp_<counter>`
 
 ---
@@ -179,7 +181,8 @@ When functions are passed through subtype coercions or type applications:
 ## 6. Types, Aggregates, & Fields
 
 ### 6.1. Record Structs and Fields
-- **Record struct tag:** `struct QT_<name>` (managed by `RecordNamingContext`):
+- **Record struct tag:** `struct QT_<name>` (managed by `RecordNamingContext`; records share a struct only if their
+  fields have the same names and types, which also makes their descriptors distinct):
   - Aliased records: `struct QT_<TypeName>` (e.g. `struct QT_Point`)
   - Anonymous / structural records: `struct QT_record<N>` or `struct QT_<module>_record<N>`
   - Structural fallback: `struct QRecord_<fld1>_<t1>_<fld2>_<t2>`

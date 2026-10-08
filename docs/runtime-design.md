@@ -160,6 +160,9 @@ Subtyping checks are unified under `quest_is_subtype`:
   depth subtyping on immutable fields ($T_{\text{sub}} <: T_{\text{super}}$), and invariance on mutable `var` fields.
 - **Tuples:** Prefix subtyping with covariant element types.
 - **Variants:** Branch set inclusion with covariant immutable payloads.
+- **Functions:** Contravariant value parameters, invariant `var` parameters, covariant `out` parameters and result.
+  A closure used at a function supertype is wrapped by the target type's adapter (see
+  [c-representation.md](c-representation.md)).
 - **Coinductive Cycle Detection:** Recursive type subtyping cycles are guarded using an active cycle trail
   (`quest_subtyping_trail`) to ensure terminating coinductive subtyping checks.
 
