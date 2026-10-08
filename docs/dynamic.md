@@ -1,7 +1,10 @@
 # Quest Dynamic Types & Serialization (`dynamic.extern` / `dynamic.intern`)
 
 This document specifies the design, runtime representation, and JSON/JSOG serialization format for Quest dynamic
-types (`Dynamic.T`), implemented in `bootstrap/python/quest/dynamic_json.py` and `bootstrap/python/quest/builtins.py`.
+types (`Dynamic.T`, also named `Dynamic`). The `dynamic` module is an ordinary library module,
+`lib/dynamic.mod.quest`: `new` and `be` are written in Quest, and `copy`, `extern`, and `intern` are runtime
+operations declared `external` (implemented in `bootstrap/python/quest/dynamic_json.py` and
+`bootstrap/python/quest/builtins.py` for the interpreter, and `runtime/quest_serialization.c` for compiled code).
 
 ---
 
@@ -9,26 +12,36 @@ types (`Dynamic.T`), implemented in `bootstrap/python/quest/dynamic_json.py` and
 
 In Cardelli's *Typeful Programming* (§9.1 and Appendix), dynamic types provide a type-sound mechanism for handling
 heterogeneous data, persistence, and run-time metaprogramming. A dynamic value packages an arbitrary runtime value
-together with its static/declared type:
+together with its type. As Cardelli defines it, `Dynamic.T` is the auto type `Auto A::TYPE with a:A end`
+([type-system.md](type-system.md) §6.11), so a dynamic value is an auto value whose one component `a` is the value:
 
 ```quest
 interface Dynamic
+import
+    reader: Reader
+    writer: Writer
 export
-    T :: TYPE
-    new (A :: TYPE a : A) : T
-    be (A :: TYPE d : T) : A
-    copy (d : T) : T
-    extern (wr : Writer.T d : T) : Ok
-    intern (rd : Reader.T) : T
-    error : Exception(Ok)
+    Def T = Auto A::TYPE with a: A end
+    error: Exception
+    new(A::TYPE a: A): T
+    be(A::TYPE d: T): A
+    copy(d: T): T
+    intern(rd: reader.T): T
+    extern(wr: writer.T d: T): Ok
 end;
 ```
 
-- **`dynamic.new(:Type val)`**: Packages `val` and its static type `Type` into a dynamic value `d: Dynamic.T`.
-- **`dynamic.be(:TargetType d)`**: Inspects `d`'s packaged type against `TargetType`.
-  If `is_subtype(d.type, TargetType)` holds, returns the underlying value typed as `TargetType`;
-  otherwise raises `dynamic.error`.
-- **`dynamic.copy(d)`**: Produces a deep copy of `d`, preserving internal sharing and cycles.
+*A discrepancy in Cardelli:* the prose of §9.1 defines `Dynamic_T` as `Auto A::TYPE with a:A end`, but the
+`Dynamic` interface in his appendix writes `Def T = Auto A::TYPE with :A end`, with an unnamed component. An unnamed
+component cannot be selected, which would leave an `inspect` binder no way to reach the value, so Quest follows
+§9.1. The global type name `Dynamic` also denotes this type.
+
+- **`dynamic.new(:Type val)`**: `auto :Type with val end`.
+- **`dynamic.be(:TargetType d)`**: `inspect d when TargetType with x then x.a else raise error as TargetType end
+  end`: the value if `d`'s type component is a subtype of `TargetType`, otherwise `dynamic.error`.
+- **`inspect d when T with x then ... end`**: as for any auto value, `x` is the component tuple, and `x.a` the
+  packaged value.
+- **`dynamic.copy(d)`**: A new dynamic value with the same type component and value (the value itself is shared).
 - **`dynamic.extern(wr, d)`**: Serializes `d` into a stream in a cycle-safe, JSON-compatible representation.
 - **`dynamic.intern(rd)`**: Deserializes a dynamic value from an input stream, reconstructing the object graph,
   resolving cyclic/shared references, and restoring the packaged type for subsequent `dynamic.be` checks.
@@ -123,7 +136,7 @@ dynamic object. This is achieved via JSOG annotations:
 | `Array` (`array ... end`) | `[elem1, ...]` | Plain list if unshared; `{"@id": "...", "@array": [...]}` if cyclic. |
 | `Variant` (`variant tag ...`) | `{"tag": val}` or `"tag"` | Serde external tagging convention. |
 | `Option` (`option tag ...`) | `{"tag": val}` or `"tag"` | Serde external tagging convention. |
-| `Dynamic.T` (`dynamic.new(...)`) | `{"@type": "...", "@value": ...}` | Nested dynamic envelope. |
+| `Dynamic.T` (`dynamic.new(...)`) | `{"@type": "...", "@value": ...}` | Nested dynamic envelope: the type component and the value. Other auto values with one component are serialized the same way; auto values with more components are not externable. |
 | `Var(T)` / `QRef` | `<value>` | Transparently dereferenced and serialized as inner value. |
 
 ### 2.5. Non-Externable Types & Error Semantics
@@ -164,7 +177,8 @@ Located in `bootstrap/python/quest/dynamic_json.py`:
 
 ### 3.3. Type Parsing (`parse_type_string`)
 Converts the textual type representation in `@type` back into a `QType` object:
-- Primitive type names (`Int`, `Real`, `Bool`, `Char`, `String`, `Ok`, `Dynamic`) are resolved via a static table.
+- Primitive type names (`Int`, `Real`, `Bool`, `Char`, `String`, `Ok`) and the predefined name `Dynamic` are resolved
+  via a static table.
 - Complex types (`Record ... end`, `Array(...)`, `Variant ... end`, `Option ... end`, `Tuple ... end`) are tokenized
   with `Tokenizer`, parsed using `parse_quest_program(tokens, symbol_map, target="Type")`, and elaborated in a base
   type environment.
@@ -177,7 +191,9 @@ The native C implementation provides full format parity with the Python referenc
   top-level JSON value while preserving unread stream characters in `peek_char`.
 - **Type Descriptor Resolution:** Checks registered static program types (`quest_lookup_type_descriptor_by_name`),
   falling back to a recursive-descent type expression parser (`quest_parse_type_descriptor`) for dynamically
-  synthesized types.
+  synthesized types, including auto types (`Auto A :: TYPE with a: A end`), whose components it lays out as the
+  compiler stores them.
+- **Values:** A dynamic value is a `QAuto` whose payload points to its one component, stored as a `QVal`.
 - **Two-Pass Deserialization:** Pre-allocates heap memory for all `@id` nodes (`quest_jsog_preallocate`) using natural
   C struct alignment, and links fields and `@ref` pointers (`quest_jsog_decode_value`).
 
@@ -199,16 +215,16 @@ dynamic.extern(writer.output d);
 **Serialized JSON Output (compact on wire, formatted here for clarity):**
 ```json
 {
-  "@type": "Record id: Int var next: Dynamic end",
+  "@type": "Record id: Int var next: Auto A :: TYPE with a: A end end",
   "@value": {
     "@id": "1",
     "id": 1,
     "next": {
-      "@type": "Record id: Int var next: Dynamic end",
+      "@type": "Record id: Int var next: Auto A :: TYPE with a: A end end",
       "@value": {
         "id": 2,
         "next": {
-          "@type": "Record id: Int var next: Dynamic end",
+          "@type": "Record id: Int var next: Auto A :: TYPE with a: A end end",
           "@value": {
             "@ref": "1"
           }

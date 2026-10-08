@@ -12,7 +12,6 @@ from quest.types import (
     strip_aliases,
     BOOL_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     INT_TYPE,
     OK_TYPE,
     REAL_TYPE,
@@ -235,8 +234,6 @@ def _type_to_c_tag_raw(t: QType) -> str:
         return "String"
     if t is OK_TYPE:
         return "Ok"
-    if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
-        return "Dynamic"
     if isinstance(t, QExternalType):
         return t.name.replace(".", "_") if t.name else t.c_type.replace("*", "").strip()
     if isinstance(t, QTypeVar) and t.name == "Writer.T":
@@ -385,6 +382,22 @@ def canonical_fun_type(t: QType) -> QType:
     return QAllType(quantifiers=tuple(new_quants), body=body)
 
 
+def canonical_auto_type(t: QAutoType) -> QAutoType:
+    """The canonical form of an auto type, which equal types share: its type parameter is the placeholder with de
+    Bruijn index 0 (see canonical_fun_type)."""
+    kind_bound = _shift_bound_vars(t.kind_bound, 1) if t.kind_bound is not None else t.kind_bound
+    placeholder = bound_var(0, kind_bound)
+    signature = tuple(
+        QRecordField(
+            name=f.name,
+            type_val=_shift_bound_vars(f.type_val, 1).substitute({t.symbol_id: placeholder}),
+            is_var=f.is_var,
+        )
+        for f in t.signature
+    )
+    return QAutoType(type_param="$0", symbol_id=placeholder.symbol_id, kind_bound=kind_bound, signature=signature)
+
+
 class MissingDescriptorError(Exception):
     """A type has no runtime type descriptor (such as Var(T) or a type operator)."""
 
@@ -426,12 +439,9 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         _BASE_DESCRIPTORS.update({
             id(INT_TYPE): "&quest_type_Int", id(REAL_TYPE): "&quest_type_Real", id(BOOL_TYPE): "&quest_type_Bool",
             id(CHAR_TYPE): "&quest_type_Char", id(STRING_TYPE): "&quest_type_String", id(OK_TYPE): "&quest_type_Ok",
-            id(DYNAMIC_TYPE): "&quest_type_Dynamic",
         })
     if id(t) in _BASE_DESCRIPTORS:
         return DescriptorForm("base", expr=_BASE_DESCRIPTORS[id(t)])
-    if isinstance(t, QTypeVar) and t.name == "Dynamic.T":
-        return DescriptorForm("base", expr="&quest_type_Dynamic")
     if (index := bound_var_index(t)) is not None:
         return DescriptorForm("bound_var", expr=f"(&quest_type_bound_vars[{index}])")
     if isinstance(t, QTupleType) and not t.fields:
@@ -487,7 +497,8 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         name = f"{t.root_name}.{t.field_name}#{t.root_symbol_id}"
         return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
     if isinstance(t, QAutoType):
-        return DescriptorForm("opaque", tag=f"{type_to_c_tag(t)}_{_type_digest(t)}", name=str(t))
+        canonical = canonical_auto_type(t)
+        return DescriptorForm("auto", tag=f"auto_{_type_digest(canonical)}", type=canonical, name=str(t))
     if isinstance(t, (QVarType, QOutType)):
         # The type of a var or out parameter: described by its element type
         return descriptor_form(t.element_type, ctx)
@@ -583,11 +594,9 @@ def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
         return "QString *"
     if t is OK_TYPE:
         return "void"
-    if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
-        return "QDynamic *"
     if isinstance(t, QAutoType):
-        # An auto value is represented like a Dynamic: its type component's descriptor and its payload
-        return "QDynamic *"
+        # An auto value (including a dynamic value): its type component's descriptor and its payload
+        return "QAuto *"
     if isinstance(t, QExternalType):
         return t.c_type
     if isinstance(t, QTypeVar) and t.name == "Writer.T":

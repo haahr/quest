@@ -26,7 +26,6 @@ from quest.interpreter import (
     DYNAMIC_ERROR_EXC,
     QuestException,
     QuestRuntimeError,
-    _infer_qtype,
 )
 from quest.runtime import (
     FALSE_VALUE,
@@ -36,7 +35,8 @@ from quest.runtime import (
     QBool,
     QBuiltinFun,
     QChar,
-    QDynamicVal,
+    QAutoVal,
+    QTuple,
     QExceptionVal,
     QInt,
     QList,
@@ -52,7 +52,6 @@ from quest.runtime import (
 from quest.types import (
     BOOL_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     EXCEPTION_TYPE,
     INT_TYPE,
     OK_TYPE,
@@ -1035,30 +1034,16 @@ class BuiltinModuleRegistry:
         arr_b.finish()
 
         # --------------------------------------------------------------------
-        # 9. Dynamic Interface & Module
+        # 9. Dynamic runtime operations
         # --------------------------------------------------------------------
-        dyn_t_id = e.fresh_symbol_id()
-        dyn_t = QTypeVar(name="Dynamic.T", symbol_id=dyn_t_id, bound=TYPE_KIND)
-        dyn_a_id = e.fresh_symbol_id()
-        dyn_a = QTypeVar(name="A", symbol_id=dyn_a_id, bound=TYPE_KIND)
-        dyn_b = ModuleBuilder("dynamic", "Dynamic", cls)
-        dyn_b.def_type("T", dyn_t_id, TYPE_KIND, definition=DYNAMIC_TYPE)
-        dyn_b.def_const("error", EXCEPTION_TYPE, DYNAMIC_ERROR_EXC, c_val="(&quest_exc_dynamic_error)")
+        # The dynamic module (lib/dynamic.mod.quest) is written in Quest; these are the interpreter's versions of its
+        # runtime operations, by the C symbols it declares them with
+        @qchecked(DYNAMIC_ERROR_EXC, QAutoVal)
+        def _dynamic_copy(d: QAutoVal) -> QAutoVal:
+            return QAutoVal(QTuple(d.value.elements, d.value.labels), d.type_val)
 
-        @qchecked(DYNAMIC_ERROR_EXC, QValue)
-        def _dynamic_new(val: QValue) -> QDynamicVal:
-            return QDynamicVal(value=val, type_val=_infer_qtype(val))
-
-        @qchecked(DYNAMIC_ERROR_EXC, QDynamicVal)
-        def _dynamic_be(d: QDynamicVal) -> QValue:
-            return d.value
-
-        @qchecked(DYNAMIC_ERROR_EXC, QDynamicVal)
-        def _dynamic_copy(d: QDynamicVal) -> QDynamicVal:
-            return QDynamicVal(value=d.value, type_val=d.type_val)
-
-        @qchecked(DYNAMIC_ERROR_EXC, QWriter, QDynamicVal)
-        def _dynamic_extern(wr: QWriter, d: QDynamicVal) -> QOk:
+        @qchecked(DYNAMIC_ERROR_EXC, QWriter, QAutoVal)
+        def _dynamic_extern(wr: QWriter, d: QAutoVal) -> QOk:
             if wr.is_closed:
                 raise QuestException(DYNAMIC_ERROR_EXC)
             from quest.dynamic_json import jsog_encode
@@ -1070,7 +1055,7 @@ class BuiltinModuleRegistry:
                 raise QuestException(DYNAMIC_ERROR_EXC)
 
         @qchecked(DYNAMIC_ERROR_EXC, QReader)
-        def _dynamic_intern(rd: QReader) -> QDynamicVal:
+        def _dynamic_intern(rd: QReader) -> QAutoVal:
             if rd.is_closed:
                 raise QuestException(DYNAMIC_ERROR_EXC)
 
@@ -1149,32 +1134,11 @@ class BuiltinModuleRegistry:
             from quest.dynamic_json import jsog_decode
             return jsog_decode(raw)
 
-        dyn_b.def_poly_fn(
-            "new",
-            "A",
-            dyn_a_id,
-            [("a", dyn_a)],
-            dyn_t,
-            _dynamic_new,
-            c_symbol="quest_dynamic_new",
-            pass_type_descriptors=True,
-        )
-        dyn_b.def_poly_fn(
-            "be",
-            "A",
-            dyn_a_id,
-            [("d", dyn_t)],
-            dyn_a,
-            _dynamic_be,
-            c_symbol="quest_dynamic_be",
-            pass_type_descriptors=True,
-        )
-        dyn_b.def_fn("copy", [("d", dyn_t)], dyn_t, _dynamic_copy, c_symbol="quest_dynamic_copy")
-        dyn_b.def_fn("intern", [("rd", reader_t)], dyn_t, _dynamic_intern, c_symbol="quest_dynamic_intern")
-        dyn_b.def_fn(
-            "extern", [("wr", writer_t), ("d", dyn_t)], OK_TYPE, _dynamic_extern, c_symbol="quest_dynamic_extern"
-        )
-        dyn_b.finish()
+        cls._symbol_bridge["quest_dynamic_copy"] = _dynamic_copy
+        cls._symbol_bridge["quest_dynamic_intern"] = _dynamic_intern
+        cls._symbol_bridge["quest_dynamic_extern"] = _dynamic_extern
+        cls._symbol_bridge["(&quest_exc_dynamic_error)"] = DYNAMIC_ERROR_EXC
+        cls._symbol_bridge["quest_exc_dynamic_error"] = DYNAMIC_ERROR_EXC
 
         # --------------------------------------------------------------------
         # 10. List Interface & Module

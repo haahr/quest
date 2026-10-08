@@ -13,7 +13,6 @@ from quest.types import (
     BOOL_TYPE,
     BOTTOM_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     EXCEPTION_TYPE,
     INFIX_OPERATORS,
     INT_TYPE,
@@ -160,19 +159,19 @@ TypeError = QuestTypeError
 
 
 def _inspected_auto_type(target: TypedExpr, env: Environment) -> Optional[QAutoType]:
-    """The auto type of an inspect target, or None for a Dynamic target."""
+    """The auto type of an inspect target."""
     target_type = target.type_val.evaluate_lazily(env)
     return target_type if isinstance(target_type, QAutoType) else None
 
 
-def _is_dynamic_type(t: QType) -> bool:
-    t = unalias(t)
-    return t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T")
+def _is_auto_type(t: QType) -> bool:
+    return isinstance(unalias(t), QAutoType)
 
 
 def _check_dynamic_type_args(all_type: QAllType, type_args: Sequence[QType], offset: int) -> None:
-    """Rejects package types as the type argument of a function shaped like dynamic.new (A::TYPE a:A): Dynamic or
-    dynamic.be (A::TYPE d:Dynamic): A, which record or test the type at run time."""
+    """Rejects package types as the type argument of a function shaped like dynamic.new (A::TYPE a:A): T or
+    dynamic.be (A::TYPE d:T): A for an auto type T, which record or test the type argument at run time (inside the
+    function it is a type parameter, which the closedness check allows)."""
     body = all_type.body
     if len(all_type.quantifiers) != 1 or not isinstance(body, QFunType) or len(body.params) != 1 or not type_args:
         return
@@ -183,8 +182,8 @@ def _check_dynamic_type_args(all_type: QAllType, type_args: Sequence[QType], off
         return isinstance(t, QTypeVar) and t.symbol_id == a_id
 
     param_t = body.params[0].type_val
-    if (is_a(param_t) and _is_dynamic_type(body.result_type)) or (
-        _is_dynamic_type(param_t) and is_a(body.result_type)
+    if (is_a(param_t) and _is_auto_type(body.result_type)) or (
+        _is_auto_type(param_t) and is_a(body.result_type)
     ):
         _check_no_package_types(type_args[0], "The type of a dynamic value", offset)
 
@@ -2471,53 +2470,10 @@ class TypeElaborator:
             return self._elaborate_auto_inspect_branches(
                 expr, target_typed, target_type, expected_type, env, loop_depth
             )
-        if not is_subtype(target_type, DYNAMIC_TYPE, env):
-            raise TypeError(
-                f"Target of inspect must be Dynamic or an Auto type, got '{target_type}'",
-                offset=expr.target.offset,
-            )
-
-        typed_branches: list[TypedInspectBranch] = []
-        for branch in expr.branches:
-            match_t = elaborate_type(branch.match_type, env)
-            _check_no_package_types(match_t, "The type in an inspect when clause", branch.match_type.offset)
-            if branch.binders:
-                with env.scoped("inspect_branch"):
-                    b_syms: list[ValueSymbol] = []
-                    for name, _ in branch.binders:
-                        b_sym = ValueSymbol(
-                            name=name,
-                            type_val=match_t,
-                            is_var=False,
-                            function_depth=self.function_depth,
-                        )
-                        env.current_scope.declare_value(b_sym)
-                        b_syms.append(b_sym)
-                    h_body = self._elaborate_subexpr(branch.body, expected_type, env, loop_depth)
-                    if expected_type is None:
-                        b_ids = {s.symbol_id for s in b_syms}
-                        check_no_escaping_path_types(
-                            h_body.type_val,
-                            b_ids,
-                            "inspect branch scope",
-                            branch.body.offset,
-                        )
-            else:
-                b_syms = []
-                h_body = self._elaborate_subexpr(branch.body, expected_type, env, loop_depth)
-
-            typed_branches.append(
-                TypedInspectBranch(
-                    match_type=match_t,
-                    binders=tuple(b_syms),
-                    body=h_body,
-                    offset=branch.offset,
-                )
-            )
-
-        else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
-        return target_typed, typed_branches, else_typed
-
+        raise TypeError(
+            f"Target of inspect must have an Auto type (such as Dynamic), got '{target_type}'",
+            offset=expr.target.offset,
+        )
 
     def _elaborate_auto_inspect_branches(
         self,

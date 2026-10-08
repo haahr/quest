@@ -152,7 +152,7 @@ typedef enum QTypeKind {
     QTYPE_KIND_OPTION,
     QTYPE_KIND_ARRAY,
     QTYPE_KIND_FUN,
-    QTYPE_KIND_DYNAMIC,
+    QTYPE_KIND_AUTO,
     QTYPE_KIND_EXCEPTION,
     QTYPE_KIND_OPAQUE,
     QTYPE_KIND_BOUND_VAR   /* A type parameter of an enclosing polymorphic function type (see quest_type_bound_vars) */
@@ -245,11 +245,30 @@ typedef struct QExceptionTypeDescriptor {
     const QTypeDescriptor *payload_type;
 } QExceptionTypeDescriptor;
 
-/* First-class Dynamic object: type descriptor paired with 64-bit value */
-typedef struct QDynamic {
+/* Auto types (Cardelli §4.6): Auto A HasKind with S end. A component's type refers to the type parameter A as
+ * quest_type_bound_vars[0]. Components are stored in the layout of Tuple S end with A abstract: a record or variant
+ * is stored inline, and `storage` is a descriptor of its kind; any other component is stored in 8 bytes that are its
+ * QVal form, and `storage` is NULL. Dynamic values are auto values of type Auto A::TYPE with a:A end. */
+typedef struct QAutoComponentDescriptor {
+    const char            *name;
+    const QTypeDescriptor *type;
+    const QTypeDescriptor *storage;
+    size_t                 offset;
+    bool                   is_var;
+} QAutoComponentDescriptor;
+
+typedef struct QAutoTypeDescriptor {
+    const QTypeDescriptor        *bound;          /* B for A <: B, else NULL */
+    size_t                        payload_size;
+    size_t                        component_count;
+    const QAutoComponentDescriptor components[];
+} QAutoTypeDescriptor;
+
+/* An auto value: the descriptor of its type component and a pointer to its components */
+typedef struct QAuto {
     const QTypeDescriptor *type_desc;
     QVal                   payload;
-} QDynamic;
+} QAuto;
 
 /* Thread-local active exception state */
 typedef struct QExceptionState {
@@ -280,7 +299,6 @@ extern const QTypeDescriptor quest_type_Bool;
 extern const QTypeDescriptor quest_type_Char;
 extern const QTypeDescriptor quest_type_String;
 extern const QTypeDescriptor quest_type_Ok;
-extern const QTypeDescriptor quest_type_Dynamic;
 extern const QTypeDescriptor quest_type_EmptyTuple;
 
 /* Descriptors of bound type parameters by de Bruijn index (see QFunTypeDescriptor) */
@@ -507,9 +525,11 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     const char *name, size_t param_count, const QFunParamDescriptor *params, const QTypeDescriptor *result_type);
 QVariantVal            quest_variant_adapt(
     const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload);
-QDynamic              *quest_dynamic_new(const QTypeDescriptor *type_desc, QVal val);
-QVal                   quest_dynamic_be(const QTypeDescriptor *target_type_desc, const QDynamic *d);
-QDynamic              *quest_dynamic_copy(const QDynamic *d);
+QAuto                 *quest_auto_new(const QTypeDescriptor *type_desc, QVal payload);
+
+/* The runtime operations of the dynamic module (lib/dynamic.mod.quest), on values of its type T, whose one
+ * component is stored as a QVal */
+QAuto                 *quest_dynamic_copy(const QAuto *d);
 void                   quest_register_static_type_descriptor(const QTypeDescriptor *desc);
 
 /* Record offset tables (the dict of a QRecordVal): the table for viewing a payload with record layout `layout` at

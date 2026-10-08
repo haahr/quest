@@ -7,7 +7,7 @@ Step 3 (Tree-Walking Interpreter & REPL), including:
 - Sum types (Variant, Option)
 - First-class functions and closures (QClosure, QBuiltinFun)
 - Mutable heap cells (QRef)
-- Dynamic and Exception envelopes (QDynamicVal, QAutoVal, QExceptionVal)
+- Auto values (including dynamic values) and exception values (QAutoVal, QExceptionVal)
 - Cardelli 'is'/'isnot' identity predicate and recursive structural equality.
 """
 
@@ -633,25 +633,14 @@ class QTupleElementRef(QRef):
 # 7. Dynamic & Exception Envelopes
 # ============================================================================
 
-class QDynamicVal(QValue):
-    """Dynamically typed value packaging a value together with its type."""
+class QAutoVal(QValue):
+    """Auto value (Cardelli §4.6): a tuple of components packaged with the closed type that determines their shape.
+    type_val is the type component; value is the QTuple of components. A dynamic value is an auto value of type
+    Auto A::TYPE with a:A end, whose one component is the packaged value."""
 
-    def __init__(self, value: QValue, type_val: Any):
+    def __init__(self, value: Any, type_val: Any):
         self.value = value
         self.type_val = type_val
-
-    @property
-    def type_name(self) -> str:
-        return "Dynamic"
-
-    def to_str(self, visited: Optional[set[int]] = None) -> str:
-        val_str = self.value.to_str(visited)
-        return f"dynamic({val_str} : {self.type_val})"
-
-
-class QAutoVal(QDynamicVal):
-    """Auto value (Cardelli §4.6): a tuple of components packaged with the closed type that determines
-    their shape. type_val is the type component; value is the QTuple of components."""
 
     @property
     def type_name(self) -> str:
@@ -863,8 +852,8 @@ def qvalue_structural_eq(
         assert isinstance(v2, QRef)
         return qvalue_structural_eq(v1.value, v2.value, visited)
 
-    if isinstance(v1, QDynamicVal):
-        assert isinstance(v2, QDynamicVal)
+    if isinstance(v1, QAutoVal):
+        assert isinstance(v2, QAutoVal)
         if v1.type_val != v2.type_val:
             return False
         return qvalue_structural_eq(v1.value, v2.value, visited)

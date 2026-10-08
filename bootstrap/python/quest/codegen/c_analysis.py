@@ -495,7 +495,7 @@ def analyze_program_for_c(
 
     known_builtins = {
         "writer", "reader", "conv", "ascii", "int", "real", "string", "system",
-        "arrayOp", "dynamic", "word",
+        "arrayOp", "word",
     }
     needed_builtin_modules: list[str] = []
 
@@ -570,7 +570,7 @@ def analyze_program_for_c(
         if bmod not in all_module_map:
             bast = BuiltinModuleRegistry.get_module_ast(bmod)
             if bast is not None:
-                if bmod != "dynamic" and (
+                if (
                     bmod in linked_stems
                     or (env and bmod in env.precompiled_modules)
                     or (is_c_mode and bmod not in current_unit_modules)
@@ -590,7 +590,7 @@ def analyze_program_for_c(
                             if iname in known_builtins and iname not in all_module_map:
                                 bast = BuiltinModuleRegistry.get_module_ast(iname)
                                 if bast is not None:
-                                    if iname != "dynamic" and (
+                                    if (
                                         iname in linked_stems
                                         or (env and iname in env.precompiled_modules)
                                         or (is_c_mode and iname not in current_unit_modules)
@@ -603,7 +603,7 @@ def analyze_program_for_c(
                                     changed = True
 
     for k, mod in list(all_module_map.items()):
-        if not getattr(mod, "is_precompiled", False) and mod.name != "dynamic":
+        if not getattr(mod, "is_precompiled", False):
             if (
                 mod.name.lower() in linked_stems
                 or mangle_module_name(mod.name) in linked_stems

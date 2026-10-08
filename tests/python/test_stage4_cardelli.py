@@ -1,8 +1,8 @@
 """Unit tests for Stage 4 Cardelli Standard Library Alignment & Top-Level Pre-Linking.
 
 Tests:
-1. Top-level pre-linking of standard library modules (arrayOp, ascii, conv, dynamic,
-   int, list, reader, real, string, writer)
+1. Top-level pre-linking of standard library modules (arrayOp, ascii, conv, int, list, reader,
+   real, string, writer); dynamic is a library module (lib/dynamic.mod.quest) and must be imported
 2. Module isolation: modules must explicitly import standard library modules
 3. dynamic: Dynamic module (new, be type validation/narrowing, copy, extern, intern)
 4. list: List module (nil, cons, null, head, tail, length, enum)
@@ -19,7 +19,7 @@ from quest.runtime import (
     TRUE_VALUE,
     QArray,
     QBool,
-    QDynamicVal,
+    QAutoVal,
     QInt,
     QList,
     QReader,
@@ -43,12 +43,11 @@ class TestStage4Cardelli(unittest.TestCase):
         let c1: Char = ascii.char(65);
         let str1: String = string.new(3 'x');
         let arr1 = arrayOp.new(:Int 2 7);
-        let d1 = dynamic.new(:Int 99);
         let l0 = list.nil(:Int);
         let rReady: Int = reader.ready(reader.input);
         let fl: Int = real.floor(3.7);
 
-        tuple s1 n1 c1 str1 arr1 d1 l0 rReady fl end;
+        tuple s1 n1 c1 str1 arr1 l0 rReady fl end;
         """
         ctx = assert_pipeline_success(code)
         env = ctx.runtime_env
@@ -77,6 +76,7 @@ class TestStage4Cardelli(unittest.TestCase):
     def test_dynamic_new_and_be_type_validation(self):
         """dynamic.new and dynamic.be support type validation and narrowing."""
         code = """
+        import dynamic: Dynamic;
         let d = dynamic.new(:Int 42);
         let extracted: Int = dynamic.be(:Int d);
         let dInferred = dynamic.new("hello");
@@ -88,6 +88,7 @@ class TestStage4Cardelli(unittest.TestCase):
 
         # dynamic.be with incompatible type raises dynamic.error
         mismatch_code = """
+        import dynamic: Dynamic;
         let d = dynamic.new(:Int 42);
         let bad = try dynamic.be(:Bool d)
             when dynamic.error then false
@@ -101,13 +102,18 @@ class TestStage4Cardelli(unittest.TestCase):
         from quest.builtins import BuiltinModuleRegistry
         from quest.interpreter import DYNAMIC_ERROR_EXC, QuestException
 
-        dyn_mod = BuiltinModuleRegistry.get_runtime_module("dynamic")
-        new_fn = dyn_mod.fields["new"].fn
-        extern_fn = dyn_mod.fields["extern"].fn
-        intern_fn = dyn_mod.fields["intern"].fn
+        from quest.dynamic_json import parse_type_string
+
+        # The runtime operations of lib/dynamic.mod.quest, by the C symbols it declares them with
+        extern_fn = BuiltinModuleRegistry.resolve_external_symbol("quest_dynamic_extern").fn
+        intern_fn = BuiltinModuleRegistry.resolve_external_symbol("quest_dynamic_intern").fn
+
+        def new_dynamic(value, type_str):
+            """A dynamic value: an auto value whose one component a is the value."""
+            return QAutoVal(QTuple((value,), labels=("a",)), parse_type_string(type_str))
 
         # 1. Primitive dynamic value
-        d = new_fn(QInt(42))
+        d = new_dynamic(QInt(42), "Int")
         str_out = io.StringIO()
         wr = QWriter(stream=str_out, is_file=False)
         extern_fn(wr, d)
@@ -116,13 +122,13 @@ class TestStage4Cardelli(unittest.TestCase):
         str_in = io.StringIO(str_out.getvalue())
         rd = QReader(stream=str_in, is_file=False)
         d_interned = intern_fn(rd)
-        self.assertIsInstance(d_interned, QDynamicVal)
-        self.assertEqual(d_interned.value, QInt(42))
+        self.assertIsInstance(d_interned, QAutoVal)
+        self.assertEqual(d_interned.value.elements[0], QInt(42))
 
         # 2. Cyclic record
         cyc_rec = QRecord({"name": QString("loop")})
         cyc_rec.fields["next"] = cyc_rec
-        d_cyc = QDynamicVal(cyc_rec, "Record name: String next: Any end")
+        d_cyc = new_dynamic(cyc_rec, "Record name: String next: Ok end")
         s_out = io.StringIO()
         extern_fn(QWriter(stream=s_out, is_file=False), d_cyc)
         json_cyc = s_out.getvalue()
@@ -130,14 +136,15 @@ class TestStage4Cardelli(unittest.TestCase):
         self.assertIn('"@ref":"1"', json_cyc)
 
         d_cyc_in = intern_fn(QReader(stream=io.StringIO(json_cyc), is_file=False))
-        self.assertIsInstance(d_cyc_in.value, QRecord)
-        self.assertEqual(d_cyc_in.value.fields["name"], QString("loop"))
-        self.assertIs(d_cyc_in.value.fields["next"], d_cyc_in.value)
+        rec_in = d_cyc_in.value.elements[0]
+        self.assertIsInstance(rec_in, QRecord)
+        self.assertEqual(rec_in.fields["name"], QString("loop"))
+        self.assertIs(rec_in.fields["next"], rec_in)
 
         # 3. Cyclic array
         cyc_arr = QArray([QInt(100)])
         cyc_arr.elements.append(cyc_arr)
-        d_arr = QDynamicVal(cyc_arr, "Array(Any)")
+        d_arr = new_dynamic(cyc_arr, "Array(Int)")
         s_arr_out = io.StringIO()
         extern_fn(QWriter(stream=s_arr_out, is_file=False), d_arr)
         json_arr = s_arr_out.getvalue()
@@ -145,13 +152,14 @@ class TestStage4Cardelli(unittest.TestCase):
         self.assertIn('"@ref":"1"', json_arr)
 
         d_arr_in = intern_fn(QReader(stream=io.StringIO(json_arr), is_file=False))
-        self.assertIsInstance(d_arr_in.value, QArray)
-        self.assertEqual(d_arr_in.value.elements[0], QInt(100))
-        self.assertIs(d_arr_in.value.elements[1], d_arr_in.value)
+        arr_in = d_arr_in.value.elements[0]
+        self.assertIsInstance(arr_in, QArray)
+        self.assertEqual(arr_in.elements[0], QInt(100))
+        self.assertIs(arr_in.elements[1], arr_in)
 
         # 4. Serde-style variant
         v = QVariant("red", QInt(255))
-        d_var = QDynamicVal(v, "Variant red: Int green: Ok end")
+        d_var = new_dynamic(v, "Variant red: Int green: Ok end")
         s_var_out = io.StringIO()
         extern_fn(QWriter(stream=s_var_out, is_file=False), d_var)
         self.assertEqual(
@@ -159,13 +167,14 @@ class TestStage4Cardelli(unittest.TestCase):
             '{"@type":"Variant red: Int green: Ok end","@value":{"red":255}}',
         )
         d_var_in = intern_fn(QReader(stream=io.StringIO(s_var_out.getvalue()), is_file=False))
-        self.assertIsInstance(d_var_in.value, QVariant)
-        self.assertEqual(d_var_in.value.tag, "red")
-        self.assertEqual(d_var_in.value.payload, QInt(255))
+        var_in = d_var_in.value.elements[0]
+        self.assertIsInstance(var_in, QVariant)
+        self.assertEqual(var_in.tag, "red")
+        self.assertEqual(var_in.payload, QInt(255))
 
         # 5. Non-externable type raises error
         with self.assertRaises(QuestException) as cm:
-            extern_fn(wr, QDynamicVal(wr, "Writer.T"))
+            extern_fn(wr, new_dynamic(wr, "Int"))
         self.assertEqual(cm.exception.exc_val, DYNAMIC_ERROR_EXC)
 
         # 6. Malformed JSON raises error on intern

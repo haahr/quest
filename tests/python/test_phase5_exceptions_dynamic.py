@@ -20,7 +20,7 @@ from quest.types import (
     STRING_TYPE,
     is_subtype,
 )
-from tests.python.helpers import check_test_expr, synth_test_expr
+from tests.python.helpers import assert_pipeline_success, check_test_expr, synth_test_expr
 
 
 class Phase5ExceptionsDynamicTest(unittest.TestCase):
@@ -101,35 +101,35 @@ class Phase5ExceptionsDynamicTest(unittest.TestCase):
         self.assertEqual(typed_try.type_val, INT_TYPE)
 
     def test_dynamic_polymorphic_constructor(self) -> None:
-        """dynamic.new(42) and dynamic.new("text") synthesize Dynamic."""
+        """dynamic.new(42), dynamic.new("text"), and dynamic.new(:Int 42) have type Dynamic."""
         env = Environment()
-
-        # dynamic.new(42)
-        typed1 = synth_test_expr("dynamic.new(42)", env)
-        self.assertEqual(typed1.type_val.evaluate_lazily(env), DYNAMIC_TYPE)
-
-        # dynamic.new("text")
-        typed2 = synth_test_expr('dynamic.new("text")', env)
-        self.assertEqual(typed2.type_val.evaluate_lazily(env), DYNAMIC_TYPE)
-
-        # dynamic.new(:Int 42)
-        typed3 = synth_test_expr("dynamic.new(:Int 42)", env)
-        self.assertEqual(typed3.type_val.evaluate_lazily(env), DYNAMIC_TYPE)
+        assert_pipeline_success(
+            """
+            import dynamic: Dynamic;
+            let d1 = dynamic.new(42);
+            let d2 = dynamic.new("text");
+            let d3 = dynamic.new(:Int 42);
+            """,
+            env=env,
+        )
+        for name in ("d1", "d2", "d3"):
+            self.assertEqual(env.lookup_value(name).type_val.evaluate_lazily(env), DYNAMIC_TYPE)
 
     def test_inspect_dynamic(self) -> None:
-        """inspect d when Int with n then n when String with s then 0 end (optional else)."""
+        """inspect d when Int with n then n.a when String with s then 0 end (optional else): the binder is the
+        dynamic value's component tuple."""
         env = Environment()
         env.current_scope.declare_value(ValueSymbol(name="d", type_val=DYNAMIC_TYPE))
 
         # inspect without else clause
         typed_inspect = synth_test_expr(
-            "inspect d when Int with n then n when String with s then 0 end",
+            "inspect d when Int with n then n.a when String with s then 0 end",
             env,
         )
         self.assertIsInstance(typed_inspect, TypedInspect)
         self.assertEqual(typed_inspect.type_val, INT_TYPE)
 
-        # Non-dynamic target raises TypeError
+        # A target without an auto type raises TypeError
         with self.assertRaises(TypeError):
             synth_test_expr("inspect 42 end", env)
 

@@ -29,7 +29,6 @@ from quest.runtime import (
     QChar,
     QAutoVal,
     QClosure,
-    QDynamicVal,
     QExceptionVal,
     QInt,
     QList,
@@ -52,7 +51,6 @@ from quest.types import (
     unalias,
     BOOL_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     EXCEPTION_TYPE,
     INT_TYPE,
     OK_TYPE,
@@ -385,29 +383,6 @@ class RuntimeEnvironment:
         return env
 
 
-def _infer_qtype(val: QValue) -> QType:
-    """Infers a default QType for dynamic values if not explicitly provided."""
-    match val:
-        case QInt():
-            return INT_TYPE
-        case QReal():
-            return REAL_TYPE
-        case QBool():
-            return BOOL_TYPE
-        case QChar():
-            return CHAR_TYPE
-        case QString():
-            return STRING_TYPE
-        case QOk():
-            return OK_TYPE
-        case QExceptionVal():
-            return EXCEPTION_TYPE
-        case QDynamicVal():
-            return DYNAMIC_TYPE
-        case _:
-            return OK_TYPE
-
-
 # ============================================================================
 # 3. Arithmetic & Infix Helper Functions
 # ============================================================================
@@ -613,23 +588,6 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             if isinstance(callee, QBuiltinFun):
                 if callee.name == "list.nil":
                     return QList(())
-                if callee.name == "dynamic.new" and type_args:
-                    target_type = type_args[0]
-                    return QBuiltinFun(
-                        "dynamic.new",
-                        fn=lambda val: QDynamicVal(val, target_type),
-                    )
-                if callee.name == "dynamic.be" and type_args:
-                    target_type = type_args[0]
-
-                    def _be_fn(d: QValue) -> QValue:
-                        if not isinstance(d, QDynamicVal):
-                            raise QuestException(DYNAMIC_ERROR_EXC)
-                        if not is_subtype(d.type_val, target_type):
-                            raise QuestException(DYNAMIC_ERROR_EXC)
-                        return d.value
-
-                    return QBuiltinFun("dynamic.be", fn=_be_fn)
             if isinstance(callee, QClosure) and len(callee.params) == 0:
                 call_env = callee.env.push_scope()
                 call_env.bind_types(callee.type_bindings)
@@ -1044,9 +1002,9 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         # 12. Dynamic Types & Type Inspection
         case TypedInspect(target=target, branches=branches, else_branch=else_branch, offset=offset):
             target_dyn = eval_expr(target, env)
-            if not isinstance(target_dyn, QDynamicVal):
+            if not isinstance(target_dyn, QAutoVal):
                 raise QuestRuntimeError(
-                    f"Inspect target must be Dynamic, got {target_dyn.type_name}",
+                    f"Inspect target must be an auto value, got {target_dyn.type_name}",
                     offset=offset,
                 )
             for branch in branches:

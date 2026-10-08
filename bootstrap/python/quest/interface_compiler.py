@@ -26,7 +26,8 @@ from quest.runtime import (
     TRUE_VALUE,
     QArray,
     QBool,
-    QDynamicVal,
+    QAutoVal,
+    QTuple,
     QInt,
     QRecord,
     QString,
@@ -122,7 +123,7 @@ def format_type_for_qi(
     if t is OK_TYPE:
         return "Ok"
     if t is DYNAMIC_TYPE:
-        return "Dynamic.T"
+        return "Dynamic"
 
     if isinstance(t, QTypeVar):
         return t.name
@@ -370,7 +371,7 @@ def compile_interface_to_qi(
     )
 
     schema_type = parse_type_string(QI_SCHEMA_TYPE_STR)
-    dyn = QDynamicVal(desc_record, schema_type)
+    dyn = QAutoVal(QTuple((desc_record,), ("a",)), schema_type)
     return jsog_encode(dyn)
 
 
@@ -670,10 +671,10 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
         raise QuestTypeError(f"Error reading .qi file '{file_path}': {err}")
 
     dyn = jsog_decode(raw_json)
-    if not isinstance(dyn.value, QRecord):
+    if not isinstance(dyn.value.elements[0], QRecord):
         raise QuestTypeError(f"Malformed .qi metadata in '{file_path}'")
 
-    rec = dyn.value
+    rec = dyn.value.elements[0]
     name = str(rec.fields["name"].value) if "name" in rec.fields else file_path.stem
     imp_scope_frame = Scope(name=f"imports_{name}", parent=env.current_scope)
 
