@@ -68,9 +68,9 @@ class TestRuntimeDescriptors(unittest.TestCase):
             const QTypeDescriptor *d_int = quest_intern_type_descriptor(&quest_type_Int);
             assert(d_int == &quest_type_Int);
 
-            /* Subtyping: Int <: Int and Int <: Tuple end */
+            /* Subtyping: Int <: Int, but Tuple end is a supertype only of tuples */
             assert(quest_type_Int.is_subtype(&quest_type_Int, &quest_type_Int));
-            assert(quest_type_Int.is_subtype(&quest_type_Int, &quest_type_EmptyTuple));
+            assert(!quest_type_Int.is_subtype(&quest_type_Int, &quest_type_EmptyTuple));
             assert(!quest_type_Int.is_subtype(&quest_type_Int, &quest_type_Real));
 
             printf("BASE_DESCRIPTORS_OK\\n");
@@ -113,7 +113,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
             /* Subtyping checks */
             assert(arr1->is_subtype(arr1, arr1));
-            assert(arr1->is_subtype(arr1, &quest_type_EmptyTuple));
+            assert(!arr1->is_subtype(arr1, &quest_type_EmptyTuple));
             assert(!arr1->is_subtype(arr1, arr_str));
 
             printf("ARRAY_INTERN_OK\\n");
@@ -172,9 +172,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
             QVal extracted = quest_dynamic_be(&quest_type_Int, d);
             assert(extracted.i == 42LL);
 
-            /* Extraction via supertype (Tuple end) */
-            QVal extracted_top = quest_dynamic_be(&quest_type_EmptyTuple, d);
-            assert(extracted_top.i == 42LL);
+            /* An Int is not a tuple, so it cannot be extracted at Tuple end (that raises dynamic.error) */
+            assert(!quest_is_subtype(&quest_type_Int, &quest_type_EmptyTuple));
 
             printf("DYNAMIC_SUCCESS_OK\\n");
             return 0;

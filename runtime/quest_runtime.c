@@ -418,6 +418,17 @@ const QTypeDescriptor quest_type_EmptyTuple = {
     .extra = NULL
 };
 
+#define Q_BOUND_VAR(i) { .kind = QTYPE_KIND_BOUND_VAR, .name = "#" #i, .size = sizeof(QVal), \
+    .alignment = sizeof(QVal), .is_subtype = quest_is_subtype, .extra = NULL }
+const QTypeDescriptor quest_type_bound_vars[Q_MAX_BOUND_VARS] = {
+    Q_BOUND_VAR(0), Q_BOUND_VAR(1), Q_BOUND_VAR(2), Q_BOUND_VAR(3), Q_BOUND_VAR(4), Q_BOUND_VAR(5),
+    Q_BOUND_VAR(6), Q_BOUND_VAR(7), Q_BOUND_VAR(8), Q_BOUND_VAR(9), Q_BOUND_VAR(10), Q_BOUND_VAR(11),
+    Q_BOUND_VAR(12), Q_BOUND_VAR(13), Q_BOUND_VAR(14), Q_BOUND_VAR(15), Q_BOUND_VAR(16), Q_BOUND_VAR(17),
+    Q_BOUND_VAR(18), Q_BOUND_VAR(19), Q_BOUND_VAR(20), Q_BOUND_VAR(21), Q_BOUND_VAR(22), Q_BOUND_VAR(23),
+    Q_BOUND_VAR(24), Q_BOUND_VAR(25), Q_BOUND_VAR(26), Q_BOUND_VAR(27), Q_BOUND_VAR(28), Q_BOUND_VAR(29),
+    Q_BOUND_VAR(30), Q_BOUND_VAR(31),
+};
+
 /* Global Interning Table for Type Descriptors */
 typedef struct QTypeDescriptorEntry {
     const QTypeDescriptor       *desc;
@@ -508,7 +519,6 @@ static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0;
 
 bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type) {
     if (sub == super_type) return true;
-    if (super_type == &quest_type_EmptyTuple) return true;
     if (sub == NULL || super_type == NULL) return false;
 
     /* Cycle detection trail */
@@ -535,6 +545,17 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             result = (sub == super_type);
             break;
 
+        case QTYPE_KIND_EXCEPTION: {
+            /* Invariant payload type */
+            if (sub->kind != QTYPE_KIND_EXCEPTION) { result = false; break; }
+            const QExceptionTypeDescriptor *s = (const QExceptionTypeDescriptor *)sub->extra;
+            const QExceptionTypeDescriptor *t = (const QExceptionTypeDescriptor *)super_type->extra;
+            if (s == NULL || t == NULL) { result = (s == t); break; }
+            result = quest_is_subtype(s->payload_type, t->payload_type) &&
+                     quest_is_subtype(t->payload_type, s->payload_type);
+            break;
+        }
+
         case QTYPE_KIND_OPAQUE:
             result = (sub == super_type) ||
                      (sub->name != NULL && super_type->name != NULL && strcmp(sub->name, super_type->name) == 0);
@@ -551,7 +572,7 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
         }
 
         case QTYPE_KIND_TUPLE: {
-            if (super_type == &quest_type_EmptyTuple) { result = true; break; }
+            /* Tuple end is a supertype of every tuple (and only of tuples) */
             if (sub->kind != QTYPE_KIND_TUPLE) { result = false; break; }
             const QTupleTypeDescriptor *s = (const QTupleTypeDescriptor *)sub->extra;
             const QTupleTypeDescriptor *t = (const QTupleTypeDescriptor *)super_type->extra;
@@ -656,9 +677,22 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             const QFunTypeDescriptor *s = (const QFunTypeDescriptor *)sub->extra;
             const QFunTypeDescriptor *t = (const QFunTypeDescriptor *)super_type->extra;
             if (s == NULL || t == NULL) { result = (s == t); break; }
-            if (s->param_count != t->param_count) { result = false; break; }
-            /* Contravariant value parameters, invariant var parameters, covariant out parameters and result */
+            if (s->param_count != t->param_count || s->quantifier_count != t->quantifier_count) {
+                result = false;
+                break;
+            }
+            /* Type parameters with equal bounds; contravariant value parameters, invariant var parameters, covariant
+             * out parameters and result (the parameter descriptors refer to type parameters by index) */
             bool match = true;
+            for (size_t i = 0; i < s->quantifier_count && match; ++i) {
+                const QTypeDescriptor *sb = s->quantifier_bounds != NULL ? s->quantifier_bounds[i] : NULL;
+                const QTypeDescriptor *tb = t->quantifier_bounds != NULL ? t->quantifier_bounds[i] : NULL;
+                if (sb == NULL || tb == NULL) {
+                    match = sb == tb;
+                } else {
+                    match = quest_is_subtype(sb, tb) && quest_is_subtype(tb, sb);
+                }
+            }
             for (size_t i = 0; i < s->param_count && match; ++i) {
                 const QFunParamDescriptor *sp = &s->params[i];
                 const QFunParamDescriptor *tp = &t->params[i];
@@ -1181,6 +1215,8 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     meta->param_count = param_count;
     meta->result_type = result_type;
     meta->adapt = NULL;
+    meta->quantifier_count = 0;
+    meta->quantifier_bounds = NULL;
     if (params != NULL && param_count > 0) {
         memcpy((void *)meta->params, params, sizeof(QFunParamDescriptor) * param_count);
     }

@@ -67,6 +67,7 @@ tests/
   │   │   ├── record_views.quest
   │   │   ├── nested_record_views.quest
   │   │   ├── function_subtyping.quest
+  │   │   ├── runtime_type_descriptors.quest
   │   │   ├── cardelli_syntax.quest
   │   │   ├── cardelli_options.quest
   │   │   └── cardelli_operators.quest

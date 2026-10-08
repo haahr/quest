@@ -99,7 +99,8 @@ static void quest_write_json_string(QWriter *wr, const char *s, size_t len) {
 
 static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *table) {
     if (desc == NULL) return;
-    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE) {
+    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE || desc->kind == QTYPE_KIND_EXCEPTION ||
+        desc->kind == QTYPE_KIND_BOUND_VAR) {
         quest_raise_dynamic_error();
     }
 
@@ -215,7 +216,8 @@ static void quest_emit_value(
         return;
     }
 
-    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE) {
+    if (desc->kind == QTYPE_KIND_FUN || desc->kind == QTYPE_KIND_OPAQUE || desc->kind == QTYPE_KIND_EXCEPTION ||
+        desc->kind == QTYPE_KIND_BOUND_VAR) {
         quest_raise_dynamic_error();
     }
 

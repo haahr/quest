@@ -485,6 +485,14 @@ Dynamic values package a runtime value together with its static type:
     raises the language exception `dynamic.error`.
 - **Dynamic Inspection:**
   - `inspect d when T1 with v then e1 else e2 end` tests membership against branches dynamically.
+- **Types at run time:** The run-time test uses the static subtyping rules, including function subtyping. Two kinds
+  of type are restricted:
+  - An abstract type of a package value (`t.A`) cannot be the type of a dynamic value (`dynamic.new`, `dynamic.be`,
+    or any function shaped like them) or appear in the type of an `inspect` branch on a Dynamic: its identity is the
+    package's hidden type, which is not known at run time.
+  - An abstract type exported by a module (`list.T(Int)`) is compared by name outside the module, but inside the
+    module it is its representation type, so values given run-time types inside the module do not match the
+    abstract type outside. This keeps the type opaque to clients while letting the module's own code inspect it.
 
 #### 6.10.1. Intensional Type Analysis vs. Pure Type Erasure
 In a pure type erasure model (such as standard System $F_{<:}$ or ML), type parameters are discarded at compile time, leaving runtime code to operate exclusively on untyped representations. However, `Dynamic` requires **Intensional Type Analysis (ITA)** (Harper & Morrisett 1995), because `dynamic.new` and `dynamic.be` inspect types at runtime:

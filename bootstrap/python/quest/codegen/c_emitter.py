@@ -15,6 +15,8 @@ from quest.codegen.c_analysis import (
 )
 from quest.codegen.c_declarations import CDeclarationEmitter, emit_trampoline
 from quest.codegen.c_types import (
+    MissingDescriptorError,
+    descriptor_form,
     fun_descriptor_tag,
     RecordNamingContext,
     c_char_literal,
@@ -38,6 +40,7 @@ from quest.codegen.c_types import (
     tuple_struct_name,
     type_to_c_tag,
 )
+from quest.diagnostics import QuestCompilerError
 from quest.env import ValueSymbol
 from quest.typed_ast import (
     TypedApp,
@@ -273,62 +276,19 @@ class CEmitter:
         return qtype_to_c_type(t, self.record_ctx)
 
     def c_type_descriptor(self, t: QType) -> str:
-        """Returns the C expression evaluating to `const QTypeDescriptor *` for type `t`."""
+        """Returns the C expression evaluating to `const QTypeDescriptor *` for type `t`.
+
+        A type parameter in scope is described by the descriptor passed for it; any other type by its static
+        descriptor (descriptor_form). A type with no runtime descriptor is a compile-time error.
+        """
         t = t.prune() if hasattr(t, "prune") else t
-        t = normalize_type(t)
-        if t is INT_TYPE:
-            return "&quest_type_Int"
-        if t is REAL_TYPE:
-            return "&quest_type_Real"
-        if t is BOOL_TYPE:
-            return "&quest_type_Bool"
-        if t is CHAR_TYPE:
-            return "&quest_type_Char"
-        if t is STRING_TYPE:
-            return "&quest_type_String"
-        if t is OK_TYPE:
-            return "&quest_type_Ok"
-        if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
-            return "&quest_type_Dynamic"
-        if isinstance(t, QTupleType) and not t.fields:
-            return "&quest_type_EmptyTuple"
-        if isinstance(t, QRecordType) or (rec_b := resolve_record_bound(t)) is not None:
-            rec_t = t if isinstance(t, QRecordType) else rec_b
-            tag = record_struct_name(rec_t, self.record_ctx)
-            return f"(&quest_type_{tag})"
-        if isinstance(t, QTupleType):
-            tag = tuple_struct_name(t)
-            return f"(&quest_type_{tag})"
-        if isinstance(t, QVariantType) or (var_b := resolve_variant_bound(t)) is not None:
-            var_t = t if isinstance(t, QVariantType) else var_b
-            tag = type_to_c_tag(var_t)
-            return f"(&quest_type_{tag})"
-        if isinstance(t, QOptionType) or (opt_b := resolve_option_bound(t)) is not None:
-            opt_t = t if isinstance(t, QOptionType) else opt_b
-            tag = option_struct_name(opt_t)
-            return f"(&quest_type_{tag})"
-        if isinstance(t, QArrayType):
-            elem_tag = type_to_c_tag(t.element_type)
-            return f"(&quest_type_array_{elem_tag})"
-        if isinstance(t, QExternalType):
-            name = t.name or t.c_type
-            tag = f"opaque_{mangle_ident(name)}"
-            return f"(&quest_type_{tag})"
-        if isinstance(t, QTypeVar):
-            if t.name in self.in_scope_type_descriptors:
-                return self.in_scope_type_descriptors[t.name]
-            tag = f"opaque_{mangle_ident(t.name)}"
-            return f"(&quest_type_{tag})"
-        if isinstance(t, QAbstractType):
-            if t.name in self.in_scope_type_descriptors:
-                return self.in_scope_type_descriptors[t.name]
-            tag = f"opaque_{mangle_ident(t.name)}"
-            return f"(&quest_type_{tag})"
-        if isinstance(t, (QFunType, QAllType)):
-            return f"(&quest_type_{fun_descriptor_tag(t)})"
-        if isinstance(t, QAutoType):
-            return f"(&quest_type_{type_to_c_tag(t)})"
-        return "&quest_type_EmptyTuple"
+        t = strip_aliases(t)
+        if isinstance(t, (QTypeVar, QAbstractType)) and t.name in self.in_scope_type_descriptors:
+            return self.in_scope_type_descriptors[t.name]
+        try:
+            return descriptor_form(t, self.record_ctx).c_expr
+        except MissingDescriptorError as e:
+            raise QuestCompilerError(f"C code generation: {e}") from None
 
     def record_struct_name(self, t: QRecordType) -> str:
         return record_struct_name(t, self.record_ctx)
@@ -609,14 +569,25 @@ class CEmitter:
             return True
         if orig_t is target_t or is_type_equal(orig_t, target_t, self.env):
             return False
-        _, inner_orig = self._collect_fun_quantifiers(orig_t)
-        _, inner_tgt = self._collect_fun_quantifiers(target_t)
+        inner_orig, inner_tgt = self._fun_types_with_shared_quantifiers(orig_t, target_t)
         if not isinstance(inner_orig, QFunType) or not isinstance(inner_tgt, QFunType):
             return False
         for op, tp in zip(inner_orig.params, inner_tgt.params):
             if not (op.is_var or op.is_out) and self._value_conversion_needed(tp.type_val, op.type_val):
                 return True
         return self._value_conversion_needed(inner_orig.result_type, inner_tgt.result_type)
+
+    def _fun_types_with_shared_quantifiers(self, orig_t: QType, target_t: QType) -> tuple[QType, QType]:
+        """The bodies of two (possibly polymorphic) function types, with target_t's type parameters renamed to
+        orig_t's, so that their parameter and result types can be compared."""
+        orig_quants, inner_orig = self._collect_fun_quantifiers(orig_t)
+        tgt_quants, inner_tgt = self._collect_fun_quantifiers(target_t)
+        if orig_quants and len(orig_quants) == len(tgt_quants):
+            inner_tgt = inner_tgt.substitute({
+                tq.symbol_id: QTypeVar(name=oq.name, symbol_id=oq.symbol_id, bound=oq.bound)
+                for oq, tq in zip(orig_quants, tgt_quants)
+            })
+        return inner_orig, inner_tgt
 
     def _value_conversion_needed(self, src_t: QType, tgt_t: QType) -> bool:
         """True if a value of type src_t must be converted to be used at its supertype tgt_t."""
@@ -645,8 +616,14 @@ class CEmitter:
             adapt_fn_name = self.fresh_tmp("qv_adapt")
             self.adapter_cache[cache_key] = adapt_fn_name
 
-            _, inner_tgt = self._collect_fun_quantifiers(target_t)
-            _, inner_orig = self._collect_fun_quantifiers(orig_t)
+            # A polymorphic closure takes its type parameters' descriptors first: they are passed through, and are
+            # in scope for the conversions of arguments and result, whose types may mention the type parameters
+            orig_quants, _ = self._collect_fun_quantifiers(orig_t)
+            inner_orig, inner_tgt = self._fun_types_with_shared_quantifiers(orig_t, target_t)
+            saved_descriptors = self.in_scope_type_descriptors
+            self.in_scope_type_descriptors = dict(saved_descriptors)
+            for k, q in enumerate(orig_quants):
+                self.in_scope_type_descriptors[q.name] = f"qv_desc_{k}"
 
             tgt_params = inner_tgt.params if isinstance(inner_tgt, QFunType) else ()
             orig_params = inner_orig.params if isinstance(inner_orig, QFunType) else ()
@@ -655,9 +632,9 @@ class CEmitter:
 
             ret_c = "void" if tgt_ret_t is OK_TYPE else self.c_type(tgt_ret_t)
 
-            param_decls = ["void *_raw_env"]
+            param_decls = ["void *_raw_env"] + [f"const QTypeDescriptor *qv_desc_{k}" for k in range(len(orig_quants))]
             body: list[str] = ["QClosure *orig = (QClosure *)_raw_env;"]
-            call_args = []
+            call_args = [f"qv_desc_{k}" for k in range(len(orig_quants))]
             for idx, tp in enumerate(tgt_params):
                 op = orig_params[idx] if idx < len(orig_params) else tp
                 arg_name = f"qv_arg_{idx}"
@@ -683,6 +660,7 @@ class CEmitter:
                 orig_ret_c = self.c_type(orig_ret_t)
                 body.append(f"{orig_ret_c} qv_result = {call_expr};")
                 body.append(f"return {self._coerce_val('qv_result', orig_ret_t, tgt_ret_t, body)};")
+            self.in_scope_type_descriptors = saved_descriptors
             fn_body = [f"static Q_UNUSED {ret_c} {adapt_fn_name}({sig}) {{"]
             fn_body.extend(f"    {line}" for line in body)
             fn_body.append("}")
@@ -705,9 +683,13 @@ class CEmitter:
             return lines
         lines.append("/* Adapters for function types: thunks converting arguments and results by descriptor */")
         for tag, fun_t in fun_types:
-            ret_t = fun_t.result_type
+            # A polymorphic function type takes its type parameters' descriptors first; they are passed through
+            quants, inner = self._collect_fun_quantifiers(fun_t)
+            params = inner.params if isinstance(inner, QFunType) else ()
+            ret_t = inner.result_type if isinstance(inner, QFunType) else inner
             ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
             param_decls = ["void *_raw_env"]
+            param_decls.extend(f"const QTypeDescriptor *qv_desc_{k}" for k in range(len(quants)))
             body = [
                 "const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;",
                 "const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;",
@@ -715,8 +697,8 @@ class CEmitter:
                 "(void)from;",
                 "(void)to;",
             ]
-            call_args = ["e->orig->env"]
-            for i, p in enumerate(fun_t.params):
+            call_args = ["e->orig->env"] + [f"qv_desc_{k}" for k in range(len(quants))]
+            for i, p in enumerate(params):
                 name = f"qv_arg_{i}"
                 if p.is_var or p.is_out:
                     param_decls.append(f"{self.c_type(p.type_val)} *{name}")
@@ -1339,12 +1321,12 @@ class CEmitter:
 
     def _may_be_stored_as_subtype(self, t: QType) -> bool:
         """True if a value of type t may be stored at a different type that is a subtype of t, and so need
-        converting when used at t: records, variants, options, nonempty tuples, and (monomorphic) functions."""
+        converting when used at t: records, variants, options, nonempty tuples, and functions."""
         t = normalize_type(t)
         if isinstance(t, QTupleType):
             return bool(t.value_fields)
         return (
-            isinstance(t, (QRecordType, QVariantType, QOptionType, QFunType))
+            isinstance(t, (QRecordType, QVariantType, QOptionType, QFunType, QAllType))
             or resolve_record_bound(t) is not None
             or resolve_variant_bound(t) is not None
             or resolve_option_bound(t) is not None

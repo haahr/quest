@@ -719,7 +719,26 @@ struct QTypeDescriptor {
   signature that converts arguments and result by descriptor with `quest_convert`. `quest_convert` uses it for
   function values, so `dynamic.be`, `inspect`, and reads of function fields stored at a subtype adapt closures at run
   time. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
-  covariant in `out` parameters and the result. Polymorphic function types have opaque descriptors compared by name.
+  covariant in `out` parameters and the result. Polymorphic function types (`All(A::TYPE x: A) A`) are described the
+  same way, plus `quantifier_count` and `quantifier_bounds`: their type parameters are passed as descriptors before the
+  values (and adapters pass them through), and within the parameter and result types a type parameter is described
+  by `quest_type_bound_vars[i]` (kind `QTYPE_KIND_BOUND_VAR`), where `i` is its de Bruijn index. So types differing
+  only in the names of their type or value parameters have equal descriptors (`canonical_fun_type`), and their
+  subtyping requires equal bounds and compares parameter and result types as above.
+- **Exceptions (`QExceptionTypeDescriptor`):** Holds `payload_type`; subtyping is invariant in it.
+
+##### Choosing a Descriptor (`descriptor_form`)
+Every type the program describes gets its own descriptor, chosen by `descriptor_form` (`codegen/c_types.py`), which
+both descriptor references (`c_type_descriptor`) and descriptor emission use. A type parameter in scope is described
+by the descriptor passed for it. Tags of compound types include a digest of the type's text, because C tags conflate
+types with the same representation. Recursive types (`Rec(X) ...`, recursive type operator applications) are
+described by their unfoldings, which refer back to them, so their descriptors are cyclic; the emitter defines any
+struct that such an unfolding names. Applications of abstract type operators (`list.T(Int)`), type operators passed
+for higher-kinded type parameters, and abstract types of package values (`t.A`, distinguished by binding) are opaque,
+compared by name. Inside the module that implements an abstract type, the type is its representation, so a value
+given a run-time type there carries the representation's descriptor, which does not match the abstract type's
+name outside. A type with no descriptor (such as a type metavariable) is a compile-time error rather than a
+descriptor that matches the wrong values.
 
 ##### Static Compilation (.rodata) vs. Runtime Synthesis
 - **Closed Types in Code:** For all concrete types appearing in the program, the C emitter synthesizes `static const`
@@ -737,7 +756,8 @@ struct QTypeDescriptor {
 ##### Subtyping Verification (`quest_is_subtype`)
 Subtyping checks are unified under `quest_is_subtype(sub, super_type)`:
 - **Identity & Base Types:** Exact descriptor pointer match or matching primitive kind.
-- **Tuples:** Prefix subtyping ($N_{\text{sub}} \ge N_{\text{super}}$ with covariant element types).
+- **Tuples:** Prefix subtyping ($N_{\text{sub}} \ge N_{\text{super}}$ with covariant element types); `Tuple end` is
+  thus a supertype of every tuple, and only of tuples.
 - **Records:** Width subtyping ($S \subseteq R$ where every supertype field is present in the subtype), permutation
   subtyping (field order is irrelevant), depth subtyping on immutable fields ($T_{\text{sub}} <: T_{\text{super}}$),
   and invariance on mutable `var` fields ($T_{\text{sub}} \equiv T_{\text{super}}$).

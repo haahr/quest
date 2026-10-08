@@ -158,9 +158,11 @@ Auto values (Cardelli's `auto :T with ... end`) use the same envelope: `type_des
 Subtyping checks are unified under `quest_is_subtype`:
 - **Records:** Width subtyping (all supertype fields present in subtype), permutation subtyping (order independent),
   depth subtyping on immutable fields ($T_{\text{sub}} <: T_{\text{super}}$), and invariance on mutable `var` fields.
-- **Tuples:** Prefix subtyping with covariant element types.
+- **Tuples:** Prefix subtyping with covariant element types (so `Tuple end` is a supertype of tuples only).
 - **Variants:** Branch set inclusion with covariant immutable payloads.
-- **Functions:** Contravariant value parameters, invariant `var` parameters, covariant `out` parameters and result.
+- **Functions:** Contravariant value parameters, invariant `var` parameters, covariant `out` parameters and result;
+  polymorphic function types need the same number of type parameters with equal bounds.
+- **Exceptions:** Invariant payload type.
   A closure used at a function supertype is wrapped by the target type's adapter (see
   [c-representation.md](c-representation.md)).
 - **Coinductive Cycle Detection:** Recursive type subtyping cycles are guarded using an active cycle trail

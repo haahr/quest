@@ -154,7 +154,8 @@ typedef enum QTypeKind {
     QTYPE_KIND_FUN,
     QTYPE_KIND_DYNAMIC,
     QTYPE_KIND_EXCEPTION,
-    QTYPE_KIND_OPAQUE
+    QTYPE_KIND_OPAQUE,
+    QTYPE_KIND_BOUND_VAR   /* A type parameter of an enclosing polymorphic function type (see quest_type_bound_vars) */
 } QTypeKind;
 
 typedef struct QTypeDescriptor QTypeDescriptor;
@@ -226,12 +227,23 @@ typedef struct QFunAdapterEnv {
     const QTypeDescriptor *to;
 } QFunAdapterEnv;
 
+/* A function type, possibly polymorphic: All(A1..An) Fun(params) result. In the parameter and result types (and in
+ * later bounds), a type parameter is described by quest_type_bound_vars[i], where i counts binders outward from
+ * the reference, as de Bruijn indices do (the last of A1..An is 0 in the body), so equal types have equal
+ * descriptors whatever their parameters are named. */
 typedef struct QFunTypeDescriptor {
     size_t                    param_count;
     const QTypeDescriptor    *result_type;
-    QFunAdapter               adapt;        /* NULL if values of this type cannot be adapted */
+    QFunAdapter               adapt;              /* NULL if values of this type cannot be adapted */
+    size_t                    quantifier_count;   /* n type parameters, passed as descriptors before the values */
+    const QTypeDescriptor *const *quantifier_bounds; /* per type parameter: its bound B for Ai <: B, else NULL */
     const QFunParamDescriptor params[];
 } QFunTypeDescriptor;
+
+/* Exception types: Exception(T) */
+typedef struct QExceptionTypeDescriptor {
+    const QTypeDescriptor *payload_type;
+} QExceptionTypeDescriptor;
 
 /* First-class Dynamic object: type descriptor paired with 64-bit value */
 typedef struct QDynamic {
@@ -270,6 +282,10 @@ extern const QTypeDescriptor quest_type_String;
 extern const QTypeDescriptor quest_type_Ok;
 extern const QTypeDescriptor quest_type_Dynamic;
 extern const QTypeDescriptor quest_type_EmptyTuple;
+
+/* Descriptors of bound type parameters by de Bruijn index (see QFunTypeDescriptor) */
+#define Q_MAX_BOUND_VARS 32
+extern const QTypeDescriptor quest_type_bound_vars[Q_MAX_BOUND_VARS];
 
 /* Static ABI layout assertions */
 static_assert(sizeof(QInt)          == 8, qint_must_be_8_bytes);

@@ -65,6 +65,7 @@ from quest.types import (
     auto_matches_subtypes,
     auto_payload_type,
     strip_aliases,
+    unalias,
 )
 from quest.env import (
     Environment,
@@ -162,6 +163,43 @@ def _inspected_auto_type(target: TypedExpr, env: Environment) -> Optional[QAutoT
     """The auto type of an inspect target, or None for a Dynamic target."""
     target_type = target.type_val.evaluate_lazily(env)
     return target_type if isinstance(target_type, QAutoType) else None
+
+
+def _is_dynamic_type(t: QType) -> bool:
+    t = unalias(t)
+    return t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T")
+
+
+def _check_dynamic_type_args(all_type: QAllType, type_args: Sequence[QType], offset: int) -> None:
+    """Rejects package types as the type argument of a function shaped like dynamic.new (A::TYPE a:A): Dynamic or
+    dynamic.be (A::TYPE d:Dynamic): A, which record or test the type at run time."""
+    body = all_type.body
+    if len(all_type.quantifiers) != 1 or not isinstance(body, QFunType) or len(body.params) != 1 or not type_args:
+        return
+    a_id = all_type.quantifiers[0].symbol_id
+
+    def is_a(t: QType) -> bool:
+        t = unalias(t)
+        return isinstance(t, QTypeVar) and t.symbol_id == a_id
+
+    param_t = body.params[0].type_val
+    if (is_a(param_t) and _is_dynamic_type(body.result_type)) or (
+        _is_dynamic_type(param_t) and is_a(body.result_type)
+    ):
+        _check_no_package_types(type_args[0], "The type of a dynamic value", offset)
+
+
+def _check_no_package_types(t: QType, what: str, offset: int) -> None:
+    """Rejects a type that mentions an abstract type projected from a package value (t.A): its identity is the
+    package's hidden type, which is not known at run time."""
+    paths = find_path_types(strip_aliases(t))
+    if paths:
+        names = ", ".join(sorted({f"{p.root_name}.{p.field_name}" for p in paths}))
+        raise TypeError(
+            f"{what} cannot mention {names}, an abstract type of a package value, because its identity is not "
+            f"known at run time",
+            offset=offset,
+        )
 
 
 def _describe_kind(k: QKind) -> str:
@@ -1300,6 +1338,7 @@ class TypeElaborator:
             else:
                 instantiated_type = all_type.body.substitute(subst)
 
+            _check_dynamic_type_args(all_type, resolved_targs, expr.offset)
             typed_type_app = TypedTypeApp(
                 func=func_typed,
                 type_args=tuple(resolved_targs),
@@ -1393,6 +1432,7 @@ class TypeElaborator:
             leaked = unsolved_metas(final_fn) + [m for t in resolved_targs for m in unsolved_metas(t)]
             assert not leaked, f"Metavariables escaped polymorphic call inference: {leaked}"
 
+        _check_dynamic_type_args(all_type, resolved_targs, expr.offset)
         typed_type_app = TypedTypeApp(
             func=func_typed,
             type_args=tuple(resolved_targs),
@@ -2436,6 +2476,7 @@ class TypeElaborator:
         typed_branches: list[TypedInspectBranch] = []
         for branch in expr.branches:
             match_t = elaborate_type(branch.match_type, env)
+            _check_no_package_types(match_t, "The type in an inspect when clause", branch.match_type.offset)
             if branch.binders:
                 with env.scoped("inspect_branch"):
                     b_syms: list[ValueSymbol] = []

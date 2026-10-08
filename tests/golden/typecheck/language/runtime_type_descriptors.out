@@ -1,0 +1,410 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('list') : 'List')
+      ))
+    (TypedLetValue 'p' :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type Writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'n' :type Int)
+                ))
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 's' :type Fun(text: String): Ok
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type Writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'text' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'whatIs' :type Fun(d: Dynamic): String
+      :value (TypedFun :params (('d' : Dynamic)) :type Fun(d: Dynamic): String
+        :body (TypedInspect :type String
+          :target (TypedVar 'd' :type Dynamic)
+          :branches (
+            (TypedInspectBranch match=Tuple end
+              :body (TypedString 'a tuple' :type String))
+          )
+          :else (TypedString 'not a tuple' :type String))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 's' :type Fun(text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'whatIs' :type Fun(d: Dynamic): String)
+            :args (
+              (TypedApp :type Dynamic.T
+                :func (TypedTypeApp [Tuple x: Int end] :type Fun(a: Tuple x: Int end): Dynamic.T
+                  :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedTuple :type Tuple x: Int end
+                    :elements (
+                      (TypedInt 1 :type Int)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 's' :type Fun(text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'whatIs' :type Fun(d: Dynamic): String)
+            :args (
+              (TypedApp :type Dynamic.T
+                :func (TypedTypeApp [Int] :type Fun(a: Int): Dynamic.T
+                  :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedInt 1 :type Int)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 's' :type Fun(text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'whatIs' :type Fun(d: Dynamic): String)
+            :args (
+              (TypedApp :type Dynamic.T
+                :func (TypedTypeApp [Record x: Int end] :type Fun(a: Record x: Int end): Dynamic.T
+                  :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedRecord :type Record x: Int end
+                    :fields (
+                      (TypedRecordField 'x'
+                        :value (TypedInt 1 :type Int))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedException 'Boom' :type Exception(Int)))
+    (TypedLetValue 'dBoom' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [Exception(Int)] :type Fun(a: Exception(Int)): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'Boom' :type Exception(Int))
+        )))
+    (TypedLetValue 'raised' :type Int
+      :value (TypedTry :type Int
+        :body (TypedRaise :type Int
+          :exc (TypedApp :type Exception(Int)
+            :func (TypedTypeApp [Exception(Int)] :type Fun(d: Dynamic.T): Exception(Int)
+              :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'dBoom' :type Dynamic.T)
+            ))
+          :payload (TypedInt 42 :type Int))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'Boom' :type Exception(Int))
+            :body (TypedVar 'n' :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedVar 'raised' :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'dBoom' :type Dynamic.T)
+            :branches (
+              (TypedInspectBranch match=Exception(String)
+                :body (TypedInt 1 :type Int))
+              (TypedInspectBranch match=Exception(Int)
+                :body (TypedInt 2 :type Int))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetType 'IntList' :kind TYPE)
+    (TypedLetType 'OtherList' :kind TYPE)
+    (TypedLetValue 'l' :type IntList
+      :value (TypedOption 'cons' :type IntList
+        :payload (TypedTuple :type Tuple head: Int tail: IntList end
+          :elements (
+            (TypedInt 1 :type Int)
+            (TypedOption 'cons' :type IntList
+              :payload (TypedTuple :type Tuple head: Int tail: IntList end
+                :elements (
+                  (TypedInt 2 :type Int)
+                  (TypedOption 'nil' :type IntList)
+                )))
+          ))))
+    (TypedLetValue 'dl' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [IntList] :type Fun(a: IntList): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'l' :type IntList)
+        )))
+    (TypedLetValue 'sum' :rec :type Fun(xs: OtherList): Int
+      :value (TypedFun :params (('xs' : OtherList)) :type Fun(xs: OtherList): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'xs' :type OtherList)
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedSelect 'head' :type Int
+                  :target (TypedVar 'c' :type Tuple head: Int tail: OtherList end))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'sum' :type Fun(xs: OtherList): Int)
+                  :args (
+                    (TypedSelect 'tail' :type OtherList
+                      :target (TypedVar 'c' :type Tuple head: Int tail: OtherList end))
+                  ))))
+            (TypedCaseBranch tags=(nil)
+              :body (TypedInt 0 :type Int))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(xs: OtherList): Int)
+            :args (
+              (TypedApp :type OtherList
+                :func (TypedTypeApp [OtherList] :type Fun(d: Dynamic.T): OtherList
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedVar 'dl' :type Dynamic.T)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'dl' :type Dynamic.T)
+            :branches (
+              (TypedInspectBranch match=Option nil end
+                :body (TypedInt 1 :type Int))
+              (TypedInspectBranch match=IntList
+                :body (TypedInt 2 :type Int))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetValue 'ints' :type list.T(Int)
+      :value (TypedApp :type list.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(item: Int list: list.T(Int)): list.T(Int)
+          :func (TypedSelect 'cons' :type All(A :: TYPE) Fun(item: A list: list.T(A)): list.T(A)
+            :target (TypedVar 'list' :type Module 'list')))
+        :args (
+          (TypedInt 5 :type Int)
+          (TypedTypeApp [Int] :type list.T(Int)
+            :func (TypedSelect 'nil' :type All(A :: TYPE) list.T(A)
+              :target (TypedVar 'list' :type Module 'list')))
+        )))
+    (TypedLetValue 'dInts' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [list.T(Int)] :type Fun(a: list.T(Int)): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'ints' :type list.T(Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'dInts' :type Dynamic.T)
+            :branches (
+              (TypedInspectBranch match=list.T(String)
+                :body (TypedInt 0 :type Int))
+              (TypedInspectBranch match=list.T(Int)
+                :body (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(list: list.T(Int)): Int
+                    :func (TypedSelect 'head' :type All(A :: TYPE) Fun(list: list.T(A)): A
+                      :target (TypedVar 'list' :type Module 'list')))
+                  :args (
+                    (TypedVar 'x' :type list.T(Int))
+                  )))
+            )
+            :else (TypedInfix '-' :type Int
+              :left (TypedInt 0 :type Int)
+              :right (TypedInt 1 :type Int)))
+        )))
+    (TypedLetValue 'dFun' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [Fun(n: Int): Int] :type Fun(a: Fun(n: Int): Int): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+            :body (TypedInfix '*' :type Int
+              :left (TypedVar 'n' :type Int)
+              :right (TypedInt 2 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInspect :type Int
+            :target (TypedVar 'dFun' :type Dynamic.T)
+            :branches (
+              (TypedInspectBranch match=Fun(t: String): Int
+                :body (TypedApp :type Int
+                  :func (TypedVar 'f' :type Fun(t: String): Int)
+                  :args (
+                    (TypedString 'x' :type String)
+                  )))
+              (TypedInspectBranch match=Fun(m: Int): Int
+                :body (TypedApp :type Int
+                  :func (TypedVar 'f' :type Fun(m: Int): Int)
+                  :args (
+                    (TypedInt 21 :type Int)
+                  )))
+            )
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetValue 'big' :type Big
+      :value (TypedRecord :type Record a: Int b: Int c: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 1 :type Int))
+          (TypedRecordField 'b'
+            :value (TypedInt 2 :type Int))
+          (TypedRecordField 'c'
+            :value (TypedInt 3 :type Int))
+        )))
+    (TypedLetValue 'mk' :type All(A :: TYPE) Fun(x: A): Big
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): Big
+        :body (TypedVar 'big' :type Big)))
+    (TypedLetValue 'mkSmall' :type All(B :: TYPE) Fun(y: B): Small
+      :value (TypedVar 'mk' :type All(A :: TYPE) Fun(x: A): Big))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedApp :type Small
+              :func (TypedTypeApp [Int] :type Fun(y: Int): Small
+                :func (TypedVar 'mkSmall' :type All(B :: TYPE) Fun(y: B): Small))
+              :args (
+                (TypedInt 0 :type Int)
+              )))
+        )))
+    (TypedLetValue 'dMk' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [All(A :: TYPE) Fun(x: A): Big] :type Fun(a: All(A :: TYPE) Fun(x: A): Big): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'mk' :type All(A :: TYPE) Fun(x: A): Big)
+        )))
+    (TypedLetValue 'fromDynamic' :type All(C :: TYPE) Fun(z: C): Small
+      :value (TypedApp :type All(C :: TYPE) Fun(z: C): Small
+        :func (TypedTypeApp [All(C :: TYPE) Fun(z: C): Small] :type Fun(d: Dynamic.T): All(C :: TYPE) Fun(z: C): Small
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'dMk' :type Dynamic.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedApp :type Small
+              :func (TypedTypeApp [String] :type Fun(z: String): Small
+                :func (TypedVar 'fromDynamic' :type All(C :: TYPE) Fun(z: C): Small))
+              :args (
+                (TypedString 'z' :type String)
+              )))
+        )))
+    (TypedLetType 'HasMk' :kind TYPE)
+    (TypedLetType 'HasMkSmall' :kind TYPE)
+    (TypedLetValue 'hasMk' :type HasMk
+      :value (TypedRecord :type Record f: All(A :: TYPE) Fun(x: A): Big end
+        :fields (
+          (TypedRecordField 'f'
+            :value (TypedVar 'mk' :type All(A :: TYPE) Fun(x: A): Big))
+        )))
+    (TypedLetValue 'hasMkSmall' :type HasMkSmall
+      :value (TypedVar 'hasMk' :type HasMk))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedApp :type Small
+              :func (TypedTypeApp [Bool] :type Fun(y: Bool): Small
+                :func (TypedSelect 'f' :type All(B :: TYPE) Fun(y: B): Small
+                  :target (TypedVar 'hasMkSmall' :type HasMkSmall)))
+              :args (
+                (TypedBool true)
+              )))
+        )))
+    (TypedLetValue 'ident' :type All(A :: TYPE) Fun(x: A): A
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): A
+        :body (TypedVar 'x' :type A)))
+    (TypedLetValue 'dIdent' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [All(A :: TYPE) Fun(x: A): A] :type Fun(a: All(A :: TYPE) Fun(x: A): A): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'ident' :type All(A :: TYPE) Fun(x: A): A)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(y: Int): Int
+              :func (TypedApp :type All(B :: TYPE) Fun(y: B): B
+                :func (TypedTypeApp [All(B :: TYPE) Fun(y: B): B] :type Fun(d: Dynamic.T): All(B :: TYPE) Fun(y: B): B
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedVar 'dIdent' :type Dynamic.T)
+                )))
+            :args (
+              (TypedInt 4 :type Int)
+            ))
+        )))
+  ))
