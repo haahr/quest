@@ -45,6 +45,7 @@ from quest.types import (
     TYPE_KIND,
     QAbstractType,
     QAllType,
+    QAutoType,
     QArrayType,
     QFunType,
     QOptionType,
@@ -180,6 +181,13 @@ def format_type_for_qi(
                 opts.append(o.name)
         opts_str = " ".join(opts)
         return f"Option {opts_str} end" if opts_str else "Option end"
+
+    if isinstance(t, QAutoType):
+        sig = " ".join(
+            f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val, visited)}"
+            for f in t.signature
+        )
+        return f"Auto {t.type_param}::{format_kind_for_qi(t.kind_bound)} with {sig} end"
 
     if isinstance(t, QFunType):
         params_str = " ".join(

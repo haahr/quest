@@ -78,9 +78,9 @@ typedef struct QArray {
     QVal    data[];
 } QArray;
 
-/* Record header for self-describing shape and identity */
+/* Record header: the descriptor of the record payload's own layout, the record type it was created with */
 typedef struct QRecordHeader {
-    const void *descriptor;
+    const struct QTypeDescriptor *descriptor;
 } QRecordHeader;
 
 /* First-class 16-byte record value: payload pointer and evidence dictionary */
@@ -154,7 +154,8 @@ typedef enum QTypeKind {
     QTYPE_KIND_FUN,
     QTYPE_KIND_DYNAMIC,
     QTYPE_KIND_EXCEPTION,
-    QTYPE_KIND_OPAQUE
+    QTYPE_KIND_OPAQUE,
+    QTYPE_KIND_BOUND_VAR   /* A type parameter of an enclosing polymorphic function type (see quest_type_bound_vars) */
 } QTypeKind;
 
 typedef struct QTypeDescriptor QTypeDescriptor;
@@ -214,11 +215,35 @@ typedef struct QFunParamDescriptor {
     bool                   is_out;
 } QFunParamDescriptor;
 
+/* Makes a closure of function type `to` from closure orig of function type `from`, a subtype of `to`: the result
+ * converts its arguments from `to`'s parameter types to `from`'s and its result from `from`'s result type to `to`'s
+ * (see quest_convert). Compiled code supplies one for each function type it describes. */
+typedef QClosure *(*QFunAdapter)(const QClosure *orig, const QTypeDescriptor *from, const QTypeDescriptor *to);
+
+/* The environment of a closure made by a QFunAdapter */
+typedef struct QFunAdapterEnv {
+    const QClosure        *orig;
+    const QTypeDescriptor *from;
+    const QTypeDescriptor *to;
+} QFunAdapterEnv;
+
+/* A function type, possibly polymorphic: All(A1..An) Fun(params) result. In the parameter and result types (and in
+ * later bounds), a type parameter is described by quest_type_bound_vars[i], where i counts binders outward from
+ * the reference, as de Bruijn indices do (the last of A1..An is 0 in the body), so equal types have equal
+ * descriptors whatever their parameters are named. */
 typedef struct QFunTypeDescriptor {
     size_t                    param_count;
     const QTypeDescriptor    *result_type;
+    QFunAdapter               adapt;              /* NULL if values of this type cannot be adapted */
+    size_t                    quantifier_count;   /* n type parameters, passed as descriptors before the values */
+    const QTypeDescriptor *const *quantifier_bounds; /* per type parameter: its bound B for Ai <: B, else NULL */
     const QFunParamDescriptor params[];
 } QFunTypeDescriptor;
+
+/* Exception types: Exception(T) */
+typedef struct QExceptionTypeDescriptor {
+    const QTypeDescriptor *payload_type;
+} QExceptionTypeDescriptor;
 
 /* First-class Dynamic object: type descriptor paired with 64-bit value */
 typedef struct QDynamic {
@@ -257,6 +282,10 @@ extern const QTypeDescriptor quest_type_String;
 extern const QTypeDescriptor quest_type_Ok;
 extern const QTypeDescriptor quest_type_Dynamic;
 extern const QTypeDescriptor quest_type_EmptyTuple;
+
+/* Descriptors of bound type parameters by de Bruijn index (see QFunTypeDescriptor) */
+#define Q_MAX_BOUND_VARS 32
+extern const QTypeDescriptor quest_type_bound_vars[Q_MAX_BOUND_VARS];
 
 /* Static ABI layout assertions */
 static_assert(sizeof(QInt)          == 8, qint_must_be_8_bytes);
@@ -476,15 +505,58 @@ const QTypeDescriptor *quest_make_variant_descriptor(
     const char *name, size_t size, size_t alignment, size_t case_count, const QVariantCaseDescriptor *cases);
 const QTypeDescriptor *quest_make_fun_descriptor(
     const char *name, size_t param_count, const QFunParamDescriptor *params, const QTypeDescriptor *result_type);
-QRecordVal             quest_record_adapt(
-    const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload);
 QVariantVal            quest_variant_adapt(
     const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload);
 QDynamic              *quest_dynamic_new(const QTypeDescriptor *type_desc, QVal val);
 QVal                   quest_dynamic_be(const QTypeDescriptor *target_type_desc, const QDynamic *d);
 QDynamic              *quest_dynamic_copy(const QDynamic *d);
 void                   quest_register_static_type_descriptor(const QTypeDescriptor *desc);
+
+/* Record offset tables (the dict of a QRecordVal): the table for viewing a payload with record layout `layout` at
+ * record type `view`. quest_record_dict returns NULL when the layout lacks a field of the view.
+ *
+ * A table is the byte offsets of the view's fields in name order, followed by a QRecordStoredTypes pointer: NULL
+ * when the payload stores every field at the view's type for it, and otherwise, per field, the type the payload
+ * stores it at when that differs (a subtype, by depth subtyping) or NULL. Reads of such a field convert it. */
+typedef const struct QTypeDescriptor *const *QRecordStoredTypes;
+const void            *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout);
+void                   quest_register_record_dict(
+    const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict);
 const QTypeDescriptor *quest_lookup_type_descriptor_by_name(const char *name);
+
+/* The layout of a record value's payload, recorded in its header when it was created */
+static inline const QTypeDescriptor *quest_record_layout(QRecordVal rec) {
+    return ((const QRecordHeader *)rec.val)->descriptor;
+}
+
+/* A record value viewed at record type `view`: its payload with the offset table for the payload's own layout */
+static inline QRecordVal quest_record_view(QRecordVal rec, const QTypeDescriptor *view) {
+    if (rec.val == NULL) return rec;
+    return (QRecordVal){ .val = rec.val, .dict = quest_record_dict(view, quest_record_layout(rec)) };
+}
+
+/* The byte offset in a record value's payload of the i-th field (in name order) of the type it is viewed at */
+static inline size_t quest_record_field_offset(QRecordVal rec, size_t i) {
+    return ((const size_t *)rec.dict)[i];
+}
+
+/* The stored types of a record value's offset table, for a view with field_count fields (see QRecordStoredTypes) */
+static inline QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_t field_count) {
+    return *(const QRecordStoredTypes *)((const size_t *)rec.dict + (field_count > 0 ? field_count : 1));
+}
+
+/* Values in aggregate slots (record fields, tuple elements, option payloads), in their QVal form: records and
+ * variants boxed, scalars and pointers as they are */
+QVal                   quest_slot_read(const QTypeDescriptor *t, const void *slot);
+void                   quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v);
+
+/* Converts v, a value stored at type `from`, to its subtype view at type `to`: records get the offset table for the
+ * view, variants and options their tags in `to`, tuples are copied with their elements converted, and functions
+ * are wrapped by `to`'s adapter. */
+QVal                   quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to);
+
+/* The i-th field (in name order) of record value rec viewed at record type `view`, converted to the view's type */
+QVal                   quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i);
 
 static inline QRecordVal *quest_record_box(QRecordVal rec) {
     QRecordVal *box = (QRecordVal *)quest_alloc(sizeof(QRecordVal));

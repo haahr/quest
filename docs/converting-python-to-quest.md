@@ -328,6 +328,19 @@ checks or `Auto` types.
 `inspect ... when Car with arm then ... end`. Reach for this only when you truly need runtime dispatch. Most Python
 `isinstance` checks are better expressed as options (rule 25) or as functions on records (rule 14).
 
+```
+Let AnyVehicle = Auto A<:Vehicle with a:A end;
+let v:AnyVehicle = auto :Car with myCar end;
+let describe(v:AnyVehicle):String =
+  inspect v
+  when Car with arm then "car using " <> arm.a.fuel
+  else "some vehicle"
+  end;
+```
+
+The type after `auto :` must be a concrete type, not a type parameter of the enclosing function, and a branch is
+taken when the value's type is a subtype of the branch type.
+
 ## Classes and objects
 
 **27. A class becomes an interface type plus a constructor function.** Methods become closures in a tuple, and private

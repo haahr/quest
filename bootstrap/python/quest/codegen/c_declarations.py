@@ -7,6 +7,10 @@ from typing import Any, Callable, Optional, Sequence
 from quest.typed_ast import TypedExpr, TypedFun, TypedRecord
 from quest.codegen.c_analysis import CLambdaInfo, CProgramAnalysis
 from quest.codegen.c_types import (
+    DescriptorForm,
+    MissingDescriptorError,
+    descriptor_form,
+    fun_descriptor_tag,
     RecordNamingContext,
     collect_fun_quantifiers,
     mangle_ident,
@@ -20,6 +24,7 @@ from quest.codegen.c_types import (
     type_to_c_tag,
 )
 from quest.types import (
+    QPowerKind,
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
@@ -28,6 +33,7 @@ from quest.types import (
     QAbstractType,
     QAllType,
     QArrayType,
+    QAutoType,
     QExternalType,
     QFunType,
     QOptionType,
@@ -93,6 +99,8 @@ class CDeclarationEmitter:
         self.collect_fun_quantifiers = collect_quants_fn or collect_fun_quantifiers
         self.is_exact_record_literal = is_exact_record_literal_fn or (lambda _t, _e: False)
         self.emitted_descriptor_tags: list[str] = []
+        # Function types with descriptors, whose adapters (quest_adapt_<tag>) the emitter must define
+        self.emitted_fun_types: list[tuple[str, QFunType]] = []
 
     def emit_forward_typedefs(self, agg_types: list[tuple[str, QType]]) -> list[str]:
         lines: list[str] = []
@@ -252,6 +260,7 @@ class CDeclarationEmitter:
                 else:
                     for f in sorted(t.fields, key=lambda fld: fld.name):
                         lines.append(f"    size_t offset_{f.name};")
+                lines.append("    QRecordStoredTypes stored_types;")
                 lines.append("};")
 
             lines.append("")
@@ -268,14 +277,16 @@ class CDeclarationEmitter:
                 inst_name = self.record_ctx.offset_dict_instance_name(tgt, src)
                 dict_t = self.record_ctx.offset_dict_struct_name(tgt)
                 src_sname = record_struct_name(src, self.record_ctx)
+                # Static tables only relate records whose shared fields have equal types, so no field is stored
+                # at a different type (stored_types is NULL)
                 if not tgt.fields:
-                    lines.append(f"static const {dict_t} {inst_name} = {{ 0 }};")
+                    lines.append(f"static const {dict_t} {inst_name} = {{ 0, NULL }};")
                 else:
                     entries = [
                         f"offsetof({src_sname}, qf_{f.name})"
                         for f in sorted(tgt.fields, key=lambda fld: fld.name)
                     ]
-                    lines.append(f"static const {dict_t} {inst_name} = {{ {', '.join(entries)} }};")
+                    lines.append(f"static const {dict_t} {inst_name} = {{ {', '.join(entries)}, NULL }};")
             lines.append("")
         return lines
 
@@ -326,90 +337,53 @@ class CDeclarationEmitter:
         desc_fn: Callable[[QType], str],
         all_program_types: Optional[list[QType]] = None,
     ) -> list[str]:
+        """Emits a static descriptor for every type of the program that has one (see descriptor_form).
+
+        desc_fn gives the descriptor expression of a component type, as c_type_descriptor does.
+        """
         lines: list[str] = []
-        records: list[tuple[str, QRecordType]] = []
-        tuples: list[tuple[str, QTupleType]] = []
-        variants_and_options: list[tuple[str, Any]] = []
-        arrays: list[tuple[str, QArrayType]] = []
-        opaques: list[tuple[str, str]] = []
+        forms: dict[str, list[DescriptorForm]] = {}
         seen_tags: set[str] = set()
 
         def visit(t: Optional[QType]) -> None:
             if t is None:
                 return
-            t = t.prune() if hasattr(t, "prune") else t
-            t = normalize_type(t)
-            if any(t is p for p in (INT_TYPE, REAL_TYPE, BOOL_TYPE, CHAR_TYPE, STRING_TYPE, OK_TYPE, DYNAMIC_TYPE)):
+            try:
+                form = descriptor_form(t, self.record_ctx)
+            except MissingDescriptorError:
                 return
-            if isinstance(t, QTypeVar) and t.name == "Dynamic.T":
+            if form.kind in ("base", "bound_var") or form.tag in seen_tags:
                 return
-            if isinstance(t, QTupleType) and not t.fields:
-                return
-            if isinstance(t, QRecordType) or (rec_b := resolve_record_bound(t)) is not None:
-                rec_t = t if isinstance(t, QRecordType) else rec_b
-                tag = record_struct_name(rec_t, self.record_ctx)
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    records.append((tag, rec_t))
-                    for f in rec_t.fields:
-                        visit(f.type_val)
-                return
-            if isinstance(t, QTupleType):
-                tag = tuple_struct_name(t)
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    tuples.append((tag, t))
-                    for f in t.value_fields:
-                        visit(f.type_val)
-                return
-            if isinstance(t, QVariantType) or (var_b := resolve_variant_bound(t)) is not None:
-                var_t = t if isinstance(t, QVariantType) else var_b
-                tag = type_to_c_tag(var_t)
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    variants_and_options.append((tag, var_t))
-                    for v in var_t.variants:
-                        if getattr(v, "type_val", None):
-                            visit(v.type_val)
-                return
-            if isinstance(t, QOptionType) or (opt_b := resolve_option_bound(t)) is not None:
-                opt_t = t if isinstance(t, QOptionType) else opt_b
-                tag = option_struct_name(opt_t)
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    variants_and_options.append((tag, opt_t))
-                    for o in opt_t.options:
-                        if o.payload_type:
-                            visit(o.payload_type)
-                return
-            if isinstance(t, QArrayType):
-                elem_tag = type_to_c_tag(t.element_type)
-                tag = f"array_{elem_tag}"
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    arrays.append((tag, t))
-                    visit(t.element_type)
-                return
-            if isinstance(t, QExternalType):
-                name = t.name or t.c_type
-                tag = f"opaque_{mangle_ident(name)}"
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    opaques.append((tag, name))
-                return
-            if isinstance(t, (QTypeVar, QAbstractType)):
-                name = t.name
-                tag = f"opaque_{mangle_ident(name)}"
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    opaques.append((tag, name))
-                return
-            if isinstance(t, (QFunType, QAllType)):
-                tag = f"fun_{type_to_c_tag(t)}"
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    opaques.append((tag, str(t)))
-                return
+            seen_tags.add(form.tag)
+            forms.setdefault(form.kind, []).append(form)
+            dt = form.type
+            if form.kind == "record":
+                for f in dt.fields:
+                    visit(f.type_val)
+            elif form.kind == "tuple":
+                for f in dt.value_fields:
+                    visit(f.type_val)
+            elif form.kind == "variant":
+                for v in dt.variants:
+                    visit(getattr(v, "type_val", None))
+            elif form.kind == "option":
+                for o in dt.options:
+                    visit(o.payload_type)
+            elif form.kind == "array":
+                visit(dt.element_type)
+            elif form.kind == "exception":
+                visit(dt.payload_type)
+            elif form.kind == "fun":
+                quants, inner = collect_fun_quantifiers(dt)
+                for q in quants:
+                    if isinstance(q.bound, QPowerKind):
+                        visit(q.bound.bound)
+                if isinstance(inner, QFunType):
+                    for prm in inner.params:
+                        visit(prm.type_val)
+                    visit(inner.result_type)
+                else:
+                    visit(inner)
 
         for _, t in agg_types:
             visit(t)
@@ -419,8 +393,43 @@ class CDeclarationEmitter:
             for t in all_program_types:
                 visit(t)
 
+        funs = [(f.tag, f.type) for f in forms.get("fun", [])]
+        self.emitted_fun_types = funs
         if not seen_tags:
             return lines
+
+        # Descriptors of unfolded recursive types may name tuple and record structs that the program's own types
+        # do not (a recursive occurrence is named by its unfolding rather than as QVal); their layouts are the same,
+        # but the structs must be defined for offsetof and sizeof
+        defined = {name for name, _ in agg_types}
+        missing: list[tuple[str, QType]] = []
+        for form in forms.get("tuple", []):
+            struct_name = tuple_struct_name(form.type)
+            if struct_name not in defined:
+                defined.add(struct_name)
+                missing.append((struct_name, form.type))
+        for form in forms.get("record", []):
+            if form.tag not in defined:
+                defined.add(form.tag)
+                missing.append((form.tag, form.type))
+        if missing:
+            lines.extend(self.emit_forward_typedefs(missing))
+            lines.extend(self.emit_aggregate_structs(missing))
+
+        def c_string(text: str) -> str:
+            return text.replace("\\", "\\\\").replace('"', '\\"')
+
+        def type_descriptor(tag: str, kind: str, name: str, size: str, extra: str) -> list[str]:
+            return [
+                f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{",
+                f"    .kind = {kind},",
+                f"    .name = \"{c_string(name)}\",",
+                f"    .size = {size},",
+                "    .alignment = sizeof(void *),",
+                "    .is_subtype = quest_is_subtype,",
+                f"    .extra = {extra},",
+                "};",
+            ]
 
         self.emitted_descriptor_tags = sorted(seen_tags)
         lines.append("/* Forward declarations for static type descriptors */")
@@ -428,139 +437,158 @@ class CDeclarationEmitter:
             lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED;")
         lines.append("")
 
+        if funs:
+            lines.append("/* Adapters for function types (defined after the descriptors) */")
+            for tag, _ in funs:
+                lines.append(
+                    f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
+                    f"const QTypeDescriptor *to);"
+                )
+            lines.append("")
+
         lines.append("/* Static runtime type descriptors for compound and opaque types */")
-        for tag, name in opaques:
-            c_name = name.replace('"', '\\"')
-            lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
-            lines.append(f"    .kind = QTYPE_KIND_OPAQUE,")
-            lines.append(f"    .name = \"{c_name}\",")
-            lines.append(f"    .size = sizeof(QVal),")
-            lines.append(f"    .alignment = sizeof(void *),")
-            lines.append(f"    .is_subtype = quest_is_subtype,")
-            lines.append(f"    .extra = NULL,")
-            lines.append(f"}};")
+        for form in forms.get("opaque", []):
+            lines.extend(type_descriptor(form.tag, "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", "NULL"))
             lines.append("")
 
-        for tag, arr_t in arrays:
-            elem_desc = desc_fn(arr_t.element_type)
-            elem_name = str(arr_t.element_type).replace('"', '\\"')
+        for form in forms.get("fun", []):
+            tag = form.tag
+            quants, inner = collect_fun_quantifiers(form.type)
+            params = inner.params if isinstance(inner, QFunType) else ()
+            result_t = inner.result_type if isinstance(inner, QFunType) else inner
+            bounds = "NULL"
+            if quants:
+                bound_descs = [
+                    desc_fn(q.bound.bound) if isinstance(q.bound, QPowerKind) else "NULL" for q in quants
+                ]
+                lines.append(
+                    f"static const QTypeDescriptor *const qfun_bounds_{tag}[{len(quants)}] Q_UNUSED = "
+                    f"{{ {', '.join(bound_descs)} }};"
+                )
+                bounds = f"qfun_bounds_{tag}"
+            header = [
+                f"    .param_count = {len(params)},",
+                f"    .result_type = {desc_fn(result_t)},",
+                f"    .adapt = quest_adapt_{tag},",
+                f"    .quantifier_count = {len(quants)},",
+                f"    .quantifier_bounds = {bounds},",
+            ]
+            if params:
+                lines.append("static const struct {")
+                lines.append("    size_t param_count;")
+                lines.append("    const QTypeDescriptor *result_type;")
+                lines.append("    QFunAdapter adapt;")
+                lines.append("    size_t quantifier_count;")
+                lines.append("    const QTypeDescriptor *const *quantifier_bounds;")
+                lines.append(f"    const QFunParamDescriptor params[{len(params)}];")
+                lines.append(f"}} qfun_desc_{tag} Q_UNUSED = {{")
+                lines.extend(header)
+                lines.append("    .params = {")
+                for prm in params:
+                    is_var = "true" if prm.is_var else "false"
+                    is_out = "true" if prm.is_out else "false"
+                    lines.append(f"        {{ .type = {desc_fn(prm.type_val)}, .is_var = {is_var}, .is_out = {is_out} }},")
+                lines.append("    }")
+                lines.append("};")
+            else:
+                lines.append(f"static const QFunTypeDescriptor qfun_desc_{tag} Q_UNUSED = {{")
+                lines.extend(header)
+                lines.append("};")
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_FUN", str(form.type), "sizeof(QClosure *)", f"&qfun_desc_{tag}"))
+            lines.append("")
+
+        for form in forms.get("exception", []):
+            tag = form.tag
+            lines.append(f"static const QExceptionTypeDescriptor qexc_desc_{tag} Q_UNUSED = {{")
+            lines.append(f"    .payload_type = {desc_fn(form.type.payload_type)},")
+            lines.append("};")
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_EXCEPTION", str(form.type), "sizeof(void *)", f"&qexc_desc_{tag}"))
+            lines.append("")
+
+        for form in forms.get("array", []):
+            tag = form.tag
             lines.append(f"static const QArrayTypeDescriptor qarr_desc_{tag} Q_UNUSED = {{")
-            lines.append(f"    .element_type = {elem_desc},")
-            lines.append(f"}};")
-            lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
-            lines.append(f"    .kind = QTYPE_KIND_ARRAY,")
-            lines.append(f"    .name = \"Array({elem_name})\",")
-            lines.append(f"    .size = sizeof(void *),")
-            lines.append(f"    .alignment = sizeof(void *),")
-            lines.append(f"    .is_subtype = quest_is_subtype,")
-            lines.append(f"    .extra = &qarr_desc_{tag},")
-            lines.append(f"}};")
+            lines.append(f"    .element_type = {desc_fn(form.type.element_type)},")
+            lines.append("};")
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_ARRAY", str(form.type), "sizeof(void *)", f"&qarr_desc_{tag}"))
             lines.append("")
 
-        for tag, qtype in records:
-            c_name = str(qtype).replace('"', '\\"')
+        for form in forms.get("record", []):
+            tag, qtype = form.tag, form.type
             sorted_fields = sorted(qtype.fields, key=lambda f: f.name)
             n = len(sorted_fields)
             if n > 0:
-                lines.append(f"static const struct {{")
-                lines.append(f"    size_t field_count;")
+                lines.append("static const struct {")
+                lines.append("    size_t field_count;")
                 lines.append(f"    const QRecordFieldDescriptor fields[{n}];")
                 lines.append(f"}} qrec_desc_{tag} Q_UNUSED = {{")
                 lines.append(f"    .field_count = {n},")
-                lines.append(f"    .fields = {{")
+                lines.append("    .fields = {")
                 for f in sorted_fields:
-                    f_desc = desc_fn(f.type_val)
                     is_var_str = "true" if f.is_var else "false"
                     lines.append(
-                        f"        {{ .name = \"{f.name}\", .type = {f_desc}, "
+                        f"        {{ .name = \"{f.name}\", .type = {desc_fn(f.type_val)}, "
                         f".offset = offsetof(struct {tag}, qf_{f.name}), .is_var = {is_var_str} }},"
                     )
-                lines.append(f"    }}")
-                lines.append(f"}};")
-                lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
-                lines.append(f"    .kind = QTYPE_KIND_RECORD,")
-                lines.append(f"    .name = \"{c_name}\",")
-                lines.append(f"    .size = sizeof(struct {tag}),")
-                lines.append(f"    .alignment = sizeof(void *),")
-                lines.append(f"    .is_subtype = quest_is_subtype,")
-                lines.append(f"    .extra = &qrec_desc_{tag},")
-                lines.append(f"}};")
+                lines.append("    }")
+                lines.append("};")
+                lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", str(qtype), f"sizeof(struct {tag})", f"&qrec_desc_{tag}"))
             else:
                 lines.append(f"static const QRecordTypeDescriptor qrec_desc_{tag} Q_UNUSED = {{ .field_count = 0 }};")
-                lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
-                lines.append(f"    .kind = QTYPE_KIND_RECORD,")
-                lines.append(f"    .name = \"Record end\",")
-                lines.append(f"    .size = sizeof(void *),")
-                lines.append(f"    .alignment = sizeof(void *),")
-                lines.append(f"    .is_subtype = quest_is_subtype,")
-                lines.append(f"    .extra = &qrec_desc_{tag},")
-                lines.append(f"}};")
+                lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", "Record end", "sizeof(void *)", f"&qrec_desc_{tag}"))
             lines.append("")
 
-        for tag, qtype in tuples:
-            c_name = str(qtype).replace('"', '\\"')
+        for form in forms.get("tuple", []):
+            tag, qtype = form.tag, form.type
+            struct_name = tuple_struct_name(qtype)
             val_fields = qtype.value_fields
             n = len(val_fields)
-            if n > 0:
-                lines.append(f"static const struct {{")
-                lines.append(f"    size_t element_count;")
-                lines.append(f"    const QTupleElementDescriptor elements[{n}];")
-                lines.append(f"}} qtup_desc_{tag} Q_UNUSED = {{")
-                lines.append(f"    .element_count = {n},")
-                lines.append(f"    .elements = {{")
-                for i, f in enumerate(val_fields):
-                    f_desc = desc_fn(f.type_val)
-                    name_str = f'"{f.name}"' if getattr(f, "name", None) is not None else "NULL"
-                    lines.append(
-                        f"        {{ .name = {name_str}, .type = {f_desc}, "
-                        f".offset = offsetof(struct {tag}, _{i}) }},"
-                    )
-                lines.append(f"    }}")
-                lines.append(f"}};")
-                lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
-                lines.append(f"    .kind = QTYPE_KIND_TUPLE,")
-                lines.append(f"    .name = \"{c_name}\",")
-                lines.append(f"    .size = sizeof(struct {tag}),")
-                lines.append(f"    .alignment = sizeof(void *),")
-                lines.append(f"    .is_subtype = quest_is_subtype,")
-                lines.append(f"    .extra = &qtup_desc_{tag},")
-                lines.append(f"}};")
+            lines.append("static const struct {")
+            lines.append("    size_t element_count;")
+            lines.append(f"    const QTupleElementDescriptor elements[{n}];")
+            lines.append(f"}} qtup_desc_{tag} Q_UNUSED = {{")
+            lines.append(f"    .element_count = {n},")
+            lines.append("    .elements = {")
+            for i, f in enumerate(val_fields):
+                name_str = f'"{f.name}"' if getattr(f, "name", None) is not None else "NULL"
+                lines.append(
+                    f"        {{ .name = {name_str}, .type = {desc_fn(f.type_val)}, "
+                    f".offset = offsetof(struct {struct_name}, _{i}) }},"
+                )
+            lines.append("    }")
+            lines.append("};")
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_TUPLE", str(qtype), f"sizeof(struct {struct_name})", f"&qtup_desc_{tag}"))
             lines.append("")
 
-        for tag, qtype in variants_and_options:
-            c_name = str(qtype).replace('"', '\\"')
+        for form in forms.get("variant", []) + forms.get("option", []):
+            tag, qtype = form.tag, form.type
             cases = (
                 [(v.name, getattr(v, "type_val", None), getattr(v, "is_var", False)) for v in qtype.variants]
                 if isinstance(qtype, QVariantType)
                 else [(o.name, o.payload_type, False) for o in qtype.options]
             )
             n = len(cases)
-            if n > 0:
-                lines.append(f"static const struct {{")
-                lines.append(f"    size_t case_count;")
-                lines.append(f"    const QVariantCaseDescriptor cases[{n}];")
-                lines.append(f"}} qvar_desc_{tag} Q_UNUSED = {{")
-                lines.append(f"    .case_count = {n},")
-                lines.append(f"    .cases = {{")
-                for i, (c_tag_name, p_type, is_var) in enumerate(cases):
-                    p_desc = desc_fn(p_type) if p_type is not None else "NULL"
-                    is_var_str = "true" if is_var else "false"
-                    lines.append(
-                        f"        {{ .name = \"{c_tag_name}\", .payload_type = {p_desc}, "
-                        f".tag_index = {i}LL, .is_var = {is_var_str} }},"
-                    )
-                lines.append(f"    }}")
-                lines.append(f"}};")
-                kind_str = "QTYPE_KIND_VARIANT" if isinstance(qtype, QVariantType) else "QTYPE_KIND_OPTION"
-                size_str = f"sizeof(struct {tag})" if isinstance(qtype, QOptionType) else "sizeof(QVariantVal)"
-                lines.append(f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{")
-                lines.append(f"    .kind = {kind_str},")
-                lines.append(f"    .name = \"{c_name}\",")
-                lines.append(f"    .size = {size_str},")
-                lines.append(f"    .alignment = sizeof(void *),")
-                lines.append(f"    .is_subtype = quest_is_subtype,")
-                lines.append(f"    .extra = &qvar_desc_{tag},")
-                lines.append(f"}};")
+            lines.append("static const struct {")
+            lines.append("    size_t case_count;")
+            lines.append(f"    const QVariantCaseDescriptor cases[{max(n, 1)}];")
+            lines.append(f"}} qvar_desc_{tag} Q_UNUSED = {{")
+            lines.append(f"    .case_count = {n},")
+            lines.append("    .cases = {")
+            for i, (c_tag_name, p_type, is_var) in enumerate(cases):
+                p_desc = desc_fn(p_type) if p_type is not None else "NULL"
+                is_var_str = "true" if is_var else "false"
+                lines.append(
+                    f"        {{ .name = \"{c_tag_name}\", .payload_type = {p_desc}, "
+                    f".tag_index = {i}LL, .is_var = {is_var_str} }},"
+                )
+            lines.append("    }")
+            lines.append("};")
+            if isinstance(qtype, QVariantType):
+                kind_str, size_str = "QTYPE_KIND_VARIANT", "sizeof(QVariantVal)"
+            else:
+                struct_name = form.struct or option_struct_name(qtype)
+                kind_str, size_str = "QTYPE_KIND_OPTION", f"sizeof(struct {struct_name})"
+            lines.extend(type_descriptor(tag, kind_str, str(qtype), size_str, f"&qvar_desc_{tag}"))
             lines.append("")
         return lines
 

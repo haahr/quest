@@ -1,0 +1,727 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('dynamic') 'Dynamic')
+      )
+    )
+    (LetValueBinding
+      :name 'p'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'n')
+              )
+            )
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetTypeBinding
+      :name 'Big'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'b'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'c'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'Small'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'c'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'big'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'a'
+            :value (ExprInt 1 '1')
+          )
+          (RecordBinding
+            :name 'b'
+            :value (ExprInt 2 '2')
+          )
+          (RecordBinding
+            :name 'c'
+            :value (ExprInt 3 '3')
+          )
+        )
+      )
+      :type_annot (TypePath ('Big'))
+    )
+    (LetTypeBinding
+      :name 'OuterBig'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'inner'
+            :type_sig (TypePath ('Big'))
+          )
+          (RecordFieldSig
+            :name 'tag'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'OuterSmall'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'inner'
+            :type_sig (TypePath ('Small'))
+          )
+          (RecordFieldSig
+            :name 'tag'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'outerBig'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'inner'
+            :value (ExprId 'big')
+          )
+          (RecordBinding
+            :name 'tag'
+            :value (ExprInt 10 '10')
+          )
+        )
+      )
+      :type_annot (TypePath ('OuterBig'))
+    )
+    (LetValueBinding
+      :name 'outerSmall'
+      :value (ExprId 'outerBig')
+      :type_annot (TypePath ('OuterSmall'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprSelect
+            :target (ExprSelect
+              :target (ExprId 'outerSmall')
+              :field 'inner'
+            )
+            :field 'c'
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'innerC'
+      :value (ExprInfix
+        :left (ExprSelect
+          :target (ExprSelect
+            :target (ExprId 'o')
+            :field 'inner'
+          )
+          :field 'c'
+        )
+        :op '+'
+        :right (ExprSelect
+          :target (ExprId 'o')
+          :field 'tag'
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'o'
+          :type_annot (TypePath ('OuterSmall'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprApp
+            :func (ExprId 'innerC')
+            :args (
+              (ExprId 'outerBig')
+            )
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'DeepBig'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'outer'
+            :type_sig (TypePath ('OuterBig'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'DeepSmall'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'outer'
+            :type_sig (TypePath ('OuterSmall'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'deep'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'outer'
+            :value (ExprId 'outerBig')
+          )
+        )
+      )
+      :type_annot (TypePath ('DeepSmall'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprSelect
+            :target (ExprSelect
+              :target (ExprSelect
+                :target (ExprId 'deep')
+                :field 'outer'
+              )
+              :field 'inner'
+            )
+            :field 'c'
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'VSmall'
+      :type_val (TypeVariant
+        :fields (
+          (VariantFieldSig
+            :tag 'two'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'VBig'
+      :type_val (TypeVariant
+        :fields (
+          (VariantFieldSig
+            :tag 'one'
+            :type_sig (TypePath ('Int'))
+          )
+          (VariantFieldSig
+            :tag 'two'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'HasVSmall'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'v'
+            :type_sig (TypePath ('VSmall'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'HasVBig'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'v'
+            :type_sig (TypePath ('VBig'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'hasVBig'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'v'
+            :value (ExprVariant
+              :tag 'two'
+              :variant_type (TypePath ('VSmall'))
+              :payload (ExprInt 7 '7')
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('HasVBig'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprCase
+            :target (ExprSelect
+              :target (ExprId 'hasVBig')
+              :field 'v'
+            )
+            :branches (
+              (CaseBranch
+                :tags ('one')
+                :binder 'n'
+                :body (ExprStmt
+                  :expr (ExprInfix
+                    :left (ExprInt 0 '0')
+                    :op '-'
+                    :right (ExprId 'n')
+                  )
+                )
+              )
+              (CaseBranch
+                :tags ('two')
+                :binder 'n'
+                :body (ExprStmt
+                  :expr (ExprId 'n')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'OSmall'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('Big'))
+                :mode VALUE
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'OBig'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('Small'))
+                :mode VALUE
+              )
+            )
+          )
+          (OptionFieldSig 'other' ())
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'HasOSmall'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'o'
+            :type_sig (TypePath ('OSmall'))
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'HasOBig'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'o'
+            :type_sig (TypePath ('OBig'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'hasOBig'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'o'
+            :value (ExprOption
+              :tag 'some'
+              :option_type (TypePath ('OSmall'))
+              :payload (ExprTuple
+                :fields (
+                  (TupleBinding
+                    :value (ExprId 'big')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('HasOBig'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprCase
+            :target (ExprSelect
+              :target (ExprId 'hasOBig')
+              :field 'o'
+            )
+            :branches (
+              (CaseBranch
+                :tags ('some')
+                :binder 's'
+                :body (ExprStmt
+                  :expr (ExprSelect
+                    :target (ExprSelect
+                      :target (ExprId 's')
+                      :field 'r'
+                    )
+                    :field 'c'
+                  )
+                )
+              )
+              (CaseBranch
+                :tags ('none' 'other')
+                :body (ExprStmt
+                  :expr (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'HasPairBig'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'pair'
+            :type_sig (TypeTuple
+              :fields (
+                (FieldSig
+                  :name 'r'
+                  :type_sig (TypePath ('Big'))
+                  :mode VALUE
+                )
+                (FieldSig
+                  :name 'n'
+                  :type_sig (TypePath ('Int'))
+                  :mode VALUE
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetTypeBinding
+      :name 'HasPairSmall'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'pair'
+            :type_sig (TypeTuple
+              :fields (
+                (FieldSig
+                  :name 'r'
+                  :type_sig (TypePath ('Small'))
+                  :mode VALUE
+                )
+                (FieldSig
+                  :name 'n'
+                  :type_sig (TypePath ('Int'))
+                  :mode VALUE
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'hasPairSmall'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'pair'
+            :value (ExprTuple
+              :fields (
+                (TupleBinding
+                  :value (ExprId 'big')
+                )
+                (TupleBinding
+                  :value (ExprInt 4 '4')
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('HasPairSmall'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprInfix
+            :left (ExprSelect
+              :target (ExprSelect
+                :target (ExprSelect
+                  :target (ExprId 'hasPairSmall')
+                  :field 'pair'
+                )
+                :field 'r'
+              )
+              :field 'c'
+            )
+            :op '+'
+            :right (ExprSelect
+              :target (ExprSelect
+                :target (ExprId 'hasPairSmall')
+                :field 'pair'
+              )
+              :field 'n'
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'd'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('OuterSmall'))
+          )
+          (ExprId 'outerBig')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'fromDynamic'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'be'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('OuterSmall'))
+          )
+          (ExprId 'd')
+        )
+      )
+      :type_annot (TypePath ('OuterSmall'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprSelect
+            :target (ExprSelect
+              :target (ExprId 'fromDynamic')
+              :field 'inner'
+            )
+            :field 'c'
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'extern'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprId 'd')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprString '\n' '"\\n"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'first'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+          (FormalParam
+            :name 'y'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprId 'x')
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+          (Quantifier
+            :name 'y'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'firstSmall'
+      :value (ExprApp
+        :func (ExprId 'first')
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('OuterSmall'))
+          )
+          (ExprId 'outerBig')
+          (ExprId 'outerSmall')
+        )
+      )
+      :type_annot (TypePath ('OuterSmall'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'p')
+        :args (
+          (ExprInfix
+            :left (ExprSelect
+              :target (ExprSelect
+                :target (ExprId 'firstSmall')
+                :field 'inner'
+              )
+              :field 'c'
+            )
+            :op '+'
+            :right (ExprSelect
+              :target (ExprId 'firstSmall')
+              :field 'tag'
+            )
+          )
+        )
+      )
+    )
+  )
+)

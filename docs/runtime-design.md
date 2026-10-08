@@ -141,6 +141,10 @@ typedef struct QDynamic {
 } QDynamic;
 ```
 
+Auto values (Cardelli's `auto :T with ... end`) use the same envelope: `type_desc` describes the type component and
+`payload` points to the tuple of components; `inspect` matches branch types against `type_desc` with
+`quest_is_subtype` and adapts components with `quest_dynamic_be`. See [c-representation.md](c-representation.md) §8.1.
+
 ### 1. Hybrid Descriptor Architecture
 - **Compile-time Static Descriptors (.rodata):** Closed types generated during compilation are emitted as
   `static const QTypeDescriptor quest_type_<tag> Q_UNUSED` with static payload structs (`qrec_desc_*`, `qtup_desc_*`,
@@ -154,15 +158,20 @@ typedef struct QDynamic {
 Subtyping checks are unified under `quest_is_subtype`:
 - **Records:** Width subtyping (all supertype fields present in subtype), permutation subtyping (order independent),
   depth subtyping on immutable fields ($T_{\text{sub}} <: T_{\text{super}}$), and invariance on mutable `var` fields.
-- **Tuples:** Prefix subtyping with covariant element types.
+- **Tuples:** Prefix subtyping with covariant element types (so `Tuple end` is a supertype of tuples only).
 - **Variants:** Branch set inclusion with covariant immutable payloads.
+- **Functions:** Contravariant value parameters, invariant `var` parameters, covariant `out` parameters and result;
+  polymorphic function types need the same number of type parameters with equal bounds.
+- **Exceptions:** Invariant payload type.
+  A closure used at a function supertype is wrapped by the target type's adapter (see
+  [c-representation.md](c-representation.md)).
 - **Coinductive Cycle Detection:** Recursive type subtyping cycles are guarded using an active cycle trail
   (`quest_subtyping_trail`) to ensure terminating coinductive subtyping checks.
 
-### 3. Dynamic Value Adaptation (`quest_record_adapt` & `quest_variant_adapt`)
+### 3. Dynamic Value Adaptation (`quest_record_view` & `quest_variant_adapt`)
 When `dynamic.be` or `inspect` succeeds on a structural subtype:
-- For records: `quest_record_adapt` synthesizes an offset dictionary mapping target fields (alphabetically ordered)
-  to source record byte offsets, recursively adapting nested subtyped immutable fields. Results are cached in a
+- For records: `quest_record_view` keeps the payload and takes the offset table for (target type, the payload's own
+  layout, from its header) from the global offset table map; see [c-representation.md](c-representation.md) §5.2.
 - For variants: `quest_variant_adapt` remaps source variant tags to target tag indices and adapts payloads via a
   memoized tag-mapping adapter cache.
 

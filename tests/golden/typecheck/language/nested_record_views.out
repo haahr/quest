@@ -1,0 +1,245 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'p' :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type Writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'n' :type Int)
+                ))
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetValue 'big' :type Big
+      :value (TypedRecord :type Record a: Int b: Int c: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 1 :type Int))
+          (TypedRecordField 'b'
+            :value (TypedInt 2 :type Int))
+          (TypedRecordField 'c'
+            :value (TypedInt 3 :type Int))
+        )))
+    (TypedLetType 'OuterBig' :kind TYPE)
+    (TypedLetType 'OuterSmall' :kind TYPE)
+    (TypedLetValue 'outerBig' :type OuterBig
+      :value (TypedRecord :type Record inner: Big tag: Int end
+        :fields (
+          (TypedRecordField 'inner'
+            :value (TypedVar 'big' :type Big))
+          (TypedRecordField 'tag'
+            :value (TypedInt 10 :type Int))
+        )))
+    (TypedLetValue 'outerSmall' :type OuterSmall
+      :value (TypedVar 'outerBig' :type OuterBig))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedSelect 'inner' :type Small
+              :target (TypedVar 'outerSmall' :type OuterSmall)))
+        )))
+    (TypedLetValue 'innerC' :type Fun(o: OuterSmall): Int
+      :value (TypedFun :params (('o' : OuterSmall)) :type Fun(o: OuterSmall): Int
+        :body (TypedInfix '+' :type Int
+          :left (TypedSelect 'c' :type Int
+            :target (TypedSelect 'inner' :type Small
+              :target (TypedVar 'o' :type OuterSmall)))
+          :right (TypedSelect 'tag' :type Int
+            :target (TypedVar 'o' :type OuterSmall)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'innerC' :type Fun(o: OuterSmall): Int)
+            :args (
+              (TypedVar 'outerBig' :type OuterBig)
+            ))
+        )))
+    (TypedLetType 'DeepBig' :kind TYPE)
+    (TypedLetType 'DeepSmall' :kind TYPE)
+    (TypedLetValue 'deep' :type DeepSmall
+      :value (TypedRecord :type Record outer: OuterSmall end
+        :fields (
+          (TypedRecordField 'outer'
+            :value (TypedVar 'outerBig' :type OuterBig))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedSelect 'inner' :type Small
+              :target (TypedSelect 'outer' :type OuterSmall
+                :target (TypedVar 'deep' :type DeepSmall))))
+        )))
+    (TypedLetType 'VSmall' :kind TYPE)
+    (TypedLetType 'VBig' :kind TYPE)
+    (TypedLetType 'HasVSmall' :kind TYPE)
+    (TypedLetType 'HasVBig' :kind TYPE)
+    (TypedLetValue 'hasVBig' :type HasVBig
+      :value (TypedRecord :type Record v: VBig end
+        :fields (
+          (TypedRecordField 'v'
+            :value (TypedVariant 'two' :type VSmall
+              :payload (TypedInt 7 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedCase :type Int
+            :target (TypedSelect 'v' :type VBig
+              :target (TypedVar 'hasVBig' :type HasVBig))
+            :branches (
+              (TypedCaseBranch tags=(one) :binder 'n'
+                :body (TypedInfix '-' :type Int
+                  :left (TypedInt 0 :type Int)
+                  :right (TypedVar 'n' :type Int)))
+              (TypedCaseBranch tags=(two) :binder 'n'
+                :body (TypedVar 'n' :type Int))
+            ))
+        )))
+    (TypedLetType 'OSmall' :kind TYPE)
+    (TypedLetType 'OBig' :kind TYPE)
+    (TypedLetType 'HasOSmall' :kind TYPE)
+    (TypedLetType 'HasOBig' :kind TYPE)
+    (TypedLetValue 'hasOBig' :type HasOBig
+      :value (TypedRecord :type Record o: OBig end
+        :fields (
+          (TypedRecordField 'o'
+            :value (TypedOption 'some' :type OSmall
+              :payload (TypedTuple :type Tuple r: Big end
+                :elements (
+                  (TypedVar 'big' :type Big)
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedCase :type Int
+            :target (TypedSelect 'o' :type OBig
+              :target (TypedVar 'hasOBig' :type HasOBig))
+            :branches (
+              (TypedCaseBranch tags=(some) :binder 's'
+                :body (TypedSelect 'c' :type Int
+                  :target (TypedSelect 'r' :type Small
+                    :target (TypedVar 's' :type Tuple r: Small end))))
+              (TypedCaseBranch tags=(none, other)
+                :body (TypedInt 0 :type Int))
+            ))
+        )))
+    (TypedLetType 'HasPairBig' :kind TYPE)
+    (TypedLetType 'HasPairSmall' :kind TYPE)
+    (TypedLetValue 'hasPairSmall' :type HasPairSmall
+      :value (TypedRecord :type Record pair: Tuple r: Small n: Int end end
+        :fields (
+          (TypedRecordField 'pair'
+            :value (TypedTuple :type Tuple r: Small n: Int end
+              :elements (
+                (TypedVar 'big' :type Big)
+                (TypedInt 4 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedSelect 'c' :type Int
+              :target (TypedSelect 'r' :type Small
+                :target (TypedSelect 'pair' :type Tuple r: Small n: Int end
+                  :target (TypedVar 'hasPairSmall' :type HasPairSmall))))
+            :right (TypedSelect 'n' :type Int
+              :target (TypedSelect 'pair' :type Tuple r: Small n: Int end
+                :target (TypedVar 'hasPairSmall' :type HasPairSmall))))
+        )))
+    (TypedLetValue 'd' :type Dynamic.T
+      :value (TypedApp :type Dynamic.T
+        :func (TypedTypeApp [OuterSmall] :type Fun(a: OuterSmall): Dynamic.T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): Dynamic.T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'outerBig' :type OuterBig)
+        )))
+    (TypedLetValue 'fromDynamic' :type OuterSmall
+      :value (TypedApp :type OuterSmall
+        :func (TypedTypeApp [OuterSmall] :type Fun(d: Dynamic.T): OuterSmall
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: Dynamic.T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'd' :type Dynamic.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'c' :type Int
+            :target (TypedSelect 'inner' :type Small
+              :target (TypedVar 'fromDynamic' :type OuterSmall)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'extern' :type Fun(wr: Writer.T d: Dynamic.T): Ok
+          :target (TypedVar 'dynamic' :type Module 'dynamic'))
+        :args (
+          (TypedSelect 'output' :type Writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedVar 'd' :type Dynamic.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type Writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedString '\n' :type String)
+        )))
+    (TypedLetValue 'first' :type All(A :: TYPE) Fun(x: A y: A): A
+      :value (TypedFun :params (('x' : A) ('y' : A)) :type All(A :: TYPE) Fun(x: A y: A): A
+        :body (TypedVar 'x' :type A)))
+    (TypedLetValue 'firstSmall' :type OuterSmall
+      :value (TypedApp :type OuterSmall
+        :func (TypedTypeApp [OuterSmall] :type Fun(x: OuterSmall y: OuterSmall): OuterSmall
+          :func (TypedVar 'first' :type All(A :: TYPE) Fun(x: A y: A): A))
+        :args (
+          (TypedVar 'outerBig' :type OuterBig)
+          (TypedVar 'outerSmall' :type OuterSmall)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedSelect 'c' :type Int
+              :target (TypedSelect 'inner' :type Small
+                :target (TypedVar 'firstSmall' :type OuterSmall)))
+            :right (TypedSelect 'tag' :type Int
+              :target (TypedVar 'firstSmall' :type OuterSmall)))
+        )))
+  ))

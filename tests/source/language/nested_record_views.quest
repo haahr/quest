@@ -1,0 +1,61 @@
+(* Language: depth subtyping of records, viewing fields that hold records, variants, options, and tuples at
+   supertypes (C: offset tables record fields stored at a subtype, and reads convert them) *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n");
+
+Let Big = Record a: Int b: Int c: Int end;
+Let Small = Record c: Int end;
+let big: Big = record a = 1 b = 2 c = 3 end;
+
+(* 1. A record field viewed at a supertype, through a variable and a function parameter *)
+Let OuterBig = Record inner: Big tag: Int end;
+Let OuterSmall = Record inner: Small tag: Int end;
+let outerBig: OuterBig = record inner = big tag = 10 end;
+let outerSmall: OuterSmall = outerBig;
+p(outerSmall.inner.c);
+let innerC(o: OuterSmall): Int = o.inner.c + o.tag;
+p(innerC(outerBig));
+
+(* 2. Two levels of nesting, and a record literal coerced directly *)
+Let DeepBig = Record outer: OuterBig end;
+Let DeepSmall = Record outer: OuterSmall end;
+let deep: DeepSmall = record outer = outerBig end;
+p(deep.outer.inner.c);
+
+(* 3. A variant field: its tags are those of the field's type at the view *)
+Let VSmall = Variant two: Int end;
+Let VBig = Variant one: Int two: Int end;
+Let HasVSmall = Record v: VSmall end;
+Let HasVBig = Record v: VBig end;
+let hasVBig: HasVBig = record v = variant two of VSmall with 7 end end;
+p(case hasVBig.v when one with n then 0 - n when two with n then n end);
+
+(* 4. An option field *)
+Let OSmall = Option none some with r: Big end end;
+Let OBig = Option none some with r: Small end other end;
+Let HasOSmall = Record o: OSmall end;
+Let HasOBig = Record o: OBig end;
+let hasOBig: HasOBig = record o = option some of OSmall with big end end;
+p(case hasOBig.o when some with s then s.r.c when none, other then 0 end);
+
+(* 5. A tuple field holding a record *)
+Let HasPairBig = Record pair: Tuple r: Big n: Int end end;
+Let HasPairSmall = Record pair: Tuple r: Small n: Int end end;
+let hasPairSmall: HasPairSmall = record pair = tuple big 4 end end;
+p(hasPairSmall.pair.r.c + hasPairSmall.pair.n);
+
+(* 6. dynamic.be and serialization of a view whose field is stored at a subtype *)
+let d = dynamic.new(:OuterSmall outerBig);
+let fromDynamic: OuterSmall = dynamic.be(:OuterSmall d);
+p(fromDynamic.inner.c);
+dynamic.extern(writer.output d);
+writer.putString(writer.output "\n");
+
+(* 7. A polymorphic function called with an explicit type argument gets its arguments at that type *)
+let first(A::TYPE x: A y: A): A = x;
+let firstSmall: OuterSmall = first(:OuterSmall outerBig outerSmall);
+p(firstSmall.inner.c + firstSmall.tag);

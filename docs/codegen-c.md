@@ -465,8 +465,14 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
   ```
 
 ### 10.2. Evidence-Passing Record Subtyping
-- **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0
-  (`header.descriptor = NULL;`).
+- **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0, set at
+  allocation to the descriptor of the record's layout (`header.descriptor = &quest_type_QT_Point;`).
+- **Polymorphic Call Arguments:** For a call with type arguments, each argument is first coerced to its parameter's
+  type with the type arguments substituted (so `f(:Small big)` passes a `Small` view), then to the generic
+  representation of the parameter.
+- **Offset Table Map:** `main` registers each static `offsetdict_<Target>_<Source>` with
+  `quest_register_record_dict(&quest_type_<Target>, &quest_type_<Source>, &offsetdict_<Target>_<Source>)`; tables
+  for other (view, layout) pairs are built by the runtime on demand (`quest_record_dict`).
 - **First-Class Fat Pointers (`QRecordVal`):** All records are represented uniformly as a 16-byte struct:
   ```c
   typedef struct QRecordVal {
@@ -597,7 +603,13 @@ and member projection (`p.v`):
   whose concrete signatures differ from the abstract interface signature (e.g., `create(init: Int): Counter` where
   `Counter = Int` coerced to `create(init: Int): A`), the transpiler synthesizes static adaptation thunks
   (`qv_adapt_<id>`). The thunk unpacks/forwards the original closure's environment, unwraps any `QVal` arguments with
-  `qval_unwrap`, invokes the underlying native function, and wraps any abstract return value with `qval_wrap`.
+  `qval_unwrap`, invokes the underlying native function, and wraps any abstract return value with `qval_wrap`. A thunk
+  is also made when a closure is used at a function supertype whose arguments or result need converting (records,
+  variants, options, tuples, functions): it coerces each argument from the target parameter type to the closure's
+  and the result back, so `Fun(x: Small): Big` works as `Fun(x: Big): Small`.
+- **Function Type Adapters (`quest_adapt_fun_<digest>`):** Every monomorphic function type with a runtime descriptor
+  gets an adapter, referenced by the descriptor, for conversions known only at run time; see
+  [c-representation.md](c-representation.md) §6.4 (Compound Descriptor Payloads, Functions).
 - **Tuple Structural Coercion & Generic Returns (`_coerce_tuple_val`):** Coercions between tuples whose field C types
   differ (e.g., concrete scalar to `QVal`, closure adaptation, nested tuple structural conversions, or generic tuple
   returns where `QVal` fields are unwrapped into concrete types) allocate a new target tuple and map each field.

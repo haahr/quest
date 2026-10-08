@@ -7,7 +7,7 @@ Step 3 (Tree-Walking Interpreter & REPL), including:
 - Sum types (Variant, Option)
 - First-class functions and closures (QClosure, QBuiltinFun)
 - Mutable heap cells (QRef)
-- Dynamic and Exception envelopes (QDynamicVal, QExceptionVal)
+- Dynamic and Exception envelopes (QDynamicVal, QAutoVal, QExceptionVal)
 - Cardelli 'is'/'isnot' identity predicate and recursive structural equality.
 """
 
@@ -634,6 +634,19 @@ class QDynamicVal(QValue):
     def to_str(self, visited: Optional[set[int]] = None) -> str:
         val_str = self.value.to_str(visited)
         return f"dynamic({val_str} : {self.type_val})"
+
+
+class QAutoVal(QDynamicVal):
+    """Auto value (Cardelli §4.6): a tuple of components packaged with the closed type that determines
+    their shape. type_val is the type component; value is the QTuple of components."""
+
+    @property
+    def type_name(self) -> str:
+        return "Auto"
+
+    def to_str(self, visited: Optional[set[int]] = None) -> str:
+        val_str = self.value.to_str(visited)
+        return f"auto({val_str} : {self.type_val})"
 
 
 class QExceptionVal(QValue):
