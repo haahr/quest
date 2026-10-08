@@ -1,0 +1,60 @@
+(* Language: Recursive Tuple Types, in C represented like their unfoldings *)
+
+import arrayOp: ArrayOp;
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+Let Rec Tree::TYPE = Tuple v: Int kids: Array(Tree) end;
+
+(* 1. Tuple literals at a recursive tuple type, and recursion over them *)
+let leaf: Tree = tuple let v = 2 let kids = array of :Tree end end;
+let t1: Tree = tuple let v = 1 let kids = array of leaf leaf end end;
+let rec sum(t: Tree): Int =
+    begin
+        let var s = t.v;
+        for i = 0 upto arrayOp.size(:Tree t.kids) - 1 do
+            s := s + sum(t.kids[i])
+        end;
+        s
+    end;
+printInt(sum(t1));
+
+(* 2. Through a polymorphic function and inside another tuple *)
+let id(A::TYPE x: A): A = x;
+printInt(id(:Tree leaf).v);
+Let Holder = Tuple t: Tree n: Int end;
+let h: Holder = tuple let t = t1 let n = 7 end;
+printInt(sum(h.t) + h.n);
+
+(* 3. Dynamic values of a recursive tuple type, narrowed back and inspected *)
+let d5 = dynamic.new(:Tree tuple let v = 1 let kids = array of(0 tuple let v = 2 let kids = array of :Tree end end) end);
+let back = dynamic.be(:Tree d5);
+printInt(back.v);
+printInt(arrayOp.size(:Tree back.kids));
+printInt(sum(dynamic.be(:Tree dynamic.new(:Tree t1))));
+
+(* 4. A structurally equal recursive type, and a parameterized one *)
+Let Rec Tree2::TYPE = Tuple v: Int kids: Array(Tree2) end;
+printInt(dynamic.be(:Tree2 dynamic.new(:Tree t1)).kids[1].v);
+Let RTree = Fun(A::TYPE) Rec(T::TYPE) Tuple v: A kids: Array(T) end;
+let rt: RTree(Int) = tuple let v = 9 let kids = array of(1 tuple let v = 3 let kids = array of :RTree(Int) end end) end;
+printInt(rt.kids[0].v);
+printInt(dynamic.be(:Tree dynamic.new(:RTree(Int) rt)).kids[0].v);
+
+(* 5. A recursive tuple type with different field names does not match *)
+Let Rec Other::TYPE = Tuple v: Int others: Array(Other) end;
+let o =
+    try
+        dynamic.be(:Other dynamic.new(:Tree t1)).v
+    when dynamic.error then
+        ~1
+    end;
+printInt(o);

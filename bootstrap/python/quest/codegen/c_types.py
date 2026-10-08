@@ -160,9 +160,30 @@ def _beta_reduce_head(t: QType) -> QType:
     return t
 
 
+def _unfold_recursive_tuple(t: QType) -> Optional[QTupleType]:
+    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a tuple type.
+
+    Values of a recursive tuple type are represented like values of its unfolding: a pointer to the tuple's struct.
+    """
+    if isinstance(t, QTypeApp):
+        t = _beta_reduce_head(t)
+    for _ in range(_MAX_BETA_STEPS):
+        if not isinstance(t, (QRecType, QRecGroupType)):
+            break
+        t = t.unfold_lazily()
+        t = t.prune() if hasattr(t, "prune") else t
+        if isinstance(t, QTypeApp):
+            t = _beta_reduce_head(t)
+    return t if isinstance(t, QTupleType) else None
+
+
 def _normalize_type_raw(t: QType) -> QType:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
+    if isinstance(t, (QRecType, QRecGroupType)):
+        unfolded = _unfold_recursive_tuple(t)
+        if unfolded is not None:
+            return unfolded
     if isinstance(t, QTypeApp):
         reduced = _beta_reduce_head(t)
         if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
@@ -209,10 +230,55 @@ def _type_to_c_tag_uncached(t: QType) -> str:
     return raw
 
 
+# A recursive type's tag is built from its body with each recursive variable replaced by one of these
+# placeholders, numbered by nesting depth, so that the tag is finite and the same for alpha-equivalent types.
+# Their symbol ids are reserved, below those of the descriptor placeholders (_BOUND_VAR_BASE and so on).
+_REC_SELF_SYMBOL_BASE = -(1 << 42)
+_REC_SELF_SYMBOL_LIMIT = -(1 << 43)
+
+
+def _is_rec_self_symbol(symbol_id: int) -> bool:
+    return _REC_SELF_SYMBOL_LIMIT < symbol_id <= _REC_SELF_SYMBOL_BASE
+
+
+def _rec_self_var(level: int) -> QTypeVar:
+    return QTypeVar(name=f"Rec.Self{level}", symbol_id=_REC_SELF_SYMBOL_BASE - level)
+
+
+def _rec_self_level(t: QType) -> Optional[int]:
+    if isinstance(t, QTypeVar) and _is_rec_self_symbol(t.symbol_id):
+        return _REC_SELF_SYMBOL_BASE - t.symbol_id
+    return None
+
+
+def _recursive_tuple_tag(t: QType) -> Optional[str]:
+    """Returns the tag of a recursive type whose unfolding is a tuple type, or None for any other type.
+
+    The tag names the recursive type itself rather than its unfolding, whose tag would contain the tag being defined.
+    """
+    if _unfold_recursive_tuple(t) is None:
+        return None
+    if isinstance(t, QTypeApp):
+        t = _beta_reduce_head(t)
+    level = sum(1 for sym in t._fv if _is_rec_self_symbol(sym))
+    if isinstance(t, QRecType):
+        body = t.body.substitute({t.symbol_id: _rec_self_var(level)})
+        return f"Rec{level}_{type_to_c_tag(body)}"
+    if isinstance(t, QRecGroupType):
+        subst = {b[1]: _rec_self_var(level + i) for i, b in enumerate(t.bindings)}
+        tags = [type_to_c_tag(b[3].substitute(subst)) for b in t.bindings]
+        return f"RecGroup{level}_{t.active_index}_" + "_".join(tags)
+    return None
+
+
 def _type_to_c_tag_raw(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     t = resolve_type_bound(t)
+    if (self_level := _rec_self_level(t)) is not None:
+        return f"Self{self_level}"
+    if (rec_tag := _recursive_tuple_tag(t)) is not None:
+        return rec_tag
     t = _normalize_type_raw(t)
     if _is_word_type_raw(t):
         return "Word"
@@ -681,7 +747,8 @@ def normalize_type(t: QType) -> QType:
     """Reduces type operator applications so that C representations are chosen from the reduced type.
 
     Applications whose head reduces to a non-recursive type are replaced by that type; applications that
-    reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type.
+    reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type. A recursive
+    type whose unfolding is a tuple type is replaced by that unfolding.
     """
     return lower_type(t).normalized
 
