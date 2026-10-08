@@ -309,13 +309,20 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    typedef struct OffsetDict_Point {
        size_t offset_x;
        size_t offset_y;
+       QRecordStoredTypes stored_types;
    } OffsetDict_Point;
 
    static const OffsetDict_Point offsetdict_Point_Point3D = {
        offsetof(QT_Point3D, qf_x),
-       offsetof(QT_Point3D, qf_y)
+       offsetof(QT_Point3D, qf_y),
+       NULL
    };
    ```
+   The trailing `stored_types` handles depth subtyping without copying. It is `NULL` when the payload stores every
+   field at the view's type for it; otherwise it is an array giving, for each field the payload stores at a
+   different type (a subtype: a `Record inner: Big end` payload viewed as `Record inner: Small end`), that type's
+   descriptor, and `NULL` for the others. Static tables relate only records whose shared fields have equal types, so
+   their `stored_types` is always `NULL`; the runtime fills it in when it builds a table.
    The header records the payload's *layout*, the descriptor of the record type it was created with
    (`&quest_type_QT_Point`); `quest_record_layout(r)` reads it. A value whose static type is `Point` may have a larger
    layout, such as `Point3D`'s.
@@ -341,6 +348,11 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
      ```c
      (*((QFieldType *)((char *)r.val + ((const OffsetDict_Target *)r.dict)->offset_x)))
      ```
+   - Reading an immutable field whose type is a record, variant, option, or nonempty tuple also checks the table's
+     `stored_types`. When it names a type for the field, the value is converted to its view at the field's type
+     with `quest_convert(v, stored, &quest_type_<FieldType>)`: records get the offset table for the view, variants
+     and options their tags in the field's type, and tuples are copied with converted elements. Scalar, `var`, and
+     other fields are read with the single offset load. `quest_record_field_value` does the same for the runtime.
 6. **Storage in Aggregates:**
    - **Tuples:** Tuple fields of record type store `QRecordVal` inline (16 bytes).
    - **Flat Stride Arrays:** `Array(Record)` and `Array(Variant)` store 16-byte elements directly in contiguous

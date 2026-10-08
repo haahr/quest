@@ -253,6 +253,7 @@ class CDeclarationEmitter:
                 else:
                     for f in sorted(t.fields, key=lambda fld: fld.name):
                         lines.append(f"    size_t offset_{f.name};")
+                lines.append("    QRecordStoredTypes stored_types;")
                 lines.append("};")
 
             lines.append("")
@@ -269,14 +270,16 @@ class CDeclarationEmitter:
                 inst_name = self.record_ctx.offset_dict_instance_name(tgt, src)
                 dict_t = self.record_ctx.offset_dict_struct_name(tgt)
                 src_sname = record_struct_name(src, self.record_ctx)
+                # Static tables only relate records whose shared fields have equal types, so no field is stored
+                # at a different type (stored_types is NULL)
                 if not tgt.fields:
-                    lines.append(f"static const {dict_t} {inst_name} = {{ 0 }};")
+                    lines.append(f"static const {dict_t} {inst_name} = {{ 0, NULL }};")
                 else:
                     entries = [
                         f"offsetof({src_sname}, qf_{f.name})"
                         for f in sorted(tgt.fields, key=lambda fld: fld.name)
                     ]
-                    lines.append(f"static const {dict_t} {inst_name} = {{ {', '.join(entries)} }};")
+                    lines.append(f"static const {dict_t} {inst_name} = {{ {', '.join(entries)}, NULL }};")
             lines.append("")
         return lines
 

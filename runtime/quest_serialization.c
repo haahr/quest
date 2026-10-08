@@ -57,26 +57,7 @@ static QPtrNode *quest_ptr_insert_or_inc(QPtrTable *table, const void *ptr) {
 }
 
 static QVal quest_extract_field_val(const QTypeDescriptor *t, const void *ptr) {
-    if (t == NULL || ptr == NULL) return (QVal){ .p = NULL };
-    switch (t->kind) {
-        case QTYPE_KIND_INT:
-        case QTYPE_KIND_BOOL:
-        case QTYPE_KIND_CHAR:
-            return (QVal){ .i = *(const int64_t *)ptr };
-        case QTYPE_KIND_REAL:
-            return (QVal){ .r = *(const double *)ptr };
-        case QTYPE_KIND_RECORD:
-            return (QVal){ .p = (void *)quest_record_box(*(const QRecordVal *)ptr) };
-        case QTYPE_KIND_VARIANT:
-            return (QVal){ .p = (void *)quest_variant_box(*(const QVariantVal *)ptr) };
-        case QTYPE_KIND_STRING:
-        case QTYPE_KIND_ARRAY:
-        case QTYPE_KIND_DYNAMIC:
-        case QTYPE_KIND_TUPLE:
-        case QTYPE_KIND_OPTION:
-        default:
-            return (QVal){ .p = *(void * const *)ptr };
-    }
+    return quest_slot_read(t, ptr);
 }
 
 static void quest_write_raw(QWriter *wr, const char *s) {
@@ -149,7 +130,7 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             if (meta != NULL) {
                 for (size_t i = 0; i < meta->field_count; ++i) {
                     const QRecordFieldDescriptor *f = &meta->fields[i];
-                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + quest_record_field_offset(*rec, i));
+                    QVal f_val = quest_record_field_value(*rec, desc, i);
                     quest_scan_value(f->type, f_val, table);
                 }
             }
@@ -335,7 +316,7 @@ static void quest_emit_value(
                     first = false;
                     quest_write_json_string(wr, f->name, strlen(f->name));
                     quest_writer_put_char(wr, ':');
-                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + quest_record_field_offset(*rec, i));
+                    QVal f_val = quest_record_field_value(*rec, desc, i);
                     quest_emit_value(f->type, f_val, table, next_id, wr);
                 }
             }
@@ -1295,26 +1276,7 @@ static void quest_jsog_preallocate(QJsonValue *node, const QTypeDescriptor *desc
 }
 
 static void quest_write_field_val(const QTypeDescriptor *t, void *ptr, QVal val) {
-    if (t == NULL) return;
-    switch (t->kind) {
-        case QTYPE_KIND_INT:
-        case QTYPE_KIND_BOOL:
-        case QTYPE_KIND_CHAR:
-            *(int64_t *)ptr = val.i;
-            break;
-        case QTYPE_KIND_REAL:
-            *(double *)ptr = val.r;
-            break;
-        case QTYPE_KIND_RECORD:
-            *(QRecordVal *)ptr = *(const QRecordVal *)val.p;
-            break;
-        case QTYPE_KIND_VARIANT:
-            *(QVariantVal *)ptr = *(const QVariantVal *)val.p;
-            break;
-        default:
-            *(void **)ptr = val.p;
-            break;
-    }
+    quest_slot_write(t, ptr, val);
 }
 
 static QVal quest_jsog_decode_value(QJsonValue *node, const QTypeDescriptor *desc, QIdTable *table) {

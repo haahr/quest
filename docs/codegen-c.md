@@ -467,6 +467,9 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
 ### 10.2. Evidence-Passing Record Subtyping
 - **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0, set at
   allocation to the descriptor of the record's layout (`header.descriptor = &quest_type_QT_Point;`).
+- **Polymorphic Call Arguments:** For a call with type arguments, each argument is first coerced to its parameter's
+  type with the type arguments substituted (so `f(:Small big)` passes a `Small` view), then to the generic
+  representation of the parameter.
 - **Offset Table Map:** `main` registers each static `offsetdict_<Target>_<Source>` with
   `quest_register_record_dict(&quest_type_<Target>, &quest_type_<Source>, &offsetdict_<Target>_<Source>)`; tables
   for other (view, layout) pairs are built by the runtime on demand (`quest_record_dict`).

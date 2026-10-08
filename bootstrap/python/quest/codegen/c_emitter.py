@@ -444,10 +444,19 @@ class CEmitter:
             exact_layout = False
         if actual_t is target_type or is_type_equal(actual_t, target_type, self.env):
             return c_expr
-        if exact_layout and isinstance(actual_t, QRecordType):
+        if exact_layout and isinstance(actual_t, QRecordType) and self._has_static_dict(target_type, actual_t):
             d_name = self.record_ctx.offset_dict_instance_name(target_type, actual_t)
             return f"((QRecordVal){{ .val = {c_expr}.val, .dict = (const void *)&{d_name} }})"
         return f"quest_record_view({c_expr}, {self.c_type_descriptor(target_type)})"
+
+    def _has_static_dict(self, view_t: QRecordType, layout_t: QRecordType) -> bool:
+        """True if the program has a static offset table for (view_t, layout_t): one for each width and permutation
+        subtype pair; other views, such as depth subtypes, take their tables from the runtime map."""
+        names = (self.record_ctx.get_or_create_name(view_t), self.record_ctx.get_or_create_name(layout_t))
+        return any(
+            (self.record_ctx.get_or_create_name(v), self.record_ctx.get_or_create_name(l)) == names
+            for v, l in self.needed_dicts
+        )
 
     def _coerce_val(
         self,
@@ -913,8 +922,13 @@ class CEmitter:
         is_ref: bool = False,
         is_out: bool = False,
         writebacks: Optional[list[str]] = None,
+        instantiated_t: Optional[QType] = None,
     ) -> str:
-        """Emits and coerces an argument at a function or closure call site."""
+        """Emits and coerces an argument at a function or closure call site.
+
+        For a polymorphic callee, instantiated_t is the parameter's type with the call's type arguments substituted;
+        the argument is coerced to it before being passed in the formal's (generic) representation.
+        """
         is_ref = (
             is_ref
             or isinstance(actual_a.type_val, (QVarType, QOutType))
@@ -978,7 +992,17 @@ class CEmitter:
                 return self.emit_val(actual_a, lines)
 
         c_a = self.emit_val(actual_a, lines)
+        if instantiated_t is not None and instantiated_t is not formal_t:
+            c_a = self._coerce_val(c_a, actual_a, instantiated_t, lines)
+            return self._coerce_val(c_a, instantiated_t, formal_t, lines)
         return self._coerce_val(c_a, actual_a, formal_t, lines)
+
+    def _call_instantiation(self, fun_type: QType, type_args: Sequence[QType]) -> Optional[dict[int, QType]]:
+        """The substitution of a call's type arguments for the quantifiers of the callee's type, if any."""
+        if not type_args:
+            return None
+        quants, _ = self._collect_fun_quantifiers(fun_type)
+        return {q.symbol_id: t for q, t in zip(quants, type_args)} or None
 
     def _marshal_call_args(
         self,
@@ -986,6 +1010,7 @@ class CEmitter:
         actual_args: Sequence[TypedExpr],
         lines: list[str],
         writebacks: Optional[list[str]] = None,
+        instantiation: Optional[dict[int, QType]] = None,
     ) -> list[str]:
         """Marshals actual arguments against formal parameters, tracking writebacks for ref/out."""
         c_args: list[str] = []
@@ -1002,6 +1027,7 @@ class CEmitter:
                         is_ref=is_r,
                         is_out=is_o,
                         writebacks=writebacks,
+                        instantiated_t=fp.type_val.substitute(instantiation) if instantiation else None,
                     )
                 )
             else:
@@ -1069,7 +1095,11 @@ class CEmitter:
             for targ in type_args:
                 c_args.append(self.c_type_descriptor(targ))
         if isinstance(inner_t, QFunType):
-            c_args.extend(self._marshal_call_args(inner_t.params, args, lines))
+            c_args.extend(
+                self._marshal_call_args(
+                    inner_t.params, args, lines, instantiation=self._call_instantiation(binding.type_val, type_args)
+                )
+            )
         else:
             c_args.extend([self.emit_val(a, lines) for a in args])
 
@@ -1200,7 +1230,37 @@ class CEmitter:
         c_fld_t = self.c_type(fld_t)
         dict_t = self.record_ctx.offset_dict_struct_name(rec_t)
         ptr_expr = f"(({c_fld_t} *)((char *){c_tgt}.val + ((const {dict_t} *){c_tgt}.dict)->offset_{fld}))"
-        return ptr_expr if as_ref else f"(*{ptr_expr})"
+        if as_ref:
+            return ptr_expr
+        sorted_fields = sorted(rec_t.fields, key=lambda f: f.name)
+        index = next(i for i, f in enumerate(sorted_fields) if f.name == fld)
+        if sorted_fields[index].is_var or not self._may_be_stored_as_subtype(fld_t):
+            return f"(*{ptr_expr})"
+        # The payload may store the field at a subtype of fld_t (depth subtyping): the offset table then names that
+        # type, and the value is converted to its view at fld_t
+        val = self.fresh_tmp("_fld")
+        stored = f"((const {dict_t} *){c_tgt}.dict)->stored_types"
+        lines.append(f"{c_fld_t} {val} = *{ptr_expr};")
+        converted = _qval_unwrap(
+            f"quest_convert({_qval_wrap(val, fld_t)}, {stored}[{index}], {self.c_type_descriptor(fld_t)})",
+            fld_t,
+            self,
+        )
+        lines.append(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
+        return val
+
+    def _may_be_stored_as_subtype(self, t: QType) -> bool:
+        """True if a value of type t may be stored in a record field at a different type that is a subtype of t,
+        and so need converting when read: records, variants, options, and nonempty tuples."""
+        t = normalize_type(t)
+        if isinstance(t, QTupleType):
+            return bool(t.value_fields)
+        return (
+            isinstance(t, (QRecordType, QVariantType, QOptionType))
+            or resolve_record_bound(t) is not None
+            or resolve_variant_bound(t) is not None
+            or resolve_option_bound(t) is not None
+        )
 
     def _emit_qval_extract(self, qval_expr: str, elem_t: QType) -> str:
         """Extracts a scalar or pointer expression from a QVal union."""
@@ -2539,6 +2599,7 @@ class CEmitter:
 
                 # Preceding descriptor arguments from type_args
                 descriptor_args = [self.c_type_descriptor(targ) for targ in type_args]
+                instantiation = self._call_instantiation(effective_func.type_val, type_args)
 
                 spec_fname = (
                     effective_func.name
@@ -2582,7 +2643,7 @@ class CEmitter:
                     _, formal_params, _, ret_type = self._collect_fun_params(fun)
                     writebacks: list[str] = []
                     c_args = list(descriptor_args) + self._marshal_call_args(
-                        formal_params, args, lines, writebacks=writebacks
+                        formal_params, args, lines, writebacks=writebacks, instantiation=instantiation
                     )
                     call_str = f"{c_func}({', '.join(c_args)})"
                     return self._process_call_return(
@@ -2613,7 +2674,7 @@ class CEmitter:
                     ret_type = mod_fun_t.result_type if isinstance(mod_fun_t, QFunType) else OK_TYPE
                     writebacks: list[str] = []
                     c_args = list(descriptor_args) + self._marshal_call_args(
-                        formal_params, args, lines, writebacks=writebacks
+                        formal_params, args, lines, writebacks=writebacks, instantiation=instantiation
                     )
                     call_str = f"{c_func}({', '.join(c_args)})"
                     return self._process_call_return(
@@ -2627,7 +2688,7 @@ class CEmitter:
                     formal_ret = inner_formal.result_type if isinstance(inner_formal, QFunType) else OK_TYPE
                     writebacks = []
                     c_args = list(descriptor_args) + self._marshal_call_args(
-                        formal_params, args, lines, writebacks=writebacks
+                        formal_params, args, lines, writebacks=writebacks, instantiation=instantiation
                     )
                     all_c_args = [f"{clos_val}->env"] + c_args
                     call_str = f"(({fn_ptr_t})({clos_val}->fn))({', '.join(all_c_args)})"
@@ -2817,11 +2878,15 @@ class CEmitter:
                     self.emit_to(fld.value, f"{payload_tmp}->qf_{fld.name}", lines)
                 if dest is not None:
                     target_t = t if isinstance(t, QRecordType) else concrete_t
-                    d_name = self.record_ctx.offset_dict_instance_name(target_t, concrete_t)
-                    lines.append(
-                        f"{dest} = (QRecordVal){{ .val = (void *){payload_tmp}, "
-                        f".dict = (const void *)&{d_name} }};"
-                    )
+                    if self._has_static_dict(target_t, concrete_t):
+                        d_name = self.record_ctx.offset_dict_instance_name(target_t, concrete_t)
+                        dict_expr = f"(const void *)&{d_name}"
+                    else:
+                        dict_expr = (
+                            f"quest_record_dict({self.c_type_descriptor(target_t)}, "
+                            f"{self.c_type_descriptor(concrete_t)})"
+                        )
+                    lines.append(f"{dest} = (QRecordVal){{ .val = (void *){payload_tmp}, .dict = {dict_expr} }};")
 
             case TypedFun():
                 linfo = self.lambda_info_by_id[id(expr)]

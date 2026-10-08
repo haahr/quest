@@ -736,12 +736,30 @@ static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDe
     }
 }
 
+/* True if a field stored at type `stored` must be converted to be read at type `viewed` */
+static bool quest_stored_type_differs(const QTypeDescriptor *stored, const QTypeDescriptor *viewed) {
+    if (stored == viewed || stored == NULL || viewed == NULL) return false;
+    switch (viewed->kind) {
+        case QTYPE_KIND_RECORD:
+        case QTYPE_KIND_VARIANT:
+        case QTYPE_KIND_OPTION:
+        case QTYPE_KIND_TUPLE:
+        case QTYPE_KIND_FUN:
+            return !(quest_is_subtype(stored, viewed) && quest_is_subtype(viewed, stored));
+        default:
+            return false;
+    }
+}
+
 static const void *quest_build_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
     if (view->kind != QTYPE_KIND_RECORD || layout->kind != QTYPE_KIND_RECORD) return NULL;
     const QRecordTypeDescriptor *v_meta = (const QRecordTypeDescriptor *)view->extra;
     const QRecordTypeDescriptor *l_meta = (const QRecordTypeDescriptor *)layout->extra;
     size_t n = v_meta != NULL ? v_meta->field_count : 0;
-    size_t *dict = (size_t *)quest_alloc_atomic(sizeof(size_t) * (n > 0 ? n : 1));
+    size_t slots = n > 0 ? n : 1;
+    /* Offsets, then the stored types pointer (see QRecordStoredTypes) */
+    size_t *dict = (size_t *)quest_alloc(sizeof(size_t) * slots + sizeof(QRecordStoredTypes));
+    const QTypeDescriptor **stored_types = NULL;
     dict[0] = 0;
     for (size_t j = 0; j < n; ++j) {
         const char *name = v_meta->fields[j].name;
@@ -754,8 +772,143 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
         }
         if (lf == NULL) return NULL;
         dict[j] = lf->offset;
+        if (quest_stored_type_differs(lf->type, v_meta->fields[j].type)) {
+            if (stored_types == NULL) {
+                stored_types = (const QTypeDescriptor **)quest_alloc(sizeof(const QTypeDescriptor *) * n);
+                memset((void *)stored_types, 0, sizeof(const QTypeDescriptor *) * n);
+            }
+            stored_types[j] = lf->type;
+        }
     }
+    *(QRecordStoredTypes *)(dict + slots) = (QRecordStoredTypes)stored_types;
     return dict;
+}
+
+QVal quest_slot_read(const QTypeDescriptor *t, const void *slot) {
+    if (t == NULL || slot == NULL) return (QVal){ .p = NULL };
+    switch (t->kind) {
+        case QTYPE_KIND_INT:
+        case QTYPE_KIND_BOOL:
+        case QTYPE_KIND_CHAR:
+            return (QVal){ .i = *(const int64_t *)slot };
+        case QTYPE_KIND_REAL:
+            return (QVal){ .r = *(const double *)slot };
+        case QTYPE_KIND_RECORD:
+            return (QVal){ .p = (void *)quest_record_box(*(const QRecordVal *)slot) };
+        case QTYPE_KIND_VARIANT:
+            return (QVal){ .p = (void *)quest_variant_box(*(const QVariantVal *)slot) };
+        default:
+            return (QVal){ .p = *(void * const *)slot };
+    }
+}
+
+void quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v) {
+    if (t == NULL || slot == NULL) return;
+    switch (t->kind) {
+        case QTYPE_KIND_INT:
+        case QTYPE_KIND_BOOL:
+        case QTYPE_KIND_CHAR:
+            *(int64_t *)slot = v.i;
+            break;
+        case QTYPE_KIND_REAL:
+            *(double *)slot = v.r;
+            break;
+        case QTYPE_KIND_RECORD:
+            *(QRecordVal *)slot = *(const QRecordVal *)v.p;
+            break;
+        case QTYPE_KIND_VARIANT:
+            *(QVariantVal *)slot = *(const QVariantVal *)v.p;
+            break;
+        default:
+            *(void **)slot = v.p;
+            break;
+    }
+}
+
+/* Copies the elements of a tuple-shaped block (a tuple, or an option case's payload) from `from` to `to` layout */
+static void quest_convert_elements(const void *src, const QTypeDescriptor *from, void *dst, const QTypeDescriptor *to) {
+    const QTupleTypeDescriptor *f_meta = (const QTupleTypeDescriptor *)from->extra;
+    const QTupleTypeDescriptor *t_meta = (const QTupleTypeDescriptor *)to->extra;
+    if (f_meta == NULL || t_meta == NULL) return;
+    for (size_t i = 0; i < t_meta->element_count && i < f_meta->element_count; ++i) {
+        const QTupleElementDescriptor *fe = &f_meta->elements[i];
+        const QTupleElementDescriptor *te = &t_meta->elements[i];
+        QVal v = quest_slot_read(fe->type, (const char *)src + fe->offset);
+        quest_slot_write(te->type, (char *)dst + te->offset, quest_convert(v, fe->type, te->type));
+    }
+}
+
+/* Option values point to { int64_t tag; union of case payloads } with each payload laid out as its tuple type */
+typedef struct QOptionLayout {
+    int64_t tag;
+    union {
+        QRecordVal r;
+        QVal       v;
+    } u;
+} QOptionLayout;
+
+static QVal quest_convert_option(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    const QVariantTypeDescriptor *f_meta = (const QVariantTypeDescriptor *)from->extra;
+    const QVariantTypeDescriptor *t_meta = (const QVariantTypeDescriptor *)to->extra;
+    const char *src = (const char *)v.p;
+    if (src == NULL || f_meta == NULL || t_meta == NULL) return v;
+    int64_t tag = *(const int64_t *)src;
+    if (tag < 0 || (size_t)tag >= f_meta->case_count) return v;
+    const QVariantCaseDescriptor *fc = &f_meta->cases[tag];
+    const QVariantCaseDescriptor *tc = NULL;
+    for (size_t j = 0; j < t_meta->case_count; ++j) {
+        if (strcmp(t_meta->cases[j].name, fc->name) == 0) {
+            tc = &t_meta->cases[j];
+            break;
+        }
+    }
+    if (tc == NULL) quest_raise_dynamic_error();
+    char *dst = (char *)quest_alloc(to->size > 0 ? to->size : sizeof(QOptionLayout));
+    *(int64_t *)dst = tc->tag_index;
+    size_t payload_offset = offsetof(QOptionLayout, u);
+    if (fc->payload_type != NULL && tc->payload_type != NULL) {
+        if (fc->payload_type->kind == QTYPE_KIND_TUPLE && tc->payload_type->kind == QTYPE_KIND_TUPLE) {
+            quest_convert_elements(src + payload_offset, fc->payload_type, dst + payload_offset, tc->payload_type);
+        } else {
+            QVal p = quest_slot_read(fc->payload_type, src + payload_offset);
+            quest_slot_write(tc->payload_type, dst + payload_offset, quest_convert(p, fc->payload_type, tc->payload_type));
+        }
+    }
+    return (QVal){ .p = dst };
+}
+
+QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    if (from == NULL || to == NULL || from == to || from->kind != to->kind) return v;
+    switch (to->kind) {
+        case QTYPE_KIND_RECORD: {
+            if (v.p == NULL) return v;
+            QRecordVal viewed = quest_record_view(*(const QRecordVal *)v.p, to);
+            if (viewed.dict == NULL) quest_raise_dynamic_error();
+            return (QVal){ .p = (void *)quest_record_box(viewed) };
+        }
+        case QTYPE_KIND_VARIANT:
+            if (v.p == NULL) return v;
+            return (QVal){ .p = (void *)quest_variant_box(quest_variant_adapt(from, to, v)) };
+        case QTYPE_KIND_OPTION:
+            return quest_convert_option(v, from, to);
+        case QTYPE_KIND_TUPLE: {
+            if (v.p == NULL || to->extra == NULL) return v;
+            void *dst = quest_alloc(to->size > 0 ? to->size : sizeof(void *));
+            quest_convert_elements(v.p, from, dst, to);
+            return (QVal){ .p = dst };
+        }
+        default:
+            return v;
+    }
+}
+
+QVal quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i) {
+    const QRecordTypeDescriptor *meta = (const QRecordTypeDescriptor *)view->extra;
+    const QTypeDescriptor *field_type = meta->fields[i].type;
+    QVal v = quest_slot_read(field_type, (const char *)rec.val + quest_record_field_offset(rec, i));
+    QRecordStoredTypes stored = quest_record_stored_types(rec, meta->field_count);
+    if (stored != NULL && stored[i] != NULL) v = quest_convert(v, stored[i], field_type);
+    return v;
 }
 
 const void *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
@@ -845,13 +998,7 @@ QVariantVal quest_variant_adapt(const QTypeDescriptor *sub_desc, const QTypeDesc
                                            : NULL;
     if (sc != NULL && tc != NULL && sc->payload_type != NULL && tc->payload_type != NULL &&
         sc->payload_type != tc->payload_type) {
-        if (tc->payload_type->kind == QTYPE_KIND_RECORD) {
-            QRecordVal adapted_rec = quest_record_view(*(const QRecordVal *)orig_var->payload.p, tc->payload_type);
-            adapted_payload = (QVal){ .p = quest_record_box(adapted_rec) };
-        } else if (tc->payload_type->kind == QTYPE_KIND_VARIANT || tc->payload_type->kind == QTYPE_KIND_OPTION) {
-            QVariantVal adapted_v = quest_variant_adapt(sc->payload_type, tc->payload_type, orig_var->payload);
-            adapted_payload = (QVal){ .p = quest_variant_box(adapted_v) };
-        }
+        adapted_payload = quest_convert(orig_var->payload, sc->payload_type, tc->payload_type);
     }
 
     return (QVariantVal){ .tag = target_tag, .payload = adapted_payload };

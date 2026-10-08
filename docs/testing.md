@@ -65,6 +65,7 @@ tests/
   │   │   ├── existential_packages.quest
   │   │   ├── auto_types.quest
   │   │   ├── record_views.quest
+  │   │   ├── nested_record_views.quest
   │   │   ├── cardelli_syntax.quest
   │   │   ├── cardelli_options.quest
   │   │   └── cardelli_operators.quest

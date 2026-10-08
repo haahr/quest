@@ -484,7 +484,12 @@ QDynamic              *quest_dynamic_copy(const QDynamic *d);
 void                   quest_register_static_type_descriptor(const QTypeDescriptor *desc);
 
 /* Record offset tables (the dict of a QRecordVal): the table for viewing a payload with record layout `layout` at
- * record type `view`. quest_record_dict returns NULL when the layout lacks a field of the view. */
+ * record type `view`. quest_record_dict returns NULL when the layout lacks a field of the view.
+ *
+ * A table is the byte offsets of the view's fields in name order, followed by a QRecordStoredTypes pointer: NULL
+ * when the payload stores every field at the view's type for it, and otherwise, per field, the type the payload
+ * stores it at when that differs (a subtype, by depth subtyping) or NULL. Reads of such a field convert it. */
+typedef const struct QTypeDescriptor *const *QRecordStoredTypes;
 const void            *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout);
 void                   quest_register_record_dict(
     const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict);
@@ -505,6 +510,23 @@ static inline QRecordVal quest_record_view(QRecordVal rec, const QTypeDescriptor
 static inline size_t quest_record_field_offset(QRecordVal rec, size_t i) {
     return ((const size_t *)rec.dict)[i];
 }
+
+/* The stored types of a record value's offset table, for a view with field_count fields (see QRecordStoredTypes) */
+static inline QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_t field_count) {
+    return *(const QRecordStoredTypes *)((const size_t *)rec.dict + (field_count > 0 ? field_count : 1));
+}
+
+/* Values in aggregate slots (record fields, tuple elements, option payloads), in their QVal form: records and
+ * variants boxed, scalars and pointers as they are */
+QVal                   quest_slot_read(const QTypeDescriptor *t, const void *slot);
+void                   quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v);
+
+/* Converts v, a value stored at type `from`, to its subtype view at type `to`: records get the offset table for the
+ * view, variants and options their tags in `to`, and tuples are copied with their elements converted. */
+QVal                   quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to);
+
+/* The i-th field (in name order) of record value rec viewed at record type `view`, converted to the view's type */
+QVal                   quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i);
 
 static inline QRecordVal *quest_record_box(QRecordVal rec) {
     QRecordVal *box = (QRecordVal *)quest_alloc(sizeof(QRecordVal));
