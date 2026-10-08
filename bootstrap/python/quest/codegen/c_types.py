@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
+from quest import shadow
 from quest.types import (
     QAliasType,
     strip_aliases,
@@ -152,12 +153,7 @@ def _beta_reduce_head(t: QType) -> QType:
     return t
 
 
-def normalize_type(t: QType) -> QType:
-    """Reduces type operator applications so that C representations are chosen from the reduced type.
-
-    Applications whose head reduces to a non-recursive type are replaced by that type; applications that
-    reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type.
-    """
+def _normalize_type_raw(t: QType) -> QType:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     if isinstance(t, QTypeApp):
@@ -185,11 +181,10 @@ def resolve_type_bound(t: QType) -> QType:
     return curr
 
 
-def is_word_type(t: QType) -> bool:
-    """Returns True if t is the standard library Word.T type."""
+def _is_word_type_raw(t: QType) -> bool:
     t = t.prune() if hasattr(t, "prune") else t
     t = resolve_type_bound(t)
-    t = normalize_type(t)
+    t = _normalize_type_raw(t)
     if isinstance(t, QTypeVar) and t.name in ("Word.T", "word.T"):
         return True
     if isinstance(t, QPathType) and t.field_name == "T" and t.root_name in ("Word", "word"):
@@ -199,8 +194,7 @@ def is_word_type(t: QType) -> bool:
     return False
 
 
-def type_to_c_tag(t: QType) -> str:
-    """Produces a deterministic, valid C identifier component for a QType."""
+def _type_to_c_tag_uncached(t: QType) -> str:
     raw = _type_to_c_tag_raw(t)
     if len(raw) > 64:
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
@@ -212,8 +206,8 @@ def _type_to_c_tag_raw(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     t = resolve_type_bound(t)
-    t = normalize_type(t)
-    if is_word_type(t):
+    t = _normalize_type_raw(t)
+    if _is_word_type_raw(t):
         return "Word"
     if t is INT_TYPE:
         return "Int"
@@ -334,13 +328,12 @@ class RecordNamingContext:
         return f"offsetdict_{tgt_name}_{src_name}"
 
 
-def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
-    """Maps a semantic Quest QType to its corresponding C scalar or pointer type representation."""
+def _qtype_to_c_type_raw(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     t = resolve_type_bound(t)
-    t = normalize_type(t)
-    if is_word_type(t):
+    t = _normalize_type_raw(t)
+    if _is_word_type_raw(t):
         return "uint64_t"
     if t is INT_TYPE:
         return "QInt"
@@ -383,10 +376,124 @@ def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
         opt_t = t if isinstance(t, QOptionType) else opt_bound
         return f"{option_struct_name(opt_t)} *"
     if isinstance(t, (QVarType, QOutType)):
-        return f"{qtype_to_c_type(t.element_type, ctx)} *"
+        return f"{qtype_to_c_type(t.element_type)} *"
     if isinstance(t, (QTypeVar, QAbstractType, QPathType)):
         return "QVal"
     return "QVal"
+
+
+# ============================================================================
+# Representation lowering
+# ============================================================================
+#
+# A type's C representation (its normalized form, struct tag, C type, and whether it is Word.T)
+# depends only on the type node: the steps that choose it (alias stripping, bound resolution,
+# beta reduction, unfolding) read nothing but the node and its children, and the bounds of type
+# variables and path types are fields of those nodes. Because types are hash-consed, each
+# representation is computed once per canonical node and kept for the whole process. Nodes
+# containing a metavariable are lowered afresh every time, since a later solution can change them.
+
+
+_UNSET = object()
+
+
+class CRepr:
+    """The C representation of one type; each part is computed on first use."""
+
+    __slots__ = ("type", "_normalized", "_tag", "_c_type", "_is_word")
+
+    def __init__(self, t: QType) -> None:
+        self.type = t
+        self._normalized = self._tag = self._c_type = self._is_word = _UNSET
+
+    @property
+    def normalized(self) -> QType:
+        if self._normalized is _UNSET:
+            self._normalized = _normalize_type_raw(self.type)
+        return self._normalized
+
+    @property
+    def tag(self) -> str:
+        if self._tag is _UNSET:
+            self._tag = _type_to_c_tag_uncached(self.type)
+        return self._tag
+
+    @property
+    def c_type(self) -> str:
+        if self._c_type is _UNSET:
+            self._c_type = _qtype_to_c_type_raw(self.type)
+        return self._c_type
+
+    @property
+    def is_word(self) -> bool:
+        if self._is_word is _UNSET:
+            self._is_word = _is_word_type_raw(self.type)
+        return self._is_word
+
+
+_LOWERED: dict[int, CRepr] = {}
+_lowering_cache_enabled = True
+
+SHADOW_C_LOWERING = shadow.register_check(
+    "c-lowering", "recompute every cached C representation without the cache and compare"
+)
+
+
+def lower_type(t: QType) -> CRepr:
+    """Returns the C representation of t, shared by every use of the same canonical type."""
+    t = t.prune() if hasattr(t, "prune") else t
+    if not _lowering_cache_enabled or getattr(t, "_has_meta", True):
+        return CRepr(t)
+    entry = _LOWERED.get(id(t))
+    if entry is None or entry.type is not t:
+        entry = CRepr(t)
+        _LOWERED[id(t)] = entry
+    elif shadow.is_enabled(SHADOW_C_LOWERING):
+        _shadow_check_lowering(entry)
+    return entry
+
+
+def _shadow_check_lowering(cached: CRepr) -> None:
+    """Recomputes, without the cache, every part of a cached representation computed so far."""
+    global _lowering_cache_enabled
+    _lowering_cache_enabled = False
+    try:
+        fresh = CRepr(cached.type)
+        for part in ("normalized", "tag", "c_type", "is_word"):
+            have = getattr(cached, "_" + part)
+            if have is _UNSET:
+                continue
+            want = getattr(fresh, part)
+            if have is not want and (part == "normalized" or have != want):
+                raise shadow.mismatch(
+                    SHADOW_C_LOWERING, f"cached {part} of {cached.type} is {have}, but recomputing gives {want}"
+                )
+    finally:
+        _lowering_cache_enabled = True
+
+
+def normalize_type(t: QType) -> QType:
+    """Reduces type operator applications so that C representations are chosen from the reduced type.
+
+    Applications whose head reduces to a non-recursive type are replaced by that type; applications that
+    reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type.
+    """
+    return lower_type(t).normalized
+
+
+def is_word_type(t: QType) -> bool:
+    """Returns True if t is the standard library Word.T type."""
+    return lower_type(t).is_word
+
+
+def type_to_c_tag(t: QType) -> str:
+    """Produces a deterministic, valid C identifier component for a QType."""
+    return lower_type(t).tag
+
+
+def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
+    """Maps a semantic Quest QType to its corresponding C scalar or pointer type representation."""
+    return lower_type(t).c_type
 
 
 def qtype_to_name_str(t: QType) -> str:

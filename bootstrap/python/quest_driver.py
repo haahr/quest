@@ -28,6 +28,7 @@ from quest.pipeline import (
 )
 from quest.runtime import QOk, qvalue_to_str
 from quest import shadow
+import quest.codegen.c_types  # noqa: F401  (registers the c-lowering shadow check)
 from quest.tokens import SourceMap
 
 
