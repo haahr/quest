@@ -687,10 +687,6 @@ class TypeElaborator:
             case ast.ExprAuto():
                 return self._check_auto_expr(expr, expected_type, env, loop_depth)
 
-            # 11. Statement unwrap (for phrase/statement bodies)
-            case ast.ExprStmt(expr=inner):
-                return self.check_expr(inner, expected_type, env, loop_depth)
-
             # 12. External C symbol binding
             case ast.ExprExternal(symbol=symbol, offset=off):
                 return TypedExternal(symbol=symbol, type_val=expected_type, offset=off)
@@ -920,10 +916,6 @@ class TypeElaborator:
                     "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)",
                     offset=expr.offset,
                 )
-
-            # --- Statement Unwrap ---
-            case ast.ExprStmt(expr=inner):
-                return self.synth_expr(inner, env, loop_depth)
 
             case _:
                 raise TypeError(f"Unsupported AST expression '{expr}'", offset=getattr(expr, "offset", 0))

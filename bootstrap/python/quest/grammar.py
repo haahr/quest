@@ -101,9 +101,12 @@ def _call_args(bindings: tuple[Any, ...]) -> tuple[ast.Expr, ...]:
     return tuple(argument.expr if isinstance(argument, ast.ExprStmt) else argument for argument in bindings)
 
 
-def _body(bindings: tuple[Any, ...], offset: int) -> Any:
-    """A single phrase as-is, or several phrases as a block."""
-    return bindings[0] if len(bindings) == 1 else ast.ExprBlock(bindings=bindings, offset=offset)
+def _body(bindings: tuple[Any, ...], offset: int) -> ast.Expr:
+    """The expression for a body of phrases: a lone expression itself, otherwise a block
+    (including a lone declaration, which is not an expression)."""
+    if len(bindings) == 1 and isinstance(bindings[0], ast.ExprStmt):
+        return bindings[0].expr
+    return ast.ExprBlock(bindings=bindings, offset=offset)
 
 
 def _else_body(else_clause: Optional[tuple[Token, tuple[Any, ...]]]) -> Any:

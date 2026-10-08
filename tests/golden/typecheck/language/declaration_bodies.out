@@ -1,0 +1,104 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'wOut' :type Writer.T
+      :value (TypedSelect 'output' :type Writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'count' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedException 'Never' :type Exception))
+    (TypedExprStmt
+      :expr (TypedIf :type Ok
+        :cond (TypedBool true)
+        :then (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedBlock :type Ok
+                :bindings (
+                  (TypedLetValue 'x' :type Int
+                    :value (TypedInt 1 :type Int))
+                )
+                :result (TypedOk)))
+          )
+          :result (TypedOk))
+        :else (TypedOk)))
+    (TypedExprStmt
+      :expr (TypedIf :type Ok
+        :cond (TypedBool false)
+        :then (TypedOk)
+        :else (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'y' :type Int
+              :value (TypedInt 2 :type Int))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 3 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'z' :type Int
+              :value (TypedVar 'i' :type Int))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedWhile
+        :cond (TypedInfix '<' :type Bool
+          :left (TypedDerefCell :type Int
+            :target (TypedVar 'count' :type Var(Int)))
+          :right (TypedInt 2 :type Int))
+        :body (TypedAssign
+          :target (TypedVar 'count' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'count' :type Var(Int)))
+            :right (TypedInt 1 :type Int)))))
+    (TypedLetType 'Color' :kind TYPE)
+    (TypedLetValue 'c' :type Color
+      :value (TypedOption 'red' :type Color))
+    (TypedExprStmt
+      :expr (TypedCase :type Ok
+        :target (TypedVar 'c' :type Color)
+        :branches (
+          (TypedCaseBranch tags=(red)
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'r' :type Int
+                  :value (TypedInt 1 :type Int))
+              )
+              :result (TypedOk)))
+          (TypedCaseBranch tags=(green)
+            :body (TypedOk))
+        )))
+    (TypedExprStmt
+      :expr (TypedTry :type Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 't' :type Int
+              :value (TypedInt 1 :type Int))
+          )
+          :result (TypedOk))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'Never' :type Exception)
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'u' :type Int
+                  :value (TypedInt 2 :type Int))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'wOut' :type Writer.T)
+          (TypedString 'declaration bodies ok\n' :type String)
+        )))
+  ))
