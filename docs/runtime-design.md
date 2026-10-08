@@ -141,6 +141,10 @@ typedef struct QDynamic {
 } QDynamic;
 ```
 
+Auto values (Cardelli's `auto :T with ... end`) use the same envelope: `type_desc` describes the type component and
+`payload` points to the tuple of components; `inspect` matches branch types against `type_desc` with
+`quest_is_subtype` and adapts components with `quest_dynamic_be`. See [c-representation.md](c-representation.md) §8.1.
+
 ### 1. Hybrid Descriptor Architecture
 - **Compile-time Static Descriptors (.rodata):** Closed types generated during compilation are emitted as
   `static const QTypeDescriptor quest_type_<tag> Q_UNUSED` with static payload structs (`qrec_desc_*`, `qtup_desc_*`,

@@ -889,6 +889,35 @@ static_assert(sizeof(QDynamic) == 16, qdynamic_must_be_16_bytes);
 - `dynamic.intern(r)` compiles via standard `TypedNativeBinding` to `quest_dynamic_intern(r)`.
 - `dynamic.error` lowers to `(&quest_exc_dynamic_error)`.
 
+### 8.1. Auto Values
+
+An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) is also a `QDynamic *`: `type_desc` is
+the descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
+stored in a layout that does not depend on the type component, that of `Tuple S end` with `A` an abstract type of
+kind `K` (`auto_payload_type(auto_t)`). As for any abstract type, a component of type `A` is a `QVal`, or the
+representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a `QRecordVal`); components
+of other types that mention `A`, such as `show(:A):String`, take the generic form too (here a closure taking a
+`QVal`). Auto types have opaque descriptors `quest_type_Auto_<tag>`, where the tag is that of the stored layout.
+
+- **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
+  with the static tuple coercion (`_coerce_tuple_val`: boxing to `QVal`, closure adapters), and calls
+  `quest_dynamic_new(descriptor_T, payload)`.
+- **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. When every stored component has
+  the representation of the corresponding `S[T/A]` component, or is a `QVal` holding a scalar or pointer of that
+  type, the binder is the stored struct itself, cast to the `Tuple S[T/A] end` struct, so updates of `var`
+  components are shared with the auto value. Otherwise the binder is a converted copy; this is rejected with an
+  error for signatures with `var` components, whose updates would be lost (for example `Auto A::TYPE with a:A var
+  n:Int end` inspected at a record type: give the auto type a bound, `A<:Object`, so that records are stored
+  unboxed).
+- **Inspect, subtype match** (signatures where `A` is only the whole type of immutable components): a branch tests
+  `quest_is_subtype(d->type_desc, descriptor_T)`; the binder is a fresh `Tuple S[T/A] end` struct whose `A`
+  components are converted from the type component to `T` with `quest_dynamic_be` (record and variant adaptation,
+  as for `dynamic.be`) and whose other components are copied.
+- **No match:** without an `else` branch, `quest_raise_dynamic_error()`.
+- **Auto subtyping:** converting `Auto A::K1 with S1 end` to `Auto B::K2 with S2 end` re-stores the payload with
+  `_coerce_tuple_val` from the `S1` layout to the `S2` layout, keeping the type descriptor, when the two stored
+  layouts differ; otherwise the pointer is reused.
+
 ---
 
 ## 9. Memory Management Abstraction & `--nogc` Support

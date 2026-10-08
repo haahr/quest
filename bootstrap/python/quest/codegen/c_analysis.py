@@ -42,6 +42,7 @@ from quest.types import (
     QAllType,
     QKind,
     QArrayType,
+    QAutoType,
     QFunType,
     QOptionType,
     QOutType,
@@ -58,6 +59,7 @@ from quest.types import (
     resolve_variant_bound,
     resolve_option_bound,
     is_type_equal,
+    auto_payload_type,
 )
 
 
@@ -401,6 +403,9 @@ def collect_aggregate_types(
             if name not in visited_names:
                 visited_names.add(name)
                 result.append((name, opt_t))
+        elif isinstance(t, QAutoType):
+            # Auto payloads are stored in the witness-independent layout
+            visit_type(auto_payload_type(t))
         elif isinstance(t, QVariantType):
             if not any(v is t or is_type_equal(v, t) for v in variant_types):
                 variant_types.append(t)

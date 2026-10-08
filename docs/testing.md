@@ -63,6 +63,7 @@ tests/
   │   │   ├── subtyping_coercions.quest
   │   │   ├── exceptions_try_when.quest
   │   │   ├── existential_packages.quest
+  │   │   ├── auto_types.quest
   │   │   ├── cardelli_syntax.quest
   │   │   ├── cardelli_options.quest
   │   │   └── cardelli_operators.quest

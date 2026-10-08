@@ -17,6 +17,7 @@ from quest.types import (
     QAbstractType,
     QAllType,
     QArrayType,
+    QAutoType,
     QExceptionType,
     QExternalType,
     QFunType,
@@ -43,6 +44,7 @@ from quest.types import (
     resolve_variant_bound,
     resolve_option_bound,
     is_type_equal,
+    auto_payload_type,
 )
 
 SYMBOL_MANGLE_MAP: dict[str, str] = {
@@ -260,6 +262,8 @@ def _type_to_c_tag_raw(t: QType) -> str:
         return "QVariant_" + ("_".join(tags) if tags else "empty")
     if isinstance(t, QExceptionType):
         return "QException"
+    if isinstance(t, QAutoType):
+        return "Auto_" + type_to_c_tag(auto_payload_type(t))
     if isinstance(t, QOptionType) or (opt_bound := resolve_option_bound(t)) is not None:
         opt_t = t if isinstance(t, QOptionType) else opt_bound
         tags = []
@@ -355,6 +359,9 @@ def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
     if t is OK_TYPE:
         return "void"
     if t is DYNAMIC_TYPE or (isinstance(t, QTypeVar) and t.name == "Dynamic.T"):
+        return "QDynamic *"
+    if isinstance(t, QAutoType):
+        # An auto value is represented like a Dynamic: its type component's descriptor and its payload
         return "QDynamic *"
     if isinstance(t, QExternalType):
         return t.c_type

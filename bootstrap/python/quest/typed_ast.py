@@ -12,6 +12,7 @@ from quest.types import (
     INT_TYPE,
     OK_TYPE,
     QArrayType,
+    QAutoType,
     QFunType,
     QKind,
     QOptionType,
@@ -513,6 +514,21 @@ class TypedOption(TypedExpr):
 
 
 @dataclass(frozen=True)
+class TypedAuto(TypedExpr):
+    """Auto value: auto :W with Binding end, packaging the payload with its type component W."""
+    witness_type: QType
+    auto_type: QAutoType
+    payload: TypedExpr
+    type_val: QType
+
+    def dump_header(self) -> str:
+        return f":{self.witness_type}"
+
+    def dump_children(self) -> list[tuple[str, Any]]:
+        return [(":payload", self.payload)]
+
+
+@dataclass(frozen=True)
 class TypedVariantCheck(TypedExpr):
     """Variant/Option tag check: target?tag."""
     target: TypedExpr
@@ -572,13 +588,17 @@ class TypedCase(TypedExpr):
 
 @dataclass(frozen=True)
 class TypedInspectBranch(TypedNode):
-    """A branch in a dynamic type inspection: when Type => body."""
+    """A branch in a dynamic type inspection: when Type => body.
+
+    The branch is selected when the inspected type is a subtype of match_type, or, if exact, equal to it.
+    """
     match_type: QType
     binders: tuple[ValueSymbol, ...]
     body: TypedExpr
+    exact: bool = False
 
     def dump_header(self) -> str:
-        return f"match={self.match_type}"
+        return f"match={self.match_type}" + (" exact" if self.exact else "")
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":body", self.body)]
@@ -586,11 +606,12 @@ class TypedInspectBranch(TypedNode):
 
 @dataclass(frozen=True)
 class TypedInspect(TypedExpr):
-    """Dynamic type inspection (inspect target ...)."""
+    """Type inspection (inspect target ...) of a Dynamic or, when auto_type is set, an auto value."""
     target: TypedExpr
     branches: tuple[TypedInspectBranch, ...]
     type_val: QType
     else_branch: Optional[TypedExpr] = None
+    auto_type: Optional[QAutoType] = None
 
     def dump_children(self) -> list[tuple[str, Any]]:
         children: list[tuple[str, Any]] = [(":target", self.target), (":branches", self.branches)]

@@ -1164,6 +1164,26 @@ def build_quest_grammar() -> None:
         ),
     )
 
+    # auto [let ide [HasKind] =] : Type with Binding end
+    PRIMARY_VALUE.add_rule(
+        (
+            T(TK.KW_AUTO),
+            Opt(T(TK.KW_LET), T(TK.IDENT), Opt(HAS_KIND), T(TK.EQUAL)),
+            T(TK.COLON),
+            TYPE,
+            T(TK.KW_WITH),
+            Opt(BINDING),
+            T(TK.KW_END),
+        ),
+        lambda auto_token, witness_decl, colon_token, witness_type, with_token, bindings, end_token: ast.ExprAuto(
+            witness_type=witness_type,
+            payload=ast.ExprTuple(fields=_process_tuple_bindings(bindings or ()), offset=with_token.offset),
+            witness_name=witness_decl[1].lexeme if witness_decl else None,
+            witness_bound=witness_decl[2] if witness_decl else None,
+            offset=auto_token.offset,
+        ),
+    )
+
     # case Binding CaseBranches end
     PRIMARY_VALUE.add_rule(
         (T(TK.KW_CASE), VALUE, CASE_BRANCHES, T(TK.KW_END)),

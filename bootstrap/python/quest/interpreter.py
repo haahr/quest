@@ -27,6 +27,7 @@ from quest.runtime import (
     QBool,
     QBuiltinFun,
     QChar,
+    QAutoVal,
     QClosure,
     QDynamicVal,
     QExceptionVal,
@@ -55,6 +56,7 @@ from quest.types import (
     EXCEPTION_TYPE,
     INT_TYPE,
     OK_TYPE,
+    QAutoType,
     QOptionType,
     QTupleType,
     QTupleTypeFormal,
@@ -65,7 +67,9 @@ from quest.types import (
     QType,
     REAL_TYPE,
     STRING_TYPE,
+    auto_payload_type,
     is_subtype,
+    is_type_equal,
 )
 from quest.typed_ast import (
     TypedApp,
@@ -92,6 +96,7 @@ from quest.typed_ast import (
     TypedIndexRef,
     TypedInfix,
     TypedImport,
+    TypedAuto,
     TypedInspect,
     TypedInspectBranch,
     TypedInterface,
@@ -867,6 +872,9 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             p_val = eval_expr(payload, env) if payload is not None else None
             return QVariant(tag=tag, payload=p_val)
 
+        case TypedAuto(witness_type=witness_type, payload=payload):
+            return QAutoVal(eval_expr(payload, env), witness_type)
+
         case TypedOption(
             tag=tag, payload=payload, ordinal=ordinal, ordinal_expr=ordinal_expr, type_val=type_val, offset=offset
         ):
@@ -1011,7 +1019,11 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     offset=offset,
                 )
             for branch in branches:
-                if is_subtype(target_dyn.type_val, branch.match_type):
+                if (
+                    is_type_equal(target_dyn.type_val, branch.match_type)
+                    if branch.exact
+                    else is_subtype(target_dyn.type_val, branch.match_type)
+                ):
                     if branch.binders:
                         child_env = env.push_scope()
                         for b_sym in branch.binders:
@@ -1167,6 +1179,11 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
         if val.bound:
             return f"<Hidden>::{val.bound}"
         return "<Hidden>::TYPE"
+
+    if isinstance(val, QAutoVal) and isinstance(typ, QAutoType):
+        components = format_value_with_type(val.value, auto_payload_type(typ, val.type_val))
+        components = components.removeprefix("tuple").removesuffix("end").strip()
+        return f"auto :{val.type_val} with {components} end" if components else f"auto :{val.type_val} with end"
 
     if isinstance(val, QTuple) and isinstance(typ, QTupleType):
         parts: list[str] = []

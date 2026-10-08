@@ -28,6 +28,7 @@ from quest.types import (
     QAbstractType,
     QAllType,
     QArrayType,
+    QAutoType,
     QExternalType,
     QFunType,
     QOptionType,
@@ -406,6 +407,12 @@ class CDeclarationEmitter:
                 return
             if isinstance(t, (QFunType, QAllType)):
                 tag = f"fun_{type_to_c_tag(t)}"
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    opaques.append((tag, str(t)))
+                return
+            if isinstance(t, QAutoType):
+                tag = type_to_c_tag(t)
                 if tag not in seen_tags:
                     seen_tags.add(tag)
                     opaques.append((tag, str(t)))

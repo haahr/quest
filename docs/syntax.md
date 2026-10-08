@@ -49,9 +49,9 @@ coordinates on demand:
    - Reserved keywords must be written in exact casing:
       - Level 0/Value/Phrase keywords are lowercase: `let`, `var`, `out`, `fun`, `if`, `then`, `else`, `try`,
         `raise`, `not`, `extent`, `ordinal`, `of`, `for`, `while`, `loop`, `exit`, `case`, `inspect`,
-        `interface`, `module`, `import`, `export`, `unsound`, `external`.
+        `auto`, `interface`, `module`, `import`, `export`, `unsound`, `external`.
      - Level 1/2 capital keywords are capitalized: `Let`, `Rec`, `All`, `Tuple`, `Record`, `Option`, `Variant`,
-       `Array`, `Var`, `Out`, `TYPE`, `POWER`, `DEF`, `ALL`.
+       `Auto`, `Array`, `Var`, `Out`, `TYPE`, `POWER`, `DEF`, `ALL`.
      - Note the distinction between parameter mode `out` (lowercase) and type operator `Out` (capitalized).
 3. **Symbolic Identifiers & Operators (`SYMBOLIC_INFIX`):**
    - Composed of characters from `!@#$%&*_+=-|\`:<>/?^~`.
@@ -154,7 +154,22 @@ symbols:
 - **External Values (`PRIMARY_VALUE`):** `let x: Type = external "C_SYMBOL"`.
   Binds `x` to a C runtime symbol or constant (e.g. `let stdout: Handle = external "quest_writer_output"`).
 
-### 3.9. Initial/Final Keyword Block Disambiguation
+### 3.9. Auto Values and Inspect
+Auto types and values follow Cardelli's grammar (*Typeful Programming* §4.6, §6.7, and the value grammar in its
+appendix):
+- **Auto Type (`PRIMARY_TYPE`):** `Auto A HasKind with Signature end`, e.g. `Auto A::TYPE with fst,snd:A end` or
+  `Auto A<:Object with a:A end`.
+- **Auto Value (`PRIMARY_VALUE`):** `auto [let A [HasKind] =] :Type with Binding end`, e.g.
+  `auto :Bool with false true end`. The type after the colon is the value's type component; the binding supplies
+  its components, positionally or by name, like a tuple's. The optional `let A [HasKind] =` names the type component
+  inside the binding (`auto let T = :String with let x:T = "hi" end`) and may restate a kind it must have.
+- **Inspect (`PRIMARY_VALUE`):** `inspect Value {when Type [with IdeList [:Type]] then Binding} [else Binding] end`
+  discriminates on the type component of an auto value (or on the type in a `Dynamic`). The identifiers after
+  `with` are bound to the components; an optional `:Type` gives them a supertype.
+
+See [type-system.md](type-system.md) §6.11 for the typing rules.
+
+### 3.10. Initial/Final Keyword Block Disambiguation
 Complex expressions (conditionals, loops, records, tuples, options) employ explicit terminating keywords:
 - `if ... then ... else ... end`
 - `while ... do ... end`
@@ -195,6 +210,8 @@ ASTNode
   │     ├── ExprVariantCheck  (target?tag)
   │     ├── ExprVariantAssert (target!tag)
   │     ├── ExprCase          (case target when ... else ... end)
+  │     ├── ExprAuto          (auto [let A [HasKind] =] :T with Binding end)
+  │     ├── ExprInspect       (inspect target when T with x then ... else ... end)
   │     ├── ExprDerefCell     (@target)
   │     └── ExprVarCell       (var(e))
   ├── Type                    (Level 1 types and type operators)
@@ -202,6 +219,7 @@ ASTNode
   │     ├── TypeTuple         (Tuple x:Int, y:Real end)
   │     ├── TypeRecord        (Record x:Int, y:Real end)
   │     ├── TypeOption        (Option red, green with v:Int end)
+  │     ├── TypeAuto          (Auto A<:B with a:A end)
   │     ├── TypeAll           (All(X <: B) T)
   │     ├── TypeFun           (Fun(X::K) T)
   │     └── TypeRec           (Rec(X <: B) T)

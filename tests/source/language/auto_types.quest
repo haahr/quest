@@ -1,0 +1,113 @@
+(* Language: Cardelli §4.6 Auto types and §6.7 Auto subtypes *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printStr(s: String): Ok =
+    begin
+        writer.putString(wOut s);
+        writer.putString(wOut "\n")
+    end;
+let printBool(b: Bool): Ok = printStr(if b then "true" else "false" end);
+
+(* 1. §4.6 UniformPair: an auto value carries its type component; inspect discriminates on it *)
+Let UniformPair = Auto A::TYPE with fst,snd:A end;
+let p: UniformPair = auto :Bool with false true end;
+let q: UniformPair = auto :Int with 6 7 end;
+let r: UniformPair = auto :String with "a" "b" end;
+
+let truthy(b: UniformPair): Bool =
+    inspect b
+    when Bool with arm then arm.fst \/ arm.snd
+    when Int with arm then {arm.fst * arm.snd} isnot 0
+    end;
+printBool(truthy(p));
+printBool(truthy(q));
+
+(* 2. Inspect with an else branch *)
+let describe(b: UniformPair): String =
+    inspect b
+    when Int with arm then conv.int(arm.fst + arm.snd)
+    when String with arm then arm.fst <> arm.snd
+    else "other"
+    end;
+printStr(describe(q));
+printStr(describe(r));
+printStr(describe(p));
+
+(* 3. Without a matching branch or an else branch, inspect raises dynamic.error *)
+let safeTruthy(b: UniformPair): String =
+    try
+        if truthy(b) then "true" else "false" end
+    when dynamic.error then "no branch"
+    end;
+printStr(safeTruthy(r));
+
+(* 4. §6.7 Auto with a subtype bound: branches select by subtyping (AnyObject) *)
+Let Object = Record age: Int end;
+Let Vehicle = Record age: Int speed: Int end;
+Let Car = Record age: Int speed: Int fuel: String end;
+Let AnyObject = Auto A<:Object with a:A end;
+let myCar: Car = record age = 3 speed = 120 fuel = "diesel" end;
+let aCar: AnyObject = auto :Car with myCar end;
+let aVehicle: AnyObject = auto :Vehicle with record speed = 50 age = 1 end end;
+let anObject: AnyObject = auto :Object with record age = 9 end end;
+
+let classify(x: AnyObject): String =
+    inspect x
+    when Car with c then "car using " <> c.a.fuel
+    when Vehicle with v then "vehicle at " <> conv.int(v.a.speed)
+    else "object aged " <> conv.int(inspect x when Object with o then o.a.age end)
+    end;
+printStr(classify(aCar));
+printStr(classify(aVehicle));
+printStr(classify(anObject));
+
+(* 5. Components whose types use the type component other than directly select only on an exact match *)
+Let Showable = Auto A::TYPE with x:A show(:A):String end;
+let s1: Showable = auto :Int with 42 fun(n: Int): String conv.int(n) end;
+let s2: Showable = auto let T = :String with let x: T = "hi" let show(s: T): String = s <> "!" end;
+let showIt(s: Showable): String =
+    inspect s
+    when Int with i then "int " <> i.show(i.x + 1)
+    when String with t then "string " <> t.show(t.x)
+    else "?"
+    end;
+printStr(showIt(s1));
+printStr(showIt(s2));
+
+(* 6. Auto subtyping: a narrower kind bound and covariant components *)
+Let AnyCar = Auto A<:Car with a:A spare:Car end;
+Let AnyObjectWithSpare = Auto A<:Object with a:A spare:Object end;
+let carWithSpare: AnyCar = auto :Car with myCar myCar end;
+let objectWithSpare: AnyObjectWithSpare = carWithSpare;
+printStr(
+    inspect objectWithSpare
+    when Vehicle with v then conv.int(v.a.speed + v.spare.age)
+    else "no vehicle"
+    end
+);
+
+(* 7. Any closed type can be the type component, and an inspect binder may be given a supertype *)
+Let Boxed = Auto A::TYPE with a:A end;
+let pairBox: Boxed = auto :Tuple x,y:Int end with tuple let x = 1 let y = 2 end end;
+printStr(
+    inspect pairBox
+    when Tuple x,y:Int end with b: Tuple a: Tuple x:Int end end then conv.int(b.a.x)
+    else "?"
+    end
+);
+
+(* 8. Var components are shared with the auto value (and make inspect match exactly) *)
+Let Counter = Auto A<:Object with a:A var count:Int end;
+let counter: Counter = auto :Car with let a = myCar let var count = 0 end;
+let bump(c: Counter): Ok =
+    inspect c
+    when Car with x then x.count := x.count + x.a.age
+    when Object with x then x.count := x.count + 1
+    end;
+bump(counter);
+bump(counter);
+printStr(inspect counter when Car with x then conv.int(x.count) else "?" end);

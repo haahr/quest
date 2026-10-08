@@ -43,6 +43,7 @@ from quest.typed_ast import (
     TypedArray,
     TypedArrayRep,
     TypedAssign,
+    TypedAuto,
     TypedBinding,
     TypedBlock,
     TypedBool,
@@ -111,6 +112,7 @@ from quest.types import (
     QAbstractType,
     QAllType,
     QArrayType,
+    QAutoType,
     QExceptionType,
     QExternalType,
     QFunType,
@@ -132,6 +134,7 @@ from quest.types import (
     resolve_variant_bound,
     resolve_option_bound,
     is_type_equal,
+    auto_payload_type,
 )
 
 
@@ -323,6 +326,8 @@ class CEmitter:
         if isinstance(t, (QFunType, QAllType)):
             tag = f"fun_{type_to_c_tag(t)}"
             return f"(&quest_type_{tag})"
+        if isinstance(t, QAutoType):
+            return f"(&quest_type_{type_to_c_tag(t)})"
         return "&quest_type_EmptyTuple"
 
     def record_struct_name(self, t: QRecordType) -> str:
@@ -474,6 +479,27 @@ class CEmitter:
             and not is_type_equal(src_type, target_type, self.env)
         ):
             return self._coerce_tuple_val(c_val, src_type, target_type, lines, dest=dest)
+
+        # 3b. Auto subtyping: convert the stored payload between the two witness-independent layouts
+        if (
+            isinstance(target_type, QAutoType)
+            and isinstance(src_type, QAutoType)
+            and src_type is not target_type
+        ):
+            src_payload_t = auto_payload_type(src_type)
+            tgt_payload_t = auto_payload_type(target_type)
+            if tuple_struct_name(src_payload_t) != tuple_struct_name(tgt_payload_t):
+                src_tmp = self.fresh_tmp("_auto_src")
+                lines.append(f"const QDynamic *{src_tmp} = {c_val};")
+                src_struct = tuple_struct_name(src_payload_t)
+                payload = self._coerce_tuple_val(
+                    f"(({src_struct} *){src_tmp}->payload.p)", src_payload_t, tgt_payload_t, lines
+                )
+                c_val = f"quest_dynamic_new({src_tmp}->type_desc, {_qval_wrap(payload, tgt_payload_t)})"
+            if dest is not None:
+                lines.append(f"{dest} = {c_val};")
+                return dest
+            return c_val
 
         # 4. Variant subtyping
         if (
@@ -1377,7 +1403,9 @@ class CEmitter:
                     )
                 )
 
-        # 8. Function definitions for top-level functions
+        # 8. Function definitions for top-level functions (preceded by declarations of the closure
+        # adapters they use, which are only known once the definitions have been emitted)
+        adapter_decls_index = len(lines)
         if top_funs:
             lines.append("/* Function definitions */")
             for name, fun, _sym in top_funs:
@@ -1481,6 +1509,11 @@ class CEmitter:
         ])
 
         if self.adapter_defs:
+            lines[adapter_decls_index:adapter_decls_index] = [
+                "/* Static forward declarations for closure adapters */",
+                *self.adapter_decls,
+                "",
+            ]
             lines.append("/* Closure adaptation thunks for existential packages */")
             lines.extend(self.adapter_defs)
 
@@ -2327,6 +2360,16 @@ class CEmitter:
             case TypedCase() | TypedInspect():
                 return self._materialize_to_temp(expr, lines, prefix="_case_res", zero_init=True)
 
+            case TypedAuto(witness_type=witness, auto_type=auto_t, payload=payload):
+                # The payload is stored in the witness-independent layout, next to the witness's descriptor
+                c_payload = self.emit_val(payload, lines)
+                stored_t = auto_payload_type(auto_t)
+                payload_t = normalize_type(payload.type_val)
+                if isinstance(payload_t, QTupleType):
+                    c_payload = self._coerce_tuple_val(c_payload, payload_t, stored_t, lines)
+                desc = self.c_type_descriptor(witness)
+                return f"quest_dynamic_new({desc}, {_qval_wrap(c_payload, stored_t)})"
+
             case TypedSelect(target=tgt, field=fld):
                 if isinstance(tgt, TypedVar) and tgt.name in self.all_modules:
                     mod = self.all_modules[tgt.name]
@@ -3081,6 +3124,9 @@ class CEmitter:
                 lines.append("    }")
                 lines.append("}")
 
+            case TypedInspect(auto_type=auto_t) if auto_t is not None:
+                self._emit_auto_inspect(expr, auto_t, dest, lines)
+
             case TypedInspect(target=tgt, branches=branches, else_branch=else_b, type_val=t):
                 c_tgt = self.emit_val(tgt, lines)
                 if not c_tgt.isidentifier():
@@ -3128,6 +3174,109 @@ class CEmitter:
                     lines.append(f"{dest} = {val};")
                 elif val != "((void)0)":
                     lines.append(f"{val};")
+
+    def _emit_auto_inspect(
+        self, expr: TypedInspect, auto_t: QAutoType, dest: Optional[str], lines: list[str]
+    ) -> None:
+        """Lowers an inspect on an auto value: tests the stored type descriptor against each branch type
+        and converts the stored payload to the branch's signature S[T] for the binders."""
+        stored_t = auto_payload_type(auto_t)
+        stored_struct = tuple_struct_name(stored_t)
+        tgt = self.fresh_tmp("_insp_auto")
+        lines.append(f"const QDynamic *{tgt} = {self.emit_val(expr.target, lines)};")
+        stored = self.fresh_tmp("_insp_payload")
+        lines.append(f"{stored_struct} *{stored} = ({stored_struct} *){tgt}->payload.p;")
+        for i, branch in enumerate(expr.branches):
+            match_desc = self.c_type_descriptor(branch.match_type)
+            cond = f"quest_is_subtype({tgt}->type_desc, {match_desc})"
+            if branch.exact:
+                cond = f"{cond} && quest_is_subtype({match_desc}, {tgt}->type_desc)"
+            lines.append(f"{'if' if i == 0 else '} else if'} ({cond}) {{")
+            branch_lines: list[str] = []
+            if branch.binders:
+                arm_t = auto_payload_type(auto_t, branch.match_type)
+                if branch.exact and self._auto_payload_layouts_agree(stored_t, arm_t):
+                    # The binders share the stored components (and so see updates of var components)
+                    c_arm = f"(({tuple_struct_name(arm_t)} *){stored})"
+                elif branch.exact:
+                    if any(f.is_var for f in auto_t.signature):
+                        raise NotImplementedError(
+                            f"C code generation cannot inspect an auto value of type '{auto_t}' at type "
+                            f"'{branch.match_type}': its components need conversion, so the var components "
+                            f"could not be shared with the auto value"
+                        )
+                    c_arm = self._coerce_tuple_val(stored, stored_t, arm_t, branch_lines)
+                else:
+                    c_arm = self._emit_auto_arm_by_subtype(
+                        auto_t, stored, stored_t, arm_t, tgt, match_desc, branch_lines
+                    )
+                for b_sym in branch.binders:
+                    c_b_type = self.c_type(b_sym.type_val)
+                    b_val = self._coerce_val(c_arm, arm_t, b_sym.type_val, branch_lines)
+                    branch_lines.append(f"{c_b_type} {mangle_ident(b_sym.name)} = {b_val};")
+            self.emit_to(branch.body, dest, branch_lines)
+            _append_block(lines, branch_lines)
+        if expr.branches:
+            lines.append("} else {")
+        default_lines: list[str] = []
+        if expr.else_branch is not None:
+            self.emit_to(expr.else_branch, dest, default_lines)
+        else:
+            default_lines.append("quest_raise_dynamic_error();")
+        if expr.branches:
+            _append_block(lines, default_lines)
+            lines.append("}")
+        else:
+            lines.extend(default_lines)
+
+    def _auto_payload_layouts_agree(self, stored_t: QTupleType, arm_t: QTupleType) -> bool:
+        """True if a stored auto payload can be read in place through the arm's struct type: each
+        component has the same representation, or is stored as a QVal holding a scalar or pointer."""
+        for stored_f, arm_f in zip(stored_t.value_fields, arm_t.value_fields):
+            stored_c, arm_c = self.c_type(stored_f.type_val), self.c_type(arm_f.type_val)
+            if stored_c == arm_c:
+                if isinstance(arm_f.type_val, (QFunType, QAllType)) and (
+                    _closure_fn_ptr_type(stored_f.type_val, self.record_ctx)
+                    != _closure_fn_ptr_type(arm_f.type_val, self.record_ctx)
+                ):
+                    return False
+            elif stored_c != "QVal" or arm_c in ("QRecordVal", "QVariantVal", "void"):
+                return False
+        return True
+
+    def _emit_auto_arm_by_subtype(
+        self,
+        auto_t: QAutoType,
+        stored: str,
+        stored_t: QTupleType,
+        arm_t: QTupleType,
+        tgt: str,
+        match_desc: str,
+        lines: list[str],
+    ) -> str:
+        """Builds the components S[T] of an auto value whose type component is a subtype of T.
+
+        The type parameter occurs only as the whole type of components (auto_matches_subtypes); each
+        such component is converted from the auto value's own type to T as dynamic.be does, and the
+        other components are copied unchanged.
+        """
+        arm_struct = tuple_struct_name(arm_t)
+        arm = self.fresh_tmp("_insp_arm")
+        lines.append(f"{arm_struct} *{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
+        for i, (sig_f, stored_f, arm_f) in enumerate(
+            zip(auto_t.signature, stored_t.value_fields, arm_t.value_fields)
+        ):
+            src = f"{stored}->_{i}"
+            if auto_t.symbol_id in sig_f.type_val._fv:
+                as_qval = src if self.c_type(stored_f.type_val) == "QVal" else _qval_wrap(src, stored_f.type_val)
+                viewed = (
+                    f"quest_dynamic_be({match_desc}, "
+                    f"&(QDynamic){{ .type_desc = {tgt}->type_desc, .payload = {as_qval} }})"
+                )
+                lines.append(f"{arm}->_{i} = {_qval_unwrap(viewed, arm_f.type_val, self)};")
+            else:
+                lines.append(f"{arm}->_{i} = {src};")
+        return arm
 
     def _emit_infix(
         self,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, Optional, Union
@@ -16,8 +18,10 @@ from quest.types import (
     INFIX_OPERATORS,
     INT_TYPE,
     OK_TYPE,
+    QAbstractType,
     QAllType,
     QArrayType,
+    QAutoType,
     QBottomType,
     QExceptionType,
     QFunType,
@@ -58,6 +62,9 @@ from quest.types import (
     resolve_record_bound,
     resolve_variant_bound,
     resolve_option_bound,
+    auto_matches_subtypes,
+    auto_payload_type,
+    strip_aliases,
 )
 from quest.env import (
     Environment,
@@ -112,6 +119,7 @@ from quest.typed_ast import (
     TypedInfix,
     TypedImport,
     TypedImportItem,
+    TypedAuto,
     TypedInspect,
     TypedInspectBranch,
     TypedInterface,
@@ -148,6 +156,41 @@ from quest.typed_ast import (
 
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
+
+
+def _inspected_auto_type(target: TypedExpr, env: Environment) -> Optional[QAutoType]:
+    """The auto type of an inspect target, or None for a Dynamic target."""
+    target_type = target.type_val.evaluate_lazily(env)
+    return target_type if isinstance(target_type, QAutoType) else None
+
+
+def _describe_kind(k: QKind) -> str:
+    """Formats a kind as written in a HasKind clause: <: T for POWER(T), :: K otherwise."""
+    if isinstance(k, QPowerKind):
+        return f"<: {k.bound}"
+    return f":: {k}"
+
+
+def _type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
+    """The type variables in t (a type stripped of aliases) whose symbol ids are in ids."""
+    found: list[Any] = []
+    seen: set[int] = set()
+
+    def visit(node: Any) -> None:
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in ids:
+            found.append(node)
+        if isinstance(node, (tuple, list)):
+            for item in node:
+                visit(item)
+        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+            for f in dataclasses.fields(node):
+                visit(getattr(node, f.name))
+
+    visit(t)
+    return found
 
 
 def check_no_escaping_path_types(
@@ -234,6 +277,9 @@ class TypeElaborator:
         # Implicit type arguments of the polymorphic call whose arguments are being checked, as
         # (metavariable, quantifier, call offset); nested calls may defer theirs to it.
         self._pending_type_args: Optional[list[tuple[QTypeMeta, QQuantifier, int]]] = None
+        # Symbol ids of the type parameters of polymorphic functions: the free type variables that the
+        # type component of an auto value and the types of inspect branches must not mention.
+        self._type_param_ids: set[int] = set()
 
     @contextmanager
     def scope(self, name: str = "local") -> Iterator[Scope]:
@@ -600,6 +646,10 @@ class TypeElaborator:
             case ast.ExprInspect():
                 return self._check_inspect_expr(expr, expected_type, env, loop_depth)
 
+            # 10b. Auto value: checked against the expected auto type
+            case ast.ExprAuto():
+                return self._check_auto_expr(expr, expected_type, env, loop_depth)
+
             # 11. Statement unwrap (for phrase/statement bodies)
             case ast.ExprStmt(expr=inner):
                 return self.check_expr(inner, expected_type, env, loop_depth)
@@ -827,6 +877,13 @@ class TypeElaborator:
             case ast.ExprInspect():
                 return self._synth_inspect_expr(expr, env, loop_depth)
 
+            case ast.ExprAuto():
+                raise TypeError(
+                    "Cannot infer the type of an auto value; give it an expected Auto type "
+                    "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)",
+                    offset=expr.offset,
+                )
+
             # --- Statement Unwrap ---
             case ast.ExprStmt(expr=inner):
                 return self.synth_expr(inner, env, loop_depth)
@@ -850,6 +907,7 @@ class TypeElaborator:
                 env.current_scope.declare_type(
                     TypeSymbol(name=tp.name, symbol_id=sym_id, kind=bound_kind)
                 )
+                self._type_param_ids.add(sym_id)
                 quants.append(QQuantifier(name=tp.name, symbol_id=sym_id, bound=bound_kind))
 
             formal_params, q_params = self._declare_fun_params(expr.params, None, env)
@@ -904,6 +962,7 @@ class TypeElaborator:
                     env.current_scope.declare_type(
                         TypeSymbol(name=q.name, symbol_id=sym_id, kind=q.bound)
                     )
+                    self._type_param_ids.add(sym_id)
                     meta_map[q.symbol_id] = QTypeVar(name=q.name, symbol_id=sym_id, bound=q.bound)
                 inner_exp = expected_lazy.body.substitute(meta_map)
                 if getattr(expr, "type_params", ()):
@@ -2364,8 +2423,15 @@ class TypeElaborator:
         """Elaborates target, inspect branches, and optional else branch for an inspect expression."""
         target_typed = self.synth_expr(expr.target, env, loop_depth)
         target_type = target_typed.type_val.evaluate_lazily(env)
+        if isinstance(target_type, QAutoType):
+            return self._elaborate_auto_inspect_branches(
+                expr, target_typed, target_type, expected_type, env, loop_depth
+            )
         if not is_subtype(target_type, DYNAMIC_TYPE, env):
-            raise TypeError(f"Target of inspect must be Dynamic, got '{target_type}'", offset=expr.target.offset)
+            raise TypeError(
+                f"Target of inspect must be Dynamic or an Auto type, got '{target_type}'",
+                offset=expr.target.offset,
+            )
 
         typed_branches: list[TypedInspectBranch] = []
         for branch in expr.branches:
@@ -2408,6 +2474,130 @@ class TypeElaborator:
         return target_typed, typed_branches, else_typed
 
 
+    def _elaborate_auto_inspect_branches(
+        self,
+        expr: ast.ExprInspect,
+        target_typed: TypedExpr,
+        auto_type: QAutoType,
+        expected_type: Optional[QType],
+        env: Environment,
+        loop_depth: int,
+    ) -> tuple[TypedExpr, list[TypedInspectBranch], Optional[TypedExpr]]:
+        """Elaborates the branches of an inspect on an auto value (Cardelli §4.6).
+
+        In the branch for type T, the binders denote the auto value's components, with signature S[T].
+        """
+        exact = not auto_matches_subtypes(auto_type)
+        typed_branches: list[TypedInspectBranch] = []
+        for branch in expr.branches:
+            match_t = elaborate_type(branch.match_type, env)
+            self._check_closed_type(match_t, "The type in an inspect when clause", branch.match_type.offset)
+            arm_type: QType = auto_payload_type(auto_type, match_t)
+            with env.scoped("inspect_branch"):
+                b_syms: list[ValueSymbol] = []
+                for name, annot in branch.binders:
+                    b_type = arm_type
+                    if annot is not None:
+                        b_type = elaborate_type(annot, env)
+                        if not is_subtype(arm_type, b_type, env):
+                            raise TypeError(
+                                f"Inspect binder '{name}' has components of type '{arm_type}', "
+                                f"which is not a subtype of the declared type '{b_type}'",
+                                offset=annot.offset,
+                            )
+                    b_sym = ValueSymbol(
+                        name=name,
+                        type_val=b_type,
+                        is_var=False,
+                        function_depth=self.function_depth,
+                    )
+                    env.current_scope.declare_value(b_sym)
+                    b_syms.append(b_sym)
+                h_body = self._elaborate_subexpr(branch.body, expected_type, env, loop_depth)
+            typed_branches.append(
+                TypedInspectBranch(
+                    match_type=match_t,
+                    binders=tuple(b_syms),
+                    body=h_body,
+                    exact=exact,
+                    offset=branch.offset,
+                )
+            )
+
+        else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
+        return target_typed, typed_branches, else_typed
+
+    def _check_closed_type(self, t: QType, what: str, offset: int) -> None:
+        """Rejects a type with free type variables (Cardelli §4.6): one that mentions a type parameter
+        of an enclosing polymorphic function or an abstract type projected from a value."""
+        free = set(t._fv) & self._type_param_ids
+        paths = find_path_types(strip_aliases(t))
+        if free or paths:
+            names = sorted(
+                {p.root_name + "." + p.field_name for p in paths}
+                | {v.name for v in _type_vars_with_ids(strip_aliases(t), free)}
+            )
+            raise TypeError(
+                f"{what} must be a closed type, but '{t}' mentions the free type variable(s) {', '.join(names)}",
+                offset=offset,
+            )
+
+    def _check_auto_expr(
+        self,
+        expr: ast.ExprAuto,
+        expected_type: QType,
+        env: Environment,
+        loop_depth: int,
+    ) -> TypedAuto:
+        """Checks an auto value auto [let A [HasKind] =] :W with Binding end against an Auto type."""
+        auto_type = expected_type.evaluate_lazily(env)
+        if not isinstance(auto_type, QAutoType):
+            raise TypeError(
+                f"Auto value used where a value of type '{expected_type}' is expected; "
+                f"auto values have Auto types",
+                offset=expr.offset,
+            )
+        witness = elaborate_type(expr.witness_type, env)
+        self._check_closed_type(witness, "The type component of an auto value", expr.witness_type.offset)
+        try:
+            check_kind(witness, auto_type.kind_bound, env)
+        except KindError:
+            raise TypeError(
+                f"Type component '{witness}' of the auto value does not have kind "
+                f"'{_describe_kind(auto_type.kind_bound)}' required by '{expected_type}'",
+                offset=expr.witness_type.offset,
+            ) from None
+        payload_type = auto_payload_type(auto_type, witness)
+        with env.scoped("auto_value"):
+            if expr.witness_name is not None:
+                local_bound = (
+                    elaborate_kind(expr.witness_bound, env) if expr.witness_bound is not None else TYPE_KIND
+                )
+                try:
+                    check_kind(witness, local_bound, env)
+                except KindError:
+                    raise TypeError(
+                        f"Type component '{witness}' of the auto value does not have the declared kind "
+                        f"'{_describe_kind(local_bound)}' of '{expr.witness_name}'",
+                        offset=expr.witness_type.offset,
+                    ) from None
+                env.current_scope.declare_type(
+                    TypeSymbol(
+                        name=expr.witness_name,
+                        symbol_id=env.fresh_symbol_id(),
+                        kind=local_bound,
+                        definition=witness,
+                    )
+                )
+            payload_typed = self.check_expr(expr.payload, payload_type, env, loop_depth)
+        return TypedAuto(
+            witness_type=witness,
+            auto_type=auto_type,
+            payload=payload_typed,
+            type_val=expected_type,
+            offset=expr.offset,
+        )
+
     def _check_inspect_expr(
         self,
         expr: ast.ExprInspect,
@@ -2423,6 +2613,7 @@ class TypeElaborator:
             target=target_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
+            auto_type=_inspected_auto_type(target_typed, env),
             type_val=expected_type,
             offset=expr.offset,
         )
@@ -2440,6 +2631,7 @@ class TypeElaborator:
                 target=target_typed,
                 branches=tuple(typed_branches),
                 else_branch=else_typed,
+                auto_type=_inspected_auto_type(target_typed, env),
                 type_val=OK_TYPE,
                 offset=expr.offset,
             )
@@ -2454,6 +2646,7 @@ class TypeElaborator:
             target=target_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
+            auto_type=_inspected_auto_type(target_typed, env),
             type_val=join_type,
             offset=expr.offset,
         )
