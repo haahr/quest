@@ -993,7 +993,8 @@ static const QTypeDescriptor *quest_parse_type_expr(QTypeLexer *lex) {
 
         qsort(fields, count, sizeof(QParsedField), quest_field_cmp);
 
-        size_t offset = 0;
+        /* Fields follow the record header, as in compiled record structs */
+        size_t offset = sizeof(QRecordHeader);
         size_t max_align = sizeof(void *);
         QRecordFieldDescriptor *f_descs = (QRecordFieldDescriptor *)quest_alloc(
             sizeof(QRecordFieldDescriptor) * (count > 0 ? count : 1)
@@ -1240,15 +1241,8 @@ static void quest_jsog_preallocate(QJsonValue *node, const QTypeDescriptor *desc
             } else {
                 size_t sz = (desc && desc->size > 0) ? desc->size : sizeof(void *);
                 void *rec_ptr = quest_alloc(sz);
-                const QRecordTypeDescriptor *meta = desc ? (const QRecordTypeDescriptor *)desc->extra : NULL;
-                size_t f_count = meta ? meta->field_count : 0;
-                size_t *dict = (size_t *)quest_alloc(sizeof(size_t) * (f_count > 0 ? f_count : 1));
-                if (meta) {
-                    for (size_t i = 0; i < f_count; ++i) {
-                        dict[i] = meta->fields[i].offset;
-                    }
-                }
-                quest_id_insert(table, id_str, QID_KIND_RECORD, rec_ptr, dict, desc);
+                ((QRecordHeader *)rec_ptr)->descriptor = desc;
+                quest_id_insert(table, id_str, QID_KIND_RECORD, rec_ptr, quest_record_dict(desc, desc), desc);
             }
         }
 
@@ -1394,11 +1388,8 @@ static QVal quest_jsog_decode_value(QJsonValue *node, const QTypeDescriptor *des
             }
             if (rec_buf == NULL) {
                 rec_buf = quest_alloc(desc->size > 0 ? desc->size : sizeof(void *));
-                size_t *d = (size_t *)quest_alloc(sizeof(size_t) * (meta->field_count > 0 ? meta->field_count : 1));
-                for (size_t i = 0; i < meta->field_count; ++i) {
-                    d[i] = meta->fields[i].offset;
-                }
-                rec_dict = d;
+                ((QRecordHeader *)rec_buf)->descriptor = desc;
+                rec_dict = quest_record_dict(desc, desc);
             }
 
             for (size_t i = 0; i < meta->field_count; ++i) {

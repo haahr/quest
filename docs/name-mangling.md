@@ -183,7 +183,7 @@ When functions are passed through subtype coercions or type applications:
   - Aliased records: `struct QT_<TypeName>` (e.g. `struct QT_Point`)
   - Anonymous / structural records: `struct QT_record<N>` or `struct QT_<module>_record<N>`
   - Structural fallback: `struct QRecord_<fld1>_<t1>_<fld2>_<t2>`
-- **Record Header:** All record structs start with `QRecordHeader header;` (storing type descriptor pointer).
+- **Record Header:** All record structs start with `QRecordHeader header;` (storing the descriptor of the record's layout).
 - **Record Field Mangling:** Every record field name is prefixed with `qf_`:
   - `qf_<field_name>`
   - E.g. `qf_x`, `qf_name`, `qf_default`, `qf_return`

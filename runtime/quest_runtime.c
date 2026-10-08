@@ -683,6 +683,97 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
 }
 
 /* ------------------------------------------------------------------------- */
+/* Record Offset Tables                                                      */
+/* ------------------------------------------------------------------------- */
+
+/* An offset table lets code that knows a record only by a record type, its view, find the fields of a payload laid
+ * out as another record type, its layout: entry i is the byte offset in the payload of the view's i-th field in name
+ * order (record descriptors list their fields in name order). All tables live in one map keyed by (view, layout),
+ * pre-populated with the static tables of compiled code and completed on demand from the two descriptors. Keys are
+ * descriptor pointers; two descriptors of one type merely give two equal tables. */
+
+typedef struct QRecordDictEntry {
+    const QTypeDescriptor *view;
+    const QTypeDescriptor *layout;
+    const void            *dict;
+} QRecordDictEntry;
+
+static QRecordDictEntry *quest_record_dicts = NULL;  /* open addressing; capacity is a power of two */
+static size_t            quest_record_dicts_capacity = 0;
+static size_t            quest_record_dicts_count = 0;
+
+static size_t quest_record_dict_hash(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
+    uint64_t h = (uint64_t)(uintptr_t)view * 0x9E3779B97F4A7C15ULL;
+    h ^= (uint64_t)(uintptr_t)layout + 0x7F4A7C159E3779B9ULL + (h << 6) + (h >> 2);
+    return (size_t)(h ^ (h >> 29));
+}
+
+static QRecordDictEntry *quest_record_dict_slot(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
+    size_t mask = quest_record_dicts_capacity - 1;
+    for (size_t i = quest_record_dict_hash(view, layout) & mask; ; i = (i + 1) & mask) {
+        QRecordDictEntry *e = &quest_record_dicts[i];
+        if (e->view == NULL || (e->view == view && e->layout == layout)) return e;
+    }
+}
+
+static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict) {
+    if (2 * (quest_record_dicts_count + 1) > quest_record_dicts_capacity) {
+        QRecordDictEntry *old = quest_record_dicts;
+        size_t old_capacity = quest_record_dicts_capacity;
+        quest_record_dicts_capacity = old_capacity ? 2 * old_capacity : 64;
+        quest_record_dicts = (QRecordDictEntry *)quest_alloc(sizeof(QRecordDictEntry) * quest_record_dicts_capacity);
+        memset(quest_record_dicts, 0, sizeof(QRecordDictEntry) * quest_record_dicts_capacity);
+        for (size_t i = 0; i < old_capacity; ++i) {
+            if (old[i].view != NULL) *quest_record_dict_slot(old[i].view, old[i].layout) = old[i];
+        }
+    }
+    QRecordDictEntry *e = quest_record_dict_slot(view, layout);
+    if (e->view == NULL) {
+        e->view = view;
+        e->layout = layout;
+        e->dict = dict;
+        quest_record_dicts_count++;
+    }
+}
+
+static const void *quest_build_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
+    if (view->kind != QTYPE_KIND_RECORD || layout->kind != QTYPE_KIND_RECORD) return NULL;
+    const QRecordTypeDescriptor *v_meta = (const QRecordTypeDescriptor *)view->extra;
+    const QRecordTypeDescriptor *l_meta = (const QRecordTypeDescriptor *)layout->extra;
+    size_t n = v_meta != NULL ? v_meta->field_count : 0;
+    size_t *dict = (size_t *)quest_alloc_atomic(sizeof(size_t) * (n > 0 ? n : 1));
+    dict[0] = 0;
+    for (size_t j = 0; j < n; ++j) {
+        const char *name = v_meta->fields[j].name;
+        const QRecordFieldDescriptor *lf = NULL;
+        for (size_t i = 0; l_meta != NULL && i < l_meta->field_count; ++i) {
+            if (strcmp(l_meta->fields[i].name, name) == 0) {
+                lf = &l_meta->fields[i];
+                break;
+            }
+        }
+        if (lf == NULL) return NULL;
+        dict[j] = lf->offset;
+    }
+    return dict;
+}
+
+const void *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
+    if (view == NULL || layout == NULL) return NULL;
+    if (quest_record_dicts_capacity > 0) {
+        QRecordDictEntry *e = quest_record_dict_slot(view, layout);
+        if (e->view != NULL) return e->dict;
+    }
+    const void *dict = quest_build_record_dict(view, layout);
+    if (dict != NULL) quest_record_dicts_insert(view, layout, dict);
+    return dict;
+}
+
+void quest_register_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict) {
+    if (view != NULL && layout != NULL && dict != NULL) quest_record_dicts_insert(view, layout, dict);
+}
+
+/* ------------------------------------------------------------------------- */
 /* Dynamic Aggregate Adaptation Cache & Coercion Functions                   */
 /* ------------------------------------------------------------------------- */
 
@@ -760,6 +851,7 @@ QRecordVal quest_record_adapt(const QTypeDescriptor *sub_desc, const QTypeDescri
 
     /* Recursive payload allocation and field adaptation */
     void *new_val = quest_alloc(super_desc->size > 0 ? super_desc->size : sizeof(void *));
+    ((QRecordHeader *)new_val)->descriptor = super_desc;
     for (size_t j = 0; j < t_meta->field_count; ++j) {
         const QRecordFieldDescriptor *tf = &t_meta->fields[j];
         const QRecordFieldDescriptor *sf = NULL;

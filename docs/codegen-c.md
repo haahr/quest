@@ -465,8 +465,11 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
   ```
 
 ### 10.2. Evidence-Passing Record Subtyping
-- **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0
-  (`header.descriptor = NULL;`).
+- **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0, set at
+  allocation to the descriptor of the record's layout (`header.descriptor = &quest_type_QT_Point;`).
+- **Offset Table Map:** `main` registers each static `offsetdict_<Target>_<Source>` with
+  `quest_register_record_dict(&quest_type_<Target>, &quest_type_<Source>, &offsetdict_<Target>_<Source>)`; tables
+  for other (view, layout) pairs are built by the runtime on demand (`quest_record_dict`).
 - **First-Class Fat Pointers (`QRecordVal`):** All records are represented uniformly as a 16-byte struct:
   ```c
   typedef struct QRecordVal {

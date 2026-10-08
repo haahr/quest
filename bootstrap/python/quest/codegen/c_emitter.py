@@ -1489,6 +1489,16 @@ class CEmitter:
                 main_lines.append(f"    quest_register_static_type_descriptor(&quest_type_{tag});")
             main_lines.append("")
 
+        if self.needed_dicts:
+            main_lines.append("    /* Pre-populate the record offset table map with the static tables */")
+            for view_t, layout_t in self.needed_dicts:
+                dict_name = self.record_ctx.offset_dict_instance_name(view_t, layout_t)
+                main_lines.append(
+                    f"    quest_register_record_dict({self.c_type_descriptor(view_t)}, "
+                    f"{self.c_type_descriptor(layout_t)}, &{dict_name});"
+                )
+            main_lines.append("")
+
         # Initialize all compiled modules topologically
         if sorted_modules:
             for mod in sorted_modules:
@@ -2029,7 +2039,7 @@ class CEmitter:
             f"    {rec_struct} *{payload_var} = "
             f"({rec_struct} *)quest_alloc(sizeof({rec_struct}));"
         )
-        lines.append(f"    {payload_var}->header.descriptor = NULL;")
+        lines.append(f"    {payload_var}->header.descriptor = {self.c_type_descriptor(mod_rec_t)};")
         for fld in sorted(mod_rec_t.fields, key=lambda f: f.name):
             if any(fn == fld.name for fn, _, _ in mod_funs):
                 tramp_name = f"{mangle_module_ident(clean_mod, fld.name)}_trampoline"
@@ -2809,7 +2819,7 @@ class CEmitter:
                 alloc_expr = f"({struct_name} *)quest_alloc(sizeof({struct_name}))"
                 payload_tmp = self.fresh_tmp("_rec_payload")
                 lines.append(f"{struct_name} *{payload_tmp} = {alloc_expr};")
-                lines.append(f"{payload_tmp}->header.descriptor = NULL;")
+                lines.append(f"{payload_tmp}->header.descriptor = {self.c_type_descriptor(concrete_t)};")
                 for fld in flds:
                     self.emit_to(fld.value, f"{payload_tmp}->qf_{fld.name}", lines)
                 if dest is not None:
@@ -3030,7 +3040,9 @@ class CEmitter:
                             elif isinstance(b_type, QRecordType):
                                 s_rec = self.record_struct_name(b_type)
                                 branch_lines.append(f"{b_name} = ({s_rec} *)quest_alloc(sizeof({s_rec}));")
-                                branch_lines.append(f"{b_name}->header.descriptor = NULL;")
+                                branch_lines.append(
+                                    f"{b_name}->header.descriptor = {self.c_type_descriptor(b_type)};"
+                                )
                                 for f in sorted(b_type.fields, key=lambda fld: fld.name):
                                     branch_lines.append(
                                         f"{b_name}->qf_{f.name} = {c_tgt}->u.{branch.tags[0]}.qf_{f.name};"

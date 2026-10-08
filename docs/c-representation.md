@@ -297,7 +297,7 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    ```c
    /* Quest: Let Point = Record x: Int y: Real end */
    typedef struct QT_Point {
-       QRecordHeader header;  /* { const void *descriptor; } (8 bytes, descriptor = NULL) */
+       QRecordHeader header;  /* { const QTypeDescriptor *descriptor; } (8 bytes): the payload's layout */
        QInt          qf_x;
        QReal         qf_y;
    } QT_Point;
@@ -316,7 +316,15 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
        offsetof(QT_Point3D, qf_y)
    };
    ```
-3. **First-Class Uniform Record Value (`QRecordVal`):**
+   The header records the payload's *layout*, the descriptor of the record type it was created with
+   (`&quest_type_QT_Point`); `quest_record_layout(r)` reads it. A value whose static type is `Point` may have a larger
+   layout, such as `Point3D`'s.
+3. **Offset Table Map:** The runtime keeps every offset table in one map keyed by (view type, layout), where the
+   view is the record type the table serves. `quest_record_dict(view, layout)` returns the table, building it from the
+   two descriptors on a miss (`NULL` if the layout lacks a field of the view), and `quest_register_record_dict`
+   adds one. A compiled program pre-populates the map in `main` with its static `offsetdict_<Target>_<Source>`
+   tables, registered under (`Target`, `Source`). Deserialization (`dynamic.intern`) takes its tables from the map.
+4. **First-Class Uniform Record Value (`QRecordVal`):**
    - Every record value in variables, function parameters, and returns is represented as a first-class 16-byte struct:
      ```c
      typedef struct QRecordVal {
@@ -325,12 +333,12 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
      } QRecordVal;
      ```
    - On AAPCS64, `QRecordVal` is passed and returned directly in register pairs (`x0, x1`) without heap allocation.
-4. **Field Access:**
+5. **Field Access:**
    - Evaluates dynamic offset from the embedded evidence dictionary:
      ```c
      (*((QFieldType *)((char *)r.val + ((const OffsetDict_Target *)r.dict)->offset_x)))
      ```
-5. **Storage in Aggregates:**
+6. **Storage in Aggregates:**
    - **Tuples:** Tuple fields of record type store `QRecordVal` inline (16 bytes).
    - **Flat Stride Arrays:** `Array(Record)` and `Array(Variant)` store 16-byte elements directly in contiguous
      memory without individual heap boxing using specialized wide array structures (`QArrayWideRecord` and

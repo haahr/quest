@@ -78,9 +78,9 @@ typedef struct QArray {
     QVal    data[];
 } QArray;
 
-/* Record header for self-describing shape and identity */
+/* Record header: the descriptor of the record payload's own layout, the record type it was created with */
 typedef struct QRecordHeader {
-    const void *descriptor;
+    const struct QTypeDescriptor *descriptor;
 } QRecordHeader;
 
 /* First-class 16-byte record value: payload pointer and evidence dictionary */
@@ -484,7 +484,18 @@ QDynamic              *quest_dynamic_new(const QTypeDescriptor *type_desc, QVal 
 QVal                   quest_dynamic_be(const QTypeDescriptor *target_type_desc, const QDynamic *d);
 QDynamic              *quest_dynamic_copy(const QDynamic *d);
 void                   quest_register_static_type_descriptor(const QTypeDescriptor *desc);
+
+/* Record offset tables (the dict of a QRecordVal): the table for viewing a payload with record layout `layout` at
+ * record type `view`. quest_record_dict returns NULL when the layout lacks a field of the view. */
+const void            *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout);
+void                   quest_register_record_dict(
+    const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict);
 const QTypeDescriptor *quest_lookup_type_descriptor_by_name(const char *name);
+
+/* The layout of a record value's payload, recorded in its header when it was created */
+static inline const QTypeDescriptor *quest_record_layout(QRecordVal rec) {
+    return ((const QRecordHeader *)rec.val)->descriptor;
+}
 
 static inline QRecordVal *quest_record_box(QRecordVal rec) {
     QRecordVal *box = (QRecordVal *)quest_alloc(sizeof(QRecordVal));
