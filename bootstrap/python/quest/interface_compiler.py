@@ -336,7 +336,7 @@ def compile_interface_to_qi(
                     }
                 )
             )
-        elif isinstance(sig, (ast.LetTypeBinding, ast.DefTypeBinding)):
+        elif isinstance(sig, ast.TypeBinding):
             type_sym = iface_scope.lookup_type_local(sig.name)
             concrete_t = type_sym.definition if type_sym and type_sym.definition else None
             m_type_str = (
@@ -456,7 +456,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope) -> 
             )
             lines.append(f"/* Abstract type {sig.name}::{kind_desc} */")
             lines.append(f"typedef QVal quest_type_{decl.name}_{sig.name};")
-        elif isinstance(sig, ast.LetTypeBinding):
+        elif isinstance(sig, ast.TypeBinding) and not sig.is_rec:
             has_types = True
             type_sym = iface_scope.lookup_type_local(sig.name)
             concrete_t = type_sym.definition if type_sym and type_sym.definition else None

@@ -1524,7 +1524,7 @@ class TypeElaborator:
             q_fields: list[QTupleComponent] = []
 
             for b in expr.fields:
-                if isinstance(b, (ast.LetTypeBinding, ast.DefTypeBinding)):
+                if isinstance(b, ast.TypeBinding):
                     witness_type = elaborate_type(b.type_val, env)
                     if b.bound is not None:
                         k_bound = elaborate_kind(b.bound, env)
@@ -1600,7 +1600,7 @@ class TypeElaborator:
             for b, exp_f in zip(expr.fields, expected_lazy.fields):
                 match exp_f:
                     case QTupleTypeFormal(name=formal_name, symbol_id=formal_sym_id, bound=formal_bound):
-                        if not isinstance(b, (ast.LetTypeBinding, ast.DefTypeBinding)):
+                        if not isinstance(b, ast.TypeBinding):
                             raise TypeError(
                                 f"Expected type witness for type formal '{formal_name}', got value component",
                                 offset=getattr(b, "offset", expr.offset),
@@ -1632,7 +1632,7 @@ class TypeElaborator:
                         )
 
                     case QTupleTypeBinding(name=bind_name, type_val=bind_type, bound=bind_bound):
-                        if not isinstance(b, (ast.LetTypeBinding, ast.DefTypeBinding)):
+                        if not isinstance(b, ast.TypeBinding):
                             raise TypeError(
                                 f"Expected type binding for '{bind_name}', got value component",
                                 offset=getattr(b, "offset", expr.offset),
@@ -1660,7 +1660,7 @@ class TypeElaborator:
                         )
 
                     case QTupleField(name=field_name, type_val=field_type, is_var=exp_is_var):
-                        if isinstance(b, (ast.LetTypeBinding, ast.DefTypeBinding)):
+                        if isinstance(b, ast.TypeBinding):
                             raise TypeError(
                                 f"Unexpected type binding '{b.name}' for value field '{field_name}'",
                                 offset=b.offset,
@@ -3238,7 +3238,7 @@ class TypeElaborator:
                     offset=binding.offset,
                 )
 
-            case ast.LetTypeBinding() | ast.DefTypeBinding():
+            case ast.TypeBinding():
                 sym = elaborate_type_binding(binding, env)
                 return TypedLetType(name=binding.name, symbol=sym, offset=binding.offset)
 

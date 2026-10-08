@@ -276,7 +276,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                                     )
                                 )
 
-                        case ast.LetTypeBinding(name=name, type_val=type_val, bound=bound):
+                        case ast.TypeBinding(name=name, type_val=type_val, bound=bound, is_rec=False):
                             bound_kind = elaborate_kind(bound, env) if bound else None
                             m_type = elaborate_type(type_val, env)
                             if bound_kind:
@@ -511,7 +511,7 @@ def elaborate_kind_binding(binding: ast.DefKindBinding, env: Environment) -> Kin
 
 
 def elaborate_type_binding(
-    binding: Union[ast.LetTypeBinding, ast.DefTypeBinding],
+    binding: ast.TypeBinding,
     env: Environment,
 ) -> TypeSymbol:
     """Elaborates a single Let T = Type or Def T = Type declaration."""
@@ -579,12 +579,12 @@ def elaborate_type_binding(
 
 
 def elaborate_mutual_rec_type_group(
-    bindings: list[Union[ast.LetTypeBinding, ast.DefTypeBinding]],
+    bindings: list[ast.TypeBinding],
     env: Environment,
 ) -> list[TypeSymbol]:
     """Elaborates a mutually recursive group of type declarations (Let Rec T1 = ... and T2 = ...)."""
     # 1. Allocate symbol IDs and declared bounds for all bindings
-    pre_symbols: list[tuple[str, int, QKind, Union[ast.LetTypeBinding, ast.DefTypeBinding]]] = []
+    pre_symbols: list[tuple[str, int, QKind, ast.TypeBinding]] = []
     for b in bindings:
         sym_id = env.fresh_symbol_id()
         bound = elaborate_kind(b.bound, env) if b.bound else TYPE_KIND

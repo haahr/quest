@@ -143,7 +143,7 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
     result: list[Any] = []
     for item in bindings:
         match item:
-            case ast.LetTypeBinding() | ast.DefTypeBinding():
+            case ast.TypeBinding():
                 result.append(item)
             case ast.LetValueBinding(params=params) if params:
                 fn_expr = ast.ExprFun(
@@ -335,9 +335,9 @@ def _build_type_decl(
     param_groups: tuple[tuple[ast.TypeFormal, ...], ...],
     kind_bound: Optional[ast.Kind],
     type_node: ast.Type,
-) -> ast.LetTypeBinding:
+) -> ast.TypeBinding:
     if not param_groups:
-        return ast.LetTypeBinding(
+        return ast.TypeBinding(
             name=ident_token.lexeme, type_val=type_node, bound=kind_bound, offset=ident_token.offset
         )
     type_fun = ast.TypeFun(
@@ -346,18 +346,14 @@ def _build_type_decl(
         body=type_node,
         offset=ident_token.offset,
     )
-    return ast.LetTypeBinding(name=ident_token.lexeme, type_val=type_fun, bound=None, offset=ident_token.offset)
+    return ast.TypeBinding(name=ident_token.lexeme, type_val=type_fun, bound=None, offset=ident_token.offset)
 
 
-def _build_def_type(def_token: Token, rec_token: Optional[Token], decl: ast.LetTypeBinding) -> ast.DefTypeBinding:
-    return ast.DefTypeBinding(
-        name=decl.name,
-        type_val=decl.type_val,
-        params=decl.params,
-        bound=decl.bound,
-        is_rec=bool(rec_token),
-        offset=def_token.offset,
-    )
+def _build_type_binding(
+    keyword_token: Token, rec_token: Optional[Token], decl: ast.TypeBinding, is_def: bool
+) -> ast.TypeBinding:
+    """A `Let [Rec] TypeDecl` or `Def [Rec] TypeDecl` binding, positioned at its keyword."""
+    return dataclasses.replace(decl, is_rec=bool(rec_token), is_def=is_def, offset=keyword_token.offset)
 
 
 # --- case / inspect / try branches ---
@@ -652,7 +648,7 @@ def build_quest_grammar() -> None:
     TYPE_SIGNATURE.add_rule(
         (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
         lambda def_token, rec_token, type_declaration: (
-            _build_def_type(def_token, rec_token, type_declaration) if rec_token else type_declaration,
+            _build_type_binding(def_token, rec_token, type_declaration, is_def=True),
         ),
     )
     # [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals; plain fields have no groups)
@@ -1185,8 +1181,8 @@ def build_quest_grammar() -> None:
     # Let [Rec] TypeDecl
     PHRASE.add_rule(
         (T(TK.KW_LET_TYPE), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
-        lambda let_token, rec_token, type_declaration: dataclasses.replace(
-            type_declaration, is_rec=bool(rec_token), offset=let_token.offset
+        lambda let_token, rec_token, type_declaration: _build_type_binding(
+            let_token, rec_token, type_declaration, is_def=False
         ),
     )
     # let [rec] ValueDecl
@@ -1206,7 +1202,12 @@ def build_quest_grammar() -> None:
     # DEF KindDecl
     PHRASE.add_rule((P(TK.KW_DEF_KIND), KIND_DECL), lambda kind_declaration: kind_declaration)
     # Def [Rec] TypeDecl
-    PHRASE.add_rule((T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL), _build_def_type)
+    PHRASE.add_rule(
+        (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
+        lambda def_token, rec_token, type_declaration: _build_type_binding(
+            def_token, rec_token, type_declaration, is_def=True
+        ),
+    )
     # : Type (TypeArgument in call bindings / phrases)
     PHRASE.add_rule(
         (T(TK.COLON), TYPE),

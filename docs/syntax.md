@@ -196,7 +196,7 @@ class `ASTNode(offset: int)`:
 ASTNode
   ├── Phrase                  (Top-level statements & declarations)
   │     ├── LetValueBinding   (let [var] [rec] x [: T] = e)
-  │     ├── LetTypeBinding    (Let [Rec] T [:: K] = Type)
+  │     ├── TypeBinding       (Let [Rec] T [:: K] = Type, or Def [Rec] ... with is_def)
   │     ├── DefKindBinding    (DEF K = Kind)
   │     ├── InterfaceDecl     (interface I [import ...] export ... end)
   │     ├── ModuleDecl        (module M : I [import ...] export ... end)

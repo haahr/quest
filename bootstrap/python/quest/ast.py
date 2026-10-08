@@ -393,7 +393,7 @@ class TupleBinding(ASTNode):
 
 @dataclass(frozen=True)
 class ExprTuple(Expr):
-    fields: tuple[Union[TupleBinding, LetTypeBinding, DefTypeBinding], ...]
+    fields: tuple[Union[TupleBinding, TypeBinding], ...]
 
 
 @dataclass(frozen=True)
@@ -571,23 +571,14 @@ class LetValueBinding(BindingNode):
 
 
 @dataclass(frozen=True)
-class LetTypeBinding(BindingNode):
-    """Let [Rec] T(X::K)::K' = Type and U = ..."""
+class TypeBinding(BindingNode):
+    """Let [Rec] T(X::K)::K' = Type, or Def [Rec] T = Type (is_def, e.g. in an interface signature)."""
     name: str
     type_val: Type
     params: tuple[TypeFormal, ...] = ()
     bound: Optional[Kind] = None
     is_rec: bool = False
-
-
-@dataclass(frozen=True)
-class DefTypeBinding(BindingNode):
-    """Def [Rec] T = Type (in interface signature)"""
-    name: str
-    type_val: Type
-    params: tuple[TypeFormal, ...] = ()
-    bound: Optional[Kind] = None
-    is_rec: bool = False
+    is_def: bool = False
 
 
 @dataclass(frozen=True)

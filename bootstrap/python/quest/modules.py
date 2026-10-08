@@ -140,7 +140,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                 type_symbol = TypeSymbol(name=sig.name, symbol_id=symbol_id, kind=bound_kind, definition=None)
                 interface_scope.declare_type(type_symbol)
 
-            elif isinstance(sig, (ast.LetTypeBinding, ast.DefTypeBinding)):
+            elif isinstance(sig, ast.TypeBinding):
                 type_symbol = elaborate_type_binding(sig, env)
                 interface_scope.declare_type(type_symbol)
 
