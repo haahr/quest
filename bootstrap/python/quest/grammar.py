@@ -106,9 +106,12 @@ def _body(bindings: tuple[Any, ...], offset: int) -> Any:
     return bindings[0] if len(bindings) == 1 else ast.ExprBlock(bindings=bindings, offset=offset)
 
 
-def _optional_body(bindings: Optional[tuple[Any, ...]], offset: int) -> Any:
-    """Like _body, but None for an absent clause."""
-    return None if bindings is None else _body(bindings, offset)
+def _else_body(else_clause: Optional[tuple[Token, tuple[Any, ...]]]) -> Any:
+    """The body of an optional `else Binding` clause, or None if absent."""
+    if else_clause is None:
+        return None
+    else_token, bindings = else_clause
+    return _body(bindings, else_token.offset)
 
 
 def _mode(var_token: Optional[Token], out_token: Optional[Token]) -> ast.ParamMode:
@@ -209,25 +212,36 @@ def _build_kind_all(all_token: Token, left_paren: Token, signatures: tuple[Any, 
     return kind
 
 
+def _quantifier(sig: Any, default_offset: int) -> ast.Quantifier:
+    """The quantifier for one signature item of All(...) or of a curried parameter group.
+
+    A type parameter X <: B or X :: K keeps its kind; a value parameter x : T is bounded by
+    POWER(T).
+    """
+    match sig:
+        case ast.TypeFormal():
+            return ast.Quantifier(name=sig.name or "_", bound=sig.bound, is_type=True, offset=sig.offset)
+        case ast.FieldSig():
+            return ast.Quantifier(
+                name=sig.name or "_",
+                bound=ast.KindPower(bound=sig.type_sig, offset=sig.offset),
+                mode=sig.mode,
+                offset=sig.offset,
+            )
+        case _:
+            return ast.Quantifier(
+                name=getattr(sig, "name", "_") or "_",
+                bound=ast.KindType(offset=default_offset),
+                offset=getattr(sig, "offset", default_offset),
+            )
+
+
 def _curried_type(param_groups: tuple[tuple[Any, ...], ...], result_type: ast.Type, offset: int) -> ast.Type:
     """The type All(group1) ... All(groupN) result_type of a curried function signature."""
     current_type = result_type
     for group in reversed(param_groups):
         current_type = ast.TypeAll(
-            quantifiers=tuple(
-                ast.Quantifier(
-                    name=getattr(sig, "name", "_") or "_",
-                    bound=(
-                        ast.KindPower(bound=sig.type_sig)
-                        if hasattr(sig, "type_sig") and sig.type_sig is not None
-                        else getattr(sig, "bound", ast.KindType(offset=offset))
-                    ),
-                    mode=getattr(sig, "mode", ast.ParamMode.VALUE),
-                    is_type=isinstance(sig, ast.TypeFormal),
-                    offset=getattr(sig, "offset", offset),
-                )
-                for sig in group
-            ),
+            quantifiers=tuple(_quantifier(sig, offset) for sig in group),
             result_type=current_type,
             offset=offset,
         )
@@ -511,23 +525,7 @@ def build_quest_grammar() -> None:
     PRIMARY_TYPE.add_rule(
         (T(TK.KW_ALL), T(TK.LPAREN), SIGNATURE, P(TK.RPAREN), TYPE),
         lambda all_token, left_paren, signatures, result_type: ast.TypeAll(
-            quantifiers=tuple(
-                ast.Quantifier(
-                    name=getattr(sig, "name", "_") or "_",
-                    bound=(
-                        getattr(sig, "bound", None)
-                        or (
-                            ast.KindPower(bound=sig.type_sig, offset=sig.offset)
-                            if hasattr(sig, "type_sig")
-                            else ast.KindType(offset=left_paren.offset)
-                        )
-                    ),
-                    mode=getattr(sig, "mode", ast.ParamMode.VALUE),
-                    is_type=isinstance(sig, ast.TypeFormal),
-                    offset=getattr(sig, "offset", left_paren.offset),
-                )
-                for sig in signatures
-            ),
+            quantifiers=tuple(_quantifier(sig, left_paren.offset) for sig in signatures),
             result_type=result_type,
             offset=all_token.offset,
         ),
@@ -693,13 +691,13 @@ def build_quest_grammar() -> None:
         ),
     )
 
-    # IdeList [with Signature end]
+    # IdeList [with Signature end] (the tags are matched as tokens for their offsets)
     OPTION_SIGNATURE.add_rule(
-        (Rep(IDE_LIST, Opt(P(TK.KW_WITH), SIGNATURE, P(TK.KW_END))),),
+        (Rep(SepBy(IDE, P(TK.COMMA)), Opt(P(TK.KW_WITH), SIGNATURE, P(TK.KW_END))),),
         lambda options: tuple(
-            ast.OptionFieldSig(tag=tag, payload_sig=payload or (), offset=0)
-            for tags, payload in options
-            for tag in tags
+            ast.OptionFieldSig(tag=tag_token.lexeme, payload_sig=payload or (), offset=tag_token.offset)
+            for tag_tokens, payload in options
+            for tag_token in tag_tokens
         ),
     )
 
@@ -792,17 +790,17 @@ def build_quest_grammar() -> None:
             Opt(P(TK.KW_THEN)),
             BINDING,
             Rep(T(TK.KW_ELSIF), VALUE, Opt(P(TK.KW_THEN)), BINDING),
-            Opt(P(TK.KW_ELSE), BINDING),
+            Opt(T(TK.KW_ELSE), BINDING),
             P(TK.KW_END),
         ),
-        lambda if_token, condition, then_bindings, elsifs, else_bindings: ast.ExprIf(
+        lambda if_token, condition, then_bindings, elsifs, else_clause: ast.ExprIf(
             cond=condition,
             then_branch=_body(then_bindings, if_token.offset),
             elsifs=tuple(
                 (elsif_condition, _body(elsif_bindings, elsif_token.offset))
                 for elsif_token, elsif_condition, elsif_bindings in elsifs
             ),
-            else_branch=_optional_body(else_bindings, if_token.offset),
+            else_branch=_else_body(else_clause),
             offset=if_token.offset,
         ),
     )
@@ -1102,11 +1100,11 @@ def build_quest_grammar() -> None:
         branches_target.add_rule(
             (
                 Rep(T(TK.KW_WHEN), pattern, Opt(P(TK.KW_WITH), binder, Opt(P(TK.COLON), TYPE)), P(TK.KW_THEN), BINDING),
-                Opt(P(TK.KW_ELSE), BINDING),
+                Opt(T(TK.KW_ELSE), BINDING),
             ),
-            lambda branches, else_bindings, build_branch=build_branch: (
+            lambda branches, else_clause, build_branch=build_branch: (
                 tuple(build_branch(*branch) for branch in branches),
-                _optional_body(else_bindings, 0),
+                _else_body(else_clause),
             ),
         )
 
