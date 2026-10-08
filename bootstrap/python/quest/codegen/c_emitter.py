@@ -11,6 +11,8 @@ from quest.codegen.c_analysis import (
     CProgramAnalysis,
     analyze_program_for_c,
     collect_fun_quantifiers,
+    exception_var_entries,
+    named_exceptions_in,
     topological_sort_modules,
 )
 from quest.codegen.c_declarations import CDeclarationEmitter, emit_trampoline
@@ -1550,12 +1552,14 @@ class CEmitter:
                         clean_mod = mangle_module_name(orig_mod.name)
                         for b in orig_mod.bindings:
                             match b:
-                                case TypedLetValue(name=b_name):
+                                case TypedLetValue(name=b_name, value=b_val):
+                                    for exc in named_exceptions_in(b_val):
+                                        self.current_env_vars[exc.name] = mangle_module_ident(clean_mod, exc.name)
                                     if b_name:
                                         self.current_env_vars[b_name] = mangle_module_ident(clean_mod, b_name)
-                                case TypedException(name=b_name):
-                                    if b_name:
-                                        self.current_env_vars[b_name] = mangle_module_ident(clean_mod, b_name)
+                                case TypedException() | TypedExprStmt(expr=TypedException()):
+                                    for exc in named_exceptions_in(b):
+                                        self.current_env_vars[exc.name] = mangle_module_ident(clean_mod, exc.name)
                                 case TypedImport():
                                     for it in b.items:
                                         for iname, mpath in zip(it.names, it.effective_module_paths):
@@ -1759,6 +1763,7 @@ class CEmitter:
                             )
                         )
                     else:
+                        mod_vars.extend(exception_var_entries(b_val))
                         mod_vars.append((b_name, b_val, b_sym))
                 case TypedNativeBinding() as nb:
                     if nb.c_val is not None:
@@ -1779,11 +1784,8 @@ class CEmitter:
                                 mod_imported_mods.append(mod_ref)
                             mod_imported_env[iname] = module_record_ident(mangle_module_name(mod_ref))
                             mod_imported_env[mpath] = module_record_ident(mangle_module_name(mod_ref))
-                case TypedException(name=b_name, type_val=b_t) as exc_n:
-                    if b_name:
-                        mod_vars.append(
-                            (b_name, exc_n, type("Symbol", (), {"type_val": b_t})())
-                        )
+                case TypedException() | TypedExprStmt(expr=TypedException()):
+                    mod_vars.extend(exception_var_entries(b))
                 case _:
                     pass
 
@@ -2147,9 +2149,10 @@ class CEmitter:
                             mod_emitter.emit_to(vval, None, init_lines)
                         else:
                             mod_emitter.emit_to(vval, m_ident, init_lines)
-                case TypedException(name=ename) as exc_n:
-                    if ename and any(ename == mv[0] for mv in mod_vars):
-                        m_ident = mangle_module_ident(clean_mod, ename)
+                case TypedException() | TypedExprStmt(expr=TypedException()):
+                    exc_n = b if isinstance(b, TypedException) else b.expr
+                    if exc_n.name and any(exc_n.name == mv[0] for mv in mod_vars):
+                        m_ident = mangle_module_ident(clean_mod, exc_n.name)
                         mod_emitter.emit_to(exc_n, m_ident, init_lines)
                 case _:
                     pass
@@ -2339,6 +2342,15 @@ class CEmitter:
             case _:
                 # Type / Kind declarations are erased at runtime
                 pass
+
+    def _exception_ident(self, name: str) -> str:
+        """The C variable holding the exception value bound to name."""
+        return self.current_env_vars.get(name, mangle_ident(name))
+
+    def _declare_local_exceptions(self, node: TypedNode, lines: list[str]) -> None:
+        """Declares block-local variables for named exceptions constructed in node."""
+        for exc in named_exceptions_in(node):
+            lines.append(f"const QException *{mangle_ident(exc.name)};")
 
     def _emit_expr_phrase(self, expr: TypedExpr, lines: list[str], is_last: bool = False) -> None:
         expr_type = expr.type_val
@@ -2791,6 +2803,8 @@ class CEmitter:
 
             case TypedException(name=name):
                 c_name = _c_string_literal(name) if name else '""'
+                if name:
+                    return f"({self._exception_ident(name)} = quest_alloc_exception({c_name}))"
                 return f"quest_alloc_exception({c_name})"
 
             case TypedRaise():
@@ -2853,6 +2867,7 @@ class CEmitter:
                 for b in bindings:
                     match b:
                         case TypedLetValue(name=name, value=val, symbol=symbol):
+                            self._declare_local_exceptions(val, block_lines)
                             c_ident = mangle_ident(name)
                             if symbol.type_val is OK_TYPE:
                                 self.emit_to(val, None, block_lines)
@@ -2863,24 +2878,15 @@ class CEmitter:
                                 self._coerce_val(
                                     val_c, val, symbol.type_val, block_lines, dest=c_ident
                                 )
-                        case TypedExprStmt(expr=TypedException(name=name) as exc_node):
-                            if name:
-                                c_ident = mangle_ident(name)
-                                block_lines.append(f"const QException *{c_ident};")
-                                self.emit_to(exc_node, c_ident, block_lines)
-                            else:
-                                self.emit_to(exc_node, None, block_lines)
-                        case TypedException(name=name) as exc_node:
-                            if name:
-                                c_ident = mangle_ident(name)
-                                block_lines.append(f"const QException *{c_ident};")
-                                self.emit_to(exc_node, c_ident, block_lines)
-                            else:
-                                self.emit_to(exc_node, None, block_lines)
+                        case TypedException() as exc_node:
+                            self._declare_local_exceptions(exc_node, block_lines)
+                            self.emit_to(exc_node, None, block_lines)
                         case TypedExprStmt(expr=inner):
+                            self._declare_local_exceptions(inner, block_lines)
                             self.emit_to(inner, None, block_lines)
                         case _:
                             pass
+                self._declare_local_exceptions(result, block_lines)
                 self.emit_to(result, dest, block_lines)
                 _append_block(lines, block_lines)
                 lines.append("}")
@@ -3202,7 +3208,13 @@ class CEmitter:
 
             case TypedException(name=name):
                 c_name = _c_string_literal(name) if name else '""'
-                if dest is not None:
+                if name:
+                    # The expression binds its name in the enclosing scope.
+                    c_ident = self._exception_ident(name)
+                    lines.append(f"{c_ident} = quest_alloc_exception({c_name});")
+                    if dest is not None and dest != c_ident:
+                        lines.append(f"{dest} = {c_ident};")
+                elif dest is not None:
                     lines.append(f"{dest} = quest_alloc_exception({c_name});")
                 else:
                     lines.append(f"quest_alloc_exception({c_name});")

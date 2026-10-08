@@ -9,6 +9,7 @@ from quest.analysis.closure import LambdaAnalysis, analyze_closures
 from quest.env import Scope, ValueSymbol
 from quest.typed_ast import (
     TypedApp,
+    TypedBlock,
     TypedException,
     TypedExpr,
     TypedExprStmt,
@@ -155,6 +156,42 @@ def find_val_referenced_top_funs(prog: TypedProgram, top_fun_names: set[str]) ->
 
     scan(prog)
     return referenced
+
+
+def named_exceptions_in(node: Any) -> list[TypedException]:
+    """Finds named exception constructors whose names bind in the scope enclosing node.
+
+    An exception expression declares its name in the current scope wherever it
+    appears, so a let value such as `exception Boom end` (or any expression
+    containing one) also binds `Boom`. Functions and blocks open their own scopes
+    and are not entered; the emitter declares their exceptions itself.
+    """
+    found: list[TypedException] = []
+
+    def scan(n: Any) -> None:
+        if n is None or isinstance(n, (QType, QKind, TypedFun, TypedBlock)):
+            return
+        if isinstance(n, TypedException):
+            if n.name:
+                found.append(n)
+            return
+        if isinstance(n, (list, tuple)):
+            for item in n:
+                scan(item)
+        elif hasattr(n, "__dataclass_fields__"):
+            for field_name in n.__dataclass_fields__:
+                scan(getattr(n, field_name))
+
+    scan(node)
+    return found
+
+
+def exception_var_entries(node: Any) -> list[tuple[str, TypedException, Any]]:
+    """Returns (name, node, symbol-like) variable entries for named exceptions in node."""
+    return [
+        (exc.name, exc, type("Symbol", (), {"type_val": exc.type_val})())
+        for exc in named_exceptions_in(node)
+    ]
 
 
 def is_specialization_needed(t: QType) -> bool:
@@ -628,23 +665,20 @@ def analyze_program_for_c(
                             if isinstance(val, TypedFun):
                                 top_funs.append((name, val, symbol))
                             else:
+                                top_vars.extend(exception_var_entries(val))
                                 top_vars.append((name, val, symbol))
-                        case TypedException(name=name, type_val=t) as exc_node:
-                            if name:
-                                top_vars.append((name, exc_node, type("Symbol", (), {"type_val": t})()))
+                        case TypedException() | TypedExprStmt(expr=TypedException()):
+                            top_vars.extend(exception_var_entries(b))
                         case _:
                             pass
             case TypedLetValue(name=name, value=val, symbol=symbol):
                 if isinstance(val, TypedFun):
                     top_funs.append((name, val, symbol))
                 else:
+                    top_vars.extend(exception_var_entries(val))
                     top_vars.append((name, val, symbol))
-            case TypedException(name=name, type_val=t) as exc_node:
-                if name:
-                    top_vars.append((name, exc_node, type("Symbol", (), {"type_val": t})()))
-            case TypedExprStmt(expr=TypedException(name=name, type_val=t) as exc_node):
-                if name:
-                    top_vars.append((name, exc_node, type("Symbol", (), {"type_val": t})()))
+            case TypedExpr() | TypedExprStmt():
+                top_vars.extend(exception_var_entries(phrase))
             case _:
                 pass
 
