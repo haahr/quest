@@ -320,7 +320,10 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    (`&quest_type_QT_Point`); `quest_record_layout(r)` reads it. A value whose static type is `Point` may have a larger
    layout, such as `Point3D`'s.
 3. **Offset Table Map:** The runtime keeps every offset table in one map keyed by (view type, layout), where the
-   view is the record type the table serves. `quest_record_dict(view, layout)` returns the table, building it from the
+   view is the record type the table serves. Coercing a record to a supertype whose layout is not known statically
+   (anything but a record literal) uses it: `quest_record_view(r, &quest_type_<Target>)` keeps the payload and looks
+   up the table for the payload's layout, read from its header. The record's static type is not enough, because it
+   may itself be a view of a larger record. `quest_record_dict(view, layout)` returns the table, building it from the
    two descriptors on a miss (`NULL` if the layout lacks a field of the view), and `quest_register_record_dict`
    adds one. A compiled program pre-populates the map in `main` with its static `offsetdict_<Target>_<Source>`
    tables, registered under (`Target`, `Source`). Deserialization (`dynamic.intern`) takes its tables from the map.
@@ -728,10 +731,9 @@ When extracting a value from a dynamic package (`dynamic.be[:T](d)` or `inspect 
    `dynamic.error` (or `inspect` falls through to the next branch or `else`).
 2. If exact descriptor match, the payload is returned unchanged.
 3. If structural subtyping holds:
-   - **Record Adaptation (`quest_record_adapt`):** Dynamically synthesizes a new `QRecordVal` fat pointer.
-     Synthesizes an offset dictionary mapping target fields (alphabetical) to source record memory offsets, and
-     recursively adapts nested immutable fields for depth subtyping. Results are memoized in a thread-safe
-     adapter cache.
+   - **Record View (`quest_record_view`):** Keeps the payload and takes the offset table for (target type, the
+     payload's layout) from the offset table map (§5.2), so a record packaged as a view of a larger record is read
+     correctly. (Records nested in the payload keep their own tables.)
    - **Variant Adaptation (`quest_variant_adapt`):** Dynamically remaps the variant tag using a synthesized tag map
      from source branch names to target branch tag indices, and adapts the payload if needed. Memoized in an adapter
      cache.

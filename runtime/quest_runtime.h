@@ -476,8 +476,6 @@ const QTypeDescriptor *quest_make_variant_descriptor(
     const char *name, size_t size, size_t alignment, size_t case_count, const QVariantCaseDescriptor *cases);
 const QTypeDescriptor *quest_make_fun_descriptor(
     const char *name, size_t param_count, const QFunParamDescriptor *params, const QTypeDescriptor *result_type);
-QRecordVal             quest_record_adapt(
-    const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload);
 QVariantVal            quest_variant_adapt(
     const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload);
 QDynamic              *quest_dynamic_new(const QTypeDescriptor *type_desc, QVal val);
@@ -495,6 +493,17 @@ const QTypeDescriptor *quest_lookup_type_descriptor_by_name(const char *name);
 /* The layout of a record value's payload, recorded in its header when it was created */
 static inline const QTypeDescriptor *quest_record_layout(QRecordVal rec) {
     return ((const QRecordHeader *)rec.val)->descriptor;
+}
+
+/* A record value viewed at record type `view`: its payload with the offset table for the payload's own layout */
+static inline QRecordVal quest_record_view(QRecordVal rec, const QTypeDescriptor *view) {
+    if (rec.val == NULL) return rec;
+    return (QRecordVal){ .val = rec.val, .dict = quest_record_dict(view, quest_record_layout(rec)) };
+}
+
+/* The byte offset in a record value's payload of the i-th field (in name order) of the type it is viewed at */
+static inline size_t quest_record_field_offset(QRecordVal rec, size_t i) {
+    return ((const size_t *)rec.dict)[i];
 }
 
 static inline QRecordVal *quest_record_box(QRecordVal rec) {

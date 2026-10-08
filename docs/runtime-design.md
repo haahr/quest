@@ -163,10 +163,10 @@ Subtyping checks are unified under `quest_is_subtype`:
 - **Coinductive Cycle Detection:** Recursive type subtyping cycles are guarded using an active cycle trail
   (`quest_subtyping_trail`) to ensure terminating coinductive subtyping checks.
 
-### 3. Dynamic Value Adaptation (`quest_record_adapt` & `quest_variant_adapt`)
+### 3. Dynamic Value Adaptation (`quest_record_view` & `quest_variant_adapt`)
 When `dynamic.be` or `inspect` succeeds on a structural subtype:
-- For records: `quest_record_adapt` synthesizes an offset dictionary mapping target fields (alphabetically ordered)
-  to source record byte offsets, recursively adapting nested subtyped immutable fields. Results are cached in a
+- For records: `quest_record_view` keeps the payload and takes the offset table for (target type, the payload's own
+  layout, from its header) from the global offset table map; see [c-representation.md](c-representation.md) §5.2.
 - For variants: `quest_variant_adapt` remaps source variant tags to target tag indices and adapts payloads via a
   memoized tag-mapping adapter cache.
 

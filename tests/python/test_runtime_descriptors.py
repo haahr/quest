@@ -229,12 +229,14 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
         /* Big record: { x: Int, y: Int, z: Int } */
         struct BigRec {
+            QRecordHeader header;
             int64_t qf_x;
             int64_t qf_y;
             int64_t qf_z;
         };
         /* Small record: { y: Int } */
         struct SmallRec {
+            QRecordHeader header;
             int64_t qf_y;
         };
 
@@ -266,6 +268,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
             /* Allocate big record payload */
             struct BigRec *b = (struct BigRec *)quest_alloc(sizeof(struct BigRec));
+            b->header.descriptor = big_desc;
             b->qf_x = 100;
             b->qf_y = 200;
             b->qf_z = 300;

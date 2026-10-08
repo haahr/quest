@@ -431,19 +431,23 @@ class CEmitter:
         return expr.type_val
 
     def _coerce_record_val(self, c_expr: str, expr: TypedExpr | QType, target_type: QRecordType) -> str:
-        """Coerces a record expression to target_type by attaching an offset dictionary if subtyped."""
+        """Coerces a record value to target_type by giving it the offset table for that view of its payload.
+
+        A record literal's layout is known, so it gets a static table; any other record may be a view of a larger
+        record, so its table comes from the runtime map, keyed by the layout recorded in the payload's header.
+        """
         if isinstance(expr, TypedExpr):
             actual_t = self._effective_record_type(expr)
+            exact_layout = isinstance(expr, TypedRecord)
         else:
             actual_t = expr
-        if (
-            isinstance(actual_t, QRecordType)
-            and actual_t is not target_type
-            and not is_type_equal(actual_t, target_type, self.env)
-        ):
+            exact_layout = False
+        if actual_t is target_type or is_type_equal(actual_t, target_type, self.env):
+            return c_expr
+        if exact_layout and isinstance(actual_t, QRecordType):
             d_name = self.record_ctx.offset_dict_instance_name(target_type, actual_t)
             return f"((QRecordVal){{ .val = {c_expr}.val, .dict = (const void *)&{d_name} }})"
-        return c_expr
+        return f"quest_record_view({c_expr}, {self.c_type_descriptor(target_type)})"
 
     def _coerce_val(
         self,
@@ -862,13 +866,8 @@ class CEmitter:
                 and src_vf.type_val is not tgt_vf.type_val
                 and not is_type_equal(src_vf.type_val, tgt_vf.type_val, self.env)
             ):
-                d_name = self.record_ctx.offset_dict_instance_name(
-                    tgt_vf.type_val, src_vf.type_val
-                )
-                lines.append(
-                    f"{res_tmp}->_{i} = ((QRecordVal){{ .val = {src_field_access}.val, "
-                    f".dict = (const void *)&{d_name} }});"
-                )
+                viewed = self._coerce_record_val(src_field_access, src_vf.type_val, tgt_vf.type_val)
+                lines.append(f"{res_tmp}->_{i} = {viewed};")
             elif (
                 isinstance(tgt_vf.type_val, QVariantType)
                 and isinstance(src_vf.type_val, QVariantType)
@@ -1021,13 +1020,7 @@ class CEmitter:
         if self.c_type(ret_type) == "QVal" and self.c_type(target_type) != "QVal":
             if (rec_bound := resolve_record_bound(ret_type)) is not None:
                 if isinstance(target_type, QRecordType):
-                    tmp_ret = self.fresh_tmp("_call_ret")
-                    lines.append(f"QRecordVal {tmp_ret} = {call_str};")
-                    d_name = self.record_ctx.offset_dict_instance_name(target_type, target_type)
-                    call_str = (
-                        f"((QRecordVal){{ .val = {tmp_ret}.val, "
-                        f".dict = (const void *)&{d_name} }})"
-                    )
+                    call_str = f"quest_record_view({call_str}, {self.c_type_descriptor(target_type)})"
             elif resolve_variant_bound(ret_type) is not None:
                 pass
             else:

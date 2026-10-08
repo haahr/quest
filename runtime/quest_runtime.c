@@ -777,111 +777,6 @@ void quest_register_record_dict(const QTypeDescriptor *view, const QTypeDescript
 /* Dynamic Aggregate Adaptation Cache & Coercion Functions                   */
 /* ------------------------------------------------------------------------- */
 
-typedef struct QRecordAdapterCacheEntry {
-    const QTypeDescriptor          *sub_desc;
-    const QTypeDescriptor          *super_desc;
-    const size_t                   *dict;
-    bool                            needs_recursive;
-    struct QRecordAdapterCacheEntry *next;
-} QRecordAdapterCacheEntry;
-
-static QRecordAdapterCacheEntry *quest_record_adapter_cache = NULL;
-
-QRecordVal quest_record_adapt(const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload) {
-    if (payload.p == NULL) {
-        return (QRecordVal){ .val = NULL, .dict = NULL };
-    }
-    const QRecordVal *orig_rec = (const QRecordVal *)payload.p;
-    if (sub_desc == super_desc || super_desc == &quest_type_EmptyTuple) {
-        return *orig_rec;
-    }
-
-    const QRecordTypeDescriptor *s_meta = (const QRecordTypeDescriptor *)sub_desc->extra;
-    const QRecordTypeDescriptor *t_meta = (const QRecordTypeDescriptor *)super_desc->extra;
-    if (t_meta == NULL || t_meta->field_count == 0) {
-        return *orig_rec;
-    }
-
-    /* Check adaptation cache */
-    QRecordAdapterCacheEntry *cached = NULL;
-    for (QRecordAdapterCacheEntry *cur = quest_record_adapter_cache; cur != NULL; cur = cur->next) {
-        if (cur->sub_desc == sub_desc && cur->super_desc == super_desc) {
-            cached = cur;
-            break;
-        }
-    }
-
-    if (cached == NULL) {
-        size_t *dict = (size_t *)quest_alloc(sizeof(size_t) * t_meta->field_count);
-        bool recursive = false;
-        for (size_t j = 0; j < t_meta->field_count; ++j) {
-            const QRecordFieldDescriptor *tf = &t_meta->fields[j];
-            const QRecordFieldDescriptor *sf = NULL;
-            if (s_meta != NULL) {
-                for (size_t i = 0; i < s_meta->field_count; ++i) {
-                    if (s_meta->fields[i].name != NULL && strcmp(s_meta->fields[i].name, tf->name) == 0) {
-                        sf = &s_meta->fields[i];
-                        break;
-                    }
-                }
-            }
-            if (sf != NULL) {
-                dict[j] = sf->offset;
-                if (!tf->is_var && (tf->type->kind == QTYPE_KIND_RECORD || tf->type->kind == QTYPE_KIND_VARIANT)) {
-                    if (sf->type != tf->type) {
-                        recursive = true;
-                    }
-                }
-            } else {
-                dict[j] = 0;
-            }
-        }
-        cached = (QRecordAdapterCacheEntry *)quest_alloc(sizeof(QRecordAdapterCacheEntry));
-        cached->sub_desc = sub_desc;
-        cached->super_desc = super_desc;
-        cached->dict = dict;
-        cached->needs_recursive = recursive;
-        cached->next = quest_record_adapter_cache;
-        quest_record_adapter_cache = cached;
-    }
-
-    if (!cached->needs_recursive) {
-        return (QRecordVal){ .val = orig_rec->val, .dict = cached->dict };
-    }
-
-    /* Recursive payload allocation and field adaptation */
-    void *new_val = quest_alloc(super_desc->size > 0 ? super_desc->size : sizeof(void *));
-    ((QRecordHeader *)new_val)->descriptor = super_desc;
-    for (size_t j = 0; j < t_meta->field_count; ++j) {
-        const QRecordFieldDescriptor *tf = &t_meta->fields[j];
-        const QRecordFieldDescriptor *sf = NULL;
-        for (size_t i = 0; i < s_meta->field_count; ++i) {
-            if (s_meta->fields[i].name != NULL && strcmp(s_meta->fields[i].name, tf->name) == 0) {
-                sf = &s_meta->fields[i];
-                break;
-            }
-        }
-        if (sf == NULL) continue;
-        void *src_field = (char *)orig_rec->val + sf->offset;
-        void *dst_field = (char *)new_val + tf->offset;
-
-        if (tf->type->kind == QTYPE_KIND_RECORD && sf->type != tf->type) {
-            QRecordVal *sub_r = (QRecordVal *)src_field;
-            QRecordVal adapted_inner = quest_record_adapt(sf->type, tf->type, (QVal){ .p = sub_r });
-            *(QRecordVal *)dst_field = adapted_inner;
-        } else if ((tf->type->kind == QTYPE_KIND_VARIANT || tf->type->kind == QTYPE_KIND_OPTION) &&
-                   sf->type != tf->type) {
-            QVariantVal *sub_v = (QVariantVal *)src_field;
-            QVariantVal adapted_inner = quest_variant_adapt(sf->type, tf->type, (QVal){ .p = sub_v });
-            *(QVariantVal *)dst_field = adapted_inner;
-        } else {
-            size_t copy_size = tf->type->size > 0 ? tf->type->size : sizeof(QVal);
-            memcpy(dst_field, src_field, copy_size);
-        }
-    }
-    return (QRecordVal){ .val = new_val, .dict = cached->dict };
-}
-
 typedef struct QVariantAdapterCacheEntry {
     const QTypeDescriptor            *sub_desc;
     const QTypeDescriptor            *super_desc;
@@ -951,7 +846,7 @@ QVariantVal quest_variant_adapt(const QTypeDescriptor *sub_desc, const QTypeDesc
     if (sc != NULL && tc != NULL && sc->payload_type != NULL && tc->payload_type != NULL &&
         sc->payload_type != tc->payload_type) {
         if (tc->payload_type->kind == QTYPE_KIND_RECORD) {
-            QRecordVal adapted_rec = quest_record_adapt(sc->payload_type, tc->payload_type, orig_var->payload);
+            QRecordVal adapted_rec = quest_record_view(*(const QRecordVal *)orig_var->payload.p, tc->payload_type);
             adapted_payload = (QVal){ .p = quest_record_box(adapted_rec) };
         } else if (tc->payload_type->kind == QTYPE_KIND_VARIANT || tc->payload_type->kind == QTYPE_KIND_OPTION) {
             QVariantVal adapted_v = quest_variant_adapt(sc->payload_type, tc->payload_type, orig_var->payload);
@@ -1153,8 +1048,9 @@ QVal quest_dynamic_be(const QTypeDescriptor *target_type_desc, const QDynamic *d
     }
     /* Coercion and adaptation for aggregates */
     if (target_type_desc->kind == QTYPE_KIND_RECORD) {
-        QRecordVal adapted = quest_record_adapt(d->type_desc, target_type_desc, d->payload);
-        return (QVal){ .p = quest_record_box(adapted) };
+        QRecordVal viewed = quest_record_view(*(const QRecordVal *)d->payload.p, target_type_desc);
+        if (viewed.dict == NULL) quest_raise_dynamic_error();
+        return (QVal){ .p = quest_record_box(viewed) };
     }
     if (target_type_desc->kind == QTYPE_KIND_VARIANT || target_type_desc->kind == QTYPE_KIND_OPTION) {
         QVariantVal adapted = quest_variant_adapt(d->type_desc, target_type_desc, d->payload);

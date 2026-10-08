@@ -131,7 +131,16 @@ def jsog_encode(dyn: QDynamicVal) -> str:
     id_map: dict[int, str] = {}
     next_id = 1
 
-    def encode_val(val: QValue) -> Any:
+    def component_type(t: Optional[QType]) -> Optional[QType]:
+        """The structure of t (a record, tuple, array, variant, or option type), or None if unknown."""
+        if not isinstance(t, QType):
+            return None
+        t = t.evaluate_lazily()
+        return t if isinstance(t, (QRecordType, QTupleType, QArrayType, QVariantType, QOptionType)) else None
+
+    def encode_val(val: QValue, t: Optional[QType] = None) -> Any:
+        """Encodes val as a value of type t: a record viewed at a supertype writes only that type's fields."""
+        t = component_type(t)
         if isinstance(val, (QReader, QWriter, QClosure, QBuiltinFun)):
             raise QuestException(DYNAMIC_ERROR_EXC)
 
@@ -164,46 +173,59 @@ def jsog_encode(dyn: QDynamicVal) -> str:
                 d: dict[str, Any] = {}
                 if cur_id is not None:
                     d["@id"] = cur_id
+                field_types = {f.name: f.type_val for f in t.fields} if isinstance(t, QRecordType) else None
                 for k in sorted(val.fields.keys()):
-                    d[k] = encode_val(val.fields[k])
+                    if field_types is None:
+                        d[k] = encode_val(val.fields[k])
+                    elif k in field_types:
+                        d[k] = encode_val(val.fields[k], field_types[k])
                 return d
 
             if isinstance(val, QArray):
-                arr_elems = [encode_val(elem) for elem in val.elements]
+                elem_t = t.element_type if isinstance(t, QArrayType) else None
+                arr_elems = [encode_val(elem, elem_t) for elem in val.elements]
                 if cur_id is not None:
                     return {"@id": cur_id, "@array": arr_elems}
                 return arr_elems
 
             if isinstance(val, QTuple):
-                tuple_elems = [encode_val(elem) for elem in val.elements]
+                elem_types: list[Optional[QType]] = (
+                    [f.type_val for f in t.value_fields] if isinstance(t, QTupleType) else []
+                )
+                tuple_elems = [
+                    encode_val(elem, elem_types[i] if i < len(elem_types) else None)
+                    for i, elem in enumerate(val.elements)
+                ]
                 if cur_id is not None:
                     return {"@id": cur_id, "@tuple": tuple_elems}
                 return tuple_elems
 
         if isinstance(val, QRef):
-            return encode_val(val.value)
+            return encode_val(val.value, t)
 
         if isinstance(val, QVariant):
             if val.payload is None or isinstance(val.payload, QOk):
                 return val.tag
-            return {val.tag: encode_val(val.payload)}
+            case_t = t.get_variant(val.tag) if isinstance(t, QVariantType) else None
+            return {val.tag: encode_val(val.payload, case_t.type_val if case_t is not None else None)}
 
         if isinstance(val, QOption):
             if val.payload is None or isinstance(val.payload, QOk):
                 return val.tag
-            return {val.tag: encode_val(val.payload)}
+            opt_t = t.get_option(val.tag) if isinstance(t, QOptionType) else None
+            return {val.tag: encode_val(val.payload, opt_t.payload_type if opt_t is not None else None)}
 
         if isinstance(val, QDynamicVal):
             return {
                 "@type": str(strip_aliases(val.type_val)),
-                "@value": encode_val(val.value),
+                "@value": encode_val(val.value, val.type_val),
             }
 
         raise QuestException(DYNAMIC_ERROR_EXC)
 
     envelope = {
         "@type": str(strip_aliases(dyn.type_val)),
-        "@value": encode_val(dyn.value),
+        "@value": encode_val(dyn.value, dyn.type_val),
     }
     return json.dumps(envelope, separators=(",", ":"))
 

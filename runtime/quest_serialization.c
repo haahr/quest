@@ -149,7 +149,7 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             if (meta != NULL) {
                 for (size_t i = 0; i < meta->field_count; ++i) {
                     const QRecordFieldDescriptor *f = &meta->fields[i];
-                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + f->offset);
+                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + quest_record_field_offset(*rec, i));
                     quest_scan_value(f->type, f_val, table);
                 }
             }
@@ -335,7 +335,7 @@ static void quest_emit_value(
                     first = false;
                     quest_write_json_string(wr, f->name, strlen(f->name));
                     quest_writer_put_char(wr, ':');
-                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + f->offset);
+                    QVal f_val = quest_extract_field_val(f->type, (char *)rec->val + quest_record_field_offset(*rec, i));
                     quest_emit_value(f->type, f_val, table, next_id, wr);
                 }
             }
