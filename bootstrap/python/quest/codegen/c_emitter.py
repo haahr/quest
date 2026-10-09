@@ -280,8 +280,8 @@ class CEmitter:
     def _option_payload_field(self, src: str, stored_payload: Optional[QType], index: int, wanted: QType) -> str:
         """Converts field `index` of an option's tuple payload, read from `src`, to the C type of `wanted`.
 
-        A recursive option's struct stores its recursive occurrences as QVal (its payload types have the recursion
-        variable free), while the field read through the unfolding has the option's own C type.
+        A field the struct stores as QVal (one whose type is a type variable) is unwrapped, and a pointer field is
+        cast when the two pointer types differ.
         """
         if not isinstance(stored_payload, QTupleType) or index >= len(stored_payload.value_fields):
             return src

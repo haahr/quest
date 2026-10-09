@@ -566,6 +566,21 @@ manipulated dynamically:
 - **Zero-Cost Direct Calls**: Calling a known module function (e.g. `writer.putString(w s)`) directly invokes
   `quest_writer_put_string(...)`, entirely bypassing record dispatch.
 
+### 5.7. Recursive Types
+Quest's recursive types are equi-recursive: `Rec(X) T` is equal to its unfolding `T[X := Rec(X) T]`, to any depth.
+Equal types share one C representation, so a value moves between them with a plain assignment:
+
+- **Values:** A recursive type whose unfolding is a tuple, record, variant, or option type (directly or through a
+  type operator application, as `List(Int)`) is represented like its unfolding: a recursive tuple or option is a
+  pointer to its struct, whose recursive components point to that same struct.
+- **Struct tags:** The tag of a recursive type is built from its body with each recursion variable replaced by a
+  placeholder numbered by nesting depth (`Rec0_QOption_nil_cons_QTuple_Int_Self0` for
+  `Rec(L) Option nil cons with head: Int tail: L end end`), so that it is finite and the same for alpha-equivalent
+  types. An aggregate type equal to a recursive type it contains (an unfolding, written out) takes that recursive
+  type's tag (`type_to_c_tag`), and its descriptor (`descriptor_form`); so do aggregates built from such types.
+- **Limitation:** Equal recursive types with different periods (`Rec(L) Option nil cons with head: Int tail: L end
+  end` and the same type unrolled twice inside its `Rec`) still get different tags.
+
 ---
 
 ## 6. Closures and Calling Convention (Phase 4.2c)

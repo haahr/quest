@@ -167,8 +167,8 @@ def _beta_reduce_head(t: QType) -> QType:
 
 
 def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
-    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a tuple, record, or
-    variant type.
+    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a tuple, record,
+    variant, or option type.
 
     Values of such a recursive type are represented like values of its unfolding (a tuple's values by a pointer to
     its struct, for example), so recursive occurrences inside the unfolding have that representation too.
@@ -182,7 +182,42 @@ def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
         t = t.prune() if hasattr(t, "prune") else t
         if isinstance(t, QTypeApp):
             t = _beta_reduce_head(t)
-    return t if isinstance(t, (QTupleType, QRecordType, QVariantType)) else None
+    return t if isinstance(t, (QTupleType, QRecordType, QVariantType, QOptionType)) else None
+
+
+def _refold_recursive_aggregate(t: QType) -> Optional[QType]:
+    """Returns a recursive type occurring in t that is equal to t, if t is a tuple, record, variant, or option type.
+
+    Recursive types are equi-recursive, so an unfolding of a recursive type (written out, as in
+    `Let Unfolded = Option nil cons with head: Int tail: IntList end end`, or to any depth) is equal to it. Such a
+    type is represented as the recursive type is, so that equal types share one tag and one C type.
+    """
+    if not isinstance(t, (QTupleType, QRecordType, QVariantType, QOptionType)) or t._has_meta:
+        return None
+    candidates: list[QType] = []
+    seen: set[int] = set()
+
+    def visit(node: Any) -> None:
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, (QRecType, QRecGroupType, QTypeApp)):
+            # Only recursive types closed in t's scope (not mentioning variables bound inside t) can equal it
+            if node._fv <= t._fv and _unfold_recursive_aggregate(node) is not None:
+                candidates.append(node)
+                return
+        if isinstance(node, (tuple, list)):
+            for item in node:
+                visit(item)
+        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+            for f in dataclasses.fields(node):
+                visit(getattr(node, f.name))
+
+    visit(t)
+    for candidate in candidates:
+        if is_type_equal(t, candidate):
+            return candidate
+    return None
 
 
 def _normalize_type_raw(t: QType) -> QType:
@@ -289,6 +324,8 @@ def _type_to_c_tag_raw(t: QType) -> str:
     if (rec_tag := _recursive_aggregate_tag(t)) is not None:
         return rec_tag
     t = _normalize_type_raw(t)
+    if (refolded := _refold_recursive_aggregate(t)) is not None:
+        return type_to_c_tag(refolded)
     if _is_word_type_raw(t):
         return "Word"
     if t is INT_TYPE:
@@ -729,6 +766,9 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     """
     t = t.prune() if hasattr(t, "prune") else t
     t = normalize_type(strip_aliases(t))
+    if (refolded := _refold_recursive_aggregate(t)) is not None:
+        # Equal types share a descriptor: an unfolding of a recursive type is described as the recursive type is
+        t = normalize_type(refolded)
     if not _BASE_DESCRIPTORS:
         _BASE_DESCRIPTORS.update({
             id(INT_TYPE): "&quest_type_Int", id(REAL_TYPE): "&quest_type_Real", id(BOOL_TYPE): "&quest_type_Bool",
@@ -750,18 +790,10 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         return DescriptorForm("variant", tag=f"{type_to_c_tag(var_t)}_{_type_digest(var_t)}", type=var_t)
     if isinstance(t, QOptionType) or (opt_b := resolve_option_bound(t)) is not None:
         opt_t = t if isinstance(t, QOptionType) else opt_b
-        described = opt_t
-        rec_t = _beta_reduce_head(t) if isinstance(t, QTypeApp) else t
-        if isinstance(rec_t, QRecType):
-            # resolve_option_bound gives the body with the recursion variable free (which names the C struct);
-            # the descriptor describes the unfolding, whose recursive occurrences refer back to the recursive type
-            unfolded = unalias(rec_t.unfold_lazily())
-            if isinstance(unfolded, QOptionType):
-                described = unfolded
         return DescriptorForm(
             "option",
-            tag=f"{option_struct_name(opt_t)}_{_type_digest(described)}",
-            type=described,
+            tag=f"{option_struct_name(opt_t)}_{_type_digest(opt_t)}",
+            type=opt_t,
             struct=option_struct_name(opt_t),
         )
     # Records, variants, and options above resolve as the C type mapping does (their structs are named that

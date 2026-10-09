@@ -1,0 +1,73 @@
+(* Language: Unfoldings of Recursive Types, Equal to Them and in C Represented Alike *)
+
+import arrayOp: ArrayOp;
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+Let Unfolded = Option nil cons with head: Int tail: IntList end end;
+Let Unfolded2 = Option nil cons with head: Int tail: Unfolded end end;
+
+let rec sum(x: IntList): Int =
+    case x
+        when cons with c then c.head + sum(c.tail)
+        else 0
+    end;
+let l: IntList = option cons of IntList with 1 option cons of IntList with 2 option nil of IntList end end end;
+
+(* 1. Assigning a recursive option value to its unfoldings, and back *)
+let u: Unfolded = l;
+let u2: Unfolded2 = u;
+let var back: IntList = u2;
+back := u;
+printInt(sum(back));
+printInt(sum(u2));
+
+(* 2. Inspecting values at an unfolded type *)
+printInt(u!cons.head);
+printInt(u!cons.tail!cons.head);
+printInt(u2!cons.tail!cons.head);
+printInt(
+    case u2
+        when cons with c then c.tail!cons.head
+        else 0
+    end);
+
+(* 3. Option values built at an unfolded type, and unfoldings inside other types *)
+let built: Unfolded = option cons of Unfolded with 4 l end;
+printInt(sum(built));
+let firstTail(x: Unfolded2): Unfolded = x!cons.tail;
+printInt(sum(firstTail(l)));
+Let Holder = Tuple t: Unfolded n: Int end;
+let h: Holder = tuple let t = l let n = 7 end;
+let hl: Tuple t: IntList n: Int end = h;
+printInt(sum(hl.t) + h.n);
+let a = array of u2 l built end;
+printInt(sum(a[1]) + sum(a[2]));
+
+(* 4. An unfolding of a parameterized recursive option type *)
+Let List = Fun(A::TYPE) Rec(L::TYPE) Option nil cons with head: A tail: L end end;
+let pl: Option nil cons with head: Int tail: List(Int) end end = l;
+let pl2: List(Int) = pl;
+printInt(sum(pl2));
+
+(* 5. Unfoldings of a recursive tuple type *)
+Let Rec Tree::TYPE = Tuple v: Int kids: Array(Tree) end;
+Let TreeUnfolded = Tuple v: Int kids: Array(Tree) end;
+let leaf: Tree = tuple let v = 2 let kids = array of :Tree end end;
+let tu: TreeUnfolded = leaf;
+let tu2: Tuple v: Int kids: Array(TreeUnfolded) end = tuple let v = 1 let kids = array of tu leaf end end;
+let t: Tree = tu2;
+printInt(t.v + t.kids[0].v + t.kids[1].v);
+
+(* 6. Dynamic values at an unfolded type, narrowed at the recursive type and back *)
+printInt(sum(dynamic.be(:IntList dynamic.new(:Unfolded2 u2))));
+printInt(dynamic.be(:Unfolded dynamic.new(:IntList l))!cons.head);
