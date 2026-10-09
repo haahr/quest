@@ -13,7 +13,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 import quest.ast as ast
-from quest.build.abi import ABI_VERSION, PRODUCER, has_current_abi, header_stamp, incompatible_artifact_message
+from quest.build.abi import (
+    ABI_VERSION,
+    PRODUCER,
+    built_from,
+    has_current_abi,
+    header_stamp,
+    incompatible_artifact_message,
+)
 from quest.codegen.c_types import qtype_to_c_type
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
@@ -80,6 +87,7 @@ QI_SCHEMA_TYPE_STR = (
     "imports: Array(String) "
     "name: String "
     "producer: String "
+    "source: String "
     "types: Array(Record isManifest: Bool kind: String manifestType: String name: String end) "
     "values: Array(Record isPoly: Bool name: String typeSig: String end) "
     "end"
@@ -290,8 +298,13 @@ def compile_interface_to_qi(
     decl: ast.InterfaceDecl,
     iface_scope: Scope,
     env: Optional[Environment] = None,
+    source: Optional[Path] = None,
 ) -> str:
-    """Serializes interface declarations to portable JSON/JSOG .qi format using shadow Quest records."""
+    """Serializes interface declarations to portable JSON/JSOG .qi format using shadow Quest records.
+
+    source is the .int.quest the interface was compiled from; it is recorded (resolved) so that a .qi is used only
+    for the source it was built from (docs/build-process.md §5).
+    """
     imports_elems: list[QString] = []
     for imp in decl.imports:
         if not imp.names:
@@ -361,6 +374,7 @@ def compile_interface_to_qi(
         {
             "abi": QInt(ABI_VERSION),
             "producer": QString(PRODUCER),
+            "source": QString(str(source.resolve()) if source is not None else ""),
             "name": QString(decl.name),
             "imports": imports_arr,
             "types": QArray(type_records),
@@ -564,7 +578,7 @@ def compile_interface_file(
             )
     typed_iface = elaborate_interface(decl, env)
 
-    qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env)
+    qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path)
 
     if build_dir is not None and output_dir is None:
         from quest.module_loader import canonicalize_module_path
@@ -626,7 +640,8 @@ def ensure_interface_artifacts(
     h_file = target_dir / f"{stem}.int.h"
 
     def current(qi: Path, h: Path) -> bool:
-        """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, and match this compiler.
+        """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, match this compiler, and were
+        built from this source (not a same-named interface elsewhere).
 
         The header is required only when one is wanted (C compilation).
         """
@@ -635,7 +650,11 @@ def ensure_interface_artifacts(
         if src is None or not src.is_file():
             return True
         src_mtime = src.stat().st_mtime
-        return src_mtime <= qi.stat().st_mtime and (not header or src_mtime <= h.stat().st_mtime)
+        return (
+            src_mtime <= qi.stat().st_mtime
+            and (not header or src_mtime <= h.stat().st_mtime)
+            and built_from(qi, src)
+        )
 
     # Fresh artifacts found elsewhere on the search path (e.g. next to the source, from a standalone
     # compilation) are used like those in the build directory.

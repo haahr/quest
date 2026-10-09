@@ -398,6 +398,94 @@ class TestBuildEngine(unittest.TestCase):
         self.assertEqual(proc.stdout, "42\n")
 
 
+class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
+    """Artifacts are named by canonical unit name only, so same-named units in different directories that share a
+    build directory must not reuse each other's artifacts, even when those are newer than the sources."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.build_dir = self.root / ".build"
+        self.build_dir.mkdir()
+        self.a = self.root / "a"
+        self.b = self.root / "b"
+        self.a.mkdir()
+        self.b.mkdir()
+        (self.a / "counter.int.quest").write_text(
+            "interface Counter export inc(n: Int): Int end;\n", encoding="utf-8"
+        )
+        (self.a / "counter.mod.quest").write_text(
+            "module counter : Counter export let inc(n: Int): Int = n + 1; end;\n", encoding="utf-8"
+        )
+        (self.b / "counter.int.quest").write_text(
+            "interface Counter export inc(n: Int): Int base(): Int end;\n", encoding="utf-8"
+        )
+        (self.b / "counter.mod.quest").write_text(
+            "module counter : Counter export let inc(n: Int): Int = n + 100; let base(): Int = 7; end;\n",
+            encoding="utf-8",
+        )
+        main_text = (
+            "import c = counter : Counter;\n"
+            "import writer: Writer;\n"
+            "import conv: Conv;\n"
+            "writer.putString(writer.output conv.int(c.inc(10){extra}));\n"
+        )
+        (self.a / "main.quest").write_text(main_text.format(extra=""), encoding="utf-8")
+        (self.b / "main.quest").write_text(main_text.format(extra=" + c.base()"), encoding="utf-8")
+        # Every source predates every artifact, so timestamps alone cannot tell the units apart.
+        past = time.time() - 60
+        for src in list(self.a.iterdir()) + list(self.b.iterdir()):
+            os.utime(src, (past, past))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _build_and_run(self, d: Path) -> tuple[list[str], str]:
+        engine = BuildEngine(build_dir=self.build_dir, include_paths=[d], log_file=self.build_dir / "build.log")
+        res = engine.build_main(d / "main.quest")
+        proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)
+        self.assertEqual(proc.returncode, 0)
+        return res.compiled_units, proc.stdout
+
+    def test_build_does_not_reuse_other_directorys_artifacts(self) -> None:
+        self.assertEqual(self._build_and_run(self.a)[1], "11")
+        units, out = self._build_and_run(self.b)
+        self.assertEqual(out, "117")
+        self.assertEqual(set(units), {"main", "counter"})
+        # And back again: a's artifacts were replaced, so they are rebuilt too.
+        self.assertEqual(self._build_and_run(self.a)[1], "11")
+        # Rebuilding the same directory twice reuses its artifacts.
+        self.assertEqual(self._build_and_run(self.a)[0], [])
+
+    def test_unit_staleness_checks_recorded_source(self) -> None:
+        from quest.build.manifest import unit_staleness
+
+        self._build_and_run(self.a)
+        artifacts = [self.build_dir / f"counter{ext}" for ext in (".qm", ".mod.c", ".o")]
+        self.assertIsNone(unit_staleness(self.a / "counter.mod.quest", *artifacts))
+        reason = unit_staleness(self.b / "counter.mod.quest", *artifacts)
+        self.assertIsNotNone(reason)
+        self.assertIn("different source", reason)
+
+    def test_interface_artifacts_check_recorded_source(self) -> None:
+        from quest.build.abi import built_from
+        from quest.interface_compiler import ensure_interface_artifacts
+        from quest.module_loader import resolve_interface_file
+
+        qi_a, _, _ = ensure_interface_artifacts("Counter", self.a, [], self.build_dir)
+        self.assertTrue(built_from(qi_a, self.a / "counter.int.quest"))
+        qi_b, _, _ = ensure_interface_artifacts("Counter", self.b, [], self.build_dir)
+        self.assertEqual(qi_b, qi_a)
+        self.assertTrue(built_from(qi_b, self.b / "counter.int.quest"))
+        self.assertIn("base", qi_b.read_text(encoding="utf-8"))
+
+        # A .qi on the search path built from another source is passed over in favor of the source.
+        self.assertEqual(
+            resolve_interface_file("Counter", self.a, [self.build_dir]), (self.a / "counter.int.quest").resolve()
+        )
+        self.assertEqual(resolve_interface_file("Counter", self.b, [self.build_dir]), qi_b.resolve())
+
+
 if __name__ == "__main__":
     unittest.main()
 

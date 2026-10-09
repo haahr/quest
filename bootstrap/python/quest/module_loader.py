@@ -58,11 +58,11 @@ def resolve_interface_file(
 ) -> Optional[Path]:
     """Finds interface `name` on the search path: a fresh .qi if there is one, else its .int.quest.
 
-    A .qi is fresh when it records this compiler's ABI version and is at least as new as the source
-    (docs/build-process.md §5.2). Without a source, the first .qi found is returned whatever its ABI
-    version; loading it reports an incompatible one.
+    A .qi is fresh when it records this compiler's ABI version and the source it was built from, and is at
+    least as new as that source (docs/build-process.md §5.2). Without a source, the first .qi found is returned
+    whatever its ABI version; loading it reports an incompatible one.
     """
-    from quest.build.abi import has_current_abi
+    from quest.build.abi import built_from, has_current_abi
 
     source_file = resolve_interface_source_file(name, current_dir, include_paths)
     source_mtime = source_file.stat().st_mtime if source_file is not None else None
@@ -87,7 +87,11 @@ def resolve_interface_file(
             continue
         if source_mtime is None:
             return qi_candidate.resolve()
-        if has_current_abi(qi_candidate) and qi_candidate.stat().st_mtime >= source_mtime:
+        if (
+            has_current_abi(qi_candidate)
+            and qi_candidate.stat().st_mtime >= source_mtime
+            and built_from(qi_candidate, source_file)
+        ):
             return qi_candidate.resolve()
 
     return source_file

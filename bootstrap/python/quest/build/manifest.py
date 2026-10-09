@@ -145,7 +145,9 @@ def unit_staleness(source: Path, qm_path: Path, c_path: Path, o_path: Path) -> O
     """Returns why a unit with a source file must be recompiled, or None if its artifacts are up to date.
 
     Up to date means: the .qm, .c, and .o exist and are no older than the source (and the .o no older than the
-    .c), and the manifest records the current ABI version and no newer interface (docs/build-process.md §5.2, §7.1).
+    .c), and the manifest records this source, the current ABI version, and no newer interface
+    (docs/build-process.md §5.2, §7.1). Artifacts are named by canonical unit name only, so the recorded source
+    tells a unit's artifacts from those of a same-named unit elsewhere.
     """
     if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
         return f"missing artifacts in {qm_path.parent}"
@@ -159,6 +161,8 @@ def unit_staleness(source: Path, qm_path: Path, c_path: Path, o_path: Path) -> O
     manifest = read_qm(qm_path)
     if manifest is None:
         return f"cannot parse {qm_path}"
+    if not manifest.source or Path(manifest.source).resolve() != source.resolve():
+        return f"artifacts built from a different source ({manifest.source or 'none recorded'})"
     if is_manifest_stale(manifest, qm_path):
         return "manifest indicates stale"
     return None

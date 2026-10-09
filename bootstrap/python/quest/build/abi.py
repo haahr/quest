@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-ABI_VERSION = 10
+ABI_VERSION = 11
 
 # The compiler that wrote an artifact: informational, for diagnostics only.
 PRODUCER = "quest-bootstrap 0.1"
@@ -26,20 +26,35 @@ def header_stamp() -> str:
     return f"/* quest abi {ABI_VERSION} producer {PRODUCER} */"
 
 
-def recorded_abi(artifact: Path) -> Optional[int]:
-    """The ABI version recorded in a .qi or .qm file, or None if it records none or cannot be read."""
+def _recorded_field(artifact: Path, key: str) -> object:
+    """A top-level field of a .qi or .qm file, or None if it is absent or the file cannot be read."""
     try:
         data = json.loads(Path(artifact).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if isinstance(data, dict) and isinstance(data.get("value"), dict):  # .qi: a serialized dynamic value
         data = data["value"]
-    abi = data.get("abi") if isinstance(data, dict) else None
+    return data.get(key) if isinstance(data, dict) else None
+
+
+def recorded_abi(artifact: Path) -> Optional[int]:
+    """The ABI version recorded in a .qi or .qm file, or None if it records none or cannot be read."""
+    abi = _recorded_field(artifact, "abi")
     return abi if isinstance(abi, int) and not isinstance(abi, bool) else None
 
 
 def has_current_abi(artifact: Path) -> bool:
     return recorded_abi(artifact) == ABI_VERSION
+
+
+def built_from(artifact: Path, source: Path) -> bool:
+    """True if a .qi or .qm file records source as the file it was built from.
+
+    Artifacts are named by canonical unit name only, so a same-named unit elsewhere (another directory sharing the
+    build directory, say) can leave artifacts that are newer than this unit's source but were not built from it.
+    """
+    recorded = _recorded_field(artifact, "source")
+    return isinstance(recorded, str) and recorded != "" and Path(recorded).resolve() == Path(source).resolve()
 
 
 def incompatible_artifact_message(artifact: Path) -> str:
