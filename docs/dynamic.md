@@ -181,7 +181,7 @@ its type raises `dynamic.error`.
 | `Ok` | `null` | |
 | `Bool` | `true` / `false` | |
 | `Int` | integer | Readers must parse 64-bit integers exactly, not through a double. |
-| `Real` | number | As Python's `repr` writes it: the shortest digits that read back exactly, positional for decimal exponents in [-4, 16) (`100.0`, `0.0001`) and otherwise `1e+16`, `1e-05`. Non-finite values are the strings `"NaN"`, `"Infinity"`, `"-Infinity"`. |
+| `Real` | number | As Python's `repr` writes it: the shortest digits that read back exactly, positional for decimal exponents in [-4, 16) (`100.0`, `0.0001`) and otherwise `1e+16`, `1e-05`. Infinities are the strings `"Infinity"` and `"-Infinity"`; NaN is not a `Real` value. |
 | `Char` | one-character string | |
 | `String` | string | Standard JSON escaping. |
 | `Record` | `{"<field>": value, ...}` | Keys sorted; exactly the type's fields; `var` fields hold their current value. |

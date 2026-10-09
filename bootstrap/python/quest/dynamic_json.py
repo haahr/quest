@@ -411,8 +411,8 @@ class _Writer:
             return val.value
         if ref == "Real" and isinstance(val, (QReal, QInt)):
             r = float(val.value)
-            if math.isnan(r):
-                return "NaN"
+            if math.isnan(r):  # not a Real value (docs/type-system.md §6.3.1)
+                raise _fail()
             if math.isinf(r):
                 return "Infinity" if r > 0 else "-Infinity"
             return r
@@ -669,7 +669,7 @@ class _Reader:
         if ref == "Real":
             if isinstance(data, (int, float)) and not isinstance(data, bool):
                 return QReal(float(data))
-            special = {"NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}
+            special = {"Infinity": math.inf, "-Infinity": -math.inf}
             if isinstance(data, str) and data in special:
                 return QReal(special[data])
         if ref == "Bool" and isinstance(data, bool):
@@ -690,10 +690,15 @@ class _Reader:
         return QAutoVal(QTuple((value,), labels=("a",)), self.type_of(ref))
 
 
+def _reject_json_constant(name: str) -> Any:
+    """Rejects the non-JSON tokens NaN, Infinity, and -Infinity that Python's json module accepts."""
+    raise _fail()
+
+
 def jsog_decode(raw_json: str) -> QAutoVal:
     """Deserializes a version 1 document into a dynamic value."""
     try:
-        document = json.loads(raw_json)
+        document = json.loads(raw_json, parse_constant=_reject_json_constant)
     except (json.JSONDecodeError, RecursionError):
         raise _fail() from None
     if not isinstance(document, dict) or set(document) != {"quest", "types", "type", "value"}:

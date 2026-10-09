@@ -50,6 +50,9 @@ from quest.types import (
     resolve_variant_bound,
     resolve_option_bound,
     is_type_equal,
+    reserved_symbol_id,
+    reserved_symbol_index,
+    ReservedSymbolUse,
     auto_payload_type,
     QParam,
     QKind,
@@ -240,22 +243,20 @@ def _type_to_c_tag_uncached(t: QType) -> str:
 
 # A recursive type's tag is built from its body with each recursive variable replaced by one of these
 # placeholders, numbered by nesting depth, so that the tag is finite and the same for alpha-equivalent types.
-# Their symbol ids are reserved, below those of the descriptor placeholders (_BOUND_VAR_BASE and so on).
-_REC_SELF_SYMBOL_BASE = -(1 << 42)
-_REC_SELF_SYMBOL_LIMIT = -(1 << 43)
+# Their symbol ids are reserved (ReservedSymbolUse.REC_SELF), indexed by depth.
 
 
 def _is_rec_self_symbol(symbol_id: int) -> bool:
-    return _REC_SELF_SYMBOL_LIMIT < symbol_id <= _REC_SELF_SYMBOL_BASE
+    return reserved_symbol_index(symbol_id, ReservedSymbolUse.REC_SELF) is not None
 
 
 def _rec_self_var(level: int) -> QTypeVar:
-    return QTypeVar(name=f"Rec.Self{level}", symbol_id=_REC_SELF_SYMBOL_BASE - level)
+    return QTypeVar(name=f"Rec.Self{level}", symbol_id=reserved_symbol_id(ReservedSymbolUse.REC_SELF, level))
 
 
 def _rec_self_level(t: QType) -> Optional[int]:
-    if isinstance(t, QTypeVar) and _is_rec_self_symbol(t.symbol_id):
-        return _REC_SELF_SYMBOL_BASE - t.symbol_id
+    if isinstance(t, QTypeVar):
+        return reserved_symbol_index(t.symbol_id, ReservedSymbolUse.REC_SELF)
     return None
 
 
@@ -501,21 +502,19 @@ def fun_descriptor_tag(t: QType) -> str:
 # ----------------------------------------------------------------------------
 
 # Bound type parameters of polymorphic function types are described by placeholders: type variables with reserved
-# symbol ids that stand for de Bruijn indices (quest_type_bound_vars in the runtime).
-_BOUND_VAR_BASE = -(1 << 40)
-_CANONICAL_QUANTIFIER_BASE = -(1 << 41)
+# symbol ids (ReservedSymbolUse.BOUND_VAR) that stand for de Bruijn indices (quest_type_bound_vars in the runtime).
 
 
 def bound_var(index: int, bound: Optional[QKind]) -> QTypeVar:
     """The placeholder for the type parameter with de Bruijn index `index`, keeping its bound (which determines
     its C representation)."""
-    return QTypeVar(name=f"#{index}", symbol_id=_BOUND_VAR_BASE - index, bound=bound)
+    return QTypeVar(name=f"#{index}", symbol_id=reserved_symbol_id(ReservedSymbolUse.BOUND_VAR, index), bound=bound)
 
 
 def bound_var_index(t: QType) -> Optional[int]:
     """The de Bruijn index of a bound type parameter placeholder, or None for any other type."""
-    if isinstance(t, QTypeVar) and _CANONICAL_QUANTIFIER_BASE < t.symbol_id <= _BOUND_VAR_BASE:
-        return _BOUND_VAR_BASE - t.symbol_id
+    if isinstance(t, QTypeVar):
+        return reserved_symbol_index(t.symbol_id, ReservedSymbolUse.BOUND_VAR)
     return None
 
 
@@ -570,7 +569,8 @@ def canonical_fun_type(t: QType) -> QType:
     for k, q in enumerate(quants):
         bound = _shift_bound_vars(q.bound, k)
         bound = bound.substitute_types({quants[j].symbol_id: bound_var(k - 1 - j, new_quants[j].bound) for j in range(k)})
-        new_quants.append(QQuantifier(name=f"${k}", symbol_id=_CANONICAL_QUANTIFIER_BASE - k, bound=bound))
+        quant_id = reserved_symbol_id(ReservedSymbolUse.CANONICAL_QUANTIFIER, k)
+        new_quants.append(QQuantifier(name=f"${k}", symbol_id=quant_id, bound=bound))
     body = _shift_bound_vars(t.body, n)
     for k, q in enumerate(quants):
         placeholders.append(bound_var(n - 1 - k, new_quants[k].bound))

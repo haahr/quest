@@ -21,7 +21,7 @@ from quest.typed_ast import (
 from quest.types import INFIX_OPERATORS, QType
 
 
-BUILTIN_NAMES: set[str] = {"not", "extent", "ordinal", "DivideByZero", "ok"} | set(INFIX_OPERATORS.keys())
+BUILTIN_NAMES: set[str] = {"not", "extent", "ordinal", "ok"} | set(INFIX_OPERATORS.keys())
 
 
 @dataclass(frozen=True)

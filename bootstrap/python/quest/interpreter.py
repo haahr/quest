@@ -4,7 +4,7 @@ Implements Phase 3.2 of the Quest compiler:
 - Scoped runtime environment (RuntimeEnvironment)
 - Core literal evaluations (Int, Real, Bool, Char, String, Ok)
 - Variable lookup, assignment, and mutable cell dereferencing
-- Arithmetic operators (+, -, *, /, mod) with C-style truncation and DivideByZero exception
+- Arithmetic operators (+, -, *, /, mod) with C-style truncation; division by zero raises int.error
 - Relational comparisons (<, <=, >, >=) and equality (is, isnot, ==, <>)
 - Short-circuit conditionals (TypedIf)
 - Loops (TypedLoop, TypedWhile, TypedFor) and early exit (TypedExit via _LoopExit)
@@ -138,7 +138,7 @@ class _LoopExit(Exception):
 
 
 class QuestException(QuestCompilerError):
-    """Language-level Quest exception (e.g. DivideByZero or user-raised exception)."""
+    """Language-level Quest exception (e.g. int.error or user-raised exception)."""
 
     def __init__(
         self,
@@ -185,7 +185,6 @@ class QuestRuntimeError(QuestCompilerError):
         )
 
 
-DIVIDE_BY_ZERO_EXC = QExceptionVal("DivideByZero")
 ARRAY_OP_ERROR_EXC = QExceptionVal("arrayOp.error")
 DYNAMIC_ERROR_EXC = QExceptionVal("dynamic.error")
 LIST_ERROR_EXC = QExceptionVal("list.error")
@@ -194,6 +193,7 @@ READER_ERROR_EXC = QExceptionVal("reader.error")
 ASCII_ERROR_EXC = QExceptionVal("ascii.error")
 INT_ERROR_EXC = QExceptionVal("int.error")
 REAL_ERROR_EXC = QExceptionVal("real.error")
+WORD_ERROR_EXC = QExceptionVal("word.error")
 STRING_ERROR_EXC = QExceptionVal("string.error")
 SYSTEM_ERROR_EXC = QExceptionVal("system.error")
 
@@ -299,7 +299,6 @@ class RuntimeEnvironment:
         env.define("true", TRUE_VALUE)
         env.define("false", FALSE_VALUE)
         env.define("ok", OK_VALUE)
-        env.define("DivideByZero", DIVIDE_BY_ZERO_EXC)
 
         from quest.builtins import BuiltinModuleRegistry
         BuiltinModuleRegistry._ensure_initialized()
@@ -392,7 +391,7 @@ class RuntimeEnvironment:
 # ============================================================================
 
 def _eval_int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) -> int:
-    """Evaluates integer arithmetic with C-style truncation and DivideByZero check."""
+    """Evaluates integer arithmetic with C-style truncation and an int.error check."""
     match op:
         case "+":
             return a + b
@@ -402,12 +401,12 @@ def _eval_int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) 
             return a * b
         case "/":
             if b == 0:
-                raise QuestException(DIVIDE_BY_ZERO_EXC, offset=offset)
+                raise QuestException(INT_ERROR_EXC, offset=offset)
             # C-style truncation toward zero
             return int(a / b)
         case "mod" | "%":
             if b == 0:
-                raise QuestException(DIVIDE_BY_ZERO_EXC, offset=offset)
+                raise QuestException(INT_ERROR_EXC, offset=offset)
             # C-style modulo: a - trunc(a / b) * b
             return a - int(a / b) * b
         case _:
@@ -429,26 +428,50 @@ def _eval_int_relational(op: str, a: int, b: int, offset: Optional[int] = None) 
             raise QuestRuntimeError(f"Unknown integer relational operator '{op}'", offset=offset)
 
 
+def real_result(r: float, offset: Optional[int] = None) -> float:
+    """Keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
+
+    Infinities are ordinary Real values (docs/type-system.md §6.3.1)."""
+    if math.isnan(r):
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    return r
+
+
+def real_divide(a: float, b: float, offset: Optional[int] = None) -> float:
+    """Real division (// and real.div): a zero divisor or a NaN result raises real.error."""
+    if b == 0.0:
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    return real_result(a / b, offset)
+
+
+def real_pow(a: float, b: float, offset: Optional[int] = None) -> float:
+    """Real exponentiation (^^ and real.exp) with C pow semantics, except that a zero base with a negative
+    exponent (a pole, like division by zero) or a NaN result raises real.error. Overflow yields an infinity."""
+    if a == 0.0 and b < 0.0:
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    try:
+        return real_result(math.pow(a, b), offset)
+    except ValueError:
+        # A negative finite base with a non-integral exponent: C's pow returns NaN.
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    except OverflowError:
+        negative = a < 0.0 and b.is_integer() and int(b) % 2 == 1
+        return -math.inf if negative else math.inf
+
+
 def _eval_real_arithmetic(op: str, a: float, b: float, offset: Optional[int] = None) -> float:
     """Evaluates real floating-point arithmetic (++, --, **, //, ^^)."""
     match op:
         case "++":
-            return a + b
+            return real_result(a + b, offset)
         case "--":
-            return a - b
+            return real_result(a - b, offset)
         case "**":
-            return a * b
+            return real_result(a * b, offset)
         case "//":
-            if b == 0.0:
-                raise QuestException(DIVIDE_BY_ZERO_EXC, offset=offset)
-            return a / b
+            return real_divide(a, b, offset)
         case "^^":
-            if a == 0.0 and b < 0.0:
-                raise QuestException(DIVIDE_BY_ZERO_EXC, offset=offset)
-            try:
-                return math.pow(a, b)
-            except (ValueError, OverflowError) as e:
-                raise QuestRuntimeError(f"Real exponentiation error: {e}", offset=offset)
+            return real_pow(a, b, offset)
         case _:
             raise QuestRuntimeError(f"Unknown real arithmetic operator '{op}'", offset=offset)
 

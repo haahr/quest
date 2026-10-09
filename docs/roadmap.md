@@ -79,7 +79,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   - **Phase 3.1 (Runtime Values & Memory):** `QValue` class hierarchy, primitives, aggregates, heap reference cells
     (`QRef`), Cardelli object identity (`is` / `isnot`), and deep structural equality. — *Complete*
   - **Phase 3.2 (Environment & Core Evaluation):** Scoped lexical frames (`RuntimeEnvironment`), operators, truncation
-    towards zero for integer division/modulo, loops, and `DivideByZero` exception handling. — *Complete*
+    towards zero for integer division/modulo, loops, and division-by-zero exception handling. — *Complete*
   - **Phase 3.3 (Functions, Structures & Mutation):** Closures (`QClosure`), recursive bindings, record/tuple member
     selection, mutable record fields, mutable arrays (`QArray`), and `case` pattern matching. — *Complete*
   - **Phase 3.4 (Exceptions & Dynamic Types):** Exception declarations (`exception`), raising (`raise`), try-catch

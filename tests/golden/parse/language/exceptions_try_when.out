@@ -10,6 +10,16 @@
         (ImportItem ('conv') 'Conv')
       )
     )
+    (ImportPhrase
+      :items (
+        (ImportItem ('int') 'IntOp')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('real') 'RealOp')
+      )
+    )
     (LetValueBinding
       :name 'wOut'
       :value (ExprSelect
@@ -230,7 +240,10 @@
         )
         :branches (
           (TryBranch
-            :exc_pattern (ExprId 'DivideByZero')
+            :exc_pattern (ExprSelect
+              :target (ExprId 'int')
+              :field 'error'
+            )
             :body (ExprStmt
               :expr (ExprInt 777 '777')
             )
@@ -327,6 +340,46 @@
         :func (ExprId 'printInt')
         :args (
           (ExprId 'r4')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r5'
+      :value (ExprTry
+        :body (ExprStmt
+          :expr (ExprBlock
+            :bindings (
+              (ExprStmt
+                :expr (ExprInfix
+                  :left (ExprReal 1.0 '1.0')
+                  :op '//'
+                  :right (ExprReal 0.0 '0.0')
+                )
+              )
+              (ExprStmt
+                :expr (ExprInt 0 '0')
+              )
+            )
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'real')
+              :field 'error'
+            )
+            :body (ExprStmt
+              :expr (ExprInt 555 '555')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printInt')
+        :args (
+          (ExprId 'r5')
         )
       )
     )

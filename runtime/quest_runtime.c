@@ -220,11 +220,14 @@ int64_t quest_array_size(const QArray *a) {
     return a->length;
 }
 
+/* The ^^ operator and real.exp: a zero base with a negative exponent is a pole, like division by zero, and
+   raises real.error; so does a NaN result (a negative base with a non-integral exponent). Overflow is an
+   infinity. */
 double quest_real_pow(double base, double exp) {
-    if (base == 0.0 && exp <= 0.0) {
-        quest_raise_divide_by_zero();
+    if (base == 0.0 && exp < 0.0) {
+        quest_raise_real_error();
     }
-    return pow(base, exp);
+    return quest_real_result(pow(base, exp));
 }
 
 /* Exception handling globals */
@@ -232,7 +235,6 @@ Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler = NULL;
 Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 } };
 
 /* Built-in singleton exception descriptors */
-const QException quest_exc_DivideByZero  = { "DivideByZero" };
 const QException quest_exc_arrayOp_error = { "arrayOp.error" };
 const QException quest_exc_string_error  = { "string.error" };
 const QException quest_exc_variant_error = { "variant.tagMismatch" };
@@ -242,6 +244,7 @@ const QException quest_exc_reader_error  = { "reader.error" };
 const QException quest_exc_ascii_error   = { "ascii.error" };
 const QException quest_exc_int_error     = { "int.error" };
 const QException quest_exc_real_error    = { "real.error" };
+const QException quest_exc_word_error    = { "word.error" };
 const QException quest_exc_system_error  = { "system.error" };
 
 const QException *quest_alloc_exception(const char *name) {
@@ -261,10 +264,6 @@ void quest_raise(const QException *exc, QVal payload) {
     longjmp(quest_current_exception_handler->env_jmp, 1);
 }
 
-void quest_raise_divide_by_zero(void) {
-    quest_raise(&quest_exc_DivideByZero, Q_OK_VAL);
-}
-
 void quest_raise_array_error(void) {
     quest_raise(&quest_exc_arrayOp_error, Q_OK_VAL);
 }
@@ -279,6 +278,11 @@ void quest_raise_variant_error(void) {
 
 void quest_raise_dynamic_error(void) {
     quest_raise(&quest_exc_dynamic_error, Q_OK_VAL);
+}
+
+void quest_option_ordinal_error(int64_t n, int64_t count) {
+    fprintf(stderr, "Option ordinal %lld out of bounds (0 <= ordinal < %lld)\n", (long long)n, (long long)count);
+    exit(1);
 }
 
 void quest_raise_writer_error(void) {
@@ -301,6 +305,10 @@ void quest_raise_real_error(void) {
     quest_raise(&quest_exc_real_error, Q_OK_VAL);
 }
 
+void quest_raise_word_error(void) {
+    quest_raise(&quest_exc_word_error, Q_OK_VAL);
+}
+
 void quest_raise_system_error(void) {
     quest_raise(&quest_exc_system_error, Q_OK_VAL);
 }
@@ -315,7 +323,9 @@ void quest_print_val(QVal val, const char *type_name) {
         return;
     }
     if (strcmp(type_name, "Real") == 0) {
-        if (val.r == (double)(int64_t)val.r) {
+        if (isinf(val.r)) {
+            printf("%s : Real\n", val.r > 0.0 ? "inf" : "-inf");
+        } else if (fabs(val.r) < 9223372036854775808.0 && val.r == (double)(int64_t)val.r) {
             printf("%.1f : Real\n", val.r);
         } else {
             printf("%g : Real\n", val.r);
@@ -1686,9 +1696,12 @@ QString *quest_conv_int(int64_t n) {
 
 QString *quest_conv_real(double r) {
     char buf[64];
-    bool is_neg = (r < 0.0);
+    /* Quest writes negation as ~, including for negative zero and negative infinity. */
+    bool is_neg = signbit(r);
     double abs_r = is_neg ? -r : r;
-    if (abs_r == (double)(int64_t)abs_r) {
+    if (isinf(abs_r)) {
+        snprintf(buf, sizeof(buf), "%sinf", is_neg ? "~" : "");
+    } else if (abs_r < 9223372036854775808.0 && abs_r == (double)(int64_t)abs_r) {
         snprintf(buf, sizeof(buf), "%s%.1f", is_neg ? "~" : "", abs_r);
     } else {
         snprintf(buf, sizeof(buf), "%s%g", is_neg ? "~" : "", abs_r);
@@ -1744,23 +1757,28 @@ double quest_real_log(double r) {
     return log(r);
 }
 
+/* An integral real as an Int; an infinity or a value outside Int's range raises real.error. */
+static int64_t quest_real_to_int(double r) {
+    if (!(r >= -9223372036854775808.0 && r < 9223372036854775808.0)) {
+        quest_raise_real_error();
+    }
+    return (int64_t)r;
+}
+
 int64_t quest_real_floor(double r) {
-    return (int64_t)floor(r);
+    return quest_real_to_int(floor(r));
 }
 
 int64_t quest_real_round(double r) {
-    return (int64_t)round(r);
+    return quest_real_to_int(round(r));
 }
 
 double quest_real_div(double a, double b) {
-    if (b == 0.0) {
-        quest_raise_real_error();
-    }
-    return a / b;
+    return quest_real_divide(a, b);
 }
 
 double quest_real_exp(double a, double b) {
-    return pow(a, b);
+    return quest_real_pow(a, b);
 }
 
 /* Word module primitives */
@@ -1865,7 +1883,12 @@ bool quest_word_ge(uint64_t w1, uint64_t w2) {
 }
 
 double quest_word_to_real_val(uint64_t w) {
-    return ((QVal){ .u = w }).r;
+    double r = ((QVal){ .u = w }).r;
+    if (isnan(r)) {
+        /* NaN bit patterns have no Real value. */
+        quest_raise_word_error();
+    }
+    return r;
 }
 
 uint64_t quest_word_from_real_val(double r) {
@@ -1880,7 +1903,11 @@ uint64_t quest_hash_combine(uint64_t h1, uint64_t h2) {
     return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
 }
 
-uint64_t quest_identity_hash(QVal x) {
+/* Hashes consistently with is (quest_val_is): ~0.0 hashes as 0.0. */
+uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x) {
+    if (t != NULL && t->kind == QTYPE_KIND_REAL && x.r == 0.0) {
+        x.u = 0;
+    }
     return quest_hash_mix64(x.u);
 }
 

@@ -54,7 +54,11 @@ class TestDynamicFormat(unittest.TestCase):
         for r in (math.inf, -math.inf):
             text = jsog_encode(_dynamic(QReal(r), "Real"))
             self.assertEqual(jsog_decode(text).value.elements[0].value, r)
-        self.assertIn('"value":"NaN"', jsog_encode(_dynamic(QReal(math.nan), "Real")))
+        with self.assertRaises(QuestException):
+            jsog_encode(_dynamic(QReal(math.nan), "Real"))
+        for value in ('"NaN"', "NaN", "Infinity", "-Infinity"):  # NaN is not a Real; bare tokens are not JSON
+            with self.assertRaises(QuestException):
+                jsog_decode('{"quest":1,"types":[],"type":"Real","value":' + value + "}")
 
     def test_malformed_documents_are_rejected(self) -> None:
         good = {"quest": 1, "types": INT_LIST_TABLE, "type": 0, "value": "nil"}

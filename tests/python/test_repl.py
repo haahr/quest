@@ -124,7 +124,7 @@ class TestQuestREPL(unittest.TestCase):
             "a",
         ])
         self.assertTrue(len(stderr) > 0)
-        self.assertIn("error: Exception: DivideByZero", "".join(stderr))
+        self.assertIn("error: Exception: int.error", "".join(stderr))
         output_text = "".join(stdout)
         # a should still be 10, not 99
         self.assertIn(">>  a\n==  10 : Int\n", output_text)

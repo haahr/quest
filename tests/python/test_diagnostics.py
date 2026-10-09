@@ -213,13 +213,13 @@ class TestCompilerExceptionIntegration(unittest.TestCase):
         self.assertIn("test.quest:1:5: error: Variable 'z' not found", formatted)
 
     def test_quest_exception_diagnostic(self):
-        exc_val = QExceptionVal("DivideByZero")
+        exc_val = QExceptionVal("int.error")
         err = QuestException(exc_val=exc_val, offset=4)
         diag = err.to_diagnostic()
         self.assertEqual(diag.severity, Severity.ERROR)
-        self.assertIn("DivideByZero", diag.message)
+        self.assertIn("int.error", diag.message)
         formatted = err.format_with_source(self.source_map)
-        self.assertIn("test.quest:1:5: error: Exception: DivideByZero", formatted)
+        self.assertIn("test.quest:1:5: error: Exception: int.error", formatted)
 
     def test_quest_compiler_error_hierarchy(self):
         """Verifies that all compiler phase exceptions inherit from QuestCompilerError."""

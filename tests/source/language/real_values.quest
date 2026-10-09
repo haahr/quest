@@ -1,0 +1,88 @@
+(* Language: Real values are the IEEE doubles other than NaN. Infinities are ordinary values, an operation
+   that would produce NaN raises real.error, and 0.0 is ~0.0 everywhere (docs/type-system.md §6.3.1). *)
+
+import collections/hashMap : collections/HashMap;
+import util/hash : util/Hash;
+import real: RealOp;
+import word: Word;
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printLine(s: String): Ok =
+    begin
+        writer.putString(wOut s);
+        writer.putString(wOut "\n")
+    end;
+let printReal(r: Real): Ok = printLine(conv.real(r));
+let printInt(n: Int): Ok = printLine(conv.int(n));
+let printBool(b: Bool): Ok = printLine(conv.bool(b));
+
+(* Runs f and prints "real.error" if it raises real.error, otherwise its result. *)
+let tryReal(f: All() Real): Ok =
+    try printReal(f()) when real.error then printLine("real.error") end;
+let tryInt(f: All() Int): Ok =
+    try printInt(f()) when real.error then printLine("real.error") end;
+
+(* 1. Infinities: overflow, literals, printing, comparison, and identity *)
+let inf = 1.0E300 ** 1.0E300;
+let negInf = 0.0 -- inf;
+printReal(inf);
+printReal(negInf);
+printReal(1.0E400);
+printBool(inf is 1.0E400);
+printBool(inf is inf);
+printBool(inf >> real.maxReal);
+printBool(negInf << real.minReal);
+printReal(1.0 // inf);
+printReal(inf ++ 1.0);
+printReal(10.0 ^^ 400.0);
+printReal(~10.0 ^^ 401.0);
+printReal(real.exp(10.0 400.0));
+printReal(real.log(inf));
+
+(* 2. Operations that would produce NaN raise real.error *)
+tryReal(fun(): Real inf -- inf);
+tryReal(fun(): Real inf ++ negInf);
+tryReal(fun(): Real 0.0 ** inf);
+tryReal(fun(): Real inf // inf);
+tryReal(fun(): Real 0.0 // 0.0);
+tryReal(fun(): Real ~8.0 ^^ 0.5);
+tryReal(fun(): Real real.div(inf negInf));
+tryReal(fun(): Real real.exp(~8.0 0.5));
+
+(* 3. Poles and conversions that cannot be carried out raise real.error *)
+tryReal(fun(): Real 1.0 // 0.0);
+tryReal(fun(): Real 0.0 ^^ ~1.0);
+tryReal(fun(): Real real.exp(0.0 ~1.0));
+tryInt(fun(): Int real.floor(inf));
+tryInt(fun(): Int real.round(negInf));
+tryInt(fun(): Int real.floor(1.0E300));
+printReal(0.0 ^^ 0.0);
+
+(* 4. real.round rounds half away from zero *)
+printInt(real.round(2.5));
+printInt(real.round(~2.5));
+printInt(real.round(0.49999999999999994));
+printInt(real.floor(~0.5));
+
+(* 5. A word whose bits are a NaN has no Real value; infinity's bits do *)
+printReal(word.toReal(word.fromInt(9218868437227405312)));
+printLine(
+    try conv.real(word.toReal(word.fromInt(9221120237041090560))) when word.error then "word.error" end);
+
+(* 6. 0.0 is ~0.0, directly, through a polymorphic function, and in an identity hash map *)
+let negZero = 0.0 ** ~1.0;
+printReal(negZero);
+printReal(0.0 -- 0.0);
+printBool(0.0 is negZero);
+printBool(0.0 isnot negZero);
+let same(A::TYPE x: A y: A): Bool = x is y;
+printBool(same(:Real 0.0 negZero));
+printBool(hash.identityEqual(:Real 0.0 negZero));
+printBool(hash.identityHash(:Real 0.0) is hash.identityHash(:Real negZero));
+let m = hashMap.newIdentityMap(:Real :Int);
+hashMap.insert(:Real :Int m 0.0 1);
+hashMap.insert(:Real :Int m negZero 2);
+printInt(hashMap.size(:Real :Int m));
+printBool(hashMap.contains(:Real :Int m negZero));

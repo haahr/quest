@@ -159,7 +159,7 @@ static void quest_write_int(QWriter *wr, int64_t i) {
 /* Writes a finite real as Python's repr does: the shortest digits that read back exactly, in positional notation
  * when the decimal exponent is in [-4, 16) (with ".0" for whole numbers), and otherwise as d.ddde+XX */
 static void quest_write_real(QWriter *wr, double r) {
-    if (isnan(r)) { quest_write_raw(wr, "\"NaN\""); return; }
+    if (isnan(r)) quest_raise_dynamic_error(); /* not a Real value (docs/type-system.md §6.3.1) */
     if (isinf(r)) { quest_write_raw(wr, r > 0 ? "\"Infinity\"" : "\"-Infinity\""); return; }
     char sci[40];
     for (int prec = 0; prec < 17; ++prec) {
@@ -1510,7 +1510,6 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             if (node->kind == QJSON_REAL) return (QVal){ .r = node->u.r };
             if (node->kind == QJSON_INT) return (QVal){ .r = (double)node->u.i };
             if (node->kind == QJSON_STRING) {
-                if (strcmp(node->u.s.str, "NaN") == 0) return (QVal){ .r = NAN };
                 if (strcmp(node->u.s.str, "Infinity") == 0) return (QVal){ .r = INFINITY };
                 if (strcmp(node->u.s.str, "-Infinity") == 0) return (QVal){ .r = -INFINITY };
             }

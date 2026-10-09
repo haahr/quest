@@ -384,6 +384,42 @@ Quest does not overload operators across types; distinct operators exist for eac
 - **Boolean logic:** `/\`, `\/` : `Bool, Bool -> Bool`
 - **Identity & Equality:** `is`, `isnot` : `All(A) A, A -> Bool`
 
+#### 6.3.1. Real Values
+
+Cardelli specifies `Real` as "the type of floating point numbers" and defines `is` on it as "ordinary equality"
+(*Typeful Programming* §3.1). He does not mention NaN, infinities, or signed zeros. Quest represents a `Real` as an
+IEEE-754 double and settles those cases as follows, identically in the interpreter and in C.
+
+- **NaN is not a Quest value.** Under IEEE equality a NaN is not equal to itself, so `x is x` would be false and
+  everything built on `is` would break: an identity hash map (`hash.identityEqual`, `hash.identityHash`) could
+  insert a NaN key but never find it. An operation whose IEEE result would be NaN raises `real.error` instead, in
+  keeping with `RealOp.error`, "raised when an operation cannot be carried out":
+  - `++`, `--`, `**` (`inf -- inf`, `inf ++ ~inf`, `0.0 ** inf`);
+  - `//` and `real.div` (`inf // inf`; a zero divisor also raises, below);
+  - `^^` and `real.exp` (a negative base with a non-integral exponent).
+
+  Values arriving from outside cannot be NaN either: `word.toReal` raises `word.error` for a NaN bit pattern, and
+  `dynamic.intern` raises `dynamic.error` for the non-JSON tokens `NaN`, `Infinity`, and `-Infinity`. Real literals
+  cannot denote NaN.
+- **Infinities are ordinary values.** Overflow yields `inf` or `~inf` silently, as IEEE arithmetic does: `10.0 ^^
+  400.0`, `1.0E300 ** 1.0E300`, and an overflowing literal such as `1.0E400` are all `inf`. Infinities obey `is`
+  reflexively, compare as expected with `<<` and `>>`, and print as `inf` and `~inf` from `conv.real` (`inf` and
+  `-inf` in REPL and `--stop-after` displays). Operations that cannot turn an infinity into a result raise
+  `real.error`: `real.floor` and `real.round` of an infinity or of any value outside `Int`'s range. JSON has no
+  infinities, so `dynamic.extern` of one raises `dynamic.error`; an overflowing number such as `1e999` interns as an
+  infinity.
+- **Division by zero and poles raise `real.error`.** `x // 0.0` and `real.div(x 0.0)` raise for every `x`, rather
+  than producing an infinity, as do `0.0 ^^ y` and `real.exp(0.0 y)` for `y << 0.0`. (`0.0 ^^ 0.0` is `1.0`.)
+- **`0.0 is ~0.0`.** Negative zero exists (`0.0 ** ~1.0`, printed `~0.0` by `conv.real`), and `is` is IEEE equality,
+  so it is the same value as `0.0` everywhere: in monomorphic code, through a type parameter, and in
+  `hash.identityEqual`, whose partner `hash.identityHash` hashes `~0.0` as `0.0`. With NaN excluded, ±0 is the only
+  case where IEEE equality differs from equality of bit patterns. In C, `is` on a value represented as `QVal`
+  therefore compares bits and, for a `Real` descriptor, also the doubles (`quest_val_is`;
+  [c-representation.md](c-representation.md) §10.1). An abstract type with no runtime descriptor compares its
+  representation's bits; Cardelli expects abstract types to define their own equality.
+- **Rounding.** `real.round` rounds half away from zero (`real.round(2.5)` is `3`, `real.round(~2.5)` is `~3`), as C's
+  `round` does; `real.floor` rounds toward negative infinity.
+
 ### 6.4. Explicit Polymorphic Instantiation (`TypedTypeApp`)
 Polymorphic functions can be explicitly instantiated at call sites using type arguments:
 ```quest
