@@ -286,7 +286,6 @@ extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
 
 /* Built-in singleton exception descriptors */
-extern const QException quest_exc_DivideByZero;
 extern const QException quest_exc_arrayOp_error;
 extern const QException quest_exc_string_error;
 extern const QException quest_exc_variant_error;
@@ -375,11 +374,11 @@ int64_t  quest_array_size(const QArray *a);
 double   quest_real_pow(double base, double exp);
 const QException *quest_alloc_exception(const char *name);
 Q_NORETURN void quest_raise(const QException *exc, QVal payload);
-Q_NORETURN void quest_raise_divide_by_zero(void);
 Q_NORETURN void quest_raise_array_error(void);
 Q_NORETURN void quest_raise_string_error(void);
 Q_NORETURN void quest_raise_variant_error(void);
 Q_NORETURN void quest_raise_dynamic_error(void);
+Q_NORETURN void quest_option_ordinal_error(int64_t n, int64_t count);
 void     quest_print_val(QVal val, const char *type_name);
 
 /* Standard library singleton exceptions */
@@ -388,6 +387,7 @@ extern const QException quest_exc_reader_error;
 extern const QException quest_exc_ascii_error;
 extern const QException quest_exc_int_error;
 extern const QException quest_exc_real_error;
+extern const QException quest_exc_word_error;
 extern const QException quest_exc_system_error;
 
 Q_NORETURN void quest_raise_writer_error(void);
@@ -395,6 +395,7 @@ Q_NORETURN void quest_raise_reader_error(void);
 Q_NORETURN void quest_raise_ascii_error(void);
 Q_NORETURN void quest_raise_int_error(void);
 Q_NORETURN void quest_raise_real_error(void);
+Q_NORETURN void quest_raise_word_error(void);
 Q_NORETURN void quest_raise_system_error(void);
 
 /* System module primitives */
@@ -599,16 +600,31 @@ static inline void quest_check_array_bounds(const void *arr_ptr, int64_t idx) {
 
 static inline QInt quest_int_div(QInt a, QInt b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_int_error();
     }
     return a / b;
 }
 
 static inline QInt quest_int_mod(QInt a, QInt b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_int_error();
     }
     return a % b;
+}
+
+/* The // operator (real.div is the out-of-line quest_real_div). */
+static inline double quest_real_divide(double a, double b) {
+    if (b == 0.0) {
+        quest_raise_real_error();
+    }
+    return a / b;
+}
+
+static inline int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
+    if (n < 0 || n >= count) {
+        quest_option_ordinal_error(n, count);
+    }
+    return n;
 }
 
 static inline uint64_t quest_word_shift(uint64_t w, int64_t count) {
@@ -670,14 +686,14 @@ static inline uint64_t quest_word_clear_bit(uint64_t w, int64_t pos) {
 
 static inline uint64_t quest_word_div(uint64_t a, uint64_t b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_word_error();
     }
     return a / b;
 }
 
 static inline uint64_t quest_word_mod(uint64_t a, uint64_t b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_word_error();
     }
     return a % b;
 }

@@ -2420,8 +2420,6 @@ class CEmitter:
                 return "((void)0)"
 
             case TypedVar(name=name):
-                if name == "DivideByZero":
-                    return "(&quest_exc_DivideByZero)"
                 if name in self.current_env_vars:
                     return self.current_env_vars[name]
                 if name in INFIX_OPERATORS:
@@ -3114,6 +3112,8 @@ class CEmitter:
                 lines.append(f"{target_dest} = ({s_name} *)quest_alloc(sizeof({s_name}));")
                 if ordinal_expr is not None:
                     c_ord = self.emit_val(ordinal_expr, lines)
+                    if getattr(opt_t, "options", None):
+                        c_ord = f"quest_check_option_ordinal({c_ord}, {len(opt_t.options)}LL)"
                     lines.append(f"{target_dest}->tag = {c_ord};")
                     if tag is None and hasattr(opt_t, "options") and opt_t.options:
                         if isinstance(ordinal_expr, TypedInt) and 0 <= ordinal_expr.value < len(opt_t.options):
@@ -3419,7 +3419,9 @@ class CEmitter:
         if op in ("%", "mod"):
             return f"quest_int_mod({c_left}, {c_right})"
 
-        # 2. Real exponentiation
+        # 2. Real division and exponentiation
+        if op == "//":
+            return f"quest_real_divide({c_left}, {c_right})"
         if op == "^^":
             return f"quest_real_pow({c_left}, {c_right})"
 
@@ -3437,7 +3439,7 @@ class CEmitter:
         # 5. Standard arithmetic & relations mapping directly
         op_map = {
             "+": "+", "-": "-", "*": "*",
-            "++": "+", "--": "-", "**": "*", "//": "/",
+            "++": "+", "--": "-", "**": "*",
             "<": "<", "<=": "<=", ">": ">", ">=": ">=",
             "<<": "<", "<<=": "<=", ">>": ">", ">>=": ">=",
             "/\\": "&&", "\\/": "||",

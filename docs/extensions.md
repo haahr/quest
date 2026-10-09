@@ -259,10 +259,10 @@ interface Word export
     (* Unsigned 64-bit multiplication modulo 2^64 *)
     mul(w1: T w2: T): T
 
-    (* Unsigned 64-bit division; raises DivideByZero if w2 is 0 *)
+    (* Unsigned 64-bit division; raises error if w2 is 0 *)
     div(w1: T w2: T): T
 
-    (* Unsigned 64-bit modulo; raises DivideByZero if w2 is 0 *)
+    (* Unsigned 64-bit modulo; raises error if w2 is 0 *)
     mod(w1: T w2: T): T
 
     (* Convert word to signed 64-bit integer (two's complement interpretation) *)
@@ -315,8 +315,8 @@ end;
   - `add(w1 w2)` $\to$ `((w1) + (w2))` (unsigned wrapping modulo $2^{64}$ is guaranteed by standard C)
   - `sub(w1 w2)` $\to$ `((w1) - (w2))`
   - `mul(w1 w2)` $\to$ `((w1) * (w2))`
-  - `div(w1 w2)` $\to$ `quest_word_div(w1, w2)` (checks for divisor `0` and raises `DivideByZero`)
-  - `mod(w1 w2)` $\to$ `quest_word_mod(w1, w2)` (checks for divisor `0` and raises `DivideByZero`)
+  - `div(w1 w2)` $\to$ `quest_word_div(w1, w2)` (checks for divisor `0` and raises `word.error`)
+  - `mod(w1 w2)` $\to$ `quest_word_mod(w1, w2)` (checks for divisor `0` and raises `word.error`)
   - `lt(w1 w2)` $\to$ `((w1) < (w2))` (unsigned 64-bit comparison)
   - `le(w1 w2)` $\to$ `((w1) <= (w2))` (unsigned 64-bit comparison)
   - `gt(w1 w2)` $\to$ `((w1) > (w2))` (unsigned 64-bit comparison)

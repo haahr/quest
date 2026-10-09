@@ -124,7 +124,7 @@ The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings
 - `lookup(name)`: Searches outward from innermost to outermost frame; raises `QuestRuntimeError` if missing.
 - `assign(name, new_value)`: Resolves an existing variable and either mutates its `QRef` cell or updates the binding.
 - `create_root_env()`: Factory pre-populating:
-  - Standard constants: `true`, `false`, `ok`, and `DivideByZero`.
+  - Standard constants: `true`, `false`, and `ok`.
   - Monadic operators: `not` (boolean negation), `extent` (array size), `ordinal` (option tag index).
   - Dyadic arithmetic and comparison operators: `+`, `-`, `*`, `/`, `%`, `mod`, `<`, `<=`, `>`, `>=`,
     `++`, `--`, `**`, `//`, `^^`, `<<`, `<<=`, `>>`, `>>=`, `<>`, `/\`, `\/`, `is`, `isnot`.
@@ -235,8 +235,10 @@ The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings
   - `{0 - 7} / 2` evaluates to `-3` (Python `-7 // 2` is `-4`).
   - `{0 - 7} % 2` evaluates to `-1` (Python `-7 % 2` is `1`).
   - Satisfies invariant: `(a / b) * b + (a % b) == a`.
-- **Divide by Zero:** Division or modulo by zero raises a language-level `DivideByZero` exception
-  (`QuestException(DIVIDE_BY_ZERO_EXC)`), taking no payload.
+- **Divide by Zero:** Integer division or modulo by zero raises `int.error` (`QuestException(INT_ERROR_EXC)`), and
+  real division by zero (`//`) or `0.0 ^^ r` with `r < 0.0` raises `real.error` (`QuestException(REAL_ERROR_EXC)`),
+  following Cardelli's convention that each library interface declares its own `error: Exception(Ok)`. Neither
+  takes a payload.
 
 ### 4.5. Loop Bounds & Inclusive Iteration
 - **Inclusive Range:** For loops (`for k = start upto stop do body end` and `downto`) execute over inclusive ranges
@@ -268,8 +270,6 @@ The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings
   - `exception Name: Type end` creates a `QExceptionVal` tag and binds `Name` in the runtime environment.
   - `raise exc with payload end` evaluates `exc` (tag) and optional payload, raising a `QuestException`.
   - `try ... when exc with binder then ... else ... end` catches `QuestException`, matching by exception tag identity.
-- **Root `DivideByZero` Exception:**
-  - Bound in `Environment.create_root_env()` with `EXCEPTION_TYPE` as a language extension to Cardelli's spec.
 - **Cardelli Diagnostic Format:**
   - Uncaught exceptions produce diagnostics matching Cardelli's interactive format:
     - With payload: `Exception: <name> with <payload_str>:<payload_type>`
@@ -324,7 +324,7 @@ The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings
 | Phase | Description | Components | Status |
 | :--- | :--- | :--- | :--- |
 | **3.1** | Runtime Values & Memory | `QValue` hierarchy, primitives, aggregates, identity/equality | **Complete** |
-| **3.2** | Environment & Core Eval | `RuntimeEnvironment`, scoping, operators, loops, DivideByZero | **Complete** |
+| **3.2** | Environment & Core Eval | `RuntimeEnvironment`, scoping, operators, loops, division by zero | **Complete** |
 | **3.3** | Structures & Mutation | Record/tuple selection, array operations, `case` matching | **Complete** |
 | **3.4** | Exceptions & Dynamic | `try...with`, `raise`, `inspect`, dynamic type reflection | **Complete** |
 | **3.5** | Cardelli Stdlib Modules | 10 standard modules, I/O streams, pre-linking & imports | **Complete** |

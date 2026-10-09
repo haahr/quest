@@ -23,7 +23,6 @@ from quest.env import Environment, Scope, TypeSymbol, ValueSymbol, allocate_symb
 from quest.interpreter import (
     ARRAY_OP_ERROR_EXC,
     ASCII_ERROR_EXC,
-    DIVIDE_BY_ZERO_EXC,
     DYNAMIC_ERROR_EXC,
     INT_ERROR_EXC,
     LIST_ERROR_EXC,
@@ -31,6 +30,7 @@ from quest.interpreter import (
     REAL_ERROR_EXC,
     STRING_ERROR_EXC,
     SYSTEM_ERROR_EXC,
+    WORD_ERROR_EXC,
     WRITER_ERROR_EXC,
     QuestException,
     QuestRuntimeError,
@@ -1382,6 +1382,7 @@ class BuiltinModuleRegistry:
         word_t = QTypeVar(name="Word.T", symbol_id=word_t_id, bound=TYPE_KIND)
         word_b = ModuleBuilder("word", "Word", cls)
         word_b.def_external_type("T", word_t_id, TYPE_KIND, "uint64_t")
+        word_b.def_const("error", EXCEPTION_TYPE, WORD_ERROR_EXC, c_val="(&quest_exc_word_error)")
         word_b.def_const("bits", INT_TYPE, QInt(64), c_val="64")
 
         def _word_not_bits(w: QWord) -> QWord:
@@ -1477,12 +1478,12 @@ class BuiltinModuleRegistry:
 
         def _word_div(w1: QWord, w2: QWord) -> QWord:
             if w2.value == 0:
-                raise QuestException(DIVIDE_BY_ZERO_EXC, OK_VALUE)
+                raise QuestException(WORD_ERROR_EXC, OK_VALUE)
             return QWord(w1.value // w2.value)
 
         def _word_mod(w1: QWord, w2: QWord) -> QWord:
             if w2.value == 0:
-                raise QuestException(DIVIDE_BY_ZERO_EXC, OK_VALUE)
+                raise QuestException(WORD_ERROR_EXC, OK_VALUE)
             return QWord(w1.value % w2.value)
 
         def _word_to_int(w: QWord) -> QInt:

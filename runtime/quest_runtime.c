@@ -221,8 +221,8 @@ int64_t quest_array_size(const QArray *a) {
 }
 
 double quest_real_pow(double base, double exp) {
-    if (base == 0.0 && exp <= 0.0) {
-        quest_raise_divide_by_zero();
+    if (base == 0.0 && exp < 0.0) {
+        quest_raise_real_error();
     }
     return pow(base, exp);
 }
@@ -232,7 +232,6 @@ Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler = NULL;
 Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 } };
 
 /* Built-in singleton exception descriptors */
-const QException quest_exc_DivideByZero  = { "DivideByZero" };
 const QException quest_exc_arrayOp_error = { "arrayOp.error" };
 const QException quest_exc_string_error  = { "string.error" };
 const QException quest_exc_variant_error = { "variant.tagMismatch" };
@@ -242,6 +241,7 @@ const QException quest_exc_reader_error  = { "reader.error" };
 const QException quest_exc_ascii_error   = { "ascii.error" };
 const QException quest_exc_int_error     = { "int.error" };
 const QException quest_exc_real_error    = { "real.error" };
+const QException quest_exc_word_error    = { "word.error" };
 const QException quest_exc_system_error  = { "system.error" };
 
 const QException *quest_alloc_exception(const char *name) {
@@ -261,10 +261,6 @@ void quest_raise(const QException *exc, QVal payload) {
     longjmp(quest_current_exception_handler->env_jmp, 1);
 }
 
-void quest_raise_divide_by_zero(void) {
-    quest_raise(&quest_exc_DivideByZero, Q_OK_VAL);
-}
-
 void quest_raise_array_error(void) {
     quest_raise(&quest_exc_arrayOp_error, Q_OK_VAL);
 }
@@ -279,6 +275,11 @@ void quest_raise_variant_error(void) {
 
 void quest_raise_dynamic_error(void) {
     quest_raise(&quest_exc_dynamic_error, Q_OK_VAL);
+}
+
+void quest_option_ordinal_error(int64_t n, int64_t count) {
+    fprintf(stderr, "Option ordinal %lld out of bounds (0 <= ordinal < %lld)\n", (long long)n, (long long)count);
+    exit(1);
 }
 
 void quest_raise_writer_error(void) {
@@ -299,6 +300,10 @@ void quest_raise_int_error(void) {
 
 void quest_raise_real_error(void) {
     quest_raise(&quest_exc_real_error, Q_OK_VAL);
+}
+
+void quest_raise_word_error(void) {
+    quest_raise(&quest_exc_word_error, Q_OK_VAL);
 }
 
 void quest_raise_system_error(void) {

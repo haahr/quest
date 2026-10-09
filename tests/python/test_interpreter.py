@@ -5,7 +5,6 @@ import unittest
 from typing import Any, Optional
 
 from quest.interpreter import (
-    DIVIDE_BY_ZERO_EXC,
     QuestException,
     QuestRuntimeError,
     RuntimeEnvironment,
@@ -79,7 +78,7 @@ class TestLiteralEvaluation(InterpreterTestCase):
 
 
 class TestArithmetic(InterpreterTestCase):
-    """Tests for integer and real arithmetic, truncation toward zero, and DivideByZero."""
+    """Tests for integer and real arithmetic, truncation toward zero, and division by zero."""
 
     def test_int_arithmetic(self):
         self.assert_eval("10 + 20;", 30)
@@ -100,11 +99,11 @@ class TestArithmetic(InterpreterTestCase):
     def test_divide_by_zero_exception(self):
         with self.assertRaises(QuestException) as ctx1:
             run_quest_code("10 / 0;")
-        self.assertEqual(ctx1.exception.exc_val.name, "DivideByZero")
+        self.assertEqual(ctx1.exception.exc_val.name, "int.error")
 
         with self.assertRaises(QuestException) as ctx2:
             run_quest_code("10 % 0;")
-        self.assertEqual(ctx2.exception.exc_val.name, "DivideByZero")
+        self.assertEqual(ctx2.exception.exc_val.name, "int.error")
 
     def test_real_arithmetic(self):
         self.assert_eval("1.5 ++ 2.5;", 4.0)
@@ -490,9 +489,10 @@ class TestExceptions(unittest.TestCase):
 
     def test_catch_builtin_divide_by_zero(self):
         code = """
+        import int: IntOp;
         let res = try
             10 / 0
-        when DivideByZero then
+        when int.error then
             999
         else
             0

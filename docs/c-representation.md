@@ -132,7 +132,7 @@ Quest provides a standard `Word` module for 64-bit unsigned machine operations:
   `countTrailingZeros`, `div`, and `mod` use inline runtime helpers (`quest_word_shift`, `quest_word_rotate`,
   `quest_word_extract`, `quest_word_replace`, `quest_word_pop_count`, `quest_word_count_leading_zeros`,
   `quest_word_count_trailing_zeros`, `quest_word_div`, `quest_word_mod`) ensuring well-defined bounds and
-  raising `DivideByZero` on zero divisors.
+  raising `word.error` on zero divisors.
 - **Quest-Implemented Operations**: Single-bit operations `getBit`, `setBit`, and `clearBit` are implemented in Quest
   within `lib/word.mod.quest` utilizing `shift`, `andBits`, `orBits`, and `notBits`.
 - **Word Size Constant**: `word.bits` provides the word width `64`.
@@ -874,7 +874,7 @@ Cardelli's Quest specification (§4.9) states:
 
 Evaluating `exception name [: Type] end` invokes `quest_alloc_exception("name")`, returning a heap-allocated pointer `const QException *`. Because each allocation produces a distinct memory address, **pointer equality (`==`)** directly provides unique generative identity without requiring an integer exception ID.
 
-Built-in exceptions (e.g. `quest_exc_DivideByZero`, `quest_exc_arrayOp_error`, `quest_exc_string_error`, `quest_exc_variant_error`) are pre-allocated global `QException` singletons whose static addresses provide their immutable identity.
+Built-in exceptions (e.g. `quest_exc_int_error`, `quest_exc_real_error`, `quest_exc_arrayOp_error`, `quest_exc_string_error`, `quest_exc_variant_error`) are pre-allocated global `QException` singletons whose static addresses provide their immutable identity.
 
 ### 7.2. Raising an Exception (`raise E [with payload] end`)
 ```c
@@ -1030,8 +1030,13 @@ runtime/
 - **Floating-Point Math:**
   - `double quest_real_pow(double base, double exp)`: Implements Quest `^^` real exponentiation via `pow()`.
 - **Runtime Panic / Exception Handlers:**
-  - `void quest_raise_divide_by_zero(void)`: Triggered on division or modulo by zero. Prints
-    `Exception: DivideByZero\n` to `stderr` and terminates the process with exit code 1.
+  - `void quest_raise_int_error(void)`, `void quest_raise_real_error(void)`, `void quest_raise_word_error(void)`:
+    Triggered on division or modulo by zero for `Int` (`/`, `%`), `Real` (`//`, and `^^` with a zero base and
+    negative exponent), and `word.div`/`word.mod` respectively. Uncaught, they print `Exception: int.error\n` (or
+    `real.error`, `word.error`) to `stderr` and terminate the process with exit code 1.
+  - `void quest_option_ordinal_error(int64_t n, int64_t count)`: Triggered by `option ordinal(n) of T end` when
+    `n` is outside `0 <= n < count`. Prints the same message as the interpreter and exits with code 1; like the
+    interpreter's runtime error, it cannot be caught.
   - `void quest_raise_array_error(void)`: Triggered on out-of-bounds array access or negative array sizes. Prints
     `Exception: arrayOp.error\n` to `stderr` and terminates the process with exit code 1.
   - `void quest_raise_string_error(void)`: Triggered on out-of-bounds string index or slice bounds. Prints
