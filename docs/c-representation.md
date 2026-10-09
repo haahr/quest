@@ -1145,6 +1145,10 @@ runtime/
     divisor). Infinities pass through. See [type-system.md](type-system.md) §6.3.1.
   - `double quest_real_pow(double base, double exp)`: Implements Quest `^^` (and `real.exp`) via `pow()`, raising
     `real.error` for a zero base with a negative exponent or a NaN result.
+  - `QString *quest_conv_real(double r)`: Formats a real as the interpreter does (Python's `repr`: the shortest digits
+    that read back as `r`, fixed notation for `1e-5 <= |r| < 1e16`, otherwise an exponent), with `~` for negatives.
+    Displays (`quest_print_value`) write the same digits with `-`. The digits come from `quest_shortest_digits`,
+    which tries each length's correctly rounded decimal and, beside a power of two, its neighbors.
   - `bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b)`: `is` on `QVal`-represented values; bit equality,
     or IEEE equality when `t` describes `Real` (so `0.0 is ~0.0`).
   - `uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x)`: `hash.identityHash`; hashes `~0.0` as `0.0` for

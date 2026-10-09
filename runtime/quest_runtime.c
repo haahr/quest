@@ -313,48 +313,79 @@ void quest_raise_system_error(void) {
     quest_raise(&quest_exc_system_error, Q_OK_VAL);
 }
 
-/* Writes a real as the interpreter does (Python's repr): the shortest digits that read back as the same value, in
- * positional notation when the decimal exponent is in [-4, 16) and in scientific notation otherwise. */
-static void quest_put_real(double r) {
-    if (isnan(r)) {
-        fputs("nan", stdout);
-        return;
+/* Reads back the decimal d1.d2d3...dn * 10^x. */
+static double quest_decimal_value(const char *digits, int nd, int x) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%c.%.*se%d", digits[0], nd - 1, digits + 1, x);
+    return strtod(buf, NULL);
+}
+
+/* Adds delta (+1 or -1) to the last of nd digits; returns false when the result would gain or lose a digit. */
+static int quest_digits_step(char *digits, int nd, int delta) {
+    for (int i = nd - 1; i >= 0; i--) {
+        int d = digits[i] - '0' + delta;
+        if (d >= 0 && d <= 9) { digits[i] = (char)('0' + d); return digits[0] != '0'; }
+        digits[i] = delta > 0 ? '0' : '9';
     }
-    if (isinf(r)) {
-        fputs(r > 0.0 ? "inf" : "-inf", stdout);
-        return;
+    return 0;
+}
+
+/* The shortest decimal digits that read back as r (finite, > 0), choosing the one nearest r when several of that
+   length do, as Python's repr does. Sets *x so that r is about d1.d2d3... * 10^x; returns the digit count. */
+static int quest_shortest_digits(double r, char *digits, int *x) {
+    for (int p = 1; p <= 17; p++) {
+        char sci[40];
+        snprintf(sci, sizeof(sci), "%.*e", p - 1, r);  /* the correctly rounded p-digit decimal */
+        char *e = strchr(sci, 'e');
+        int nd = 0;
+        for (char *c = sci; c < e; c++) if (*c != '.') digits[nd++] = *c;
+        *x = atoi(e + 1);
+        if (quest_decimal_value(digits, nd, *x) == r) return nd;
+        /* Beside a power of two the doubles' spacing differs on each side, so a p-digit neighbor of the nearest
+           decimal can read back as r when the nearest does not. */
+        for (int delta = -1; delta <= 1; delta += 2) {
+            char cand[20];
+            memcpy(cand, digits, (size_t)nd);
+            if (quest_digits_step(cand, nd, delta) && quest_decimal_value(cand, nd, *x) == r) {
+                memcpy(digits, cand, (size_t)nd);
+                return nd;
+            }
+        }
     }
-    char buf[40];
-    for (int precision = 1; precision <= 17; ++precision) {
-        snprintf(buf, sizeof buf, "%.*e", precision - 1, r);
-        if (strtod(buf, NULL) == r) break;
-    }
-    const char *p = buf;
-    if (*p == '-') {
-        putchar('-');
-        ++p;
-    }
-    char digits[24];
-    int n = 0;
-    for (; *p != '\0' && *p != 'e'; ++p) {
-        if (*p >= '0' && *p <= '9') digits[n++] = *p;
-    }
-    while (n > 1 && digits[n - 1] == '0') --n;
-    digits[n] = '\0';
-    int exponent = *p == 'e' ? atoi(p + 1) : 0;
-    if (exponent < -4 || exponent >= 16) {
-        putchar(digits[0]);
-        if (n > 1) printf(".%s", digits + 1);
-        printf("e%c%02d", exponent < 0 ? '-' : '+', exponent < 0 ? -exponent : exponent);
-    } else if (exponent < 0) {
-        fputs("0.", stdout);
-        for (int i = 0; i < -exponent - 1; ++i) putchar('0');
-        fputs(digits, stdout);
+    return 17;  /* not reached: 17 significant digits always read back */
+}
+
+/* Formats r without its sign, as the interpreter does (Python's repr): the shortest digits that read back as r, in
+   fixed notation for 1e-5 <= |r| < 1e16 (with ".0" when integral), otherwise d[.ddd]e+XX; an infinity is "inf".
+   The caller writes the sign, "~" for conv.real and "-" for displays. See docs/type-system.md §6.3.1. */
+static void quest_format_real(double r, char *out, size_t n) {
+    r = fabs(r);
+    if (isinf(r)) { snprintf(out, n, "inf"); return; }
+    if (r == 0.0) { snprintf(out, n, "0.0"); return; }
+    char digits[20];
+    int x;
+    int nd = quest_shortest_digits(r, digits, &x);
+    while (nd > 1 && digits[nd - 1] == '0') nd--;
+    digits[nd] = '\0';
+    int decpt = x + 1;  /* r = 0.d1d2... * 10^decpt */
+    if (decpt <= -4 || decpt > 16) {
+        if (nd == 1) snprintf(out, n, "%ce%c%02d", digits[0], x < 0 ? '-' : '+', abs(x));
+        else snprintf(out, n, "%c.%se%c%02d", digits[0], digits + 1, x < 0 ? '-' : '+', abs(x));
+    } else if (decpt <= 0) {
+        snprintf(out, n, "0.%.*s%s", -decpt, "0000", digits);
+    } else if (decpt >= nd) {
+        snprintf(out, n, "%s%.*s.0", digits, decpt - nd, "0000000000000000");
     } else {
-        for (int i = 0; i <= exponent; ++i) putchar(i < n ? digits[i] : '0');
-        putchar('.');
-        fputs(n > exponent + 1 ? digits + exponent + 1 : "0", stdout);
+        snprintf(out, n, "%.*s.%s", decpt, digits, digits + decpt);
     }
+}
+
+/* Writes a real as the interpreter does: conv.real's digits, with "-" rather than "~" for negatives */
+static void quest_put_real(double r) {
+    char buf[48];
+    quest_format_real(r, buf, sizeof(buf));
+    if (signbit(r)) putchar('-');
+    fputs(buf, stdout);
 }
 
 /* Writes a character of a char or string literal, escaped as the interpreter does */
@@ -2574,17 +2605,11 @@ QString *quest_conv_int(int64_t n) {
 }
 
 QString *quest_conv_real(double r) {
-    char buf[64];
+    char buf[48];
     /* Quest writes negation as ~, including for negative zero and negative infinity. */
+    buf[0] = '~';
     bool is_neg = signbit(r);
-    double abs_r = is_neg ? -r : r;
-    if (isinf(abs_r)) {
-        snprintf(buf, sizeof(buf), "%sinf", is_neg ? "~" : "");
-    } else if (abs_r < 9223372036854775808.0 && abs_r == (double)(int64_t)abs_r) {
-        snprintf(buf, sizeof(buf), "%s%.1f", is_neg ? "~" : "", abs_r);
-    } else {
-        snprintf(buf, sizeof(buf), "%s%g", is_neg ? "~" : "", abs_r);
-    }
+    quest_format_real(r, buf + (is_neg ? 1 : 0), sizeof(buf) - 1);
     return quest_string_new(buf, (int64_t)strlen(buf));
 }
 

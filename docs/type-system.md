@@ -417,6 +417,13 @@ IEEE-754 double and settles those cases as follows, identically in the interpret
   therefore compares bits and, for a `Real` descriptor, also the doubles (`quest_val_is`;
   [c-representation.md](c-representation.md) §10.1). An abstract type with no runtime descriptor compares its
   representation's bits; Cardelli expects abstract types to define their own equality.
+- **Printing.** `conv.real` writes the shortest decimal digits that read back as the same double, choosing the one
+  nearest the value when several of that length do. It uses fixed notation for `1e-5 <= |r| < 1e16`, with `.0`
+  appended when the value is integral (`2.0`, `0.30000000000000004`, `1000000000000000.0`), and an exponent otherwise
+  (`1e+16`, `1.5e-07`, `5e-324`). This is Python's `repr`, which the interpreter uses; the C runtime implements the
+  same rules (`quest_format_real`). Cardelli specifies only "a string representation of the real r (preceded by '~'
+  if negative)", so negatives, including `~0.0` and `~inf`, start with `~`. REPL and `--stop-after` displays use the
+  same digits with `-` for negatives.
 - **Rounding.** `real.round` rounds half away from zero (`real.round(2.5)` is `3`, `real.round(~2.5)` is `~3`), as C's
   `round` does; `real.floor` rounds toward negative infinity.
 
