@@ -202,6 +202,10 @@ reached more than once get one.
 - Readers, writers and closures cannot be externed; nor can values whose type is not encodable (§2.2). `extern`
   raises `dynamic.error`. (Cardelli allows functions to be externed; that needs a code representation that this
   format does not have.)
+- Exception values cannot be externed either. Each evaluation of an exception expression makes a new exception,
+  and handlers match exceptions by identity, so an exception read back from a file could never be caught by any
+  handler in the reading program. Types may still mention `Exception(T)` (for instance in a variant case the value
+  does not use), so the type node exists.
 - `intern` raises `dynamic.error` on malformed JSON, an unknown `quest` version, a type reference out of range,
   a type node it does not recognize, a value that does not fit its type, an undefined `@ref`, or an abstract type
   whose representation does not match (§2.3).
@@ -258,6 +262,9 @@ serialization supports auto values with one component. The interpreter reads `@t
 (`parse_type_string`); the C runtime looks it up among the program's registered descriptors or parses it with its
 own type parser (`quest_parse_type_descriptor`), which reads auto types such as `Auto A :: TYPE with a: A end`,
 laying out their components as the compiler stores them.
+
+Module abstract types are not yet handled as §2.3 describes: the interpreter writes the printed name (`ca.T`), which
+another program cannot read back, and compiled code raises `dynamic.error`, because the type's descriptor is opaque.
 
 ---
 
