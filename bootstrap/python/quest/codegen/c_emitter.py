@@ -2817,7 +2817,10 @@ class CEmitter:
 
             case TypedRaise():
                 self.emit_to(expr, None, lines)
-                return "((void)0)"
+                # quest_raise does not return; a value position still needs an expression of the expected C type.
+                if normalize_type(expr.type_val) is OK_TYPE:
+                    return "((void)0)"
+                return f"(({self.c_type(expr.type_val)}){{0}})"
 
             case TypedIf() | TypedBlock() | TypedWhile() | TypedLoop() | TypedFor() | TypedTry():
                 return self._materialize_to_temp(expr, lines, prefix="_val")

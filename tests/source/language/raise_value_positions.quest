@@ -1,0 +1,59 @@
+(* Language: A raise expression can stand wherever a value of any type is expected *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+exception Plain: Int end;
+
+(* 1. A function whose whole body is a raise *)
+let thrower(y: Int): Int = raise Plain with y as Int end;
+printInt(try thrower(4) when Plain with n then n end);
+
+(* 2. A lambda whose whole body is a raise *)
+let lam = fun(y: Int): Int raise Plain with y + 1 as Int end;
+printInt(try lam(4) when Plain with n then n end);
+
+(* 3. Non-Int result types *)
+let realThrower(y: Int): Real = raise Plain with y as Int end;
+printInt(try begin realThrower(6); 0 end when Plain with n then n end);
+
+let stringThrower(y: Int): String = raise Plain with y as Int end;
+printInt(try begin stringThrower(7); 0 end when Plain with n then n end);
+
+let tupleThrower(y: Int): Tuple a: Int b: Bool end = raise Plain with y as Int end;
+printInt(try tupleThrower(8).a when Plain with n then n end);
+
+let funThrower(y: Int): All(x: Int) Int = raise Plain with y as Int end;
+printInt(try funThrower(9)(1) when Plain with n then n end);
+
+let arrayThrower(y: Int): Array(Int) = raise Plain with y as Int end;
+printInt(try arrayThrower(10)[0] when Plain with n then n end);
+
+let okThrower(y: Int): Ok = raise Plain with y as Int end;
+printInt(try begin okThrower(11); 0 end when Plain with n then n end);
+
+(* 4. A let value that is a raise *)
+printInt(
+    try
+        begin
+            let v: Int = raise Plain with 12 as Int end;
+            v + 1000
+        end
+    when Plain with n then n end);
+
+(* 5. A call argument that is a raise *)
+let addOne(x: Int): Int = x + 1;
+printInt(try addOne(raise Plain with 13 as Int end) when Plain with n then n end);
+
+(* 6. A raise as an operand and as a tuple field *)
+printInt(try 1 + raise Plain with 14 as Int end when Plain with n then n end);
+printInt(
+    try begin tuple let a: Int = raise Plain with 15 as Int end let b = true end end.a
+    when Plain with n then n end);
