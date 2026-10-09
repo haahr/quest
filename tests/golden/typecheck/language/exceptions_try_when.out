@@ -133,4 +133,43 @@
         :args (
           (TypedVar 'r3' :type Int)
         )))
+    (TypedLetValue 'mk' :type Fun(x: Int): Exception(Int)
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Exception(Int)
+        :body (TypedException 'Made' :type Exception(Int))))
+    (TypedLetValue 'm1' :type Exception(Int)
+      :value (TypedApp :type Exception(Int)
+        :func (TypedVar 'mk' :type Fun(x: Int): Exception(Int))
+        :args (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedLetValue 'm2' :type Exception(Int)
+      :value (TypedApp :type Exception(Int)
+        :func (TypedVar 'mk' :type Fun(x: Int): Exception(Int))
+        :args (
+          (TypedInt 2 :type Int)
+        )))
+    (TypedLetValue 'r4' :type Int
+      :value (TypedTry :type Int
+        :body (TypedTry :type Int
+          :body (TypedRaise :type Int
+            :exc (TypedVar 'm1' :type Exception(Int))
+            :payload (TypedInt 6 :type Int))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'm2' :type Exception(Int))
+              :body (TypedInfix '-' :type Int
+                :left (TypedInt 0 :type Int)
+                :right (TypedVar 'n' :type Int)))
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'm1' :type Exception(Int))
+            :body (TypedVar 'n' :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedVar 'r4' :type Int)
+        )))
   ))
