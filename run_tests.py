@@ -23,7 +23,6 @@ from quest.pipeline import PhasePipeline, default_pipeline, full_pipeline
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
 TESTS_GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TESTS_ERRORS_DIR = ROOT_DIR / "tests" / "errors"
-LIB_DIR = ROOT_DIR / "lib"
 DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 
 # Interfaces and modules beside the tests are imported by them, not run as tests (docs/testing.md §2.6).
@@ -110,40 +109,6 @@ def discover_tests(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*.quest") if not p.name.endswith(UNIT_SUFFIXES))
 
 
-def unit_include_args(test_file: Path) -> list[str]:
-    """Makes the test's directory the include root of the interfaces and modules beside it.
-
-    Their canonical names are then their bare names, as unit_name_conflicts requires, rather than paths relative to
-    the project directory, which is also an include root.
-    """
-    return ["-I", str(test_file.parent)]
-
-
-def unit_name_conflicts(directories: list[Path]) -> list[str]:
-    """Reports test interfaces and modules whose names would collide in the shared build directory.
-
-    Build artifacts are named after the unit alone, not the directory its source is in, so a name used in two
-    test directories, or also used by the library, would let one test run with another's compiled code.
-    """
-    def unit_name(path: Path) -> str:
-        return path.name.lower().split(".", 1)[0]
-
-    library_names = {unit_name(p) for p in LIB_DIR.glob("*.quest")}
-    homes: dict[str, set[Path]] = {}
-    for directory in directories:
-        for path in directory.rglob("*.quest"):
-            if path.name.endswith(UNIT_SUFFIXES):
-                homes.setdefault(unit_name(path), set()).add(path.parent)
-    problems = []
-    for name, dirs in sorted(homes.items()):
-        rel_dirs = ", ".join(sorted(str(d.relative_to(ROOT_DIR)) for d in dirs))
-        if len(dirs) > 1:
-            problems.append(f"{name} appears in more than one test directory: {rel_dirs}")
-        if name in library_names:
-            problems.append(f"{name} in {rel_dirs} has the same name as a library unit in lib/")
-    return problems
-
-
 def golden_dir_for_phase(phase_name: str) -> Path:
     if phase_name in ("interpret", "run_c_compiled"):
         return TESTS_GOLDEN_DIR / "run"
@@ -204,7 +169,6 @@ def run_single_golden_test(
     ]
     if driver_args:
         command.extend(driver_args)
-    command.extend(unit_include_args(source_file))
     # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
     if build_dir is None:
         build_dir = ROOT_DIR / ".build"
@@ -415,13 +379,6 @@ def run_all_tests(
     print(f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}, Timeout: {args.timeout}s")
     print(f"Build dir: {build_dir}" + (f", Driver args: {' '.join(driver_args)}" if driver_args else "") + "\n")
 
-    conflicts = unit_name_conflicts([TESTS_SOURCE_DIR, TESTS_ERRORS_DIR])
-    if conflicts:
-        print("Test interface and module names must be unique (docs/testing.md §2.6):")
-        for conflict in conflicts:
-            print(f"  {conflict}")
-        return 1
-
     # 1. Run Golden Tests (if suite is 'golden' or 'all')
     if suite_mode in ("golden", "all"):
         source_files = discover_tests(TESTS_SOURCE_DIR)
@@ -510,7 +467,7 @@ def run_all_tests(
                     stdin_data=directives.stdin_data,
                     timeout=effective_timeout,
                     build_dir=build_dir,
-                    driver_args=driver_args + unit_include_args(error_file),
+                    driver_args=driver_args,
                 )
                 if passed:
                     passed_errors += 1

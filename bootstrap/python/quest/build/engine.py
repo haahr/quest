@@ -395,19 +395,12 @@ class BuildEngine:
         ) -> None:
             if not expected_iface:
                 return
+            # Modules are keyed by their canonical names, ignoring case as mangling does; distinct modules may
+            # share a base name (docs/modules.md §2.3).
             norm_name = mod_name.lower()
-            stem_name = Path(mod_name).name.lower()
-            expected_interfaces.setdefault(mod_name, []).append((importer, expected_iface))
-            if norm_name != mod_name:
-                expected_interfaces.setdefault(norm_name, []).append((importer, expected_iface))
-            if stem_name not in (mod_name, norm_name):
-                expected_interfaces.setdefault(stem_name, []).append((importer, expected_iface))
+            expected_interfaces.setdefault(norm_name, []).append((importer, expected_iface))
 
-            existing = (
-                module_manifests.get(mod_name)
-                or module_manifests.get(norm_name)
-                or module_manifests.get(stem_name)
-            )
+            existing = module_manifests.get(norm_name)
             if existing and existing.interface:
                 if not interfaces_conform(existing.interface, expected_iface):
                     raise BuildError(
@@ -540,16 +533,9 @@ class BuildEngine:
 
             if manifest is not None:
                 module_manifests[item_name.lower()] = manifest
-                module_manifests[stem] = manifest
-                if manifest.name:
-                    module_manifests[manifest.name] = manifest
-                    module_manifests[manifest.name.lower()] = manifest
                 _verify_module_interface(item_name.lower(), manifest.interface)
-                if stem != item_name.lower():
-                    _verify_module_interface(stem, manifest.interface)
-                if manifest.name and manifest.name not in (item_name.lower(), stem):
-                    _verify_module_interface(manifest.name, manifest.interface)
-                if manifest.name and manifest.name.lower() not in (item_name.lower(), stem):
+                if manifest.name and manifest.name.lower() != item_name.lower():
+                    module_manifests[manifest.name.lower()] = manifest
                     _verify_module_interface(manifest.name.lower(), manifest.interface)
 
             imported_mods: list[ImportedModuleRef] = manifest.imported_modules if manifest else []

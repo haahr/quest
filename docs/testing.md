@@ -220,13 +220,12 @@ import counter: Counter;
 counter.get(counter.inc(counter.new(10)))
 ```
 
-Rules:
-- **Unique names.** Build artifacts are named after the unit alone, and all tests in a run share one build directory,
-  so an interface or module name may be used in only one test directory and may not be the name of a library unit in
-  `lib/`. Otherwise one test could run with another's compiled code. The runner checks this before running anything.
-- **Flat names.** The runner passes the test's directory as an include path (`-I`), so units beside a test have their
-  bare names (`counter`) as canonical names rather than paths relative to the project directory
-  (`tests/source/modules/counter`). Units in subdirectories of a test directory are not yet supported.
+Units may also be in subdirectories of a test's directory, imported by their paths (`import arith = util/arith :
+util/Arith;` in `tests/source/modules/subdirectory_units.quest`). A unit's canonical name is its path relative to the
+project directory (`tests/source/modules/counter`; `docs/modules.md` §2.3), so units in different test directories may
+share names, and may share names with library units, without their artifacts colliding in the shared build directory.
+One test cannot, however, import two different units with the same base name (`counter` and `util/counter`), because
+the typechecker and interpreter register units by the names they are imported by.
 
 ---
 

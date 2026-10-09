@@ -69,6 +69,10 @@ the main routine. Units under different roots may share a canonical name (a prog
 importers record the source file they found in their `.qm` ([build-process.md §4.3](build-process.md)), so the build
 engine compiles the right one, but two such units cannot be linked into one program.
 
+*Limitation:* the typechecker and interpreter still register loaded interfaces and modules under the names they are
+imported by as well, so a compilation unit (or, for the interpreter, a whole program) cannot import two different
+units with the same base name, such as `counter` and `util/counter`.
+
 ---
 
 ## 3. Single Definition Rule and Strict Validation
