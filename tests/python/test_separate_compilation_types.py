@@ -128,10 +128,6 @@ let l = list.cons(c.x list.nil(:Int));
 import ca, cb : Counter
 let x = ca.get(cb.new());
 """,
-    "same_counter.quest": """
-import ca, cb : Counter
-let x = ca.get(ca.new()) + cb.get(cb.new());
-""",
 }
 
 
@@ -248,13 +244,6 @@ class TestSeparateCompilationTypes(unittest.TestCase):
         env = self._pipeline_env("uses_geo.quest", "typecheck")
         self.assertFalse(env.loaded_modules_ast["geo/coord"].is_precompiled)
 
-    def test_abstract_types_of_one_module_agree(self) -> None:
-        proc = self._driver(
-            "--stop-after", "run_c_compiled", "--build-dir", str(self.build_dir),
-            str(self.root / "same_counter.quest"),
-        )
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("let x:Int = 3", proc.stdout)
 
 
 if __name__ == "__main__":

@@ -50,49 +50,6 @@ class TestModuleFileImports(unittest.TestCase):
         res = self.pipeline.execute(source_text, file_name=str(file_path), options=options, ctx=ctx)
         return res, ctx
 
-    def test_import_interface_and_module_from_current_dir(self):
-        """Tests loading an interface and module located in the current file directory."""
-        self._write_file(
-            "counter.int.quest",
-            """
-            interface Counter
-            export
-                T::TYPE
-                new(init: Int): T
-                inc(c: T): T
-                get(c: T): Int
-            end;
-            """,
-        )
-
-        self._write_file(
-            "counter.mod.quest",
-            """
-            module counter : Counter
-            export
-                Let T = Int;
-                let new(init: Int): T = init;
-                let inc(c: T): T = c + 1;
-                let get(c: T): Int = c;
-            end;
-            """,
-        )
-
-        main_quest = self._write_file(
-            "main.quest",
-            """
-            import counter: Counter;
-            let c0 = counter.new(10);
-            let c1 = counter.inc(c0);
-            let result = counter.get(c1);
-            """,
-        )
-
-        res, ctx = self._run_pipeline(main_quest)
-        self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
-        val = ctx.runtime_env.lookup("result")
-        self.assertEqual(val, QInt(11))
-
     def test_case_normalization_in_search(self):
         """Tests that interface and module names are lowercased to find .int.quest and .mod.quest."""
         self._write_file(

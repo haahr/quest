@@ -72,6 +72,10 @@ tests/
   │   │   ├── cardelli_syntax.quest
   │   │   ├── cardelli_options.quest
   │   │   └── cardelli_operators.quest
+  │   ├── modules/
+  │   │   ├── counter.int.quest, counter.mod.quest, ... (imported by the tests, not tests themselves)
+  │   │   ├── import_from_test_directory.quest
+  │   │   └── ...
   │   └── specialization/
   │       ├── quantifier_descriptors.quest
   │       ├── aggregate_subtyping.quest
@@ -85,7 +89,8 @@ tests/
       └── run/      (mirrors tests/source hierarchy for interpret and run_c_compiled)
 ```
 
-Test sources are discovered recursively (`*.quest`), preserving their relative directory paths in `tests/golden/`.
+Test sources are discovered recursively (`*.quest`, except interfaces and modules; see §2.6), preserving their relative
+directory paths in `tests/golden/`.
 
 ### 2.2. Standard Output and Execution Discipline
 - **Valid Programs:** Must complete successfully with exit code 0. Standard output is captured and verified against
@@ -201,6 +206,27 @@ input) can specify host execution requirements via top-level comment directives:
   *)
   ```
   Available in Quest via `reader.input`.
+
+### 2.6. Interfaces and Modules Used by Tests
+A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the
+ordinary sibling search (`docs/modules.md` §2.2). These files are not tests: the runner does not discover them, so no
+phase (not even `tokenize` or `parse`) is run on them by themselves and they have no goldens. They are compiled only as
+imports of the tests that use them, in every phase that a test reaches, and may be shared by several tests in their
+directory. The same holds for error tests in `tests/errors/`.
+
+```quest
+(* tests/source/modules/import_from_test_directory.quest, beside counter.int.quest and counter.mod.quest *)
+import counter: Counter;
+counter.get(counter.inc(counter.new(10)))
+```
+
+Rules:
+- **Unique names.** Build artifacts are named after the unit alone, and all tests in a run share one build directory,
+  so an interface or module name may be used in only one test directory and may not be the name of a library unit in
+  `lib/`. Otherwise one test could run with another's compiled code. The runner checks this before running anything.
+- **Flat names.** The runner passes the test's directory as an include path (`-I`), so units beside a test have their
+  bare names (`counter`) as canonical names rather than paths relative to the project directory
+  (`tests/source/modules/counter`). Units in subdirectories of a test directory are not yet supported.
 
 ---
 

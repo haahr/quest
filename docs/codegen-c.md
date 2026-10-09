@@ -677,7 +677,7 @@ The C code generator is verified through comprehensive unit, integration, and en
   record width/permutation subtyping, evidence dictionary passing through closures, uniform `QRecordVal` returns,
   and static variant tag remapping.
 - `tests/python/test_phase4_6_exceptions.py`: Exception values, try-when exception handling, and stack unwinding.
-- `tests/python/test_phase4_7_whole_program_modules.py`: Multi-file compilation, interface checking, and linking.
+- `tests/source/modules/` (golden tests): Multi-file compilation, interface checking, and linking.
 - `tests/python/test_phase4_8_quantifier_descriptors.py`: Quantifier calling convention and type descriptors.
 - `tests/python/test_phase4_8_dynamic.py`: Dynamic module lowering, dynamic values, and generic wrappers.
 - `tests/python/test_phase4_9a_aggregate_subtyping.py`: Arrays of subtyped records, array repetition, element mutation,
