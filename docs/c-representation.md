@@ -1207,7 +1207,11 @@ Quest supports graph serialization and deserialization of dynamically typed valu
 
 When an interface `x.int.quest` is compiled (`quest -c x.int.quest`), the compiler emits a standard C header `x.int.h`
 (not `x.h`, which could shadow a C library header such as `<math.h>`; see [build-process.md §3.2](build-process.md)):
-- **Include Guard:** Uses standard preprocessor guards `#ifndef QUEST_INTF_<NAME>_H ... #endif`.
+- **Include Guard:** Uses standard preprocessor guards `#ifndef QUEST_INTF_<NAME>_H ... #endif`, where `<NAME>` is the
+  interface's canonical include-relative path, uppercased, with `/` mapped to `__` as in hierarchical module names
+  (docs/name-mangling.md §4.1): `util/math.int.quest` declaring `interface Math` guards with `QUEST_INTF_UTIL__MATH_H`,
+  distinct from a top-level `math.int.quest`'s `QUEST_INTF_MATH_H`. The typedef names below likewise use the
+  canonical path with `/` mapped to `__` (case preserved) as `<Interface>`, e.g. `quest_sig_util__Math_<Member>`.
 - **Runtime Dependency:** Always includes `#include "quest_runtime.h"`.
 - **Recursive Interface Includes:** For every imported interface (`import : Dep`), emits `#include "dep.int.h"`.
 - **Abstract Type Erasure:** Abstract types (`T::TYPE`) cannot have a fixed scalar size across implementations and

@@ -1,5 +1,5 @@
-#ifndef QUEST_INTF_DIAGNOSTICS_H
-#define QUEST_INTF_DIAGNOSTICS_H
+#ifndef QUEST_INTF_QUESTLANG__COMMON__DIAGNOSTICS_H
+#define QUEST_INTF_QUESTLANG__COMMON__DIAGNOSTICS_H
 #include "quest_runtime.h"
 #ifdef __cplusplus
 extern "C" {
@@ -42,28 +42,28 @@ struct QTuple_QTuple_String_Int_Int_end_String_Bool {
     QBool _2;
 };
 #endif
-typedef QOption_fatal_error_warning_info * quest_type_Diagnostics_Severity;
-typedef QTuple_QTuple_String_Int_Int_end_String_Bool * quest_type_Diagnostics_Label;
-typedef QVal quest_type_Diagnostics_Diagnostic;
-typedef QVal (*quest_sig_Diagnostics_make)(QOption_fatal_error_warning_info * sev, QString * msg, QTuple_String_Int_Int * sp);
-typedef QVal (*quest_sig_Diagnostics_fatal)(QString * msg, QTuple_String_Int_Int * sp);
-typedef QVal (*quest_sig_Diagnostics_error)(QString * msg, QTuple_String_Int_Int * sp);
-typedef QVal (*quest_sig_Diagnostics_warning)(QString * msg, QTuple_String_Int_Int * sp);
-typedef QVal (*quest_sig_Diagnostics_info)(QString * msg, QTuple_String_Int_Int * sp);
-typedef QOption_fatal_error_warning_info * (*quest_sig_Diagnostics_severity)(QVal d);
-typedef QString * (*quest_sig_Diagnostics_message)(QVal d);
-typedef QTuple_String_Int_Int * (*quest_sig_Diagnostics_span)(QVal d);
-typedef QVal (*quest_sig_Diagnostics_labels)(QVal d);
-typedef QVal (*quest_sig_Diagnostics_notes)(QVal d);
-typedef QVal (*quest_sig_Diagnostics_help)(QVal d);
-typedef QVal (*quest_sig_Diagnostics_code)(QVal d);
-typedef void (*quest_sig_Diagnostics_addLabel)(QVal d, QTuple_String_Int_Int * sp, QString * msg, QBool isPrimary);
-typedef void (*quest_sig_Diagnostics_addNote)(QVal d, QString * note);
-typedef void (*quest_sig_Diagnostics_setHelp)(QVal d, QString * h);
-typedef void (*quest_sig_Diagnostics_setCode)(QVal d, QString * c);
-typedef QString * (*quest_sig_Diagnostics_severityString)(QOption_fatal_error_warning_info * sev);
-typedef QString * (*quest_sig_Diagnostics_format)(QVal d, QVal sm);
-typedef void (*quest_sig_Diagnostics_render)(QVal d, QVal sm, QWriter * w);
+typedef QOption_fatal_error_warning_info * quest_type_questlang__common__Diagnostics_Severity;
+typedef QTuple_QTuple_String_Int_Int_end_String_Bool * quest_type_questlang__common__Diagnostics_Label;
+typedef QVal quest_type_questlang__common__Diagnostics_Diagnostic;
+typedef QVal (*quest_sig_questlang__common__Diagnostics_make)(QOption_fatal_error_warning_info * sev, QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_fatal)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_error)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_warning)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_info)(QString * msg, QTuple_String_Int_Int * sp);
+typedef QOption_fatal_error_warning_info * (*quest_sig_questlang__common__Diagnostics_severity)(QVal d);
+typedef QString * (*quest_sig_questlang__common__Diagnostics_message)(QVal d);
+typedef QTuple_String_Int_Int * (*quest_sig_questlang__common__Diagnostics_span)(QVal d);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_labels)(QVal d);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_notes)(QVal d);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_help)(QVal d);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_code)(QVal d);
+typedef void (*quest_sig_questlang__common__Diagnostics_addLabel)(QVal d, QTuple_String_Int_Int * sp, QString * msg, QBool isPrimary);
+typedef void (*quest_sig_questlang__common__Diagnostics_addNote)(QVal d, QString * note);
+typedef void (*quest_sig_questlang__common__Diagnostics_setHelp)(QVal d, QString * h);
+typedef void (*quest_sig_questlang__common__Diagnostics_setCode)(QVal d, QString * c);
+typedef QString * (*quest_sig_questlang__common__Diagnostics_severityString)(QOption_fatal_error_warning_info * sev);
+typedef QString * (*quest_sig_questlang__common__Diagnostics_format)(QVal d, QVal sm);
+typedef void (*quest_sig_questlang__common__Diagnostics_render)(QVal d, QVal sm, QWriter * w);
 #ifdef __cplusplus
 }
 #endif

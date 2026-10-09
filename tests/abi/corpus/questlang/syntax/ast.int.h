@@ -1,5 +1,5 @@
-#ifndef QUEST_INTF_AST_H
-#define QUEST_INTF_AST_H
+#ifndef QUEST_INTF_QUESTLANG__SYNTAX__AST_H
+#define QUEST_INTF_QUESTLANG__SYNTAX__AST_H
 #include "quest_runtime.h"
 #ifdef __cplusplus
 extern "C" {
@@ -1904,63 +1904,63 @@ struct QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end {
     QTuple_QVal * _1;
 };
 #endif
-typedef QOption_modeValue_modeVar_modeOut * quest_type_Ast_ParamMode;
-typedef QVal quest_type_Ast_Node;
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * quest_type_Ast_TypeExpr;
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * quest_type_Ast_KindExpr;
-typedef RecGroup0_0_QTuple_Strin_901e363f3f4740d5 * quest_type_Ast_TypeFormal;
-typedef QTuple_String_QVal_QOption_modeValue_modeVar_modeOut_end * quest_type_Ast_FormalParam;
-typedef RecGroup0_0_QTuple_Strin_33574f56de38bf4b * quest_type_Ast_Quantifier;
-typedef RecGroup0_0_QTuple_QVal__0194fc4d8d8c1f51 * quest_type_Ast_FieldSig;
-typedef RecGroup0_0_QTuple_Strin_051f413354359a97 * quest_type_Ast_RecordFieldSig;
-typedef RecGroup0_0_QTuple_Strin_ac37624ec246576d * quest_type_Ast_OptionFieldSig;
-typedef RecGroup0_0_QTuple_Strin_051f413354359a97 * quest_type_Ast_VariantFieldSig;
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * quest_type_Ast_Expr;
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * quest_type_Ast_Decl;
-typedef RecGroup0_0_QTuple_Self1_b32aa8eca318d6c7 * quest_type_Ast_ElsifBranch;
-typedef RecGroup0_0_QTuple_QVal__dcf615e249a20141 * quest_type_Ast_TupleFieldBinding;
-typedef RecGroup0_0_QOption_fiel_47732610e769f3d8 * quest_type_Ast_TupleField;
-typedef RecGroup0_0_QTuple_Strin_3db1c713234e3f90 * quest_type_Ast_RecordBinding;
-typedef RecGroup0_0_QTuple_QVal__3569e81dc613be58 * quest_type_Ast_CaseBranch;
-typedef QTuple_String_QVal * quest_type_Ast_InspectBinder;
-typedef RecGroup0_0_QTuple_Rec0__9a8ce199664251ab * quest_type_Ast_InspectBranch;
-typedef RecGroup0_0_QTuple_Self1_b465d58971f08314 * quest_type_Ast_TryBranch;
-typedef RecGroup0_0_QTuple_Strin_c0ecfa7c6b9bd2d5 * quest_type_Ast_AutoWitness;
-typedef QTuple_QVal_String_QVal_QVal * quest_type_Ast_ImportItem;
-typedef QTuple_QVal * quest_type_Ast_ImportPhrase;
-typedef QTuple_String_QVal_QVal_Bool * quest_type_Ast_InterfaceDecl;
-typedef QTuple_String_String_QVal_QVal_Bool * quest_type_Ast_ModuleDecl;
-typedef QOption_phraseImport_QTu_ada7791ae0d57768 * quest_type_Ast_PhraseForm;
-typedef QTuple_QTuple_String_Int_a9e2cf43a5159852 * quest_type_Ast_Phrase;
-typedef QTuple_QVal * quest_type_Ast_ProgramForm;
-typedef QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * quest_type_Ast_Program;
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_Ast_makeType)(QTuple_String_Int_Int * span, Rec0_QOption_kindType_kindPow_6e0e16f5f4fcfb4d * form);
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_Ast_makeKind)(QTuple_String_Int_Int * span, Rec0_QOption_kindType_kindPow_6e0e16f5f4fcfb4d * form);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_makeExpr)(QTuple_String_Int_Int * span, Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 * form);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_makeDecl)(QTuple_String_Int_Int * span, Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 * form);
-typedef QTuple_QTuple_String_Int_a9e2cf43a5159852 * (*quest_sig_Ast_makePhrase)(QTuple_String_Int_Int * span, QOption_phraseImport_QTu_ada7791ae0d57768 * form);
-typedef QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * (*quest_sig_Ast_makeProgram)(QTuple_String_Int_Int * span, QVal phrases);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprInt)(QTuple_String_Int_Int * span, QInt value, QString * lexeme);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprReal)(QTuple_String_Int_Int * span, QReal value, QString * lexeme);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprChar)(QTuple_String_Int_Int * span, QChar value, QString * lexeme);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprString)(QTuple_String_Int_Int * span, QString * value, QString * lexeme);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprBool)(QTuple_String_Int_Int * span, QBool value);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprOk)(QTuple_String_Int_Int * span);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprId)(QTuple_String_Int_Int * span, QString * name);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprInfix)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * left, QString * op, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * right);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprApp)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * func, QVal args);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_exprSelect)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * target, QString * field);
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_Ast_typePath)(QTuple_String_Int_Int * span, QVal path);
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_Ast_typePathSimple)(QTuple_String_Int_Int * span, QString * name);
-typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_Ast_typeTuple)(QTuple_String_Int_Int * span, QVal fields);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_declLetVal)(QTuple_String_Int_Int * span, QString * name, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * value, QVal typeAnnot);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_declLetType)(QTuple_String_Int_Int * span, QString * name, Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * typeVal);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_declDefType)(QTuple_String_Int_Int * span, QString * name, Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * typeVal);
-typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_Ast_declExprStmt)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * expr);
-typedef QTuple_String_QVal_QOption_modeValue_modeVar_modeOut_end * (*quest_sig_Ast_formalParam)(QString * name, QVal typeAnnot, QOption_modeValue_modeVar_modeOut * mode);
-typedef RecGroup0_0_QTuple_QVal__0194fc4d8d8c1f51 * (*quest_sig_Ast_fieldSig)(QVal name, QVal typeSig, QOption_modeValue_modeVar_modeOut * mode);
-typedef RecGroup0_0_QTuple_QVal__dcf615e249a20141 * (*quest_sig_Ast_tupleBinding)(QVal name, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * value, QVal typeAnnot, QBool isVar);
-typedef QTuple_QVal_String_QVal_QVal * (*quest_sig_Ast_importItem)(QVal names, QString * interfaceName, QVal modulePaths, QVal interfacePath);
+typedef QOption_modeValue_modeVar_modeOut * quest_type_questlang__syntax__Ast_ParamMode;
+typedef QVal quest_type_questlang__syntax__Ast_Node;
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * quest_type_questlang__syntax__Ast_TypeExpr;
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * quest_type_questlang__syntax__Ast_KindExpr;
+typedef RecGroup0_0_QTuple_Strin_901e363f3f4740d5 * quest_type_questlang__syntax__Ast_TypeFormal;
+typedef QTuple_String_QVal_QOption_modeValue_modeVar_modeOut_end * quest_type_questlang__syntax__Ast_FormalParam;
+typedef RecGroup0_0_QTuple_Strin_33574f56de38bf4b * quest_type_questlang__syntax__Ast_Quantifier;
+typedef RecGroup0_0_QTuple_QVal__0194fc4d8d8c1f51 * quest_type_questlang__syntax__Ast_FieldSig;
+typedef RecGroup0_0_QTuple_Strin_051f413354359a97 * quest_type_questlang__syntax__Ast_RecordFieldSig;
+typedef RecGroup0_0_QTuple_Strin_ac37624ec246576d * quest_type_questlang__syntax__Ast_OptionFieldSig;
+typedef RecGroup0_0_QTuple_Strin_051f413354359a97 * quest_type_questlang__syntax__Ast_VariantFieldSig;
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * quest_type_questlang__syntax__Ast_Expr;
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * quest_type_questlang__syntax__Ast_Decl;
+typedef RecGroup0_0_QTuple_Self1_b32aa8eca318d6c7 * quest_type_questlang__syntax__Ast_ElsifBranch;
+typedef RecGroup0_0_QTuple_QVal__dcf615e249a20141 * quest_type_questlang__syntax__Ast_TupleFieldBinding;
+typedef RecGroup0_0_QOption_fiel_47732610e769f3d8 * quest_type_questlang__syntax__Ast_TupleField;
+typedef RecGroup0_0_QTuple_Strin_3db1c713234e3f90 * quest_type_questlang__syntax__Ast_RecordBinding;
+typedef RecGroup0_0_QTuple_QVal__3569e81dc613be58 * quest_type_questlang__syntax__Ast_CaseBranch;
+typedef QTuple_String_QVal * quest_type_questlang__syntax__Ast_InspectBinder;
+typedef RecGroup0_0_QTuple_Rec0__9a8ce199664251ab * quest_type_questlang__syntax__Ast_InspectBranch;
+typedef RecGroup0_0_QTuple_Self1_b465d58971f08314 * quest_type_questlang__syntax__Ast_TryBranch;
+typedef RecGroup0_0_QTuple_Strin_c0ecfa7c6b9bd2d5 * quest_type_questlang__syntax__Ast_AutoWitness;
+typedef QTuple_QVal_String_QVal_QVal * quest_type_questlang__syntax__Ast_ImportItem;
+typedef QTuple_QVal * quest_type_questlang__syntax__Ast_ImportPhrase;
+typedef QTuple_String_QVal_QVal_Bool * quest_type_questlang__syntax__Ast_InterfaceDecl;
+typedef QTuple_String_String_QVal_QVal_Bool * quest_type_questlang__syntax__Ast_ModuleDecl;
+typedef QOption_phraseImport_QTu_ada7791ae0d57768 * quest_type_questlang__syntax__Ast_PhraseForm;
+typedef QTuple_QTuple_String_Int_a9e2cf43a5159852 * quest_type_questlang__syntax__Ast_Phrase;
+typedef QTuple_QVal * quest_type_questlang__syntax__Ast_ProgramForm;
+typedef QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * quest_type_questlang__syntax__Ast_Program;
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_questlang__syntax__Ast_makeType)(QTuple_String_Int_Int * span, Rec0_QOption_kindType_kindPow_6e0e16f5f4fcfb4d * form);
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_questlang__syntax__Ast_makeKind)(QTuple_String_Int_Int * span, Rec0_QOption_kindType_kindPow_6e0e16f5f4fcfb4d * form);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_makeExpr)(QTuple_String_Int_Int * span, Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 * form);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_makeDecl)(QTuple_String_Int_Int * span, Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 * form);
+typedef QTuple_QTuple_String_Int_a9e2cf43a5159852 * (*quest_sig_questlang__syntax__Ast_makePhrase)(QTuple_String_Int_Int * span, QOption_phraseImport_QTu_ada7791ae0d57768 * form);
+typedef QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * (*quest_sig_questlang__syntax__Ast_makeProgram)(QTuple_String_Int_Int * span, QVal phrases);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprInt)(QTuple_String_Int_Int * span, QInt value, QString * lexeme);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprReal)(QTuple_String_Int_Int * span, QReal value, QString * lexeme);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprChar)(QTuple_String_Int_Int * span, QChar value, QString * lexeme);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprString)(QTuple_String_Int_Int * span, QString * value, QString * lexeme);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprBool)(QTuple_String_Int_Int * span, QBool value);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprOk)(QTuple_String_Int_Int * span);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprId)(QTuple_String_Int_Int * span, QString * name);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprInfix)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * left, QString * op, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * right);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprApp)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * func, QVal args);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_exprSelect)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * target, QString * field);
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_questlang__syntax__Ast_typePath)(QTuple_String_Int_Int * span, QVal path);
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_questlang__syntax__Ast_typePathSimple)(QTuple_String_Int_Int * span, QString * name);
+typedef Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * (*quest_sig_questlang__syntax__Ast_typeTuple)(QTuple_String_Int_Int * span, QVal fields);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_declLetVal)(QTuple_String_Int_Int * span, QString * name, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * value, QVal typeAnnot);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_declLetType)(QTuple_String_Int_Int * span, QString * name, Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * typeVal);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_declDefType)(QTuple_String_Int_Int * span, QString * name, Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * typeVal);
+typedef Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * (*quest_sig_questlang__syntax__Ast_declExprStmt)(QTuple_String_Int_Int * span, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * expr);
+typedef QTuple_String_QVal_QOption_modeValue_modeVar_modeOut_end * (*quest_sig_questlang__syntax__Ast_formalParam)(QString * name, QVal typeAnnot, QOption_modeValue_modeVar_modeOut * mode);
+typedef RecGroup0_0_QTuple_QVal__0194fc4d8d8c1f51 * (*quest_sig_questlang__syntax__Ast_fieldSig)(QVal name, QVal typeSig, QOption_modeValue_modeVar_modeOut * mode);
+typedef RecGroup0_0_QTuple_QVal__dcf615e249a20141 * (*quest_sig_questlang__syntax__Ast_tupleBinding)(QVal name, Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * value, QVal typeAnnot, QBool isVar);
+typedef QTuple_QVal_String_QVal_QVal * (*quest_sig_questlang__syntax__Ast_importItem)(QVal names, QString * interfaceName, QVal modulePaths, QVal interfacePath);
 #ifdef __cplusplus
 }
 #endif

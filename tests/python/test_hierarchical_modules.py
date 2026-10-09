@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 import quest.ast as ast
 from quest.build.manifest import read_qm
-from quest.codegen.compiler_runner import run_binary
+from quest.codegen.compiler_runner import compile_c_to_object, run_binary
 from quest.grammar import parse_quest_program
 from quest.interface_compiler import compile_interface_file
 from quest.module_compiler import compile_module_file
@@ -324,6 +324,36 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         self.assertTrue((build_dir / "util" / "math.int.h").is_file())
         self.assertTrue((build_dir / "util" / "math.mod.c").is_file())
         self.assertFalse((build_dir / "util" / "math.h").exists())
+
+    def test_same_named_interfaces_in_different_directories_share_a_c_unit(self) -> None:
+        """util/Calc and a top-level Calc get distinct include guards and typedefs, so one C unit can include both."""
+        util_dir = self.root / "util"
+        util_dir.mkdir(parents=True)
+        util_intf = util_dir / "calc.int.quest"
+        util_intf.write_text("interface Calc\nexport\n    combine(a: Int b: Int): Int\nend;\n", encoding="utf-8")
+        top_intf = self.root / "calc.int.quest"
+        top_intf.write_text("interface Calc\nexport\n    combine(a: Int): Int\nend;\n", encoding="utf-8")
+
+        build_dir = self.root / ".build"
+        util_h, _ = compile_interface_file(util_intf, include_paths=[self.root], build_dir=build_dir)
+        top_h, _ = compile_interface_file(top_intf, include_paths=[self.root], build_dir=build_dir)
+        self.assertEqual(util_h, build_dir.resolve() / "util" / "calc.int.h")
+        self.assertEqual(top_h, build_dir.resolve() / "calc.int.h")
+        self.assertIn("#ifndef QUEST_INTF_UTIL__CALC_H", util_h.read_text(encoding="utf-8"))
+        self.assertIn("#ifndef QUEST_INTF_CALC_H", top_h.read_text(encoding="utf-8"))
+
+        # Both headers' declarations must survive in one translation unit.
+        c_file = self.root / "both.c"
+        c_file.write_text(
+            '#include "util/calc.int.h"\n'
+            '#include "calc.int.h"\n'
+            "static QInt mul(QInt a, QInt b) { return a * b; }\n"
+            "static QInt inc(QInt a) { return a + 1; }\n"
+            "quest_sig_util__Calc_combine util_combine = mul;\n"
+            "quest_sig_Calc_combine top_combine = inc;\n",
+            encoding="utf-8",
+        )
+        compile_c_to_object(c_file, self.root / "both.o", include_paths=[build_dir])
 
 
 def _write_units(directory: Path, units: dict[str, str]) -> None:

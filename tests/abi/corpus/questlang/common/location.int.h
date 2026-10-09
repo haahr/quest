@@ -1,5 +1,5 @@
-#ifndef QUEST_INTF_LOCATION_H
-#define QUEST_INTF_LOCATION_H
+#ifndef QUEST_INTF_QUESTLANG__COMMON__LOCATION_H
+#define QUEST_INTF_QUESTLANG__COMMON__LOCATION_H
 #include "quest_runtime.h"
 #ifdef __cplusplus
 extern "C" {
@@ -40,19 +40,19 @@ struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end {
     QTuple_Int_Int_Int * _1;
 };
 #endif
-typedef QTuple_Int_Int_Int * quest_type_Location_Pos;
-typedef QTuple_String_Int_Int * quest_type_Location_Span;
-typedef QVal quest_type_Location_SourceMap;
-typedef QVal (*quest_sig_Location_newSourceMap)(QString * file, QString * text);
-typedef QTuple_String_Int_Int * (*quest_sig_Location_span)(QString * file, QInt startOffset, QInt endOffset);
-typedef QTuple_String_Int_Int * (*quest_sig_Location_pointSpan)(QString * file, QInt offset);
-typedef QString * (*quest_sig_Location_file)(QVal sm);
-typedef QString * (*quest_sig_Location_text)(QVal sm);
-typedef QInt (*quest_sig_Location_lineCount)(QVal sm);
-typedef QTuple_Int_Int_Int * (*quest_sig_Location_locate)(QVal sm, QInt offset);
-typedef QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end * (*quest_sig_Location_locateSpan)(QVal sm, QTuple_String_Int_Int * sp);
-typedef QString * (*quest_sig_Location_getLine)(QVal sm, QInt lineNum);
-typedef QString * (*quest_sig_Location_extractSnippet)(QVal sm, QTuple_String_Int_Int * sp);
+typedef QTuple_Int_Int_Int * quest_type_questlang__common__Location_Pos;
+typedef QTuple_String_Int_Int * quest_type_questlang__common__Location_Span;
+typedef QVal quest_type_questlang__common__Location_SourceMap;
+typedef QVal (*quest_sig_questlang__common__Location_newSourceMap)(QString * file, QString * text);
+typedef QTuple_String_Int_Int * (*quest_sig_questlang__common__Location_span)(QString * file, QInt startOffset, QInt endOffset);
+typedef QTuple_String_Int_Int * (*quest_sig_questlang__common__Location_pointSpan)(QString * file, QInt offset);
+typedef QString * (*quest_sig_questlang__common__Location_file)(QVal sm);
+typedef QString * (*quest_sig_questlang__common__Location_text)(QVal sm);
+typedef QInt (*quest_sig_questlang__common__Location_lineCount)(QVal sm);
+typedef QTuple_Int_Int_Int * (*quest_sig_questlang__common__Location_locate)(QVal sm, QInt offset);
+typedef QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end * (*quest_sig_questlang__common__Location_locateSpan)(QVal sm, QTuple_String_Int_Int * sp);
+typedef QString * (*quest_sig_questlang__common__Location_getLine)(QVal sm, QInt lineNum);
+typedef QString * (*quest_sig_questlang__common__Location_extractSnippet)(QVal sm, QTuple_String_Int_Int * sp);
 #ifdef __cplusplus
 }
 #endif

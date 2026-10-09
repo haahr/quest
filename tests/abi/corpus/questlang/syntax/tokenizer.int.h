@@ -1,5 +1,5 @@
-#ifndef QUEST_INTF_TOKENIZER_H
-#define QUEST_INTF_TOKENIZER_H
+#ifndef QUEST_INTF_QUESTLANG__SYNTAX__TOKENIZER_H
+#define QUEST_INTF_QUESTLANG__SYNTAX__TOKENIZER_H
 #include "quest_runtime.h"
 #ifdef __cplusplus
 extern "C" {
@@ -107,12 +107,12 @@ struct QTuple_QOption_eof_intLi_1fbea51e784c16b7 {
     QTuple_String_Int_Int * _3;
 };
 #endif
-typedef QVal quest_type_Tokenizer_T;
-typedef QVal (*quest_sig_Tokenizer_new)(QVal sm, QVal bag);
-typedef QTuple_QOption_eof_intLi_1fbea51e784c16b7 * (*quest_sig_Tokenizer_nextToken)(QVal tok);
-typedef QTuple_QOption_eof_intLi_1fbea51e784c16b7 * (*quest_sig_Tokenizer_peekToken)(QVal tok);
-typedef QVal (*quest_sig_Tokenizer_tokenizeAll)(QVal tok);
-typedef QString * (*quest_sig_Tokenizer_formatDump)(QVal tokensList, QVal sm, QBool showValues);
+typedef QVal quest_type_questlang__syntax__Tokenizer_T;
+typedef QVal (*quest_sig_questlang__syntax__Tokenizer_new)(QVal sm, QVal bag);
+typedef QTuple_QOption_eof_intLi_1fbea51e784c16b7 * (*quest_sig_questlang__syntax__Tokenizer_nextToken)(QVal tok);
+typedef QTuple_QOption_eof_intLi_1fbea51e784c16b7 * (*quest_sig_questlang__syntax__Tokenizer_peekToken)(QVal tok);
+typedef QVal (*quest_sig_questlang__syntax__Tokenizer_tokenizeAll)(QVal tok);
+typedef QString * (*quest_sig_questlang__syntax__Tokenizer_formatDump)(QVal tokensList, QVal sm, QBool showValues);
 #ifdef __cplusplus
 }
 #endif

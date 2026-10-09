@@ -1,5 +1,5 @@
-#ifndef QUEST_INTF_ASTPRINT_H
-#define QUEST_INTF_ASTPRINT_H
+#ifndef QUEST_INTF_QUESTLANG__SYNTAX__ASTPRINT_H
+#define QUEST_INTF_QUESTLANG__SYNTAX__ASTPRINT_H
 #include "quest_runtime.h"
 #ifdef __cplusplus
 extern "C" {
@@ -1733,13 +1733,13 @@ struct QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end {
     QTuple_QVal * _1;
 };
 #endif
-typedef QString * (*quest_sig_AstPrint_dumpTypeExpr)(Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * node, QInt indent, QBool showOffsets);
-typedef QString * (*quest_sig_AstPrint_dumpExpr)(Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * node, QInt indent, QBool showOffsets);
-typedef QString * (*quest_sig_AstPrint_dumpDecl)(Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * node, QInt indent, QBool showOffsets);
-typedef QString * (*quest_sig_AstPrint_dumpPhrase)(QTuple_QTuple_String_Int_a9e2cf43a5159852 * node, QInt indent, QBool showOffsets);
-typedef QString * (*quest_sig_AstPrint_dumpProgram)(QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * node, QInt indent, QBool showOffsets);
-typedef QString * (*quest_sig_AstPrint_dump)(QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * node);
-typedef QString * (*quest_sig_AstPrint_dumpWithOptions)(QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * node, QBool showOffsets);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dumpTypeExpr)(Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * node, QInt indent, QBool showOffsets);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dumpExpr)(Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * node, QInt indent, QBool showOffsets);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dumpDecl)(Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * node, QInt indent, QBool showOffsets);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dumpPhrase)(QTuple_QTuple_String_Int_a9e2cf43a5159852 * node, QInt indent, QBool showOffsets);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dumpProgram)(QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * node, QInt indent, QBool showOffsets);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dump)(QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * node);
+typedef QString * (*quest_sig_questlang__syntax__AstPrint_dumpWithOptions)(QTuple_QTuple_String_Int_Int_end_QTuple_QVal_end * node, QBool showOffsets);
 #ifdef __cplusplus
 }
 #endif

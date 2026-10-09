@@ -363,7 +363,10 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - Named `x.int.h` rather than `x.h` so that an interface named like a C library header (`math`, `string`,
      `time`, ...) cannot shadow it: generated-code directories are on the C compiler's include path, and the
      runtime includes `<math.h>` and others ([build-process.md §3.2](build-process.md)).
-   - Preprocessor guards (`#ifndef QUEST_INTF_X_H ... #endif`).
+   - Preprocessor guards (`#ifndef QUEST_INTF_X_H ... #endif`), named from the interface's canonical include-relative
+     path with `/` mapped to `__` (`util/Math` guards with `QUEST_INTF_UTIL__MATH_H`), so same-named interfaces in
+     different directories can be included together. The typedef names below use the same path, case preserved
+     (`quest_sig_util__Math_<member>`).
    - `#include "quest_runtime.h"`.
    - Recursive `#include "<dep>.int.h"` for any imported interfaces (`import : Dep`).
    - Abstract types (`T::TYPE`) erase to uniform 64-bit words (`typedef QVal quest_type_X_T;`).
