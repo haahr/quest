@@ -22,8 +22,16 @@ from typing import Any, Callable, Optional
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol, allocate_symbol_id
 from quest.interpreter import (
     ARRAY_OP_ERROR_EXC,
+    ASCII_ERROR_EXC,
     DIVIDE_BY_ZERO_EXC,
     DYNAMIC_ERROR_EXC,
+    INT_ERROR_EXC,
+    LIST_ERROR_EXC,
+    READER_ERROR_EXC,
+    REAL_ERROR_EXC,
+    STRING_ERROR_EXC,
+    SYSTEM_ERROR_EXC,
+    WRITER_ERROR_EXC,
     QuestException,
     QuestRuntimeError,
 )
@@ -275,15 +283,6 @@ class ModuleBuilder:
 class BuiltinModuleRegistry:
     """Central registry of Cardelli standard library interfaces and runtime modules."""
 
-    _WRITER_ERROR_EXC = QExceptionVal("writer.error")
-    _READER_ERROR_EXC = QExceptionVal("reader.error")
-    _ASCII_ERROR_EXC = QExceptionVal("ascii.error")
-    _INT_ERROR_EXC = QExceptionVal("int.error")
-    _REAL_ERROR_EXC = QExceptionVal("real.error")
-    _STRING_ERROR_EXC = QExceptionVal("string.error")
-    _LIST_ERROR_EXC = QExceptionVal("list.error")
-    _SYSTEM_ERROR_EXC = QExceptionVal("system.error")
-
     # Module instances cache
     _initialized: bool = False
     _modules: dict[str, QRecord] = {}
@@ -358,62 +357,62 @@ class BuiltinModuleRegistry:
         writer_t = QTypeVar(name="Writer.T", symbol_id=writer_t_id, bound=TYPE_KIND)
         w_b = ModuleBuilder("writer", "Writer", cls)
         w_b.def_external_type("T", writer_t_id, TYPE_KIND, "QWriter *")
-        w_b.def_const("error", EXCEPTION_TYPE, cls._WRITER_ERROR_EXC, c_val="(&quest_exc_writer_error)")
+        w_b.def_const("error", EXCEPTION_TYPE, WRITER_ERROR_EXC, c_val="(&quest_exc_writer_error)")
         w_b.def_const("output", writer_t, QWriter(sys.stdout, is_file=False), c_val="quest_writer_output")
         w_b.def_const("err", writer_t, QWriter(sys.stderr, is_file=False), c_val="quest_writer_err")
 
-        @qchecked(cls._WRITER_ERROR_EXC, QString)
+        @qchecked(WRITER_ERROR_EXC, QString)
         def _writer_file(name_val: QString) -> QWriter:
             try:
                 f = open(name_val.value, "w", encoding="utf-8")
                 return QWriter(stream=f, is_file=True, file_name=name_val.value)
             except OSError:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
 
-        @qchecked(cls._WRITER_ERROR_EXC, QWriter, QString)
+        @qchecked(WRITER_ERROR_EXC, QWriter, QString)
         def _writer_put_string(w: QWriter, s: QString) -> QOk:
             if w.is_closed:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
             try:
                 w.stream.write(s.value)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
 
-        @qchecked(cls._WRITER_ERROR_EXC, QWriter, QChar)
+        @qchecked(WRITER_ERROR_EXC, QWriter, QChar)
         def _writer_put_char(w: QWriter, c: QChar) -> QOk:
             if w.is_closed:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
             try:
                 w.stream.write(c.value)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
 
-        @qchecked(cls._WRITER_ERROR_EXC, QWriter, QString, QInt, QInt)
+        @qchecked(WRITER_ERROR_EXC, QWriter, QString, QInt, QInt)
         def _writer_put_sub_string(w: QWriter, s: QString, start: QInt, size: QInt) -> QOk:
             if w.is_closed:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
             st, sz = start.value, size.value
             if st < 0 or sz < 0 or st + sz > len(s.value):
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
             try:
                 w.stream.write(s.value[st : st + sz])
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
 
-        @qchecked(cls._WRITER_ERROR_EXC, QWriter)
+        @qchecked(WRITER_ERROR_EXC, QWriter)
         def _writer_flush(w: QWriter) -> QOk:
             if w.is_closed:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
             try:
                 w.stream.flush()
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._WRITER_ERROR_EXC)
+                raise QuestException(WRITER_ERROR_EXC)
 
-        @qchecked(cls._WRITER_ERROR_EXC, QWriter)
+        @qchecked(WRITER_ERROR_EXC, QWriter)
         def _writer_close(w: QWriter) -> QOk:
             if not w.is_closed:
                 try:
@@ -423,7 +422,7 @@ class BuiltinModuleRegistry:
                         w.stream.flush()
                     w.is_closed = True
                 except OSError:
-                    raise QuestException(cls._WRITER_ERROR_EXC)
+                    raise QuestException(WRITER_ERROR_EXC)
             return OK_VALUE
 
         w_b.def_fn("file", [("name", STRING_TYPE)], writer_t, _writer_file, c_symbol="quest_writer_file")
@@ -459,16 +458,16 @@ class BuiltinModuleRegistry:
         reader_t = QTypeVar(name="Reader.T", symbol_id=reader_t_id, bound=TYPE_KIND)
         r_b = ModuleBuilder("reader", "Reader", cls)
         r_b.def_external_type("T", reader_t_id, TYPE_KIND, "QReader *")
-        r_b.def_const("error", EXCEPTION_TYPE, cls._READER_ERROR_EXC, c_val="(&quest_exc_reader_error)")
+        r_b.def_const("error", EXCEPTION_TYPE, READER_ERROR_EXC, c_val="(&quest_exc_reader_error)")
         r_b.def_const("input", reader_t, QReader(sys.stdin, is_file=False), c_val="quest_reader_input")
 
-        @qchecked(cls._READER_ERROR_EXC, QString)
+        @qchecked(READER_ERROR_EXC, QString)
         def _reader_file(name_val: QString) -> QReader:
             try:
                 f = open(name_val.value, "r", encoding="utf-8")
                 return QReader(stream=f, is_file=True, file_name=name_val.value)
             except OSError:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
 
         def _reader_read_one(r: QReader) -> str:
             peek = getattr(r, "_peek_char", None)
@@ -477,10 +476,10 @@ class BuiltinModuleRegistry:
                 return peek
             return r.stream.read(1)
 
-        @qchecked(cls._READER_ERROR_EXC, QReader)
+        @qchecked(READER_ERROR_EXC, QReader)
         def _reader_more(r: QReader) -> QBool:
             if r.is_closed:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             peek = getattr(r, "_peek_char", None)
             if peek is not None:
                 return TRUE_VALUE
@@ -491,33 +490,33 @@ class BuiltinModuleRegistry:
                 r._peek_char = ch
                 return TRUE_VALUE
             except OSError:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
 
-        @qchecked(cls._READER_ERROR_EXC, QReader)
+        @qchecked(READER_ERROR_EXC, QReader)
         def _reader_ready(r: QReader) -> QInt:
             if r.is_closed:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             return QInt(0)
 
-        @qchecked(cls._READER_ERROR_EXC, QReader)
+        @qchecked(READER_ERROR_EXC, QReader)
         def _reader_get_char(r: QReader) -> QChar:
             if r.is_closed:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             try:
                 ch = _reader_read_one(r)
                 if not ch:
-                    raise QuestException(cls._READER_ERROR_EXC)
+                    raise QuestException(READER_ERROR_EXC)
                 return QChar(ch)
             except OSError:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
 
-        @qchecked(cls._READER_ERROR_EXC, QReader, QInt)
+        @qchecked(READER_ERROR_EXC, QReader, QInt)
         def _reader_get_string(r: QReader, size: QInt) -> QString:
             if r.is_closed:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             sz = size.value
             if sz < 0:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             buf = []
             peek = getattr(r, "_peek_char", None)
             if peek is not None and sz > 0:
@@ -529,21 +528,21 @@ class BuiltinModuleRegistry:
                     chunk = r.stream.read(sz)
                     buf.append(chunk)
                 except OSError:
-                    raise QuestException(cls._READER_ERROR_EXC)
+                    raise QuestException(READER_ERROR_EXC)
             return QString("".join(buf))
 
-        @qchecked(cls._READER_ERROR_EXC, QReader, QString, QInt, QInt)
+        @qchecked(READER_ERROR_EXC, QReader, QString, QInt, QInt)
         def _reader_get_sub_string(r: QReader, s: QString, start: QInt, size: QInt) -> QOk:
             if r.is_closed:
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             st, sz = start.value, size.value
             if st < 0 or sz < 0 or st + sz > len(s.value):
-                raise QuestException(cls._READER_ERROR_EXC)
+                raise QuestException(READER_ERROR_EXC)
             read_str = _reader_get_string(r, size).value
             s.value = s.value[:st] + read_str + s.value[st + len(read_str) :]
             return OK_VALUE
 
-        @qchecked(cls._READER_ERROR_EXC, QReader)
+        @qchecked(READER_ERROR_EXC, QReader)
         def _reader_close(r: QReader) -> QOk:
             if not r.is_closed:
                 try:
@@ -551,7 +550,7 @@ class BuiltinModuleRegistry:
                         r.stream.close()
                     r.is_closed = True
                 except OSError:
-                    raise QuestException(cls._READER_ERROR_EXC)
+                    raise QuestException(READER_ERROR_EXC)
             return OK_VALUE
 
         r_b.def_fn("file", [("name", STRING_TYPE)], reader_t, _reader_file, c_symbol="quest_reader_file")
@@ -627,15 +626,15 @@ class BuiltinModuleRegistry:
         # 4. Ascii Interface & Module
         # --------------------------------------------------------------------
         asc_b = ModuleBuilder("ascii", "Ascii", cls)
-        asc_b.def_const("error", EXCEPTION_TYPE, cls._ASCII_ERROR_EXC, c_val="(&quest_exc_ascii_error)")
+        asc_b.def_const("error", EXCEPTION_TYPE, ASCII_ERROR_EXC, c_val="(&quest_exc_ascii_error)")
 
-        @qchecked(cls._ASCII_ERROR_EXC, QInt)
+        @qchecked(ASCII_ERROR_EXC, QInt)
         def _ascii_char(n: QInt) -> QChar:
             if n.value < 0 or n.value > 255:
-                raise QuestException(cls._ASCII_ERROR_EXC)
+                raise QuestException(ASCII_ERROR_EXC)
             return QChar(chr(n.value))
 
-        @qchecked(cls._ASCII_ERROR_EXC, QChar)
+        @qchecked(ASCII_ERROR_EXC, QChar)
         def _ascii_val(c: QChar) -> QInt:
             return QInt(ord(c.value))
 
@@ -647,7 +646,7 @@ class BuiltinModuleRegistry:
         # 5. IntOp Interface & Module
         # --------------------------------------------------------------------
         int_b = ModuleBuilder("int", "IntOp", cls)
-        int_b.def_const("error", EXCEPTION_TYPE, cls._INT_ERROR_EXC, c_val="(&quest_exc_int_error)")
+        int_b.def_const("error", EXCEPTION_TYPE, INT_ERROR_EXC, c_val="(&quest_exc_int_error)")
         int_b.def_const("minInt", INT_TYPE, QInt(-9223372036854775808), c_val="QUEST_INT_MIN")
         int_b.def_const("maxInt", INT_TYPE, QInt(9223372036854775807), c_val="QUEST_INT_MAX")
         int_b.def_fn(
@@ -673,31 +672,31 @@ class BuiltinModuleRegistry:
         # 6. RealOp Interface & Module
         # --------------------------------------------------------------------
         real_b = ModuleBuilder("real", "RealOp", cls)
-        real_b.def_const("error", EXCEPTION_TYPE, cls._REAL_ERROR_EXC, c_val="(&quest_exc_real_error)")
+        real_b.def_const("error", EXCEPTION_TYPE, REAL_ERROR_EXC, c_val="(&quest_exc_real_error)")
         real_b.def_const("minReal", REAL_TYPE, QReal(-sys.float_info.max), c_val="QUEST_REAL_MIN")
         real_b.def_const("maxReal", REAL_TYPE, QReal(sys.float_info.max), c_val="QUEST_REAL_MAX")
         real_b.def_const("posEpsilon", REAL_TYPE, QReal(sys.float_info.epsilon), c_val="QUEST_REAL_POS_EPSILON")
         real_b.def_const("negEpsilon", REAL_TYPE, QReal(-sys.float_info.epsilon), c_val="QUEST_REAL_NEG_EPSILON")
         real_b.def_const("e", REAL_TYPE, QReal(math.e), c_val="QUEST_REAL_E")
 
-        @qchecked(cls._REAL_ERROR_EXC, QReal)
+        @qchecked(REAL_ERROR_EXC, QReal)
         def _real_log(r: QReal) -> QReal:
             if r.value <= 0.0:
-                raise QuestException(cls._REAL_ERROR_EXC)
+                raise QuestException(REAL_ERROR_EXC)
             return QReal(math.log(r.value))
 
-        @qchecked(cls._REAL_ERROR_EXC, QReal, QReal)
+        @qchecked(REAL_ERROR_EXC, QReal, QReal)
         def _real_div(a: QReal, b: QReal) -> QReal:
             if b.value == 0.0:
-                raise QuestException(cls._REAL_ERROR_EXC)
+                raise QuestException(REAL_ERROR_EXC)
             return QReal(a.value / b.value)
 
-        @qchecked(cls._REAL_ERROR_EXC, QReal, QReal)
+        @qchecked(REAL_ERROR_EXC, QReal, QReal)
         def _real_exp(a: QReal, b: QReal) -> QReal:
             try:
                 return QReal(math.pow(a.value, b.value))
             except (ValueError, OverflowError):
-                raise QuestException(cls._REAL_ERROR_EXC)
+                raise QuestException(REAL_ERROR_EXC)
 
         real_b.def_fn(
             "int", [("n", INT_TYPE)], REAL_TYPE, lambda n: QReal(float(n.value)),
@@ -787,37 +786,37 @@ class BuiltinModuleRegistry:
         # 7. StringOp Interface & Module
         # --------------------------------------------------------------------
         str_b = ModuleBuilder("string", "StringOp", cls)
-        str_b.def_const("error", EXCEPTION_TYPE, cls._STRING_ERROR_EXC, c_val="(&quest_exc_string_error)")
+        str_b.def_const("error", EXCEPTION_TYPE, STRING_ERROR_EXC, c_val="(&quest_exc_string_error)")
 
-        @qchecked(cls._STRING_ERROR_EXC, QInt, QChar)
+        @qchecked(STRING_ERROR_EXC, QInt, QChar)
         def _string_new(size: QInt, init: QChar) -> QString:
             if size.value < 0:
-                raise QuestException(cls._STRING_ERROR_EXC)
+                raise QuestException(STRING_ERROR_EXC)
             return QString(init.value * size.value)
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt)
+        @qchecked(STRING_ERROR_EXC, QString, QInt)
         def _string_get_char(s: QString, index: QInt) -> QChar:
             idx = index.value
             if idx < 0 or idx >= len(s.value):
-                raise QuestException(cls._STRING_ERROR_EXC)
+                raise QuestException(STRING_ERROR_EXC)
             return QChar(s.value[idx])
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt, QChar)
+        @qchecked(STRING_ERROR_EXC, QString, QInt, QChar)
         def _string_set_char(s: QString, index: QInt, char: QChar) -> QOk:
             idx = index.value
             if idx < 0 or idx >= len(s.value):
-                raise QuestException(cls._STRING_ERROR_EXC)
+                raise QuestException(STRING_ERROR_EXC)
             s.value = s.value[:idx] + char.value + s.value[idx + 1 :]
             return OK_VALUE
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt, QInt)
+        @qchecked(STRING_ERROR_EXC, QString, QInt, QInt)
         def _string_get_sub(s: QString, start: QInt, size: QInt) -> QString:
             st, sz = start.value, size.value
             if st < 0 or sz < 0 or st + sz > len(s.value):
-                raise QuestException(cls._STRING_ERROR_EXC)
+                raise QuestException(STRING_ERROR_EXC)
             return QString(s.value[st : st + sz])
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt, QString, QInt, QInt)
+        @qchecked(STRING_ERROR_EXC, QString, QInt, QString, QInt, QInt)
         def _string_set_sub(dest: QString, d_st: QInt, src: QString, s_st: QInt, sz: QInt) -> QOk:
             dst_idx, src_idx, count = d_st.value, s_st.value, sz.value
             if (
@@ -827,33 +826,33 @@ class BuiltinModuleRegistry:
                 or dst_idx + count > len(dest.value)
                 or src_idx + count > len(src.value)
             ):
-                raise QuestException(cls._STRING_ERROR_EXC)
+                raise QuestException(STRING_ERROR_EXC)
             chunk = src.value[src_idx : src_idx + count]
             dest.value = dest.value[:dst_idx] + chunk + dest.value[dst_idx + count :]
             return OK_VALUE
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt, QInt, QString, QInt, QInt)
+        @qchecked(STRING_ERROR_EXC, QString, QInt, QInt, QString, QInt, QInt)
         def _string_cat_sub(s1: QString, st1: QInt, sz1: QInt, s2: QString, st2: QInt, sz2: QInt) -> QString:
             sub1 = _string_get_sub(s1, st1, sz1).value
             sub2 = _string_get_sub(s2, st2, sz2).value
             return QString(sub1 + sub2)
 
-        @qchecked(cls._STRING_ERROR_EXC, QArray)
+        @qchecked(STRING_ERROR_EXC, QArray)
         def _string_conc(arr: QArray) -> QString:
             parts: list[str] = []
             for elem in arr.elements:
                 if not isinstance(elem, QString):
-                    raise QuestException(cls._STRING_ERROR_EXC)
+                    raise QuestException(STRING_ERROR_EXC)
                 parts.append(elem.value)
             return QString("".join(parts))
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt, QInt, QString, QInt, QInt)
+        @qchecked(STRING_ERROR_EXC, QString, QInt, QInt, QString, QInt, QInt)
         def _string_equal_sub(s1: QString, st1: QInt, sz1: QInt, s2: QString, st2: QInt, sz2: QInt) -> QBool:
             sub1 = _string_get_sub(s1, st1, sz1).value
             sub2 = _string_get_sub(s2, st2, sz2).value
             return QBool(sub1 == sub2)
 
-        @qchecked(cls._STRING_ERROR_EXC, QString, QInt, QInt, QString, QInt, QInt)
+        @qchecked(STRING_ERROR_EXC, QString, QInt, QInt, QString, QInt, QInt)
         def _string_precedes_sub(
             s1: QString, st1: QInt, sz1: QInt, s2: QString, st2: QInt, sz2: QInt
         ) -> QBool:
@@ -1158,36 +1157,36 @@ class BuiltinModuleRegistry:
 
         list_b = ModuleBuilder("list", "List", cls)
         list_b.def_type("T", list_t_id, list_kind, definition=None)
-        list_b.def_const("error", EXCEPTION_TYPE, cls._LIST_ERROR_EXC)
+        list_b.def_const("error", EXCEPTION_TYPE, LIST_ERROR_EXC)
 
         def _list_nil(*args: Any) -> QList:
             return QList(())
 
-        @qchecked(cls._LIST_ERROR_EXC, QValue, QList)
+        @qchecked(LIST_ERROR_EXC, QValue, QList)
         def _list_cons(item: QValue, l: QList) -> QList:
             return QList((item,) + l.elements)
 
-        @qchecked(cls._LIST_ERROR_EXC, QList)
+        @qchecked(LIST_ERROR_EXC, QList)
         def _list_null(l: QList) -> QBool:
             return TRUE_VALUE if len(l.elements) == 0 else FALSE_VALUE
 
-        @qchecked(cls._LIST_ERROR_EXC, QList)
+        @qchecked(LIST_ERROR_EXC, QList)
         def _list_head(l: QList) -> QValue:
             if not l.elements:
-                raise QuestException(cls._LIST_ERROR_EXC)
+                raise QuestException(LIST_ERROR_EXC)
             return l.elements[0]
 
-        @qchecked(cls._LIST_ERROR_EXC, QList)
+        @qchecked(LIST_ERROR_EXC, QList)
         def _list_tail(l: QList) -> QList:
             if not l.elements:
-                raise QuestException(cls._LIST_ERROR_EXC)
+                raise QuestException(LIST_ERROR_EXC)
             return QList(l.elements[1:])
 
-        @qchecked(cls._LIST_ERROR_EXC, QList)
+        @qchecked(LIST_ERROR_EXC, QList)
         def _list_length(l: QList) -> QInt:
             return QInt(len(l.elements))
 
-        @qchecked(cls._LIST_ERROR_EXC, QArray)
+        @qchecked(LIST_ERROR_EXC, QArray)
         def _list_enum(arr: QArray) -> QList:
             return QList(tuple(arr.elements))
 
@@ -1248,85 +1247,85 @@ class BuiltinModuleRegistry:
         import os
 
         sys_b = ModuleBuilder("system", "System", cls)
-        sys_b.def_const("error", EXCEPTION_TYPE, cls._SYSTEM_ERROR_EXC, c_val="(&quest_exc_system_error)")
+        sys_b.def_const("error", EXCEPTION_TYPE, SYSTEM_ERROR_EXC, c_val="(&quest_exc_system_error)")
 
         sys_args_elements = tuple(QString(a) for a in sys.argv)
         sys_args_val = QArray(sys_args_elements)
         sys_b.def_const("args", QArrayType(STRING_TYPE), sys_args_val, c_val="quest_system_args")
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QInt)
+        @qchecked(SYSTEM_ERROR_EXC, QInt)
         def _system_exit(code: QInt) -> QOk:
             sys.exit(code.value)
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_getenv(name_val: QString) -> QString:
             return QString(os.environ.get(name_val.value, ""))
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_file_exists(path_val: QString) -> QBool:
             return TRUE_VALUE if os.path.exists(path_val.value) else FALSE_VALUE
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_is_file(path_val: QString) -> QBool:
             return TRUE_VALUE if os.path.isfile(path_val.value) else FALSE_VALUE
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_is_directory(path_val: QString) -> QBool:
             return TRUE_VALUE if os.path.isdir(path_val.value) else FALSE_VALUE
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_make_directory(path_val: QString) -> QOk:
             try:
                 os.makedirs(path_val.value, exist_ok=True)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_remove_file(path_val: QString) -> QOk:
             try:
                 os.remove(path_val.value)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_remove_directory(path_val: QString) -> QOk:
             try:
                 os.rmdir(path_val.value)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString, QString)
         def _system_rename_file(old_path_val: QString, new_path_val: QString) -> QOk:
             try:
                 os.rename(old_path_val.value, new_path_val.value)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
         def _system_current_directory() -> QString:
             try:
                 return QString(os.getcwd())
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_change_directory(path_val: QString) -> QOk:
             try:
                 os.chdir(path_val.value)
                 return OK_VALUE
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
-        @qchecked(cls._SYSTEM_ERROR_EXC, QString)
+        @qchecked(SYSTEM_ERROR_EXC, QString)
         def _system_list_directory(path_val: QString) -> QArray:
             try:
                 names = sorted(os.listdir(path_val.value))
                 return QArray(tuple(QString(n) for n in names))
             except OSError:
-                raise QuestException(cls._SYSTEM_ERROR_EXC)
+                raise QuestException(SYSTEM_ERROR_EXC)
 
         sys_b.def_fn(
             "sysexit", [("code", INT_TYPE)], OK_TYPE, _system_exit, c_symbol="quest_system_exit"
