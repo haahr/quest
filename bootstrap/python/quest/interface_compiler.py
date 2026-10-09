@@ -190,22 +190,20 @@ def format_type_for_qi(
         )
         return f"Auto {t.type_param}::{format_kind_for_qi(t.kind_bound)} with {sig} end"
 
+    def format_param(p: QParam) -> str:
+        if not p.name:
+            return format_type_for_qi(p.type_val, visited)
+        mode = "var " if p.is_var else "out " if p.is_out else ""
+        return f"{mode}{p.name}: {format_type_for_qi(p.type_val, visited)}"
+
     if isinstance(t, QFunType):
-        params_str = " ".join(
-            f"{p.name}: {format_type_for_qi(p.type_val, visited)}"
-            if p.name else format_type_for_qi(p.type_val, visited)
-            for p in t.params
-        )
+        params_str = " ".join(format_param(p) for p in t.params)
         return f"All({params_str}) {format_type_for_qi(t.result_type, visited)}"
 
     if isinstance(t, QAllType):
         quants_str = " ".join(f"{q.name}::{q.bound}" for q in t.quantifiers)
         if isinstance(t.body, QFunType):
-            params_str = " ".join(
-                f"{p.name}: {format_type_for_qi(p.type_val, visited)}"
-                if p.name else format_type_for_qi(p.type_val, visited)
-                for p in t.body.params
-            )
+            params_str = " ".join(format_param(p) for p in t.body.params)
             return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type, visited)}"
         return f"All({quants_str}) {format_type_for_qi(t.body, visited)}"
 
@@ -486,7 +484,8 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope) -> 
                         p_name = p.name or "arg"
                         if p_name in C_KEYWORDS:
                             p_name = f"q_{p_name}"
-                        param_c_types.append(f"{qtype_to_c_type(p.type_val)} {p_name}")
+                        pointer = " *" if p.is_var or p.is_out else " "
+                        param_c_types.append(f"{qtype_to_c_type(p.type_val)}{pointer}{p_name}")
                 params_decl = ", ".join(param_c_types) if param_c_types else "void"
                 lines.append(f"/* {sig.name}: {format_type_for_qi(val_t)} */")
                 lines.append(

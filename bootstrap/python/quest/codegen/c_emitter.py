@@ -1043,7 +1043,7 @@ class CEmitter:
             if formal_c == "QVal" and actual_c != "QVal" and writebacks is not None:
                 if isinstance(actual_a, TypedVar):
                     c_name = self.current_env_vars.get(
-                        actual_a.name, self.mangle_ident(actual_a.name)
+                        actual_a.name, mangle_ident(actual_a.name)
                     )
                     loc_ptr = c_name if actual_a.name in self.pointer_params else f"(&{c_name})"
                 elif isinstance(actual_a, TypedVarCell):
@@ -1073,7 +1073,7 @@ class CEmitter:
 
             if isinstance(actual_a, TypedVar):
                 c_name = self.current_env_vars.get(
-                    actual_a.name, self.mangle_ident(actual_a.name)
+                    actual_a.name, mangle_ident(actual_a.name)
                 )
                 if actual_a.name in self.pointer_params:
                     return c_name
@@ -1701,7 +1701,8 @@ class CEmitter:
                 decl_emitter, analysis, include_module_decls=False
             )
         )
-
+        # Functions of imported modules are called directly, so they need prototypes, as in emit_program.
+        lines.extend(decl_emitter.emit_precompiled_module_declarations(analysis))
 
         all_module_map: dict[str, TypedModule] = {}
         if analysis.sorted_modules:
