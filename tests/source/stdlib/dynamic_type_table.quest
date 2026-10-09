@@ -1,0 +1,80 @@
+(* Standard library: the type table of serialized dynamic values (docs/dynamic.md §2), which both backends must
+   write identically: recursive types are cycles, equal types written differently share one entry, nested dynamic
+   values use the document's table, shared tuples and arrays are written once, and reals read back exactly *)
+(* @stdin:
+{"quest":1,"types":[{"option":{"nil":null,"cons":1}},{"tuple":[["head","Int"],["tail",0]]}],"type":0,
+ "value":{"cons":[1,{"cons":[2,{"cons":[3,"nil"]}]}]}}
+{"quest":1,"types":[{"record":{"label":"String","payload":"Dynamic"}},{"array":"Real"}],"type":0,
+ "value":{"label":"reals","payload":{"@type":1,"@value":[0.5,"Infinity",1e+300]}}}
+{"quest":1,"types":[{"tuple":[["n","Int"],["a",1],["b",1]]},{"array":"Int"}],"type":0,
+ "value":[7,{"@id":1,"@items":[4,5]},{"@ref":1}]}
+*)
+
+import dynamic: Dynamic;
+import reader: Reader;
+import writer: Writer;
+import conv: Conv;
+import arrayOp: ArrayOp;
+import real: RealOp;
+
+let nl() = writer.putString(writer.output "\n");
+let p(n: Int) = begin writer.putString(writer.output conv.int(n)); nl() end;
+
+(* 1. A recursive type is a cycle in the table *)
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+let l: IntList = option cons of IntList with 1 option cons of IntList with 2 option nil of IntList end end end;
+dynamic.extern(writer.output dynamic.new(:IntList l));
+nl();
+
+(* 2. The same type unfolded once is written the same way *)
+Let Unfolded = Option nil cons with head: Int tail: IntList end end;
+let u: Unfolded = option cons of Unfolded with 1 option cons of IntList with 2 option nil of IntList end end end;
+dynamic.extern(writer.output dynamic.new(:Unfolded u));
+nl();
+
+(* 3. Nested dynamic values share the document's table *)
+Let Labeled = Record label: String payload: Dynamic.T end;
+let inner = dynamic.new(:Labeled record label = "inner" payload = dynamic.new(:IntList l) end);
+let outer: Labeled = record label = "outer" payload = inner end;
+dynamic.extern(writer.output dynamic.new(:Labeled outer));
+nl();
+
+(* 4. A shared array is written once *)
+let shared = arrayOp.new(:Int 2 9);
+Let Twice = Tuple :Array(Int) :Array(Int) end;
+dynamic.extern(writer.output dynamic.new(:Twice tuple shared shared end));
+nl();
+
+(* 5. Reals: shortest digits that read back exactly *)
+Let Reals = Record a: Real b: Real c: Real d: Real e: Real f: Real end;
+let rs: Reals = record
+    a = real.plus(0.1 0.2) b = real.mul(1000000.0 10000000000.0) c = 100.0 d = 0.0001 e = 0.00001
+    f = real.div(1.0 3.0)
+end;
+dynamic.extern(writer.output dynamic.new(:Reals rs));
+nl();
+
+(* 6. Function types can appear in types whose values are externed *)
+Let MaybeFun = Variant none: Ok some: All(x: Int var y: Int) Int end;
+dynamic.extern(writer.output dynamic.new(:MaybeFun variant none of MaybeFun with ok end));
+nl();
+
+(* 7. Reading: a recursive list *)
+let rec sum(xs: IntList): Int =
+    case xs when cons with c then c.head + sum(c.tail) when nil then 0 end;
+p(sum(dynamic.be(:IntList dynamic.intern(reader.input))));
+
+(* 8. Reading: a nested dynamic value with non-finite reals *)
+let rd = dynamic.be(:Labeled dynamic.intern(reader.input));
+writer.putString(writer.output rd.label);
+nl();
+let reals = dynamic.be(:Array(Real) rd.payload);
+writer.putString(writer.output conv.real(arrayOp.get(:Real reals 0)));
+nl();
+p(arrayOp.size(:Real reals));
+
+(* 9. Reading: sharing is preserved *)
+Let Shared = Tuple n: Int a: Array(Int) b: Array(Int) end;
+let st = dynamic.be(:Shared dynamic.intern(reader.input));
+arrayOp.set(:Int st.a 0 40);
+p(arrayOp.get(:Int st.b 0));

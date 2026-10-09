@@ -32,7 +32,7 @@ APP = (
 
 def _set_recorded_abi(artifact: Path, abi: int) -> None:
     data = json.loads(artifact.read_text(encoding="utf-8"))
-    (data["@value"] if "@value" in data else data)["abi"] = abi
+    (data["value"] if "value" in data else data)["abi"] = abi
     artifact.write_text(json.dumps(data), encoding="utf-8")
 
 
@@ -51,7 +51,7 @@ class TestAbiVersion(unittest.TestCase):
     def test_artifacts_record_abi_and_producer(self) -> None:
         h_file, qi_file = compile_interface_file(self.root / "calc.int.quest", output_dir=self.root)
         self.assertEqual(recorded_abi(qi_file), ABI_VERSION)
-        self.assertEqual(json.loads(qi_file.read_text(encoding="utf-8"))["@value"]["producer"], PRODUCER)
+        self.assertEqual(json.loads(qi_file.read_text(encoding="utf-8"))["value"]["producer"], PRODUCER)
         self.assertTrue(h_file.read_text(encoding="utf-8").startswith(f"/* quest abi {ABI_VERSION} producer"))
         compile_module_file(self.root / "calc.mod.quest", output_dir=self.root, include_paths=[self.root])
         qm = json.loads((self.root / "calc.qm").read_text(encoding="utf-8"))

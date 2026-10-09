@@ -301,9 +301,9 @@ The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings
     `string.error` on invalid indices.
 - **Dynamic Module (`dynamic: Dynamic`):**
   - Provides `new`, `be`, `copy`, `extern`, `intern`, and `error`.
-  - Implements JSON/JSOG serialization for `dynamic.extern` and `dynamic.intern`, preserving dynamic type envelopes
-    (`{"@type": "...", "@value": ...}`), Serde-style external tagging for variants and options, and cyclic/shared
-    object graphs via JSOG `@id` and `@ref` annotations. Full wire specification in [docs/dynamic.md](dynamic.md).
+  - Implements JSON serialization for `dynamic.extern` and `dynamic.intern`: a type table and a value, Serde-style
+    external tagging for variants and options, and cyclic/shared object graphs via `@id` and `@ref`. Full
+    specification in [docs/dynamic.md](dynamic.md) §2.
 - **I/O Streams & Files:**
   - `writer.output` connects to `sys.stdout`; `writer.err` connects to `sys.stderr` (language extension).
   - `writer.file(name)` and `reader.file(name)` manage real file handles, raising `writer.error` / `reader.error` on

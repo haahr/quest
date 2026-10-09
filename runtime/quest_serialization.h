@@ -7,9 +7,8 @@
 extern "C" {
 #endif
 
-void                   quest_dynamic_extern(QWriter *wr, const QAuto *d);
-QAuto              *quest_dynamic_intern(QReader *rd);
-const QTypeDescriptor *quest_parse_type_descriptor(const char *type_str);
+void   quest_dynamic_extern(QWriter *wr, const QAuto *d);
+QAuto *quest_dynamic_intern(QReader *rd);
 
 #ifdef __cplusplus
 }

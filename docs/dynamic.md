@@ -51,12 +51,11 @@ component cannot be selected, which would leave an `inspect` binder no way to re
 
 ## 2. Wire Format, Version 1
 
-> **Status:** designed, not yet implemented. Until it lands, `dynamic.extern` writes an unversioned
-> predecessor in which `@type` is a Quest type expression printed as a string. That form is being replaced
-> because printing a recursive type shares nothing (a single `syntax_ast` type printed as 5 MB), because both
-> readers then need a Quest type parser (the C runtime has only a partial one), and because nested dynamics
-> repeat their whole type. Files in the old form are not read; nobody keeps them until the self-hosted
-> compiler is complete.
+> **Status:** implemented in both backends (`bootstrap/python/quest/dynamic_json.py` and
+> `runtime/quest_serialization.c`), except abstract types (§2.3), which neither writes yet. It replaced an
+> unversioned predecessor in which `@type` was a Quest type expression printed as a string: printing a recursive type
+> shares nothing (a single `syntax_ast` type printed as 5 MB), both readers needed a Quest type parser (the C runtime
+> had only a partial one), and nested dynamics repeated their whole type. Files in the old form are not read.
 
 A serialized dynamic value is one JSON document that holds a **type table** and a **value**. Every type the
 document mentions is written once, as structured JSON, in the table; types and values refer to table entries by
@@ -91,7 +90,6 @@ A **TypeRef** is either the name of a built-in type, as a string, or a non-negat
 | :--- | :--- |
 | `"Ok"`, `"Bool"`, `"Char"`, `"String"`, `"Int"`, `"Real"` | the basic types |
 | `"Dynamic"` | `Dynamic.T` |
-| `"Word"` | `Word.T` (externally implemented) |
 
 A **TypeNode** is a JSON object with exactly one key, naming the type constructor:
 
@@ -100,15 +98,20 @@ A **TypeNode** is a JSON object with exactly one key, naming the type constructo
 | `{"record": {"<label>": TypeRef, ...}}` | `Record ... end` |
 | `{"tuple": [["<label>", TypeRef], ...]}` | `Tuple ... end` (value components only, in order) |
 | `{"variant": {"<tag>": TypeRef \| null, ...}}` | `Variant ... end`; `null` for a case without a payload |
-| `{"option": {"<tag>": TypeRef \| null, ...}}` | `Option ... end`; `null` for a case without a payload |
+| `{"option": {"<tag>": TypeRef \| null, ...}}` | `Option ... end`; a case's components are a `tuple` node |
 | `{"array": TypeRef}` | `Array(T)` |
-| `{"fun": {"params": [["<label>", TypeRef], ...], "result": TypeRef}}` | a monomorphic function type |
+| `{"fun": {"params": [["<mode>", TypeRef], ...], "result": TypeRef}}` | a monomorphic function type |
 | `{"exception": TypeRef}` | `Exception(T)` |
 | `{"abstract": "<module path>.<name>", "rep": TypeRef}` | an abstract type exported by a module (§2.3) |
 
 A **label** is a field name, prefixed with `var ` when the field is mutable (`"var next"`). An unnamed tuple
 component has the label `""` (or `"var"` when mutable). Identifiers cannot contain spaces and `var` is a
-keyword, so labels are unambiguous. `Out(T)` does not occur in the types of values.
+keyword, so labels are unambiguous. A function parameter is written by its mode alone (`""`, `"var"`, or `"out"`),
+since parameter names do not affect function types. `Out(T)` does not occur in the types of values.
+
+Variant and option cases are listed in the order the type declares them, which is how compiled code numbers
+them. An option case with components (`cons with head: Int tail: L end`) refers to a tuple node for them; a case
+without, and a variant case without a payload, has `null`.
 
 **Recursive types are cycles in the table.** Quest's recursive types are equi-recursive: two types are equal
 when their infinite unfoldings are, and a recursive type is a finite graph with type constructors at the nodes
@@ -117,7 +120,7 @@ enclosing node is the recursion. For example, `Rec(L) Option nil cons with head:
 
 ```json
 "types": [
-  {"option": {"cons": 1, "nil": null}},
+  {"option": {"nil": null, "cons": 1}},
   {"tuple": [["head", "Int"], ["tail", 0]]}
 ]
 ```
@@ -125,16 +128,20 @@ enclosing node is the recursion. For example, `Rec(L) Option nil cons with head:
 Type operator applications are reduced before writing (`List(Int)` is written as the type it denotes), and
 aliases are written as their meaning.
 
-**Canonical order.** A writer numbers nodes in the order a depth-first walk from the root type first reaches
-them, visiting record fields, variant cases and option cases in sorted order, tuple and parameter components in
-order, and nested dynamics' types in the order their values are written. A writer may share structurally
-identical nodes (hash-consed types make that natural), but a reader must not assume the table is minimal or
-that equal types have one index: types are compared structurally, never by index.
+**Canonical tables.** Both backends write the same table for the same type, so that their output can be
+compared, as the golden tests do. A writer builds the graph of the types it meets (from types in the interpreter,
+from descriptors in compiled code, which unroll recursive types differently), merges structurally equivalent nodes
+(partition refinement to the coarsest bisimulation, starting from each node's constructor and labels), and numbers
+the remaining nodes in the order a depth-first walk first reaches them: from the dynamic value's type, then from
+the types of nested dynamic values in the order their values are written, visiting each node's components in the
+order the node lists them (record fields by name, cases in declaration order, tuple components and parameters in
+order, then a function's result). The table is therefore minimal, and equal types have one entry. A reader does not
+rely on this: it compares types structurally, never by index.
 
 **Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), auto
 types other than `Dynamic.T` (which is `Auto A::TYPE with a:A end` and is written by its built-in name), and type
-operators themselves have binders that this table does not express. `dynamic.extern`
-raises `dynamic.error` for a type containing one. A later version can add binder nodes.
+operators themselves have binders that this table does not express; abstract types, including `Word.T`, await §2.3.
+`dynamic.extern` raises `dynamic.error` for a type containing one. A later version can add binder nodes.
 
 ### 2.3. Abstract Types
 
@@ -173,14 +180,15 @@ its type raises `dynamic.error`.
 | :--- | :--- | :--- |
 | `Ok` | `null` | |
 | `Bool` | `true` / `false` | |
-| `Int`, `Word.T` | integer | Readers must parse 64-bit integers exactly, not through a double. |
-| `Real` | number | Non-finite values are the strings `"NaN"`, `"Infinity"`, `"-Infinity"`. |
+| `Int` | integer | Readers must parse 64-bit integers exactly, not through a double. |
+| `Real` | number | As Python's `repr` writes it: the shortest digits that read back exactly, positional for decimal exponents in [-4, 16) (`100.0`, `0.0001`) and otherwise `1e+16`, `1e-05`. Non-finite values are the strings `"NaN"`, `"Infinity"`, `"-Infinity"`. |
 | `Char` | one-character string | |
 | `String` | string | Standard JSON escaping. |
 | `Record` | `{"<field>": value, ...}` | Keys sorted; exactly the type's fields; `var` fields hold their current value. |
 | `Tuple` | `[value, ...]` | In component order. |
 | `Array(T)` | `[value, ...]` | |
-| `Variant`, `Option` | `"<tag>"` or `{"<tag>": value}` | Serde-style external tagging. A case without a payload, or with payload type `Ok`, is the bare tag. |
+| `Variant` | `"<tag>"` or `{"<tag>": value}` | Serde-style external tagging. A case without a payload, or with payload type `Ok`, is the bare tag. |
+| `Option` | `"<tag>"` or `{"<tag>": [value, ...]}` | A case without components is the bare tag; otherwise its components, in order. |
 | `Dynamic.T` | `{"@type": TypeRef, "@value": value}` | The nested value's type is in the document's table. |
 | abstract type | the value at its representation type | |
 
@@ -195,7 +203,10 @@ first time, with an identifier, and as a reference afterwards:
 - Every later occurrence is `{"@ref": n}`.
 
 Identifiers are integers, numbered from 1 in the order the writer first reaches the shared objects. Only objects
-reached more than once get one.
+reached more than once get one. An object's `@id` always precedes its `@ref`s in the document, so a reader can
+allocate the object when it meets the `@id`, before reading its components. Empty tuples and the components of an
+option value are never shared: compiled code has one empty tuple, and stores an option's components in the option
+value itself.
 
 ### 2.6. Non-Externable Values and Errors
 
@@ -221,15 +232,15 @@ the interpreter and compiled code.
 
 ### 3.1. Writing
 
-Writing takes two passes over the value, as now: the first finds objects reached more than once, the second
-writes the value. The type table is filled as the second pass meets each type: the root type, then each nested
-dynamic's type, adding nodes in the canonical order of §2.2. Types are hash-consed, so a writer keyed on node
-identity shares each type node it has already written.
+Writing takes two passes over the value: the first finds objects reached more than once, and collects the types
+of the dynamic value and of the nested dynamic values it reaches; the type table is then made canonical (§2.2); the
+second pass writes the document. Both passes follow the value's type, so a record viewed at a supertype writes only
+that type's fields.
 
 ### 3.2. Reading
 
-Reading also takes two passes, as now: the first allocates every object with an `@id`, the second fills them and
-resolves `@ref`s. Before either, the type table is turned into types:
+Reading takes one pass over the value, after the type table is turned into types. An object with an `@id` is
+allocated and registered before its components are read, so `@ref`s inside it and after it resolve to it.
 
 - **Interpreter** (`bootstrap/python/quest/dynamic_json.py`): builds `QType`s from the graph. A node reached
   again while it is still being built is a back edge, so the node becomes a recursive type `Rec(X) ...` and the
@@ -241,30 +252,22 @@ resolves `@ref`s. Before either, the type table is turned into types:
 ### 3.3. Descriptors in Generated C
 
 Static descriptors carry the full structure of their type (record and tuple labels with `var` flags, case
-payloads, function parameters and results, and, for an abstract type, its global name and representation), so
-the C writer can produce the type table from them. A descriptor's `.name` is used only in diagnostics, so it
-becomes a short display name instead of the full printed type. Name-based lookup
-(`quest_lookup_type_descriptor_by_name`) and the type-string parser (`quest_parse_type_descriptor`) are
-removed.
+payloads, function parameters and results), so the C writer produces the type table from them; §2.3 will add an
+abstract type's global name and representation. A descriptor's `.name` is used only in diagnostics (and, for
+opaque types, in comparisons), so it is the type printed and cut off at 80 characters
+(`descriptor_display_name`). Static descriptors are no longer registered with the runtime or looked up by name,
+and the runtime no longer parses type strings.
 
 ### 3.4. `.qi` Files
 
 Interface artifacts are written in this format. Their schema is unchanged: signatures stay Quest-syntax strings
 (`typeSig`, `manifestType`), because they are compiler metadata that need type variables and path types. Only
-the envelope changes, which bumps `ABI_VERSION`.
+the envelope changed, with `ABI_VERSION` 4.
 
-### 3.5. The Current Implementation
+### 3.5. Abstract Types
 
-Until version 1 lands, both backends write and read the unversioned predecessor: `{"@type": "<printed type>",
-"@value": value}`, nesting the same envelope for each nested dynamic value. A dynamic value is an auto value whose
-one component is the value (in C, a `QAuto` whose payload points to that component, stored as a `QVal`), and
-serialization supports auto values with one component. The interpreter reads `@type` with the Quest parser
-(`parse_type_string`); the C runtime looks it up among the program's registered descriptors or parses it with its
-own type parser (`quest_parse_type_descriptor`), which reads auto types such as `Auto A :: TYPE with a: A end`,
-laying out their components as the compiler stores them.
-
-Module abstract types are not yet handled as §2.3 describes: the interpreter writes the printed name (`ca.T`), which
-another program cannot read back, and compiled code raises `dynamic.error`, because the type's descriptor is opaque.
+Module abstract types are not yet handled as §2.3 describes: both backends raise `dynamic.error` when externing a
+value whose type mentions one.
 
 ---
 
@@ -317,7 +320,7 @@ dynamic.extern(writer.output dynamic.new(:IntList l));
 {
   "quest": 1,
   "types": [
-    {"option": {"cons": 1, "nil": null}},
+    {"option": {"nil": null, "cons": 1}},
     {"tuple": [["head", "Int"], ["tail", 0]]}
   ],
   "type": 0,

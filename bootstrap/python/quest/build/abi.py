@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-ABI_VERSION = 3
+ABI_VERSION = 4
 
 # The compiler that wrote an artifact: informational, for diagnostics only.
 PRODUCER = "quest-bootstrap 0.1"
@@ -32,8 +32,8 @@ def recorded_abi(artifact: Path) -> Optional[int]:
         data = json.loads(Path(artifact).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if isinstance(data, dict) and isinstance(data.get("@value"), dict):  # .qi: a dynamic value
-        data = data["@value"]
+    if isinstance(data, dict) and isinstance(data.get("value"), dict):  # .qi: a serialized dynamic value
+        data = data["value"]
     abi = data.get("abi") if isinstance(data, dict) else None
     return abi if isinstance(abi, int) and not isinstance(abi, bool) else None
 

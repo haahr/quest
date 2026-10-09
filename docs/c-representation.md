@@ -1010,7 +1010,7 @@ runtime/
 ├── quest_runtime.h         /* Core ABI, QVal union, layout assertions, allocator macros */
 ├── quest_runtime.c         /* String primitives, math helpers, panic handlers, printing */
 ├── quest_serialization.h   /* Dynamic serialization & deserialization API */
-├── quest_serialization.c   /* JSON/JSOG dynamic.extern & dynamic.intern implementation */
+├── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
 ├── quest_io.c              /* Future: C implementation of Writer and Reader stream modules */
 └── quest_conv.c            /* Future: C implementation of Conv, Ascii, IntOp, RealOp, StringOp */
 ```
@@ -1046,31 +1046,29 @@ runtime/
 
 ---
 
-## 11. Dynamic Serialization & JSOG Architecture (`runtime/quest_serialization.c`)
+## 11. Dynamic Serialization (`runtime/quest_serialization.c`)
 
 Quest supports graph serialization and deserialization of dynamically typed values via `dynamic.extern(w d)` and
-`dynamic.intern(r)`:
-- **Format Parity:** Uses the exact JSON/JSOG format defined by the Python reference implementation (`dynamic_json.py`),
-  assigning integer `@id` properties to repeated objects and emitting `{"@ref": id}` references for cycles and shared
-  nodes.
-- **Type Envelopes:** Every dynamic envelope serializes as `{"@type": "<type_expr>", "@value": <payload>}`.
-- **Record Field Ordering:** Record fields are serialized in deterministic alphabetical order matching the C runtime's
-  canonical field order.
-- **Cycle & Multi-Reference Detection:** A pre-scan pointer graph traversal using a GC-safe address hash table
-  identifies all cyclic or multiply-referenced heap objects (`Record`, `Array`, `Tuple`, `Dynamic`) and assigns
-  sequential `@id`s.
+`dynamic.intern(r)`, in the format of [dynamic.md](dynamic.md) §2:
+- **Format Parity:** The output is byte-for-byte that of the interpreter (`dynamic_json.py`): the type table is
+  canonical (structurally equivalent nodes merged by partition refinement, the rest numbered depth-first from the
+  roots), record fields are written by name, cases in declaration order, and reals as Python's `repr` writes them.
+- **Type Tables from Descriptors:** The writer walks the descriptors of the value's type and of every nested dynamic
+  value's type; recursive types, whose descriptors are cyclic, become cycles in the table.
+- **Cycle & Multi-Reference Detection:** A pre-scan traversal with an address hash table finds records, arrays, and
+  nonempty tuples reached more than once, which are written once with an integer `@id`. Option components are stored
+  in the option value itself, so they are never shared.
 - **Streaming Single-Value Parser:** `quest_dynamic_intern` streams characters from `QReader`, parsing exactly one JSON
   object/array/value while preserving unread stream characters in `peek_char` so consecutive objects can be read
   sequentially from a single stream.
-- **Type Descriptor Resolution:** All static program type descriptors (`quest_type_*`) are automatically
-  registered in `main` into the runtime interning table (`quest_register_static_type_descriptor`) for $O(1)$ lookup.
-  For dynamically transmitted types unknown to the binary, a zero-dependency recursive-descent parser
-  (`quest_parse_type_descriptor`) parses type syntax (e.g. `Record ... end`, `Tuple ... end`, `Array(...)`,
-  `Variant ... end`, `Option ... end`) into interned `QTypeDescriptor` structures.
-- **Two-Pass JSOG Deserialization:** Pass 1 (`quest_jsog_preallocate`) pre-allocates heap blocks for all `@id` nodes;
-  Pass 2 (`quest_jsog_decode_value`) decodes fields and assigns `@ref` pointers directly to resolved memory blocks.
-- **Natural C ABI Struct Packing:** Dynamically synthesized records use standard C struct packing (8-byte
-  scalars/pointers, 16-byte wide records/variants) matching static compiler emission.
+- **Descriptors from Tables:** The reader allocates a descriptor for every table entry, then fills them in, so they may
+  refer to each other cyclically. Static descriptors are not registered or looked up by name; `dynamic.be` compares
+  descriptors structurally.
+- **Single-Pass Decoding:** An object with an `@id` is allocated and registered before its components are decoded, so
+  `@ref`s inside it (cycles) and after it (sharing) resolve to the same block.
+- **Natural C ABI Struct Packing:** Records and tuples read from a table use standard C struct packing (8-byte
+  scalars/pointers, 16-byte wide records/variants) matching static compiler emission; an option is its tag followed
+  by its case's components.
 
 ---
 

@@ -9,6 +9,7 @@ from quest.codegen.c_analysis import CLambdaInfo, CProgramAnalysis
 from quest.codegen.c_types import (
     DescriptorForm,
     MissingDescriptorError,
+    descriptor_display_name,
     descriptor_form,
     fun_descriptor_tag,
     RecordNamingContext,
@@ -505,7 +506,7 @@ class CDeclarationEmitter:
                 lines.append(f"static const QFunTypeDescriptor qfun_desc_{tag} Q_UNUSED = {{")
                 lines.extend(header)
                 lines.append("};")
-            lines.extend(type_descriptor(tag, "QTYPE_KIND_FUN", str(form.type), "sizeof(QClosure *)", f"&qfun_desc_{tag}"))
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_FUN", descriptor_display_name(form.type), "sizeof(QClosure *)", f"&qfun_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("auto", []):
@@ -536,7 +537,7 @@ class CDeclarationEmitter:
                 )
             lines.append("    }")
             lines.append("};")
-            lines.extend(type_descriptor(tag, "QTYPE_KIND_AUTO", form.name, "sizeof(QAuto *)", f"&qauto_desc_{tag}"))
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_AUTO", descriptor_display_name(auto_t), "sizeof(QAuto *)", f"&qauto_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("exception", []):
@@ -544,7 +545,7 @@ class CDeclarationEmitter:
             lines.append(f"static const QExceptionTypeDescriptor qexc_desc_{tag} Q_UNUSED = {{")
             lines.append(f"    .payload_type = {desc_fn(form.type.payload_type)},")
             lines.append("};")
-            lines.extend(type_descriptor(tag, "QTYPE_KIND_EXCEPTION", str(form.type), "sizeof(void *)", f"&qexc_desc_{tag}"))
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_EXCEPTION", descriptor_display_name(form.type), "sizeof(void *)", f"&qexc_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("array", []):
@@ -552,7 +553,7 @@ class CDeclarationEmitter:
             lines.append(f"static const QArrayTypeDescriptor qarr_desc_{tag} Q_UNUSED = {{")
             lines.append(f"    .element_type = {desc_fn(form.type.element_type)},")
             lines.append("};")
-            lines.extend(type_descriptor(tag, "QTYPE_KIND_ARRAY", str(form.type), "sizeof(void *)", f"&qarr_desc_{tag}"))
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_ARRAY", descriptor_display_name(form.type), "sizeof(void *)", f"&qarr_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("record", []):
@@ -574,7 +575,7 @@ class CDeclarationEmitter:
                     )
                 lines.append("    }")
                 lines.append("};")
-                lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", str(qtype), f"sizeof(struct {tag})", f"&qrec_desc_{tag}"))
+                lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", descriptor_display_name(qtype), f"sizeof(struct {tag})", f"&qrec_desc_{tag}"))
             else:
                 lines.append(f"static const QRecordTypeDescriptor qrec_desc_{tag} Q_UNUSED = {{ .field_count = 0 }};")
                 lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", "Record end", "sizeof(void *)", f"&qrec_desc_{tag}"))
@@ -593,13 +594,14 @@ class CDeclarationEmitter:
             lines.append("    .elements = {")
             for i, f in enumerate(val_fields):
                 name_str = f'"{f.name}"' if getattr(f, "name", None) is not None else "NULL"
+                is_var_str = "true" if f.is_var else "false"
                 lines.append(
                     f"        {{ .name = {name_str}, .type = {desc_fn(f.type_val)}, "
-                    f".offset = offsetof(struct {struct_name}, _{i}) }},"
+                    f".offset = offsetof(struct {struct_name}, _{i}), .is_var = {is_var_str} }},"
                 )
             lines.append("    }")
             lines.append("};")
-            lines.extend(type_descriptor(tag, "QTYPE_KIND_TUPLE", str(qtype), f"sizeof(struct {struct_name})", f"&qtup_desc_{tag}"))
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_TUPLE", descriptor_display_name(qtype), f"sizeof(struct {struct_name})", f"&qtup_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("variant", []) + forms.get("option", []):
@@ -630,7 +632,7 @@ class CDeclarationEmitter:
             else:
                 struct_name = form.struct or option_struct_name(qtype)
                 kind_str, size_str = "QTYPE_KIND_OPTION", f"sizeof(struct {struct_name})"
-            lines.extend(type_descriptor(tag, kind_str, str(qtype), size_str, f"&qvar_desc_{tag}"))
+            lines.extend(type_descriptor(tag, kind_str, descriptor_display_name(qtype), size_str, f"&qvar_desc_{tag}"))
             lines.append("")
         return lines
 

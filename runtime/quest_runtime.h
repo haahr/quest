@@ -190,6 +190,7 @@ typedef struct QTupleElementDescriptor {
     const char            *name;       /* Field label or NULL if anonymous */
     const QTypeDescriptor *type;
     size_t                 offset;     /* Offset in tuple struct */
+    bool                   is_var;
 } QTupleElementDescriptor;
 
 typedef struct QTupleTypeDescriptor {
@@ -530,7 +531,6 @@ QAuto                 *quest_auto_new(const QTypeDescriptor *type_desc, QVal pay
 /* The runtime operations of the dynamic module (lib/dynamic.mod.quest), on values of its type T, whose one
  * component is stored as a QVal */
 QAuto                 *quest_dynamic_copy(const QAuto *d);
-void                   quest_register_static_type_descriptor(const QTypeDescriptor *desc);
 
 /* Record offset tables (the dict of a QRecordVal): the table for viewing a payload with record layout `layout` at
  * record type `view`. quest_record_dict returns NULL when the layout lacks a field of the view.
@@ -542,7 +542,6 @@ typedef const struct QTypeDescriptor *const *QRecordStoredTypes;
 const void            *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout);
 void                   quest_register_record_dict(
     const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict);
-const QTypeDescriptor *quest_lookup_type_descriptor_by_name(const char *name);
 
 /* The layout of a record value's payload, recorded in its header when it was created */
 static inline const QTypeDescriptor *quest_record_layout(QRecordVal rec) {

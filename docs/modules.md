@@ -328,7 +328,7 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - Manifest types (`Def T = ...`) emit concrete C typedefs or struct definitions.
    - Function pointer typedefs (`typedef <Ret> (*quest_sig_X_<member>)(<Params>);`).
 2. **Type Metadata (`x.qi`):**
-   - Serialized JSON/JSOG envelope using Quest's shadow record types (`InterfaceDesc`):
+   - A serialized dynamic value ([dynamic.md](dynamic.md) §2) of Quest's shadow record types (`InterfaceDesc`):
      ```quest
      Let InterfaceTypeDecl = Record
          isManifest: Bool

@@ -1628,12 +1628,6 @@ class CEmitter:
             "",
         ]
 
-        if decl_emitter.emitted_descriptor_tags:
-            main_lines.append("    /* Register static program type descriptors */")
-            for tag in decl_emitter.emitted_descriptor_tags:
-                main_lines.append(f"    quest_register_static_type_descriptor(&quest_type_{tag});")
-            main_lines.append("")
-
         if self.needed_dicts:
             main_lines.append("    /* Pre-populate the record offset table map with the static tables */")
             for view_t, layout_t in self.needed_dicts:
@@ -2127,11 +2121,6 @@ class CEmitter:
             lines.append(f"static void qv_mod_{clean_mod}_init(void) {{")
         lines.append(f"    if (qv_mod_{clean_mod}_initialized) return;")
         lines.append(f"    qv_mod_{clean_mod}_initialized = true;")
-        if standalone and decl_emitter and decl_emitter.emitted_descriptor_tags:
-            lines.append("    /* Register static program type descriptors */")
-            for tag in decl_emitter.emitted_descriptor_tags:
-                lines.append(f"    quest_register_static_type_descriptor(&quest_type_{tag});")
-            lines.append("")
         for dep in mod_imported_mods:
             dep_clean = mangle_module_name(dep)
             lines.append(f"    qv_mod_{dep_clean}_init();")

@@ -98,7 +98,7 @@ class TestStage4Cardelli(unittest.TestCase):
         self.assertEqual(ctx2.runtime_env.lookup("bad"), FALSE_VALUE)
 
     def test_dynamic_intern_and_extern(self):
-        """dynamic.extern writes JSON/JSOG representation and dynamic.intern reads it."""
+        """dynamic.extern writes the JSON format of docs/dynamic.md §2 and dynamic.intern reads it."""
         from quest.builtins import BuiltinModuleRegistry
         from quest.interpreter import DYNAMIC_ERROR_EXC, QuestException
 
@@ -117,7 +117,7 @@ class TestStage4Cardelli(unittest.TestCase):
         str_out = io.StringIO()
         wr = QWriter(stream=str_out, is_file=False)
         extern_fn(wr, d)
-        self.assertEqual(str_out.getvalue(), '{"@type":"Int","@value":42}')
+        self.assertEqual(str_out.getvalue(), '{"quest":1,"types":[],"type":"Int","value":42}')
 
         str_in = io.StringIO(str_out.getvalue())
         rd = QReader(stream=str_in, is_file=False)
@@ -128,12 +128,13 @@ class TestStage4Cardelli(unittest.TestCase):
         # 2. Cyclic record
         cyc_rec = QRecord({"name": QString("loop")})
         cyc_rec.fields["next"] = cyc_rec
-        d_cyc = new_dynamic(cyc_rec, "Record name: String next: Ok end")
+        d_cyc = new_dynamic(cyc_rec, "Rec(R :: TYPE) Record name: String next: R end")
         s_out = io.StringIO()
         extern_fn(QWriter(stream=s_out, is_file=False), d_cyc)
         json_cyc = s_out.getvalue()
-        self.assertIn('"@id":"1"', json_cyc)
-        self.assertIn('"@ref":"1"', json_cyc)
+        self.assertIn('"types":[{"record":{"name":"String","next":0}}]', json_cyc)
+        self.assertIn('"@id":1', json_cyc)
+        self.assertIn('"@ref":1', json_cyc)
 
         d_cyc_in = intern_fn(QReader(stream=io.StringIO(json_cyc), is_file=False))
         rec_in = d_cyc_in.value.elements[0]
@@ -141,21 +142,19 @@ class TestStage4Cardelli(unittest.TestCase):
         self.assertEqual(rec_in.fields["name"], QString("loop"))
         self.assertIs(rec_in.fields["next"], rec_in)
 
-        # 3. Cyclic array
-        cyc_arr = QArray([QInt(100)])
-        cyc_arr.elements.append(cyc_arr)
-        d_arr = new_dynamic(cyc_arr, "Array(Int)")
+        # 3. Shared array
+        shared_arr = QArray([QInt(100)])
+        d_arr = new_dynamic(QTuple((shared_arr, shared_arr)), "Tuple :Array(Int) :Array(Int) end")
         s_arr_out = io.StringIO()
         extern_fn(QWriter(stream=s_arr_out, is_file=False), d_arr)
         json_arr = s_arr_out.getvalue()
-        self.assertIn('"@array"', json_arr)
-        self.assertIn('"@ref":"1"', json_arr)
+        self.assertIn('"value":[{"@id":1,"@items":[100]},{"@ref":1}]', json_arr)
 
         d_arr_in = intern_fn(QReader(stream=io.StringIO(json_arr), is_file=False))
-        arr_in = d_arr_in.value.elements[0]
-        self.assertIsInstance(arr_in, QArray)
-        self.assertEqual(arr_in.elements[0], QInt(100))
-        self.assertIs(arr_in.elements[1], arr_in)
+        tup_in = d_arr_in.value.elements[0]
+        self.assertIsInstance(tup_in.elements[0], QArray)
+        self.assertEqual(tup_in.elements[0].elements[0], QInt(100))
+        self.assertIs(tup_in.elements[1], tup_in.elements[0])
 
         # 4. Serde-style variant
         v = QVariant("red", QInt(255))
@@ -164,7 +163,7 @@ class TestStage4Cardelli(unittest.TestCase):
         extern_fn(QWriter(stream=s_var_out, is_file=False), d_var)
         self.assertEqual(
             s_var_out.getvalue(),
-            '{"@type":"Variant red: Int green: Ok end","@value":{"red":255}}',
+            '{"quest":1,"types":[{"variant":{"red":"Int","green":"Ok"}}],"type":0,"value":{"red":255}}',
         )
         d_var_in = intern_fn(QReader(stream=io.StringIO(s_var_out.getvalue()), is_file=False))
         var_in = d_var_in.value.elements[0]

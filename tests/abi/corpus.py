@@ -37,7 +37,7 @@ RUNTIME_HEADER = ROOT_DIR / "runtime" / "quest_runtime.h"
 
 def _normalize_qi(text: str) -> str:
     data = json.loads(text)
-    value = data.get("@value", {})
+    value = data.get("value", {})
     value.pop("producer", None)
     value.pop("abi", None)
     return json.dumps(data, indent=2, sort_keys=True) + "\n"
