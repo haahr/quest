@@ -868,6 +868,9 @@ class TypedImportItem(TypedNode):
     interface_name: str
     module_paths: Optional[tuple[str, ...]] = None
     interface_path: Optional[str] = None
+    # The canonical names of the imported modules (docs/modules.md §2.3), which name them in C symbols; None
+    # where they are the module paths as written.
+    canonical_module_paths: Optional[tuple[str, ...]] = None
 
     @property
     def effective_module_paths(self) -> tuple[str, ...]:
@@ -876,6 +879,12 @@ class TypedImportItem(TypedNode):
     @property
     def effective_interface_path(self) -> str:
         return self.interface_path if self.interface_path is not None else self.interface_name
+
+    @property
+    def effective_canonical_module_paths(self) -> tuple[str, ...]:
+        if self.canonical_module_paths is not None:
+            return self.canonical_module_paths
+        return self.effective_module_paths
 
     def dump_header(self) -> str:
         if self.names:

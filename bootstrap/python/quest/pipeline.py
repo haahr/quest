@@ -124,6 +124,9 @@ class CompilerContext:
             cwd = Path.cwd()
             environment.current_dir = cwd
             r_env.current_dir = cwd
+        if environment.program_dir is None:
+            environment.program_dir = environment.current_dir
+        r_env.program_dir = environment.program_dir
 
         source_map = SourceMap(source_text, file_name)
         sink = DiagnosticSink()
@@ -366,7 +369,7 @@ class CodegenCPhase(Phase):
 
         import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
         ctx.imported_modules = unit_module_refs(
-            import_items, emitter.analysis, ctx.env.current_dir, ctx.env.include_paths
+            import_items, emitter.analysis, ctx.env.current_dir, ctx.env.include_paths, ctx.env.program_dir
         )
         return c_code
 
@@ -390,7 +393,7 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
         extra_objects=list(opts.extra_objects),
     )
     importer = Path(ctx.file_name).stem if not ctx.file_name.startswith("<") else ctx.file_name
-    return engine.build_modules(ctx.imported_modules, importer=importer, current_dir=ctx.env.current_dir)
+    return engine.build_modules(ctx.imported_modules, importer=importer, program_dir=ctx.env.program_dir)
 
 
 class RunCCompiledPhase(Phase):

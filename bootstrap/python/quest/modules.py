@@ -335,6 +335,7 @@ def elaborate_module(
     env.current_scope = module_internal_scope
     typed_bindings: list[TypedBinding] = []
     if decl.imports:
+        from quest.module_loader import canonical_import_name
         from quest.typed_ast import TypedImportItem
         typed_items = tuple(
             TypedImportItem(
@@ -342,6 +343,9 @@ def elaborate_module(
                 interface_name=imp.interface_name,
                 module_paths=imp.module_paths,
                 interface_path=imp.interface_path,
+                canonical_module_paths=tuple(
+                    canonical_import_name(mod_path, env) for mod_path in imp.effective_module_paths
+                ),
             )
             for imp in decl.imports
         )
@@ -509,12 +513,16 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                 if local_mod_name != mod_path:
                     env.register_module(local_mod_name, registered_scope)
                 env.current_scope.declare_value(ValueSymbol(name=local_mod_name, type_val=mod_type))
+            from quest.module_loader import canonical_import_name
             typed_items.append(
                 TypedImportItem(
                     names=item.names,
                     interface_name=local_iface_name,
                     module_paths=item.module_paths,
                     interface_path=item.interface_path,
+                    canonical_module_paths=tuple(
+                        canonical_import_name(mod_path, env) for mod_path in item.effective_module_paths
+                    ),
                 )
             )
 

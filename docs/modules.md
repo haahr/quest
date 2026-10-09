@@ -43,6 +43,32 @@ The file loader searches directories in the following strict order:
 
 A file in the active directory shadows any file with the same name in the include paths.
 
+### 2.3. Canonical Names
+Every interface and module file has one **canonical name**, which identifies it everywhere after it is found: in the
+importer's typed AST and C code, in the unit's own module header (`module m: I`), in `.qm` manifests (including the
+build directory path of its artifacts), and in mangled C symbols ([name-mangling.md §4](name-mangling.md)). It is the
+file's path, without its suffix, relative to a **root**:
+1. The deepest of the include roots that contains the file: `QUEST_LIB`, the include paths (`-I`), `lib/`, and the
+   project directory (the root of this repository).
+2. Otherwise, the directory of the program being compiled (the main routine's directory, or the current directory for
+   inline code).
+3. Otherwise (a standalone `quest -c` of a file under no include root), the file's own directory: its name is its base
+   name.
+
+The canonical name depends only on the file and these roots, not on how an import found the file. So a module found
+by sibling search has the same name for every importer, and the name its interface gets in the module header is the one
+its importers expect. Interface names keep the declared base name (`util/Counter` for `util/counter.int.quest`).
+For example:
+- `/home/me/app/main.quest` importing `util/arith`, with no `-I`: `util/arith`; its sibling import `helper` is
+  `util/helper`.
+- `tests/source/modules/counter.mod.quest` beside a program in this repository: `tests/source/modules/counter`, or
+  `modules/counter` with `-I tests/source`.
+
+The program's directory is a root of last resort, not an include path: it is searched only by sibling search from
+the main routine. Units under different roots may share a canonical name (a program's `util/path` and `lib/util/path`);
+importers record the source file they found in their `.qm` ([build-process.md §4.3](build-process.md)), so the build
+engine compiles the right one, but two such units cannot be linked into one program.
+
 ---
 
 ## 3. Single Definition Rule and Strict Validation
@@ -420,15 +446,16 @@ When compiling hierarchical interfaces and modules:
    - Trampolines: `qv_util__calc_multiply_trampoline`
    Single underscores (`_`) continue to cleanly separate module prefixes from exported function and variable names.
 3. **Canonical Module Identity:**
-   Both whole-program C code generation and separate compilation identify modules by their canonical include-relative
-   path (e.g. `util/calc`). When imported using local aliases (such as `import c = util/calc : util/Calc`), client
-   C code generates external references to `qv_util__calc` and `qv_util__calc_multiply`, binding the local variable
-   `qv_c` to the canonical module record.
+   Both whole-program C code generation and separate compilation identify modules by their canonical names (§2.3,
+   e.g. `util/calc`), not by the paths imports name them by. When imported using local aliases (such as
+   `import c = util/calc : util/Calc`), client C code generates external references to `qv_util__calc` and
+   `qv_util__calc_multiply`, binding the local variable `qv_c` to the canonical module record. Likewise a sibling
+   import `import helper : Helper` in `util/calc.mod.quest` refers to `qm_util__helper`.
 
 ### 9.5. Hierarchical Separate Compilation and On-Demand Builds
 To maintain high performance, modular boundaries, and clean test separation:
 1. **Canonical Hierarchical Identification:**
-   A module or interface is classified as hierarchical if and only if its canonical include-relative path contains a
+   A module or interface is classified as hierarchical if and only if its canonical name (§2.3) contains a
    slash `/` (e.g. `collections/vector`). Modules directly in `lib/` (`list`, `writer`, `conv`, etc.) have flat
    canonical names and remain whole-program / direct source modules.
 2. **Phase Partitioning:**

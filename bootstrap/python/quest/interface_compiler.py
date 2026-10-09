@@ -531,6 +531,7 @@ def compile_interface_file(
     include_paths: Optional[list[Path]] = None,
     build_dir: Optional[Path] = None,
     header: bool = True,
+    program_dir: Optional[Path] = None,
 ) -> tuple[Path, Path]:
     """Compiles a .int.quest file to .qi and, unless header is False, .int.h files.
 
@@ -567,6 +568,7 @@ def compile_interface_file(
         from quest.pipeline import CompilerOptions
         env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
     env.current_dir = file_path.parent
+    env.program_dir = program_dir
 
     if build_dir is not None:
         # The generated header #includes the headers of imported interfaces, so they must exist in the
@@ -574,7 +576,7 @@ def compile_interface_file(
         for imp in decl.imports:
             ensure_interface_artifacts(
                 imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve(),
-                header=header,
+                header=header, program_dir=program_dir,
             )
     typed_iface = elaborate_interface(decl, env)
 
@@ -582,7 +584,7 @@ def compile_interface_file(
 
     if build_dir is not None and output_dir is None:
         from quest.module_loader import canonicalize_module_path
-        canon_name = canonicalize_module_path(file_path, env.include_paths)
+        canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
         if "/" in canon_name:
             target_dir = Path(build_dir).resolve() / Path(canon_name).parent
         else:
@@ -614,6 +616,7 @@ def ensure_interface_artifacts(
     build_dir: Path,
     file_path: Optional[Path] = None,
     header: bool = True,
+    program_dir: Optional[Path] = None,
 ) -> tuple[Path, Path, str]:
     """Regenerates interface `name`'s .qi and C header under build_dir if stale (docs/build-process.md §5).
 
@@ -633,7 +636,7 @@ def ensure_interface_artifacts(
     if src is None and file_path is not None and file_path.name.endswith(".int.quest"):
         src = file_path
 
-    canon_name = canonicalize_module_path(src, include_paths) if src else name.lower()
+    canon_name = canonicalize_module_path(src, include_paths, program_dir) if src else name.lower()
     target_dir = build_dir / Path(canon_name).parent if "/" in canon_name else build_dir
     stem = Path(canon_name).name.lower()
     qi_file = target_dir / f"{stem}.qi"
@@ -674,7 +677,8 @@ def ensure_interface_artifacts(
         if build_dir not in search_paths:
             search_paths.insert(0, build_dir)
         h_file, qi_file = compile_interface_file(
-            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir, header=header
+            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir, header=header,
+            program_dir=program_dir,
         )
     return qi_file, h_file, canon_name
 

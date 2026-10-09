@@ -30,6 +30,7 @@ from quest.module_loader import (
     canonicalize_interface_name,
     canonicalize_module_name,
     canonicalize_module_path,
+    find_canonical_module_source,
     load_interface,
     resolve_interface_source_file,
     resolve_module_file,
@@ -95,6 +96,7 @@ def unit_module_refs(
     analysis: Optional[Any],
     current_dir: Optional[Path],
     include_paths: list[Path],
+    program_dir: Optional[Path] = None,
 ) -> list[ImportedModuleRef]:
     """Returns the modules a compiled C unit links against, with the interfaces it expects of them.
 
@@ -104,34 +106,40 @@ def unit_module_refs(
     refs: list[ImportedModuleRef] = []
     seen: set[str] = set()
 
-    def _add(name: str, interface: str) -> None:
+    def _add(name: str, interface: str, source: Optional[Path]) -> None:
         if name in seen:
             return
         seen.add(name)
-        refs.append(ImportedModuleRef(name=name, interface=interface))
+        refs.append(ImportedModuleRef(name=name, interface=interface, source=str(source) if source else ""))
 
     for it in import_items:
         iface_path = it.effective_interface_path
         iface_src = resolve_interface_source_file(iface_path, current_dir, include_paths)
-        canon_iface = canonicalize_interface_name(iface_src, include_paths, iface_path)
+        canon_iface = canonicalize_interface_name(iface_src, include_paths, iface_path, program_dir)
         for iname, mpath in zip(it.names, it.effective_module_paths):
             mod_ref = mpath if mpath else iname
             mod_src = resolve_module_file(mod_ref, current_dir, include_paths)
-            _add(canonicalize_module_name(mod_src, include_paths, mod_ref), canon_iface)
+            _add(canonicalize_module_name(mod_src, include_paths, mod_ref, program_dir), canon_iface, mod_src)
 
     if analysis is not None:
         for mod in analysis.sorted_modules:
             if not getattr(mod, "is_precompiled", False):
                 continue
             mod_src = resolve_module_file(mod.name, current_dir, include_paths)
-            canon_mod = canonicalize_module_name(mod_src, include_paths, mod.name)
+            canon_mod = canonicalize_module_name(mod_src, include_paths, mod.name, program_dir)
             canon_iface = ""
             if mod.interface_name:
                 iface_src = resolve_interface_source_file(mod.interface_name, current_dir, include_paths)
-                canon_iface = canonicalize_interface_name(iface_src, include_paths, mod.interface_name)
-            _add(canon_mod, canon_iface)
+                canon_iface = canonicalize_interface_name(iface_src, include_paths, mod.interface_name, program_dir)
+            _add(canon_mod, canon_iface, mod_src)
 
     return refs
+
+
+def _manifest_name(qm_path: Path) -> Optional[str]:
+    """Returns the canonical module name a .qm records, or None if it cannot be read."""
+    manifest = read_qm(qm_path)
+    return manifest.name if manifest is not None else None
 
 
 class BuildEngine:
@@ -159,12 +167,13 @@ class BuildEngine:
         self.extra_c_flags = extra_c_flags or []
         self.build_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_search_paths(self, current_dir: Optional[Path] = None) -> list[Path]:
+    def _get_search_paths(self) -> list[Path]:
+        """Returns the include paths of the units the engine compiles.
+
+        The program's directory is not one of them: it is searched only by sibling search from the main
+        routine, and it names only units under no include root (docs/modules.md §2.3).
+        """
         paths = [self.build_dir]
-        if current_dir is not None:
-            c_res = current_dir.resolve()
-            if c_res not in paths:
-                paths.append(c_res)
         for obj in self.extra_objects:
             p_parent = obj.parent.resolve()
             if p_parent not in paths:
@@ -203,9 +212,10 @@ class BuildEngine:
                     "use module compiler for libraries."
                 )
 
-        search_paths = self._get_search_paths(main_file.parent)
+        search_paths = self._get_search_paths()
         env = Environment()
         env.current_dir = main_file.parent
+        env.program_dir = main_file.parent
         env.include_paths = search_paths
         env.options = CompilerOptions(
             build_dir=self.build_dir,
@@ -224,7 +234,7 @@ class BuildEngine:
             if env.lookup_interface(iface_path) is None and env.lookup_interface(it.interface_name) is None:
                 load_interface(iface_path, env)
             imp_src = resolve_interface_source_file(iface_path, env.current_dir, env.include_paths)
-            canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path)
+            canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path, env.program_dir)
             imp_mtime = imp_src.stat().st_mtime if imp_src and imp_src.is_file() else 0.0
             imported_interfaces.append(
                 ImportedInterfaceRef(
@@ -238,7 +248,9 @@ class BuildEngine:
         emitter = CEmitter(echo=False, env=env)
         c_code = emitter.emit_program(typed_prog)
 
-        imported_modules = unit_module_refs(import_items, emitter.analysis, env.current_dir, env.include_paths)
+        imported_modules = unit_module_refs(
+            import_items, emitter.analysis, env.current_dir, env.include_paths, env.program_dir
+        )
 
         self.logger.log("EMIT C", str(c_path))
         c_path.write_text(c_code, encoding="utf-8")
@@ -321,7 +333,7 @@ class BuildEngine:
         module_objects = self.build_modules(
             imported_mods,
             importer=item_name,
-            current_dir=main_file.parent,
+            program_dir=main_file.parent,
             compiled_units=compiled_units,
         )
         n_extra = len(self.extra_objects)
@@ -349,12 +361,13 @@ class BuildEngine:
         self,
         roots: list[ImportedModuleRef],
         importer: str,
-        current_dir: Optional[Path] = None,
+        program_dir: Optional[Path] = None,
         compiled_units: Optional[list[str]] = None,
     ) -> list[Path]:
         """Brings the transitive closure of modules imported by a unit up to date (§7.1).
 
-        `roots` are the modules the unit `importer` imports, with the interfaces it expects of them.
+        `roots` are the modules the unit `importer` imports, with the interfaces it expects of them, and
+        `program_dir` is the program's directory, which names modules under no include root.
         Stale or missing modules are (re)compiled into the build directory, interface conformance and
         acyclicity are verified, and the objects to link are returned: the engine's extra objects
         first, then one object per module in queue order. The importer's own object is not included.
@@ -362,10 +375,11 @@ class BuildEngine:
         """
         if compiled_units is None:
             compiled_units = []
-        search_paths = self._get_search_paths(current_dir)
+        search_paths = self._get_search_paths()
         work_queue: deque[str] = deque()
 
         discovered_modules: set[str] = set()
+        module_sources: dict[str, Path] = {}
         linked_objects: list[Path] = list(self.extra_objects)
         for obj in self.extra_objects:
             discovered_modules.add(obj.stem)
@@ -428,6 +442,8 @@ class BuildEngine:
                 _record_expected_interface(item_name, dep.name, dep.interface)
                 norm_dep = dep.name.lower()
                 if dep.name not in discovered_modules and norm_dep not in discovered_modules:
+                    if dep.source:
+                        module_sources[dep.name] = Path(dep.source)
                     discovered_modules.add(dep.name)
                     discovered_modules.add(norm_dep)
                     self.logger.log("ENQUEUE MODULE", f"'{dep.name}' (from {item_name} import)")
@@ -439,9 +455,13 @@ class BuildEngine:
             item_name = work_queue.popleft()
             self.logger.log("POP QUEUE", f"'{item_name}' (kind=module)")
 
-            mod_src = resolve_module_file(item_name, current_dir, search_paths)
+            # The importer records the source it found; a manifest without one names its modules only by
+            # their canonical names.
+            mod_src = module_sources.get(item_name)
+            if mod_src is None or not mod_src.is_file():
+                mod_src = find_canonical_module_source(item_name, search_paths, program_dir)
 
-            canon_name = canonicalize_module_path(mod_src, search_paths) if mod_src else item_name.lower()
+            canon_name = canonicalize_module_path(mod_src, search_paths, program_dir) if mod_src else item_name.lower()
             if "/" in canon_name:
                 target_sub = self.build_dir / Path(canon_name).parent
             else:
@@ -471,7 +491,7 @@ class BuildEngine:
                         found_obj = obj
                         break
                 if found_obj is None:
-                    found_obj = resolve_object_file(item_name, current_dir, search_paths)
+                    found_obj = resolve_object_file(item_name, program_dir, search_paths)
                 if found_obj is not None and found_obj.is_file():
                     o_path = found_obj
                     qm_cand = found_obj.with_suffix(".qm")
@@ -490,7 +510,11 @@ class BuildEngine:
                     # Fresh artifacts next to the source (from a standalone compilation) are used like
                     # those in the build directory (docs/build-process.md §5.2).
                     beside = [mod_src.parent / f"{stem}{ext}" for ext in (".qm", ".mod.c", ".o")]
-                    if beside[0] != qm_path and self._unit_staleness(mod_src, *beside) is None:
+                    if (
+                        beside[0] != qm_path
+                        and self._unit_staleness(mod_src, *beside) is None
+                        and _manifest_name(beside[0]) == canon_name
+                    ):
                         qm_path, c_path, o_path = beside
                         reason = None
 
@@ -506,6 +530,7 @@ class BuildEngine:
                     nogc=self.nogc,
                     compiler_path=self.compiler_path,
                     extra_c_flags=self.extra_c_flags,
+                    program_dir=program_dir,
                 )
                 compiled_units.append(item_name)
                 manifest = read_qm(qm_path)

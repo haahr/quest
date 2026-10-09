@@ -215,11 +215,13 @@ class RuntimeEnvironment:
             self.evaluated_modules: dict[str, Any] = parent.evaluated_modules
             self.include_paths: list[Path] = parent.include_paths
             self.current_dir: Optional[Path] = parent.current_dir
+            self.program_dir: Optional[Path] = parent.program_dir
             self.loaded_modules_ast: dict[str, Any] = parent.loaded_modules_ast
         else:
             self.evaluated_modules: dict[str, Any] = {}
             self.include_paths: list[Path] = []
             self.current_dir: Optional[Path] = None
+            self.program_dir: Optional[Path] = None
             self.loaded_modules_ast: dict[str, Any] = {}
 
     def push_scope(self) -> RuntimeEnvironment:

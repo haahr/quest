@@ -1522,12 +1522,15 @@ class CEmitter:
                 all_module_map[phrase.name.lower()] = phrase
             elif isinstance(phrase, TypedImport):
                 for it in phrase.items:
-                    for iname, mpath in zip(it.names, it.effective_module_paths):
+                    for iname, mpath, canon in zip(
+                        it.names, it.effective_module_paths, it.effective_canonical_module_paths
+                    ):
                         mod = (
-                            self._find_module(all_module_map, mpath)
+                            self._find_module(all_module_map, canon)
+                            or self._find_module(all_module_map, mpath)
                             or self._find_module(all_module_map, iname)
                         )
-                        mod_ref = mpath if mpath else (mod.name if mod is not None else iname)
+                        mod_ref = canon if canon else (mod.name if mod is not None else iname)
                         if mod is not None:
                             all_module_map[iname] = mod
                             all_module_map[mpath] = mod
@@ -1584,12 +1587,15 @@ class CEmitter:
                                         self.current_env_vars[exc.name] = mangle_module_ident(clean_mod, exc.name)
                                 case TypedImport():
                                     for it in b.items:
-                                        for iname, mpath in zip(it.names, it.effective_module_paths):
+                                        for iname, mpath, canon in zip(
+                                            it.names, it.effective_module_paths, it.effective_canonical_module_paths
+                                        ):
                                             mod = (
-                                                self._find_module(self.all_modules, mpath)
+                                                self._find_module(self.all_modules, canon)
+                                                or self._find_module(self.all_modules, mpath)
                                                 or self._find_module(self.all_modules, iname)
                                             )
-                                            mod_ref = mpath if mpath else (mod.name if mod is not None else iname)
+                                            mod_ref = canon if canon else (mod.name if mod is not None else iname)
                                             self.current_env_vars[iname] = (
                                                 module_record_ident(mangle_module_name(mod_ref))
                                             )
@@ -1791,12 +1797,15 @@ class CEmitter:
                         mod_native_vals.append(nb)
                 case TypedImport(items=items):
                     for it in items:
-                        for iname, mpath in zip(it.names, it.effective_module_paths):
+                        for iname, mpath, canon in zip(
+                            it.names, it.effective_module_paths, it.effective_canonical_module_paths
+                        ):
                             imp_mod = (
-                                self._find_module(all_module_map, mpath)
+                                self._find_module(all_module_map, canon)
+                                or self._find_module(all_module_map, mpath)
                                 or self._find_module(all_module_map, iname)
                             )
-                            mod_ref = mpath if mpath else (imp_mod.name if imp_mod is not None else iname)
+                            mod_ref = canon if canon else (imp_mod.name if imp_mod is not None else iname)
                             if (standalone or imp_mod is not None) and mod_ref not in mod_imported_mods:
                                 mod_imported_mods.append(mod_ref)
                             mod_imported_env[iname] = module_record_ident(mangle_module_name(mod_ref))
@@ -2144,12 +2153,15 @@ class CEmitter:
         for b in mod.bindings:
             if isinstance(b, TypedImport):
                 for it in b.items:
-                    for iname, mpath in zip(it.names, it.effective_module_paths):
+                    for iname, mpath, canon in zip(
+                        it.names, it.effective_module_paths, it.effective_canonical_module_paths
+                    ):
                         mod_obj = (
-                            self._find_module(self.all_modules, mpath)
+                            self._find_module(self.all_modules, canon)
+                            or self._find_module(self.all_modules, mpath)
                             or self._find_module(self.all_modules, iname)
                         )
-                        mod_ref = mpath if mpath else (mod_obj.name if mod_obj is not None else iname)
+                        mod_ref = canon if canon else (mod_obj.name if mod_obj is not None else iname)
                         mod_emitter.current_env_vars[iname] = (
                             module_record_ident(mangle_module_name(mod_ref))
                         )

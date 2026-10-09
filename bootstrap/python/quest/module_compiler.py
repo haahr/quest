@@ -83,7 +83,7 @@ def compile_module(
         env.options = CompilerOptions(stop_after="codegen_c", build_dir=build_dir)
 
     if canonical_name is None and source_file is not None:
-        canonical_name = canonicalize_module_path(source_file, env.include_paths)
+        canonical_name = canonicalize_module_path(source_file, env.include_paths, env.program_dir)
 
     imported_modules: list[ImportedModuleRef] = []
     imported_interfaces: list[ImportedInterfaceRef] = []
@@ -97,7 +97,7 @@ def compile_module(
         module_decl.interface_name, env.current_dir, env.include_paths
     )
     canon_target_interface = canonicalize_interface_name(
-        tgt_src, env.include_paths, module_decl.interface_name
+        tgt_src, env.include_paths, module_decl.interface_name, env.program_dir
     )
     tgt_mtime = tgt_src.stat().st_mtime if tgt_src and tgt_src.is_file() else 0.0
     imported_interfaces.append(
@@ -115,7 +115,7 @@ def compile_module(
             load_interface(iface_path, env)
 
         imp_src = resolve_interface_source_file(iface_path, env.current_dir, env.include_paths)
-        canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path)
+        canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path, env.program_dir)
         imp_mtime = imp_src.stat().st_mtime if imp_src and imp_src.is_file() else 0.0
         imported_interfaces.append(
             ImportedInterfaceRef(
@@ -128,8 +128,12 @@ def compile_module(
         for iname, mpath in zip(imp.names, imp.effective_module_paths):
             mod_ref = mpath if mpath else iname
             mod_src = resolve_module_file(mod_ref, env.current_dir, env.include_paths)
-            canon_mod_ref = canonicalize_module_name(mod_src, env.include_paths, mod_ref)
-            imported_modules.append(ImportedModuleRef(name=canon_mod_ref, interface=canon_imp_iface))
+            canon_mod_ref = canonicalize_module_name(mod_src, env.include_paths, mod_ref, env.program_dir)
+            imported_modules.append(
+                ImportedModuleRef(
+                    name=canon_mod_ref, interface=canon_imp_iface, source=str(mod_src) if mod_src else ""
+                )
+            )
 
     # 3. Elaborate module
     typed_mod = elaborate_module(module_decl, env)
@@ -211,7 +215,7 @@ def compile_module(
             for iname, mpath in zip(imp.names, imp.effective_module_paths):
                 mod_ref = mpath if mpath else iname
                 f_path = resolve_module_file(mod_ref, env.current_dir, env.include_paths)
-                canon = canonicalize_module_path(f_path, env.include_paths) if f_path else mod_ref
+                canon = canonicalize_module_path(f_path, env.include_paths, env.program_dir) if f_path else mod_ref
                 if "/" in canon:
                     obj_rel = f"{canon.lower()}.o"
                     if obj_rel not in dep_objects:
@@ -254,8 +258,13 @@ def compile_module_file(
     extra_c_flags: Optional[list[str]] = None,
     emit_deps: bool = False,
     build_dir: Optional[Path] = None,
+    program_dir: Optional[Path] = None,
 ) -> ModuleCompileResult:
-    """Compiles a Quest module file (.mod.quest) into .mod.c, .o, and .qm files."""
+    """Compiles a Quest module file (.mod.quest) into .mod.c, .o, and .qm files.
+
+    program_dir is the directory of the program the module is built for, which names units under no include root
+    (docs/modules.md §2.3).
+    """
     mod_path = Path(mod_path).resolve()
     if not mod_path.is_file():
         raise FileNotFoundError(f"Module file not found: '{mod_path}'")
@@ -288,13 +297,13 @@ def compile_module_file(
     env = Environment()
     env.current_dir = mod_path.parent
     env.include_paths = list(include_paths) if include_paths else []
+    env.program_dir = program_dir
     if build_dir is not None:
         b_dir = Path(build_dir).resolve()
         if b_dir not in env.include_paths:
             env.include_paths.insert(0, b_dir)
 
-    from quest.module_loader import canonicalize_module_path
-    canon_name = canonicalize_module_path(mod_path, env.include_paths)
+    canon_name = canonicalize_module_path(mod_path, env.include_paths, program_dir)
 
     if build_dir is not None and output_dir is None:
         target_sub = Path(build_dir).resolve()

@@ -254,6 +254,8 @@ class Environment:
         self._modules: dict[str, Scope] = {}
         self.include_paths: list[Path] = []
         self.current_dir: Optional[Path] = None
+        # The directory of the program being compiled, which names units under no include root (docs/modules.md §2.3)
+        self.program_dir: Optional[Path] = None
         self.loaded_modules_ast: dict[str, Any] = {}
         self.precompiled_modules: set[str] = set()
         self._loading_interfaces: list[str] = []

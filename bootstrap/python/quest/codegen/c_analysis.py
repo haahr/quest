@@ -112,8 +112,10 @@ def topological_sort_modules(modules: list[TypedModule]) -> list[TypedModule]:
         for b in m.bindings:
             if isinstance(b, TypedImport):
                 for item in b.items:
-                    for name, mpath in zip(item.names, item.effective_module_paths):
-                        target = mpath if mpath in by_name else (name if name in by_name else None)
+                    for name, mpath, canon in zip(
+                        item.names, item.effective_module_paths, item.effective_canonical_module_paths
+                    ):
+                        target = next((n for n in (canon, mpath, name) if n in by_name), None)
                         if target is not None:
                             visit(by_name[target])
         order.append(m)
@@ -565,19 +567,20 @@ def analyze_program_for_c(
 
     for imp in all_imports:
         for it in imp.items:
-            for iname, mpath in zip(it.names, it.effective_module_paths):
+            for iname, mpath, canon in zip(it.names, it.effective_module_paths, it.effective_canonical_module_paths):
                 _check_import_item(mpath)
                 if iname != mpath:
                     _check_import_item(iname)
-                target = mpath if mpath in all_module_map else (iname if iname in all_module_map else None)
+                target = next((n for n in (canon, mpath, iname) if n in all_module_map), None)
                 if target is not None:
                     all_module_map[iname] = all_module_map[target]
                     all_module_map[mpath] = all_module_map[target]
                 elif iname not in known_builtins and mpath not in known_builtins:
-                    clean_name = mpath if mpath else iname
+                    # A module compiled separately is named by its canonical name, as it names itself (§2.3).
+                    clean_name = canon if canon else iname
                     scope = None
                     if env is not None:
-                        scope = env.lookup_module(clean_name) or env.lookup_module(iname)
+                        scope = env.lookup_module(clean_name) or env.lookup_module(mpath) or env.lookup_module(iname)
                         if scope is None and it.interface_name:
                             scope = env.lookup_interface(it.interface_name)
                     if scope is None:
@@ -590,7 +593,7 @@ def analyze_program_for_c(
                         is_precompiled=True,
                     )
                     clean_mod = mangle_module_name(clean_name)
-                    for key in (clean_name, clean_name.lower(), iname, iname.lower(), clean_mod, clean_mod.lower()):
+                    for key in (clean_name, clean_name.lower(), mpath, iname, iname.lower(), clean_mod, clean_mod.lower()):
                         if key:
                             all_module_map[key] = stub_mod
 

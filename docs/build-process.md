@@ -145,7 +145,7 @@ quest/
 
 ### 3.2. Path Mapping Conventions
 1. **Modules and Interfaces:**
-   Artifact paths map directly to the canonical module path inside `.build/`:
+   Artifact paths map directly to the canonical module path (`docs/modules.md` §2.3) inside `.build/`:
    - Interface `util/Path` (`lib/util/path.int.quest`) -> `.build/util/path.qi`, `.build/util/path.int.h`.
    - Module `util/path` (`lib/util/path.mod.quest`):
      `.build/util/path.qm`, `.build/util/path.mod.c`, `.build/util/path.o`.
@@ -212,8 +212,10 @@ A `.qm` file records the build manifest for an implementation module or main rou
 - `interface`: Canonical interface name (e.g. `"util/Path"`) for modules; `null` for main routines.
 - `source`: Path to source file (`.mod.quest` or `.quest`).
 - `object`: Path to compiled `.o` file in `.build/`.
-- `imported_modules`: Array of imported modules with canonical module and interface names:
-  `[ { "name": "util/strutil", "interface": "util/Strutil" }, ... ]`.
+- `imported_modules`: Array of imported modules with canonical module and interface names (`docs/modules.md` §2.3),
+  and the source file the importer found (empty for builtin and prebuilt modules), which the build engine compiles:
+  `[ { "name": "util/strutil", "interface": "util/Strutil", "source": "/src/lib/util/strutil.mod.quest" }, ... ]`.
+  A manifest without `source` (written before it was recorded) is followed by finding the file with that canonical name.
 - `imported_interfaces`: Array of imported interfaces with canonical names, source paths, and timestamps:
   `[ { "name": "util/Path", "source": "lib/util/path.int.quest", "mtime": 1727891234 }, ... ]`.
 

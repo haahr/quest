@@ -16,9 +16,15 @@ from quest.build.abi import ABI_VERSION, PRODUCER
 
 @dataclass
 class ImportedModuleRef:
-    """Reference to an imported module and its declared interface."""
+    """Reference to an imported module and its declared interface.
+
+    source is the module's source file as the importer found it, or "" if it has none (a builtin or prebuilt
+    module). The build engine builds that file: units under different include roots can share a canonical name,
+    so the name alone does not identify one.
+    """
     name: str
     interface: str
+    source: str = ""
 
 
 @dataclass
@@ -60,7 +66,7 @@ class ModuleManifest:
     def from_dict(cls, data: dict[str, Any]) -> ModuleManifest:
         """Constructs a ModuleManifest from a dictionary."""
         imported_modules = [
-            ImportedModuleRef(name=m["name"], interface=m["interface"])
+            ImportedModuleRef(name=m["name"], interface=m["interface"], source=m.get("source", ""))
             for m in data.get("imported_modules", [])
         ]
         imported_interfaces = [

@@ -7,13 +7,17 @@ import io
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bootstrap" / "python"))
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+DRIVER = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
+sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 import quest.ast as ast
+from quest.build.manifest import read_qm
 from quest.codegen.compiler_runner import run_binary
 from quest.grammar import parse_quest_program
 from quest.interface_compiler import compile_interface_file
@@ -319,6 +323,132 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         self.assertTrue((build_dir / "util" / "math.int.h").is_file())
         self.assertTrue((build_dir / "util" / "math.mod.c").is_file())
         self.assertFalse((build_dir / "util" / "math.h").exists())
+
+
+def _write_units(directory: Path, units: dict[str, str]) -> None:
+    for name, text in units.items():
+        path = directory / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
+# util/arith imports its sibling util/helper by its bare name.
+ARITH_UNITS = {
+    "util/helper.int.quest": "interface Helper\nexport\n    offset: Int\nend;\n",
+    "util/helper.mod.quest": "module helper : Helper\nexport\n    let offset: Int = 5;\nend;\n",
+    "util/arith.int.quest": "interface Arith\nexport\n    addWithOffset(a: Int): Int\nend;\n",
+    "util/arith.mod.quest": (
+        "module arith : Arith\n"
+        "import helper : Helper;\n"
+        "export\n"
+        "    let addWithOffset(a: Int): Int = a + helper.offset;\n"
+        "end;\n"
+    ),
+    "main.quest": "import m : M = util/arith : util/Arith;\nm.addWithOffset(100)\n",
+}
+
+COUNTER_UNITS = {
+    "counter.int.quest": "interface Counter\nexport\n    T::TYPE\n    new(n: Int): T\n    get(c: T): Int\nend;\n",
+    "counter.mod.quest": (
+        "module counter : Counter\n"
+        "export\n"
+        "    Let T = Int;\n"
+        "    let new(n: Int): T = n;\n"
+        "    let get(c: T): Int = c * {scale};\n"
+        "end;\n"
+    ),
+    "main.quest": "import counter : Counter;\ncounter.get(counter.new(7))\n",
+}
+
+
+class TestCanonicalNamesInCCompilation(unittest.TestCase):
+    """Units found by sibling search have one canonical name in C compilation (docs/modules.md §2.3).
+
+    The importer, the unit's own module header, the .qm manifests, and the mangled C symbols must agree on it,
+    however the unit was found and whatever include paths are given.
+    """
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="quest_canon_test_")).resolve()
+        self.build_dir = Path(tempfile.mkdtemp(prefix="quest_canon_build_")).resolve()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.root)
+        shutil.rmtree(self.build_dir)
+
+    def _run(self, program: Path, phase: str, *args: str) -> str:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+        proc = subprocess.run(
+            [sys.executable, str(DRIVER), "--stop-after", phase, "--build-dir", str(self.build_dir), *args,
+             "--print-result", str(program)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            cwd=program.parent,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        return proc.stdout.strip()
+
+    def _assert_c_matches_interpreter(self, program: Path, expected: str, *args: str) -> None:
+        self.assertEqual(self._run(program, "interpret", *args), expected)
+        self.assertEqual(self._run(program, "run_c_compiled", *args), expected)
+
+    def test_hierarchical_import_outside_include_roots(self) -> None:
+        """A program under no include root names its units relative to its own directory."""
+        _write_units(self.root, ARITH_UNITS)
+        self._assert_c_matches_interpreter(self.root / "main.quest", "105 : Int")
+        manifest = read_qm(self.build_dir / "util" / "arith.qm")
+        assert manifest is not None
+        self.assertEqual(manifest.name, "util/arith")
+        self.assertEqual(manifest.interface, "util/Arith")
+        self.assertEqual([m.name for m in manifest.imported_modules], ["util/helper"])
+        self.assertEqual([m.interface for m in manifest.imported_modules], ["util/Helper"])
+
+    def test_sibling_import_in_hierarchical_module_with_include_root(self) -> None:
+        """A sibling import inside util/ links against util/helper, not a flat helper."""
+        _write_units(self.root, ARITH_UNITS)
+        self._assert_c_matches_interpreter(self.root / "main.quest", "105 : Int", "-I", str(self.root))
+        manifest = read_qm(self.build_dir / "util" / "helper.qm")
+        assert manifest is not None
+        self.assertEqual(manifest.name, "util/helper")
+
+    def test_sibling_import_under_project_directory(self) -> None:
+        """Units beside a program in the project directory are named relative to it, with or without -I."""
+        parent = ROOT_DIR / ".build"
+        parent.mkdir(exist_ok=True)
+        program_dir = Path(tempfile.mkdtemp(prefix="canonical_names_", dir=parent)).resolve()
+        try:
+            _write_units(program_dir, {k: v.format(scale=2) for k, v in COUNTER_UNITS.items()})
+            relative = program_dir.relative_to(ROOT_DIR).as_posix()
+            main = program_dir / "main.quest"
+            self._assert_c_matches_interpreter(main, "14 : Int")
+            manifest = read_qm(self.build_dir / relative / "counter.qm")
+            assert manifest is not None
+            self.assertEqual(manifest.name, f"{relative}/counter")
+            self.assertEqual(manifest.interface, f"{relative}/Counter")
+
+            # A deeper include root is preferred to the project directory.
+            shutil.rmtree(self.build_dir)
+            self._assert_c_matches_interpreter(main, "14 : Int", "-I", str(program_dir.parent))
+            manifest = read_qm(self.build_dir / program_dir.name / "counter.qm")
+            assert manifest is not None
+            self.assertEqual(manifest.name, f"{program_dir.name}/counter")
+            self.assertEqual(manifest.interface, f"{program_dir.name}/Counter")
+        finally:
+            shutil.rmtree(program_dir)
+
+    def test_same_unit_name_in_two_directories_shares_build_directory(self) -> None:
+        """Programs in different directories under one include root keep their same-named units apart."""
+        for sub, scale in (("one", 2), ("two", 3)):
+            _write_units(self.root / sub, {k: v.format(scale=scale) for k, v in COUNTER_UNITS.items()})
+        include = ("-I", str(self.root))
+        self._assert_c_matches_interpreter(self.root / "one" / "main.quest", "14 : Int", *include)
+        self._assert_c_matches_interpreter(self.root / "two" / "main.quest", "21 : Int", *include)
+        self.assertTrue((self.build_dir / "one" / "counter.o").is_file())
+        self.assertTrue((self.build_dir / "two" / "counter.o").is_file())
+
 
 
 if __name__ == "__main__":

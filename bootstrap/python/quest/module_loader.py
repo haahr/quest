@@ -205,55 +205,85 @@ def resolve_object_file(
     return None
 
 
+UNIT_SUFFIXES = (".int.quest", ".mod.quest", ".qi", ".o")
+
+
+def _strip_unit_suffix(filename: str) -> str:
+    for ext in UNIT_SUFFIXES:
+        if filename.endswith(ext):
+            return filename[: -len(ext)]
+    return filename
+
+
+def canonical_roots(include_paths: list[Path], program_dir: Optional[Path] = None) -> list[Path]:
+    """Returns the directories canonical names are relative to, in the order canonicalize_module_path tries them.
+
+    The include roots (QUEST_LIB, include paths, lib/, the project directory) come first, deepest first, then the
+    program's directory, which names only the units under none of the include roots.
+    """
+    roots: list[Path] = []
+    env_lib = os.environ.get("QUEST_LIB")
+    if env_lib:
+        roots.append(Path(env_lib).resolve())
+    for inc in include_paths:
+        roots.append(Path(inc).resolve())
+    if DEFAULT_LIB_DIR.is_dir():
+        roots.append(DEFAULT_LIB_DIR.resolve())
+    if DEFAULT_PROJECT_DIR.is_dir():
+        roots.append(DEFAULT_PROJECT_DIR.resolve())
+    roots.sort(key=lambda p: len(p.parts), reverse=True)
+    if program_dir is not None:
+        roots.append(Path(program_dir).resolve())
+    return list(dict.fromkeys(roots))
+
+
 def canonicalize_module_path(
     file_path: Path,
     include_paths: list[Path],
+    program_dir: Optional[Path] = None,
 ) -> str:
-    """Computes canonical hierarchical name relative to include_paths, QUEST_LIB, or DEFAULT_LIB_DIR."""
-    all_roots: list[Path] = []
-    env_lib = os.environ.get("QUEST_LIB")
-    if env_lib:
-        all_roots.append(Path(env_lib).resolve())
-    for inc in include_paths:
-        all_roots.append(Path(inc).resolve())
-    if DEFAULT_LIB_DIR.is_dir():
-        all_roots.append(DEFAULT_LIB_DIR.resolve())
-    if DEFAULT_PROJECT_DIR.is_dir():
-        all_roots.append(DEFAULT_PROJECT_DIR.resolve())
+    """Computes the canonical hierarchical name of the unit in file_path (e.g. 'util/path').
 
-    all_roots.sort(key=lambda p: len(p.parts), reverse=True)
+    The name is the file's path, without its suffix, relative to the first of canonical_roots that contains it
+    (docs/modules.md §2.3); a file under none of them is named by its base name. It depends only on the file and
+    the roots, not on the import that found it, so importers, the unit itself, manifests, and mangled C symbols
+    all agree on it as long as they pass the same include paths and program directory.
+    """
     resolved = file_path.resolve()
-    for root in all_roots:
+    for root in canonical_roots(include_paths, program_dir):
         try:
-            rel = resolved.relative_to(root)
-            parts = list(rel.parts)
-            filename = parts[-1]
-            for ext in (".int.quest", ".mod.quest", ".qi", ".o"):
-                if filename.endswith(ext):
-                    filename = filename[: -len(ext)]
-                    break
-            parts[-1] = filename
-            return "/".join(parts)
+            parts = list(resolved.relative_to(root).parts)
         except ValueError:
             continue
+        parts[-1] = _strip_unit_suffix(parts[-1])
+        return "/".join(parts)
+    return _strip_unit_suffix(resolved.name)
 
-    filename = resolved.name
-    for ext in (".int.quest", ".mod.quest", ".qi", ".o"):
-        if filename.endswith(ext):
-            filename = filename[: -len(ext)]
-            break
-    return filename
+
+def find_canonical_module_source(
+    canon_name: str,
+    include_paths: list[Path],
+    program_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """Finds the module source whose canonical name is canon_name, the inverse of canonicalize_module_path."""
+    relative = f"{canon_name.lower()}.mod.quest"
+    for root in canonical_roots(include_paths, program_dir):
+        candidate = root / relative
+        if candidate.is_file() and canonicalize_module_path(candidate, include_paths, program_dir) == canon_name:
+            return candidate.resolve()
+    return None
 
 
 def canonicalize_interface_name(
     file_path: Optional[Path],
     include_paths: list[Path],
     declared_name: str,
+    program_dir: Optional[Path] = None,
 ) -> str:
     """Computes canonical hierarchical interface name (e.g. 'util/Path')."""
     if file_path is None:
         return declared_name
-    canon_mod = canonicalize_module_path(file_path, include_paths)
+    canon_mod = canonicalize_module_path(file_path, include_paths, program_dir)
     base_name = declared_name.split("/")[-1]
     if "/" in canon_mod:
         parent_dir = str(Path(canon_mod).parent)
@@ -267,11 +297,21 @@ def canonicalize_module_name(
     file_path: Optional[Path],
     include_paths: list[Path],
     raw_name: str,
+    program_dir: Optional[Path] = None,
 ) -> str:
     """Computes canonical hierarchical module name (e.g. 'util/path')."""
     if file_path is None:
         return raw_name
-    return canonicalize_module_path(file_path, include_paths)
+    return canonicalize_module_path(file_path, include_paths, program_dir)
+
+
+def canonical_import_name(mod_path: str, env: Environment) -> str:
+    """Returns the canonical name of the module an import in env's current directory names mod_path.
+
+    Builtin and source-less (precompiled) modules keep the name they are imported by.
+    """
+    src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
+    return canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
 
 
 def load_interface(name: str, env: Environment) -> Scope:
@@ -299,7 +339,7 @@ def load_interface(name: str, env: Environment) -> Scope:
         if int_src is None and file_path and file_path.name.endswith(".int.quest"):
             int_src = file_path
 
-        canon_name = canonicalize_module_path(int_src, env.include_paths) if int_src else name.lower()
+        canon_name = canonicalize_module_path(int_src, env.include_paths, env.program_dir) if int_src else name.lower()
 
         if build_dir is not None:
             out_root = Path(build_dir).resolve()
@@ -314,7 +354,8 @@ def load_interface(name: str, env: Environment) -> Scope:
             out_root = (env.current_dir or Path.cwd()).resolve()
         from quest.interface_compiler import ensure_interface_artifacts
         qi_file, _, canon_name = ensure_interface_artifacts(
-            name, env.current_dir, env.include_paths, out_root, file_path, header=is_c_compilation_mode(env)
+            name, env.current_dir, env.include_paths, out_root, file_path, header=is_c_compilation_mode(env),
+            program_dir=env.program_dir,
         )
 
         if qi_file and qi_file.is_file():
@@ -355,7 +396,7 @@ def load_interface(name: str, env: Environment) -> Scope:
         decl_name = name.split("/")[-1]
         if decl_name != name:
             env.register_interface(decl_name, scope)
-        canon_name = canonicalize_module_path(file_path, env.include_paths)
+        canon_name = canonicalize_module_path(file_path, env.include_paths, env.program_dir)
         if canon_name != name:
             env.register_interface(canon_name, scope)
         return scope
@@ -391,7 +432,7 @@ def load_interface(name: str, env: Environment) -> Scope:
             f"Interface declared in '{file_path.name}' has name '{decl.name}', which does not match file name"
         )
 
-    canon_name = canonicalize_module_path(file_path, env.include_paths)
+    canon_name = canonicalize_module_path(file_path, env.include_paths, env.program_dir)
 
     saved_dir = env.current_dir
     env.current_dir = file_path.parent
@@ -459,7 +500,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         )
 
     file_path = resolve_module_file(name, env.current_dir, env.include_paths)
-    canon_name = canonicalize_module_path(file_path, env.include_paths) if file_path else name
+    canon_name = canonicalize_module_path(file_path, env.include_paths, env.program_dir) if file_path else name
     if canon_name in env.loaded_modules_ast:
         typed_mod = env.loaded_modules_ast[canon_name]
         if name != canon_name:
@@ -598,6 +639,11 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         temp_scope = Scope(parent=env.base_scope, name=f"temp_load_{decl.name}")
         env.current_scope = temp_scope
         typed_mod = elaborate_module(decl, env)
+        # The module is named in C symbols by its canonical name, as importers refer to it. Mangling ignores case,
+        # and a name differing only in case (arrayOp) is kept, as builtin modules are known by it.
+        if typed_mod.name.lower() != canon_name.lower():
+            from dataclasses import replace
+            typed_mod = replace(typed_mod, name=canon_name)
 
         # elaborate_module registers the export scope under the declared name; importers look it up by
         # the path they imported, so register it there too (different directories may reuse a name).
@@ -627,7 +673,7 @@ def load_module_for_interpreter(
         return r_env.evaluated_modules[name]
 
     file_path = resolve_module_file(name, r_env.current_dir, r_env.include_paths)
-    canon_name = canonicalize_module_path(file_path, r_env.include_paths) if file_path else name
+    canon_name = canonicalize_module_path(file_path, r_env.include_paths, r_env.program_dir) if file_path else name
     if canon_name in r_env.evaluated_modules:
         val = r_env.evaluated_modules[canon_name]
         r_env.evaluated_modules[name] = val
@@ -642,6 +688,7 @@ def load_module_for_interpreter(
         type_env = Environment()
         type_env.include_paths = list(r_env.include_paths)
         type_env.current_dir = r_env.current_dir
+        type_env.program_dir = r_env.program_dir
         typed_mod = load_module(name, expected_interface, type_env)
         r_env.loaded_modules_ast[name] = typed_mod
         if canon_name != name:
