@@ -189,6 +189,13 @@ DIVIDE_BY_ZERO_EXC = QExceptionVal("DivideByZero")
 ARRAY_OP_ERROR_EXC = QExceptionVal("arrayOp.error")
 DYNAMIC_ERROR_EXC = QExceptionVal("dynamic.error")
 LIST_ERROR_EXC = QExceptionVal("list.error")
+WRITER_ERROR_EXC = QExceptionVal("writer.error")
+READER_ERROR_EXC = QExceptionVal("reader.error")
+ASCII_ERROR_EXC = QExceptionVal("ascii.error")
+INT_ERROR_EXC = QExceptionVal("int.error")
+REAL_ERROR_EXC = QExceptionVal("real.error")
+STRING_ERROR_EXC = QExceptionVal("string.error")
+SYSTEM_ERROR_EXC = QExceptionVal("system.error")
 
 
 # ============================================================================
@@ -977,10 +984,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             except QuestException as raised_exc:
                 for branch in branches:
                     pattern_val = eval_expr(branch.exc_pattern, env)
-                    if (
-                        raised_exc.exc_val is pattern_val
-                        or raised_exc.exc_val.name == getattr(pattern_val, "name", None)
-                    ):
+                    if raised_exc.exc_val is pattern_val:
                         if branch.binder is not None:
                             child_env = env.push_scope()
                             actual_payload = (
