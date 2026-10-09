@@ -17,6 +17,7 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     QAbstractType,
+    QAllKind,
     QAllType,
     QArrayType,
     QAutoType,
@@ -34,8 +35,11 @@ from quest.types import (
     QRecordType,
     QTupleField,
     QTupleType,
+    QTupleTypeBinding,
+    QTupleTypeFormal,
     QType,
     QTypeApp,
+    QTypeFormal,
     QTypeFun,
     QTypeVar,
     QVarType,
@@ -344,13 +348,142 @@ def _type_to_c_tag_raw(t: QType) -> str:
 
 
 def _type_digest(t: QType) -> str:
-    """A short digest of a type's canonical text, telling apart types that type_to_c_tag conflates."""
+    """A short digest of a type's printed text, telling apart types that type_to_c_tag conflates (see _printed)."""
     t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
-    return _text_digest(str(t))
+    return _printed(t)[1][:16]
 
 
 def _text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+# Digests of types stand for their printed text (str), which is the same in every compilation, but printing
+# shares nothing, so a large recursive type prints as megabytes. A type whose text is at most this long is
+# digested from its text; a longer one from the text of its outermost node with the digests of its parts
+# in place of theirs, computed once per hash-consed node. Either way types that print differently get
+# different digests.
+_PRINTED_TEXT_LIMIT = 1024
+
+
+def _printed_parts(node: Any) -> list[Any]:
+    """The text of str(node) as a list of literal strings and the parts (types, components, kinds) printed
+    in between. It mirrors the __str__ methods in quest.types; a node not listed prints as one string."""
+
+    def joined(items: Any) -> list[Any]:
+        out: list[Any] = []
+        for i, item in enumerate(items):
+            if i:
+                out.append(" ")
+            out.append(item)
+        return out
+
+    def framed(head: str, items: Any) -> list[Any]:
+        return [f"{head} ", *joined(items), " end"] if items else [f"{head} end"]
+
+    if isinstance(node, QExceptionType):
+        return ["Exception"] if node.payload_type is OK_TYPE else ["Exception(", node.payload_type, ")"]
+    if isinstance(node, QTupleField):
+        prefix = "var " if node.is_var else ""
+        return [f"{prefix}{node.name}: " if node.name else f"{prefix}:", node.type_val]
+    if isinstance(node, QTupleTypeFormal):
+        return [f"{node.name}::", node.bound]
+    if isinstance(node, QTupleTypeBinding):
+        bound = ["::", node.bound, " "] if node.bound else []
+        return [f"Let {node.name}", *bound, "= ", node.type_val]
+    if isinstance(node, QTupleType):
+        return framed("Tuple", node.fields)
+    if isinstance(node, QRecordField):
+        return [f"{'var ' if node.is_var else ''}{node.name}: ", node.type_val]
+    if isinstance(node, QRecordType):
+        if node.provenance:
+            return [f"Module '{node.provenance}'"]
+        return framed("Record", node.fields)
+    if isinstance(node, QVariantField):
+        prefix = "var " if node.is_var else ""
+        return [f"{prefix}{node.name}: ", node.type_val] if node.type_val else [f"{prefix}{node.name}"]
+    if isinstance(node, QVariantType):
+        return framed("Variant", node.variants)
+    if isinstance(node, QOptionField):
+        return [f"{node.name} with ", node.payload_type] if node.payload_type else [node.name]
+    if isinstance(node, QOptionType):
+        return framed("Option", node.options)
+    if isinstance(node, QParam):
+        prefix = "var " if node.is_var else ("out " if node.is_out else "")
+        return [f"{prefix}{node.name}: ", node.type_val]
+    if isinstance(node, QFunType):
+        return ["Fun(", *joined(node.params), "): ", node.result_type]
+    if isinstance(node, QVarType):
+        return ["Var(", node.element_type, ")"]
+    if isinstance(node, QArrayType):
+        return ["Array(", node.element_type, ")"]
+    if isinstance(node, QOutType):
+        return ["Out(", node.element_type, ")"]
+    if isinstance(node, QQuantifier):
+        if isinstance(node.bound, QPowerKind):
+            return [f"{node.name} <: ", node.bound.bound]
+        return [f"{node.name} :: ", node.bound]
+    if isinstance(node, QAllType):
+        return ["All(", *joined(node.quantifiers), ") ", node.body]
+    if isinstance(node, QAutoType):
+        if isinstance(node.kind_bound, QPowerKind):
+            head = [f"Auto {node.type_param} <: ", node.kind_bound.bound, " with "]
+        else:
+            head = [f"Auto {node.type_param} :: ", node.kind_bound, " with "]
+        return [*head, *joined(node.signature), " end"]
+    if isinstance(node, QTypeFormal):
+        return [f"{node.name} :: ", node.bound]
+    if isinstance(node, QTypeFun):
+        return ["Fun(", *joined(node.params), ") ", node.body]
+    if isinstance(node, QTypeApp):
+        return [node.constructor, "(", *joined(node.arguments), ")"]
+    if isinstance(node, QRecType):
+        return [f"Rec({node.var_name} :: ", node.bound, ") ", node.body]
+    if isinstance(node, QPowerKind):
+        return ["<: ", node.bound]
+    if isinstance(node, QAllKind):
+        return [f"ALL({node.param_name} :: ", node.param_kind, ") ", node.result_kind]
+    return [str(node)]
+
+
+def _printed_uncached(node: Any) -> tuple[int, str]:
+    length = 0
+    pieces: list[str] = []
+    for part in _printed_parts(node):
+        if isinstance(part, str):
+            length += len(part)
+            pieces.append(part)
+        else:
+            part_length, part_digest = _printed(part)
+            length += part_length
+            pieces.append("\0" + part_digest)
+    if length <= _PRINTED_TEXT_LIMIT:
+        return length, hashlib.sha256(str(node).encode("utf-8")).hexdigest()
+    return length, hashlib.sha256(("\1" + "".join(pieces)).encode("utf-8")).hexdigest()
+
+
+_PRINTED_PARTS: dict[int, tuple[Any, tuple[int, str]]] = {}
+
+
+def _printed(node: Any) -> tuple[int, str]:
+    """The length of str(node) and a digest of that text, for a type, type component, or kind."""
+    if isinstance(node, QType):
+        return lower_type(node).printed
+    if getattr(node, "_has_meta", True):
+        return _printed_uncached(node)
+    entry = _PRINTED_PARTS.get(id(node))
+    if entry is None or entry[0] is not node:
+        entry = (node, _printed_uncached(node))
+        _PRINTED_PARTS[id(node)] = entry
+    return entry[1]
+
+
+def _opaque_name(t: QType) -> str:
+    """The name of an opaque descriptor, by which descriptors are compared: the type as printed, or for a type that
+    prints longer than _PRINTED_TEXT_LIMIT, the start of it followed by the digest of the whole."""
+    length, digest = _printed(t)
+    if length <= _PRINTED_TEXT_LIMIT:
+        return str(t)
+    return f"{descriptor_display_name(t)}#{digest[:16]}"
 
 
 def fun_descriptor_tag(t: QType) -> str:
@@ -639,7 +772,7 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
             return descriptor_form(unfolded, ctx)
         if isinstance(t, QTypeApp):
             # An application of an abstract type operator (list.T(Int)): opaque, compared by name
-            name = str(t)
+            name = _opaque_name(t)
             return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
         raise MissingDescriptorError(f"no runtime type descriptor for the recursive type '{t}'")
     if isinstance(t, QArrayType):
@@ -660,13 +793,13 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
     if isinstance(t, QAutoType):
         canonical = canonical_auto_type(t)
-        return DescriptorForm("auto", tag=f"auto_{_type_digest(canonical)}", type=canonical, name=str(t))
+        return DescriptorForm("auto", tag=f"auto_{_type_digest(canonical)}", type=canonical)
     if isinstance(t, (QVarType, QOutType)):
         # The type of a var or out parameter: described by its element type
         return descriptor_form(t.element_type, ctx)
     if isinstance(t, QTypeFun):
         # A type operator, passed for a higher-kinded type parameter: opaque, compared by name
-        name = str(t)
+        name = _opaque_name(t)
         return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
     raise MissingDescriptorError(f"no runtime type descriptor for type '{t}'")
 
@@ -809,11 +942,11 @@ _UNSET = object()
 class CRepr:
     """The C representation of one type; each part is computed on first use."""
 
-    __slots__ = ("type", "_normalized", "_tag", "_c_type", "_is_word")
+    __slots__ = ("type", "_normalized", "_tag", "_c_type", "_is_word", "_printed")
 
     def __init__(self, t: QType) -> None:
         self.type = t
-        self._normalized = self._tag = self._c_type = self._is_word = _UNSET
+        self._normalized = self._tag = self._c_type = self._is_word = self._printed = _UNSET
 
     @property
     def normalized(self) -> QType:
@@ -838,6 +971,13 @@ class CRepr:
         if self._is_word is _UNSET:
             self._is_word = _is_word_type_raw(self.type)
         return self._is_word
+
+    @property
+    def printed(self) -> tuple[int, str]:
+        """The length of str(type) and a digest of it (see _printed)."""
+        if self._printed is _UNSET:
+            self._printed = _printed_uncached(self.type)
+        return self._printed
 
 
 _LOWERED: dict[int, CRepr] = {}

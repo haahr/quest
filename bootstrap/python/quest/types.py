@@ -275,6 +275,8 @@ class QType(metaclass=_InternedNode):
         """Formats this type into a readable string, utilizing env aliases and bounded recursions."""
         return format_type_compact(self, env=env)
 
+    # The __str__ methods of types, their components, and kinds are mirrored by _printed_parts in
+    # quest/codegen/c_types.py, which digests types without printing them; change both together.
     def __str__(self) -> str:
         return self.__class__.__name__
 
