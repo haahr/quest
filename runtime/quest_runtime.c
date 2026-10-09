@@ -400,14 +400,6 @@ const QTypeDescriptor quest_type_Ok = {
     .extra = NULL
 };
 
-const QTypeDescriptor quest_type_Dynamic = {
-    .kind = QTYPE_KIND_DYNAMIC,
-    .name = "Dynamic",
-    .size = sizeof(void *),
-    .alignment = sizeof(void *),
-    .is_subtype = quest_is_subtype,
-    .extra = NULL
-};
 
 const QTypeDescriptor quest_type_EmptyTuple = {
     .kind = QTYPE_KIND_TUPLE,
@@ -462,7 +454,6 @@ static void quest_init_type_intern_table(void) {
         &quest_type_Char,
         &quest_type_String,
         &quest_type_Ok,
-        &quest_type_Dynamic,
         &quest_type_EmptyTuple,
         NULL
     };
@@ -541,9 +532,36 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
         case QTYPE_KIND_CHAR:
         case QTYPE_KIND_STRING:
         case QTYPE_KIND_OK:
-        case QTYPE_KIND_DYNAMIC:
             result = (sub == super_type);
             break;
+
+        case QTYPE_KIND_AUTO: {
+            /* Cardelli §6.7: a subkind for the type component, then, as for tuples, a prefix of the components with
+             * matching names, covariant immutable and invariant var components */
+            if (sub->kind != QTYPE_KIND_AUTO) { result = false; break; }
+            const QAutoTypeDescriptor *s = (const QAutoTypeDescriptor *)sub->extra;
+            const QAutoTypeDescriptor *t = (const QAutoTypeDescriptor *)super_type->extra;
+            if (s == NULL || t == NULL) { result = (s == t); break; }
+            if (t->bound != NULL && (s->bound == NULL || !quest_is_subtype(s->bound, t->bound))) {
+                result = false;
+                break;
+            }
+            if (s->component_count < t->component_count) { result = false; break; }
+            bool match = true;
+            for (size_t i = 0; i < t->component_count && match; ++i) {
+                const QAutoComponentDescriptor *sc = &s->components[i];
+                const QAutoComponentDescriptor *tc = &t->components[i];
+                if (strcmp(sc->name, tc->name) != 0 || sc->is_var != tc->is_var) {
+                    match = false;
+                } else if (tc->is_var) {
+                    match = quest_is_subtype(sc->type, tc->type) && quest_is_subtype(tc->type, sc->type);
+                } else {
+                    match = quest_is_subtype(sc->type, tc->type);
+                }
+            }
+            result = match;
+            break;
+        }
 
         case QTYPE_KIND_EXCEPTION: {
             /* Invariant payload type */
@@ -1224,34 +1242,20 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     return quest_intern_type_descriptor(desc);
 }
 
-QDynamic *quest_dynamic_new(const QTypeDescriptor *type_desc, QVal val) {
-    QDynamic *d = (QDynamic *)quest_alloc(sizeof(QDynamic));
-    d->type_desc = type_desc;
-    d->payload = val;
-    return d;
+QAuto *quest_auto_new(const QTypeDescriptor *type_desc, QVal payload) {
+    QAuto *a = (QAuto *)quest_alloc(sizeof(QAuto));
+    a->type_desc = type_desc;
+    a->payload = payload;
+    return a;
 }
 
-QVal quest_dynamic_be(const QTypeDescriptor *target_type_desc, const QDynamic *d) {
-    if (d == NULL || d->type_desc == NULL || target_type_desc == NULL) {
-        quest_raise_dynamic_error();
-    }
-    /* Check exact pointer identity */
-    if (d->type_desc == target_type_desc) {
-        return d->payload;
-    }
-    /* Check structural subtyping */
-    if (!quest_is_subtype(d->type_desc, target_type_desc)) {
-        quest_raise_dynamic_error();
-    }
-    /* View the payload at the target type: records, variants, options, tuples, and functions are converted */
-    return quest_convert(d->payload, d->type_desc, target_type_desc);
-}
-
-QDynamic *quest_dynamic_copy(const QDynamic *d) {
+QAuto *quest_dynamic_copy(const QAuto *d) {
     if (d == NULL || d->type_desc == NULL) {
         quest_raise_dynamic_error();
     }
-    return quest_dynamic_new(d->type_desc, d->payload);
+    QVal *component = (QVal *)quest_alloc(sizeof(QVal));
+    *component = *(const QVal *)d->payload.p;
+    return quest_auto_new(d->type_desc, (QVal){ .p = component });
 }
 
 void quest_register_static_type_descriptor(const QTypeDescriptor *desc) {
@@ -1262,7 +1266,6 @@ void quest_register_static_type_descriptor(const QTypeDescriptor *desc) {
 
 const QTypeDescriptor *quest_lookup_type_descriptor_by_name(const char *name) {
     if (name == NULL) return NULL;
-    if (strcmp(name, "Dynamic.T") == 0) return &quest_type_Dynamic;
     quest_init_type_intern_table();
     uint64_t h = quest_hash_string(name) % Q_TYPE_INTERN_TABLE_SIZE;
     for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {

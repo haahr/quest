@@ -78,7 +78,8 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         self.assertEqual(str(CHAR_TYPE), "Char")
         self.assertEqual(str(STRING_TYPE), "String")
         self.assertEqual(str(OK_TYPE), "Ok")
-        self.assertEqual(str(DYNAMIC_TYPE), "Dynamic")
+        # Dynamic is Cardelli's Dynamic_T, the auto type Auto A::TYPE with a:A end (Typeful Programming §9.1)
+        self.assertEqual(str(DYNAMIC_TYPE), "Auto A :: TYPE with a: A end")
         self.assertEqual(str(EXCEPTION_TYPE), "Exception")
         self.assertEqual(str(TYPE_KIND), "TYPE")
 

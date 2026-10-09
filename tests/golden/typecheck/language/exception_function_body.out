@@ -1,0 +1,235 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'wOut' :type Writer.T
+      :value (TypedSelect 'output' :type Writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'printInt' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'wOut' :type Writer.T)
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'x' :type Int)
+                    ))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'wOut' :type Writer.T)
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetValue 'mk' :type Fun(x: Int): Exception(Int)
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Exception(Int)
+        :body (TypedException 'Made' :type Exception(Int))))
+    (TypedLetValue 'm1' :type Exception(Int)
+      :value (TypedApp :type Exception(Int)
+        :func (TypedVar 'mk' :type Fun(x: Int): Exception(Int))
+        :args (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedTry :type Int
+            :body (TypedRaise :type Int
+              :exc (TypedVar 'm1' :type Exception(Int))
+              :payload (TypedInt 5 :type Int))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'm1' :type Exception(Int))
+                :body (TypedVar 'n' :type Int))
+            ))
+        )))
+    (TypedLetValue 'g' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedTry :type Int
+          :body (TypedRaise :type Int
+            :exc (TypedException 'Inline' :type Exception(Int))
+            :payload (TypedVar 'x' :type Int))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'Inline' :type Exception(Int))
+              :body (TypedInfix '+' :type Int
+                :left (TypedVar 'n' :type Int)
+                :right (TypedInt 1 :type Int)))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'g' :type Fun(x: Int): Int)
+            :args (
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedLetValue 'h' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedIf :type Int
+          :cond (TypedInfix '>' :type Bool
+            :left (TypedVar 'x' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedTry :type Int
+            :body (TypedRaise :type Int
+              :exc (TypedException 'Pos' :type Exception(Int))
+              :payload (TypedVar 'x' :type Int))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Pos' :type Exception(Int))
+                :body (TypedInfix '*' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 2 :type Int)))
+            ))
+          :else (TypedInt 0 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'h' :type Fun(x: Int): Int)
+            :args (
+              (TypedInt 8 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'h' :type Fun(x: Int): Int)
+            :args (
+              (TypedInt -8 :type Int)
+            ))
+        )))
+    (TypedLetValue 'k' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'catcher' :type Fun(y: Int): Int
+              :value (TypedFun :params (('y' : Int)) :type Fun(y: Int): Int
+                :body (TypedTry :type Int
+                  :body (TypedRaise :type Int
+                    :exc (TypedException 'Cap' :type Exception(Int))
+                    :payload (TypedVar 'y' :type Int))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedVar 'Cap' :type Exception(Int))
+                      :body (TypedInfix '+' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedVar 'x' :type Int)))
+                  ))))
+          )
+          :result (TypedApp :type Int
+            :func (TypedVar 'catcher' :type Fun(y: Int): Int)
+            :args (
+              (TypedInt 10 :type Int)
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'k' :type Fun(x: Int): Int)
+            :args (
+              (TypedInt 1 :type Int)
+            ))
+        )))
+    (TypedLetValue 'lam' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'e' :type Exception(Int)
+              :value (TypedException 'Outer' :type Exception(Int)))
+            (TypedLetValue 'thrower' :type Fun(y: Int): Int
+              :value (TypedFun :params (('y' : Int)) :type Fun(y: Int): Int
+                :body (TypedIf :type Int
+                  :cond (TypedInfix '>' :type Bool
+                    :left (TypedVar 'y' :type Int)
+                    :right (TypedInt 0 :type Int))
+                  :then (TypedRaise :type Int
+                    :exc (TypedVar 'Outer' :type Exception(Int))
+                    :payload (TypedVar 'y' :type Int))
+                  :else (TypedVar 'y' :type Int))))
+          )
+          :result (TypedTry :type Int
+            :body (TypedApp :type Int
+              :func (TypedVar 'thrower' :type Fun(y: Int): Int)
+              :args (
+                (TypedVar 'x' :type Int)
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'e' :type Exception(Int))
+                :body (TypedInfix '*' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 2 :type Int)))
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'lam' :type Fun(x: Int): Int)
+            :args (
+              (TypedInt 21 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedException 'Shadow' :type Exception(Int)))
+    (TypedLetValue 'sh' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedTry :type Int
+          :body (TypedRaise :type Int
+            :exc (TypedException 'Shadow' :type Exception(Int))
+            :payload (TypedVar 'x' :type Int))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'Shadow' :type Exception(Int))
+              :body (TypedVar 'n' :type Int))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sh' :type Fun(x: Int): Int)
+            :args (
+              (TypedInt 9 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedTry :type Int
+            :body (TypedRaise :type Int
+              :exc (TypedVar 'Shadow' :type Exception(Int))
+              :payload (TypedInt 3 :type Int))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Shadow' :type Exception(Int))
+                :body (TypedInfix '+' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 30 :type Int)))
+            ))
+        )))
+  ))

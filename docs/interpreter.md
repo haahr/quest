@@ -42,7 +42,7 @@ The interpreter consumes the typed AST produced by `typecheck` and produces runt
 │   │                                                                             │   │
 │   │   • QOk, QBool, QInt, QReal, QChar, QString                                 │   │
 │   │   • QRecord (sorted keys), QTuple (positional/named), QArray (mutable)      │   │
-│   │   • QVariant, QOption, QClosure, QBuiltinFun, QRef, QDynamicVal             │   │
+│   │   • QVariant, QOption, QClosure, QBuiltinFun, QRef, QAutoVal (dynamics too) │   │
 │   │   • Cardelli 'is' / 'isnot' (qvalue_is) & deep equality (qvalue_structural) │   │
 │   │   • Canonical string formatting with cycle detection (qvalue_to_str)        │   │
 │   └─────────────────────────────────────────────────────────────────────────────┘   │

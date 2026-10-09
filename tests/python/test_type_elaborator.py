@@ -129,7 +129,7 @@ class TestTypeElaborator(unittest.TestCase):
         """inspect expressions elaborate properly in both synth and check modes."""
         el = TypeElaborator()
         el.env.current_scope.declare_value(ValueSymbol(name="d", type_val=DYNAMIC_TYPE))
-        expr = parse_expr("inspect d when Int with x then x + 1 else 0 end")
+        expr = parse_expr("inspect d when Int with x then x.a + 1 else 0 end")
         typed_synth = el.synth(expr)
         self.assertEqual(typed_synth.type_val, INT_TYPE)
 

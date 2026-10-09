@@ -517,13 +517,15 @@ class TestExceptions(unittest.TestCase):
 
 
 class TestDynamicAndInspect(unittest.TestCase):
-    """Tests for Phase 3.4 Dynamic type boxing and inspect expressions."""
+    """Tests for dynamic values and inspect: a dynamic value is an auto value (Auto A::TYPE with a:A end), so an
+    inspect binder is its component tuple."""
 
     def test_dynamic_packaging_and_inspect(self):
         code = """
+        import dynamic: Dynamic;
         let d = dynamic.new(42);
         let res = inspect d
-            when Int with n then n + 1
+            when Int with n then n.a + 1
             else 0
         end;
         res;
@@ -532,6 +534,7 @@ class TestDynamicAndInspect(unittest.TestCase):
 
     def test_inspect_multiple_branches(self):
         code = """
+        import dynamic: Dynamic;
         let d = dynamic.new("hello");
         let res = inspect d
             when Int with n then 1
@@ -544,6 +547,7 @@ class TestDynamicAndInspect(unittest.TestCase):
 
     def test_inspect_unmatched_raises_dynamic_error(self):
         code = """
+        import dynamic: Dynamic;
         let d = dynamic.new(42);
         inspect d
             when String with s then 1

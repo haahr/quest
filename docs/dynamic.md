@@ -1,7 +1,10 @@
 # Quest Dynamic Types & Serialization (`dynamic.extern` / `dynamic.intern`)
 
 This document specifies the design, runtime representation, and JSON serialization format for Quest dynamic
-types (`Dynamic.T`), implemented in `bootstrap/python/quest/dynamic_json.py` and `bootstrap/python/quest/builtins.py`.
+types (`Dynamic.T`, also named `Dynamic`). The `dynamic` module is an ordinary library module,
+`lib/dynamic.mod.quest`: `new` and `be` are written in Quest, and `copy`, `extern`, and `intern` are runtime
+operations declared `external` (implemented in `bootstrap/python/quest/dynamic_json.py` and
+`bootstrap/python/quest/builtins.py` for the interpreter, and `runtime/quest_serialization.c` for compiled code).
 
 ---
 
@@ -9,26 +12,36 @@ types (`Dynamic.T`), implemented in `bootstrap/python/quest/dynamic_json.py` and
 
 In Cardelli's *Typeful Programming* (§9.1 and Appendix), dynamic types provide a type-sound mechanism for handling
 heterogeneous data, persistence, and run-time metaprogramming. A dynamic value packages an arbitrary runtime value
-together with its static/declared type:
+together with its type. As Cardelli defines it, `Dynamic.T` is the auto type `Auto A::TYPE with a:A end`
+([type-system.md](type-system.md) §6.11), so a dynamic value is an auto value whose one component `a` is the value:
 
 ```quest
 interface Dynamic
+import
+    reader: Reader
+    writer: Writer
 export
-    T :: TYPE
-    new (A :: TYPE a : A) : T
-    be (A :: TYPE d : T) : A
-    copy (d : T) : T
-    extern (wr : Writer.T d : T) : Ok
-    intern (rd : Reader.T) : T
-    error : Exception(Ok)
+    Def T = Auto A::TYPE with a: A end
+    error: Exception
+    new(A::TYPE a: A): T
+    be(A::TYPE d: T): A
+    copy(d: T): T
+    intern(rd: reader.T): T
+    extern(wr: writer.T d: T): Ok
 end;
 ```
 
-- **`dynamic.new(:Type val)`**: Packages `val` and its static type `Type` into a dynamic value `d: Dynamic.T`.
-- **`dynamic.be(:TargetType d)`**: Inspects `d`'s packaged type against `TargetType`.
-  If `is_subtype(d.type, TargetType)` holds, returns the underlying value typed as `TargetType`;
-  otherwise raises `dynamic.error`.
-- **`dynamic.copy(d)`**: Produces a deep copy of `d`, preserving internal sharing and cycles.
+*A discrepancy in Cardelli:* the prose of §9.1 defines `Dynamic_T` as `Auto A::TYPE with a:A end`, but the
+`Dynamic` interface in his appendix writes `Def T = Auto A::TYPE with :A end`, with an unnamed component. An unnamed
+component cannot be selected, which would leave an `inspect` binder no way to reach the value, so Quest follows
+§9.1. The global type name `Dynamic` also denotes this type.
+
+- **`dynamic.new(:Type val)`**: `auto :Type with val end`.
+- **`dynamic.be(:TargetType d)`**: `inspect d when TargetType with x then x.a else raise error as TargetType end
+  end`: the value if `d`'s type component is a subtype of `TargetType`, otherwise `dynamic.error`.
+- **`inspect d when T with x then ... end`**: as for any auto value, `x` is the component tuple, and `x.a` the
+  packaged value.
+- **`dynamic.copy(d)`**: A new dynamic value with the same type component and value (the value itself is shared).
 - **`dynamic.extern(wr, d)`**: Serializes `d` into a stream in a cycle-safe, JSON-compatible representation.
 - **`dynamic.intern(rd)`**: Deserializes a dynamic value from an input stream, reconstructing the object graph,
   resolving cyclic/shared references, and restoring the packaged type for subsequent `dynamic.be` checks.
@@ -118,8 +131,9 @@ order, and nested dynamics' types in the order their values are written. A write
 identical nodes (hash-consed types make that natural), but a reader must not assume the table is minimal or
 that equal types have one index: types are compared structurally, never by index.
 
-**Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples and
-`Auto`), and type operators themselves have binders that this table does not express. `dynamic.extern`
+**Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), auto
+types other than `Dynamic.T` (which is `Auto A::TYPE with a:A end` and is written by its built-in name), and type
+operators themselves have binders that this table does not express. `dynamic.extern`
 raises `dynamic.error` for a type containing one. A later version can add binder nodes.
 
 ### 2.3. Abstract Types
@@ -234,6 +248,16 @@ removed.
 Interface artifacts are written in this format. Their schema is unchanged: signatures stay Quest-syntax strings
 (`typeSig`, `manifestType`), because they are compiler metadata that need type variables and path types. Only
 the envelope changes, which bumps `ABI_VERSION`.
+
+### 3.5. The Current Implementation
+
+Until version 1 lands, both backends write and read the unversioned predecessor: `{"@type": "<printed type>",
+"@value": value}`, nesting the same envelope for each nested dynamic value. A dynamic value is an auto value whose
+one component is the value (in C, a `QAuto` whose payload points to that component, stored as a `QVal`), and
+serialization supports auto values with one component. The interpreter reads `@type` with the Quest parser
+(`parse_type_string`); the C runtime looks it up among the program's registered descriptors or parses it with its
+own type parser (`quest_parse_type_descriptor`), which reads auto types such as `Auto A :: TYPE with a: A end`,
+laying out their components as the compiler stores them.
 
 ---
 

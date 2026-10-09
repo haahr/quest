@@ -11,7 +11,7 @@ from quest.runtime import (
     QBuiltinFun,
     QChar,
     QClosure,
-    QDynamicVal,
+    QAutoVal,
     QExceptionVal,
     QInt,
     QOk,
@@ -219,12 +219,13 @@ class TestRuntimeRef(unittest.TestCase):
 
 
 class TestRuntimeDynamicAndException(unittest.TestCase):
-    """Tests for Dynamic envelopes and Exception values."""
+    """Tests for auto values (including dynamic values) and Exception values."""
 
-    def test_dynamic(self):
-        dyn = QDynamicVal(QInt(42), "Int")
-        self.assertEqual(dyn.type_name, "Dynamic")
-        self.assertEqual(qvalue_to_str(dyn), "dynamic(42 : Int)")
+    def test_auto_value(self):
+        dyn = QAutoVal(QTuple((QInt(42),), labels=("a",)), "Int")
+        self.assertEqual(dyn.type_name, "Auto")
+        self.assertTrue(qvalue_to_str(dyn).startswith("auto("))
+        self.assertTrue(qvalue_to_str(dyn).endswith(" : Int)"))
 
     def test_exception(self):
         exc_bare = QExceptionVal("NotFound")

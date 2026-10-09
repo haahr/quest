@@ -920,39 +920,42 @@ if (setjmp(q_handler.env_jmp) == 0) {
 
 ---
 
-## 8. Dynamic Type Envelopes (`QDynamic`)
+## 8. Auto Values and Dynamic Values (`QAuto`)
 
-The `Dynamic` type encapsulates a value and its runtime type representation:
+An auto value, including a dynamic value (`Dynamic.T` is `Auto A::TYPE with a:A end`, see
+[dynamic.md](dynamic.md)), is a pointer to its type component's descriptor and its components:
 ```c
-typedef struct QDynamic {
-    const QTypeDescriptor *type_desc;
-    QVal                   payload;
-} QDynamic;
-
-static_assert(sizeof(QDynamic) == 16, qdynamic_must_be_16_bytes);
-- `dynamic.new(:A x)` compiles via standard `TypedNativeBinding` to
-  `quest_dynamic_new(descriptor_A, _qval_wrap(x, A))`.
-- `dynamic.be(:A d)` compiles via standard `TypedNativeBinding` to
-  `_qval_unwrap(quest_dynamic_be(descriptor_A, d), A)` and checks `is_subtype(d->type_desc, descriptor_A)`,
-  raising `dynamic.error` on mismatch.
-- `dynamic.copy(d)` compiles via standard `TypedNativeBinding` to `quest_dynamic_copy(d)`.
-- `dynamic.extern(w d)` compiles via standard `TypedNativeBinding` to `quest_dynamic_extern(w, d)`.
-- `dynamic.intern(r)` compiles via standard `TypedNativeBinding` to `quest_dynamic_intern(r)`.
-- `dynamic.error` lowers to `(&quest_exc_dynamic_error)`.
+typedef struct QAuto {
+    const QTypeDescriptor *type_desc;  /* the type component */
+    QVal                   payload;    /* .p: the components, in the stored layout (§8.1) */
+} QAuto;
+```
+- `dynamic.new` and `dynamic.be` are Quest code in `lib/dynamic.mod.quest` (`auto :A with a end` and an `inspect`
+  at `A`), compiled like any other library module; inside them `A`'s descriptor is the one passed for the type
+  parameter.
+- `dynamic.copy`, `dynamic.extern`, and `dynamic.intern` are declared `external` in the module and implemented by
+  `quest_dynamic_copy`, `quest_dynamic_extern`, and `quest_dynamic_intern`, which rely on `Dynamic.T`'s stored layout:
+  one component, a `QVal`.
+- `dynamic.error` is `(&quest_exc_dynamic_error)`, which `inspect` also raises when no branch matches.
 
 ### 8.1. Auto Values
 
-An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) is also a `QDynamic *`: `type_desc` is
-the descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
+An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) is a `QAuto *`: `type_desc` is the
+descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
 stored in a layout that does not depend on the type component, that of `Tuple S end` with `A` an abstract type of
 kind `K` (`auto_payload_type(auto_t)`). As for any abstract type, a component of type `A` is a `QVal`, or the
 representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a `QRecordVal`); components
 of other types that mention `A`, such as `show(:A):String`, take the generic form too (here a closure taking a
-`QVal`). Auto types have opaque descriptors `quest_type_Auto_<tag>`, where the tag is that of the stored layout.
+`QVal`). Auto types have descriptors of kind `QTYPE_KIND_AUTO` (`QAutoTypeDescriptor`): the bound of the type
+parameter, the size of the stored payload, and for each component its name, its type (the type parameter is
+`quest_type_bound_vars[0]`, so equal auto types have equal descriptors), its offset in the payload, and its storage
+(a record or variant stored inline, or else 8 bytes that are its `QVal` form). Runtime subtyping of auto types
+follows §6.7: a subtype bound and, as for tuples, a prefix of the components with matching names. Serialization
+supports auto values with one component.
 
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
   with the static tuple coercion (`_coerce_tuple_val`: boxing to `QVal`, closure adapters), and calls
-  `quest_dynamic_new(descriptor_T, payload)`.
+  `quest_auto_new(descriptor_T, payload)`.
 - **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. When every stored component has
   the representation of the corresponding `S[T/A]` component, or is a `QVal` holding a scalar or pointer of that
   type, the binder is the stored struct itself, cast to the `Tuple S[T/A] end` struct, so updates of `var`
@@ -962,8 +965,8 @@ of other types that mention `A`, such as `show(:A):String`, take the generic for
   unboxed).
 - **Inspect, subtype match** (signatures where `A` is only the whole type of immutable components): a branch tests
   `quest_is_subtype(d->type_desc, descriptor_T)`; the binder is a fresh `Tuple S[T/A] end` struct whose `A`
-  components are converted from the type component to `T` with `quest_dynamic_be` (record and variant adaptation,
-  as for `dynamic.be`) and whose other components are copied.
+  components are converted from the type component to `T` with `quest_convert` (record views, variant tag maps,
+  function adapters) and whose other components are copied.
 - **No match:** without an `else` branch, `quest_raise_dynamic_error()`.
 - **Auto subtyping:** converting `Auto A::K1 with S1 end` to `Auto B::K2 with S2 end` re-stores the payload with
   `_coerce_tuple_val` from the `S1` layout to the `S2` layout, keeping the type descriptor, when the two stored

@@ -325,12 +325,6 @@ class QOkType(QType):
 
 
 @dataclass(frozen=True)
-class QDynamicType(QType):
-    def __str__(self) -> str:
-        return "Dynamic"
-
-
-@dataclass(frozen=True)
 class QBottomType(QType):
     """Internal bottom type: subtype of all types, used for divergent expressions like raise."""
     def __str__(self) -> str:
@@ -375,14 +369,13 @@ BOOL_TYPE = QBoolType()
 CHAR_TYPE = QCharType()
 STRING_TYPE = QStringType()
 OK_TYPE = QOkType()
-DYNAMIC_TYPE = QDynamicType()
 BOTTOM_TYPE = QBottomType()
 EXCEPTION_TYPE = QExceptionType()
 
 # The names under which the environment declares the primitive types (Environment._init_builtins).
 _BUILTIN_PRIMITIVE_NAMES: dict[str, QType] = {
     "Int": INT_TYPE, "Real": REAL_TYPE, "Bool": BOOL_TYPE, "Char": CHAR_TYPE, "String": STRING_TYPE,
-    "Ok": OK_TYPE, "Dynamic": DYNAMIC_TYPE, "Exception": EXCEPTION_TYPE,
+    "Ok": OK_TYPE, "Exception": EXCEPTION_TYPE,
 }
 
 
@@ -1218,6 +1211,19 @@ def unalias(t: QType) -> QType:
     return t
 
 
+# Cardelli's Dynamic_T (Typeful Programming §9.1): a value of any type packaged with its type, the auto type
+# Auto A::TYPE with a:A end. (His appendix writes the component unnamed, Auto A::TYPE with :A end, but an unnamed
+# component cannot be selected, so this follows §9.1.) The global type name Dynamic denotes it, as does the
+# dynamic module's T. Its type parameter has a reserved symbol id.
+_DYNAMIC_PARAM_ID = -(1 << 42)
+DYNAMIC_TYPE = QAutoType(
+    type_param="A",
+    symbol_id=_DYNAMIC_PARAM_ID,
+    kind_bound=TYPE_KIND,
+    signature=(QRecordField(name="a", type_val=QTypeVar(name="A", symbol_id=_DYNAMIC_PARAM_ID, bound=TYPE_KIND)),),
+)
+
+
 # strip_aliases results for canonical nodes, which are immutable: (node, result) by id(node).
 _STRIPPED: dict[int, tuple[Any, Any]] = {}
 
@@ -1692,7 +1698,7 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
     ):
         return True
     if (
-        isinstance(sub_lazy, (QIntType, QRealType, QBoolType, QCharType, QStringType, QOkType, QDynamicType))
+        isinstance(sub_lazy, (QIntType, QRealType, QBoolType, QCharType, QStringType, QOkType))
         and type(sub_lazy) is type(sup_lazy)
     ):
         return True
@@ -2150,7 +2156,6 @@ def is_type_contractive(
             | QIntType()
             | QRealType()
             | QExceptionType()
-            | QDynamicType()
             | QBottomType()
         ):
             return True
@@ -2238,7 +2243,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
     """Synthesizes the kind of type_val; recursive checks go through the memoizing synth_kind."""
     match type_val:
         case (QIntType() | QRealType() | QBoolType() | QCharType() | QStringType()
-              | QOkType() | QDynamicType() | QExceptionType() | QExternalType()):
+              | QOkType() | QExceptionType() | QExternalType()):
             return TYPE_KIND
 
         case QTupleType(fields=fields):
@@ -2450,7 +2455,7 @@ def qtype_dump(item: Union[QType, QKind], indent: int = 0) -> str:
     pad = "  " * indent
     match item:
         case (QIntType() | QRealType() | QBoolType() | QCharType() | QStringType()
-              | QOkType() | QDynamicType() | QExceptionType() | QTypeKind()):
+              | QOkType() | QExceptionType() | QTypeKind()):
             return f"({item.__class__.__name__})"
 
         case QPowerKind(bound=bound):

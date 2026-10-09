@@ -474,17 +474,20 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   *Typeful Programming* §4.3).
 
 ### 6.10. Dynamic Typing and Narrowing (`dynamic: Dynamic`)
-Dynamic values package a runtime value together with its static type:
-- **Creation (`dynamic.new`):**
-  - Explicit: `dynamic.new(:Type val)` packages `val` into `Dynamic.T` (erased `QDynamicType`) paired with `Type`.
-  - Inferred: `dynamic.new(val)` infers the static type of `val` and packages it into `Dynamic.T`.
+Dynamic values package a runtime value together with its type. Following Cardelli (*Typeful Programming* §9.1),
+`Dynamic.T` is the auto type `Auto A::TYPE with a:A end` (§6.11), which the predefined type name `Dynamic` also
+denotes (`DYNAMIC_TYPE`), and the `dynamic` module is an ordinary library module, `lib/dynamic.mod.quest`, that must
+be imported (see [dynamic.md](dynamic.md), which also notes a discrepancy in Cardelli's appendix about the component's
+name):
+- **Creation (`dynamic.new`):** `new(A::TYPE a:A): T = auto :A with a end`.
+  - Explicit: `dynamic.new(:Type val)`; inferred: `dynamic.new(val)` packages `val` at its static type.
   - Legacy bare `dynamic(x)` function syntax is not supported.
-- **Narrowing (`dynamic.be`):**
-  - `dynamic.be(:TargetType d)` dynamically validates that the dynamic value `d`'s stored type is a subtype of
-    `TargetType`. On success, it returns the unwrapped value statically typed as `TargetType`. On mismatch, it
-    raises the language exception `dynamic.error`.
-- **Dynamic Inspection:**
-  - `inspect d when T1 with v then e1 else e2 end` tests membership against branches dynamically.
+- **Narrowing (`dynamic.be`):** `be(A::TYPE d:T): A = inspect d when A with x then x.a else raise error as A end
+  end`: the value, if `d`'s type component is a subtype of `TargetType`, and otherwise `dynamic.error`.
+- **Dynamic Inspection:** `inspect d when T1 with v then e1 else e2 end` is an inspect on an auto value: `v` is the
+  component tuple, so `v.a` is the packaged value.
+- **Runtime operations:** `copy`, `extern`, and `intern` are declared `external` in the module; the interpreter
+  implements them in Python (`builtins.py`, `dynamic_json.py`) and compiled code in the C runtime.
 - **Types at run time:** The run-time test uses the static subtyping rules, including function subtyping. Two kinds
   of type are restricted:
   - An abstract type of a package value (`t.A`) cannot be the type of a dynamic value (`dynamic.new`, `dynamic.be`,
@@ -525,13 +528,22 @@ end
   checked as a tuple against `Tuple S[T/A] end`. A named type component (`auto let A<:Car = :Car with ... end`) is a
   transparent alias for `T` inside the binding, and `T` must also have its declared kind. The result is a
   `TypedAuto`.
-- **Closed types:** the type component of an auto value and the type of every `when` clause of an `inspect` on an
-  auto value must be *closed*: they may not mention a type parameter of an enclosing polymorphic function (the
-  typechecker records these in `_type_param_ids`) or an abstract type projected from a package value (`t.A`, a
-  `QPathType`). Types exported abstractly by modules, such as `writer.T`, are closed: they denote the same type
-  throughout a program. *Possible extension:* the C backend already passes runtime descriptors for type parameters
-  (§6.10.1), so `auto :A with ... end` inside `fun(A::TYPE ...)` could be supported there; the interpreter would
-  need run-time type arguments to match.
+- **Closed types, relaxed:** Cardelli requires the type component of an auto value and the types of `inspect`'s
+  `when` clauses to be closed. Here such a type may be a type parameter of an enclosing polymorphic function by
+  itself (`let box(A::TYPE x:A):Boxed = auto :A with x end`, `inspect b when A with x then ...`): it stands for the
+  type argument of the current call, which both backends know at run time (the C backend passes descriptors for
+  type parameters, §6.10.1; the interpreter binds run-time type arguments, below). Not allowed are an abstract type
+  projected from a package value (`t.A`, a `QPathType`), which has no run-time identity, and, for now, a larger type
+  that mentions a type parameter (`Tuple x: A end`): inside generic code its values are laid out generically (an
+  `A` component is a boxed `QVal`), unlike the same type at a particular `A`, and converting between the two at run
+  time, closures included, is not implemented. Types exported abstractly by modules, such as `writer.T`, are fine:
+  they denote the same type throughout a program.
+- **Run-time type arguments (interpreter):** a closure records the symbol ids of its type parameters
+  (`TypedFun.type_param_ids`); a type application returns the closure with them bound to its type arguments, which
+  are first resolved through the bindings in scope (so generic code can pass its own type parameters on); a call
+  binds them in the call's environment; and the operations that use types at run time (an auto value's type
+  component, `inspect` branch types, and the type arguments of `dynamic.new` and `dynamic.be`) substitute the
+  bindings in scope.
 - **Subtyping (§6.7, `_prove_subtype_step`):** `Auto A::K1 with S1 end <: Auto B::K2 with S2 end` when `K1` is a
   subkind of `K2` and `S1` matches `S2[A/B]` as tuple signatures do (§4.2): a prefix, with the same component names
   in the same order, covariant immutable components, and invariant `var` components. Thus
@@ -548,13 +560,8 @@ end
   `Car`, a branch `when Object` would let `f` be applied to an `Object` that is not a `Car`. A typed branch is
   marked `exact` in the typed AST when it matches by equality.
 
-**Relationship with `Dynamic`.** Cardelli defines `Dynamic_T` as `Auto A::TYPE with a:A end`, and both
-representations are alike in this implementation (a `QDynamic`, see [c-representation.md](c-representation.md) §8.1), but
-`Dynamic` remains a separate built-in: `inspect` on a `Dynamic` binds the contained value itself rather than a
-one-component tuple, and `dynamic.new(A::TYPE a:A)` packages a type *parameter*, which the closedness restriction
-forbids for auto values. `Dynamic.T` could become a library alias for `Auto A::TYPE with a:A end` once auto values
-may have type parameters as their type component (the extension above); `new`, `be`, and the `inspect` binder would
-then be written in terms of auto values (`be(:A d)` is `inspect d when A with x then x.a end`).
+**Relationship with `Dynamic`.** As Cardelli defines it, `Dynamic_T` is `Auto A::TYPE with a:A end`, and so it is
+here: dynamic values are auto values, and the `dynamic` module is written with `auto` and `inspect` (§6.10).
 
 ### 6.12. List Module and Type Operator (`list: List`)
 The `list` module provides functional, immutable linked lists conforming to interface `List`:

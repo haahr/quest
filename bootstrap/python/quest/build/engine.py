@@ -40,9 +40,6 @@ from quest.tokenizer import Tokenizer
 from quest.tokens import SourceMap
 from quest.typechecker import TypeElaborator
 
-# Modules implemented by the native runtime, mapped to the interface each implements (§4.4).
-RUNTIME_BUILTIN_INTERFACES = {"dynamic": "Dynamic"}
-RUNTIME_BUILTINS = set(RUNTIME_BUILTIN_INTERFACES)
 
 
 class BuildError(Exception):
@@ -124,7 +121,7 @@ def unit_module_refs(
 
     if analysis is not None:
         for mod in analysis.sorted_modules:
-            if not getattr(mod, "is_precompiled", False) or mod.name.lower() in RUNTIME_BUILTINS:
+            if not getattr(mod, "is_precompiled", False):
                 continue
             mod_src = resolve_module_file(mod.name, current_dir, include_paths)
             canon_mod = canonicalize_module_name(mod_src, include_paths, mod.name)
@@ -392,15 +389,6 @@ class BuildEngine:
             if stem_name not in (mod_name, norm_name):
                 expected_interfaces.setdefault(stem_name, []).append((importer, expected_iface))
 
-            if norm_name in RUNTIME_BUILTINS:
-                builtin_iface = RUNTIME_BUILTIN_INTERFACES[norm_name]
-                if not interfaces_conform(builtin_iface, expected_iface):
-                    raise BuildError(
-                        f"Type error: '{importer}' imports module '{mod_name}' as interface "
-                        f"'{expected_iface}', but builtin module '{mod_name}' implements interface '{builtin_iface}'"
-                    )
-                return
-
             existing = (
                 module_manifests.get(mod_name)
                 or module_manifests.get(norm_name)
@@ -439,8 +427,6 @@ class BuildEngine:
             for dep in imported_mods:
                 _record_expected_interface(item_name, dep.name, dep.interface)
                 norm_dep = dep.name.lower()
-                if norm_dep in RUNTIME_BUILTINS:
-                    continue
                 if dep.name not in discovered_modules and norm_dep not in discovered_modules:
                     discovered_modules.add(dep.name)
                     discovered_modules.add(norm_dep)
@@ -553,15 +539,6 @@ class BuildEngine:
 
         # Verify all expected interface constraints across the transitive closure
         for mod_name, reqs in expected_interfaces.items():
-            if mod_name in RUNTIME_BUILTINS:
-                builtin_iface = RUNTIME_BUILTIN_INTERFACES[mod_name]
-                for importer_name, exp_iface in reqs:
-                    if not interfaces_conform(builtin_iface, exp_iface):
-                        raise BuildError(
-                            f"Type error: '{importer_name}' imports module '{mod_name}' as interface "
-                            f"'{exp_iface}', but builtin module '{mod_name}' implements interface '{builtin_iface}'"
-                        )
-                continue
             manifest = module_manifests.get(mod_name)
             if manifest and manifest.interface:
                 for importer_name, exp_iface in reqs:
