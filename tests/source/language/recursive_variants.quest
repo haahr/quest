@@ -1,0 +1,58 @@
+(* Language: Recursive Variant Types in C *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+Let Rec Expr::TYPE = Variant num: Int add: Tuple l: Expr r: Expr end end;
+
+(* 1. Variant values at a recursive variant type, and recursion over them *)
+let one: Expr = variant num of Expr with 1 end;
+let two: Expr = variant add of Expr with tuple let l = one let r = one end end;
+let e: Expr = variant add of Expr with tuple let l = one let r = two end end;
+let rec eval(x: Expr): Int =
+    case x
+        when num with n then n
+        when add with p then eval(p.l) + eval(p.r)
+        else 0
+    end;
+printInt(eval(e));
+
+(* 2. Through a polymorphic function and inside a tuple *)
+let id(A::TYPE x: A): A = x;
+printInt(eval(id(:Expr e)));
+Let Holder = Tuple t: Expr n: Int end;
+let h: Holder = tuple let t = e let n = 7 end;
+printInt(eval(h.t) + h.n);
+
+(* 3. Dynamic values of a recursive variant type, narrowed back and inspected *)
+let back = dynamic.be(:Expr dynamic.new(:Expr e));
+printInt(eval(back));
+printInt(if back?add then 1 else 0 end);
+printInt(eval(back!add.r));
+
+(* 4. A recursive variant type with its cases in another order, and a parameterized one *)
+Let Rec Expr2::TYPE = Variant add: Tuple l: Expr2 r: Expr2 end num: Int end;
+let e2 = dynamic.be(:Expr2 dynamic.new(:Expr e));
+printInt(if e2?add then 1 else 0 end);
+Let RExpr = Fun(A::TYPE) Rec(E::TYPE) Variant num: A add: Tuple l: E r: E end end;
+let re: RExpr(Int) = variant add of RExpr(Int) with
+    tuple let l = variant num of RExpr(Int) with 4 end let r = variant num of RExpr(Int) with 5 end end end;
+printInt(eval(dynamic.be(:Expr dynamic.new(:RExpr(Int) re))));
+
+(* 5. A recursive variant type with a different case name does not match *)
+Let Rec Other::TYPE = Variant num: Int mul: Tuple l: Other r: Other end end;
+let o =
+    try
+        if dynamic.be(:Other dynamic.new(:Expr e))?num then 1 else 0 end
+    when dynamic.error then
+        ~1
+    end;
+printInt(o);

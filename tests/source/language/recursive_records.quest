@@ -1,0 +1,58 @@
+(* Language: Recursive Record Types in C *)
+
+import arrayOp: ArrayOp;
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+Let Rec Node::TYPE = Record v: Int kids: Array(Node) end;
+
+(* 1. Record literals at a recursive record type, and recursion over them *)
+let leaf: Node = record v = 2 kids = array of :Node end end;
+let n1: Node = record v = 1 kids = array of leaf leaf end end;
+let rec sum(n: Node): Int =
+    begin
+        let var s = n.v;
+        for i = 0 upto arrayOp.size(:Node n.kids) - 1 do
+            s := s + sum(n.kids[i])
+        end;
+        s
+    end;
+printInt(sum(n1));
+
+(* 2. Through a polymorphic function and inside a tuple *)
+let id(A::TYPE x: A): A = x;
+printInt(id(:Node leaf).v);
+Let Holder = Tuple t: Node n: Int end;
+let h: Holder = tuple let t = n1 let n = 7 end;
+printInt(sum(h.t) + h.n);
+
+(* 3. Dynamic values of a recursive record type, narrowed back and inspected *)
+let back = dynamic.be(:Node dynamic.new(:Node n1));
+printInt(sum(back));
+printInt(back.kids[1].v);
+
+(* 4. A recursive record type with its fields in another order, and a parameterized one *)
+Let Rec Node2::TYPE = Record kids: Array(Node2) v: Int end;
+printInt(dynamic.be(:Node2 dynamic.new(:Node n1)).kids[0].v);
+Let RNode = Fun(A::TYPE) Rec(N::TYPE) Record v: A kids: Array(N) end;
+let rn: RNode(Int) = record v = 9 kids = array of(1 record v = 3 kids = array of :RNode(Int) end end) end;
+printInt(rn.kids[0].v);
+printInt(sum(dynamic.be(:Node dynamic.new(:RNode(Int) rn))));
+
+(* 5. A recursive record type with a different field name does not match *)
+Let Rec Other::TYPE = Record v: Int others: Array(Other) end;
+let o =
+    try
+        dynamic.be(:Other dynamic.new(:Node n1)).v
+    when dynamic.error then
+        ~1
+    end;
+printInt(o);

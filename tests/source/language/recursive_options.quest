@@ -1,0 +1,56 @@
+(* Language: Recursive Option Types in C *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+
+(* 1. Option values at a recursive option type, and recursion over them *)
+let empty: IntList = option nil of IntList end;
+let l: IntList = option cons of IntList with 1 option cons of IntList with 2 empty end end;
+let rec sum(x: IntList): Int =
+    case x
+        when cons with c then c.head + sum(c.tail)
+        else 0
+    end;
+printInt(sum(l));
+
+(* 2. Through a polymorphic function and inside a tuple *)
+let id(A::TYPE x: A): A = x;
+printInt(sum(id(:IntList l)));
+Let Holder = Tuple t: IntList n: Int end;
+let h: Holder = tuple let t = l let n = 7 end;
+printInt(sum(h.t) + h.n);
+
+(* 3. Extracting payloads, whose recursive fields are stored as QVal in C *)
+printInt(l!cons.tail!cons.head);
+printInt(if l!cons.tail!cons.tail?nil then 1 else 0 end);
+
+(* 4. Dynamic values of a recursive option type, narrowed back and inspected *)
+let back = dynamic.be(:IntList dynamic.new(:IntList l));
+printInt(sum(back));
+printInt(back!cons.tail!cons.head);
+
+(* 5. A parameterized recursive option type, the same type as IntList at Int *)
+Let List = Fun(A::TYPE) Rec(L::TYPE) Option nil cons with head: A tail: L end end;
+let pl: List(Int) = option cons of List(Int) with 5 option nil of List(Int) end end;
+printInt(pl!cons.head);
+printInt(sum(dynamic.be(:IntList dynamic.new(:List(Int) pl))));
+
+(* 6. A recursive option type with a different option name does not match *)
+Let Rec Other::TYPE = Option nil link with head: Int tail: Other end end;
+let o =
+    try
+        if dynamic.be(:Other dynamic.new(:IntList l))?nil then 1 else 0 end
+    when dynamic.error then
+        ~1
+    end;
+printInt(o);

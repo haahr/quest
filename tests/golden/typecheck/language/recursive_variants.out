@@ -1,0 +1,268 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'wOut' :type Writer.T
+      :value (TypedSelect 'output' :type Writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'printInt' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'wOut' :type Writer.T)
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'x' :type Int)
+                    ))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'wOut' :type Writer.T)
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetType 'Expr' :kind TYPE)
+    (TypedLetValue 'one' :type Expr
+      :value (TypedVariant 'num' :type Expr
+        :payload (TypedInt 1 :type Int)))
+    (TypedLetValue 'two' :type Expr
+      :value (TypedVariant 'add' :type Expr
+        :payload (TypedTuple :type Tuple l: Expr r: Expr end
+          :elements (
+            (TypedVar 'one' :type Expr)
+            (TypedVar 'one' :type Expr)
+          ))))
+    (TypedLetValue 'e' :type Expr
+      :value (TypedVariant 'add' :type Expr
+        :payload (TypedTuple :type Tuple l: Expr r: Expr end
+          :elements (
+            (TypedVar 'one' :type Expr)
+            (TypedVar 'two' :type Expr)
+          ))))
+    (TypedLetValue 'eval' :rec :type Fun(x: Expr): Int
+      :value (TypedFun :params (('x' : Expr)) :type Fun(x: Expr): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'x' :type Expr)
+          :branches (
+            (TypedCaseBranch tags=(num) :binder 'n'
+              :body (TypedVar 'n' :type Int))
+            (TypedCaseBranch tags=(add) :binder 'p'
+              :body (TypedInfix '+' :type Int
+                :left (TypedApp :type Int
+                  :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+                  :args (
+                    (TypedSelect 'l' :type Expr
+                      :target (TypedVar 'p' :type Tuple l: Expr r: Expr end))
+                  ))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+                  :args (
+                    (TypedSelect 'r' :type Expr
+                      :target (TypedVar 'p' :type Tuple l: Expr r: Expr end))
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+            :args (
+              (TypedVar 'e' :type Expr)
+            ))
+        )))
+    (TypedLetValue 'id' :type All(A :: TYPE) Fun(x: A): A
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): A
+        :body (TypedVar 'x' :type A)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+            :args (
+              (TypedApp :type Expr
+                :func (TypedTypeApp [Expr] :type Fun(x: Expr): Expr
+                  :func (TypedVar 'id' :type All(A :: TYPE) Fun(x: A): A))
+                :args (
+                  (TypedVar 'e' :type Expr)
+                ))
+            ))
+        )))
+    (TypedLetType 'Holder' :kind TYPE)
+    (TypedLetValue 'h' :type Holder
+      :value (TypedTuple :type Tuple t: Expr n: Int end
+        :elements (
+          (TypedVar 'e' :type Expr)
+          (TypedInt 7 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+              :args (
+                (TypedSelect 't' :type Expr
+                  :target (TypedVar 'h' :type Holder))
+              ))
+            :right (TypedSelect 'n' :type Int
+              :target (TypedVar 'h' :type Holder)))
+        )))
+    (TypedLetValue 'back' :type Expr
+      :value (TypedApp :type Expr
+        :func (TypedTypeApp [Expr] :type Fun(d: T): Expr
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Expr] :type Fun(a: Expr): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'e' :type Expr)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+            :args (
+              (TypedVar 'back' :type Expr)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedIf :type Int
+            :cond (TypedVariantCheck 'add' :type Bool
+              :target (TypedVar 'back' :type Expr))
+            :then (TypedInt 1 :type Int)
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+            :args (
+              (TypedSelect 'r' :type Expr
+                :target (TypedVariantAssert 'add' :type Tuple l: Expr r: Expr end
+                  :target (TypedVar 'back' :type Expr)))
+            ))
+        )))
+    (TypedLetType 'Expr2' :kind TYPE)
+    (TypedLetValue 'e2' :type Expr2
+      :value (TypedApp :type Expr2
+        :func (TypedTypeApp [Expr2] :type Fun(d: T): Expr2
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Expr] :type Fun(a: Expr): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'e' :type Expr)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedIf :type Int
+            :cond (TypedVariantCheck 'add' :type Bool
+              :target (TypedVar 'e2' :type Expr2))
+            :then (TypedInt 1 :type Int)
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetType 'RExpr' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 're' :type RExpr(Int)
+      :value (TypedVariant 'add' :type RExpr(Int)
+        :payload (TypedTuple :type Tuple l: Rec(E :: TYPE) Variant num: Int add: Tuple l: E r: E end end r: Rec(E :: TYPE) Variant num: Int add: Tuple l: E r: E end end end
+          :elements (
+            (TypedVariant 'num' :type RExpr(Int)
+              :payload (TypedInt 4 :type Int))
+            (TypedVariant 'num' :type RExpr(Int)
+              :payload (TypedInt 5 :type Int))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(x: Expr): Int)
+            :args (
+              (TypedApp :type Expr
+                :func (TypedTypeApp [Expr] :type Fun(d: T): Expr
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [RExpr(Int)] :type Fun(a: RExpr(Int)): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 're' :type RExpr(Int))
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetType 'Other' :kind TYPE)
+    (TypedLetValue 'o' :type Int
+      :value (TypedTry :type Int
+        :body (TypedIf :type Int
+          :cond (TypedVariantCheck 'num' :type Bool
+            :target (TypedApp :type Other
+              :func (TypedTypeApp [Other] :type Fun(d: T): Other
+                :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                  :target (TypedVar 'dynamic' :type Module 'dynamic')))
+              :args (
+                (TypedApp :type T
+                  :func (TypedTypeApp [Expr] :type Fun(a: Expr): T
+                    :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                      :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                  :args (
+                    (TypedVar 'e' :type Expr)
+                  ))
+              )))
+          :then (TypedInt 1 :type Int)
+          :else (TypedInt 0 :type Int))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :body (TypedInt -1 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedVar 'o' :type Int)
+        )))
+  ))

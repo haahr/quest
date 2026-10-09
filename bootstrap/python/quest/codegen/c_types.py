@@ -159,10 +159,12 @@ def _beta_reduce_head(t: QType) -> QType:
     return t
 
 
-def _unfold_recursive_tuple(t: QType) -> Optional[QTupleType]:
-    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a tuple type.
+def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
+    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a tuple, record, or
+    variant type.
 
-    Values of a recursive tuple type are represented like values of its unfolding: a pointer to the tuple's struct.
+    Values of such a recursive type are represented like values of its unfolding (a tuple's values by a pointer to
+    its struct, for example), so recursive occurrences inside the unfolding have that representation too.
     """
     if isinstance(t, QTypeApp):
         t = _beta_reduce_head(t)
@@ -173,17 +175,20 @@ def _unfold_recursive_tuple(t: QType) -> Optional[QTupleType]:
         t = t.prune() if hasattr(t, "prune") else t
         if isinstance(t, QTypeApp):
             t = _beta_reduce_head(t)
-    return t if isinstance(t, QTupleType) else None
+    return t if isinstance(t, (QTupleType, QRecordType, QVariantType)) else None
 
 
 def _normalize_type_raw(t: QType) -> QType:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     if isinstance(t, (QRecType, QRecGroupType)):
-        unfolded = _unfold_recursive_tuple(t)
+        unfolded = _unfold_recursive_aggregate(t)
         if unfolded is not None:
             return unfolded
     if isinstance(t, QTypeApp):
+        unfolded = _unfold_recursive_aggregate(t)
+        if unfolded is not None:
+            return unfolded
         reduced = _beta_reduce_head(t)
         if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
             return reduced
@@ -250,12 +255,12 @@ def _rec_self_level(t: QType) -> Optional[int]:
     return None
 
 
-def _recursive_tuple_tag(t: QType) -> Optional[str]:
-    """Returns the tag of a recursive type whose unfolding is a tuple type, or None for any other type.
+def _recursive_aggregate_tag(t: QType) -> Optional[str]:
+    """Returns the tag of a recursive type whose unfolding is a tuple, record, or variant type, or None otherwise.
 
     The tag names the recursive type itself rather than its unfolding, whose tag would contain the tag being defined.
     """
-    if _unfold_recursive_tuple(t) is None:
+    if _unfold_recursive_aggregate(t) is None:
         return None
     if isinstance(t, QTypeApp):
         t = _beta_reduce_head(t)
@@ -276,7 +281,7 @@ def _type_to_c_tag_raw(t: QType) -> str:
     t = resolve_type_bound(t)
     if (self_level := _rec_self_level(t)) is not None:
         return f"Self{self_level}"
-    if (rec_tag := _recursive_tuple_tag(t)) is not None:
+    if (rec_tag := _recursive_aggregate_tag(t)) is not None:
         return rec_tag
     t = _normalize_type_raw(t)
     if _is_word_type_raw(t):
@@ -516,10 +521,11 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     if isinstance(t, QOptionType) or (opt_b := resolve_option_bound(t)) is not None:
         opt_t = t if isinstance(t, QOptionType) else opt_b
         described = opt_t
-        if isinstance(t, QRecType):
+        rec_t = _beta_reduce_head(t) if isinstance(t, QTypeApp) else t
+        if isinstance(rec_t, QRecType):
             # resolve_option_bound gives the body with the recursion variable free (which names the C struct);
-            # the descriptor describes the unfolding, whose recursive occurrences refer back to t
-            unfolded = unalias(t.unfold_lazily())
+            # the descriptor describes the unfolding, whose recursive occurrences refer back to the recursive type
+            unfolded = unalias(rec_t.unfold_lazily())
             if isinstance(unfolded, QOptionType):
                 described = unfolded
         return DescriptorForm(

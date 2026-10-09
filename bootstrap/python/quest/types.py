@@ -2619,14 +2619,36 @@ INFIX_OPERATORS: dict[str, tuple[QType, QType, QType]] = {
 }
 
 
+def _unfold_head(t: QType) -> Optional[QType]:
+    """One step of exposing the structure of t: unfolds a recursive type or reduces an application of a type
+    operator, or returns None when t is an application of anything else (such as an abstract type operator)."""
+    if isinstance(t, (QRecType, QRecGroupType)):
+        return t.unfold_lazily()
+    if isinstance(t, QTypeApp):
+        ctor = unalias(t.constructor)
+        if isinstance(ctor, QTypeFun) and len(ctor.params) == len(t.arguments):
+            return ctor.body.substitute({p.symbol_id: arg for p, arg in zip(ctor.params, t.arguments)})
+    return None
+
+
 def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecordType]:
-    """Resolves upper bound for a type variable or path type if bounded by a record type."""
+    """Resolves upper bound for a type variable or path type if bounded by a record type; unfolds recursive types."""
     curr = t
     visited = set()
+    unfolded: list[QType] = []
     while True:
         curr_lazy = curr.evaluate_lazily(env) if env is not None else unalias(curr)
         if isinstance(curr_lazy, QRecordType):
             return curr_lazy
+        if isinstance(curr_lazy, (QRecType, QRecGroupType, QTypeApp)):
+            if any(curr_lazy is seen for seen in unfolded):
+                return None
+            unfolded.append(curr_lazy)
+            step = _unfold_head(curr_lazy)
+            if step is None:
+                return None
+            curr = step
+            continue
         if (
             isinstance(curr_lazy, (QTypeVar, QAbstractType, QPathType))
             and isinstance(curr_lazy.bound, QPowerKind)
@@ -2641,13 +2663,23 @@ def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecor
 
 
 def resolve_variant_bound(t: QType, env: Optional[Any] = None) -> Optional[QVariantType]:
-    """Resolves upper bound for a type variable or path type if bounded by a variant type."""
+    """Resolves upper bound for a type variable or path type if bounded by a variant type; unfolds recursive types."""
     curr = t
     visited = set()
+    unfolded: list[QType] = []
     while True:
         curr_lazy = curr.evaluate_lazily(env) if env is not None else unalias(curr)
         if isinstance(curr_lazy, QVariantType):
             return curr_lazy
+        if isinstance(curr_lazy, (QRecType, QRecGroupType, QTypeApp)):
+            if any(curr_lazy is seen for seen in unfolded):
+                return None
+            unfolded.append(curr_lazy)
+            step = _unfold_head(curr_lazy)
+            if step is None:
+                return None
+            curr = step
+            continue
         if (
             isinstance(curr_lazy, (QTypeVar, QAbstractType, QPathType))
             and isinstance(curr_lazy.bound, QPowerKind)

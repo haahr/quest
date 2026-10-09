@@ -276,6 +276,22 @@ class CEmitter:
     def c_type(self, t: QType) -> str:
         return qtype_to_c_type(t, self.record_ctx)
 
+    def _option_payload_field(self, src: str, stored_payload: Optional[QType], index: int, wanted: QType) -> str:
+        """Converts field `index` of an option's tuple payload, read from `src`, to the C type of `wanted`.
+
+        A recursive option's struct stores its recursive occurrences as QVal (its payload types have the recursion
+        variable free), while the field read through the unfolding has the option's own C type.
+        """
+        if not isinstance(stored_payload, QTupleType) or index >= len(stored_payload.value_fields):
+            return src
+        stored_c = self.c_type(stored_payload.value_fields[index].type_val)
+        wanted_c = self.c_type(wanted)
+        if stored_c == "QVal" and wanted_c != "QVal":
+            return _qval_unwrap(src, wanted, self)
+        if stored_c.endswith("*") and wanted_c.endswith("*") and stored_c != wanted_c:
+            return f"({wanted_c})({src})"
+        return src
+
     def c_type_descriptor(self, t: QType) -> str:
         """Returns the C expression evaluating to `const QTypeDescriptor *` for type `t`.
 
@@ -2492,8 +2508,14 @@ class CEmitter:
                     if opt_field and opt_field.payload_type:
                         pt = normalize_type(opt_field.payload_type)
                         if isinstance(pt, QTupleType):
+                            res_fields = tup_type.value_fields if isinstance(tup_type, QTupleType) else ()
                             for i, f in enumerate(pt.value_fields):
-                                lines.append(f"{res_tmp}->_{i + 1} = {c_tgt}->u.{tag}._{i};")
+                                field_src = f"{c_tgt}->u.{tag}._{i}"
+                                if i + 1 < len(res_fields):
+                                    field_src = self._option_payload_field(
+                                        field_src, pt, i, res_fields[i + 1].type_val
+                                    )
+                                lines.append(f"{res_tmp}->_{i + 1} = {field_src};")
                         elif isinstance(pt, QRecordType):
                             for i, f in enumerate(sorted(pt.fields, key=lambda fld: fld.name)):
                                 lines.append(f"{res_tmp}->_{i + 1} = {c_tgt}->u.{tag}.qf_{f.name};")
@@ -3165,25 +3187,9 @@ class CEmitter:
                                 opt_branch = target_type.get_option(branch.tags[0]) if branch.tags else None
                                 opt_pt = normalize_type(opt_branch.payload_type) if opt_branch else None
                                 for i, f in enumerate(b_type.value_fields):
-                                    field_src = f"{c_tgt}->u.{branch.tags[0]}._{i}"
-                                    opt_f_t = (
-                                        opt_pt.value_fields[i].type_val
-                                        if isinstance(opt_pt, QTupleType) and i < len(opt_pt.value_fields)
-                                        else None
+                                    field_src = self._option_payload_field(
+                                        f"{c_tgt}->u.{branch.tags[0]}._{i}", opt_pt, i, f.type_val
                                     )
-                                    if (
-                                        opt_f_t is not None
-                                        and self.c_type(opt_f_t) == "QVal"
-                                        and self.c_type(f.type_val) != "QVal"
-                                    ):
-                                        field_src = _qval_unwrap(field_src, f.type_val, self)
-                                    elif (
-                                        opt_f_t is not None
-                                        and self.c_type(opt_f_t).endswith("*")
-                                        and self.c_type(f.type_val).endswith("*")
-                                        and self.c_type(opt_f_t) != self.c_type(f.type_val)
-                                    ):
-                                        field_src = f"({self.c_type(f.type_val)})({field_src})"
                                     branch_lines.append(f"{b_name}->_{i} = {field_src};")
                             elif isinstance(b_type, QRecordType):
                                 s_rec = self.record_struct_name(b_type)
