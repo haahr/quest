@@ -1,0 +1,617 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('hashMap') : 'HashMap')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hash') : 'Hash')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('real') : 'RealOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('word') : 'Word')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'wOut' :type Writer.T
+      :value (TypedSelect 'output' :type Writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'printLine' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'wOut' :type Writer.T)
+                  (TypedVar 's' :type String)
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'wOut' :type Writer.T)
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetValue 'printReal' :type Fun(r: Real): Ok
+      :value (TypedFun :params (('r' : Real)) :type Fun(r: Real): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'printLine' :type Fun(s: String): Ok)
+          :args (
+            (TypedApp :type String
+              :func (TypedSelect 'real' :type Fun(r: Real): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'r' :type Real)
+              ))
+          ))))
+    (TypedLetValue 'printInt' :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'printLine' :type Fun(s: String): Ok)
+          :args (
+            (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'n' :type Int)
+              ))
+          ))))
+    (TypedLetValue 'printBool' :type Fun(b: Bool): Ok
+      :value (TypedFun :params (('b' : Bool)) :type Fun(b: Bool): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'printLine' :type Fun(s: String): Ok)
+          :args (
+            (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'b' :type Bool)
+              ))
+          ))))
+    (TypedLetValue 'tryReal' :type Fun(f: Fun(): Real): Ok
+      :value (TypedFun :params (('f' : Fun(): Real)) :type Fun(f: Fun(): Real): Ok
+        :body (TypedTry :type Ok
+          :body (TypedApp :type Ok
+            :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+            :args (
+              (TypedApp :type Real
+                :func (TypedVar 'f' :type Fun(): Real)
+                :args ())
+            ))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'real' :type Module 'real'))
+              :body (TypedApp :type Ok
+                :func (TypedVar 'printLine' :type Fun(s: String): Ok)
+                :args (
+                  (TypedString 'real.error' :type String)
+                )))
+          ))))
+    (TypedLetValue 'tryInt' :type Fun(f: Fun(): Int): Ok
+      :value (TypedFun :params (('f' : Fun(): Int)) :type Fun(f: Fun(): Int): Ok
+        :body (TypedTry :type Ok
+          :body (TypedApp :type Ok
+            :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'f' :type Fun(): Int)
+                :args ())
+            ))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'real' :type Module 'real'))
+              :body (TypedApp :type Ok
+                :func (TypedVar 'printLine' :type Fun(s: String): Ok)
+                :args (
+                  (TypedString 'real.error' :type String)
+                )))
+          ))))
+    (TypedLetValue 'inf' :type Real
+      :value (TypedInfix '**' :type Real
+        :left (TypedReal 1e+300 :type Real)
+        :right (TypedReal 1e+300 :type Real)))
+    (TypedLetValue 'negInf' :type Real
+      :value (TypedInfix '--' :type Real
+        :left (TypedReal 0.0 :type Real)
+        :right (TypedVar 'inf' :type Real)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedVar 'inf' :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedVar 'negInf' :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedReal inf :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix 'is' :type Bool
+            :left (TypedVar 'inf' :type Real)
+            :right (TypedReal inf :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix 'is' :type Bool
+            :left (TypedVar 'inf' :type Real)
+            :right (TypedVar 'inf' :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix '>>' :type Bool
+            :left (TypedVar 'inf' :type Real)
+            :right (TypedSelect 'maxReal' :type Real
+              :target (TypedVar 'real' :type Module 'real')))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix '<<' :type Bool
+            :left (TypedVar 'negInf' :type Real)
+            :right (TypedSelect 'minReal' :type Real
+              :target (TypedVar 'real' :type Module 'real')))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedInfix '//' :type Real
+            :left (TypedReal 1.0 :type Real)
+            :right (TypedVar 'inf' :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedInfix '++' :type Real
+            :left (TypedVar 'inf' :type Real)
+            :right (TypedReal 1.0 :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedInfix '^^' :type Real
+            :left (TypedReal 10.0 :type Real)
+            :right (TypedReal 400.0 :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedInfix '^^' :type Real
+            :left (TypedReal -10.0 :type Real)
+            :right (TypedReal 401.0 :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedApp :type Real
+            :func (TypedSelect 'exp' :type Fun(a: Real b: Real): Real
+              :target (TypedVar 'real' :type Module 'real'))
+            :args (
+              (TypedReal 10.0 :type Real)
+              (TypedReal 400.0 :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedApp :type Real
+            :func (TypedSelect 'log' :type Fun(r: Real): Real
+              :target (TypedVar 'real' :type Module 'real'))
+            :args (
+              (TypedVar 'inf' :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '--' :type Real
+              :left (TypedVar 'inf' :type Real)
+              :right (TypedVar 'inf' :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '++' :type Real
+              :left (TypedVar 'inf' :type Real)
+              :right (TypedVar 'negInf' :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '**' :type Real
+              :left (TypedReal 0.0 :type Real)
+              :right (TypedVar 'inf' :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '//' :type Real
+              :left (TypedVar 'inf' :type Real)
+              :right (TypedVar 'inf' :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '//' :type Real
+              :left (TypedReal 0.0 :type Real)
+              :right (TypedReal 0.0 :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '^^' :type Real
+              :left (TypedReal -8.0 :type Real)
+              :right (TypedReal 0.5 :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedApp :type Real
+              :func (TypedSelect 'div' :type Fun(a: Real b: Real): Real
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedVar 'inf' :type Real)
+                (TypedVar 'negInf' :type Real)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedApp :type Real
+              :func (TypedSelect 'exp' :type Fun(a: Real b: Real): Real
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedReal -8.0 :type Real)
+                (TypedReal 0.5 :type Real)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '//' :type Real
+              :left (TypedReal 1.0 :type Real)
+              :right (TypedReal 0.0 :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedInfix '^^' :type Real
+              :left (TypedReal 0.0 :type Real)
+              :right (TypedReal -1.0 :type Real)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryReal' :type Fun(f: Fun(): Real): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Real
+            :body (TypedApp :type Real
+              :func (TypedSelect 'exp' :type Fun(a: Real b: Real): Real
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedReal 0.0 :type Real)
+                (TypedReal -1.0 :type Real)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryInt' :type Fun(f: Fun(): Int): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedApp :type Int
+              :func (TypedSelect 'floor' :type Fun(r: Real): Int
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedVar 'inf' :type Real)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryInt' :type Fun(f: Fun(): Int): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedApp :type Int
+              :func (TypedSelect 'round' :type Fun(r: Real): Int
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedVar 'negInf' :type Real)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryInt' :type Fun(f: Fun(): Int): Ok)
+        :args (
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedApp :type Int
+              :func (TypedSelect 'floor' :type Fun(r: Real): Int
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedReal 1e+300 :type Real)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedInfix '^^' :type Real
+            :left (TypedReal 0.0 :type Real)
+            :right (TypedReal 0.0 :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'round' :type Fun(r: Real): Int
+              :target (TypedVar 'real' :type Module 'real'))
+            :args (
+              (TypedReal 2.5 :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'round' :type Fun(r: Real): Int
+              :target (TypedVar 'real' :type Module 'real'))
+            :args (
+              (TypedReal -2.5 :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'round' :type Fun(r: Real): Int
+              :target (TypedVar 'real' :type Module 'real'))
+            :args (
+              (TypedReal 0.49999999999999994 :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'floor' :type Fun(r: Real): Int
+              :target (TypedVar 'real' :type Module 'real'))
+            :args (
+              (TypedReal -0.5 :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedApp :type Real
+            :func (TypedSelect 'toReal' :type Fun(w: Word.T): Real
+              :target (TypedVar 'word' :type Module 'word'))
+            :args (
+              (TypedApp :type Word.T
+                :func (TypedSelect 'fromInt' :type Fun(n: Int): Word.T
+                  :target (TypedVar 'word' :type Module 'word'))
+                :args (
+                  (TypedInt 9218868437227405312 :type Int)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printLine' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'real' :type Fun(r: Real): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Real
+                  :func (TypedSelect 'toReal' :type Fun(w: Word.T): Real
+                    :target (TypedVar 'word' :type Module 'word'))
+                  :args (
+                    (TypedApp :type Word.T
+                      :func (TypedSelect 'fromInt' :type Fun(n: Int): Word.T
+                        :target (TypedVar 'word' :type Module 'word'))
+                      :args (
+                        (TypedInt 9221120237041090560 :type Int)
+                      ))
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'word' :type Module 'word'))
+                :body (TypedString 'word.error' :type String))
+            ))
+        )))
+    (TypedLetValue 'negZero' :type Real
+      :value (TypedInfix '**' :type Real
+        :left (TypedReal 0.0 :type Real)
+        :right (TypedReal -1.0 :type Real)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedVar 'negZero' :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printReal' :type Fun(r: Real): Ok)
+        :args (
+          (TypedInfix '--' :type Real
+            :left (TypedReal 0.0 :type Real)
+            :right (TypedReal 0.0 :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix 'is' :type Bool
+            :left (TypedReal 0.0 :type Real)
+            :right (TypedVar 'negZero' :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix 'isnot' :type Bool
+            :left (TypedReal 0.0 :type Real)
+            :right (TypedVar 'negZero' :type Real))
+        )))
+    (TypedLetValue 'same' :type All(A :: TYPE) Fun(x: A y: A): Bool
+      :value (TypedFun :params (('x' : A) ('y' : A)) :type All(A :: TYPE) Fun(x: A y: A): Bool
+        :body (TypedInfix 'is' :type Bool
+          :left (TypedVar 'x' :type A)
+          :right (TypedVar 'y' :type A))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedApp :type Bool
+            :func (TypedTypeApp [Real] :type Fun(x: Real y: Real): Bool
+              :func (TypedVar 'same' :type All(A :: TYPE) Fun(x: A y: A): Bool))
+            :args (
+              (TypedReal 0.0 :type Real)
+              (TypedVar 'negZero' :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedApp :type Bool
+            :func (TypedTypeApp [Real] :type Fun(x1: Real x2: Real): Bool
+              :func (TypedSelect 'identityEqual' :type All(A :: TYPE) Fun(x1: A x2: A): Bool
+                :target (TypedVar 'hash' :type Module 'hash')))
+            :args (
+              (TypedReal 0.0 :type Real)
+              (TypedVar 'negZero' :type Real)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedInfix 'is' :type Bool
+            :left (TypedApp :type word.T
+              :func (TypedTypeApp [Real] :type Fun(x: Real): word.T
+                :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                  :target (TypedVar 'hash' :type Module 'hash')))
+              :args (
+                (TypedReal 0.0 :type Real)
+              ))
+            :right (TypedApp :type word.T
+              :func (TypedTypeApp [Real] :type Fun(x: Real): word.T
+                :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                  :target (TypedVar 'hash' :type Module 'hash')))
+              :args (
+                (TypedVar 'negZero' :type Real)
+              )))
+        )))
+    (TypedLetValue 'm' :type hashMap.T(Real Int)
+      :value (TypedTypeApp [Real Int] :type hashMap.T(Real Int)
+        :func (TypedSelect 'newIdentityMap' :type All(K :: TYPE V :: TYPE) hashMap.T(K V)
+          :target (TypedVar 'hashMap' :type Module 'hashMap'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [Real Int] :type Fun(m: hashMap.T(Real Int) key: Real value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'm' :type hashMap.T(Real Int))
+          (TypedReal 0.0 :type Real)
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [Real Int] :type Fun(m: hashMap.T(Real Int) key: Real value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'm' :type hashMap.T(Real Int))
+          (TypedVar 'negZero' :type Real)
+          (TypedInt 2 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Real Int] :type Fun(m: hashMap.T(Real Int)): Int
+              :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V)): Int
+                :target (TypedVar 'hashMap' :type Module 'hashMap')))
+            :args (
+              (TypedVar 'm' :type hashMap.T(Real Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedApp :type Bool
+            :func (TypedTypeApp [Real Int] :type Fun(m: hashMap.T(Real Int) key: Real): Bool
+              :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): Bool
+                :target (TypedVar 'hashMap' :type Module 'hashMap')))
+            :args (
+              (TypedVar 'm' :type hashMap.T(Real Int))
+              (TypedVar 'negZero' :type Real)
+            ))
+        )))
+  ))

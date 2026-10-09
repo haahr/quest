@@ -34,6 +34,8 @@ from quest.interpreter import (
     WRITER_ERROR_EXC,
     QuestException,
     QuestRuntimeError,
+    real_divide,
+    real_pow,
 )
 from quest.runtime import (
     FALSE_VALUE,
@@ -589,8 +591,11 @@ class BuiltinModuleRegistry:
             if not isinstance(r, QReal):
                 return QString("")
             val = r.value
-            is_neg = val < 0
+            # Quest writes negation as ~, including for negative zero and negative infinity.
+            is_neg = math.copysign(1.0, val) < 0
             abs_val = -val if is_neg else val
+            if math.isinf(abs_val):
+                return QString("~inf" if is_neg else "inf")
             s = str(abs_val)
             if "." not in s and "e" not in s:
                 s += ".0"
@@ -687,27 +692,38 @@ class BuiltinModuleRegistry:
 
         @qchecked(REAL_ERROR_EXC, QReal, QReal)
         def _real_div(a: QReal, b: QReal) -> QReal:
-            if b.value == 0.0:
-                raise QuestException(REAL_ERROR_EXC)
-            return QReal(a.value / b.value)
+            return QReal(real_divide(a.value, b.value))
 
         @qchecked(REAL_ERROR_EXC, QReal, QReal)
         def _real_exp(a: QReal, b: QReal) -> QReal:
-            try:
-                return QReal(math.pow(a.value, b.value))
-            except (ValueError, OverflowError):
-                raise QuestException(REAL_ERROR_EXC)
+            return QReal(real_pow(a.value, b.value))
 
         real_b.def_fn(
             "int", [("n", INT_TYPE)], REAL_TYPE, lambda n: QReal(float(n.value)),
             inline_template="((double)({0}))",
         )
+        def _real_to_int(r: float) -> QInt:
+            """An integral real as an Int; an infinity or a value outside Int's range raises real.error."""
+            if not math.isfinite(r) or not (-(2**63) <= r < 2**63):
+                raise QuestException(REAL_ERROR_EXC)
+            return QInt(int(r))
+
+        def _real_round(r: float) -> float:
+            """Rounds half away from zero, as C's round does (Python's round rounds half to even)."""
+            if not math.isfinite(r):
+                return r
+            t = float(math.trunc(r))
+            if abs(r - t) >= 0.5:
+                t += math.copysign(1.0, r)
+            return t
+
         real_b.def_fn(
-            "floor", [("r", REAL_TYPE)], INT_TYPE, lambda r: QInt(math.floor(r.value)),
+            "floor", [("r", REAL_TYPE)], INT_TYPE,
+            lambda r: _real_to_int(math.floor(r.value) if math.isfinite(r.value) else r.value),
             c_symbol="quest_real_floor",
         )
         real_b.def_fn(
-            "round", [("r", REAL_TYPE)], INT_TYPE, lambda r: QInt(round(r.value)),
+            "round", [("r", REAL_TYPE)], INT_TYPE, lambda r: _real_to_int(_real_round(r.value)),
             c_symbol="quest_real_round",
         )
         real_b.def_fn(
@@ -1497,6 +1513,9 @@ class BuiltinModuleRegistry:
 
         def _word_to_real(w: QWord) -> QReal:
             r = struct.unpack(">d", struct.pack(">Q", w.value))[0]
+            if math.isnan(r):
+                # NaN bit patterns have no Real value (docs/type-system.md §6.3.1).
+                raise QuestException(WORD_ERROR_EXC, OK_VALUE)
             return QReal(r)
 
         def _word_from_real(r: QReal) -> QWord:
@@ -1609,7 +1628,7 @@ class BuiltinModuleRegistry:
         )
         word_b.def_fn(
             "toReal", [("w", word_t)], REAL_TYPE, _word_to_real,
-            c_symbol="quest_word_to_real_val", inline_template="(((QVal){{ .u = ({0}) }}).r)",
+            c_symbol="quest_word_to_real_val",
         )
         word_b.def_fn(
             "fromReal", [("r", REAL_TYPE)], word_t, _word_from_real,
@@ -1651,7 +1670,8 @@ class BuiltinModuleRegistry:
             elif isinstance(v, QChar):
                 raw = ord(v.value)
             elif isinstance(v, QReal):
-                raw = struct.unpack(">Q", struct.pack(">d", v.value))[0]
+                # 0.0 is ~0.0, so both must hash alike; adding 0.0 turns ~0.0 into 0.0.
+                raw = struct.unpack(">Q", struct.pack(">d", v.value + 0.0))[0]
             elif isinstance(v, QOk):
                 raw = 0
             else:

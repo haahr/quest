@@ -612,12 +612,32 @@ static inline QInt quest_int_mod(QInt a, QInt b) {
     return a % b;
 }
 
-/* The // operator (real.div is the out-of-line quest_real_div). */
+/* Real arithmetic keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
+   Infinities are ordinary Real values. See docs/type-system.md §6.3.1. */
+static inline double quest_real_result(double r) {
+    if (isnan(r)) {
+        quest_raise_real_error();
+    }
+    return r;
+}
+
+static inline double quest_real_add(double a, double b) { return quest_real_result(a + b); }
+static inline double quest_real_sub(double a, double b) { return quest_real_result(a - b); }
+static inline double quest_real_mul(double a, double b) { return quest_real_result(a * b); }
+
+/* The // operator and real.div: a zero divisor also raises real.error. */
 static inline double quest_real_divide(double a, double b) {
     if (b == 0.0) {
         quest_raise_real_error();
     }
-    return a / b;
+    return quest_real_result(a / b);
+}
+
+/* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
+   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs). */
+static inline bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
+    if (a.u == b.u) return true;
+    return t != NULL && t->kind == QTYPE_KIND_REAL && a.r == b.r;
 }
 
 static inline int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
@@ -707,7 +727,7 @@ static inline uint64_t quest_hash_mix64(uint64_t z) {
 
 uint64_t quest_hash_mix(uint64_t w);
 uint64_t quest_hash_combine(uint64_t h1, uint64_t h2);
-uint64_t quest_identity_hash(QVal x);
+uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x);
 
 /* Built-in operator closures (Cardelli §4.2) */
 extern QClosure qv_sym_plus_closure;

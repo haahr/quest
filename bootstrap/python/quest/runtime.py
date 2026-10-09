@@ -13,6 +13,7 @@ Step 3 (Tree-Walking Interpreter & REPL), including:
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -174,6 +175,8 @@ class QReal(QValue):
         return "Real"
 
     def to_str(self, visited: Optional[set[int]] = None) -> str:
+        if math.isinf(self.value):
+            return "inf" if self.value > 0 else "-inf"
         res = str(self.value)
         if "e" not in res and "." not in res:
             res += ".0"

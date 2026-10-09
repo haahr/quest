@@ -428,26 +428,50 @@ def _eval_int_relational(op: str, a: int, b: int, offset: Optional[int] = None) 
             raise QuestRuntimeError(f"Unknown integer relational operator '{op}'", offset=offset)
 
 
+def real_result(r: float, offset: Optional[int] = None) -> float:
+    """Keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
+
+    Infinities are ordinary Real values (docs/type-system.md §6.3.1)."""
+    if math.isnan(r):
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    return r
+
+
+def real_divide(a: float, b: float, offset: Optional[int] = None) -> float:
+    """Real division (// and real.div): a zero divisor or a NaN result raises real.error."""
+    if b == 0.0:
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    return real_result(a / b, offset)
+
+
+def real_pow(a: float, b: float, offset: Optional[int] = None) -> float:
+    """Real exponentiation (^^ and real.exp) with C pow semantics, except that a zero base with a negative
+    exponent (a pole, like division by zero) or a NaN result raises real.error. Overflow yields an infinity."""
+    if a == 0.0 and b < 0.0:
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    try:
+        return real_result(math.pow(a, b), offset)
+    except ValueError:
+        # A negative finite base with a non-integral exponent: C's pow returns NaN.
+        raise QuestException(REAL_ERROR_EXC, offset=offset)
+    except OverflowError:
+        negative = a < 0.0 and b.is_integer() and int(b) % 2 == 1
+        return -math.inf if negative else math.inf
+
+
 def _eval_real_arithmetic(op: str, a: float, b: float, offset: Optional[int] = None) -> float:
     """Evaluates real floating-point arithmetic (++, --, **, //, ^^)."""
     match op:
         case "++":
-            return a + b
+            return real_result(a + b, offset)
         case "--":
-            return a - b
+            return real_result(a - b, offset)
         case "**":
-            return a * b
+            return real_result(a * b, offset)
         case "//":
-            if b == 0.0:
-                raise QuestException(REAL_ERROR_EXC, offset=offset)
-            return a / b
+            return real_divide(a, b, offset)
         case "^^":
-            if a == 0.0 and b < 0.0:
-                raise QuestException(REAL_ERROR_EXC, offset=offset)
-            try:
-                return math.pow(a, b)
-            except (ValueError, OverflowError) as e:
-                raise QuestRuntimeError(f"Real exponentiation error: {e}", offset=offset)
+            return real_pow(a, b, offset)
         case _:
             raise QuestRuntimeError(f"Unknown real arithmetic operator '{op}'", offset=offset)
 

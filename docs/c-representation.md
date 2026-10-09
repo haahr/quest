@@ -1028,7 +1028,17 @@ runtime/
   - `QArray *quest_array_new(int64_t len, QVal init_val)`: Allocates length-prefixed array with initial element values.
   - `void quest_check_array_bounds(const QArray *a, int64_t idx)`: Inline guard checking `idx >= 0 && idx < a->length`.
 - **Floating-Point Math:**
-  - `double quest_real_pow(double base, double exp)`: Implements Quest `^^` real exponentiation via `pow()`.
+  - `double quest_real_add/sub/mul(double a, double b)`, `double quest_real_divide(double a, double b)`: Implement
+    `++`, `--`, `**`, and `//` inline, raising `real.error` for a result that would be NaN (and, for `//`, a zero
+    divisor). Infinities pass through. See [type-system.md](type-system.md) §6.3.1.
+  - `double quest_real_pow(double base, double exp)`: Implements Quest `^^` (and `real.exp`) via `pow()`, raising
+    `real.error` for a zero base with a negative exponent or a NaN result.
+  - `bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b)`: `is` on `QVal`-represented values; bit equality,
+    or IEEE equality when `t` describes `Real` (so `0.0 is ~0.0`).
+  - `uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x)`: `hash.identityHash`; hashes `~0.0` as `0.0` for
+    a `Real` so that it agrees with `quest_val_is`. As a polymorphic external it receives its type parameter's
+    descriptor first: the C function wrapping an external body passes its descriptors ahead of its value
+    parameters, matching the wrapper's own signature.
 - **Runtime Panic / Exception Handlers:**
   - `void quest_raise_int_error(void)`, `void quest_raise_real_error(void)`, `void quest_raise_word_error(void)`:
     Triggered on division or modulo by zero for `Int` (`/`, `%`), `Real` (`//`, and `^^` with a zero base and

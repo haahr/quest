@@ -23,6 +23,7 @@ from quest.runtime import (
     QTuple,
     qvalue_is,
 )
+from quest.dynamic_json import jsog_decode, jsog_encode
 from tests.python.helpers import eval_test_source
 
 
@@ -556,6 +557,19 @@ class TestDynamicAndInspect(unittest.TestCase):
         with self.assertRaises(QuestException) as cm:
             run_quest_code(code)
         self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+
+    def test_extern_and_intern_reject_non_finite_reals(self):
+        """JSON has no infinities or NaN; as in the C runtime, extern of an infinity and intern of the non-JSON
+        tokens NaN, Infinity, and -Infinity raise dynamic.error. An overflowing number interns as an infinity."""
+        d = run_quest_code("import dynamic: Dynamic; dynamic.new(:Real 1.0E400);")
+        with self.assertRaises(QuestException) as cm:
+            jsog_encode(d)
+        self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+        for token in ("NaN", "Infinity", "-Infinity"):
+            with self.assertRaises(QuestException) as cm:
+                jsog_decode('{"@type":"Real","@value":' + token + "}")
+            self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+        self.assertEqual(str(jsog_decode('{"@type":"Real","@value":1e999}')), "auto(tuple a=inf end : Real)")
 
 
 class TestStandardLibraryModules(unittest.TestCase):

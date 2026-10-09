@@ -283,7 +283,7 @@ interface Word export
     (* Returns true if w1 >= w2 as unsigned 64-bit words *)
     ge(w1: T w2: T): Bool
 
-    (* Convert word bit pattern to 64-bit IEEE-754 floating point real *)
+    (* Convert word bit pattern to 64-bit IEEE-754 floating point real; raises error for a NaN bit pattern *)
     toReal(w: T): Real
 
     (* Convert 64-bit IEEE-754 floating point real to word bit pattern *)
@@ -331,7 +331,8 @@ end;
   - `countTrailingZeros(w)` $\to$ `quest_word_count_trailing_zeros(w)` (`__builtin_ctzll`; 64 if $w = 0$)
   - `toInt(w)` $\to$ `((int64_t)(w))`
   - `fromInt(n)` $\to$ `((uint64_t)(n))`
-  - `toReal(w)` $\to$ `(((QVal){ .u = (w) }).r)` (direct C99 union compound literal punning)
+  - `toReal(w)` $\to$ `quest_word_to_real_val(w)` (union punning, raising `word.error` for a NaN bit pattern, which
+    has no `Real` value; see [type-system.md](type-system.md) §6.3.1)
   - `fromReal(r)` $\to$ `(((QVal){ .r = (r) }).u)` (direct C99 union compound literal punning)
 - **First-Class Closures**: When `word` functions are passed as first-class values or through records,
   the compiler generates closure trampolines (`qv_word_<op>_trampoline`) ensuring seamless higher-order interop.
