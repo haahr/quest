@@ -1,0 +1,43 @@
+(* Language: type parameters of polymorphic functions as the type components of auto values and in inspect,
+   whose run-time type arguments are those of the call *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n");
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+
+Let Boxed = Auto A::TYPE with a: A end;
+Let Object = Record age: Int end;
+Let Car = Record age: Int fuel: String end;
+let myCar: Car = record age = 3 fuel = "diesel" end;
+
+(* 1. A generic constructor: the type component is the call's type argument *)
+let box(A::TYPE x: A): Boxed = auto :A with x end;
+let boxedInt = box(:Int 42);
+let boxedCar = box(:Car myCar);
+p(inspect boxedInt when Int with i then i.a else 0 end);
+s(inspect boxedCar when Car with c then c.a.fuel else "?" end);
+
+(* 2. A generic projection: inspect at the type argument, including a supertype of the component *)
+let unbox(A::TYPE b: Boxed default: A): A = inspect b when A with x then x.a else default end;
+p(unbox(:Int boxedInt 0));
+p(unbox(:Int boxedCar 0 - 1));
+p(unbox(:Object boxedCar record age = 0 end).age);
+
+(* 3. Type arguments passed on by generic code *)
+let boxTwice(B::TYPE y: B): Tuple first: Boxed second: Boxed end = tuple box(:B y) box(:B y) end;
+let twice = boxTwice(:String "twice");
+s(inspect twice.second when String with t then t.a else "?" end);
+
+(* 4. Dynamic values made by generic code *)
+let pack(A::TYPE x: A): Dynamic = dynamic.new(:A x);
+p(dynamic.be(:Int pack(:Int 7)));
+p(inspect pack(:Car myCar) when Object with o then o.a.age else 0 end);
+
+(* 5. An auto value with a function component, made generically and inspected at its exact type *)
+Let Showable = Auto A::TYPE with x: A show(:A): String end;
+let showable(A::TYPE x: A f(:A): String): Showable = auto :A with x f end;
+let showInt: Showable = showable(:Int 5 fun(n: Int): String conv.int(n * 10));
+s(inspect showInt when Int with i then i.show(i.x) else "?" end);

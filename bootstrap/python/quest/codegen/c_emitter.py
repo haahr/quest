@@ -11,6 +11,8 @@ from quest.codegen.c_analysis import (
     CProgramAnalysis,
     analyze_program_for_c,
     collect_fun_quantifiers,
+    exception_var_entries,
+    named_exceptions_in,
     topological_sort_modules,
 )
 from quest.codegen.c_declarations import CDeclarationEmitter, emit_trampoline
@@ -107,7 +109,6 @@ from quest.types import (
     strip_aliases,
     BOOL_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     INFIX_OPERATORS,
     INT_TYPE,
     OK_TYPE,
@@ -463,12 +464,12 @@ class CEmitter:
             tgt_payload_t = auto_payload_type(target_type)
             if tuple_struct_name(src_payload_t) != tuple_struct_name(tgt_payload_t):
                 src_tmp = self.fresh_tmp("_auto_src")
-                lines.append(f"const QDynamic *{src_tmp} = {c_val};")
+                lines.append(f"const QAuto *{src_tmp} = {c_val};")
                 src_struct = tuple_struct_name(src_payload_t)
                 payload = self._coerce_tuple_val(
                     f"(({src_struct} *){src_tmp}->payload.p)", src_payload_t, tgt_payload_t, lines
                 )
-                c_val = f"quest_dynamic_new({src_tmp}->type_desc, {_qval_wrap(payload, tgt_payload_t)})"
+                c_val = f"quest_auto_new({src_tmp}->type_desc, {_qval_wrap(payload, tgt_payload_t)})"
             if dest is not None:
                 lines.append(f"{dest} = {c_val};")
                 return dest
@@ -970,6 +971,9 @@ class CEmitter:
     ) -> None:
         """Emits function return handling with appropriate subtyping coercions."""
         call_args = ", ".join(param_c_names) if param_c_names else ""
+        saved_env = dict(self.current_env_vars)
+        if not isinstance(body, TypedExternal):
+            self._declare_local_exceptions(body, fn_lines)
         if ret_type is OK_TYPE:
             if isinstance(body, TypedExternal):
                 fn_lines.append(f"{body.symbol}({call_args});")
@@ -983,6 +987,7 @@ class CEmitter:
                 ret_val = self.emit_val(body, fn_lines)
             coerced = self._coerce_val(ret_val, body, ret_type, fn_lines)
             fn_lines.append(f"return {coerced};")
+        self.current_env_vars = saved_env
 
     def _emit_call_arg(
         self,
@@ -1202,11 +1207,9 @@ class CEmitter:
             return f"({c_arr}->data[{c_idx}])"
         elif (
             elem_t is STRING_TYPE
-            or elem_t is DYNAMIC_TYPE
-            or (isinstance(elem_t, QTypeVar) and elem_t.name == "Dynamic.T")
             or isinstance(
                 elem_t,
-                (QTupleType, QFunType, QAllType, QArrayType, QOptionType, QExceptionType),
+                (QTupleType, QFunType, QAllType, QArrayType, QOptionType, QExceptionType, QAutoType),
             )
             or resolve_option_bound(elem_t) is not None
         ):
@@ -1550,12 +1553,14 @@ class CEmitter:
                         clean_mod = mangle_module_name(orig_mod.name)
                         for b in orig_mod.bindings:
                             match b:
-                                case TypedLetValue(name=b_name):
+                                case TypedLetValue(name=b_name, value=b_val):
+                                    for exc in named_exceptions_in(b_val):
+                                        self.current_env_vars[exc.name] = mangle_module_ident(clean_mod, exc.name)
                                     if b_name:
                                         self.current_env_vars[b_name] = mangle_module_ident(clean_mod, b_name)
-                                case TypedException(name=b_name):
-                                    if b_name:
-                                        self.current_env_vars[b_name] = mangle_module_ident(clean_mod, b_name)
+                                case TypedException() | TypedExprStmt(expr=TypedException()):
+                                    for exc in named_exceptions_in(b):
+                                        self.current_env_vars[exc.name] = mangle_module_ident(clean_mod, exc.name)
                                 case TypedImport():
                                     for it in b.items:
                                         for iname, mpath in zip(it.names, it.effective_module_paths):
@@ -1759,6 +1764,7 @@ class CEmitter:
                             )
                         )
                     else:
+                        mod_vars.extend(exception_var_entries(b_val))
                         mod_vars.append((b_name, b_val, b_sym))
                 case TypedNativeBinding() as nb:
                     if nb.c_val is not None:
@@ -1779,11 +1785,8 @@ class CEmitter:
                                 mod_imported_mods.append(mod_ref)
                             mod_imported_env[iname] = module_record_ident(mangle_module_name(mod_ref))
                             mod_imported_env[mpath] = module_record_ident(mangle_module_name(mod_ref))
-                case TypedException(name=b_name, type_val=b_t) as exc_n:
-                    if b_name:
-                        mod_vars.append(
-                            (b_name, exc_n, type("Symbol", (), {"type_val": b_t})())
-                        )
+                case TypedException() | TypedExprStmt(expr=TypedException()):
+                    mod_vars.extend(exception_var_entries(b))
                 case _:
                     pass
 
@@ -2147,9 +2150,10 @@ class CEmitter:
                             mod_emitter.emit_to(vval, None, init_lines)
                         else:
                             mod_emitter.emit_to(vval, m_ident, init_lines)
-                case TypedException(name=ename) as exc_n:
-                    if ename and any(ename == mv[0] for mv in mod_vars):
-                        m_ident = mangle_module_ident(clean_mod, ename)
+                case TypedException() | TypedExprStmt(expr=TypedException()):
+                    exc_n = b if isinstance(b, TypedException) else b.expr
+                    if exc_n.name and any(exc_n.name == mv[0] for mv in mod_vars):
+                        m_ident = mangle_module_ident(clean_mod, exc_n.name)
                         mod_emitter.emit_to(exc_n, m_ident, init_lines)
                 case _:
                     pass
@@ -2340,6 +2344,22 @@ class CEmitter:
                 # Type / Kind declarations are erased at runtime
                 pass
 
+    def _exception_ident(self, name: str) -> str:
+        """The C variable holding the exception value bound to name."""
+        return self.current_env_vars.get(name, mangle_ident(name))
+
+    def _declare_local_exceptions(self, node: TypedNode, lines: list[str]) -> None:
+        """Declares local variables for named exceptions constructed in node.
+
+        The local shadows any outer binding of the same name; callers save and restore
+        current_env_vars around the enclosing function body or block. The local is volatile
+        because it may be assigned inside a try body and read by its handler after longjmp.
+        """
+        for exc in named_exceptions_in(node):
+            c_ident = mangle_ident(exc.name)
+            self.current_env_vars[exc.name] = c_ident
+            lines.append(f"const QException *volatile {c_ident};")
+
     def _emit_expr_phrase(self, expr: TypedExpr, lines: list[str], is_last: bool = False) -> None:
         expr_type = expr.type_val
         phrase_lines: list[str] = []
@@ -2502,7 +2522,7 @@ class CEmitter:
                 if isinstance(payload_t, QTupleType):
                     c_payload = self._coerce_tuple_val(c_payload, payload_t, stored_t, lines)
                 desc = self.c_type_descriptor(witness)
-                return f"quest_dynamic_new({desc}, {_qval_wrap(c_payload, stored_t)})"
+                return f"quest_auto_new({desc}, {_qval_wrap(c_payload, stored_t)})"
 
             case TypedSelect(target=tgt, field=fld):
                 if isinstance(tgt, TypedVar) and tgt.name in self.all_modules:
@@ -2791,6 +2811,8 @@ class CEmitter:
 
             case TypedException(name=name):
                 c_name = _c_string_literal(name) if name else '""'
+                if name:
+                    return f"({self._exception_ident(name)} = quest_alloc_exception({c_name}))"
                 return f"quest_alloc_exception({c_name})"
 
             case TypedRaise():
@@ -2850,9 +2872,11 @@ class CEmitter:
             case TypedBlock(bindings=bindings, result=result):
                 lines.append("{")
                 block_lines: list[str] = []
+                saved_env = dict(self.current_env_vars)
                 for b in bindings:
                     match b:
                         case TypedLetValue(name=name, value=val, symbol=symbol):
+                            self._declare_local_exceptions(val, block_lines)
                             c_ident = mangle_ident(name)
                             if symbol.type_val is OK_TYPE:
                                 self.emit_to(val, None, block_lines)
@@ -2863,25 +2887,17 @@ class CEmitter:
                                 self._coerce_val(
                                     val_c, val, symbol.type_val, block_lines, dest=c_ident
                                 )
-                        case TypedExprStmt(expr=TypedException(name=name) as exc_node):
-                            if name:
-                                c_ident = mangle_ident(name)
-                                block_lines.append(f"const QException *{c_ident};")
-                                self.emit_to(exc_node, c_ident, block_lines)
-                            else:
-                                self.emit_to(exc_node, None, block_lines)
-                        case TypedException(name=name) as exc_node:
-                            if name:
-                                c_ident = mangle_ident(name)
-                                block_lines.append(f"const QException *{c_ident};")
-                                self.emit_to(exc_node, c_ident, block_lines)
-                            else:
-                                self.emit_to(exc_node, None, block_lines)
+                        case TypedException() as exc_node:
+                            self._declare_local_exceptions(exc_node, block_lines)
+                            self.emit_to(exc_node, None, block_lines)
                         case TypedExprStmt(expr=inner):
+                            self._declare_local_exceptions(inner, block_lines)
                             self.emit_to(inner, None, block_lines)
                         case _:
                             pass
+                self._declare_local_exceptions(result, block_lines)
                 self.emit_to(result, dest, block_lines)
+                self.current_env_vars = saved_env
                 _append_block(lines, block_lines)
                 lines.append("}")
 
@@ -3202,7 +3218,13 @@ class CEmitter:
 
             case TypedException(name=name):
                 c_name = _c_string_literal(name) if name else '""'
-                if dest is not None:
+                if name:
+                    # The expression binds its name in the enclosing scope.
+                    c_ident = self._exception_ident(name)
+                    lines.append(f"{c_ident} = quest_alloc_exception({c_name});")
+                    if dest is not None and dest != c_ident:
+                        lines.append(f"{dest} = {c_ident};")
+                elif dest is not None:
                     lines.append(f"{dest} = quest_alloc_exception({c_name});")
                 else:
                     lines.append(f"quest_alloc_exception({c_name});")
@@ -3265,49 +3287,8 @@ class CEmitter:
                 lines.append("    }")
                 lines.append("}")
 
-            case TypedInspect(auto_type=auto_t) if auto_t is not None:
+            case TypedInspect(auto_type=auto_t):
                 self._emit_auto_inspect(expr, auto_t, dest, lines)
-
-            case TypedInspect(target=tgt, branches=branches, else_branch=else_b, type_val=t):
-                c_tgt = self.emit_val(tgt, lines)
-                if not c_tgt.isidentifier():
-                    tmp_tgt = self.fresh_tmp("_insp_tgt")
-                    lines.append(f"const QDynamic *{tmp_tgt} = {c_tgt};")
-                    c_tgt = tmp_tgt
-                if not branches:
-                    if else_b is not None:
-                        self.emit_to(else_b, dest, lines)
-                    else:
-                        lines.append("quest_raise_dynamic_error();")
-                else:
-                    for i, branch in enumerate(branches):
-                        match_desc = self.c_type_descriptor(branch.match_type)
-                        cond = f"quest_is_subtype({c_tgt}->type_desc, {match_desc})"
-                        prefix = "if" if i == 0 else "} else if"
-                        lines.append(f"{prefix} ({cond}) {{")
-                        branch_lines: list[str] = []
-                        if branch.binders:
-                            call_str = f"quest_dynamic_be({match_desc}, {c_tgt})"
-                            val_expr = _qval_unwrap(call_str, branch.match_type, self)
-                            first_sym = branch.binders[0]
-                            c_b_type = self.c_type(first_sym.type_val)
-                            tmp_bind = self.fresh_tmp("_insp_val")
-                            branch_lines.append(f"{c_b_type} {tmp_bind} = {val_expr};")
-                            for b_sym in branch.binders:
-                                b_name = mangle_ident(b_sym.name)
-                                branch_lines.append(f"{c_b_type} {b_name} = {tmp_bind};")
-                        self.emit_to(branch.body, dest, branch_lines)
-                        for bl in branch_lines:
-                            lines.append(f"    {bl}" if bl.strip() else bl)
-                    lines.append("} else {")
-                    default_lines: list[str] = []
-                    if else_b is not None:
-                        self.emit_to(else_b, dest, default_lines)
-                    else:
-                        default_lines.append("quest_raise_dynamic_error();")
-                    for dl in default_lines:
-                        lines.append(f"    {dl}" if dl.strip() else dl)
-                    lines.append("}")
 
             case _:
                 val = self.emit_val(expr, lines)
@@ -3324,7 +3305,7 @@ class CEmitter:
         stored_t = auto_payload_type(auto_t)
         stored_struct = tuple_struct_name(stored_t)
         tgt = self.fresh_tmp("_insp_auto")
-        lines.append(f"const QDynamic *{tgt} = {self.emit_val(expr.target, lines)};")
+        lines.append(f"const QAuto *{tgt} = {self.emit_val(expr.target, lines)};")
         stored = self.fresh_tmp("_insp_payload")
         lines.append(f"{stored_struct} *{stored} = ({stored_struct} *){tgt}->payload.p;")
         for i, branch in enumerate(expr.branches):
@@ -3410,10 +3391,7 @@ class CEmitter:
             src = f"{stored}->_{i}"
             if auto_t.symbol_id in sig_f.type_val._fv:
                 as_qval = src if self.c_type(stored_f.type_val) == "QVal" else _qval_wrap(src, stored_f.type_val)
-                viewed = (
-                    f"quest_dynamic_be({match_desc}, "
-                    f"&(QDynamic){{ .type_desc = {tgt}->type_desc, .payload = {as_qval} }})"
-                )
+                viewed = f"quest_convert({as_qval}, {tgt}->type_desc, {match_desc})"
                 lines.append(f"{arm}->_{i} = {_qval_unwrap(viewed, arm_f.type_val, self)};")
             else:
                 lines.append(f"{arm}->_{i} = {src};")

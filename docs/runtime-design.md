@@ -133,17 +133,16 @@ Record return values are returned in `x0` and `x1` without stack-spill or hidden
 
 ## 6. Dynamic Subtyping & Runtime Type Descriptors
 
-Dynamic values (`Dynamic`) wrap an arbitrary runtime value paired with a `const QTypeDescriptor *`:
+Auto values (Cardelli's `auto :T with ... end`), including dynamic values (`Dynamic.T` is
+`Auto A::TYPE with a:A end`), pair a `const QTypeDescriptor *` for the type component with the components:
 ```c
-typedef struct QDynamic {
+typedef struct QAuto {
     const QTypeDescriptor *type_desc;
     QVal                   payload;
-} QDynamic;
+} QAuto;
 ```
-
-Auto values (Cardelli's `auto :T with ... end`) use the same envelope: `type_desc` describes the type component and
-`payload` points to the tuple of components; `inspect` matches branch types against `type_desc` with
-`quest_is_subtype` and adapts components with `quest_dynamic_be`. See [c-representation.md](c-representation.md) §8.1.
+`inspect` matches branch types against `type_desc` with `quest_is_subtype` and converts components with
+`quest_convert`. See [c-representation.md](c-representation.md) §8.
 
 ### 1. Hybrid Descriptor Architecture
 - **Compile-time Static Descriptors (.rodata):** Closed types generated during compilation are emitted as

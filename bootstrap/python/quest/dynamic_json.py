@@ -20,7 +20,7 @@ from quest.runtime import (
     QBuiltinFun,
     QChar,
     QClosure,
-    QDynamicVal,
+    QAutoVal,
     QInt,
     QOk,
     QOption,
@@ -36,6 +36,9 @@ from quest.runtime import (
 )
 from quest.types import (
     strip_aliases,
+    QAutoType,
+    QTupleField,
+    auto_payload_type,
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
@@ -67,7 +70,6 @@ def parse_type_string(type_str: str) -> QType:
         "String": STRING_TYPE,
         "Ok": OK_TYPE,
         "Dynamic": DYNAMIC_TYPE,
-        "Dynamic.T": DYNAMIC_TYPE,
         "Exception": EXCEPTION_TYPE,
     }
     cleaned = type_str.strip()
@@ -88,11 +90,26 @@ def parse_type_string(type_str: str) -> QType:
         env = Environment()
         return elaborate_type(ast_type, env)
     except (QuestCompilerError, ValueError):
-        return DYNAMIC_TYPE
+        raise QuestException(DYNAMIC_ERROR_EXC) from None
 
 
-def jsog_encode(dyn: QDynamicVal) -> str:
-    """Serializes a QDynamicVal to a JSON string using JSOG for cyclic references."""
+def _sole_component(auto_t: Optional[QType], witness: QType) -> QTupleField:
+    """The one component of an auto type (Dynamic if auto_t is not one), its type component substituted.
+
+    Auto values are serialized as {"@type": type component, "@value": component}; only auto types with one component,
+    such as Dynamic, are supported.
+    """
+    auto_t = auto_t.evaluate_lazily() if isinstance(auto_t, QType) else None
+    if not isinstance(auto_t, QAutoType):
+        auto_t = DYNAMIC_TYPE
+    components = auto_payload_type(auto_t, witness).value_fields
+    if len(components) != 1:
+        raise QuestException(DYNAMIC_ERROR_EXC)
+    return components[0]
+
+
+def jsog_encode(dyn: QAutoVal, auto_t: Optional[QType] = None) -> str:
+    """Serializes a dynamic value (an auto value with one component) to JSON, using JSOG for cyclic references."""
     seen: set[int] = set()
     multi_ref: set[int] = set()
 
@@ -123,8 +140,9 @@ def jsog_encode(dyn: QDynamicVal) -> str:
         elif isinstance(val, QOption):
             if val.payload is not None:
                 scan(val.payload)
-        elif isinstance(val, QDynamicVal):
-            scan(val.value)
+        elif isinstance(val, QAutoVal):
+            for elem in val.value.elements:
+                scan(elem)
 
     scan(dyn.value)
 
@@ -138,8 +156,19 @@ def jsog_encode(dyn: QDynamicVal) -> str:
         t = t.evaluate_lazily()
         return t if isinstance(t, (QRecordType, QTupleType, QArrayType, QVariantType, QOptionType)) else None
 
+    def encode_auto(val: QAutoVal, t: Optional[QType]) -> Any:
+        component = _sole_component(t, val.type_val)
+        if len(val.value.elements) != 1:
+            raise QuestException(DYNAMIC_ERROR_EXC)
+        return {
+            "@type": str(strip_aliases(val.type_val)),
+            "@value": encode_val(val.value.elements[0], component.type_val),
+        }
+
     def encode_val(val: QValue, t: Optional[QType] = None) -> Any:
         """Encodes val as a value of type t: a record viewed at a supertype writes only that type's fields."""
+        if isinstance(val, QAutoVal):
+            return encode_auto(val, t)
         t = component_type(t)
         if isinstance(val, (QReader, QWriter, QClosure, QBuiltinFun)):
             raise QuestException(DYNAMIC_ERROR_EXC)
@@ -215,23 +244,13 @@ def jsog_encode(dyn: QDynamicVal) -> str:
             opt_t = t.get_option(val.tag) if isinstance(t, QOptionType) else None
             return {val.tag: encode_val(val.payload, opt_t.payload_type if opt_t is not None else None)}
 
-        if isinstance(val, QDynamicVal):
-            return {
-                "@type": str(strip_aliases(val.type_val)),
-                "@value": encode_val(val.value, val.type_val),
-            }
-
         raise QuestException(DYNAMIC_ERROR_EXC)
 
-    envelope = {
-        "@type": str(strip_aliases(dyn.type_val)),
-        "@value": encode_val(dyn.value, dyn.type_val),
-    }
-    return json.dumps(envelope, separators=(",", ":"))
+    return json.dumps(encode_val(dyn, auto_t or DYNAMIC_TYPE), separators=(",", ":"))
 
 
-def jsog_decode(raw_json: str) -> QDynamicVal:
-    """Deserializes a JSON string with JSOG references into a QDynamicVal."""
+def jsog_decode(raw_json: str) -> QAutoVal:
+    """Deserializes a JSON string with JSOG references into a dynamic value."""
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError:
@@ -240,7 +259,6 @@ def jsog_decode(raw_json: str) -> QDynamicVal:
     if not isinstance(data, dict) or "@type" not in data or "@value" not in data:
         raise QuestException(DYNAMIC_ERROR_EXC)
 
-    target_type = parse_type_string(str(data["@type"]))
     root_value_data = data["@value"]
 
     id_map: dict[str, Any] = {}
@@ -263,6 +281,12 @@ def jsog_decode(raw_json: str) -> QDynamicVal:
                 pre_allocate(item)
 
     pre_allocate(root_value_data)
+
+    def decode_auto(node: dict[str, Any], auto_t: Optional[QType]) -> QAutoVal:
+        witness = parse_type_string(str(node["@type"]))
+        component = _sole_component(auto_t, witness)
+        value = decode_node(node["@value"], component.type_val)
+        return QAutoVal(QTuple((value,), labels=(component.name,)), witness)
 
     def decode_node(node: Any, expected_type: Optional[QType] = None) -> QValue:
         if isinstance(node, dict) and "@ref" in node:
@@ -345,9 +369,7 @@ def jsog_decode(raw_json: str) -> QDynamicVal:
             return arr
 
         if isinstance(node, dict) and "@type" in node and "@value" in node and len(node) == 2:
-            inner_t = parse_type_string(str(node["@type"]))
-            inner_v = decode_node(node["@value"], inner_t)
-            return QDynamicVal(inner_v, inner_t)
+            return decode_auto(node, expected_type)
 
         if isinstance(node, dict):
             keys = [k for k in node.keys() if k != "@id"]
@@ -384,5 +406,4 @@ def jsog_decode(raw_json: str) -> QDynamicVal:
 
         raise QuestException(DYNAMIC_ERROR_EXC)
 
-    root_val = decode_node(root_value_data, target_type)
-    return QDynamicVal(root_val, target_type)
+    return decode_auto(data, DYNAMIC_TYPE)

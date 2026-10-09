@@ -271,7 +271,7 @@ suffixes (`<prefix>_<counter>`):
 | `_loc_ptr_<n>` | Pointer to mutable variable | `QInt *_loc_ptr_15 = &qv_x;` |
 | `_shadow_cell_<n>` | Mutable variable capture cell | `_shadow_cell_16->val = ...;` |
 | `_qh_<n>`, `_caught_<n>` | Exception handler context and caught value | `QExceptionHandler _qh_17;` |
-| `_insp_tgt_<n>`, `_insp_val_<n>` | Dynamic type inspect target and payload | `QDynamicVal _insp_tgt_18 = ...;` |
+| `_insp_auto_<n>`, `_insp_payload_<n>`, `_insp_arm_<n>` | Inspect target, its stored components, and a branch's components | `const QAuto *_insp_auto_18 = ...;` |
 | `_stop_<n>` | Loop upper bound evaluation | `QInt _stop_19 = qv_n;` |
 
 ---

@@ -29,7 +29,6 @@ from quest.runtime import (
     QChar,
     QAutoVal,
     QClosure,
-    QDynamicVal,
     QExceptionVal,
     QInt,
     QList,
@@ -52,7 +51,6 @@ from quest.types import (
     unalias,
     BOOL_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     EXCEPTION_TYPE,
     INT_TYPE,
     OK_TYPE,
@@ -203,6 +201,9 @@ class RuntimeEnvironment:
     def __init__(self, parent: Optional[RuntimeEnvironment] = None):
         self.parent = parent
         self.bindings: dict[str, QValue] = {}
+        # Run-time type arguments: the types bound to the type parameters (by symbol id) of the polymorphic
+        # functions being executed, for the operations that use types at run time
+        self.type_bindings: dict[int, QType] = {}
         if parent is not None:
             self.evaluated_modules: dict[str, Any] = parent.evaluated_modules
             self.include_paths: list[Path] = parent.include_paths
@@ -227,6 +228,28 @@ class RuntimeEnvironment:
     def define(self, name: str, value: QValue) -> None:
         """Binds a variable in the current innermost scope frame."""
         self.bindings[name] = value
+
+    def bind_types(self, bindings: dict[int, QType]) -> None:
+        """Binds type parameters (by symbol id) to their run-time type arguments in the current scope frame."""
+        self.type_bindings.update(bindings)
+
+    def lookup_type(self, symbol_id: int) -> Optional[QType]:
+        """The run-time type argument bound to a type parameter, if any."""
+        env: Optional[RuntimeEnvironment] = self
+        while env is not None:
+            if symbol_id in env.type_bindings:
+                return env.type_bindings[symbol_id]
+            env = env.parent
+        return None
+
+    def resolve_type(self, t: QType) -> QType:
+        """t with the run-time type arguments of the type parameters it mentions substituted."""
+        subst = {}
+        for symbol_id in t._fv:
+            bound = self.lookup_type(symbol_id)
+            if bound is not None:
+                subst[symbol_id] = bound
+        return t.substitute(subst) if subst else t
 
     def lookup(self, name: str, offset: Optional[int] = None) -> QValue:
         """Resolves a variable recursively outward from innermost to outermost scope."""
@@ -358,29 +381,6 @@ class RuntimeEnvironment:
         )
 
         return env
-
-
-def _infer_qtype(val: QValue) -> QType:
-    """Infers a default QType for dynamic values if not explicitly provided."""
-    match val:
-        case QInt():
-            return INT_TYPE
-        case QReal():
-            return REAL_TYPE
-        case QBool():
-            return BOOL_TYPE
-        case QChar():
-            return CHAR_TYPE
-        case QString():
-            return STRING_TYPE
-        case QOk():
-            return OK_TYPE
-        case QExceptionVal():
-            return EXCEPTION_TYPE
-        case QDynamicVal():
-            return DYNAMIC_TYPE
-        case _:
-            return OK_TYPE
 
 
 # ============================================================================
@@ -572,37 +572,25 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     raise QuestRuntimeError("Unsupported assignment target in interpreter", offset=offset)
 
         # 3. Functions & Application
-        case TypedFun(params=params, body=body):
+        case TypedFun(params=params, body=body, type_param_ids=type_param_ids):
             return QClosure(
                 params=tuple(p.name for p in params),
                 body=body,
                 env=env,
+                type_param_ids=type_param_ids,
             )
 
         case TypedTypeApp(func=func, type_args=type_args):
             callee = eval_expr(func, env)
+            type_args = tuple(env.resolve_type(t) for t in type_args)
+            if isinstance(callee, QClosure) and callee.type_param_ids:
+                callee = callee.instantiate(type_args)
             if isinstance(callee, QBuiltinFun):
                 if callee.name == "list.nil":
                     return QList(())
-                if callee.name == "dynamic.new" and type_args:
-                    target_type = type_args[0]
-                    return QBuiltinFun(
-                        "dynamic.new",
-                        fn=lambda val: QDynamicVal(val, target_type),
-                    )
-                if callee.name == "dynamic.be" and type_args:
-                    target_type = type_args[0]
-
-                    def _be_fn(d: QValue) -> QValue:
-                        if not isinstance(d, QDynamicVal):
-                            raise QuestException(DYNAMIC_ERROR_EXC)
-                        if not is_subtype(d.type_val, target_type):
-                            raise QuestException(DYNAMIC_ERROR_EXC)
-                        return d.value
-
-                    return QBuiltinFun("dynamic.be", fn=_be_fn)
             if isinstance(callee, QClosure) and len(callee.params) == 0:
                 call_env = callee.env.push_scope()
+                call_env.bind_types(callee.type_bindings)
                 return eval_expr(callee.body, call_env)
             return callee
 
@@ -615,6 +603,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     return fn(*arg_vals)
                 case QClosure(params=callee_params, body=body, env=closure_env):
                     call_env = closure_env.push_scope()
+                    call_env.bind_types(callee_val.type_bindings)
                     for param_name, arg_val in zip(callee_params, arg_vals):
                         call_env.define(param_name, arg_val)
                     if isinstance(body, TypedExternal):
@@ -873,7 +862,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             return QVariant(tag=tag, payload=p_val)
 
         case TypedAuto(witness_type=witness_type, payload=payload):
-            return QAutoVal(eval_expr(payload, env), witness_type)
+            return QAutoVal(eval_expr(payload, env), env.resolve_type(witness_type))
 
         case TypedOption(
             tag=tag, payload=payload, ordinal=ordinal, ordinal_expr=ordinal_expr, type_val=type_val, offset=offset
@@ -1013,16 +1002,17 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         # 12. Dynamic Types & Type Inspection
         case TypedInspect(target=target, branches=branches, else_branch=else_branch, offset=offset):
             target_dyn = eval_expr(target, env)
-            if not isinstance(target_dyn, QDynamicVal):
+            if not isinstance(target_dyn, QAutoVal):
                 raise QuestRuntimeError(
-                    f"Inspect target must be Dynamic, got {target_dyn.type_name}",
+                    f"Inspect target must be an auto value, got {target_dyn.type_name}",
                     offset=offset,
                 )
             for branch in branches:
+                match_type = env.resolve_type(branch.match_type)
                 if (
-                    is_type_equal(target_dyn.type_val, branch.match_type)
+                    is_type_equal(target_dyn.type_val, match_type)
                     if branch.exact
-                    else is_subtype(target_dyn.type_val, branch.match_type)
+                    else is_subtype(target_dyn.type_val, match_type)
                 ):
                     if branch.binders:
                         child_env = env.push_scope()
@@ -1059,6 +1049,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                     body=value.body,
                     env=env,
                     name=name,
+                    type_param_ids=value.type_param_ids,
                 )
                 env.define(name, closure)
                 return closure

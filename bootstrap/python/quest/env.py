@@ -453,7 +453,6 @@ class Environment:
             "real": "RealOp",
             "string": "StringOp",
             "arrayOp": "ArrayOp",
-            "dynamic": "Dynamic",
             "list": "List",
             "word": "Word",
         }

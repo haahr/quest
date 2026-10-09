@@ -8,6 +8,7 @@ from typing import Any, Optional
 from quest.typed_ast import (
     TypedBlock,
     TypedCase,
+    TypedException,
     TypedExprStmt,
     TypedFor,
     TypedFun,
@@ -60,6 +61,10 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
             case TypedLetValue(name=name, value=v):
                 walk(v, bound)
                 bound.add(name)
+            case TypedException(name=name):
+                # An exception expression declares its name in the enclosing scope.
+                if name:
+                    bound.add(name)
             case TypedFor(var_name=name, start=st, stop=sp, body=b):
                 walk(st, bound)
                 walk(sp, bound)

@@ -24,10 +24,10 @@ from quest.codegen.c_types import (
     type_to_c_tag,
 )
 from quest.types import (
+    auto_payload_type,
     QPowerKind,
     BOOL_TYPE,
     CHAR_TYPE,
-    DYNAMIC_TYPE,
     INT_TYPE,
     OK_TYPE,
     QAbstractType,
@@ -373,6 +373,11 @@ class CDeclarationEmitter:
                 visit(dt.element_type)
             elif form.kind == "exception":
                 visit(dt.payload_type)
+            elif form.kind == "auto":
+                if isinstance(dt.kind_bound, QPowerKind):
+                    visit(dt.kind_bound.bound)
+                for f in dt.signature:
+                    visit(f.type_val)
             elif form.kind == "fun":
                 quants, inner = collect_fun_quantifiers(dt)
                 for q in quants:
@@ -412,6 +417,12 @@ class CDeclarationEmitter:
             if form.tag not in defined:
                 defined.add(form.tag)
                 missing.append((form.tag, form.type))
+        for form in forms.get("auto", []):
+            payload_t = auto_payload_type(form.type)
+            struct_name = tuple_struct_name(payload_t)
+            if payload_t.value_fields and struct_name not in defined:
+                defined.add(struct_name)
+                missing.append((struct_name, payload_t))
         if missing:
             lines.extend(self.emit_forward_typedefs(missing))
             lines.extend(self.emit_aggregate_structs(missing))
@@ -495,6 +506,37 @@ class CDeclarationEmitter:
                 lines.extend(header)
                 lines.append("};")
             lines.extend(type_descriptor(tag, "QTYPE_KIND_FUN", str(form.type), "sizeof(QClosure *)", f"&qfun_desc_{tag}"))
+            lines.append("")
+
+        for form in forms.get("auto", []):
+            tag, auto_t = form.tag, form.type
+            payload_t = auto_payload_type(auto_t)
+            struct_name = tuple_struct_name(payload_t)
+            n = len(payload_t.value_fields)
+            bound = desc_fn(auto_t.kind_bound.bound) if isinstance(auto_t.kind_bound, QPowerKind) else "NULL"
+            payload_size = f"sizeof(struct {struct_name})" if n else "0"
+            lines.append("static const struct {")
+            lines.append("    const QTypeDescriptor *bound;")
+            lines.append("    size_t payload_size;")
+            lines.append("    size_t component_count;")
+            lines.append(f"    const QAutoComponentDescriptor components[{max(n, 1)}];")
+            lines.append(f"}} qauto_desc_{tag} Q_UNUSED = {{")
+            lines.append(f"    .bound = {bound},")
+            lines.append(f"    .payload_size = {payload_size},")
+            lines.append(f"    .component_count = {n},")
+            lines.append("    .components = {")
+            for i, (sig_f, stored_f) in enumerate(zip(auto_t.signature, payload_t.value_fields)):
+                # Records and variants are stored inline (16 bytes); any other component's 8 bytes are its QVal form
+                inline = self.c_type(stored_f.type_val) in ("QRecordVal", "QVariantVal")
+                storage = desc_fn(stored_f.type_val) if inline else "NULL"
+                is_var = "true" if sig_f.is_var else "false"
+                lines.append(
+                    f"        {{ .name = \"{sig_f.name}\", .type = {desc_fn(sig_f.type_val)}, .storage = {storage}, "
+                    f".offset = offsetof(struct {struct_name}, _{i}), .is_var = {is_var} }},"
+                )
+            lines.append("    }")
+            lines.append("};")
+            lines.extend(type_descriptor(tag, "QTYPE_KIND_AUTO", form.name, "sizeof(QAuto *)", f"&qauto_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("exception", []):

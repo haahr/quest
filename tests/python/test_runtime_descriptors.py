@@ -58,8 +58,6 @@ class TestRuntimeDescriptors(unittest.TestCase):
             assert(quest_type_Ok.kind == QTYPE_KIND_OK);
             assert(strcmp(quest_type_Ok.name, "Ok") == 0);
 
-            assert(quest_type_Dynamic.kind == QTYPE_KIND_DYNAMIC);
-            assert(strcmp(quest_type_Dynamic.name, "Dynamic") == 0);
 
             assert(quest_type_EmptyTuple.kind == QTYPE_KIND_TUPLE);
             assert(strcmp(quest_type_EmptyTuple.name, "Tuple end") == 0);
@@ -152,8 +150,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Failed: {proc.stderr}")
         self.assertIn("OPAQUE_IDENTITY_OK", proc.stdout)
 
-    def test_dynamic_new_and_be_success(self):
-        """Tests packaging a value into QDynamic and extracting it with matching descriptor."""
+    def test_auto_value_and_conversion_success(self):
+        """Tests packaging a value as an auto value and converting it at a matching descriptor (as dynamic.be does)."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -162,14 +160,17 @@ class TestRuntimeDescriptors(unittest.TestCase):
         int main(void) {
             quest_gc_init();
 
-            QVal val = { .i = 42LL };
-            QDynamic *d = quest_dynamic_new(&quest_type_Int, val);
+            /* A dynamic value's one component is stored as a QVal */
+            QVal *component = (QVal *)quest_alloc(sizeof(QVal));
+            component->i = 42LL;
+            QAuto *d = quest_auto_new(&quest_type_Int, (QVal){ .p = component });
             assert(d != NULL);
             assert(d->type_desc == &quest_type_Int);
-            assert(d->payload.i == 42LL);
+            assert(((QVal *)d->payload.p)->i == 42LL);
 
-            /* Successful extraction via dynamic.be with matching descriptor */
-            QVal extracted = quest_dynamic_be(&quest_type_Int, d);
+            /* dynamic.be(:Int d): the type component is a subtype, and the value converts unchanged */
+            assert(quest_is_subtype(d->type_desc, &quest_type_Int));
+            QVal extracted = quest_convert(*(QVal *)d->payload.p, d->type_desc, &quest_type_Int);
             assert(extracted.i == 42LL);
 
             /* An Int is not a tuple, so it cannot be extracted at Tuple end (that raises dynamic.error) */
@@ -183,8 +184,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Failed: {proc.stderr}")
         self.assertIn("DYNAMIC_SUCCESS_OK", proc.stdout)
 
-    def test_dynamic_be_failure_raises_dynamic_error(self):
-        """Tests that quest_dynamic_be raises quest_exc_dynamic_error when type mismatches."""
+    def test_conversion_failure_raises_dynamic_error(self):
+        """Tests that a record conversion raises quest_exc_dynamic_error when the layout lacks a field of the view."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -193,16 +194,26 @@ class TestRuntimeDescriptors(unittest.TestCase):
         int main(void) {
             quest_gc_init();
 
-            QVal val = { .i = 42LL };
-            QDynamic *d = quest_dynamic_new(&quest_type_Int, val);
+            /* A record payload whose layout lacks the field y of the record type it is converted to */
+            struct Rx { QRecordHeader header; int64_t qf_x; };
+            struct Ry { QRecordHeader header; int64_t qf_y; };
+            QRecordFieldDescriptor x_fields[] = {
+                { .name = "x", .type = &quest_type_Int, .offset = offsetof(struct Rx, qf_x), .is_var = false } };
+            QRecordFieldDescriptor y_fields[] = {
+                { .name = "y", .type = &quest_type_Int, .offset = offsetof(struct Ry, qf_y), .is_var = false } };
+            const QTypeDescriptor *x_desc = quest_make_record_descriptor("Record x: Int end", sizeof(struct Rx), 8, 1, x_fields);
+            const QTypeDescriptor *y_desc = quest_make_record_descriptor("Record y: Int end", sizeof(struct Ry), 8, 1, y_fields);
+            struct Rx *payload = (struct Rx *)quest_alloc(sizeof(struct Rx));
+            payload->header.descriptor = x_desc;
+            QRecordVal rec = { .val = payload, .dict = quest_record_dict(x_desc, x_desc) };
 
             QExceptionHandler handler;
             handler.prev = quest_current_exception_handler;
             quest_current_exception_handler = &handler;
 
             if (setjmp(handler.env_jmp) == 0) {
-                /* Attempting to coerce Int to String must fail */
-                quest_dynamic_be(&quest_type_String, d);
+                /* Converting it to Record y: Int end must fail */
+                quest_convert((QVal){ .p = quest_record_box(rec) }, x_desc, y_desc);
                 printf("UNREACHABLE\\n");
                 return 1;
             } else {
@@ -273,10 +284,10 @@ class TestRuntimeDescriptors(unittest.TestCase):
             b->qf_z = 300;
 
             QRecordVal r_big = { .val = b, .dict = NULL };
-            QDynamic *d = quest_dynamic_new(big_desc, (QVal){ .p = quest_record_box(r_big) });
 
-            /* Coerce to SmallRec via dynamic.be */
-            QVal extracted = quest_dynamic_be(small_desc, d);
+            /* Convert to SmallRec, as dynamic.be does */
+            assert(quest_is_subtype(big_desc, small_desc));
+            QVal extracted = quest_convert((QVal){ .p = quest_record_box(r_big) }, big_desc, small_desc);
             QRecordVal *r_small = (QRecordVal *)extracted.p;
             assert(r_small != NULL);
 
@@ -327,10 +338,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
             /* Create variant 'b' with local tag 0 */
             QVariantVal v = { .tag = 0, .payload = (QVal){ .u = 0 } };
-            QDynamic *d = quest_dynamic_new(sub_desc, (QVal){ .p = quest_variant_box(v) });
-
-            /* Coerce to supervariant */
-            QVal extracted = quest_dynamic_be(super_desc, d);
+            /* Convert to the supervariant, as dynamic.be does */
+            QVal extracted = quest_convert((QVal){ .p = quest_variant_box(v) }, sub_desc, super_desc);
             QVariantVal *res_v = (QVariantVal *)extracted.p;
             assert(res_v != NULL);
             /* Tag must be remapped from 0 to 1! */

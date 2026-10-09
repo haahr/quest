@@ -338,8 +338,9 @@ let describe(v:AnyVehicle):String =
   end;
 ```
 
-The type after `auto :` must be a concrete type, not a type parameter of the enclosing function, and a branch is
-taken when the value's type is a subtype of the branch type.
+The type after `auto :` can be a concrete type or a type parameter of the enclosing function (but not yet a larger
+type that mentions one, such as `Tuple x: A end`), and a branch is taken when the value's type is a subtype of the
+branch type.
 
 ## Classes and objects
 
