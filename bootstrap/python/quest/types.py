@@ -44,6 +44,7 @@ class ReservedSymbolUse(enum.IntEnum):
     BOUND_VAR = 2  # placeholder for a bound type parameter of a polymorphic function type, by de Bruijn index
     CANONICAL_QUANTIFIER = 3  # quantifier of a polymorphic function type in canonical form, by position
     REC_SELF = 4  # placeholder for a recursion variable in the C tag of a recursive type, by nesting depth
+    CANONICAL_REC = 5  # recursion variable of a recursive type in the C back end's canonical form, by position
 
 
 RESERVED_INDEX_LIMIT = 1 << 32

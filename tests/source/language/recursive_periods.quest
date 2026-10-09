@@ -1,0 +1,77 @@
+(* Language: Equal Recursive Types with Different Periods, in C Represented Alike *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+Let Rec L2::TYPE = Option nil cons with head: Int tail: Option nil cons with head: Int tail: L2 end end end end;
+Let Rec L3::TYPE =
+    Option nil cons with head: Int tail:
+        Option nil cons with head: Int tail:
+            Option nil cons with head: Int tail: L3 end end
+        end end
+    end end;
+
+let rec sum(x: IntList): Int =
+    case x
+        when cons with c then c.head + sum(c.tail)
+        else 0
+    end;
+let l: IntList = option cons of IntList with 1 option cons of IntList with 2 option nil of IntList end end end;
+
+(* 1. Assigning between periods, and back *)
+let m: L2 = l;
+printInt(m!cons.head);
+printInt(m!cons.tail!cons.head);
+let m3: L3 = m;
+let var back: IntList = m3;
+printInt(sum(back));
+back := m;
+printInt(sum(back));
+
+(* 2. Values built at one period, read at another *)
+let built: L2 = option cons of L2 with 4 option cons of L2 with 5 option nil of L2 end end end;
+printInt(sum(built));
+let rec sum2(x: L2): Int =
+    case x
+        when cons with c then c.head + sum2(c.tail)
+        else 0
+    end;
+printInt(sum2(l));
+
+(* 3. Different periods inside other types *)
+let pair: Tuple a: L2 b: L3 end = tuple let a = l let b = l end;
+let pair2: Tuple a: IntList b: IntList end = pair;
+printInt(sum(pair2.a) + sum(pair2.b));
+let lists = array of :L3 l m built end;
+printInt(sum(lists[0]) + sum(lists[2]));
+let f(x: L3): Int = sum(x);
+let g: All(x: L2) Int = f;
+printInt(g(l));
+
+(* 4. Recursion through a function type, at two periods *)
+Let Rec Stream::TYPE = Option done more with value: Int next: All() Stream end end;
+Let Rec Stream2::TYPE =
+    Option done more with value: Int next: All() Option done more with value: Int next: All() Stream2 end end end end;
+let rec count(n: Int): Stream =
+    if n is 0 then option done of Stream end
+    else option more of Stream with n fun(): Stream count(n - 1) end end;
+let s2: Stream2 = count(3);
+let rec total(s: Stream2): Int =
+    case s
+        when more with c then c.value + total(c.next())
+        else 0
+    end;
+printInt(total(s2));
+
+(* 5. Dynamic values narrowed at another period *)
+printInt(sum(dynamic.be(:IntList dynamic.new(:L3 l))));
+printInt(sum2(dynamic.be(:L2 dynamic.new(:IntList built))));

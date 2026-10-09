@@ -573,13 +573,26 @@ Equal types share one C representation, so a value moves between them with a pla
 - **Values:** A recursive type whose unfolding is a tuple, record, variant, or option type (directly or through a
   type operator application, as `List(Int)`) is represented like its unfolding: a recursive tuple or option is a
   pointer to its struct, whose recursive components point to that same struct.
+- **Canonical forms:** A type containing recursion stands for the regular tree of its unfoldings, which any number
+  of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
+  period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its
+  `Rec`). Its tag (`type_to_c_tag`), descriptor (`descriptor_form`), and type digests are computed from its
+  canonical form (`_canonical_type` in `c_types.py`): the graph of its tuple, record, variant, option, array,
+  `var`, `out`, function, and exception nodes is minimized by partition refinement (as the dynamic type table is,
+  §11), and the minimal graph is written back as a type whose recursion variables have reserved ids and bind the
+  targets of the back edges of a depth-first walk, through tuples, records, variants, and options only, so that
+  each recursive type unfolds to an aggregate. One back-edge target gives a `Rec`, several a `RecGroup` with the
+  walk's root first. Types are hash-consed, so the canonical form of a type in canonical form is that type.
 - **Struct tags:** The tag of a recursive type is built from its body with each recursion variable replaced by a
   placeholder numbered by nesting depth (`Rec0_QOption_nil_cons_QTuple_Int_Self0` for
   `Rec(L) Option nil cons with head: Int tail: L end end`), so that it is finite and the same for alpha-equivalent
-  types. An aggregate type equal to a recursive type it contains (an unfolding, written out) takes that recursive
-  type's tag (`type_to_c_tag`), and its descriptor (`descriptor_form`); so do aggregates built from such types.
-- **Limitation:** Equal recursive types with different periods (`Rec(L) Option nil cons with head: Int tail: L end
-  end` and the same type unrolled twice inside its `Rec`) still get different tags.
+  types. Canonical forms make it the same for all equal types; tuple and record field names are part of a node's
+  shape, so types differing only in field names (which tags otherwise ignore) may get different tags when they
+  contain recursion.
+- **Limitation:** Leaves of the graph (type variables, abstract, polymorphic, and auto types, and recursive types
+  whose unfoldings are not aggregates) are compared by identity, so equal types that differ inside such a leaf
+  (an `All(A::TYPE)` function type mentioning `IntList` in one and `L2` in the other, say) still get different
+  canonical forms.
 
 ---
 

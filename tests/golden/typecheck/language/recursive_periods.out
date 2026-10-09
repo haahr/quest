@@ -1,0 +1,347 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'wOut' :type Writer.T
+      :value (TypedSelect 'output' :type Writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'printInt' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'wOut' :type Writer.T)
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'x' :type Int)
+                    ))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'wOut' :type Writer.T)
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetType 'IntList' :kind TYPE)
+    (TypedLetType 'L2' :kind TYPE)
+    (TypedLetType 'L3' :kind TYPE)
+    (TypedLetValue 'sum' :rec :type Fun(x: IntList): Int
+      :value (TypedFun :params (('x' : IntList)) :type Fun(x: IntList): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'x' :type IntList)
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedSelect 'head' :type Int
+                  :target (TypedVar 'c' :type Tuple head: Int tail: IntList end))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+                  :args (
+                    (TypedSelect 'tail' :type IntList
+                      :target (TypedVar 'c' :type Tuple head: Int tail: IntList end))
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedLetValue 'l' :type IntList
+      :value (TypedOption 'cons' :type IntList
+        :payload (TypedTuple :type Tuple head: Int tail: IntList end
+          :elements (
+            (TypedInt 1 :type Int)
+            (TypedOption 'cons' :type IntList
+              :payload (TypedTuple :type Tuple head: Int tail: IntList end
+                :elements (
+                  (TypedInt 2 :type Int)
+                  (TypedOption 'nil' :type IntList)
+                )))
+          ))))
+    (TypedLetValue 'm' :type L2
+      :value (TypedVar 'l' :type IntList))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedSelect 'head' :type Int
+            :target (TypedVariantAssert 'cons' :type Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end
+              :target (TypedVar 'm' :type L2)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedSelect 'head' :type Int
+            :target (TypedVariantAssert 'cons' :type Tuple Int head: Int tail: L2 end
+              :target (TypedSelect 'tail' :type Option nil cons with Tuple head: Int tail: L2 end end
+                :target (TypedVariantAssert 'cons' :type Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end
+                  :target (TypedVar 'm' :type L2)))))
+        )))
+    (TypedLetValue 'm3' :type L3
+      :value (TypedVar 'm' :type L2))
+    (TypedLetValue 'back' :type IntList
+      :value (TypedVar 'm3' :type L3))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+            :args (
+              (TypedDerefCell :type IntList
+                :target (TypedVar 'back' :type Var(IntList)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedVar 'back' :type Var(IntList))
+        :value (TypedVar 'm' :type L2)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+            :args (
+              (TypedDerefCell :type IntList
+                :target (TypedVar 'back' :type Var(IntList)))
+            ))
+        )))
+    (TypedLetValue 'built' :type L2
+      :value (TypedOption 'cons' :type L2
+        :payload (TypedTuple :type Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end
+          :elements (
+            (TypedInt 4 :type Int)
+            (TypedOption 'cons' :type L2
+              :payload (TypedTuple :type Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end
+                :elements (
+                  (TypedInt 5 :type Int)
+                  (TypedOption 'nil' :type L2)
+                )))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+            :args (
+              (TypedVar 'built' :type L2)
+            ))
+        )))
+    (TypedLetValue 'sum2' :rec :type Fun(x: L2): Int
+      :value (TypedFun :params (('x' : L2)) :type Fun(x: L2): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'x' :type L2)
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedSelect 'head' :type Int
+                  :target (TypedVar 'c' :type Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'sum2' :type Fun(x: L2): Int)
+                  :args (
+                    (TypedSelect 'tail' :type Option nil cons with Tuple head: Int tail: L2 end end
+                      :target (TypedVar 'c' :type Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end))
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum2' :type Fun(x: L2): Int)
+            :args (
+              (TypedVar 'l' :type IntList)
+            ))
+        )))
+    (TypedLetValue 'pair' :type Tuple a: L2 b: L3 end
+      :value (TypedTuple :type Tuple a: L2 b: L3 end
+        :elements (
+          (TypedVar 'l' :type IntList)
+          (TypedVar 'l' :type IntList)
+        )))
+    (TypedLetValue 'pair2' :type Tuple a: IntList b: IntList end
+      :value (TypedVar 'pair' :type Tuple a: L2 b: L3 end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+              :args (
+                (TypedSelect 'a' :type IntList
+                  :target (TypedVar 'pair2' :type Tuple a: IntList b: IntList end))
+              ))
+            :right (TypedApp :type Int
+              :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+              :args (
+                (TypedSelect 'b' :type IntList
+                  :target (TypedVar 'pair2' :type Tuple a: IntList b: IntList end))
+              )))
+        )))
+    (TypedLetValue 'lists' :type Array(L3)
+      :value (TypedArray :type Array(L3)
+        :elements (
+          (TypedVar 'l' :type IntList)
+          (TypedVar 'm' :type L2)
+          (TypedVar 'built' :type L2)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+              :args (
+                (TypedIndex :type L3
+                  :target (TypedVar 'lists' :type Array(L3))
+                  :index (TypedInt 0 :type Int))
+              ))
+            :right (TypedApp :type Int
+              :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+              :args (
+                (TypedIndex :type L3
+                  :target (TypedVar 'lists' :type Array(L3))
+                  :index (TypedInt 2 :type Int))
+              )))
+        )))
+    (TypedLetValue 'f' :type Fun(x: L3): Int
+      :value (TypedFun :params (('x' : L3)) :type Fun(x: L3): Int
+        :body (TypedApp :type Int
+          :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+          :args (
+            (TypedVar 'x' :type L3)
+          ))))
+    (TypedLetValue 'g' :type Fun(x: L2): Int
+      :value (TypedVar 'f' :type Fun(x: L3): Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'g' :type Fun(x: L2): Int)
+            :args (
+              (TypedVar 'l' :type IntList)
+            ))
+        )))
+    (TypedLetType 'Stream' :kind TYPE)
+    (TypedLetType 'Stream2' :kind TYPE)
+    (TypedLetValue 'count' :rec :type Fun(n: Int): Stream
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Stream
+        :body (TypedIf :type Stream
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'n' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedOption 'done' :type Stream)
+          :else (TypedOption 'more' :type Stream
+            :payload (TypedTuple :type Tuple value: Int next: Fun(): Stream end
+              :elements (
+                (TypedVar 'n' :type Int)
+                (TypedFun :params () :type Fun(): Stream
+                  :body (TypedApp :type Stream
+                    :func (TypedVar 'count' :type Fun(n: Int): Stream)
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 1 :type Int))
+                    )))
+              ))))))
+    (TypedLetValue 's2' :type Stream2
+      :value (TypedApp :type Stream
+        :func (TypedVar 'count' :type Fun(n: Int): Stream)
+        :args (
+          (TypedInt 3 :type Int)
+        )))
+    (TypedLetValue 'total' :rec :type Fun(s: Stream2): Int
+      :value (TypedFun :params (('s' : Stream2)) :type Fun(s: Stream2): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 's' :type Stream2)
+          :branches (
+            (TypedCaseBranch tags=(more) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedSelect 'value' :type Int
+                  :target (TypedVar 'c' :type Tuple value: Int next: Fun(): Option done more with Tuple value: Int next: Fun(...) end end end))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'total' :type Fun(s: Stream2): Int)
+                  :args (
+                    (TypedApp :type Option done more with Tuple value: Int next: Fun(): Stream2 end end
+                      :func (TypedSelect 'next' :type Fun(): Option done more with Tuple value: Int next: Fun(): Stream2 end end
+                        :target (TypedVar 'c' :type Tuple value: Int next: Fun(): Option done more with Tuple value: Int next: Fun(...) end end end))
+                      :args ())
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'total' :type Fun(s: Stream2): Int)
+            :args (
+              (TypedVar 's2' :type Stream2)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(x: IntList): Int)
+            :args (
+              (TypedApp :type IntList
+                :func (TypedTypeApp [IntList] :type Fun(d: T): IntList
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [L3] :type Fun(a: L3): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'l' :type IntList)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum2' :type Fun(x: L2): Int)
+            :args (
+              (TypedApp :type L2
+                :func (TypedTypeApp [L2] :type Fun(d: T): L2
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [IntList] :type Fun(a: IntList): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'built' :type L2)
+                    ))
+                ))
+            ))
+        )))
+  ))

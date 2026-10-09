@@ -56,6 +56,7 @@ from quest.types import (
     auto_payload_type,
     QParam,
     QKind,
+    TYPE_KIND,
     unalias,
 )
 
@@ -185,39 +186,359 @@ def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
     return t if isinstance(t, (QTupleType, QRecordType, QVariantType, QOptionType)) else None
 
 
-def _refold_recursive_aggregate(t: QType) -> Optional[QType]:
-    """Returns a recursive type occurring in t that is equal to t, if t is a tuple, record, variant, or option type.
+# ============================================================================
+# Canonical forms of recursive types
+# ============================================================================
+#
+# Recursive types are equi-recursive: a type stands for the regular tree of its unfoldings, and types with the
+# same tree are equal however they are written: as a recursive type, as an unfolding written out (to any depth),
+# or with a different period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled
+# twice inside its Rec). Equal types share one C representation, so tags and descriptors are computed from a
+# canonical form of each type that contains recursion: the graph of its nodes is minimized by partition refinement
+# (as dynamic_json does for its type table), and the minimal graph is written back as a type whose recursion
+# variables have reserved ids (ReservedSymbolUse.CANONICAL_REC), numbered depth-first. Types are hash-consed, so
+# the canonical form of a type in canonical form is that type itself.
+#
+# Nodes of the graph are tuples, records, variants, options, arrays, var and out types, monomorphic function
+# types, and exception types. Every other type (a type variable, an abstract or polymorphic type, a recursive type
+# whose unfolding is not a tuple, record, variant, or option) is a leaf, compared by identity.
 
-    Recursive types are equi-recursive, so an unfolding of a recursive type (written out, as in
-    `Let Unfolded = Option nil cons with head: Int tail: IntList end end`, or to any depth) is equal to it. Such a
-    type is represented as the recursive type is, so that equal types share one tag and one C type.
-    """
-    if not isinstance(t, (QTupleType, QRecordType, QVariantType, QOptionType)) or t._has_meta:
-        return None
-    candidates: list[QType] = []
-    seen: set[int] = set()
+_MAX_CANONICAL_NODES = 100_000
 
-    def visit(node: Any) -> None:
-        if id(node) in seen:
-            return
-        seen.add(id(node))
-        if isinstance(node, (QRecType, QRecGroupType, QTypeApp)):
-            # Only recursive types closed in t's scope (not mentioning variables bound inside t) can equal it
-            if node._fv <= t._fv and _unfold_recursive_aggregate(node) is not None:
-                candidates.append(node)
-                return
-        if isinstance(node, (tuple, list)):
-            for item in node:
-                visit(item)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name))
+_RECURSIVE_AGGREGATES = (QTupleType, QRecordType, QVariantType, QOptionType)
 
-    visit(t)
-    for candidate in candidates:
-        if is_type_equal(t, candidate):
-            return candidate
+
+def _canonical_structure(t: QType) -> QType:
+    """t with aliases, solved metavariables, type operator applications, and recursive types whose unfoldings are
+    aggregates reduced down to its outer constructor."""
+    for _ in range(_MAX_BETA_STEPS):
+        t = strip_aliases(t.prune() if hasattr(t, "prune") else t)
+        if not isinstance(t, (QRecType, QRecGroupType, QTypeApp)):
+            return t
+        if (unfolded := _unfold_recursive_aggregate(t)) is not None:
+            return unfolded
+        if isinstance(t, QTypeApp):
+            reduced = _beta_reduce_head(t)
+            if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
+                t = reduced
+                continue
+        return t
+    return t
+
+
+def _canonical_node(s: QType) -> Optional[tuple[tuple[Any, ...], tuple[QType, ...]]]:
+    """The shape (constructor and labels) and parts of a node of a canonical graph, or None for a leaf."""
+    if isinstance(s, QTupleType):
+        fields = s.value_fields
+        if len(fields) != len(s.fields):
+            return None  # an abstract tuple, with type components
+        return ("tuple", tuple((f.name, f.is_var) for f in fields)), tuple(f.type_val for f in fields)
+    if isinstance(s, QRecordType):
+        fields = sorted(s.fields, key=lambda f: f.name)
+        return ("record", s.provenance, tuple((f.name, f.is_var) for f in fields)), tuple(f.type_val for f in fields)
+    if isinstance(s, QVariantType):
+        labels = tuple((v.name, v.is_var, v.type_val is not None) for v in s.variants)
+        return ("variant", labels), tuple(v.type_val for v in s.variants if v.type_val is not None)
+    if isinstance(s, QOptionType):
+        labels = tuple((o.name, o.payload_type is not None) for o in s.options)
+        return ("option", labels), tuple(o.payload_type for o in s.options if o.payload_type is not None)
+    if isinstance(s, QArrayType):
+        return ("array",), (s.element_type,)
+    if isinstance(s, QVarType):
+        return ("var",), (s.element_type,)
+    if isinstance(s, QOutType):
+        return ("out",), (s.element_type,)
+    if isinstance(s, QFunType):
+        modes = tuple((p.is_var, p.is_out) for p in s.params)
+        return ("fun", modes), tuple(p.type_val for p in s.params) + (s.result_type,)
+    if isinstance(s, QExceptionType):
+        return ("exception",), (s.payload_type,)
     return None
+
+
+def _rebuild_node(shape: tuple[Any, ...], parts: list[QType]) -> QType:
+    """The type with the given shape (from _canonical_node) and parts."""
+    kind = shape[0]
+    if kind == "tuple":
+        return QTupleType(tuple(QTupleField(name=n, type_val=p, is_var=v) for (n, v), p in zip(shape[1], parts)))
+    if kind == "record":
+        fields = tuple(QRecordField(name=n, type_val=p, is_var=v) for (n, v), p in zip(shape[2], parts))
+        return QRecordType(fields, provenance=shape[1])
+    if kind == "variant":
+        remaining = iter(parts)
+        return QVariantType(tuple(
+            QVariantField(name=n, type_val=next(remaining) if has else None, is_var=v) for n, v, has in shape[1]
+        ))
+    if kind == "option":
+        remaining = iter(parts)
+        return QOptionType(tuple(
+            QOptionField(name=n, payload_type=next(remaining) if has else None) for n, has in shape[1]
+        ))
+    if kind == "array":
+        return QArrayType(element_type=parts[0])
+    if kind == "var":
+        return QVarType(element_type=parts[0])
+    if kind == "out":
+        return QOutType(element_type=parts[0])
+    if kind == "fun":
+        # Parameter names are not part of a function type's identity; canonical ones keep equal types identical
+        params = tuple(
+            QParam(name=f"x{i + 1}", type_val=p, is_var=is_var, is_out=is_out)
+            for i, ((is_var, is_out), p) in enumerate(zip(shape[1], parts))
+        )
+        return QFunType(params=params, result_type=parts[-1])
+    return QExceptionType(payload_type=parts[0])
+
+
+_Ref = Any  # a class of a canonical graph (an int) or a leaf (a QType)
+
+
+class _CanonicalGraph:
+    """The minimized graph of the nodes reachable from a type, from which canonical forms are written."""
+
+    def __init__(self, root: QType) -> None:
+        index: dict[int, int] = {}
+        self.objects: list[QType] = []  # the structure of each node (kept so that ids stay unique)
+        shapes: list[tuple[Any, ...]] = []
+        children: list[list[_Ref]] = []
+
+        def ref(t: QType) -> _Ref:
+            s = _canonical_structure(t)
+            i = index.get(id(s))
+            if i is not None:
+                return i
+            node = _canonical_node(s)
+            if node is None:
+                return s
+            if len(self.objects) >= _MAX_CANONICAL_NODES:
+                raise _NotCanonicalizable()
+            i = index[id(s)] = len(self.objects)
+            self.objects.append(s)
+            shapes.append(node[0])
+            children.append(list(node[1]))  # resolved below
+            return i
+
+        self.root = ref(root)
+        done = 0
+        while done < len(self.objects):
+            children[done] = [ref(c) for c in children[done]]
+            done += 1
+        self.index = index
+
+        # Partition refinement to the coarsest bisimulation, starting from each node's shape
+        shape_ids: dict[Any, int] = {}
+        cls = [shape_ids.setdefault(shape, len(shape_ids)) for shape in shapes]
+        count = len(shape_ids)
+        while True:
+            sigs: dict[Any, int] = {}
+            refined = [
+                sigs.setdefault((cls[i], tuple(cls[c] if isinstance(c, int) else ("leaf", id(c)) for c in kids)),
+                                len(sigs))
+                for i, kids in enumerate(children)
+            ]
+            if len(sigs) == count:
+                break
+            cls, count = refined, len(sigs)
+        self.cls = cls
+
+        # The quotient graph, one node per class
+        self.shapes: list[tuple[Any, ...]] = [()] * count
+        self.children: list[list[_Ref]] = [[]] * count
+        for i, k in enumerate(cls):
+            self.shapes[k] = shapes[i]
+            self.children[k] = [cls[c] if isinstance(c, int) else c for c in children[i]]
+        self._find_components()
+        self.terms: dict[int, Optional[QType]] = {}
+
+    def _find_components(self) -> None:
+        """Finds the strongly connected components of the quotient graph (Tarjan's algorithm, iteratively), whether
+        each is cyclic, and whether each class reaches a cyclic one."""
+        count = len(self.shapes)
+        self.component = [-1] * count
+        cyclic: list[bool] = []
+        reaches_cycle: list[bool] = []
+        order = [-1] * count
+        low = [0] * count
+        stack: list[int] = []
+        on_stack = [False] * count
+        counter = 0
+        for start in range(count):
+            if order[start] >= 0:
+                continue
+            work = [(start, 0)]
+            order[start] = low[start] = counter
+            counter += 1
+            stack.append(start)
+            on_stack[start] = True
+            while work:
+                k, pos = work[-1]
+                kids = [c for c in self.children[k] if isinstance(c, int)]
+                if pos < len(kids):
+                    work[-1] = (k, pos + 1)
+                    c = kids[pos]
+                    if order[c] < 0:
+                        order[c] = low[c] = counter
+                        counter += 1
+                        stack.append(c)
+                        on_stack[c] = True
+                        work.append((c, 0))
+                    elif on_stack[c]:
+                        low[k] = min(low[k], order[c])
+                    continue
+                work.pop()
+                if work:
+                    parent = work[-1][0]
+                    low[parent] = min(low[parent], low[k])
+                if low[k] != order[k]:
+                    continue
+                # k roots a component; the components it reaches were all completed before it
+                members = []
+                while True:
+                    m = stack.pop()
+                    on_stack[m] = False
+                    self.component[m] = len(cyclic)
+                    members.append(m)
+                    if m == k:
+                        break
+                is_cyclic = len(members) > 1 or any(isinstance(c, int) and c == k for c in self.children[k])
+                reaches = is_cyclic or any(
+                    reaches_cycle[self.component[c]]
+                    for m in members for c in self.children[m]
+                    if isinstance(c, int) and self.component[c] != len(cyclic)
+                )
+                cyclic.append(is_cyclic)
+                reaches_cycle.append(reaches)
+        self.cyclic = cyclic
+        self.reaches_cycle = reaches_cycle
+
+    def term(self, k: int) -> Optional[QType]:
+        """The canonical form of class k, or None if no recursion is reachable from it."""
+        if k in self.terms:
+            return self.terms[k]
+        comp = self.component[k]
+        result: Optional[QType] = None
+        if not self.reaches_cycle[comp]:
+            pass
+        elif not self.cyclic[comp] or not self._is_binder_shape(k):
+            # Not in a cycle, or a node (such as a function type) that a recursive type cannot unfold to: each part
+            # is written on its own. Every cycle passes through a tuple, record, variant, or option.
+            result = _rebuild_node(self.shapes[k], [self._closed(c) for c in self.children[k]])
+        else:
+            result = self._recursive_term(k)
+        self.terms[k] = result
+        return result
+
+    def _is_binder_shape(self, k: int) -> bool:
+        return self.shapes[k][0] in ("tuple", "record", "variant", "option")
+
+    def _closed(self, c: _Ref) -> QType:
+        if not isinstance(c, int):
+            return c
+        t = self.term(c)
+        return t if t is not None else _rebuild_node(self.shapes[c], [self._closed(g) for g in self.children[c]])
+
+    def _recursive_term(self, root: int) -> QType:
+        """The canonical form of a class on a cycle: a recursive type whose variables stand for the targets of the
+        back edges of a depth-first walk of its component from root, through tuples, records, variants, and options
+        only (other nodes are passed through, so that each recursive type unfolds to an aggregate)."""
+        comp = self.component[root]
+        binders: list[int] = []
+        state: dict[int, int] = {}  # 1 while on the walk's path, 2 when done
+
+        def successors(k: int) -> list[int]:
+            out: list[int] = []
+
+            def through(c: _Ref) -> None:
+                if not isinstance(c, int) or self.component[c] != comp:
+                    return
+                if self._is_binder_shape(c):
+                    out.append(c)
+                else:
+                    for g in self.children[c]:
+                        through(g)
+
+            for c in self.children[k]:
+                through(c)
+            return out
+
+        work = [(root, successors(root), 0)]
+        state[root] = 1
+        while work:
+            k, succ, pos = work[-1]
+            if pos == len(succ):
+                state[k] = 2
+                work.pop()
+                continue
+            work[-1] = (k, succ, pos + 1)
+            c = succ[pos]
+            if c not in state:
+                state[c] = 1
+                work.append((c, successors(c), 0))
+            elif state[c] == 1 and c not in binders:
+                binders.append(c)
+        binders.sort(key=lambda b: b != root)  # the root's variable first, the rest in the order they were found
+        variables = {
+            b: QTypeVar(name=f"Rec.{i}", symbol_id=reserved_symbol_id(ReservedSymbolUse.CANONICAL_REC, i),
+                        bound=TYPE_KIND)
+            for i, b in enumerate(binders)
+        }
+        inlined: dict[int, QType] = {}
+
+        def body(k: int) -> QType:
+            return _rebuild_node(self.shapes[k], [part(c) for c in self.children[k]])
+
+        def part(c: _Ref) -> QType:
+            if not isinstance(c, int) or self.component[c] != comp:
+                return self._closed(c)
+            if c in variables:
+                return variables[c]
+            if c not in inlined:
+                inlined[c] = body(c)
+            return inlined[c]
+
+        if len(binders) == 1:
+            var = variables[root]
+            return QRecType(var_name=var.name, symbol_id=var.symbol_id, bound=TYPE_KIND, body=body(root))
+        bindings = tuple((v.name, v.symbol_id, TYPE_KIND, body(b)) for b, v in variables.items())
+        return QRecGroupType(bindings=bindings, active_index=0)
+
+
+class _NotCanonicalizable(Exception):
+    """A type's graph is too large to canonicalize (its unfoldings do not repeat)."""
+
+
+# Each canonicalized type (and each node of its graph) maps to its graph and class there, kept with the type so
+# that its id is not reused
+_CANONICAL: dict[int, tuple[QType, Optional[_CanonicalGraph], int]] = {}
+
+
+def _canonical_type(t: QType) -> Optional[QType]:
+    """Returns the canonical form of t if t contains recursion and is not in canonical form, or None otherwise.
+
+    Equal types containing recursion have the same canonical form, which therefore has their tag and descriptor.
+    """
+    t = t.prune() if hasattr(t, "prune") else t
+    if getattr(t, "_has_meta", True):
+        return None
+    entry = _CANONICAL.get(id(t))
+    if entry is None or entry[0] is not t:
+        try:
+            graph: Optional[_CanonicalGraph] = _CanonicalGraph(t)
+        except _NotCanonicalizable:
+            graph = None
+        if graph is None or not isinstance(graph.root, int):
+            entry = (t, None, 0)
+        else:
+            entry = (t, graph, graph.cls[graph.root])
+            for i, obj in enumerate(graph.objects):
+                if id(obj) not in _CANONICAL:
+                    _CANONICAL[id(obj)] = (obj, graph, graph.cls[i])
+        _CANONICAL[id(t)] = entry
+    _, graph, k = entry
+    if graph is None:
+        return None
+    canonical = graph.term(k)
+    return canonical if canonical is not t else None
 
 
 def _normalize_type_raw(t: QType) -> QType:
@@ -321,11 +642,12 @@ def _type_to_c_tag_raw(t: QType) -> str:
     t = resolve_type_bound(t)
     if (self_level := _rec_self_level(t)) is not None:
         return f"Self{self_level}"
+    if (canonical := _canonical_type(t)) is not None:
+        # Equal types share a tag: a type containing recursion is named by its canonical form
+        return type_to_c_tag(canonical)
     if (rec_tag := _recursive_aggregate_tag(t)) is not None:
         return rec_tag
     t = _normalize_type_raw(t)
-    if (refolded := _refold_recursive_aggregate(t)) is not None:
-        return type_to_c_tag(refolded)
     if _is_word_type_raw(t):
         return "Word"
     if t is INT_TYPE:
@@ -388,6 +710,8 @@ def _type_to_c_tag_raw(t: QType) -> str:
 def _type_digest(t: QType) -> str:
     """A short digest of a type's printed text, telling apart types that type_to_c_tag conflates (see _printed)."""
     t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
+    if (canonical := _canonical_type(t)) is not None:
+        t = normalize_type(canonical)
     return _printed(t)[1][:16]
 
 
@@ -766,9 +1090,9 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     """
     t = t.prune() if hasattr(t, "prune") else t
     t = normalize_type(strip_aliases(t))
-    if (refolded := _refold_recursive_aggregate(t)) is not None:
-        # Equal types share a descriptor: an unfolding of a recursive type is described as the recursive type is
-        t = normalize_type(refolded)
+    if (canonical := _canonical_type(t)) is not None:
+        # Equal types share a descriptor: a type containing recursion is described by its canonical form
+        t = normalize_type(canonical)
     if not _BASE_DESCRIPTORS:
         _BASE_DESCRIPTORS.update({
             id(INT_TYPE): "&quest_type_Int", id(REAL_TYPE): "&quest_type_Real", id(BOOL_TYPE): "&quest_type_Bool",
