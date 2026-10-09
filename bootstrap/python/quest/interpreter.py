@@ -300,9 +300,6 @@ class RuntimeEnvironment:
         env.define("false", FALSE_VALUE)
         env.define("ok", OK_VALUE)
         env.define("DivideByZero", DIVIDE_BY_ZERO_EXC)
-        env.define("arrayOp.error", ARRAY_OP_ERROR_EXC)
-        env.define("dynamic.error", DYNAMIC_ERROR_EXC)
-        env.define("list.error", LIST_ERROR_EXC)
 
         from quest.builtins import BuiltinModuleRegistry
         BuiltinModuleRegistry._ensure_initialized()
