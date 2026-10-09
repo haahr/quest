@@ -122,7 +122,7 @@ end;
             h_ext, qi_ext = compile_interface_file(p_ext)
 
             h_text = h_ext.read_text(encoding="utf-8")
-            self.assertIn('#include "basecounter.h"', h_text)
+            self.assertIn('#include "basecounter.int.h"', h_text)
             self.assertIn("quest_sig_ExtCounter_reset", h_text)
 
             env = Environment()
@@ -171,7 +171,7 @@ end;
             res = subprocess.run(cmd, capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f"Driver failed: {res.stderr}")
 
-            h_file = Path(td) / "calc.h"
+            h_file = Path(td) / "calc.int.h"
             qi_file = Path(td) / "calc.qi"
             self.assertTrue(h_file.exists())
             self.assertTrue(qi_file.exists())

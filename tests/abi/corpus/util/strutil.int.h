@@ -4,8 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "util/maybe.h"
-#include "collections/vector.h"
+#include "util/maybe.int.h"
+#include "collections/vector.int.h"
 typedef const QException * quest_sig_Strutil_error;
 typedef QVal (*quest_sig_Strutil_split)(QString * s, QString * delim);
 typedef QVal (*quest_sig_Strutil_splitlines)(QString * s);

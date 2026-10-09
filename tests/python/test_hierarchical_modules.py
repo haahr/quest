@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 from pathlib import Path
 import shutil
@@ -20,7 +22,7 @@ from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
 from quest.runtime import QInt
 from quest.tokenizer import Tokenizer
 from quest.tokens import SourceMap
-from quest_driver import run_compile
+from quest_driver import run_compile, run_driver
 
 
 def _parse(code: str) -> ast.Program:
@@ -248,7 +250,7 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         mod_file.unlink()
 
         # Verify compiled artifacts were produced with correct paths
-        self.assertTrue((util_dir / "calc.h").is_file())
+        self.assertTrue((util_dir / "calc.int.h").is_file())
         self.assertTrue((util_dir / "calc.qi").is_file())
         self.assertTrue((util_dir / "calc.o").is_file())
 
@@ -275,6 +277,48 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         proc = run_binary(out_bin)
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout.strip(), "42")
+
+    def test_module_named_after_c_standard_header(self) -> None:
+        """A generated header for util/Math must not shadow <math.h>, though build/util is on the -I path."""
+        util_dir = self.root / "util"
+        util_dir.mkdir(parents=True)
+        (util_dir / "math.int.quest").write_text(
+            "interface Math\n"
+            "export\n"
+            "    square(a: Int): Int\n"
+            "end;\n",
+            encoding="utf-8",
+        )
+        (util_dir / "math.mod.quest").write_text(
+            "module math : Math\n"
+            "export\n"
+            "    let square(a: Int): Int = a * a;\n"
+            "end;\n",
+            encoding="utf-8",
+        )
+        main_quest = self.root / "main.quest"
+        main_quest.write_text(
+            "import m = util/math : util/Math;\n"
+            "import writer : Writer;\n"
+            "import conv : Conv;\n"
+            "writer.putString(writer.output conv.int(m.square(7)));\n",
+            encoding="utf-8",
+        )
+
+        build_dir = self.root / "build"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            ret = run_driver([
+                "--stop-after", "run_c_compiled",
+                str(main_quest),
+                "-I", str(self.root),
+                "--build-dir", str(build_dir),
+            ])
+        self.assertEqual(ret, 0, out.getvalue())
+        self.assertIn("49", out.getvalue())
+        self.assertTrue((build_dir / "util" / "math.int.h").is_file())
+        self.assertTrue((build_dir / "util" / "math.mod.c").is_file())
+        self.assertFalse((build_dir / "util" / "math.h").exists())
 
 
 if __name__ == "__main__":

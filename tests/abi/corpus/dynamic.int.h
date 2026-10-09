@@ -4,8 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "reader.h"
-#include "writer.h"
+#include "reader.int.h"
+#include "writer.int.h"
 #ifndef QUEST_TYPE_QTuple_QVal_TYPEDEF
 #define QUEST_TYPE_QTuple_QVal_TYPEDEF
 typedef struct QTuple_QVal QTuple_QVal;

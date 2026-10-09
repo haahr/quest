@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "util/maybe.h"
+#include "util/maybe.int.h"
 typedef QVal quest_type_Vector_T;
 typedef const QException * quest_sig_Vector_error;
 typedef QVal (*quest_sig_Vector_new)(const QTypeDescriptor *desc_A);

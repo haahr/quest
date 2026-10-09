@@ -318,12 +318,15 @@ Following Cardelli's specification, module loading is lazy:
 This implementation of Quest supports separate compilation of interfaces and modules, enabling modular builds and
 object linking:
 
-### 9.1. Interface Compilation (`.int.quest` -> `.h` + `.qi`)
+### 9.1. Interface Compilation (`.int.quest` -> `.int.h` + `.qi`)
 Compiling an interface (`quest -c counter.int.quest`) generates two complementary artifacts:
-1. **C Header (`x.h`):**
+1. **C Header (`x.int.h`):**
+   - Named `x.int.h` rather than `x.h` so that an interface named like a C library header (`math`, `string`,
+     `time`, ...) cannot shadow it: generated-code directories are on the C compiler's include path, and the
+     runtime includes `<math.h>` and others ([build-process.md §3.2](build-process.md)).
    - Preprocessor guards (`#ifndef QUEST_INTF_X_H ... #endif`).
    - `#include "quest_runtime.h"`.
-   - Recursive `#include "<dep>.h"` for any imported interfaces (`import : Dep`).
+   - Recursive `#include "<dep>.int.h"` for any imported interfaces (`import : Dep`).
    - Abstract types (`T::TYPE`) erase to uniform 64-bit words (`typedef QVal quest_type_X_T;`).
    - Manifest types (`Def T = ...`) emit concrete C typedefs or struct definitions.
    - Function pointer typedefs (`typedef <Ret> (*quest_sig_X_<member>)(<Params>);`).
@@ -353,10 +356,10 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - Serialized via `dynamic.extern` / `jsog_encode` and deserialized via `dynamic.intern` / `jsog_decode`.
    - Allows the compiler to typecheck client code or implementing modules without the original `.int.quest` source.
 
-### 9.2. Module Compilation (`.mod.quest` -> `.c` -> `.o`)
+### 9.2. Module Compilation (`.mod.quest` -> `.mod.c` -> `.o`)
 Compiling a module implementation (`quest -c counter.mod.quest`) generates both C source and relocatable object files:
-1. **C Source File (`<name>.c`):**
-   - Includes `#include "quest_runtime.h"` and `#include "<interface>.h"`.
+1. **C Source File (`<name>.mod.c`):**
+   - Includes `#include "quest_runtime.h"` and `#include "<interface>.int.h"`.
    - **Dual Linkage ABI:**
      - Direct C functions: Exported interface member functions are emitted with external C linkage
        (`qv_<mod>_<func>(...)`), allowing native C calls and optimal direct linking without closure indirection.
@@ -369,8 +372,8 @@ Compiling a module implementation (`quest -c counter.mod.quest`) generates both 
      initialization functions of any imported dependency modules (`qv_mod_<dep>_init()`), ensuring all transitive
      module state is ready before use.
 2. **Relocatable Object File (`<name>.o`):**
-   - Produced by invoking the host C compiler (`clang -c <name>.c -o <name>.o -I runtime -I <include_paths>`).
-   - Both `<name>.c` and `<name>.o` are retained on disk for debugging, inspection, and native linking.
+   - Produced by invoking the host C compiler (`clang -c <name>.mod.c -o <name>.o -I runtime -I <include_paths>`).
+   - Both `<name>.mod.c` and `<name>.o` are retained on disk for debugging, inspection, and native linking.
 
 ### 9.3. Client Compilation & Object Linking (`main.quest` + `*.o` -> Native Binary)
 Compiling client code that depends on precompiled modules links `.o` files directly into the native executable:
@@ -405,7 +408,7 @@ Compiling client code that depends on precompiled modules links `.o` files direc
 When compiling hierarchical interfaces and modules:
 1. **Directory Tree Preservation:**
    When an interface or module in a subdirectory is compiled (e.g. `quest -c util/calc.mod.quest`), the compiler
-   creates matching output subdirectories in the target destination, writing `util/calc.c`, `util/calc.o`,
+   creates matching output subdirectories in the target destination, writing `util/calc.mod.c`, `util/calc.o`,
    and `util/calc.int.h`.
 2. **C Symbol Mangling:**
    Because C identifiers cannot contain forward slashes, directory delimiters in hierarchical module names are mangled
@@ -433,8 +436,8 @@ To maintain high performance, modular boundaries, and clean test separation:
      evaluates modules directly from source.
    - Separate compilation is always used for hierarchical modules during C phases (`codegen_c` and `run_c_compiled`).
 3. **Dependency Building & Build Directory:**
-   - In C compilation modes, typechecking only regenerates stale interface artifacts (`.qi`, `.h`); importers are typed
-     against interfaces. After code generation, the modules the unit needs are built to `.c`, `.o`, and `.qm` by the
+   - In C compilation modes, typechecking only regenerates stale interface artifacts (`.qi`, `.int.h`); importers are typed
+     against interfaces. After code generation, the modules the unit needs are built to `.mod.c`, `.o`, and `.qm` by the
      build engine, exactly as in a full application build (see [build-process.md §7.3](build-process.md)).
    - The build output directory can be explicitly specified via `--build-dir <dir>` (such as `.build/` in test runs),
      and defaults to `.build/`.

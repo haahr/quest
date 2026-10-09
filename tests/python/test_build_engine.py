@@ -89,7 +89,7 @@ class TestBuildEngine(unittest.TestCase):
         self.assertIn("calc", res.compiled_units)
 
         self.assertTrue((self.build_dir / "calc.qm").is_file())
-        self.assertTrue((self.build_dir / "calc.c").is_file())
+        self.assertTrue((self.build_dir / "calc.mod.c").is_file())
         self.assertTrue((self.build_dir / "calc.o").is_file())
 
         proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)

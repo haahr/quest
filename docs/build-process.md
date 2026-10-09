@@ -14,10 +14,10 @@ executable binaries:
 
 ### 1.1. Separate Compilation (Default Mode)
 In separate compilation mode:
-- Each interface (`.int.quest`) is compiled independently into a C header file (`q_<stem>.h`) and a Quest Interface
-  metadata file (`.qi`). The `q_` prefix prevents generated headers from colliding with or shadowing C standard
-  library headers (such as `<math.h>`, `<string.h>`, or `<time.h>`).
-- Each module implementation (`.mod.quest`) is compiled independently into a C implementation file (`.c`), compiled by
+- Each interface (`.int.quest`) is compiled independently into a C header file (`<stem>.int.h`) and a Quest Interface
+  metadata file (`.qi`). Keeping the `.int` of the source name prevents generated headers from colliding with or
+  shadowing C standard library headers (such as `<math.h>`, `<string.h>`, or `<time.h>`).
+- Each module implementation (`.mod.quest`) is compiled independently into a C implementation file (`<stem>.mod.c`), compiled by
   the host C compiler to an object file (`.o`), and accompanied by a Quest Module metadata file (`.qm`).
 - A Quest main routine (`.quest`) is compiled into a `.c`, `.o`, and `.qm` metadata file.
 - Single-module and single-interface compilations *always* operate in separate compilation mode.
@@ -61,7 +61,7 @@ A fundamental architectural distinction exists between **compiling an individual
 ┌───────────────────────┐ ┌───────────────────────┐ ┌───────────────────────┐
 │ Interface Compilation │ │  Module Compilation   │ │  Main Compilation   │
 │ (.int.quest ->        │ │ (.mod.quest ->        │ │ (.quest ->          │
-│   q_<stem>.h/.qi)     │ │   .qm/.c/.o)          │ │   .qm/.c/.o)        │
+│   <stem>.int.h/.qi)   │ │   .qm/.mod.c/.o)      │ │   .qm/.c/.o)        │
 └───────────────────────┘ └───────────────────────┘ └───────────────────────┘
 ```
 
@@ -69,18 +69,18 @@ A fundamental architectural distinction exists between **compiling an individual
    - Validates that the file contains exactly one `interface` declaration.
    - Typechecks the interface signatures in isolation (or with imported interfaces).
    - Emits:
-     - `q_<stem>.h`: C typedefs, struct signatures, and function prototypes (prefixed to avoid C header collisions).
+     - `<stem>.int.h`: C typedefs, struct signatures, and function prototypes (named to avoid C header collisions, §3.2).
      - `.qi`: Serialized public interface metadata (types, kinds, signatures, and imported interfaces).
    - Does not invoke the host C compiler.
 
 2. **Compilation of a Module (`.mod.quest`):**
    - Validates that the file contains exactly one `module` definition conforming to its declared interface.
-   - Loads imported interfaces (regenerating stale `q_<stem>.h`/`.qi` as needed) to typecheck module members.
+   - Loads imported interfaces (regenerating stale `<stem>.int.h`/`.qi` as needed) to typecheck module members.
    - Notes imported modules without recursively compiling their implementations.
    - Emits:
-     - `.c`: C implementation code and exported module record initialization functions.
+     - `<stem>.mod.c`: C implementation code and exported module record initialization functions.
      - `.qm`: Quest Module metadata recording imported modules, imported interfaces, and dependency timestamps.
-   - Invokes host C compiler (`clang` or `gcc`) to compile `.c` to `.o`.
+   - Invokes host C compiler (`clang` or `gcc`) to compile `<stem>.mod.c` to `<stem>.o`.
 
 3. **Compilation of a Main Routine (`.quest`):**
    - Typechecks the top-level phrases and expressions against imported interfaces.
@@ -103,7 +103,7 @@ A fundamental architectural distinction exists between **compiling an individual
 The compiler driver differentiates between orchestrating a full build of an application and compiling an isolated unit:
 
 - **Full Application Builds (`questc main.quest`):**
-  All intermediate artifacts (`.qi`, `q_*.h`, `.qm`, `.c`, `.o`, and `build.log`) reside strictly within a dedicated
+  All intermediate artifacts (`.qi`, `*.int.h`, `.qm`, `.c`, `.mod.c`, `.o`, and `build.log`) reside strictly within a dedicated
   build directory (default `.build/` in the project root, or `--build-dir <dir>`). Source trees (`lib/`, `tests/`) are
   never modified by the build process.
 - **Pipeline C Phases (`--stop-after codegen_c` / `run_c_compiled`, `--emit-c`, `-o` with objects):**
@@ -118,7 +118,7 @@ The compiler driver differentiates between orchestrating a full build of an appl
   - If neither is specified, outputs default to the source file directory (`file_path.parent`). This preserves
     isolated single-file tool workflows and localized unit tests without creating unintended `.build/` trees.
 
-Compiled artifacts found outside the build directory (for example a `.qi`/`.h` or `.qm`/`.c`/`.o` left next to a source
+Compiled artifacts found outside the build directory (for example a `.qi`/`.int.h` or `.qm`/`.mod.c`/`.o` left next to a source
 file by a standalone compilation) are used like those in the build directory when they are fresh: at least as new
 as their sources and recording the running compiler's ABI version (§5.2).
 
@@ -132,9 +132,9 @@ quest/
 └── .build/                          # Mirror build directory (for full builds)
     ├── build.log                    # Compilation and queue audit trail
     ├── util/
-    │   ├── q_path.h                 # Generated interface header (prefixed to avoid libc collision)
+    │   ├── path.int.h               # Generated interface header (.int avoids libc collisions)
     │   ├── path.qi                  # Generated interface metadata
-    │   ├── path.c                   # Generated module C implementation
+    │   ├── path.mod.c               # Generated module C implementation
     │   ├── path.qm                  # Generated module metadata
     │   └── path.o                   # Compiled native object file
     └── tests/
@@ -146,22 +146,24 @@ quest/
 ### 3.2. Path Mapping Conventions
 1. **Modules and Interfaces:**
    Artifact paths map directly to the canonical module path inside `.build/`:
-   - Interface `util/Path` (`lib/util/path.int.quest`) -> `.build/util/path.qi`, `.build/util/q_path.h`.
+   - Interface `util/Path` (`lib/util/path.int.quest`) -> `.build/util/path.qi`, `.build/util/path.int.h`.
    - Module `util/path` (`lib/util/path.mod.quest`):
-     `.build/util/path.qm`, `.build/util/path.c`, `.build/util/path.o`.
-2. **C Header Collision Prevention (`q_` Prefix):**
-   Generated C headers are prefixed with `q_` (e.g. `q_path.h`, `q_math.h`, `q_string.h`). When passing `-I .build`
-   to the host C compiler, this prevents generated headers from inadvertently shadowing standard C library headers
-   such as `<math.h>`, `<string.h>`, `<time.h>`, or `<stdio.h>`. Generated C code includes `#include "util/q_path.h"`.
+     `.build/util/path.qm`, `.build/util/path.mod.c`, `.build/util/path.o`.
+2. **C Header Collision Prevention (`.int.h` and `.mod.c`):**
+   Generated C files keep the `.int` or `.mod` of their source's name: `math.int.quest` generates `math.int.h`
+   and `math.mod.quest` generates `math.mod.c`. The build directory and its subdirectories are on the host C
+   compiler's include path, so a header named `math.h` would shadow `<math.h>` (included by the runtime) for every
+   translation unit; no C library header has a name ending in `.int.h`. Generated C code includes
+   `#include "util/path.int.h"`.
 3. **Main Routines:**
    Artifacts mirror the source file path relative to the working directory or project root:
    - `tests/test_path.quest` -> `.build/tests/test_path.qm`, `.build/tests/test_path.c`, `.build/tests/test_path.o`.
 4. **C Compiler Include Paths:**
    When compiling generated `.c` files to `.o`, the host C compiler is invoked with `-I <build-dir> -I runtime`,
-   allowing `#include "util/q_path.h"` to resolve directly against generated headers in `.build/`.
+   allowing `#include "util/path.int.h"` to resolve directly against generated headers in `.build/`.
 5. **No Colocated Main and Module Files:**
    A program cannot contain both an `m.quest` and an `m.mod.quest` at the same logical path. Because both files
-   would emit `.build/m.qm`, `.build/m.c`, and `.build/m.o`, their compilation artifacts would collide. The driver
+   would emit `.build/m.qm` and `.build/m.o`, their compilation artifacts would collide. The driver
    detects and forbids this conflict.
 
 ---
@@ -173,9 +175,10 @@ The compilation process produces four distinct artifact types alongside source c
 | Artifact | Source File | Purpose | Generated By | Consumed By |
 | :--- | :--- | :--- | :--- | :--- |
 | **`.qi`** | `.int.quest` | Quest Interface metadata | Interface Compiler | Module Compiler, Importers |
-| **`q_<stem>.h`** | `.int.quest` | C header file (typedefs, structs) | Interface Compiler | Host C Compiler |
+| **`<stem>.int.h`** | `.int.quest` | C header file (typedefs, structs) | Interface Compiler | Host C Compiler |
 | **`.qm`** | `.mod.quest`, `.quest` | Module metadata (imports) | Module/Main Compiler| Build Queue, Linker |
-| **`.c`/`.o`**| `.mod.quest`, `.quest` | C source and native object code | Module Compiler & C Compiler | Host Linker |
+| **`.mod.c`/`.o`** | `.mod.quest` | C source and native object code | Module Compiler & C Compiler | Host Linker |
+| **`.c`/`.o`**| `.quest` | C source and native object code | Main Compiler & C Compiler | Host Linker |
 
 ### 4.1. Retirement of `.d` Files
 Historically, dependency tracking relied on Make-style `.d` files containing object prerequisite lines. This approach
@@ -219,7 +222,7 @@ Certain core modules are implemented directly in the native C runtime (`runtime/
 `BuiltinModuleRegistry`) rather than as Quest source files:
 - **Registry Set:** `BUILTIN_RUNTIME_MODULES = { "dynamic" }`.
 - **Interface Exposure:** Each runtime module defines a standard Quest interface (`dynamic.int.quest`), producing
-  `dynamic.qi` and `q_dynamic.h` for static typechecking.
+  `dynamic.qi` and `dynamic.int.h` for static typechecking.
 - **No Implementation Artifacts:** Runtime modules do not have a `.mod.quest` source file or a separate `.o` object
   file; their implementations are permanently linked into the Quest runtime library.
 - **Build Engine Behavior:** When an imported module belongs to `BUILTIN_RUNTIME_MODULES`, the build engine does not
@@ -236,19 +239,19 @@ When compiling any source file (module, interface, or main routine) that imports
                            │   Import Interface I    │
                            └────────────┬────────────┘
                                         │
-                         Find I.int.quest, I.qi, q_I.h
+                         Find I.int.quest, I.qi, I.int.h
                                         │
                ┌────────────────────────┴────────────────────────┐
                ▼                                                 ▼
-       I.int.quest exists                              Only I.qi and q_I.h exist
+       I.int.quest exists                              Only I.qi and I.int.h exist
                │                                                 │
        ┌───────┴───────┐                                         │
        ▼               ▼                                         │
-  I.qi or q_I.h   I.qi and q_I.h                                 │
+ I.qi or I.int.h  I.qi and I.int.h                                │
     missing         present                                      │
        │               │                                         │
        │         Check datestamps:                               │
-       │       I.int.quest > I.qi/q_I.h?                         │
+       │       I.int.quest > I.qi/I.int.h?                       │
        │         ┌─────┴─────┐                                   │
        │       Yes           No                                  │
        ▼       ▼             ▼                                   ▼
@@ -262,16 +265,16 @@ When compiling any source file (module, interface, or main routine) that imports
 The compiler applies three strict rules in order:
 
 1. **Rule 1 (Source and Artifacts Present):**
-   If `I.int.quest`, `I.qi`, and `q_I.h` all exist:
+   If `I.int.quest`, `I.qi`, and `I.int.h` all exist:
    - Compare filesystem modification timestamps (`mtime`).
-   - If `I.int.quest` is newer than `I.qi` or `q_I.h`, the artifacts are **out of date**.
-   - If `I.qi` and `q_I.h` are both newer than or equal to `I.int.quest`, the artifacts are **up to date**.
+   - If `I.int.quest` is newer than `I.qi` or `I.int.h`, the artifacts are **out of date**.
+   - If `I.qi` and `I.int.h` are both newer than or equal to `I.int.quest`, the artifacts are **up to date**.
 
 2. **Rule 2 (Source Present, Artifacts Incomplete):**
-   If `I.int.quest` exists but either `I.qi` or `q_I.h` is missing from `.build/`, the artifacts are **out of date**.
+   If `I.int.quest` exists but either `I.qi` or `I.int.h` is missing from `.build/`, the artifacts are **out of date**.
 
 3. **Rule 3 (Binary Distribution / Precompiled Mode):**
-   If `I.qi` and `q_I.h` exist in `.build/` (or an include directory) but `I.int.quest` does not exist:
+   If `I.qi` and `I.int.h` exist in `.build/` (or an include directory) but `I.int.quest` does not exist:
    - The artifacts are assumed to be **up to date**.
    - This explicitly enables compiling against distributed precompiled Quest standard libraries or third-party
      packages without requiring the original source files.
@@ -279,7 +282,7 @@ The compiler applies three strict rules in order:
 ### 5.1. Action on Interface Staleness
 If an interface is determined to be **out of date**:
 1. The compiler immediately pauses the dependent compilation unit.
-2. The interface compiler compiles `I.int.quest`, generating `q_I.h` and `I.qi` in `.build/`.
+2. The interface compiler compiles `I.int.quest`, generating `I.int.h` and `I.qi` in `.build/`.
 3. If interface compilation fails, compilation aborts with diagnostic messages referencing `I.int.quest`.
 4. Once regenerated, the compiler resumes compiling the dependent unit, reading signatures from the fresh `I.qi`.
 
@@ -292,8 +295,9 @@ interfaces like `Writer`).
 ### 5.2. An ABI Version and Trusting Fresh Artifacts
 **Status:** implemented (`quest/build/abi.py`, `tests/abi/`, and §5.2.4 in `module_loader.py`).
 
-The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `q_<stem>.h` instead of
-re-elaborating an `.int.quest`, and `.qm`, `.c`, and `.o` instead of recompiling a `.mod.quest` or main routine.
+The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `<stem>.int.h` instead of
+re-elaborating an `.int.quest`, and `.qm`, `.c` (`.mod.c` for a module), and `.o` instead of recompiling a `.mod.quest`
+or main routine.
 Freshness is currently judged by timestamps alone (Rules 1–3), which cannot tell whether an artifact was produced
 under the same artifact contract as the running compiler. The stopgap in §3.1 (source always wins outside the build
 directory) avoids trusting such artifacts, at the cost of re-elaborating every imported source on every run.
@@ -327,12 +331,13 @@ The ABI version covers:
   type descriptors);
 - symbol name mangling (`docs/name-mangling.md`) and calling conventions, including type-descriptor parameters for
   polymorphic functions and module initialization (§8);
-- the runtime interface generated code uses (`runtime/quest_runtime.h`).
+- the runtime interface generated code uses (`runtime/quest_runtime.h`);
+- the names of generated files (`<stem>.int.h`, `<stem>.mod.c`, §3.2), since headers `#include` one another by name.
 
 Placement:
 - **`.qi`:** two new fields, `abi: Int` and `producer: String`, in the `QI_SCHEMA_TYPE_STR` record. Because the
   schema type itself changes, older `.qi` files no longer match it on load and are treated as stale.
-- **`q_<stem>.h`:** a leading comment `/* quest abi <version> producer <producer> */`, for diagnosis only. A header is
+- **`<stem>.int.h`:** a leading comment `/* quest abi <version> producer <producer> */`, for diagnosis only. A header is
   produced together with its `.qi`, and its freshness is decided by the `.qi`.
 - **`.qm`:** top-level keys `"abi"` and `"producer"`. A `.c`/`.o` pair is produced together with its `.qm`, and its
   freshness is decided by the `.qm`.
@@ -352,7 +357,7 @@ dependents are rebuilt by the existing transitive invalidation rule (§7.2).
 A version number is only as reliable as the discipline of bumping it, so a test enforces it. A checked-in ABI corpus
 (`tests/abi/corpus`) records, for a frozen snapshot of every interface in the library and in `questlang/`
 (`tests/abi/inputs`):
-- the generated `.qi` files and `q_<stem>.h` headers, with the producer stamp and comments left out;
+- the generated `.qi` files and `<stem>.int.h` headers, with the producer stamp and comments left out;
 - a digest of `runtime/quest_runtime.h`.
 
 The inputs are a snapshot, not the live library, so that the corpus changes only when the compiler's output for the
@@ -381,7 +386,7 @@ compilations, and the typecheck and interpret phases use it too:
 - **Interfaces:** every phase loads an imported interface from its `.qi`, building or rebuilding it first when it is
   missing or stale. Typecheck and interpret runs build only the `.qi`; generating the C header is costly and only C
   compilation needs it, so a C build rebuilds an interface whose header is missing or older than its source.
-- **Modules, when typechecking only** (`--stop-after typecheck`): a module whose `.qm`, `.c`, and `.o` are fresh, in
+- **Modules, when typechecking only** (`--stop-after typecheck`): a module whose `.qm`, `.mod.c`, and `.o` are fresh, in
   the build directory or next to its source, is typed through its interface alone, without elaborating its body or
   re-proving conformance, as separate C compilation does (`separately_compiled_module_scope`). Without fresh
   artifacts the module is elaborated from source; a typecheck never invokes the C compiler.
@@ -513,12 +518,12 @@ and rebuild the transitive closure of required modules.
    - **Check for Runtime Builtin Modules:**
      If `item` is in `BUILTIN_RUNTIME_MODULES` (e.g. `"dynamic"`):
      - The module's implementation is built directly into the runtime; no `.mod.quest` or `.o` file exists.
-     - Verify and regenerate its interface (`dynamic.int.quest` -> `dynamic.qi`, `q_dynamic.h`) if needed per §5.
+     - Verify and regenerate its interface (`dynamic.int.quest` -> `dynamic.qi`, `dynamic.int.h`) if needed per §5.
      - Continue to the next queue item without checking for `.mod.quest` or `.o`.
 
    - **Determine Paths:**
      - For main routine: source is `main.quest`; artifacts are `.build/main.qm`, `.build/main.c`, `.build/main.o`.
-     - For module `M`: source is `M.mod.quest`; artifacts are `.build/M.qm`, `.build/M.c`, `.build/M.o`.
+     - For module `M`: source is `M.mod.quest`; artifacts are `.build/M.qm`, `.build/M.mod.c`, `.build/M.o`.
 
    - **Check Staleness:**
      An item is **up to date** (precompiled / binary distribution mode) if:
@@ -531,7 +536,7 @@ and rebuild the transitive closure of required modules.
 
    - **Action if Stale:**
      - Compile the source file (`main.quest` or `M.mod.quest`).
-     - For each imported interface: verify and regenerate `I.qi` / `q_I.h` per §5.
+     - For each imported interface: verify and regenerate `I.qi` / `I.int.h` per §5.
      - Emit `.qm` and `.c` into `.build/`.
      - Compile `.c` to `.o` via the host C compiler (`clang -c ... -o .build/...`).
      - Read the generated `.qm` manifest.
@@ -568,8 +573,8 @@ and rebuild the transitive closure of required modules.
 ### 7.2. The Transitive Interface Invalidation Rule
 A critical flaw in naive separate compilation systems is the *Fragile Interface Problem*:
 > If an interface `util/Strutil` is updated, `util/path.mod.quest` may not have been touched, meaning
-> `path.mod.quest` is *older* than `path.c` and `path.qm`. However, `path.c` was compiled against struct offsets and
-> prototypes in the *previous* `q_strutil.h`. Skipping `path` produces binary desynchronization and runtime faults.
+> `path.mod.quest` is *older* than `path.mod.c` and `path.qm`. However, `path.mod.c` was compiled against struct offsets and
+> prototypes in the *previous* `strutil.int.h`. Skipping `path` produces binary desynchronization and runtime faults.
 
 **Resolution:** When inspecting an existing `.qm` file during staleness checking, the compiler checks the datestamps
 of all interfaces recorded in `imported_interfaces`. If any interface source (`I.int.quest`) is newer than `M.qm`,
@@ -690,7 +695,7 @@ The log records structured timestamps, queue transitions, staleness evaluations,
 [2026-10-02T16:50:01] EVAL STALENESS: 'path_operations' -> STALE (.build/path_operations.qm missing)
 [2026-10-02T16:50:01] COMPILE MAIN: 'path_operations'
 [2026-10-02T16:50:01] RESOLVE INTERFACE: 'util/Path' -> 'lib/util/path.int.quest'
-[2026-10-02T16:50:01] EVAL STALENESS: 'util/Path' (.build/util/path.qi, q_path.h) -> UP TO DATE
+[2026-10-02T16:50:01] EVAL STALENESS: 'util/Path' (.build/util/path.qi, path.int.h) -> UP TO DATE
 [2026-10-02T16:50:01] WRITE QM: .build/path_operations.qm
 [2026-10-02T16:50:01] EMIT C: .build/path_operations.c
 [2026-10-02T16:50:01] HOST COMPILE: clang -c .build/path_operations.c -o .build/path_operations.o
@@ -701,8 +706,8 @@ The log records structured timestamps, queue transitions, staleness evaluations,
 [2026-10-02T16:50:01] ENQUEUE MODULE: 'util/strutil' (from util/path import)
 [2026-10-02T16:50:01] ENQUEUE MODULE: 'util/stringbuilder' (from util/path import)
 [2026-10-02T16:50:01] WRITE QM: .build/util/path.qm
-[2026-10-02T16:50:01] EMIT C: .build/util/path.c
-[2026-10-02T16:50:01] HOST COMPILE: clang -c .build/util/path.c -o .build/util/path.o
+[2026-10-02T16:50:01] EMIT C: .build/util/path.mod.c
+[2026-10-02T16:50:01] HOST COMPILE: clang -c .build/util/path.mod.c -o .build/util/path.o
 [2026-10-02T16:50:02] POP QUEUE: 'util/strutil'
 [2026-10-02T16:50:02] EVAL STALENESS: 'util/strutil' -> UP TO DATE
 [2026-10-02T16:50:02] READ QM: .build/util/strutil.qm (no new unvisited modules)
@@ -718,7 +723,7 @@ The log records structured timestamps, queue transitions, staleness evaluations,
 
 1. **Deterministic Staleness:** Interface and module updates propagate reliably through the transitive closure via the
    `.qm` invalidation rules, eliminating runtime struct offset mismatches and stale object crashes.
-2. **Clean Source Tree:** In full application builds, all generated files (`.qi`, `q_*.h`, `.qm`, `.c`, `.o`) live
+2. **Clean Source Tree:** In full application builds, all generated files (`.qi`, `*.int.h`, `.qm`, `.c`, `.mod.c`, `.o`) live
    strictly under `.build/`.
 3. **Decoupled Compilation Units:** Compiling a module never triggers compilation of other modules—it only records
    module names and validates against interface `.qi` files.

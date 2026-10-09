@@ -4,8 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "collections/vector.h"
-#include "util/maybe.h"
+#include "collections/vector.int.h"
+#include "util/maybe.int.h"
 typedef QInt (*quest_sig_Sort_intCompare)(QInt a, QInt b);
 typedef QInt (*quest_sig_Sort_stringCompare)(QString * a, QString * b);
 typedef QInt (*quest_sig_Sort_realCompare)(QReal a, QReal b);

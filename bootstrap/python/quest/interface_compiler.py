@@ -3,7 +3,7 @@
 Compiles interface files (.int.quest) to:
 1. .qi: Portable, cycle-safe JSON/JSOG metadata encoded using shadow Quest record types
    compatible with dynamic.extern / dynamic.intern.
-2. .h: C header file providing include guards, dependency includes, abstract type erasure
+2. .int.h: C header file providing include guards, dependency includes, abstract type erasure
    to QVal, manifest type definitions, and function signature typedefs.
 """
 
@@ -374,7 +374,7 @@ def compile_interface_to_qi(
 
 
 def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope) -> str:
-    """Generates the C header (.h) for an interface declaration."""
+    """Generates the C header (.int.h) for an interface declaration."""
     clean_guard = decl.name.replace("/", "__").upper()
     guard_name = f"QUEST_INTF_{clean_guard}_H"
     lines: list[str] = [
@@ -397,7 +397,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope) -> 
         for imp in decl.imports:
             path = imp.effective_interface_path.lower()
             if path not in ("word",):
-                lines.append(f'#include "{path}.h"')
+                lines.append(f'#include "{path}.int.h"')
         lines.append("")
 
     # Aggregate struct definitions used in the interface
@@ -518,7 +518,7 @@ def compile_interface_file(
     build_dir: Optional[Path] = None,
     header: bool = True,
 ) -> tuple[Path, Path]:
-    """Compiles a .int.quest file to .qi and, unless header is False, .h files.
+    """Compiles a .int.quest file to .qi and, unless header is False, .int.h files.
 
     Only C compilation needs headers; typecheck and interpret runs build just the .qi.
     """
@@ -582,7 +582,7 @@ def compile_interface_file(
         stem = file_path.stem
 
     qi_path = target_dir / f"{stem.lower()}.qi"
-    h_path = target_dir / f"{stem.lower()}.h"
+    h_path = target_dir / f"{stem.lower()}.int.h"
     qi_path.parent.mkdir(parents=True, exist_ok=True)
     h_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -623,7 +623,7 @@ def ensure_interface_artifacts(
     target_dir = build_dir / Path(canon_name).parent if "/" in canon_name else build_dir
     stem = Path(canon_name).name.lower()
     qi_file = target_dir / f"{stem}.qi"
-    h_file = target_dir / f"{stem}.h"
+    h_file = target_dir / f"{stem}.int.h"
 
     def current(qi: Path, h: Path) -> bool:
         """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, and match this compiler.
@@ -640,7 +640,7 @@ def ensure_interface_artifacts(
     # Fresh artifacts found elsewhere on the search path (e.g. next to the source, from a standalone
     # compilation) are used like those in the build directory.
     if not current(qi_file, h_file) and file_path is not None and file_path.suffix == ".qi":
-        cand_h = file_path.with_suffix(".h")
+        cand_h = file_path.with_suffix(".int.h")
         if current(file_path, cand_h) or (src is None and not qi_file.is_file()):
             qi_file, h_file = file_path, cand_h
 

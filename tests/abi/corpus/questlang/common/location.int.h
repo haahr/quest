@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "collections/vector.h"
+#include "collections/vector.int.h"
 #ifndef QUEST_TYPE_QTuple_Int_Int_Int_TYPEDEF
 #define QUEST_TYPE_QTuple_Int_Int_Int_TYPEDEF
 typedef struct QTuple_Int_Int_Int QTuple_Int_Int_Int;

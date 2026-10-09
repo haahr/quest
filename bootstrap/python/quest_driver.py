@@ -66,7 +66,7 @@ def run_driver(args: list[str]) -> int:
         "-c", "--compile-only",
         dest="compile_only",
         action="store_true",
-        help="Compile only (do not link). For interfaces, generates .h and .qi.",
+        help="Compile only (do not link). For interfaces, generates .int.h and .qi.",
     )
     arg_parser.add_argument(
         "-e", "--eval", "--code", "--command",
@@ -419,7 +419,7 @@ def run_compile(args: list[str]) -> int:
         "-c", "--compile-only",
         dest="compile_only",
         action="store_true",
-        help="Compile only (do not link). For interfaces, generates .h and .qi.",
+        help="Compile only (do not link). For interfaces, generates .int.h and .qi.",
     )
     arg_parser.add_argument(
         "-e", "--eval", "--code", "--command",

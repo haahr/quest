@@ -450,7 +450,7 @@ class BuildEngine:
             stem = Path(canon_name).name.lower()
 
             qm_path = target_sub / f"{stem}.qm"
-            c_path = target_sub / f"{stem}.c"
+            c_path = target_sub / f"{stem}.mod.c"
             o_path = target_sub / f"{stem}.o"
 
             # Check collision with colocated .quest
@@ -489,7 +489,7 @@ class BuildEngine:
                 if reason is not None:
                     # Fresh artifacts next to the source (from a standalone compilation) are used like
                     # those in the build directory (docs/build-process.md §5.2).
-                    beside = [mod_src.parent / f"{stem}{ext}" for ext in (".qm", ".c", ".o")]
+                    beside = [mod_src.parent / f"{stem}{ext}" for ext in (".qm", ".mod.c", ".o")]
                     if beside[0] != qm_path and self._unit_staleness(mod_src, *beside) is None:
                         qm_path, c_path, o_path = beside
                         reason = None

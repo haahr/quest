@@ -4,8 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "util/maybe.h"
-#include "collections/vector.h"
+#include "util/maybe.int.h"
+#include "collections/vector.int.h"
 typedef QVal quest_type_HashMap_T;
 typedef QVal quest_type_HashMap_Entry;
 typedef const QException * quest_sig_HashMap_error;

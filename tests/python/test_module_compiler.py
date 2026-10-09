@@ -77,7 +77,7 @@ class TestModuleCompiler(unittest.TestCase):
 
         c_source = c_file.read_text(encoding="utf-8")
         # Interface header included
-        self.assertIn('#include "counter.h"', c_source)
+        self.assertIn('#include "counter.int.h"', c_source)
         # Module record variable declared with external linkage
         self.assertIn("QRecordVal qm_counter;", c_source)
         # Idempotent initializer declared with external linkage
@@ -184,7 +184,7 @@ class TestModuleCompiler(unittest.TestCase):
             '#include <stdio.h>\n'
             '#include <assert.h>\n'
             '#include "quest_runtime.h"\n'
-            '#include "mathops.h"\n'
+            '#include "mathops.int.h"\n'
             '\n'
             'extern QRecordVal qm_mathops;\n'
             'extern void qv_mod_mathops_init(void);\n'
@@ -254,7 +254,7 @@ class TestModuleCompiler(unittest.TestCase):
         ret_mod = quest_driver.run_driver(["-c", str(mod_file), "-I", str(self.dir_path)])
         self.assertEqual(ret_mod, 0)
 
-        c_file = self.dir_path / "store.c"
+        c_file = self.dir_path / "store.mod.c"
         o_file = self.dir_path / "store.o"
         self.assertTrue(c_file.is_file())
         self.assertTrue(o_file.is_file())
@@ -385,7 +385,7 @@ class TestModuleCompiler(unittest.TestCase):
         compile_interface_file(intf, build_dir=build_dir, include_paths=[self.dir_path])
 
         self.assertTrue((build_dir / "calc.qi").is_file())
-        self.assertTrue((build_dir / "calc.h").is_file())
+        self.assertTrue((build_dir / "calc.int.h").is_file())
 
         mod = self.dir_path / "calc.mod.quest"
         mod.write_text(
@@ -394,7 +394,7 @@ class TestModuleCompiler(unittest.TestCase):
         )
         res = compile_module_file(mod, build_dir=build_dir, include_paths=[self.dir_path])
         self.assertTrue((build_dir / "calc.qm").is_file())
-        self.assertTrue((build_dir / "calc.c").is_file())
+        self.assertTrue((build_dir / "calc.mod.c").is_file())
         self.assertTrue((build_dir / "calc.o").is_file())
 
         manifest = read_qm(build_dir / "calc.qm")

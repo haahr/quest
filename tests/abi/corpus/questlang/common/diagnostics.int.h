@@ -4,10 +4,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "questlang/common/location.h"
-#include "collections/vector.h"
-#include "util/maybe.h"
-#include "writer.h"
+#include "questlang/common/location.int.h"
+#include "collections/vector.int.h"
+#include "util/maybe.int.h"
+#include "writer.int.h"
 #ifndef QUEST_TYPE_QOption_fatal_error_warning_info_TYPEDEF
 #define QUEST_TYPE_QOption_fatal_error_warning_info_TYPEDEF
 typedef struct QOption_fatal_error_warning_info QOption_fatal_error_warning_info;

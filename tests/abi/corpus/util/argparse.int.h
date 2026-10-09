@@ -4,9 +4,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "util/maybe.h"
-#include "collections/vector.h"
-#include "writer.h"
+#include "util/maybe.int.h"
+#include "collections/vector.int.h"
+#include "writer.int.h"
 typedef QVal quest_type_ArgParse_Parser;
 typedef QVal quest_type_ArgParse_Results;
 typedef const QException * quest_sig_ArgParse_error;

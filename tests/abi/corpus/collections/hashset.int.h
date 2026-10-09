@@ -4,8 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "collections/vector.h"
-#include "util/maybe.h"
+#include "collections/vector.int.h"
+#include "util/maybe.int.h"
 typedef QVal quest_type_HashSet_T;
 typedef QVal (*quest_sig_HashSet_new)(const QTypeDescriptor *desc_A, QClosure * equal, QClosure * hash);
 typedef QVal (*quest_sig_HashSet_newIdentitySet)(const QTypeDescriptor *desc_A);

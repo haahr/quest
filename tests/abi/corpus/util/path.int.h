@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "collections/vector.h"
+#include "collections/vector.int.h"
 typedef const QException * quest_sig_Path_error;
 typedef QChar quest_sig_Path_separator;
 typedef QString * quest_sig_Path_separatorString;

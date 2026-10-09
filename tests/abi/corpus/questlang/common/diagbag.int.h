@@ -4,10 +4,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "questlang/common/location.h"
-#include "questlang/common/diagnostics.h"
-#include "collections/vector.h"
-#include "writer.h"
+#include "questlang/common/location.int.h"
+#include "questlang/common/diagnostics.int.h"
+#include "collections/vector.int.h"
+#include "writer.int.h"
 #ifndef QUEST_TYPE_QTuple_String_Int_Int_TYPEDEF
 #define QUEST_TYPE_QTuple_String_Int_Int_TYPEDEF
 typedef struct QTuple_String_Int_Int QTuple_String_Int_Int;

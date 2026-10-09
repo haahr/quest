@@ -22,7 +22,7 @@ Hierarchical libraries are organized by domain under `lib/<category>/`:
   ```quest
   import m = category/module : category/Interface;
   ```
-- Compiled artifacts (`.qi`, `.h`, `.c`, `.o`) are placed mirror-wise under `.build/<category>/` or alongside source.
+- Compiled artifacts (`.qi`, `.int.h`, `.mod.c`, `.o`) are placed mirror-wise under `.build/<category>/` or alongside source.
 - Type functors follow Cardelli's convention: `Vector.T(A)`, `Opt.T(A)`, `StringBuilder.T`.
 
 ---

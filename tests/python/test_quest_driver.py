@@ -57,7 +57,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         ])
         self.assertEqual(code_int, 0)
         self.assertTrue((self.build_dir / "arith.qi").is_file())
-        self.assertTrue((self.build_dir / "arith.h").is_file())
+        self.assertTrue((self.build_dir / "arith.int.h").is_file())
 
         code_mod = run_driver([
             str(mod_file),

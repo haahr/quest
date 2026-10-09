@@ -27,8 +27,8 @@ units, name mangling adheres to the following principles:
    translation table prefixed with `qv_sym_`.
 5. **Clear Linkage Boundaries:** Symbols are cleanly partitioned into `extern` (cross-module ABI), `static`
    (translation-unit internal), and local/block scopes.
-6. **Header Shadowing Prevention:** Generated C interface headers are prefixed with `q_` (e.g. `q_string.h`, `q_path.h`)
-   to prevent shadowing C standard library headers like `<string.h>`.
+6. **Header Shadowing Prevention:** Generated C interface headers keep the `.int` of their source's name (e.g.
+   `string.int.h`, `path.int.h`) to prevent shadowing C standard library headers like `<string.h>`.
 
 ---
 
@@ -136,8 +136,9 @@ During module initialization, the record payload is populated via a local typed 
 
 ### 4.7. Interface C Header Files
 To avoid collision with C runtime and system headers (e.g. `<string.h>`):
-- **Pattern:** `q_<interface_stem>.h`
-  - E.g. `q_string.h`, `q_path.h`, `q_calc.h`
+- **Pattern:** `<interface_stem>.int.h`, included by its canonical path (e.g. `#include "util/path.int.h"`)
+  - E.g. `string.int.h`, `path.int.h`, `calc.int.h`
+- Module C sources likewise keep the `.mod` of their source's name: `<module_stem>.mod.c`.
 
 ---
 
@@ -291,7 +292,7 @@ suffixes (`<prefix>_<counter>`):
 | **Module Value** | `qv_<clean_mod>_<name>` | `calc.add` | `qv_calc_add` |
 | **Module Operator** | `qv_<clean_mod>_sym_<tokens>` | `int.+` | `qv_int_sym_plus` |
 | **Module Trampoline** | `qv_<clean_mod>_<name>_trampoline` | `calc.add` | `qv_calc_add_trampoline` |
-| **Module Header** | `q_<interface_stem>.h` | `string.int.quest` | `q_string.h` |
+| **Module Header** | `<interface_stem>.int.h` | `string.int.quest` | `string.int.h` |
 | **Top Function** | `qv_<name>` | `let f()` | `qv_f` |
 | **Lifted Lambda** | `qv_<id>` | `fn(x) x + 1` | `qv_fn_1` |
 | **Closure Struct** | `struct QEnv_<id>` | `fn(x) x + y` | `struct QEnv_fn_1` |

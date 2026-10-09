@@ -427,7 +427,7 @@ def _is_typecheck_only(env: Environment) -> bool:
 
 
 def _has_fresh_module_artifacts(file_path: Path, canon_name: str, env: Environment) -> bool:
-    """True if module source file_path has up-to-date .qm/.c/.o in the build directory or beside it."""
+    """True if module source file_path has up-to-date .qm/.mod.c/.o in the build directory or beside it."""
     from quest.build.manifest import unit_staleness
 
     build_dir = getattr(getattr(env, "options", None), "build_dir", None)
@@ -437,7 +437,7 @@ def _has_fresh_module_artifacts(file_path: Path, canon_name: str, env: Environme
         root = Path(build_dir).resolve()
         candidates.insert(0, root / Path(canon_name).parent if "/" in canon_name else root)
     return any(
-        unit_staleness(file_path, d / f"{stem}.qm", d / f"{stem}.c", d / f"{stem}.o") is None for d in candidates
+        unit_staleness(file_path, d / f"{stem}.qm", d / f"{stem}.mod.c", d / f"{stem}.o") is None for d in candidates
     )
 
 

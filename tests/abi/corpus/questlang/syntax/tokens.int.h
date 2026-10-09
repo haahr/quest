@@ -1,13 +1,11 @@
-#ifndef QUEST_INTF_TOKENIZER_H
-#define QUEST_INTF_TOKENIZER_H
+#ifndef QUEST_INTF_TOKENS_H
+#define QUEST_INTF_TOKENS_H
 #include "quest_runtime.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "questlang/common/location.h"
-#include "questlang/common/diagbag.h"
-#include "questlang/syntax/tokens.h"
-#include "collections/vector.h"
+#include "questlang/common/location.int.h"
+#include "util/maybe.int.h"
 #ifndef QUEST_TYPE_QOption_eof_intLit_realL_402807316f56e5f0_TYPEDEF
 #define QUEST_TYPE_QOption_eof_intLit_realL_402807316f56e5f0_TYPEDEF
 typedef struct QOption_eof_intLit_realL_402807316f56e5f0 QOption_eof_intLit_realL_402807316f56e5f0;
@@ -107,12 +105,21 @@ struct QTuple_QOption_eof_intLi_c440526c91fabf71 {
     QTuple_String_Int_Int * _3;
 };
 #endif
-typedef QVal quest_type_Tokenizer_T;
-typedef QVal (*quest_sig_Tokenizer_new)(QVal sm, QVal bag);
-typedef QTuple_QOption_eof_intLi_c440526c91fabf71 * (*quest_sig_Tokenizer_nextToken)(QVal tok);
-typedef QTuple_QOption_eof_intLi_c440526c91fabf71 * (*quest_sig_Tokenizer_peekToken)(QVal tok);
-typedef QVal (*quest_sig_Tokenizer_tokenizeAll)(QVal tok);
-typedef QString * (*quest_sig_Tokenizer_formatDump)(QVal tokensList, QVal sm, QBool showValues);
+typedef QOption_eof_intLit_realL_402807316f56e5f0 * quest_type_Tokens_TokenKind;
+typedef QOption_none_intVal_QTup_eee794bf7a376dd2 * quest_type_Tokens_TokenValue;
+typedef QTuple_QOption_eof_intLi_c440526c91fabf71 * quest_type_Tokens_Token;
+typedef QTuple_QOption_eof_intLi_c440526c91fabf71 * (*quest_sig_Tokens_make)(QOption_eof_intLit_realL_402807316f56e5f0 * kind, QString * lexeme, QOption_none_intVal_QTup_eee794bf7a376dd2 * value, QTuple_String_Int_Int * span);
+typedef QOption_none_intVal_QTup_eee794bf7a376dd2 * (*quest_sig_Tokens_valNone)(void);
+typedef QOption_none_intVal_QTup_eee794bf7a376dd2 * (*quest_sig_Tokens_valInt)(QInt n);
+typedef QOption_none_intVal_QTup_eee794bf7a376dd2 * (*quest_sig_Tokens_valReal)(QReal r);
+typedef QOption_none_intVal_QTup_eee794bf7a376dd2 * (*quest_sig_Tokens_valChar)(QChar c);
+typedef QOption_none_intVal_QTup_eee794bf7a376dd2 * (*quest_sig_Tokens_valString)(QString * s);
+typedef QTuple_QOption_eof_intLi_c440526c91fabf71 * (*quest_sig_Tokens_eofToken)(QString * file, QInt offset);
+typedef QString * (*quest_sig_Tokens_tokenKindName)(QOption_eof_intLit_realL_402807316f56e5f0 * kind);
+typedef QBool (*quest_sig_Tokens_isKeyword)(QOption_eof_intLit_realL_402807316f56e5f0 * kind);
+typedef QBool (*quest_sig_Tokens_isLiteral)(QOption_eof_intLit_realL_402807316f56e5f0 * kind);
+typedef QBool (*quest_sig_Tokens_isDelimiter)(QOption_eof_intLit_realL_402807316f56e5f0 * kind);
+typedef QBool (*quest_sig_Tokens_isPunctuation)(QOption_eof_intLit_realL_402807316f56e5f0 * kind);
 #ifdef __cplusplus
 }
 #endif

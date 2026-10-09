@@ -186,10 +186,10 @@ quest compile --dump-after typecheck --stop-after codegen_c file.quest
 
 ### 4.3. Separate Compilation & Object Linking (`quest -c`, `*.o`)
 ```bash
-# Compile an interface to C header (.h) and serialized type metadata (.qi):
+# Compile an interface to C header (.int.h) and serialized type metadata (.qi):
 quest -c counter.int.quest
 
-# Compile a module implementation to C source (.c) and object file (.o):
+# Compile a module implementation to C source (.mod.c) and object file (.o):
 quest -c counter.mod.quest -I ./interfaces
 
 # Compile client program and link against precompiled .o modules:

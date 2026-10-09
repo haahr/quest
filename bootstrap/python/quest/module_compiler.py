@@ -1,10 +1,13 @@
 """Quest Module Compiler (Phase 4.16 Step 2).
 
 Compiles Quest module implementation files (.mod.quest) into:
-1. Standard C99 source (<name>.c) including the interface header and defining
+1. Standard C99 source (<name>.mod.c) including the interface header and defining
    direct C functions (qv_<mod>_<func>), closure trampolines, module record
    (QRecordVal qm_<mod>), and idempotent initialization (qv_mod_<mod>_init).
 2. Native relocatable object file (<name>.o) via the host C compiler.
+
+Generated file names keep the .int/.mod of their sources' names, so that the header of an interface named like a
+C standard header (math.int.h, not math.h) cannot shadow it (<math.h>) on the C compiler's include path.
 """
 
 from __future__ import annotations
@@ -70,7 +73,7 @@ def compile_module(
     source_file: Optional[Path] = None,
     build_dir: Optional[Path] = None,
 ) -> ModuleCompileResult:
-    """Compiles an AST ModuleDecl into .c, .o, and .qm files."""
+    """Compiles an AST ModuleDecl into .mod.c, .o, and .qm files."""
     if output_dir is None:
         output_dir = Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -131,9 +134,9 @@ def compile_module(
     # 3. Elaborate module
     typed_mod = elaborate_module(module_decl, env)
 
-    # 4. Check for interface header (.h)
+    # 4. Check for interface header (.int.h)
     interface_name = module_decl.interface_name
-    header_name = f"{interface_name.lower()}.h"
+    header_name = f"{interface_name.lower()}.int.h"
     interface_header: Optional[str] = None
     search_dirs = [output_dir]
     if env.current_dir:
@@ -151,7 +154,7 @@ def compile_module(
     if interface_header is None:
         intf_file = resolve_interface_file(interface_name, env.current_dir, include_paths or [])
         if intf_file:
-            cand_h = intf_file.parent / f"{intf_file.name.split('.')[0]}.h"
+            cand_h = intf_file.parent / f"{intf_file.name.split('.')[0]}.int.h"
             if cand_h.is_file():
                 rel_cand = None
                 for s_dir in search_dirs:
@@ -180,7 +183,7 @@ def compile_module(
     )
 
     base = stem_name or module_decl.name.lower()
-    c_file = output_dir / f"{base}.c"
+    c_file = output_dir / f"{base}.mod.c"
     o_file = output_dir / f"{base}.o"
     c_file.parent.mkdir(parents=True, exist_ok=True)
     o_file.parent.mkdir(parents=True, exist_ok=True)
@@ -252,7 +255,7 @@ def compile_module_file(
     emit_deps: bool = False,
     build_dir: Optional[Path] = None,
 ) -> ModuleCompileResult:
-    """Compiles a Quest module file (.mod.quest) into .c, .o, and .qm files."""
+    """Compiles a Quest module file (.mod.quest) into .mod.c, .o, and .qm files."""
     mod_path = Path(mod_path).resolve()
     if not mod_path.is_file():
         raise FileNotFoundError(f"Module file not found: '{mod_path}'")

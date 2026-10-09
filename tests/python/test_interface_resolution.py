@@ -55,7 +55,7 @@ class TestInterfaceResolution(unittest.TestCase):
 
         # Verify .qi and .h were created under .build
         self.assertTrue((self.build_dir / "service.qi").is_file())
-        self.assertTrue((self.build_dir / "service.h").is_file())
+        self.assertTrue((self.build_dir / "service.int.h").is_file())
         # Verify no module artifacts were created
         self.assertFalse((self.build_dir / "service.c").is_file())
         self.assertFalse((self.build_dir / "service.o").is_file())
@@ -98,7 +98,7 @@ class TestInterfaceResolution(unittest.TestCase):
         intf_file.unlink()
         self.assertFalse(intf_file.exists())
         self.assertTrue((self.build_dir / "pre.qi").is_file())
-        self.assertTrue((self.build_dir / "pre.h").is_file())
+        self.assertTrue((self.build_dir / "pre.int.h").is_file())
 
         env = self._create_c_env()
         scope = load_interface("Pre", env)
@@ -126,7 +126,7 @@ class TestInterfaceResolution(unittest.TestCase):
         self.assertFalse((self.dir_path / "depb.mod.quest").exists())
 
         res = compile_module_file(mod_a, build_dir=self.build_dir, include_paths=[self.build_dir, self.dir_path])
-        self.assertTrue((self.build_dir / "moda.c").is_file())
+        self.assertTrue((self.build_dir / "moda.mod.c").is_file())
         self.assertTrue((self.build_dir / "moda.o").is_file())
         self.assertTrue((self.build_dir / "moda.qm").is_file())
         self.assertIsNotNone(res)
