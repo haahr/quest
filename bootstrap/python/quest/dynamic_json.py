@@ -246,13 +246,22 @@ def jsog_encode(dyn: QAutoVal, auto_t: Optional[QType] = None) -> str:
 
         raise QuestException(DYNAMIC_ERROR_EXC)
 
-    return json.dumps(encode_val(dyn, auto_t or DYNAMIC_TYPE), separators=(",", ":"))
+    try:
+        # JSON has no infinities (or NaN, which Quest excludes); the C runtime raises dynamic.error for them too.
+        return json.dumps(encode_val(dyn, auto_t or DYNAMIC_TYPE), separators=(",", ":"), allow_nan=False)
+    except ValueError:
+        raise QuestException(DYNAMIC_ERROR_EXC)
+
+
+def _reject_json_constant(name: str) -> Any:
+    """Rejects the non-JSON tokens NaN, Infinity, and -Infinity that Python's json module accepts."""
+    raise QuestException(DYNAMIC_ERROR_EXC)
 
 
 def jsog_decode(raw_json: str) -> QAutoVal:
     """Deserializes a JSON string with JSOG references into a dynamic value."""
     try:
-        data = json.loads(raw_json)
+        data = json.loads(raw_json, parse_constant=_reject_json_constant)
     except json.JSONDecodeError:
         raise QuestException(DYNAMIC_ERROR_EXC)
 

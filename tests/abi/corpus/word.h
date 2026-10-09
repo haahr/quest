@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 typedef QVal quest_type_Word_T;
+typedef const QException * quest_sig_Word_error;
 typedef QInt quest_sig_Word_bits;
 typedef QVal (*quest_sig_Word_notBits)(QVal w);
 typedef QVal (*quest_sig_Word_andBits)(QVal w1, QVal w2);

@@ -5,7 +5,6 @@ import unittest
 from typing import Any, Optional
 
 from quest.interpreter import (
-    DIVIDE_BY_ZERO_EXC,
     QuestException,
     QuestRuntimeError,
     RuntimeEnvironment,
@@ -24,6 +23,7 @@ from quest.runtime import (
     QTuple,
     qvalue_is,
 )
+from quest.dynamic_json import jsog_decode, jsog_encode
 from tests.python.helpers import eval_test_source
 
 
@@ -79,7 +79,7 @@ class TestLiteralEvaluation(InterpreterTestCase):
 
 
 class TestArithmetic(InterpreterTestCase):
-    """Tests for integer and real arithmetic, truncation toward zero, and DivideByZero."""
+    """Tests for integer and real arithmetic, truncation toward zero, and division by zero."""
 
     def test_int_arithmetic(self):
         self.assert_eval("10 + 20;", 30)
@@ -100,11 +100,11 @@ class TestArithmetic(InterpreterTestCase):
     def test_divide_by_zero_exception(self):
         with self.assertRaises(QuestException) as ctx1:
             run_quest_code("10 / 0;")
-        self.assertEqual(ctx1.exception.exc_val.name, "DivideByZero")
+        self.assertEqual(ctx1.exception.exc_val.name, "int.error")
 
         with self.assertRaises(QuestException) as ctx2:
             run_quest_code("10 % 0;")
-        self.assertEqual(ctx2.exception.exc_val.name, "DivideByZero")
+        self.assertEqual(ctx2.exception.exc_val.name, "int.error")
 
     def test_real_arithmetic(self):
         self.assert_eval("1.5 ++ 2.5;", 4.0)
@@ -490,9 +490,10 @@ class TestExceptions(unittest.TestCase):
 
     def test_catch_builtin_divide_by_zero(self):
         code = """
+        import int: IntOp;
         let res = try
             10 / 0
-        when DivideByZero then
+        when int.error then
             999
         else
             0
@@ -556,6 +557,19 @@ class TestDynamicAndInspect(unittest.TestCase):
         with self.assertRaises(QuestException) as cm:
             run_quest_code(code)
         self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+
+    def test_extern_and_intern_reject_non_finite_reals(self):
+        """JSON has no infinities or NaN; as in the C runtime, extern of an infinity and intern of the non-JSON
+        tokens NaN, Infinity, and -Infinity raise dynamic.error. An overflowing number interns as an infinity."""
+        d = run_quest_code("import dynamic: Dynamic; dynamic.new(:Real 1.0E400);")
+        with self.assertRaises(QuestException) as cm:
+            jsog_encode(d)
+        self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+        for token in ("NaN", "Infinity", "-Infinity"):
+            with self.assertRaises(QuestException) as cm:
+                jsog_decode('{"@type":"Real","@value":' + token + "}")
+            self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+        self.assertEqual(str(jsog_decode('{"@type":"Real","@value":1e999}')), "auto(tuple a=inf end : Real)")
 
 
 class TestStandardLibraryModules(unittest.TestCase):

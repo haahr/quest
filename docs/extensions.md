@@ -259,10 +259,10 @@ interface Word export
     (* Unsigned 64-bit multiplication modulo 2^64 *)
     mul(w1: T w2: T): T
 
-    (* Unsigned 64-bit division; raises DivideByZero if w2 is 0 *)
+    (* Unsigned 64-bit division; raises error if w2 is 0 *)
     div(w1: T w2: T): T
 
-    (* Unsigned 64-bit modulo; raises DivideByZero if w2 is 0 *)
+    (* Unsigned 64-bit modulo; raises error if w2 is 0 *)
     mod(w1: T w2: T): T
 
     (* Convert word to signed 64-bit integer (two's complement interpretation) *)
@@ -283,7 +283,7 @@ interface Word export
     (* Returns true if w1 >= w2 as unsigned 64-bit words *)
     ge(w1: T w2: T): Bool
 
-    (* Convert word bit pattern to 64-bit IEEE-754 floating point real *)
+    (* Convert word bit pattern to 64-bit IEEE-754 floating point real; raises error for a NaN bit pattern *)
     toReal(w: T): Real
 
     (* Convert 64-bit IEEE-754 floating point real to word bit pattern *)
@@ -315,8 +315,8 @@ end;
   - `add(w1 w2)` $\to$ `((w1) + (w2))` (unsigned wrapping modulo $2^{64}$ is guaranteed by standard C)
   - `sub(w1 w2)` $\to$ `((w1) - (w2))`
   - `mul(w1 w2)` $\to$ `((w1) * (w2))`
-  - `div(w1 w2)` $\to$ `quest_word_div(w1, w2)` (checks for divisor `0` and raises `DivideByZero`)
-  - `mod(w1 w2)` $\to$ `quest_word_mod(w1, w2)` (checks for divisor `0` and raises `DivideByZero`)
+  - `div(w1 w2)` $\to$ `quest_word_div(w1, w2)` (checks for divisor `0` and raises `word.error`)
+  - `mod(w1 w2)` $\to$ `quest_word_mod(w1, w2)` (checks for divisor `0` and raises `word.error`)
   - `lt(w1 w2)` $\to$ `((w1) < (w2))` (unsigned 64-bit comparison)
   - `le(w1 w2)` $\to$ `((w1) <= (w2))` (unsigned 64-bit comparison)
   - `gt(w1 w2)` $\to$ `((w1) > (w2))` (unsigned 64-bit comparison)
@@ -331,7 +331,8 @@ end;
   - `countTrailingZeros(w)` $\to$ `quest_word_count_trailing_zeros(w)` (`__builtin_ctzll`; 64 if $w = 0$)
   - `toInt(w)` $\to$ `((int64_t)(w))`
   - `fromInt(n)` $\to$ `((uint64_t)(n))`
-  - `toReal(w)` $\to$ `(((QVal){ .u = (w) }).r)` (direct C99 union compound literal punning)
+  - `toReal(w)` $\to$ `quest_word_to_real_val(w)` (union punning, raising `word.error` for a NaN bit pattern, which
+    has no `Real` value; see [type-system.md](type-system.md) §6.3.1)
   - `fromReal(r)` $\to$ `(((QVal){ .r = (r) }).u)` (direct C99 union compound literal punning)
 - **First-Class Closures**: When `word` functions are passed as first-class values or through records,
   the compiler generates closure trampolines (`qv_word_<op>_trampoline`) ensuring seamless higher-order interop.

@@ -8,6 +8,14 @@
       :items (
         (TypedImportItem ('conv') : 'Conv')
       ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('int') : 'IntOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('real') : 'RealOp')
+      ))
     (TypedLetValue 'wOut' :type Writer.T
       :value (TypedSelect 'output' :type Writer.T
         :target (TypedVar 'writer' :type Module 'writer')))
@@ -124,7 +132,8 @@
           :right (TypedInt 0 :type Int))
         :branches (
           (TypedTryBranch
-            :exc_pattern (TypedVar 'DivideByZero' :type Exception)
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'int' :type Module 'int'))
             :body (TypedInt 777 :type Int))
         )))
     (TypedExprStmt
@@ -171,5 +180,27 @@
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
           (TypedVar 'r4' :type Int)
+        )))
+    (TypedLetValue 'r5' :type Int
+      :value (TypedTry :type Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedInfix '//' :type Real
+                :left (TypedReal 1.0 :type Real)
+                :right (TypedReal 0.0 :type Real)))
+          )
+          :result (TypedInt 0 :type Int))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'real' :type Module 'real'))
+            :body (TypedInt 555 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedVar 'r5' :type Int)
         )))
   ))

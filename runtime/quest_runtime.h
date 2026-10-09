@@ -286,7 +286,6 @@ extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
 
 /* Built-in singleton exception descriptors */
-extern const QException quest_exc_DivideByZero;
 extern const QException quest_exc_arrayOp_error;
 extern const QException quest_exc_string_error;
 extern const QException quest_exc_variant_error;
@@ -375,11 +374,11 @@ int64_t  quest_array_size(const QArray *a);
 double   quest_real_pow(double base, double exp);
 const QException *quest_alloc_exception(const char *name);
 Q_NORETURN void quest_raise(const QException *exc, QVal payload);
-Q_NORETURN void quest_raise_divide_by_zero(void);
 Q_NORETURN void quest_raise_array_error(void);
 Q_NORETURN void quest_raise_string_error(void);
 Q_NORETURN void quest_raise_variant_error(void);
 Q_NORETURN void quest_raise_dynamic_error(void);
+Q_NORETURN void quest_option_ordinal_error(int64_t n, int64_t count);
 void     quest_print_val(QVal val, const char *type_name);
 
 /* Standard library singleton exceptions */
@@ -388,6 +387,7 @@ extern const QException quest_exc_reader_error;
 extern const QException quest_exc_ascii_error;
 extern const QException quest_exc_int_error;
 extern const QException quest_exc_real_error;
+extern const QException quest_exc_word_error;
 extern const QException quest_exc_system_error;
 
 Q_NORETURN void quest_raise_writer_error(void);
@@ -395,6 +395,7 @@ Q_NORETURN void quest_raise_reader_error(void);
 Q_NORETURN void quest_raise_ascii_error(void);
 Q_NORETURN void quest_raise_int_error(void);
 Q_NORETURN void quest_raise_real_error(void);
+Q_NORETURN void quest_raise_word_error(void);
 Q_NORETURN void quest_raise_system_error(void);
 
 /* System module primitives */
@@ -599,16 +600,51 @@ static inline void quest_check_array_bounds(const void *arr_ptr, int64_t idx) {
 
 static inline QInt quest_int_div(QInt a, QInt b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_int_error();
     }
     return a / b;
 }
 
 static inline QInt quest_int_mod(QInt a, QInt b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_int_error();
     }
     return a % b;
+}
+
+/* Real arithmetic keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
+   Infinities are ordinary Real values. See docs/type-system.md §6.3.1. */
+static inline double quest_real_result(double r) {
+    if (isnan(r)) {
+        quest_raise_real_error();
+    }
+    return r;
+}
+
+static inline double quest_real_add(double a, double b) { return quest_real_result(a + b); }
+static inline double quest_real_sub(double a, double b) { return quest_real_result(a - b); }
+static inline double quest_real_mul(double a, double b) { return quest_real_result(a * b); }
+
+/* The // operator and real.div: a zero divisor also raises real.error. */
+static inline double quest_real_divide(double a, double b) {
+    if (b == 0.0) {
+        quest_raise_real_error();
+    }
+    return quest_real_result(a / b);
+}
+
+/* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
+   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs). */
+static inline bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
+    if (a.u == b.u) return true;
+    return t != NULL && t->kind == QTYPE_KIND_REAL && a.r == b.r;
+}
+
+static inline int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
+    if (n < 0 || n >= count) {
+        quest_option_ordinal_error(n, count);
+    }
+    return n;
 }
 
 static inline uint64_t quest_word_shift(uint64_t w, int64_t count) {
@@ -670,14 +706,14 @@ static inline uint64_t quest_word_clear_bit(uint64_t w, int64_t pos) {
 
 static inline uint64_t quest_word_div(uint64_t a, uint64_t b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_word_error();
     }
     return a / b;
 }
 
 static inline uint64_t quest_word_mod(uint64_t a, uint64_t b) {
     if (b == 0) {
-        quest_raise_divide_by_zero();
+        quest_raise_word_error();
     }
     return a % b;
 }
@@ -691,7 +727,7 @@ static inline uint64_t quest_hash_mix64(uint64_t z) {
 
 uint64_t quest_hash_mix(uint64_t w);
 uint64_t quest_hash_combine(uint64_t h1, uint64_t h2);
-uint64_t quest_identity_hash(QVal x);
+uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x);
 
 /* Built-in operator closures (Cardelli §4.2) */
 extern QClosure qv_sym_plus_closure;

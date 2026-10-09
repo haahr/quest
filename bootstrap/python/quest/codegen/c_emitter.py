@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
@@ -985,7 +986,11 @@ class CEmitter:
         fn_lines: list[str],
         param_c_names: Optional[list[str]] = None,
     ) -> None:
-        """Emits function return handling with appropriate subtyping coercions."""
+        """Emits function return handling with appropriate subtyping coercions.
+
+        param_c_names are the arguments passed when the body is an external: the type descriptors of a
+        polymorphic function first, then its value parameters, matching the function's own C signature.
+        """
         call_args = ", ".join(param_c_names) if param_c_names else ""
         saved_env = dict(self.current_env_vars)
         if not isinstance(body, TypedExternal):
@@ -1454,7 +1459,7 @@ class CEmitter:
                 self.in_scope_type_descriptors[q.name] = f"descriptor_{q.name}"
                 fn_lines.append(f"(void)descriptor_{q.name};")
 
-            param_c_names = [mangle_ident(p.name) for p in l.fun.params]
+            param_c_names = [f"descriptor_{q.name}" for q in quants] + [mangle_ident(p.name) for p in l.fun.params]
             self._emit_fun_return(l.fun.body, ret_type, fn_lines, param_c_names)
 
             self.in_scope_type_descriptors = saved_descriptors
@@ -1605,7 +1610,7 @@ class CEmitter:
                 # Silence unused descriptor warnings
                 for q in quants:
                     fn_lines.append(f"(void)descriptor_{q.name};")
-                param_c_names = [self.mangle_ident(p.name) for p in params]
+                param_c_names = [f"descriptor_{q.name}" for q in quants] + [self.mangle_ident(p.name) for p in params]
                 self._emit_fun_return(body, ret_type, fn_lines, param_c_names)
                 self.in_scope_type_descriptors = saved_descriptors
                 self.pointer_params = saved_ptr_params
@@ -2027,7 +2032,9 @@ class CEmitter:
                 mod_emitter.pointer_params = {
                     p.name for p in params if getattr(p, "is_out", False) or getattr(p, "is_var", False)
                 }
-                param_c_names = [mangle_module_ident(clean_mod, p.name) for p in params]
+                param_c_names = [f"descriptor_{q.name}" for q in quants] + [
+                    mangle_module_ident(clean_mod, p.name) for p in params
+                ]
                 mod_emitter._emit_fun_return(body, int_ret_t, fn_lines, param_c_names)
                 mod_emitter.pointer_params = set()
                 mod_emitter.current_env_vars = prev_env
@@ -2084,7 +2091,9 @@ class CEmitter:
                 mod_emitter.pointer_params = {
                     p.name for p in params if getattr(p, "is_out", False) or getattr(p, "is_var", False)
                 }
-                param_c_names = [mangle_module_ident(clean_mod, p.name) for p in params]
+                param_c_names = [f"descriptor_{q.name}" for q in quants] + [
+                    mangle_module_ident(clean_mod, p.name) for p in params
+                ]
                 mod_emitter._emit_fun_return(body, ret_type, fn_lines, param_c_names)
                 mod_emitter.pointer_params = set()
                 mod_emitter.current_env_vars = prev_env
@@ -2401,6 +2410,8 @@ class CEmitter:
                 return f"{val}LL" if val >= 0 else f"({val}LL)"
 
             case TypedReal(value=val):
+                if math.isinf(val):
+                    return "INFINITY" if val > 0 else "(-INFINITY)"
                 s = repr(val)
                 if "e" not in s and "." not in s:
                     s += ".0"
@@ -2420,8 +2431,6 @@ class CEmitter:
                 return "((void)0)"
 
             case TypedVar(name=name):
-                if name == "DivideByZero":
-                    return "(&quest_exc_DivideByZero)"
                 if name in self.current_env_vars:
                     return self.current_env_vars[name]
                 if name in INFIX_OPERATORS:
@@ -3114,6 +3123,8 @@ class CEmitter:
                 lines.append(f"{target_dest} = ({s_name} *)quest_alloc(sizeof({s_name}));")
                 if ordinal_expr is not None:
                     c_ord = self.emit_val(ordinal_expr, lines)
+                    if getattr(opt_t, "options", None):
+                        c_ord = f"quest_check_option_ordinal({c_ord}, {len(opt_t.options)}LL)"
                     lines.append(f"{target_dest}->tag = {c_ord};")
                     if tag is None and hasattr(opt_t, "options") and opt_t.options:
                         if isinstance(ordinal_expr, TypedInt) and 0 <= ordinal_expr.value < len(opt_t.options):
@@ -3406,6 +3417,14 @@ class CEmitter:
                 lines.append(f"{arm}->_{i} = {src};")
         return arm
 
+    def _is_descriptor(self, t: QType) -> str:
+        """The descriptor quest_val_is needs to compare values of a type represented as QVal, or NULL (bit
+        equality) when the type has none, as for an abstract type whose representation is hidden."""
+        try:
+            return self.c_type_descriptor(t)
+        except QuestCompilerError:
+            return "NULL"
+
     def _emit_infix(
         self,
         c_left: str,
@@ -3419,7 +3438,10 @@ class CEmitter:
         if op in ("%", "mod"):
             return f"quest_int_mod({c_left}, {c_right})"
 
-        # 2. Real exponentiation
+        # 2. Real arithmetic, checked so that no NaN is produced
+        real_fns = {"++": "quest_real_add", "--": "quest_real_sub", "**": "quest_real_mul", "//": "quest_real_divide"}
+        if op in real_fns:
+            return f"{real_fns[op]}({c_left}, {c_right})"
         if op == "^^":
             return f"quest_real_pow({c_left}, {c_right})"
 
@@ -3431,13 +3453,13 @@ class CEmitter:
         if op in ("is", "isnot"):
             c_op = "==" if op == "is" else "!="
             if arg_type is not None and self.c_type(arg_type) == "QVal":
-                return f"(({c_left}).u {c_op} ({c_right}).u)"
+                negate = "" if op == "is" else "!"
+                return f"({negate}quest_val_is({self._is_descriptor(arg_type)}, {c_left}, {c_right}))"
             return f"(({c_left}) {c_op} ({c_right}))"
 
         # 5. Standard arithmetic & relations mapping directly
         op_map = {
             "+": "+", "-": "-", "*": "*",
-            "++": "+", "--": "-", "**": "*", "//": "/",
             "<": "<", "<=": "<=", ">": ">", ">=": ">=",
             "<<": "<", "<<=": "<=", ">>": ">", ">>=": ">=",
             "/\\": "&&", "\\/": "||",

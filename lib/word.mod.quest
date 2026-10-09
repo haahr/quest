@@ -2,6 +2,9 @@ module word : Word export
     (* The underlying C 64-bit unsigned word type *)
     Let T = external "uint64_t";
 
+    (* Exception raised on word arithmetic errors *)
+    let error: Exception = external "(&quest_exc_word_error)";
+
     (* Number of bits in Word.T *)
     let bits: Int = 64;
 
@@ -47,10 +50,10 @@ module word : Word export
     (* Unsigned 64-bit multiplication modulo 2^64 *)
     let mul(w1: T w2: T): T = external "quest_word_mul";
 
-    (* Unsigned 64-bit division, raises DivideByZero if w2 is 0 *)
+    (* Unsigned 64-bit division, raises error if w2 is 0 *)
     let div(w1: T w2: T): T = external "quest_word_div_val";
 
-    (* Unsigned 64-bit modulo, raises DivideByZero if w2 is 0 *)
+    (* Unsigned 64-bit modulo, raises error if w2 is 0 *)
     let mod(w1: T w2: T): T = external "quest_word_mod_val";
 
     (* Convert word to signed 64-bit integer (two's complement interpretation) *)
@@ -71,7 +74,7 @@ module word : Word export
     (* Returns true if w1 >= w2 as unsigned 64-bit words *)
     let ge(w1: T w2: T): Bool = external "quest_word_ge";
 
-    (* Convert word to 64-bit IEEE-754 floating point real *)
+    (* Convert word to 64-bit IEEE-754 floating point real; raises error for a NaN bit pattern *)
     let toReal(w: T): Real = external "quest_word_to_real_val";
 
     (* Convert 64-bit IEEE-754 floating point real to word bit pattern *)

@@ -392,10 +392,6 @@ class Environment:
         self.base_scope.declare_value(ValueSymbol(name="false", type_val=BOOL_TYPE))
         self.base_scope.declare_value(ValueSymbol(name="ok", type_val=OK_TYPE))
 
-        # Built-in exception: DivideByZero
-        # Note: Binding DivideByZero at root level is an extension to Cardelli's spec.
-        self.base_scope.declare_value(ValueSymbol(name="DivideByZero", type_val=EXCEPTION_TYPE))
-
         # Built-in operators as functions (Cardelli §4.2)
         for op, (l_type, r_type, res_type) in INFIX_OPERATORS.items():
             op_fn_type = QFunType(
