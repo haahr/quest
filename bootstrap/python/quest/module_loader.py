@@ -14,6 +14,7 @@ and interpreter:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -207,6 +208,10 @@ def resolve_object_file(
 
 UNIT_SUFFIXES = (".int.quest", ".mod.quest", ".qi", ".o")
 
+# Each directory and file name in a canonical name; anything else could not be mangled into C identifiers
+# unambiguously (docs/modules.md §2.3, docs/name-mangling.md §4.1).
+_NAME_COMPONENT = re.compile(r"[A-Za-z0-9]+")
+
 
 def _strip_unit_suffix(filename: str) -> str:
     for ext in UNIT_SUFFIXES:
@@ -248,16 +253,26 @@ def canonicalize_module_path(
     (docs/modules.md §2.3); a file under none of them is named by its base name. It depends only on the file and
     the roots, not on the import that found it, so importers, the unit itself, manifests, and mangled C symbols
     all agree on it as long as they pass the same include paths and program directory.
+
+    Raises QuestTypeError if a directory or file name in it contains anything but ASCII letters and digits.
     """
     resolved = file_path.resolve()
+    parts = [resolved.name]
     for root in canonical_roots(include_paths, program_dir):
         try:
             parts = list(resolved.relative_to(root).parts)
         except ValueError:
             continue
-        parts[-1] = _strip_unit_suffix(parts[-1])
-        return "/".join(parts)
-    return _strip_unit_suffix(resolved.name)
+        break
+    parts[-1] = _strip_unit_suffix(parts[-1])
+    bad = [part for part in parts if not _NAME_COMPONENT.fullmatch(part)]
+    if bad:
+        raise QuestTypeError(
+            f"Invalid module path '{'/'.join(parts)}' for '{resolved}': '{bad[0]}' contains characters other than "
+            f"letters and digits, which are the only ones allowed in the directory and file names of interfaces "
+            f"and modules"
+        )
+    return "/".join(parts)
 
 
 def find_canonical_module_source(

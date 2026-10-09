@@ -90,7 +90,9 @@ Runs of alphanumeric characters between symbols are preserved. Consecutive symbo
 Modules may be top-level or hierarchically nested within subdirectories.
 
 ### 4.1. Hierarchical Module Path Flattening (`mangle_module_name`)
-Hierarchical module paths are canonicalized, converted to lowercase, with `/` mapped to `__` and `.` mapped to `_`:
+Hierarchical module paths are canonicalized, converted to lowercase, with `/` mapped to `__` and `.` mapped to `_`.
+The directory and file names in a canonical module path contain only letters and digits (`docs/modules.md` §2.3), so the
+result is a valid C identifier fragment, and different paths differ after mangling except in case:
 
 $$\text{mangle\_module\_name}(module) = module.\text{lower}().\text{replace}("/", "\_\_").\text{replace}(".", "\_")$$
 

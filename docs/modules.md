@@ -55,6 +55,12 @@ file's path, without its suffix, relative to a **root**:
 3. Otherwise (a standalone `quest -c` of a file under no include root), the file's own directory: its name is its base
    name.
 
+Every directory and file name in a canonical name may contain only ASCII letters and digits; any other character (such
+as `_`, `-`, or `.`) is an error when the file is loaded. Import paths cannot name such files anyway, but directories
+between a root and the file are part of the name too: a program in `tests/source/my_tests/` cannot import the module
+beside it, whose name would be `tests/source/my_tests/counter`. The restriction keeps mangled C names valid and
+unambiguous ([name-mangling.md §4.1](name-mangling.md)).
+
 The canonical name depends only on the file and these roots, not on how an import found the file. So a module found
 by sibling search has the same name for every importer, and the name its interface gets in the module header is the one
 its importers expect. Interface names keep the declared base name (`util/Counter` for `util/counter.int.quest`).

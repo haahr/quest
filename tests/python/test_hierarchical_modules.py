@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 DRIVER = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
@@ -377,9 +378,14 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
         shutil.rmtree(self.build_dir)
 
     def _run(self, program: Path, phase: str, *args: str) -> str:
+        proc = self._run_process(program, phase, *args)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        return proc.stdout.strip()
+
+    def _run_process(self, program: Path, phase: str, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
-        proc = subprocess.run(
+        return subprocess.run(
             [sys.executable, str(DRIVER), "--stop-after", phase, "--build-dir", str(self.build_dir), *args,
              "--print-result", str(program)],
             stdout=subprocess.PIPE,
@@ -388,8 +394,6 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
             env=env,
             cwd=program.parent,
         )
-        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        return proc.stdout.strip()
 
     def _assert_c_matches_interpreter(self, program: Path, expected: str, *args: str) -> None:
         self.assertEqual(self._run(program, "interpret", *args), expected)
@@ -416,9 +420,11 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
 
     def test_sibling_import_under_project_directory(self) -> None:
         """Units beside a program in the project directory are named relative to it, with or without -I."""
-        parent = ROOT_DIR / ".build"
-        parent.mkdir(exist_ok=True)
-        program_dir = Path(tempfile.mkdtemp(prefix="canonical_names_", dir=parent)).resolve()
+        # Under build/ (ignored by git), with only letters and digits in its path as canonical names require.
+        parent = ROOT_DIR / "build"
+        created_parent = not parent.exists()
+        program_dir = parent / f"canonical{uuid.uuid4().hex}"
+        program_dir.mkdir(parents=True)
         try:
             _write_units(program_dir, {k: v.format(scale=2) for k, v in COUNTER_UNITS.items()})
             relative = program_dir.relative_to(ROOT_DIR).as_posix()
@@ -437,7 +443,15 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
             self.assertEqual(manifest.name, f"{program_dir.name}/counter")
             self.assertEqual(manifest.interface, f"{program_dir.name}/Counter")
         finally:
-            shutil.rmtree(program_dir)
+            shutil.rmtree(parent if created_parent else program_dir)
+
+    def test_path_with_other_characters_is_an_error(self) -> None:
+        """Directory and file names in canonical names may contain only letters and digits."""
+        _write_units(self.root / "x-y", {k: v.format(scale=2) for k, v in COUNTER_UNITS.items()})
+        for phase in ("interpret", "run_c_compiled"):
+            proc = self._run_process(self.root / "x-y" / "main.quest", phase, "-I", str(self.root))
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("'x-y' contains characters other than letters and digits", proc.stdout + proc.stderr)
 
     def test_same_unit_name_in_two_directories_shares_build_directory(self) -> None:
         """Programs in different directories under one include root keep their same-named units apart."""
