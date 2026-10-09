@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import weakref
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -19,6 +20,58 @@ from quest.diagnostics import (
 # Deterministic safety bounds to prevent infinite recursion during type analysis
 MAX_SUBTYPE_FUEL = 10_000
 MAX_TYPE_EXPANSION_DEPTH = 500
+
+
+# ============================================================================
+# Reserved Symbol Ids
+# ============================================================================
+#
+# Symbol ids from the environment are positive, and inference metavariables count down from -1. A few type variables
+# are made outside any environment (Dynamic's type parameter, and placeholders the C back end substitutes into types);
+# their ids are negative too, so each use needs ids that no other use (and no metavariable) can produce.
+#
+# A reserved id is the negation of a prefix naming its use, times 2**32, plus an index within that use:
+#
+#     reserved_symbol_id(use, index) == -(use * 2**32 + index)
+#
+# Ids for different uses differ in their prefix, so they never coincide. Metavariable ids have prefix 0 (and
+# QTypeMeta refuses to count past 2**32), so they never coincide with reserved ids either.
+
+
+class ReservedSymbolUse(enum.IntEnum):
+    """The uses of reserved symbol ids; each value is the prefix of that use's ids."""
+    DYNAMIC_PARAM = 1  # Dynamic's type parameter (index 0)
+    BOUND_VAR = 2  # placeholder for a bound type parameter of a polymorphic function type, by de Bruijn index
+    CANONICAL_QUANTIFIER = 3  # quantifier of a polymorphic function type in canonical form, by position
+    REC_SELF = 4  # placeholder for a recursion variable in the C tag of a recursive type, by nesting depth
+
+
+RESERVED_INDEX_LIMIT = 1 << 32
+
+
+def reserved_symbol_id(use: ReservedSymbolUse, index: int) -> int:
+    """The reserved symbol id for the index-th variable of the given use."""
+    if not 0 <= index < RESERVED_INDEX_LIMIT:
+        raise ValueError(f"reserved symbol index {index} out of range for {use.name}")
+    return -(use * RESERVED_INDEX_LIMIT + index)
+
+
+def reserved_symbol_use(symbol_id: int) -> Optional[tuple[ReservedSymbolUse, int]]:
+    """Decodes a reserved symbol id into its use and index, or returns None for any other id."""
+    if symbol_id >= 0:
+        return None
+    prefix, index = divmod(-symbol_id, RESERVED_INDEX_LIMIT)
+    if prefix not in ReservedSymbolUse._value2member_map_:
+        return None
+    return ReservedSymbolUse(prefix), index
+
+
+def reserved_symbol_index(symbol_id: int, use: ReservedSymbolUse) -> Optional[int]:
+    """The index of a symbol id reserved for `use`, or None if the id is not one of that use's."""
+    decoded = reserved_symbol_use(symbol_id)
+    if decoded is None or decoded[0] is not use:
+        return None
+    return decoded[1]
 
 
 # ============================================================================
@@ -1215,7 +1268,7 @@ def unalias(t: QType) -> QType:
 # Auto A::TYPE with a:A end. (His appendix writes the component unnamed, Auto A::TYPE with :A end, but an unnamed
 # component cannot be selected, so this follows §9.1.) The global type name Dynamic denotes it, as does the
 # dynamic module's T. Its type parameter has a reserved symbol id.
-_DYNAMIC_PARAM_ID = -(1 << 42)
+_DYNAMIC_PARAM_ID = reserved_symbol_id(ReservedSymbolUse.DYNAMIC_PARAM, 0)
 DYNAMIC_TYPE = QAutoType(
     type_param="A",
     symbol_id=_DYNAMIC_PARAM_ID,
@@ -1395,7 +1448,9 @@ class QTypeMeta(QType):
 
     def __init__(self, bound: QKind = TYPE_KIND, name: Optional[str] = None):
         QTypeMeta._counter += 1
-        self.symbol_id: int = -QTypeMeta._counter  # Negative IDs for inference metavars
+        if QTypeMeta._counter >= RESERVED_INDEX_LIMIT:
+            raise RuntimeError("too many type metavariables: their ids would collide with reserved symbol ids")
+        self.symbol_id: int = -QTypeMeta._counter  # Negative IDs for inference metavars (see Reserved Symbol Ids)
         self.bound: QKind = bound
         self.name: str = name or f"?T{abs(self.symbol_id)}"
         self.instance: Optional[QType] = None
