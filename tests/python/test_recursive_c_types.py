@@ -26,6 +26,7 @@ from quest.types import (
     BOOL_TYPE,
     INT_TYPE,
     TYPE_KIND,
+    QAllKind,
     QAllType,
     QArrayType,
     QAutoType,
@@ -33,6 +34,7 @@ from quest.types import (
     QOptionField,
     QOptionType,
     QParam,
+    QPathType,
     QPowerKind,
     QQuantifier,
     QRecGroupType,
@@ -41,6 +43,8 @@ from quest.types import (
     QRecType,
     QTupleField,
     QTupleType,
+    QTypeFormal,
+    QTypeFun,
     QTypeVar,
     QVariantField,
     QVariantType,
@@ -291,6 +295,49 @@ class TestCanonicalBinders(unittest.TestCase):
                     mock.patch.object(c_types.sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertIsNone(_canonical_type(self._poly(9831, 2)))
             self.assertIn("quest: warning: internal: canonical form", stderr.getvalue())
+
+
+class TestCanonicalKindsAndVariables(unittest.TestCase):
+    """Equal types that differ inside kinds, type variables' bounds, path types, or type operators share canonical
+    forms and descriptors."""
+
+    @staticmethod
+    def _with_list(t) -> QTupleType:
+        """Tuple t IntList end: a type with recursion, so that it has a canonical form."""
+        return QTupleType((QTupleField(None, t), QTupleField(None, _int_list(9900, 1))))
+
+    def assert_shared(self, a, b) -> None:
+        self.assertIsNotNone(_canonical_type(a))
+        self.assertIs(_canonical_type(a), _canonical_type(b))
+        self.assertEqual(descriptor_form(a).tag, descriptor_form(b).tag)
+
+    def test_free_type_variable_bounds(self) -> None:
+        def bounded(period: int) -> QTupleType:
+            return self._with_list(QTypeVar("A", 9901, QPowerKind(_int_list(9902 + period, period))))
+
+        self.assert_shared(bounded(1), bounded(2))
+
+    def test_operator_kinds(self) -> None:
+        def operator(period: int, param_id: int) -> QTupleType:
+            kind = QAllKind("X", param_id, TYPE_KIND, QPowerKind(_int_list(9910 + period, period)))
+            return self._with_list(QTypeVar("F", 9920, kind))
+
+        self.assert_shared(operator(1, 9921), operator(2, 9922))
+
+    def test_type_operators(self) -> None:
+        def operator(period: int, param_id: int) -> QTupleType:
+            x = QTypeVar("X", param_id, TYPE_KIND)
+            body = QTupleType((QTupleField(None, x), QTupleField(None, _int_list(9930 + period, period))))
+            return self._with_list(QTypeFun((QTypeFormal("X", param_id, TYPE_KIND),), body))
+
+        self.assert_shared(operator(1, 9941), operator(2, 9942))
+
+    def test_path_types(self) -> None:
+        def path(period: int) -> QTupleType:
+            bound = QPowerKind(_int_list(9950 + period, period))
+            return self._with_list(QPathType(root_name="m", root_symbol_id=9960, field_name="T", bound=bound))
+
+        self.assert_shared(path(1), path(2))
 
 
 if __name__ == "__main__":

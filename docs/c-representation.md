@@ -582,13 +582,15 @@ Equal types share one C representation, so a value moves between them with a pla
   (as the dynamic type table is, §11), and the minimal graph is written back as a type whose recursion variables
   have reserved ids and bind the targets of the back edges of a depth-first walk. Nodes are tuples (with or without
   type components), records, variants, options, arrays, `var` and `out` types, function types (polymorphic or
-  not), exception and auto types, applications of abstract type operators, and occurrences of type parameters. Where every cycle passes through a tuple, record, variant, or
+  not), exception and auto types, type operators and applications of abstract ones, type variables and abstract
+  and path types (with their kinds), and the kinds `TYPE`, `<: T`, and `ALL(X::K) K'`. Where every cycle passes through a tuple, record, variant, or
   option, the walk goes through those only, so that each recursive type unfolds to one; otherwise (a cycle through
   function types alone) it goes through every node. One back-edge target gives a `Rec`, several a `RecGroup` with
   the walk's root first. Types are hash-consed, so the canonical form of a type in canonical form is that type.
 - **Binders:** Type parameters are compared up to renaming, even under recursion (`Rec(F) All(A::TYPE a: A f: F) A`
   unrolled with a differently named parameter is the same type). A node binding parameters (a polymorphic
-  function type, an auto type, a tuple with type components) is a node like any other, and an occurrence of a
+  function type, an auto type, a tuple with type components, a type operator, an operator kind) is a node like
+  any other, and an occurrence of a
   parameter is a node with a scope edge to its binder, which refinement follows; a type object means different
   things under different binders, so nodes are keyed by the object and the binder nodes its free variables refer
   to. The minimal graph is written back with parameters numbered by the number of enclosing ones (reserved ids, so
@@ -606,10 +608,8 @@ Equal types share one C representation, so a value moves between them with a pla
   types. Canonical forms make it the same for all equal types; tuple and record field names are part of a node's
   shape, so types differing only in field names (which tags otherwise ignore) may get different tags when they
   contain recursion.
-- **Limitation:** Leaves of the graph (free type variables, abstract, path, and external types, type operators, and
-  kinds other than `TYPE` and `<: T`, such as operator kinds) are compared by identity, so equal types that differ
-  inside one (an operator kind mentioning `IntList` in one and `L2` in the other, say) still get different
-  canonical forms.
+- **Leaves:** External types and kind variables, which contain no types, are leaves of the graph, compared by
+  identity; every other type and kind is a node, so equal types get one canonical form wherever they differ.
 
 ---
 
