@@ -167,13 +167,20 @@ def _beta_reduce_head(t: QType) -> QType:
     return t
 
 
-def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
-    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a tuple, record,
-    variant, or option type.
+# Values of a recursive type are represented like values of its unfolding (a tuple's values by a pointer to its
+# struct, a function's by a closure pointer), so that the two, being equal, share a representation. Its tag is that
+# of its unfolding too, except for unfoldings whose tags are built from their parts' tags: these would contain the
+# tag being defined, so such a recursive type is named by its body instead (_recursive_tag).
+_UNFOLDED_REPRESENTATION = (
+    QTupleType, QRecordType, QVariantType, QOptionType, QArrayType, QVarType, QOutType, QAutoType,
+    QFunType, QAllType, QExceptionType,
+)
+_SELF_NAMED = (QTupleType, QRecordType, QVariantType, QOptionType, QArrayType, QVarType, QOutType, QAutoType)
 
-    Values of such a recursive type are represented like values of its unfolding (a tuple's values by a pointer to
-    its struct, for example), so recursive occurrences inside the unfolding have that representation too.
-    """
+
+def _unfold_recursive(t: QType, kinds: tuple[type, ...] = _UNFOLDED_REPRESENTATION) -> Optional[QType]:
+    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a constructed type
+    (one of kinds), or None otherwise."""
     if isinstance(t, QTypeApp):
         t = _beta_reduce_head(t)
     for _ in range(_MAX_BETA_STEPS):
@@ -183,7 +190,7 @@ def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
         t = t.prune() if hasattr(t, "prune") else t
         if isinstance(t, QTypeApp):
             t = _beta_reduce_head(t)
-    return t if isinstance(t, (QTupleType, QRecordType, QVariantType, QOptionType)) else None
+    return t if isinstance(t, kinds) else None
 
 
 # ============================================================================
@@ -200,22 +207,24 @@ def _unfold_recursive_aggregate(t: QType) -> Optional[QType]:
 # the canonical form of a type in canonical form is that type itself.
 #
 # Nodes of the graph are tuples, records, variants, options, arrays, var and out types, monomorphic function
-# types, and exception types. Every other type (a type variable, an abstract or polymorphic type, a recursive type
-# whose unfolding is not a tuple, record, variant, or option) is a leaf, compared by identity.
+# types, and exception types. Every other type (a type variable, an abstract, polymorphic, or auto type, a recursive
+# type whose unfolding is not a node) is a leaf, compared by identity.
 
 _MAX_CANONICAL_NODES = 100_000
 
-_RECURSIVE_AGGREGATES = (QTupleType, QRecordType, QVariantType, QOptionType)
+_GRAPH_NODES = (
+    QTupleType, QRecordType, QVariantType, QOptionType, QArrayType, QVarType, QOutType, QFunType, QExceptionType,
+)
 
 
 def _canonical_structure(t: QType) -> QType:
     """t with aliases, solved metavariables, type operator applications, and recursive types whose unfoldings are
-    aggregates reduced down to its outer constructor."""
+    graph nodes reduced down to its outer constructor."""
     for _ in range(_MAX_BETA_STEPS):
         t = strip_aliases(t.prune() if hasattr(t, "prune") else t)
         if not isinstance(t, (QRecType, QRecGroupType, QTypeApp)):
             return t
-        if (unfolded := _unfold_recursive_aggregate(t)) is not None:
+        if (unfolded := _unfold_recursive(t, _GRAPH_NODES)) is not None:
             return unfolded
         if isinstance(t, QTypeApp):
             reduced = _beta_reduce_head(t)
@@ -349,6 +358,7 @@ class _CanonicalGraph:
             self.children[k] = [cls[c] if isinstance(c, int) else c for c in children[i]]
         self._find_components()
         self.terms: dict[int, Optional[QType]] = {}
+        self._aggregate_cycle_memo: dict[int, bool] = {}
 
     def _find_components(self) -> None:
         """Finds the strongly connected components of the quotient graph (Tarjan's algorithm, iteratively), whether
@@ -419,9 +429,9 @@ class _CanonicalGraph:
         result: Optional[QType] = None
         if not self.reaches_cycle[comp]:
             pass
-        elif not self.cyclic[comp] or not self._is_binder_shape(k):
-            # Not in a cycle, or a node (such as a function type) that a recursive type cannot unfold to: each part
-            # is written on its own. Every cycle passes through a tuple, record, variant, or option.
+        elif not self.cyclic[comp] or (self._aggregate_cycles(comp) and not self._is_binder_shape(k)):
+            # Not in a cycle, or a node (such as a function type) on cycles that all pass through tuples, records,
+            # variants, or options, which are preferred as recursive types: each part is written on its own
             result = _rebuild_node(self.shapes[k], [self._closed(c) for c in self.children[k]])
         else:
             result = self._recursive_term(k)
@@ -431,6 +441,41 @@ class _CanonicalGraph:
     def _is_binder_shape(self, k: int) -> bool:
         return self.shapes[k][0] in ("tuple", "record", "variant", "option")
 
+    def _aggregate_cycles(self, comp: int) -> bool:
+        """Whether every cycle of a cyclic component passes through a tuple, record, variant, or option: whether
+        its other nodes have no cycle among themselves."""
+        if comp in self._aggregate_cycle_memo:
+            return self._aggregate_cycle_memo[comp]
+        others = [k for k in range(len(self.shapes)) if self.component[k] == comp and not self._is_binder_shape(k)]
+        state: dict[int, int] = {}  # 1 while on the walk's path, 2 when done
+        acyclic = True
+        for start in others:
+            if start in state:
+                continue
+            state[start] = 1
+            work = [(start, 0)]
+            while work and acyclic:
+                k, pos = work[-1]
+                kids = [
+                    c for c in self.children[k]
+                    if isinstance(c, int) and self.component[c] == comp and not self._is_binder_shape(c)
+                ]
+                if pos == len(kids):
+                    state[k] = 2
+                    work.pop()
+                    continue
+                work[-1] = (k, pos + 1)
+                c = kids[pos]
+                if c not in state:
+                    state[c] = 1
+                    work.append((c, 0))
+                elif state[c] == 1:
+                    acyclic = False
+            if not acyclic:
+                break
+        self._aggregate_cycle_memo[comp] = acyclic
+        return acyclic
+
     def _closed(self, c: _Ref) -> QType:
         if not isinstance(c, int):
             return c
@@ -439,9 +484,11 @@ class _CanonicalGraph:
 
     def _recursive_term(self, root: int) -> QType:
         """The canonical form of a class on a cycle: a recursive type whose variables stand for the targets of the
-        back edges of a depth-first walk of its component from root, through tuples, records, variants, and options
-        only (other nodes are passed through, so that each recursive type unfolds to an aggregate)."""
+        back edges of a depth-first walk of its component from root. If every cycle of the component passes through
+        a tuple, record, variant, or option, the walk goes through those only (other nodes are passed through, so
+        that each recursive type unfolds to one); otherwise it goes through every node."""
         comp = self.component[root]
+        aggregates_only = self._aggregate_cycles(comp)
         binders: list[int] = []
         state: dict[int, int] = {}  # 1 while on the walk's path, 2 when done
 
@@ -451,7 +498,7 @@ class _CanonicalGraph:
             def through(c: _Ref) -> None:
                 if not isinstance(c, int) or self.component[c] != comp:
                     return
-                if self._is_binder_shape(c):
+                if self._is_binder_shape(c) or not aggregates_only:
                     out.append(c)
                 else:
                     for g in self.children[c]:
@@ -545,11 +592,11 @@ def _normalize_type_raw(t: QType) -> QType:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     if isinstance(t, (QRecType, QRecGroupType)):
-        unfolded = _unfold_recursive_aggregate(t)
+        unfolded = _unfold_recursive(t)
         if unfolded is not None:
             return unfolded
     if isinstance(t, QTypeApp):
-        unfolded = _unfold_recursive_aggregate(t)
+        unfolded = _unfold_recursive(t)
         if unfolded is not None:
             return unfolded
         reduced = _beta_reduce_head(t)
@@ -616,12 +663,13 @@ def _rec_self_level(t: QType) -> Optional[int]:
     return None
 
 
-def _recursive_aggregate_tag(t: QType) -> Optional[str]:
-    """Returns the tag of a recursive type whose unfolding is a tuple, record, or variant type, or None otherwise.
+def _recursive_tag(t: QType) -> Optional[str]:
+    """Returns the tag of a recursive type whose unfolding's tag is built from its parts' tags (_SELF_NAMED), or None
+    otherwise.
 
     The tag names the recursive type itself rather than its unfolding, whose tag would contain the tag being defined.
     """
-    if _unfold_recursive_aggregate(t) is None:
+    if _unfold_recursive(t, _SELF_NAMED) is None:
         return None
     if isinstance(t, QTypeApp):
         t = _beta_reduce_head(t)
@@ -645,7 +693,7 @@ def _type_to_c_tag_raw(t: QType) -> str:
     if (canonical := _canonical_type(t)) is not None:
         # Equal types share a tag: a type containing recursion is named by its canonical form
         return type_to_c_tag(canonical)
-    if (rec_tag := _recursive_aggregate_tag(t)) is not None:
+    if (rec_tag := _recursive_tag(t)) is not None:
         return rec_tag
     t = _normalize_type_raw(t)
     if _is_word_type_raw(t):
@@ -1486,10 +1534,10 @@ def qval_unwrap(qval_expr: str, t: QType, ctx: Optional[RecordNamingContext] = N
 def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = None) -> str:
     """Constructs the C function pointer cast type for invoking a closure."""
     quantifiers: tuple[Any, ...] = ()
-    cur_type = fun_type
+    cur_type = normalize_type(fun_type)  # a recursive function type is called as its unfolding is
     while isinstance(cur_type, QAllType):
         quantifiers = quantifiers + cur_type.quantifiers
-        cur_type = cur_type.body
+        cur_type = normalize_type(cur_type.body)
 
     if isinstance(cur_type, QFunType):
         if cur_type.result_type is OK_TYPE:

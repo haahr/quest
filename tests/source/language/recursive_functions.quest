@@ -1,0 +1,36 @@
+(* Language: Recursive Function and Array Types, in C Represented Like Their Unfoldings *)
+
+import writer: Writer;
+import conv: Conv;
+import arrayOp: ArrayOp;
+
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(writer.output conv.int(x));
+        writer.putString(writer.output "\n")
+    end;
+
+(* 1. A recursive function type, its unfolding, and the same type at another period *)
+Let Rec F::TYPE = All(n: Int) F;
+Let Rec F2::TYPE = All(n: Int) All(n: Int) F2;
+let rec f(n: Int): F = begin printInt(n); f end;
+let p: Tuple a: Int b: F end = tuple let a = 1 let b = f end;
+let q: Tuple a: Int b: All(n: Int) F end = p;
+let r: Tuple a: Int b: F2 end = q;
+let g: F2 = r.b;
+g(2)(3)(4);
+let back: Tuple a: Int b: F end = r;
+back.b(5);
+
+(* 2. A computed closure is called once: its side effects happen once *)
+let curried(n: Int): All(m: Int) Ok = begin printInt(n); fun(m: Int): Ok printInt(m) end;
+curried(6)(7);
+
+(* 3. A recursive array type and its unfoldings *)
+Let Rec Nest::TYPE = Array(Nest);
+let leaf: Nest = array of :Nest end;
+let n1: Tuple a: Int b: Nest end = tuple let a = 5 let b = array of :Nest leaf leaf end end;
+let n2: Tuple a: Int b: Array(Array(Nest)) end = n1;
+printInt(n2.a + arrayOp.size(n2.b));
+let n3: Nest = n2.b;
+printInt(arrayOp.size(n3));

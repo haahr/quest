@@ -1,5 +1,5 @@
-"""C representations of recursive tuple, record, and variant types are those of their unfoldings, and equal recursive
-types (however written) share one C representation."""
+"""C representations of recursive types are those of their unfoldings, and equal recursive types (however written)
+share one C representation."""
 
 from __future__ import annotations
 
@@ -178,6 +178,43 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
         self.assertIsNone(_canonical_type(canonical))
         self.assert_same_representation(outer, outer.unfold_lazily())
         self.assertTrue(type_to_c_tag(outer).startswith("RecGroup0_0_"))
+
+
+class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
+    """Recursive types whose unfoldings are function or array types are represented like their unfoldings."""
+
+    @staticmethod
+    def _fun(symbol_id: int, period: int) -> QRecType:
+        """Rec(F) All(n: Int) F, with the function type written out period times."""
+        t = QTypeVar("F", symbol_id, TYPE_KIND)
+        for _ in range(period):
+            t = QFunType((QParam("n", INT_TYPE),), t)
+        return QRecType("F", symbol_id, TYPE_KIND, t)
+
+    def test_recursive_function_type_is_a_closure(self) -> None:
+        f = self._fun(9501, 1)
+        self.assertIs(normalize_type(f), f.unfold_lazily())
+        self.assertEqual(type_to_c_tag(f), "QClosure")
+        self.assertEqual(qtype_to_c_type(f), "QClosure *")
+        self.assertEqual(qtype_to_c_type(f.unfold_lazily()), "QClosure *")
+
+    def test_recursive_function_types_in_tuples_share_a_struct(self) -> None:
+        def holder(t) -> QTupleType:
+            return QTupleType((QTupleField("a", INT_TYPE), QTupleField("b", t)))
+
+        f = self._fun(9511, 1)
+        self.assertEqual(type_to_c_tag(holder(f)), type_to_c_tag(holder(f.unfold_lazily())))
+        self.assertEqual(type_to_c_tag(holder(f)), type_to_c_tag(holder(self._fun(9512, 2))))
+        # A cycle through function types alone has a recursive function type as its canonical form
+        self.assertIsInstance(_canonical_type(f.unfold_lazily()), QRecType)
+
+    def test_recursive_array_type_is_named_by_its_body(self) -> None:
+        n = QTypeVar("N", 9521, TYPE_KIND)
+        nest = QRecType("N", 9521, TYPE_KIND, QArrayType(n))
+        self.assertEqual(type_to_c_tag(nest), "Rec0_QArray_Self0")
+        self.assertEqual(qtype_to_c_type(nest), "QArray *")
+        self.assertEqual(type_to_c_tag(nest.unfold_lazily()), type_to_c_tag(nest))
+        self.assertEqual(type_to_c_tag(QArrayType(QArrayType(nest))), type_to_c_tag(nest))
 
 
 if __name__ == "__main__":

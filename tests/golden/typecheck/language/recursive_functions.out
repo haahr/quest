@@ -1,0 +1,166 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('arrayOp') : 'ArrayOp')
+      ))
+    (TypedLetValue 'printInt' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedSelect 'output' :type Writer.T
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'x' :type Int)
+                    ))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedSelect 'output' :type Writer.T
+                :target (TypedVar 'writer' :type Module 'writer'))
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetType 'F' :kind TYPE)
+    (TypedLetType 'F2' :kind TYPE)
+    (TypedLetValue 'f' :rec :type Fun(n: Int): F
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): F
+        :body (TypedBlock :type F
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+                :args (
+                  (TypedVar 'n' :type Int)
+                )))
+          )
+          :result (TypedVar 'f' :type Fun(n: Int): F))))
+    (TypedLetValue 'p' :type Tuple a: Int b: F end
+      :value (TypedTuple :type Tuple a: Int b: F end
+        :elements (
+          (TypedInt 1 :type Int)
+          (TypedVar 'f' :type Fun(n: Int): F)
+        )))
+    (TypedLetValue 'q' :type Tuple a: Int b: Fun(n: Int): F end
+      :value (TypedVar 'p' :type Tuple a: Int b: F end))
+    (TypedLetValue 'r' :type Tuple a: Int b: F2 end
+      :value (TypedVar 'q' :type Tuple a: Int b: Fun(n: Int): F end))
+    (TypedLetValue 'g' :type F2
+      :value (TypedSelect 'b' :type F2
+        :target (TypedVar 'r' :type Tuple a: Int b: F2 end)))
+    (TypedExprStmt
+      :expr (TypedApp :type Fun(n: Int): F2
+        :func (TypedApp :type F2
+          :func (TypedApp :type Fun(n: Int): F2
+            :func (TypedVar 'g' :type F2)
+            :args (
+              (TypedInt 2 :type Int)
+            ))
+          :args (
+            (TypedInt 3 :type Int)
+          ))
+        :args (
+          (TypedInt 4 :type Int)
+        )))
+    (TypedLetValue 'back' :type Tuple a: Int b: F end
+      :value (TypedVar 'r' :type Tuple a: Int b: F2 end))
+    (TypedExprStmt
+      :expr (TypedApp :type F
+        :func (TypedSelect 'b' :type F
+          :target (TypedVar 'back' :type Tuple a: Int b: F end))
+        :args (
+          (TypedInt 5 :type Int)
+        )))
+    (TypedLetValue 'curried' :type Fun(n: Int): Fun(m: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Fun(m: Int): Ok
+        :body (TypedBlock :type Fun(m: Int): Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+                :args (
+                  (TypedVar 'n' :type Int)
+                )))
+          )
+          :result (TypedFun :params (('m' : Int)) :type Fun(m: Int): Ok
+            :body (TypedApp :type Ok
+              :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+              :args (
+                (TypedVar 'm' :type Int)
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedApp :type Fun(m: Int): Ok
+          :func (TypedVar 'curried' :type Fun(n: Int): Fun(m: Int): Ok)
+          :args (
+            (TypedInt 6 :type Int)
+          ))
+        :args (
+          (TypedInt 7 :type Int)
+        )))
+    (TypedLetType 'Nest' :kind TYPE)
+    (TypedLetValue 'leaf' :type Nest
+      :value (TypedArray :type Array(Nest)
+        :elements ()))
+    (TypedLetValue 'n1' :type Tuple a: Int b: Nest end
+      :value (TypedTuple :type Tuple a: Int b: Nest end
+        :elements (
+          (TypedInt 5 :type Int)
+          (TypedArray :type Array(Nest)
+            :elements (
+              (TypedVar 'leaf' :type Nest)
+              (TypedVar 'leaf' :type Nest)
+            ))
+        )))
+    (TypedLetValue 'n2' :type Tuple a: Int b: Array(Array(Nest)) end
+      :value (TypedVar 'n1' :type Tuple a: Int b: Nest end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedSelect 'a' :type Int
+              :target (TypedVar 'n2' :type Tuple a: Int b: Array(Array(Nest)) end))
+            :right (TypedApp :type Int
+              :func (TypedTypeApp [Array(Nest)] :type Fun(array: Array(Array(Nest))): Int
+                :func (TypedSelect 'size' :type All(A :: TYPE) Fun(array: Array(A)): Int
+                  :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+              :args (
+                (TypedSelect 'b' :type Array(Array(Nest))
+                  :target (TypedVar 'n2' :type Tuple a: Int b: Array(Array(Nest)) end))
+              )))
+        )))
+    (TypedLetValue 'n3' :type Nest
+      :value (TypedSelect 'b' :type Array(Array(Nest))
+        :target (TypedVar 'n2' :type Tuple a: Int b: Array(Array(Nest)) end)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Array(Nest)] :type Fun(array: Array(Array(Nest))): Int
+              :func (TypedSelect 'size' :type All(A :: TYPE) Fun(array: Array(A)): Int
+                :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+            :args (
+              (TypedVar 'n3' :type Nest)
+            ))
+        )))
+  ))

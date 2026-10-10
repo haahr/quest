@@ -570,9 +570,10 @@ manipulated dynamically:
 Quest's recursive types are equi-recursive: `Rec(X) T` is equal to its unfolding `T[X := Rec(X) T]`, to any depth.
 Equal types share one C representation, so a value moves between them with a plain assignment:
 
-- **Values:** A recursive type whose unfolding is a tuple, record, variant, or option type (directly or through a
-  type operator application, as `List(Int)`) is represented like its unfolding: a recursive tuple or option is a
-  pointer to its struct, whose recursive components point to that same struct.
+- **Values:** A recursive type whose unfolding is a constructed type (directly or through a type operator
+  application, as `List(Int)`) is represented like its unfolding: a recursive tuple or option is a pointer to its
+  struct, whose recursive components point to that same struct, and a recursive function type
+  (`Rec(F) All(n: Int) F`) is a `QClosure *`, called as its unfolding is.
 - **Canonical forms:** A type containing recursion stands for the regular tree of its unfoldings, which any number
   of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
   period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its
@@ -580,17 +581,20 @@ Equal types share one C representation, so a value moves between them with a pla
   canonical form (`_canonical_type` in `c_types.py`): the graph of its tuple, record, variant, option, array,
   `var`, `out`, function, and exception nodes is minimized by partition refinement (as the dynamic type table is,
   §11), and the minimal graph is written back as a type whose recursion variables have reserved ids and bind the
-  targets of the back edges of a depth-first walk, through tuples, records, variants, and options only, so that
-  each recursive type unfolds to an aggregate. One back-edge target gives a `Rec`, several a `RecGroup` with the
-  walk's root first. Types are hash-consed, so the canonical form of a type in canonical form is that type.
-- **Struct tags:** The tag of a recursive type is built from its body with each recursion variable replaced by a
-  placeholder numbered by nesting depth (`Rec0_QOption_nil_cons_QTuple_Int_Self0` for
+  targets of the back edges of a depth-first walk. Where every cycle passes through a tuple, record, variant, or
+  option, the walk goes through those only, so that each recursive type unfolds to one; otherwise (a cycle through
+  function types alone) it goes through every node. One back-edge target gives a `Rec`, several a `RecGroup` with
+  the walk's root first. Types are hash-consed, so the canonical form of a type in canonical form is that type.
+- **Struct tags:** The tag of a recursive type is that of its unfolding, except when the unfolding's tag is built
+  from its parts' tags (a tuple, record, variant, option, array, `var`, `out`, or auto type), which would make it
+  contain itself. Then it is built from its body with each recursion variable replaced by a placeholder numbered
+  by nesting depth (`Rec0_QOption_nil_cons_QTuple_Int_Self0` for
   `Rec(L) Option nil cons with head: Int tail: L end end`), so that it is finite and the same for alpha-equivalent
   types. Canonical forms make it the same for all equal types; tuple and record field names are part of a node's
   shape, so types differing only in field names (which tags otherwise ignore) may get different tags when they
   contain recursion.
 - **Limitation:** Leaves of the graph (type variables, abstract, polymorphic, and auto types, and recursive types
-  whose unfoldings are not aggregates) are compared by identity, so equal types that differ inside such a leaf
+  whose unfoldings are not graph nodes) are compared by identity, so equal types that differ inside such a leaf
   (an `All(A::TYPE)` function type mentioning `IntList` in one and `L2` in the other, say) still get different
   canonical forms.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
@@ -366,6 +367,15 @@ class CEmitter:
         """Generates a unique temporary C identifier."""
         self._tmp_id += 1
         return f"{prefix}_{self._tmp_id}"
+
+    def _closure_operand(self, clos_val: str, lines: list[str]) -> str:
+        """A closure to call, as a C expression that may be used twice (for its fn and its env): clos_val itself if
+        it is an identifier, or else a temporary holding it, so that the closure is computed once."""
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", clos_val):
+            return clos_val
+        clos_tmp = self.fresh_tmp("_callee")
+        lines.append(f"QClosure *{clos_tmp} = {clos_val};")
+        return clos_tmp
 
     def _collect_fun_params(
         self, fun: TypedFun
@@ -2806,7 +2816,7 @@ class CEmitter:
                     )
                 else:
                     fn_ptr_t = _closure_fn_ptr_type(effective_func.type_val, self.record_ctx)
-                    clos_val = self.emit_val(effective_func, lines)
+                    clos_val = self._closure_operand(self.emit_val(effective_func, lines), lines)
                     _, inner_formal = self._collect_fun_quantifiers(effective_func.type_val)
                     formal_params = inner_formal.params if isinstance(inner_formal, QFunType) else None
                     formal_ret = inner_formal.result_type if isinstance(inner_formal, QFunType) else OK_TYPE
@@ -2874,7 +2884,7 @@ class CEmitter:
                     return call_str
                 else:
                     fn_ptr_t = _closure_fn_ptr_type(func.type_val, self.record_ctx)
-                    clos_val = self.emit_val(func, lines)
+                    clos_val = self._closure_operand(self.emit_val(func, lines), lines)
                     all_c_args = [f"{clos_val}->env"] + descriptor_args
                     call_str = f"(({fn_ptr_t})({clos_val}->fn))({', '.join(all_c_args)})"
                     return call_str
