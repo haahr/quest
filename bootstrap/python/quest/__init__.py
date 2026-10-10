@@ -111,6 +111,7 @@ from quest.elaborate_types import (
     elaborate_kind_binding,
     elaborate_type_binding,
     elaborate_mutual_rec_type_group,
+    elaborate_type_binding_group,
 )
 import quest.typed_ast as typed_ast
 from quest.typed_ast import (
@@ -239,6 +240,7 @@ __all__ = [
     "elaborate_kind_binding",
     "elaborate_type_binding",
     "elaborate_mutual_rec_type_group",
+    "elaborate_type_binding_group",
     "typed_ast",
     "typed_ast_dump",
     "TypedTypeWitness",

@@ -182,9 +182,14 @@ _UNFOLDED_REPRESENTATION = (
 _SELF_NAMED = (QTupleType, QRecordType, QVariantType, QOptionType, QArrayType, QVarType, QOutType, QAutoType)
 
 
-def _unfold_recursive(t: QType, kinds: tuple[type, ...] = _UNFOLDED_REPRESENTATION) -> Optional[QType]:
+def _unfold_recursive(
+    t: QType,
+    kinds: Optional[tuple[type, ...]] = _UNFOLDED_REPRESENTATION,
+) -> Optional[QType]:
     """Returns the unfolding of a recursive type (or an application reducing to one) if it is a constructed type
-    (one of kinds), or None otherwise."""
+    (one of kinds), or None otherwise. With kinds None, any unfolding that is neither recursive nor an application is
+    returned (a recursive type that does not use its variable, such as a member of a group that does not refer to
+    the group, is the type it unfolds to)."""
     if isinstance(t, QTypeApp):
         t = _beta_reduce_head(t)
     for _ in range(_MAX_BETA_STEPS):
@@ -194,6 +199,8 @@ def _unfold_recursive(t: QType, kinds: tuple[type, ...] = _UNFOLDED_REPRESENTATI
         t = t.prune() if hasattr(t, "prune") else t
         if isinstance(t, QTypeApp):
             t = _beta_reduce_head(t)
+    if kinds is None:
+        return None if isinstance(t, (QRecType, QRecGroupType, QTypeApp)) else t
     return t if isinstance(t, kinds) else None
 
 
@@ -903,7 +910,7 @@ def _normalize_type_raw(t: QType) -> QType:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
     if isinstance(t, (QRecType, QRecGroupType)):
-        unfolded = _unfold_recursive(t)
+        unfolded = _unfold_recursive(t, None)
         if unfolded is not None:
             return unfolded
     if isinstance(t, QTypeApp):

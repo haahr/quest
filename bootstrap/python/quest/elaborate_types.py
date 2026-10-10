@@ -240,7 +240,6 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
         case ast.TypeTuple(fields=tup_fields):
             components: list[QTupleComponent] = []
             with env.scoped("tuple_sig"):
-                reject_type_binding_groups(tup_fields)
                 for f in tup_fields:
                     match f:
                         case ast.TypeFormal(name=name, bound=bound):
@@ -278,25 +277,24 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                                     )
                                 )
 
-                        case ast.TypeBinding(name=name, type_val=type_val, bound=bound, is_rec=False):
-                            bound_kind = elaborate_kind(bound, env) if bound else None
-                            m_type = elaborate_type(type_val, env)
-                            if bound_kind:
-                                check_kind(m_type, bound_kind, env)
-                            else:
-                                check_kind(m_type, TYPE_KIND, env)
-                            symbol_id = env.fresh_symbol_id()
-                            env.current_scope.declare_type(
-                                TypeSymbol(
-                                    name=name,
-                                    symbol_id=symbol_id,
-                                    kind=bound_kind or TYPE_KIND,
-                                    definition=m_type,
+                        case ast.TypeBinding() | ast.TypeBindingGroup():
+                            # The members of a group are elaborated simultaneously, then declared together
+                            members = tuple_type_binding_members(f)
+                            elaborated = [
+                                (member, *_elaborate_tuple_type_binding(member, env)) for member in members
+                            ]
+                            for member, m_type, bound_kind in elaborated:
+                                env.current_scope.declare_type(
+                                    TypeSymbol(
+                                        name=member.name,
+                                        symbol_id=env.fresh_symbol_id(),
+                                        kind=bound_kind or TYPE_KIND,
+                                        definition=m_type,
+                                    )
                                 )
-                            )
-                            components.append(
-                                QTupleTypeBinding(name=name, type_val=m_type, bound=bound_kind)
-                            )
+                                components.append(
+                                    QTupleTypeBinding(name=member.name, type_val=m_type, bound=bound_kind)
+                                )
 
                         case ast.DefKindBinding(name=name, kind_val=kind_val):
                             k_val = elaborate_kind(kind_val, env)
@@ -512,16 +510,72 @@ def elaborate_kind_binding(binding: ast.DefKindBinding, env: Environment) -> Kin
     return env.current_scope.declare_kind(symbol)
 
 
-def reject_type_binding_groups(bindings: Any) -> None:
-    """Rejects simultaneous type bindings (Let [Rec] A = ... and B = ...) among bindings: they parse, but are not
-    elaborated yet."""
-    for binding in bindings:
-        if isinstance(binding, ast.TypeBindingGroup):
-            names = ", ".join(f"'{member.name}'" for member in binding.bindings)
-            raise QuestTypeError(
-                f"Simultaneous type declarations with 'and' ({names}) are not supported yet",
-                offset=binding.offset,
+def reject_type_binding_groups_in_interface(binding: ast.TypeBindingGroup) -> None:
+    """Rejects simultaneous type declarations (Def [Rec] A = ... and B = ...) in an interface: compiled interfaces
+    cannot record them yet."""
+    names = ", ".join(f"'{member.name}'" for member in binding.bindings)
+    raise QuestTypeError(
+        f"Simultaneous type declarations with 'and' ({names}) are not supported in interfaces yet",
+        offset=binding.offset,
+    )
+
+
+def _check_distinct_member_names(group: ast.TypeBindingGroup) -> None:
+    """Rejects a simultaneous declaration that declares one name twice."""
+    seen: set[str] = set()
+    for member in group.bindings:
+        if member.name in seen:
+            raise KindError(
+                f"Type '{member.name}' is declared more than once in one simultaneous declaration",
+                offset=member.offset,
             )
+        seen.add(member.name)
+
+
+def tuple_type_binding_members(binding: ast.TypeBinding | ast.TypeBindingGroup) -> tuple[ast.TypeBinding, ...]:
+    """Returns the type bindings declared by one component of a tuple or tuple type: the binding itself, or the
+    members of a group, which are elaborated simultaneously. Tuples do not support recursive type declarations."""
+    members = binding.bindings if isinstance(binding, ast.TypeBindingGroup) else (binding,)
+    if members[0].is_rec:
+        raise KindError("Recursive type declarations are not supported in tuples", offset=binding.offset)
+    if isinstance(binding, ast.TypeBindingGroup):
+        _check_distinct_member_names(binding)
+    return members
+
+
+def _elaborate_tuple_type_binding(
+    binding: ast.TypeBinding,
+    env: Environment,
+) -> tuple[QType, Optional[QKind]]:
+    """Elaborates the definition of a type binding in a tuple type and its declared bound, if any."""
+    bound_kind = elaborate_kind(binding.bound, env) if binding.bound else None
+    m_type = elaborate_type(binding.type_val, env)
+    check_kind(m_type, bound_kind or TYPE_KIND, env)
+    return m_type, bound_kind
+
+
+def _reject_recursive_type_operator(binding: ast.TypeBinding) -> None:
+    """Rejects a recursive declaration of a type operator (Let Rec T(A::TYPE) = ...), which is not supported."""
+    if binding.params or isinstance(binding.type_val, ast.TypeFun):
+        raise KindError(f"Recursive type '{binding.name}' cannot have type parameters", offset=binding.offset)
+
+
+def elaborate_type_binding_group(
+    group: ast.TypeBindingGroup,
+    env: Environment,
+) -> list[TypeSymbol]:
+    """Elaborates simultaneous type declarations: Let [Rec] T1 = ... and T2 = ..., or the same with Def.
+
+    Without Rec, each member is elaborated in the enclosing scope, so members do not see one another, and all are
+    declared once every member has been elaborated. With Rec, the members are mutually recursive.
+    """
+    _check_distinct_member_names(group)
+    if group.bindings[0].is_rec:
+        for member in group.bindings:
+            _reject_recursive_type_operator(member)
+        return elaborate_mutual_rec_type_group(list(group.bindings), env)
+    symbols = [_elaborate_type_binding_symbol(member, env) for member in group.bindings]
+    return [env.current_scope.declare_type(symbol) for symbol in symbols]
 
 
 def elaborate_type_binding(
@@ -529,6 +583,16 @@ def elaborate_type_binding(
     env: Environment,
 ) -> TypeSymbol:
     """Elaborates a single Let T = Type or Def T = Type declaration."""
+    return env.current_scope.declare_type(_elaborate_type_binding_symbol(binding, env))
+
+
+def _elaborate_type_binding_symbol(
+    binding: ast.TypeBinding,
+    env: Environment,
+) -> TypeSymbol:
+    """Elaborates a single type declaration into its symbol, without declaring it."""
+    if binding.is_rec:
+        _reject_recursive_type_operator(binding)
     symbol_id = env.fresh_symbol_id()
     if binding.bound:
         declared_bound: Optional[QKind] = elaborate_kind(binding.bound, env)
@@ -588,8 +652,7 @@ def elaborate_type_binding(
 
     # Validate overall kind conformance
     check_kind(qtype_val, bound_kind, env)
-    symbol = TypeSymbol(name=binding.name, symbol_id=symbol_id, kind=bound_kind, definition=qtype_val)
-    return env.current_scope.declare_type(symbol)
+    return TypeSymbol(name=binding.name, symbol_id=symbol_id, kind=bound_kind, definition=qtype_val)
 
 
 def elaborate_mutual_rec_type_group(

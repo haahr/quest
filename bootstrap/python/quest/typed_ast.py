@@ -813,6 +813,18 @@ class TypedLetType(TypedBinding):
 
 
 @dataclass(frozen=True)
+class TypedLetTypeGroup(TypedBinding):
+    """Simultaneous type declarations: Let [Rec] T1 = Type and T2 = Type ..."""
+    members: tuple[TypedLetType, ...]
+
+    def dump_header(self) -> str:
+        return " ".join(f"'{member.name}'" for member in self.members)
+
+    def dump_children(self) -> list[tuple[str, Any]]:
+        return [(":members", self.members)]
+
+
+@dataclass(frozen=True)
 class TypedDefKind(TypedBinding):
     """Kind definition: DEF K = Kind."""
     name: str

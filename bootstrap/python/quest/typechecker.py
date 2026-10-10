@@ -90,7 +90,8 @@ from quest.elaborate_types import (
     elaborate_mutual_rec_type_group,
     elaborate_type,
     elaborate_type_binding,
-    reject_type_binding_groups,
+    elaborate_type_binding_group,
+    tuple_type_binding_members,
 )
 from quest.typed_ast import (
     TypedApp,
@@ -126,6 +127,7 @@ from quest.typed_ast import (
     TypedInterface,
     TypedInt,
     TypedLetType,
+    TypedLetTypeGroup,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -1554,37 +1556,41 @@ class TypeElaborator:
 
     def _synth_tuple_expr(self, expr: ast.ExprTuple, env: Environment, loop_depth: int) -> TypedTuple:
         """Synthesizes a tuple constructor: tuple ... end."""
-        reject_type_binding_groups(expr.fields)
         with env.scoped("tuple_synth"):
             elem_typeds: list[TypedExpr] = []
             q_fields: list[QTupleComponent] = []
 
             for b in expr.fields:
-                if isinstance(b, ast.TypeBinding):
-                    witness_type = elaborate_type(b.type_val, env)
-                    if b.bound is not None:
-                        k_bound = elaborate_kind(b.bound, env)
-                    else:
-                        k_bound = TYPE_KIND
-                    check_kind(witness_type, k_bound, env)
-                    sym_id = env.fresh_symbol_id()
-                    env.current_scope.declare_type(
-                        TypeSymbol(
-                            name=b.name,
-                            symbol_id=sym_id,
-                            kind=k_bound,
-                            definition=witness_type,
+                if isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
+                    # The members of a group are elaborated simultaneously, then declared together
+                    witnesses: list[tuple[ast.TypeBinding, QType, QKind]] = []
+                    for member in tuple_type_binding_members(b):
+                        witness_type = elaborate_type(member.type_val, env)
+                        if member.bound is not None:
+                            k_bound = elaborate_kind(member.bound, env)
+                        else:
+                            k_bound = TYPE_KIND
+                        check_kind(witness_type, k_bound, env)
+                        witnesses.append((member, witness_type, k_bound))
+                    for member, witness_type, k_bound in witnesses:
+                        sym_id = env.fresh_symbol_id()
+                        env.current_scope.declare_type(
+                            TypeSymbol(
+                                name=member.name,
+                                symbol_id=sym_id,
+                                kind=k_bound,
+                                definition=witness_type,
+                            )
                         )
-                    )
-                    elem_typeds.append(
-                        TypedTypeWitness(
-                            name=b.name,
-                            witness_type=witness_type,
-                            bound=k_bound,
-                            offset=b.offset,
+                        elem_typeds.append(
+                            TypedTypeWitness(
+                                name=member.name,
+                                witness_type=witness_type,
+                                bound=k_bound,
+                                offset=member.offset,
+                            )
                         )
-                    )
-                    q_fields.append(QTupleTypeBinding(name=b.name, type_val=witness_type, bound=k_bound))
+                        q_fields.append(QTupleTypeBinding(name=member.name, type_val=witness_type, bound=k_bound))
                 elif isinstance(b, ast.TupleBinding):
                     if b.type_annot is not None:
                         annot_type = elaborate_type(b.type_annot, env)
@@ -1624,17 +1630,36 @@ class TypeElaborator:
         if not isinstance(expected_lazy, QTupleType):
             return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
 
-        reject_type_binding_groups(expr.fields)
-        if len(expr.fields) != len(expected_lazy.fields):
+        # Each member of a group is a component of its own
+        fields: list[ast.BindingNode] = []
+        groups: dict[int, tuple[ast.TypeBinding, ...]] = {}
+        for b in expr.fields:
+            if isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
+                members = tuple_type_binding_members(b)
+                fields.extend(members)
+                groups.update((id(member), members) for member in members)
+            else:
+                fields.append(b)
+        if len(fields) != len(expected_lazy.fields):
             raise TypeError(
-                f"Tuple arity mismatch: expected {len(expected_lazy.fields)} components, got {len(expr.fields)}",
+                f"Tuple arity mismatch: expected {len(expected_lazy.fields)} components, got {len(fields)}",
                 offset=expr.offset,
             )
 
         with env.scoped("tuple_check"):
             witness_subst: dict[int, QType] = {}
             elem_typeds: list[TypedExpr] = []
-            for b, exp_f in zip(expr.fields, expected_lazy.fields):
+            witnesses: dict[int, QType] = {}
+
+            def witness_of(binding: ast.TypeBinding) -> QType:
+                """Elaborates a type binding's witness; the members of a group are elaborated together, before any
+                of them is declared."""
+                if id(binding) not in witnesses:
+                    for member in groups[id(binding)]:
+                        witnesses[id(member)] = elaborate_type(member.type_val, env)
+                return witnesses[id(binding)]
+
+            for b, exp_f in zip(fields, expected_lazy.fields):
                 match exp_f:
                     case QTupleTypeFormal(name=formal_name, symbol_id=formal_sym_id, bound=formal_bound):
                         if not isinstance(b, ast.TypeBinding):
@@ -1647,7 +1672,7 @@ class TypeElaborator:
                                 f"Tuple type formal name mismatch: expected '{formal_name}', got '{b.name}'",
                                 offset=b.offset,
                             )
-                        witness_type = elaborate_type(b.type_val, env)
+                        witness_type = witness_of(b)
                         expected_bound = formal_bound.substitute(witness_subst)
                         check_kind(witness_type, expected_bound, env)
                         witness_subst[formal_sym_id] = witness_type
@@ -1679,7 +1704,7 @@ class TypeElaborator:
                                 f"Tuple type binding name mismatch: expected '{bind_name}', got '{b.name}'",
                                 offset=b.offset,
                             )
-                        witness_type = elaborate_type(b.type_val, env)
+                        witness_type = witness_of(b)
                         expected_type_val = bind_type.substitute(witness_subst)
                         if not is_type_equal(witness_type, expected_type_val, env):
                             raise TypeError(
@@ -3298,7 +3323,14 @@ class TypeElaborator:
                 return TypedLetType(name=binding.name, symbol=sym, offset=binding.offset)
 
             case ast.TypeBindingGroup():
-                reject_type_binding_groups((binding,))
+                syms = elaborate_type_binding_group(binding, env)
+                return TypedLetTypeGroup(
+                    members=tuple(
+                        TypedLetType(name=sym.name, symbol=sym, offset=member.offset)
+                        for sym, member in zip(syms, binding.bindings)
+                    ),
+                    offset=binding.offset,
+                )
 
             case ast.DefKindBinding():
                 k_sym = elaborate_kind_binding(binding, env)

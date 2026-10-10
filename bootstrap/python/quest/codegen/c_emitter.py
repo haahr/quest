@@ -81,6 +81,7 @@ from quest.typed_ast import (
     TypedInspectBranch,
     TypedInt,
     TypedLetType,
+    TypedLetTypeGroup,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -2455,6 +2456,10 @@ class CEmitter:
                     else:
                         msg = f"Let {name}::{kind_str}"
                     lines.append(f"    puts({_c_string_literal(msg)});")
+
+            case TypedLetTypeGroup(members=members):
+                for member in members:
+                    self._emit_phrase(member, lines, is_last=is_last)
 
             case TypedDefKind(name=name, symbol=symbol):
                 if show:

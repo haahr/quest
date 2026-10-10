@@ -110,6 +110,7 @@ from quest.typed_ast import (
     TypedInterface,
     TypedInt,
     TypedLetType,
+    TypedLetTypeGroup,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -1096,7 +1097,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                 env.define(name, val)
             return val
 
-        case TypedLetType() | TypedDefKind() | TypedInterface():
+        case TypedLetType() | TypedLetTypeGroup() | TypedDefKind() | TypedInterface():
             # Types, kinds, and interface declarations are erased at runtime
             return OK_VALUE
 
@@ -1308,6 +1309,9 @@ def format_interactive_result(
             if symbol.definition is not None:
                 return f"Let {name}::{kind_str} = {symbol.definition}"
             return f"Let {name}::{kind_str}"
+
+        case TypedLetTypeGroup(members=members):
+            return "\n".join(format_interactive_result(member, val) for member in members)
 
         case TypedDefKind(name=name, symbol=symbol):
             kind_str = str(symbol.kind)
