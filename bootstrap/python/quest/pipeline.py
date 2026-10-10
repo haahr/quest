@@ -332,6 +332,8 @@ class InterpretPhase(Phase):
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         val: QValue = output_data
+        if ctx.options.echo:
+            return ""  # run already echoed every phrase's result, the last one included
         if self._last_final_phrase is not None:
             return format_interactive_result(self._last_final_phrase, val)
         return qvalue_to_str(val)

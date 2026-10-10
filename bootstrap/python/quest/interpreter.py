@@ -44,6 +44,7 @@ from quest.runtime import (
     QTypeValue,
     QValue,
     QVariant,
+    QWord,
     qvalue_is,
     qvalue_to_str,
 )
@@ -1173,6 +1174,11 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
     typ = unalias(typ)
 
     if isinstance(typ, QPathType):
+        return "<hidden>"
+    # A value of an abstract type, such as a module's T, is hidden as when it is a tuple component below, so that the
+    # interpreter and compiled code (which cannot see a separately compiled module's representation) agree. Word.T is
+    # a library type with literals of its own.
+    if isinstance(typ, QTypeVar) and not isinstance(val, QWord):
         return "<hidden>"
 
     if isinstance(val, QTypeValue):

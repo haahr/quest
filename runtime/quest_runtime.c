@@ -313,43 +313,112 @@ void quest_raise_system_error(void) {
     quest_raise(&quest_exc_system_error, Q_OK_VAL);
 }
 
+/* Writes a real as the interpreter does (Python's repr): the shortest digits that read back as the same value, in
+ * positional notation when the decimal exponent is in [-4, 16) and in scientific notation otherwise. */
+static void quest_put_real(double r) {
+    if (isnan(r)) {
+        fputs("nan", stdout);
+        return;
+    }
+    if (isinf(r)) {
+        fputs(r > 0.0 ? "inf" : "-inf", stdout);
+        return;
+    }
+    char buf[40];
+    for (int precision = 1; precision <= 17; ++precision) {
+        snprintf(buf, sizeof buf, "%.*e", precision - 1, r);
+        if (strtod(buf, NULL) == r) break;
+    }
+    const char *p = buf;
+    if (*p == '-') {
+        putchar('-');
+        ++p;
+    }
+    char digits[24];
+    int n = 0;
+    for (; *p != '\0' && *p != 'e'; ++p) {
+        if (*p >= '0' && *p <= '9') digits[n++] = *p;
+    }
+    while (n > 1 && digits[n - 1] == '0') --n;
+    digits[n] = '\0';
+    int exponent = *p == 'e' ? atoi(p + 1) : 0;
+    if (exponent < -4 || exponent >= 16) {
+        putchar(digits[0]);
+        if (n > 1) printf(".%s", digits + 1);
+        printf("e%c%02d", exponent < 0 ? '-' : '+', exponent < 0 ? -exponent : exponent);
+    } else if (exponent < 0) {
+        fputs("0.", stdout);
+        for (int i = 0; i < -exponent - 1; ++i) putchar('0');
+        fputs(digits, stdout);
+    } else {
+        for (int i = 0; i <= exponent; ++i) putchar(i < n ? digits[i] : '0');
+        putchar('.');
+        fputs(n > exponent + 1 ? digits + exponent + 1 : "0", stdout);
+    }
+}
+
+/* Writes a character of a char or string literal, escaped as the interpreter does */
+static void quest_put_escaped_char(unsigned char c, char quote) {
+    switch (c) {
+        case '\n': fputs("\\n", stdout); return;
+        case '\t': fputs("\\t", stdout); return;
+        case '\r': fputs("\\r", stdout); return;
+        case '\\': fputs("\\\\", stdout); return;
+        default: break;
+    }
+    if (c == (unsigned char)quote) {
+        putchar('\\');
+        putchar(c);
+    } else if (c >= 32 && c <= 126) {
+        putchar(c);
+    } else {
+        printf("\\x%02x", c);
+    }
+}
+
+/* Writes prefix, val, suffix, and a newline. kind says how to write the value, as the interpreter writes a value of
+ * that type (format_value_with_type): a base type (Int, Real, Bool, Char, String, Ok, or Word), "fun" for a
+ * function, "hidden" for a value of an abstract type, and anything else as <val>. */
+void quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix) {
+    fputs(prefix, stdout);
+    if (strcmp(kind, "Int") == 0) {
+        printf("%lld", (long long)val.i);
+    } else if (strcmp(kind, "Real") == 0) {
+        quest_put_real(val.r);
+    } else if (strcmp(kind, "Bool") == 0) {
+        fputs(val.i ? "true" : "false", stdout);
+    } else if (strcmp(kind, "Char") == 0) {
+        putchar('\'');
+        quest_put_escaped_char((unsigned char)val.i, '\'');
+        putchar('\'');
+    } else if (strcmp(kind, "String") == 0) {
+        const QString *s = (const QString *)val.p;
+        putchar('"');
+        for (int64_t i = 0; s != NULL && i < s->length; ++i) quest_put_escaped_char((unsigned char)s->data[i], '"');
+        putchar('"');
+    } else if (strcmp(kind, "Ok") == 0) {
+        fputs("ok", stdout);
+    } else if (strcmp(kind, "Word") == 0 || strcmp(kind, "Word.T") == 0 || strcmp(kind, "word.T") == 0) {
+        printf("16#%llx#", (unsigned long long)val.u);
+    } else if (strcmp(kind, "fun") == 0) {
+        fputs("<fun>", stdout);
+    } else if (strcmp(kind, "hidden") == 0) {
+        fputs("<hidden>", stdout);
+    } else {
+        fputs("<val>", stdout);
+    }
+    fputs(suffix, stdout);
+    putchar('\n');
+}
+
+/* Writes the result of an expression of type type_name, whose value is formatted by that name (see
+ * quest_print_value); nothing for Ok */
 void quest_print_val(QVal val, const char *type_name) {
-    if (type_name == NULL) return;
-    if (strcmp(type_name, "Ok") == 0) {
-        return;
-    }
-    if (strcmp(type_name, "Int") == 0) {
-        printf("%lld : Int\n", (long long)val.i);
-        return;
-    }
-    if (strcmp(type_name, "Real") == 0) {
-        if (isinf(val.r)) {
-            printf("%s : Real\n", val.r > 0.0 ? "inf" : "-inf");
-        } else if (fabs(val.r) < 9223372036854775808.0 && val.r == (double)(int64_t)val.r) {
-            printf("%.1f : Real\n", val.r);
-        } else {
-            printf("%g : Real\n", val.r);
-        }
-        return;
-    }
-    if (strcmp(type_name, "Bool") == 0) {
-        printf("%s : Bool\n", val.i ? "true" : "false");
-        return;
-    }
-    if (strcmp(type_name, "Char") == 0) {
-        printf("'%c' : Char\n", (char)val.i);
-        return;
-    }
-    if (strcmp(type_name, "String") == 0) {
-        QString *s = (QString *)val.p;
-        printf("\"%s\" : String\n", s ? s->data : "");
-        return;
-    }
-    if (strcmp(type_name, "Word") == 0 || strcmp(type_name, "Word.T") == 0 || strcmp(type_name, "word.T") == 0) {
-        printf("16#%llx# : Word.T\n", (unsigned long long)val.u);
-        return;
-    }
-    printf("<val> : %s\n", type_name);
+    if (type_name == NULL || strcmp(type_name, "Ok") == 0) return;
+    bool is_word = strcmp(type_name, "Word") == 0 || strcmp(type_name, "word.T") == 0;
+    char suffix[256];
+    snprintf(suffix, sizeof suffix, " : %s", is_word ? "Word.T" : type_name);
+    quest_print_value("", val, type_name, suffix);
 }
 
 /* Universal subtyping predicate forward declaration */

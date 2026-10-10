@@ -33,6 +33,7 @@ ARGS_PATTERN = re.compile(r"\(\*\s*@args:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 ENV_PATTERN = re.compile(r"\(\*\s*@env:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 EXIT_PATTERN = re.compile(r"\(\*\s*@exit:\s*([0-9]+)\s*\*\)", re.IGNORECASE)
 TIMEOUT_PATTERN = re.compile(r"\(\*\s*@timeout:\s*([0-9.]+)\s*\*\)", re.IGNORECASE)
+ECHO_PATTERN = re.compile(r"\(\*\s*@echo\s*\*\)", re.IGNORECASE)
 STDIN_PATTERN = re.compile(r"\(\*\s*@stdin:(?:[ \t]*\r?\n)?(.*?)\*\)", re.DOTALL | re.IGNORECASE)
 
 
@@ -45,10 +46,11 @@ class TestDirectives:
     exit_code: int = 0
     timeout: Optional[float] = None
     stdin_data: Optional[str] = None
+    echo: bool = False
 
 
 def parse_test_directives(source_file: Path) -> TestDirectives:
-    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin) from comments."""
+    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin, @echo) from comments."""
     text = source_file.read_text(encoding="utf-8")
 
     skipped: set[str] = set()
@@ -96,6 +98,7 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
         exit_code=exit_code,
         timeout=custom_timeout,
         stdin_data=stdin_data,
+        echo=ECHO_PATTERN.search(text) is not None,
     )
 
 
@@ -175,6 +178,8 @@ def run_single_golden_test(
     command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
+    if directives.echo and phase_name in ("interpret", "run_c_compiled"):
+        command.append("--echo")
 
     command.append(str(source_file))
 

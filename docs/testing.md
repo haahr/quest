@@ -166,7 +166,7 @@ C compilation backend (or for tests specific to certain phases), tests can inclu
 - **Golden Management**: When updating goldens with `--update-golden`, skipped phases are ignored and will not
   generate unexpected `.out` files.
 
-### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`)
+### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`, `@echo`)
 Tests that interact with host OS primitives (command-line arguments, environment variables, exit codes, and standard
 input) can specify host execution requirements via top-level comment directives:
 
@@ -210,6 +210,14 @@ input) can specify host execution requirements via top-level comment directives:
   *)
   ```
   Available in Quest via `reader.input`.
+
+- **Echoed Results (`(* @echo *)`)**:
+  Runs the program with `--echo` in `interpret` and `run_c_compiled`, so that every top-level phrase prints its result
+  as the interactive REPL does (`let x:Int = 5`, `3 : Int`, `exception E`, `Let T::TYPE = Int`), not only the last.
+  A test can then check many values without printing each with `writer` and `conv`. Compiled code echoes exactly as
+  the interpreter does for bindings, declarations, functions, exceptions, and values of base, alias, existential, and
+  abstract types; it does not yet format compound values (tuples, records, arrays, options, variants), which it
+  prints as `<val>`, so a test should not echo those.
 
 ### 2.6. Interfaces and Modules Used by Tests
 A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the
