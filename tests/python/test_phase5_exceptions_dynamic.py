@@ -3,7 +3,6 @@
 import unittest
 
 from quest.env import Environment, ValueSymbol
-from quest.diagnostics import QuestTypeError as TypeError
 from quest.typed_ast import (
     TypedException,
     TypedInspect,
@@ -71,21 +70,14 @@ class Phase5ExceptionsDynamicTest(unittest.TestCase):
         self.assertEqual(typed_raise_as.type_val, REAL_TYPE)
 
     def test_raise_payload_verification(self) -> None:
-        """raise with payload checks payload type against exception definition."""
+        """raise with payload checks payload type against exception definition. A wrong or missing payload is an
+        error test (tests/errors/typecheck/exceptions)."""
         env = Environment()
         env.current_scope.declare_value(ValueSymbol(name="Fail", type_val=QExceptionType(STRING_TYPE)))
 
         # Valid payload: raise Fail with "error" end
         typed_ok = synth_test_expr('raise Fail with "error" end', env)
         self.assertIsInstance(typed_ok, TypedRaise)
-
-        # Invalid payload: raise Fail with 123 end
-        with self.assertRaises(TypeError):
-            synth_test_expr("raise Fail with 123 end", env)
-
-        # Missing required payload
-        with self.assertRaises(TypeError):
-            synth_test_expr("raise Fail end", env)
 
     def test_try_when_handling(self) -> None:
         """try body when DivByZero then 0 when Fail with msg then 1 else 2 end."""
@@ -117,7 +109,8 @@ class Phase5ExceptionsDynamicTest(unittest.TestCase):
 
     def test_inspect_dynamic(self) -> None:
         """inspect d when Int with n then n.a when String with s then 0 end (optional else): the binder is the
-        dynamic value's component tuple."""
+        dynamic value's component tuple. A target without an auto type is an error test
+        (tests/errors/typecheck/dynamic/inspect_non_auto)."""
         env = Environment()
         env.current_scope.declare_value(ValueSymbol(name="d", type_val=DYNAMIC_TYPE))
 
@@ -128,10 +121,6 @@ class Phase5ExceptionsDynamicTest(unittest.TestCase):
         )
         self.assertIsInstance(typed_inspect, TypedInspect)
         self.assertEqual(typed_inspect.type_val, INT_TYPE)
-
-        # A target without an auto type raises TypeError
-        with self.assertRaises(TypeError):
-            synth_test_expr("inspect 42 end", env)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@
 
 import unittest
 
-from quest.diagnostics import QuestTypeError as TypeError
 from quest.env import Environment
 from quest.modules import (
     elaborate_interface,
@@ -98,7 +97,9 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         self.assertIsInstance(mod_val_sym.type_val, QRecordType)
 
     def test_module_qualified_access_and_information_hiding(self) -> None:
-        """Accessing intStack.empty synthesizes intStack.Stack; accessing fields is rejected."""
+        """Accessing intStack.empty synthesizes intStack.Stack. Selecting a field of it is rejected
+        (tests/errors/typecheck/modules/opaque_type_field_access), as are modules missing a member or giving one an
+        incompatible type (module_missing_member, module_incompatible_member)."""
         env = Environment()
         source = """
         interface IntStack export
@@ -143,15 +144,6 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         typed_pop = synth_expr(call_pop, env)
         self.assertEqual(typed_pop.type_val, INT_TYPE)
 
-        # 4. Information hiding: client cannot select .items on opaque intStack.Stack
-        select_items = parse_expr("intStack.empty.items")
-        with self.assertRaises(TypeError) as context:
-            synth_expr(select_items, env)
-        self.assertIn(
-            "Cannot select field 'items' from non-record/tuple type 'intStack.Stack'",
-            str(context.exception),
-        )
-
     def test_manifest_type_transparency(self) -> None:
         """Manifest types in interfaces remain transparent outside the module."""
         env = Environment()
@@ -194,48 +186,6 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         self.assertIn("T", extended_scope.types)
         self.assertIn("init", extended_scope.values)
         self.assertIn("step", extended_scope.values)
-
-    def test_module_missing_member_fails(self) -> None:
-        """Module failing to implement an exported interface member raises TypeError."""
-        env = Environment()
-        source = """
-        interface Counter export
-            Count::TYPE
-            zero: Count
-            inc(c: Count): Count
-        end;
-
-        module counter : Counter export
-            Let Count = Int;
-            let zero = 0;
-        end;
-        """
-        # Parsing succeeds, elaboration fails
-        program = parse_phrase(source)
-        with self.assertRaises(TypeError) as context:
-            # We can run full program elaboration
-            res = run_source(source, env=env)
-            if res.has_errors:
-                raise TypeError(res.diagnostics[0].message)
-        self.assertIn("does not implement required value 'inc'", str(context.exception))
-
-    def test_module_incompatible_type_fails(self) -> None:
-        """Module implementing a value with an incompatible type raises TypeError."""
-        env = Environment()
-        source = """
-        interface Greeter export
-            greet: String
-        end;
-
-        module greeter : Greeter export
-            let greet = 42;
-        end;
-        """
-        with self.assertRaises(TypeError) as context:
-            res = run_source(source, env=env)
-            if res.has_errors:
-                raise TypeError(res.diagnostics[0].message)
-        self.assertIn("is not a subtype of interface signature", str(context.exception))
 
     def test_whole_program_elaboration_golden_file(self) -> None:
         """Whole-program elaboration on tests/source/06_interfaces_modules.quest succeeds."""
