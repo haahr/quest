@@ -1129,7 +1129,9 @@ class QRecGroupType(QType):
         return QRecGroupType(bindings=new_bindings, active_index=self.active_index)
 
     def __str__(self) -> str:
-        return f"RecGroup({self.current_name})"
+        # Like Rec(X::K) T, with the active binding's body; the other bindings' variables print as their names
+        name, _, bound, body = self.bindings[self.active_index]
+        return f"Rec({name} :: {bound}) {body}"
 
 
 @dataclass(frozen=True)
@@ -1224,7 +1226,7 @@ class QAliasType(QType):
         _init_free_vars(self, self.target)
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
-        if isinstance(self.target, QRecType):
+        if isinstance(self.target, (QRecType, QRecGroupType)):
             return self.unfold_lazily().evaluate_lazily(env)
         return self.target.evaluate_lazily(env)
 
@@ -1234,11 +1236,29 @@ class QAliasType(QType):
         Equivalent to unfolding the target (the alias equals it), but recursive occurrences keep
         printing as the alias's name. Cached like QRecType.unfold_lazily; the unfolding refers back to
         this node, so it stays a finite object graph.
+
+        A binding of a mutually recursive group unfolds likewise, with each other binding of the group
+        replaced by an alias named after it, qualified as this alias is (m.Forest unfolds with m.Tree).
+        Those aliases are the nodes that references to the other bindings elaborate to, so the
+        unfoldings of a group's aliases also share one finite object graph.
         """
         unfolded = self.__dict__.get("_unfolded")
         if unfolded is None:
-            assert isinstance(self.target, QRecType)
-            unfolded = self.target.body.substitute({self.target.symbol_id: self})
+            target = self.target
+            if isinstance(target, QRecType):
+                unfolded = target.body.substitute({target.symbol_id: self})
+            else:
+                assert isinstance(target, QRecGroupType)
+                qualifier = (
+                    self.name[: -len(target.current_name)] if self.name.endswith(target.current_name) else ""
+                )
+                subst: dict[int, QType] = {
+                    binding[1]: self if node is target else QAliasType(
+                        name=qualifier + binding[0], symbol_id=binding[1], target=node
+                    )
+                    for binding, node in zip(target.bindings, target.siblings())
+                }
+                unfolded = target.bindings[target.active_index][3].substitute(subst)
             object.__setattr__(self, "_unfolded", unfolded)
         return unfolded
 
@@ -3059,7 +3079,11 @@ def format_type_compact(
     if isinstance(t, QRecGroupType):
         if t.current_symbol_id in visited_ids or depth > 1:
             return t.current_name
-        return f"RecGroup({t.current_name})"
+        visited_ids = visited_ids | {b[1] for b in t.bindings}
+        name, _, bound, body = t.bindings[t.active_index]
+        b_str = format_type_compact(bound, env, visited_ids, depth + 1)
+        body_str = format_type_compact(body, env, visited_ids, depth + 1)
+        return f"Rec({name} :: {b_str}) {body_str}"
 
     return str(t)
 

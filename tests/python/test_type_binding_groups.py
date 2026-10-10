@@ -12,7 +12,17 @@ import quest.ast as ast
 from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
 from quest.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
 from quest.env import Environment
-from quest.types import BOOL_TYPE, INT_TYPE, QArrayType, QRecGroupType, QRecordType, QVariantType, strip_aliases
+from quest.types import (
+    BOOL_TYPE,
+    INT_TYPE,
+    QAliasType,
+    QArrayType,
+    QRecGroupType,
+    QRecordType,
+    QVariantType,
+    format_type_compact,
+    strip_aliases,
+)
 from tests.python.helpers import elaborate_test_type, parse_phrase
 
 
@@ -72,6 +82,34 @@ class TestTypeBindingGroupElaboration(unittest.TestCase):
         self.assertIsInstance(element, QArrayType)
         self.assertIs(element.element_type, tree.definition.siblings()[1])
         self.assertIsInstance(tree.definition.unfold_lazily(), QVariantType)
+
+    def test_unfolding_a_reference_names_the_other_members(self) -> None:
+        self.declare("Let Rec Forest = Record trees: Array(Tree) end and Tree = Variant leaf: Int node: Forest end;")
+        forest = elaborate_test_type("Forest", self.env)
+        tree = elaborate_test_type("Tree", self.env)
+        self.assertIsInstance(forest, QAliasType)
+        body = forest.unfold_lazily()
+        self.assertEqual(str(body), "Record trees: Array(Tree) end")
+        # The sibling in the unfolding is the node that a reference to Tree elaborates to, and its unfolding
+        # refers back to the reference to Forest: one finite graph
+        self.assertIs(body.fields[0].type_val.element_type, tree)
+        self.assertIs(tree.unfold_lazily().variants[1].type_val, forest)
+
+    def test_unfolding_a_qualified_reference_qualifies_the_other_members(self) -> None:
+        forest, _ = self.declare(
+            "Let Rec Forest = Record trees: Array(Tree) end and Tree = Variant leaf: Int node: Forest end;"
+        )
+        qualified = QAliasType(name="m.Forest", symbol_id=forest.symbol_id, target=forest.definition)
+        self.assertEqual(str(qualified.unfold_lazily()), "Record trees: Array(m.Tree) end")
+
+    def test_a_member_prints_like_a_single_recursive_type(self) -> None:
+        forest, tree = self.declare(
+            "Let Rec Forest = Record trees: Array(Tree) end and Tree = Variant leaf: Int node: Forest end;"
+        )
+        self.assertEqual(str(tree.definition), "Rec(Tree :: TYPE) Variant leaf: Int node: Forest end")
+        self.assertEqual(
+            format_type_compact(forest.definition), "Rec(Forest :: TYPE) Record trees: Array(Tree) end"
+        )
 
     def test_members_without_rec_see_the_enclosing_scope_not_each_other(self) -> None:
         self.declare("Let Size = Bool;")
