@@ -1627,6 +1627,9 @@ class TypeElaborator:
                                 function_depth=self.function_depth,
                             )
                         )
+                elif isinstance(b, ast.DefKindBinding):
+                    # A manifest kind names a kind for the later components; it is not a component itself
+                    elaborate_kind_binding(b, env)
                 else:
                     raise TypeError(
                         f"Unsupported tuple component '{b}'",
@@ -1650,11 +1653,15 @@ class TypeElaborator:
             return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
 
         _reject_value_declarations_in_tuple(expr.fields)
-        # Each member of a group is a component of its own
+        # Each member of a group is a component of its own. A manifest kind is not a component: it is declared
+        # just before the component that follows it (kinds_before[i] precedes fields[i]).
         fields: list[ast.BindingNode] = []
         groups: dict[int, tuple[ast.TypeBinding, ...]] = {}
+        kinds_before: dict[int, list[ast.DefKindBinding]] = {}
         for b in expr.fields:
-            if isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
+            if isinstance(b, ast.DefKindBinding):
+                kinds_before.setdefault(len(fields), []).append(b)
+            elif isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
                 members = tuple_type_binding_members(b)
                 fields.extend(members)
                 groups.update((id(member), members) for member in members)
@@ -1679,7 +1686,9 @@ class TypeElaborator:
                         witnesses[id(member)] = elaborate_type(member.type_val, env)
                 return witnesses[id(binding)]
 
-            for b, exp_f in zip(fields, expected_lazy.fields):
+            for index, (b, exp_f) in enumerate(zip(fields, expected_lazy.fields)):
+                for kind_binding in kinds_before.get(index, ()):
+                    elaborate_kind_binding(kind_binding, env)
                 match exp_f:
                     case QTupleTypeFormal(name=formal_name, symbol_id=formal_sym_id, bound=formal_bound):
                         if not isinstance(b, ast.TypeBinding):
@@ -1788,6 +1797,10 @@ class TypeElaborator:
                                     function_depth=self.function_depth,
                                 )
                             )
+
+            # Trailing manifest kinds name nothing, but are still checked
+            for kind_binding in kinds_before.get(len(fields), ()):
+                elaborate_kind_binding(kind_binding, env)
 
             return TypedTuple(elements=tuple(elem_typeds), type_val=expected_lazy, offset=expr.offset)
 

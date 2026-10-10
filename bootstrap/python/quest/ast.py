@@ -393,7 +393,7 @@ class TupleBinding(ASTNode):
 
 @dataclass(frozen=True)
 class ExprTuple(Expr):
-    fields: tuple[Union[TupleBinding, TypeBinding], ...]
+    fields: tuple[Union[TupleBinding, TypeBinding, TypeBindingGroup, DefKindBinding], ...]
 
 
 @dataclass(frozen=True)

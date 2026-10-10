@@ -143,7 +143,7 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
     result: list[Any] = []
     for item in bindings:
         match item:
-            case ast.TypeBinding() | ast.TypeBindingGroup():
+            case ast.TypeBinding() | ast.TypeBindingGroup() | ast.DefKindBinding():
                 result.append(item)
             case ast.LetValueBinding(is_rec=True) | ast.LetValueBindingGroup():
                 # Rejected by the typechecker: tuples do not support recursive or simultaneous value declarations
@@ -180,14 +180,8 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
             case ast.Expr():
                 result.append(ast.TupleBinding(name=None, value=item, offset=item.offset))
             case _:
-                result.append(
-                    ast.TupleBinding(
-                        name=getattr(item, "name", None),
-                        value=getattr(item, "value", getattr(item, "expr", item)),
-                        is_var=getattr(item, "is_var", False),
-                        offset=getattr(item, "offset", 0),
-                    )
-                )
+                # Phrases a tuple cannot hold (imports, modules, interfaces) are rejected by the typechecker
+                result.append(item)
     return tuple(result)
 
 

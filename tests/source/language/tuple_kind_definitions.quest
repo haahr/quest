@@ -1,0 +1,36 @@
+(* Kind definitions (DEF) inside tuple values: a DEF names a kind for the later components of the tuple
+   but is not a component itself, whether the tuple is synthesized or checked against a tuple type. *)
+
+import writer: Writer;
+import conv: Conv;
+
+(* Synthesized: the kind bounds a later type witness and a later function's quantifier *)
+let synthesized = tuple
+    DEF KOp = ALL(A::TYPE) TYPE
+    Let Pair::KOp = Fun(A::TYPE) Tuple first: A second: A end
+    let swap(F::KOp p: F(Int)): F(Int) = p
+    let pair: Pair(Int) = tuple let first = 1 let second = 2 end
+end;
+
+(* Checked: the expected tuple type has its own DEF, and the value's DEF need not line up with it *)
+let checked: Tuple DEF K = TYPE X::K n: Int end = tuple
+    DEF KValue = TYPE
+    Let X::KValue = Int
+    let n = 3
+    DEF KTrailing = POWER(Int)
+end;
+
+(* A DEF in an option payload *)
+Let Shape = Option circle with radius: Int end end;
+let shape = option circle of Shape with
+    DEF KUnused = TYPE
+    let radius = 4
+end;
+let radius = case shape when circle with c then c.radius end;
+
+writer.putString(writer.output conv.int(synthesized.pair.second));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(checked.n));
+writer.putString(writer.output " ");
+writer.putString(writer.output conv.int(radius));
+writer.putString(writer.output "\n");

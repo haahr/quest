@@ -266,6 +266,9 @@ Subtyping between tuple types implements Cardelli's extended subsignature rules 
      invariantly ($S.f \le: T.f \land T.f \le: S.f$).
    - If supertype component is immutable, a mutable subtype component is allowed by forgetting mutability
      (`Tuple var a:A end <: Tuple a:A end`).
+6. **Manifest Kinds Are Not Components:**
+   A `DEF K = Kind` in a tuple type or a tuple value names a kind for the later components only. It is not a
+   component itself, so it does not count toward arity or take part in component matching.
 
 ### 4.3. Existential Packing and Witness Checking
 Existential packages are constructed using tuple expressions with type witness bindings:
