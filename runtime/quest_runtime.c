@@ -1876,6 +1876,14 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                 fputs("<hidden>", stdout);
             }
             return;
+        case QTYPE_KIND_STORED:
+            /* A value laid out as generic code stores its type argument: converted to that type's own layout */
+            quest_put_value(quest_convert(v, t, quest_stored_type(t)), quest_stored_type(t), witness);
+            return;
+        case QTYPE_KIND_HOLE:
+            /* Only in descriptor templates, which no value has */
+            fputs("<hidden>", stdout);
+            return;
         case QTYPE_KIND_OPAQUE:
             /* Word.T is a library type with literals of its own; any other abstract type's values are hidden */
             if (t->name != NULL && (strcmp(t->name, "Word.T") == 0 || strcmp(t->name, "word.T") == 0)) {
