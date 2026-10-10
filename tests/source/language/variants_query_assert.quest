@@ -1,0 +1,43 @@
+(* Variants from Cardelli's Typeful Programming §6.3: declarations, width subtyping, injection, case, and the tag
+   query ? and assertion ! operators, which options support too. A variant is not a subtype of one with fewer
+   cases (tests/errors/typecheck/cardelli/variant_width_subtyping). *)
+(* @echo *)
+
+Let Day = Variant mon, tue, wed, thu, fri, sat, sun:Ok end;
+Let WeekDay = Variant mon, tue, wed, thu, fri:Ok end;
+Let WeekendDay = Variant sat, sun:Ok end;
+
+(* WeekDay <: Day and WeekendDay <: Day *)
+let wd = variant mon of WeekDay with ok end;
+let we = variant sun of WeekendDay with ok end;
+let asDay: Day = wd;
+let alsoDay: Day = we;
+
+(* Injection and case *)
+let dayNum(x: WeekDay): Int =
+    case x
+        when mon then 1
+        when tue then 2
+        else 0
+    end;
+dayNum(wd);
+
+(* ? queries a tag and ! asserts one, giving the payload *)
+wd?mon;
+wd?tue;
+Let Number = Variant int: Int real: Real end;
+let n = variant int of Number with 42 end;
+n?int;
+n?real;
+n!int;
+
+(* Options *)
+Let Color = Option red green blue with val: Int end end;
+let cRed = option red of Color end;
+let cBlue = option blue of Color with tuple 100 end end;
+cRed?red;
+cRed?green;
+cBlue?blue;
+let redPayload = cRed!red;
+let bluePayload = cBlue!blue;
+bluePayload.val

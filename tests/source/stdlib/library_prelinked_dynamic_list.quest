@@ -1,0 +1,88 @@
+(* Library modules (Cardelli's Typeful Programming §7.1, §9.1, §11.3): conv, int, ascii, string, arrayOp, reader,
+   and real are usable without an import; dynamic values are made, narrowed, and written to and read back from files,
+   a cyclic record included; lists; and string.precedesSub. list is imported because compiled code cannot use it
+   without an import yet (docs/tasklist.md). *)
+(* @echo *)
+
+import dynamic: Dynamic;
+import writer: Writer;
+import reader: Reader;
+import list: List;
+
+(* Library modules without an import *)
+conv.int(42);
+int.abs(~100);
+ascii.char(65);
+string.new(3 'x');
+arrayOp.new(:Int 2 7);
+real.floor(3.7);
+let rIn = reader.input;
+
+(* dynamic.new and dynamic.be, which raises dynamic.error at the wrong type *)
+let d = dynamic.new(:Int 42);
+dynamic.be(:Int d);
+let dInferred = dynamic.new("hello");
+dynamic.be(:String dInferred);
+try dynamic.be(:Bool d) when dynamic.error then false end;
+
+(* dynamic.extern writes a dynamic value to a file in the test's directory, and dynamic.intern reads it back *)
+let w = writer.file("int.json");
+dynamic.extern(w dynamic.new(:Int 12345));
+writer.close(w);
+let r = reader.file("int.json");
+let dIn = dynamic.intern(r);
+reader.close(r);
+dynamic.be(:Int dIn);
+
+(* A cyclic record survives the round trip *)
+Let Node = Record
+    name: String
+    var next: Dynamic.T
+end;
+begin
+    let node = record
+        name = "cycle"
+        var next = dynamic.new(:Ok ok)
+    end;
+    node.next := dynamic.new(:Node node);
+    let cw = writer.file("cycle.json");
+    dynamic.extern(cw dynamic.new(:Node node));
+    writer.close(cw);
+    let cr = reader.file("cycle.json");
+    let n: Node = dynamic.be(:Node dynamic.intern(cr));
+    reader.close(cr);
+    let nNext: Node = dynamic.be(:Node n.next);
+    nNext.name
+end;
+
+(* Lists *)
+let l0 = list.nil(:Int);
+list.null(:Int l0);
+list.length(:Int l0);
+let l1 = list.cons(:Int 10 l0);
+list.null(:Int l1);
+list.head(:Int l1);
+list.length(:Int l1);
+let l2 = list.cons(:Int 20 l1);
+list.head(:Int l2);
+list.head(:Int list.tail(:Int l2));
+list.length(:Int l2);
+let lEnum = list.enum of 1 2 3 end;
+list.length(:Int lEnum);
+list.head(:Int lEnum);
+try list.head(:Int l0) when list.error then ~1 end;
+try
+    let ignored = list.tail(:Int l0);
+    0
+when list.error then
+    ~2
+end;
+
+(* string.precedesSub compares substrings lexicographically, and raises string.error out of bounds *)
+let s1 = "abcdef";
+let s2 = "bcxyz";
+let s3 = "abxyz";
+string.precedesSub(s1 1 3 s2 0 3);
+string.precedesSub(s1 1 3 s3 0 3);
+string.precedesSub(s1 1 3 s1 1 3);
+try string.precedesSub(s1 0 100 s2 0 3) when string.error then false end

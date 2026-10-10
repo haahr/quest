@@ -1,0 +1,79 @@
+(TypedProgram
+  :phrases (
+    (TypedLetType 'Day' :kind TYPE)
+    (TypedLetType 'WeekDay' :kind TYPE)
+    (TypedLetType 'WeekendDay' :kind TYPE)
+    (TypedLetValue 'wd' :type WeekDay
+      :value (TypedVariant 'mon' :type WeekDay
+        :payload (TypedOk)))
+    (TypedLetValue 'we' :type WeekendDay
+      :value (TypedVariant 'sun' :type WeekendDay
+        :payload (TypedOk)))
+    (TypedLetValue 'asDay' :type Day
+      :value (TypedVar 'wd' :type WeekDay))
+    (TypedLetValue 'alsoDay' :type Day
+      :value (TypedVar 'we' :type WeekendDay))
+    (TypedLetValue 'dayNum' :type Fun(x: WeekDay): Int
+      :value (TypedFun :params (('x' : WeekDay)) :type Fun(x: WeekDay): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'x' :type WeekDay)
+          :branches (
+            (TypedCaseBranch tags=(mon)
+              :body (TypedInt 1 :type Int))
+            (TypedCaseBranch tags=(tue)
+              :body (TypedInt 2 :type Int))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'dayNum' :type Fun(x: WeekDay): Int)
+        :args (
+          (TypedVar 'wd' :type WeekDay)
+        )))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'mon' :type Bool
+        :target (TypedVar 'wd' :type WeekDay)))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'tue' :type Bool
+        :target (TypedVar 'wd' :type WeekDay)))
+    (TypedLetType 'Number' :kind TYPE)
+    (TypedLetValue 'n' :type Number
+      :value (TypedVariant 'int' :type Number
+        :payload (TypedInt 42 :type Int)))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'int' :type Bool
+        :target (TypedVar 'n' :type Number)))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'real' :type Bool
+        :target (TypedVar 'n' :type Number)))
+    (TypedExprStmt
+      :expr (TypedVariantAssert 'int' :type Int
+        :target (TypedVar 'n' :type Number)))
+    (TypedLetType 'Color' :kind TYPE)
+    (TypedLetValue 'cRed' :type Color
+      :value (TypedOption 'red' :type Color))
+    (TypedLetValue 'cBlue' :type Color
+      :value (TypedOption 'blue' :type Color
+        :payload (TypedTuple :type Tuple val: Int end
+          :elements (
+            (TypedInt 100 :type Int)
+          ))))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'red' :type Bool
+        :target (TypedVar 'cRed' :type Color)))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'green' :type Bool
+        :target (TypedVar 'cRed' :type Color)))
+    (TypedExprStmt
+      :expr (TypedVariantCheck 'blue' :type Bool
+        :target (TypedVar 'cBlue' :type Color)))
+    (TypedLetValue 'redPayload' :type Tuple Int end
+      :value (TypedVariantAssert 'red' :type Tuple Int end
+        :target (TypedVar 'cRed' :type Color)))
+    (TypedLetValue 'bluePayload' :type Tuple Int val: Int end
+      :value (TypedVariantAssert 'blue' :type Tuple Int val: Int end
+        :target (TypedVar 'cBlue' :type Color)))
+    (TypedExprStmt
+      :expr (TypedSelect 'val' :type Int
+        :target (TypedVar 'bluePayload' :type Tuple Int val: Int end)))
+  ))

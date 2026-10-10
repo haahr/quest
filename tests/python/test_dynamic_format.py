@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import math
 import os
@@ -13,7 +14,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 import tests.python.helpers  # noqa: F401
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.interpreter import DYNAMIC_ERROR_EXC, QuestException
-from quest.runtime import OK_VALUE, QAutoVal, QInt, QOption, QReal, QTuple
+from quest.runtime import (
+    OK_VALUE,
+    QArray,
+    QAutoVal,
+    QInt,
+    QOption,
+    QReader,
+    QReal,
+    QRecord,
+    QString,
+    QTuple,
+    QVariant,
+    QWriter,
+)
 from quest.types import is_type_equal
 
 INT_LIST = "Rec(L :: TYPE) Option nil cons with head: Int tail: L end end"
@@ -95,6 +109,87 @@ class TestDynamicFormat(unittest.TestCase):
         with self.assertRaises(QuestException):
             jsog_encode(d)
 
+
+    def test_extern_and_intern_through_streams(self) -> None:
+        """dynamic.extern writes the JSON format of docs/dynamic.md §2 and dynamic.intern reads it."""
+        from quest.builtins import BuiltinModuleRegistry
+
+        # The runtime operations of lib/dynamic.mod.quest, by the C symbols it declares them with
+        extern_fn = BuiltinModuleRegistry.resolve_external_symbol("quest_dynamic_extern").fn
+        intern_fn = BuiltinModuleRegistry.resolve_external_symbol("quest_dynamic_intern").fn
+
+        def new_dynamic(value, type_str):
+            """A dynamic value: an auto value whose one component a is the value."""
+            return QAutoVal(QTuple((value,), labels=("a",)), parse_type_string(type_str))
+
+        # 1. Primitive dynamic value
+        d = new_dynamic(QInt(42), "Int")
+        str_out = io.StringIO()
+        wr = QWriter(stream=str_out, is_file=False)
+        extern_fn(wr, d)
+        self.assertEqual(str_out.getvalue(), '{"quest":1,"types":[],"type":"Int","value":42}')
+
+        str_in = io.StringIO(str_out.getvalue())
+        rd = QReader(stream=str_in, is_file=False)
+        d_interned = intern_fn(rd)
+        self.assertIsInstance(d_interned, QAutoVal)
+        self.assertEqual(d_interned.value.elements[0], QInt(42))
+
+        # 2. Cyclic record
+        cyc_rec = QRecord({"name": QString("loop")})
+        cyc_rec.fields["next"] = cyc_rec
+        d_cyc = new_dynamic(cyc_rec, "Rec(R :: TYPE) Record name: String next: R end")
+        s_out = io.StringIO()
+        extern_fn(QWriter(stream=s_out, is_file=False), d_cyc)
+        json_cyc = s_out.getvalue()
+        self.assertIn('"types":[{"record":{"name":"String","next":0}}]', json_cyc)
+        self.assertIn('"@id":1', json_cyc)
+        self.assertIn('"@ref":1', json_cyc)
+
+        d_cyc_in = intern_fn(QReader(stream=io.StringIO(json_cyc), is_file=False))
+        rec_in = d_cyc_in.value.elements[0]
+        self.assertIsInstance(rec_in, QRecord)
+        self.assertEqual(rec_in.fields["name"], QString("loop"))
+        self.assertIs(rec_in.fields["next"], rec_in)
+
+        # 3. Shared array
+        shared_arr = QArray([QInt(100)])
+        d_arr = new_dynamic(QTuple((shared_arr, shared_arr)), "Tuple :Array(Int) :Array(Int) end")
+        s_arr_out = io.StringIO()
+        extern_fn(QWriter(stream=s_arr_out, is_file=False), d_arr)
+        json_arr = s_arr_out.getvalue()
+        self.assertIn('"value":[{"@id":1,"@items":[100]},{"@ref":1}]', json_arr)
+
+        d_arr_in = intern_fn(QReader(stream=io.StringIO(json_arr), is_file=False))
+        tup_in = d_arr_in.value.elements[0]
+        self.assertIsInstance(tup_in.elements[0], QArray)
+        self.assertEqual(tup_in.elements[0].elements[0], QInt(100))
+        self.assertIs(tup_in.elements[1], tup_in.elements[0])
+
+        # 4. Serde-style variant
+        v = QVariant("red", QInt(255))
+        d_var = new_dynamic(v, "Variant red: Int green: Ok end")
+        s_var_out = io.StringIO()
+        extern_fn(QWriter(stream=s_var_out, is_file=False), d_var)
+        self.assertEqual(
+            s_var_out.getvalue(),
+            '{"quest":1,"types":[{"variant":{"red":"Int","green":"Ok"}}],"type":0,"value":{"red":255}}',
+        )
+        d_var_in = intern_fn(QReader(stream=io.StringIO(s_var_out.getvalue()), is_file=False))
+        var_in = d_var_in.value.elements[0]
+        self.assertIsInstance(var_in, QVariant)
+        self.assertEqual(var_in.tag, "red")
+        self.assertEqual(var_in.payload, QInt(255))
+
+        # 5. Non-externable type raises error
+        with self.assertRaises(QuestException) as cm:
+            extern_fn(wr, new_dynamic(wr, "Int"))
+        self.assertEqual(cm.exception.exc_val, DYNAMIC_ERROR_EXC)
+
+        # 6. Malformed JSON raises error on intern
+        with self.assertRaises(QuestException) as cm2:
+            intern_fn(QReader(stream=io.StringIO("{not valid json"), is_file=False))
+        self.assertEqual(cm2.exception.exc_val, DYNAMIC_ERROR_EXC)
 
 if __name__ == "__main__":
     unittest.main()
