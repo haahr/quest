@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional as Opt, Union
+from typing import Any, Callable, Optional as Opt
 
 from quest.tokens import SourceMap, Token, TokenKind
-from quest.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
+from quest.diagnostics import QuestCompilerError
 
 
 # ============================================================================
@@ -206,13 +206,6 @@ class ParserError(QuestCompilerError):
     ):
         super().__init__(message=message, offset=offset, length=length)
         self.token = token
-
-    def to_diagnostic(self) -> Diagnostic:
-        """Converts this error into a structured Diagnostic object."""
-        return Diagnostic.make_error(message=self.message, offset=self.offset, length=self.length)
-
-    def format_with_source(self, source_map: SourceMap) -> str:
-        return DiagnosticRenderer.render_diagnostic(self.to_diagnostic(), source_map)
 
 
 # Sentinel for packrat recursion detection

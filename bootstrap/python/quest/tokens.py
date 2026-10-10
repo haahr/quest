@@ -39,18 +39,6 @@ class SourceMap:
         column = offset - self.line_starts[line_index] + 1
         return SourceLocation(self.file_name, offset, line, column)
 
-    def format_error(self, offset: int, length: int, message: str) -> str:
-        """Renders a diagnostic message with underlined source context."""
-        loc = self.locate(offset)
-        header = f"{loc.file_name}:{loc.line}:{loc.column}: error: {message}"
-        lines = self.source_text.splitlines()
-        if 1 <= loc.line <= len(lines):
-            source_line = lines[loc.line - 1]
-            caret_pad = " " * (loc.column - 1)
-            underline = "^" * max(1, length)
-            return f"{header}\n    {source_line}\n    {caret_pad}{underline}"
-        return header
-
 
 class TokenKind(Enum):
     # --- Literals ---
