@@ -1,4 +1,5 @@
-"""Unit and integration tests for Phase 4.1 C Code Generation & Runtime."""
+"""Tests of C compilation that golden tests cannot express: the compile pipeline's phases, --nogc, and the
+`quest compile` command. The programs of Phase 4.1 are golden tests (language/c_codegen_basics)."""
 
 import shutil
 import subprocess
@@ -38,200 +39,20 @@ class TestPhase41Codegen(unittest.TestCase):
         p = compile_pipeline()
         self.assertEqual(p.phase_names(), ["tokenize", "parse", "typecheck", "codegen_c"])
 
-    def test_integer_arithmetic(self):
-        """Tests integer operations: +, -, *, /, %, literal ~."""
-        code = """
-        let a = 10 + 5;
-        let b = 10 - 3;
-        let c = 4 * 6;
-        let d = 20 / 4;
-        let e = 17 % 5;
-        let f = ~42;
-        let sum = a + b + c + d + e + f;
-        sum
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("11 : Int", proc.stdout)
-
-    def test_real_arithmetic(self):
-        """Tests real operations: ++, --, ^^, //, literal ~."""
-        code = """
-        let a = 1.5 ++ 2.5;
-        let b = 5.0 -- 1.25;
-        let c = 2.0 ^^ 3.0;
-        let d = 10.0 // 4.0;
-        let e = ~2.5;
-        let sum = a ++ b ++ c ++ d ++ e;
-        sum
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("15.75 : Real", proc.stdout)
-
-    def test_boolean_and_relations(self):
-        """Tests booleans, relations (int and real), and andif."""
-        code = """
-        let eq = 10 is 10;
-        let ne = 10 isnot 5;
-        let lt = 3 < 7;
-        let le = 3 <= 3;
-        let gt = 5 > 2;
-        let ge = 5 >= 5;
-        let rlt = 1.0 << 2.0;
-        let rgt = 2.0 >> 1.0;
-        let b = eq andif {ne} andif {lt} andif {le} andif {gt} andif {ge} andif {rlt} andif {rgt};
-        b
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("true : Bool", proc.stdout)
-
-    def test_string_and_char(self):
-        """Tests string concatenation and char literals."""
-        code = """
-        let ch = 'Z';
-        let s = "Hello, " <> "world!";
-        s
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("\"Hello, world!\" : String", proc.stdout)
-
-    def test_mutable_variables(self):
-        """Tests let var and assignment."""
-        code = """
-        let var acc = 0;
-        acc := acc + 10;
-        acc := acc + 5;
-        acc
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("15 : Int", proc.stdout)
-
-    def test_mutable_tuple(self):
-        """Tests mutable tuple field assignment in C codegen."""
-        code = """
-        let t = tuple let var a = 10 let var b = 20 end;
-        t.a := t.a + 5;
-        t.b := t.b + 10;
-        t.a + t.b
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("45 : Int", proc.stdout)
-
-    def test_conditional_if(self):
-        """Tests if-then-else expressions and statements."""
-        code = """
-        let x = if 10 > 5 then 100 else 200 end;
-        let y = if false then 100 else 200 end;
-        x + y
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("300 : Int", proc.stdout)
-
-    def test_while_loop(self):
-        """Tests while-do-end loops."""
-        code = """
-        let var i = 1;
-        let var sum = 0;
-        while i <= 5 do
-            sum := sum + i;
-            i := i + 1;
-        end;
-        sum
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("15 : Int", proc.stdout)
-
-    def test_loop_and_exit(self):
-        """Tests infinite loop with exit."""
-        code = """
-        let var k = 0;
-        loop
-            k := k + 1;
-            if k is 10 then exit end;
-        end;
-        k
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("10 : Int", proc.stdout)
-
-    def test_for_upto_and_downto(self):
-        """Tests for upto and for downto loops."""
-        code = """
-        let var sum = 0;
-        for i = 1 upto 4 do
-            sum := sum + i;
-        end;
-        for j = 4 downto 1 do
-            sum := sum + j;
-        end;
-        sum
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("20 : Int", proc.stdout)
-
-    def test_block_expression(self):
-        """Tests begin ... end blocks."""
-        code = """
-        let r = begin
-            let u = 7;
-            let v = 6;
-            u * v
-        end;
-        r
-        """
-        proc = self.compile_quest(code)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("42 : Int", proc.stdout)
-
     def test_nogc_compilation(self):
-        """Tests compilation with --nogc."""
+        """Compiles and runs strings, functions, closures, and arrays with --nogc (the same programs without it are
+        golden tests, such as language/c_codegen_basics, which have no directive for compiler flags)."""
         code = """
         let greeting = "Quest " <> "C Backend";
-        greeting
-        """
-        proc = self.compile_quest(code, nogc=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("\"Quest C Backend\" : String", proc.stdout)
-
-    def test_nogc_functions(self):
-        """Verifies function code compiles and runs with --nogc."""
-        code = """
         let f(x: Int): Int = x + 10;
-        f(5)
-        """
-        proc = self.compile_quest(code, nogc=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("15 : Int", proc.stdout)
-
-    def test_nogc_closures(self):
-        """Verifies closures compile and run cleanly with --nogc."""
-        code = """
         let makeAdder(x: Int)(y: Int): Int = x + y;
         let add10 = makeAdder(10);
-        add10(5)
-        """
-        proc = self.compile_quest(code, nogc=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("15 : Int", proc.stdout)
-
-    def test_nogc_arrays(self):
-        """Tests compiling and running array operations with --nogc."""
-        code = """
         let arr = array of 1 2 3 end;
-        arr[1]
+        tuple greeting f(5) add10(5) arr[1] end
         """
         proc = self.compile_quest(code, nogc=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("2 : Int", proc.stdout)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('tuple "Quest C Backend" 15 15 2 end', proc.stdout)
 
     def test_cli_driver_compile_and_run(self):
         """Tests quest compile CLI end-to-end."""
