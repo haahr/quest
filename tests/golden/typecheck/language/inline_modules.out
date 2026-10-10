@@ -1,0 +1,157 @@
+(TypedProgram
+  :phrases (
+    (TypedInterface 'Tally'
+      :signatures ())
+    (TypedModule 'tally' implements 'Tally'
+      :bindings (
+        (TypedLetValue 'start' :type Int
+          :value (TypedInt 100 :type Int))
+        (TypedLetValue 'sum' :type Int
+          :value (TypedInt 0 :type Int))
+        (TypedLetValue 'add' :type Fun(n: Int): Int
+          :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedVar 'sum' :type Var(Int))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedDerefCell :type Int
+                        :target (TypedVar 'sum' :type Var(Int)))
+                      :right (TypedVar 'n' :type Int))))
+              )
+              :result (TypedDerefCell :type Int
+                :target (TypedVar 'sum' :type Var(Int))))))
+        (TypedLetValue 'total' :type Fun(): Int
+          :value (TypedFun :params () :type Fun(): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedVar 'start' :type Int)
+              :right (TypedDerefCell :type Int
+                :target (TypedVar 'sum' :type Var(Int))))))
+      ))
+    (TypedExprStmt
+      :expr (TypedSelect 'start' :type Int
+        :target (TypedVar 'tally' :type Module 'tally')))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'add' :type Fun(n: Int): Int
+          :target (TypedVar 'tally' :type Module 'tally'))
+        :args (
+          (TypedInt 3 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'add' :type Fun(n: Int): Int
+          :target (TypedVar 'tally' :type Module 'tally'))
+        :args (
+          (TypedInt 4 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'total' :type Fun(): Int
+          :target (TypedVar 'tally' :type Module 'tally'))
+        :args ()))
+    (TypedLetValue 'addTwice' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Int
+                :func (TypedSelect 'add' :type Fun(n: Int): Int
+                  :target (TypedVar 'tally' :type Module 'tally'))
+                :args (
+                  (TypedVar 'n' :type Int)
+                )))
+          )
+          :result (TypedApp :type Int
+            :func (TypedSelect 'add' :type Fun(n: Int): Int
+              :target (TypedVar 'tally' :type Module 'tally'))
+            :args (
+              (TypedVar 'n' :type Int)
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'addTwice' :type Fun(n: Int): Int)
+        :args (
+          (TypedInt 10 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'total' :type Fun(): Int
+          :target (TypedVar 'tally' :type Module 'tally'))
+        :args ()))
+    (TypedInterface 'Counter'
+      :signatures ())
+    (TypedModule 'counter' implements 'Counter'
+      :bindings (
+        (TypedLetType 'T' :kind TYPE)
+        (TypedLetValue 'make' :type Fun(n: Int): T
+          :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): T
+            :body (TypedVar 'n' :type Int)))
+        (TypedLetValue 'get' :type Fun(c: T): Int
+          :value (TypedFun :params (('c' : T)) :type Fun(c: T): Int
+            :body (TypedVar 'c' :type T)))
+        (TypedLetValue 'next' :type Fun(c: T): T
+          :value (TypedFun :params (('c' : T)) :type Fun(c: T): T
+            :body (TypedInfix '+' :type Int
+              :left (TypedVar 'c' :type T)
+              :right (TypedInt 1 :type Int))))
+      ))
+    (TypedLetValue 'k' :type counter.T
+      :value (TypedApp :type counter.T
+        :func (TypedSelect 'make' :type Fun(n: Int): counter.T
+          :target (TypedVar 'counter' :type Module 'counter'))
+        :args (
+          (TypedInt 4 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'get' :type Fun(c: counter.T): Int
+          :target (TypedVar 'counter' :type Module 'counter'))
+        :args (
+          (TypedApp :type counter.T
+            :func (TypedSelect 'next' :type Fun(c: counter.T): counter.T
+              :target (TypedVar 'counter' :type Module 'counter'))
+            :args (
+              (TypedVar 'k' :type counter.T)
+            ))
+        )))
+    (TypedLetValue 'm' :type Module 'counter'
+      :value (TypedVar 'counter' :type Module 'counter'))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'get' :type Fun(c: counter.T): Int
+          :target (TypedVar 'm' :type Module 'counter'))
+        :args (
+          (TypedApp :type counter.T
+            :func (TypedSelect 'make' :type Fun(n: Int): counter.T
+              :target (TypedVar 'm' :type Module 'counter'))
+            :args (
+              (TypedInt 9 :type Int)
+            ))
+        )))
+    (TypedInterface 'Absolute'
+      :signatures ())
+    (TypedModule 'absolute' implements 'Absolute'
+      :bindings (
+        (TypedImport
+          :items (
+            (TypedImportItem ('int') : 'IntOp')
+          ))
+        (TypedLetValue 'value' :type Fun(n: Int): Int
+          :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+            :body (TypedApp :type Int
+              :func (TypedSelect 'abs' :type Fun(n: Int): Int
+                :target (TypedVar 'int' :type Module 'int'))
+              :args (
+                (TypedVar 'n' :type Int)
+              ))))
+      ))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedSelect 'value' :type Fun(n: Int): Int
+          :target (TypedVar 'absolute' :type Module 'absolute'))
+        :args (
+          (TypedInt -7 :type Int)
+        )))
+  ))

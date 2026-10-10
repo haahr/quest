@@ -1,0 +1,406 @@
+(Program
+  :phrases (
+    (InterfaceDecl
+      :name 'Tally'
+      :signatures (
+        (FieldSig
+          :name 'start'
+          :type_sig (TypePath ('Int'))
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'add'
+          :type_sig (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'n'
+                :bound (KindPower
+                  :bound (TypePath ('Int'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'total'
+          :type_sig (TypeAll
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+      )
+    )
+    (ModuleDecl
+      :name 'tally'
+      :interface_name 'Tally'
+      :bindings (
+        (LetValueBinding
+          :name 'start'
+          :value (ExprInt 100 '100')
+        )
+        (LetValueBinding
+          :name 'sum'
+          :value (ExprInt 0 '0')
+          :is_var True
+        )
+        (LetValueBinding
+          :name 'add'
+          :value (ExprBlock
+            :bindings (
+              (ExprStmt
+                :expr (ExprInfix
+                  :left (ExprId 'sum')
+                  :op ':='
+                  :right (ExprInfix
+                    :left (ExprId 'sum')
+                    :op '+'
+                    :right (ExprId 'n')
+                  )
+                )
+              )
+              (ExprStmt
+                :expr (ExprId 'sum')
+              )
+            )
+          )
+          :params (
+            (FormalParam
+              :name 'n'
+              :type_annot (TypePath ('Int'))
+              :mode VALUE
+            )
+          )
+          :type_annot (TypePath ('Int'))
+        )
+        (LetValueBinding
+          :name 'total'
+          :value (ExprFun
+            :return_type (TypePath ('Int'))
+            :body (ExprInfix
+              :left (ExprId 'start')
+              :op '+'
+              :right (ExprId 'sum')
+            )
+          )
+          :type_annot (TypeAll
+            :result_type (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprSelect
+        :target (ExprId 'tally')
+        :field 'start'
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'tally')
+          :field 'add'
+        )
+        :args (
+          (ExprInt 3 '3')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'tally')
+          :field 'add'
+        )
+        :args (
+          (ExprInt 4 '4')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'tally')
+          :field 'total'
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'addTwice'
+      :value (ExprBlock
+        :bindings (
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'tally')
+                :field 'add'
+              )
+              :args (
+                (ExprId 'n')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'tally')
+                :field 'add'
+              )
+              :args (
+                (ExprId 'n')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'addTwice')
+        :args (
+          (ExprInt 10 '10')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'tally')
+          :field 'total'
+        )
+      )
+    )
+    (InterfaceDecl
+      :name 'Counter'
+      :signatures (
+        (TypeFormal
+          :name 'T'
+          :bound (KindType)
+        )
+        (FieldSig
+          :name 'make'
+          :type_sig (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'n'
+                :bound (KindPower
+                  :bound (TypePath ('Int'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('T'))
+          )
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'get'
+          :type_sig (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'c'
+                :bound (KindPower
+                  :bound (TypePath ('T'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'next'
+          :type_sig (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'c'
+                :bound (KindPower
+                  :bound (TypePath ('T'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('T'))
+          )
+          :mode VALUE
+        )
+      )
+    )
+    (ModuleDecl
+      :name 'counter'
+      :interface_name 'Counter'
+      :bindings (
+        (TypeBinding
+          :name 'T'
+          :type_val (TypePath ('Int'))
+        )
+        (LetValueBinding
+          :name 'make'
+          :value (ExprId 'n')
+          :params (
+            (FormalParam
+              :name 'n'
+              :type_annot (TypePath ('Int'))
+              :mode VALUE
+            )
+          )
+          :type_annot (TypePath ('T'))
+        )
+        (LetValueBinding
+          :name 'get'
+          :value (ExprId 'c')
+          :params (
+            (FormalParam
+              :name 'c'
+              :type_annot (TypePath ('T'))
+              :mode VALUE
+            )
+          )
+          :type_annot (TypePath ('Int'))
+        )
+        (LetValueBinding
+          :name 'next'
+          :value (ExprInfix
+            :left (ExprId 'c')
+            :op '+'
+            :right (ExprInt 1 '1')
+          )
+          :params (
+            (FormalParam
+              :name 'c'
+              :type_annot (TypePath ('T'))
+              :mode VALUE
+            )
+          )
+          :type_annot (TypePath ('T'))
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'k'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'counter')
+          :field 'make'
+        )
+        :args (
+          (ExprInt 4 '4')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'counter')
+          :field 'get'
+        )
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'counter')
+              :field 'next'
+            )
+            :args (
+              (ExprId 'k')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'm'
+      :value (ExprId 'counter')
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'm')
+          :field 'get'
+        )
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'm')
+              :field 'make'
+            )
+            :args (
+              (ExprInt 9 '9')
+            )
+          )
+        )
+      )
+    )
+    (InterfaceDecl
+      :name 'Absolute'
+      :signatures (
+        (FieldSig
+          :name 'value'
+          :type_sig (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'n'
+                :bound (KindPower
+                  :bound (TypePath ('Int'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+      )
+    )
+    (ModuleDecl
+      :name 'absolute'
+      :interface_name 'Absolute'
+      :bindings (
+        (LetValueBinding
+          :name 'value'
+          :value (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'int')
+              :field 'abs'
+            )
+            :args (
+              (ExprId 'n')
+            )
+          )
+          :params (
+            (FormalParam
+              :name 'n'
+              :type_annot (TypePath ('Int'))
+              :mode VALUE
+            )
+          )
+          :type_annot (TypePath ('Int'))
+        )
+      )
+      :imports (
+        (ImportItem ('int') 'IntOp')
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'absolute')
+          :field 'value'
+        )
+        :args (
+          (ExprInt -7 '~7')
+        )
+      )
+    )
+  )
+)

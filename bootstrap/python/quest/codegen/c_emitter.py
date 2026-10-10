@@ -1662,6 +1662,8 @@ class CEmitter:
             if isinstance(phrase, TypedModule):
                 all_module_map[phrase.name] = phrase
                 all_module_map[phrase.name.lower()] = phrase
+                # A module declared in the program is its module record, as an imported one is
+                self.current_env_vars[phrase.name] = module_record_ident(mangle_module_name(phrase.name))
             elif isinstance(phrase, TypedImport):
                 for it in phrase.items:
                     for iname, mpath, canon in zip(

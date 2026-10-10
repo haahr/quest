@@ -1,0 +1,55 @@
+(* Interfaces and modules declared in the program itself: selecting values and calling functions of a module, its
+   state shared by every use, use from a function, a module's abstract type, a module as a value, and a module
+   importing a library. *)
+(* @echo *)
+
+interface Tally export
+    start: Int
+    add(n: Int): Int
+    total(): Int
+end;
+module tally: Tally export
+    let start = 100;
+    let var sum = 0;
+    let add(n: Int): Int = begin sum := sum + n; sum end;
+    let total(): Int = start + sum;
+end;
+
+tally.start;
+tally.add(3);
+tally.add(4);
+tally.total();
+
+(* A function using the module sees the same state *)
+let addTwice(n: Int): Int = begin tally.add(n); tally.add(n) end;
+addTwice(10);
+tally.total();
+
+(* An abstract type: clients see only the interface *)
+interface Counter export
+    T::TYPE
+    make(n: Int): T
+    get(c: T): Int
+    next(c: T): T
+end;
+module counter: Counter export
+    Let T = Int;
+    let make(n: Int): T = n;
+    let get(c: T): Int = c;
+    let next(c: T): T = c + 1;
+end;
+let k = counter.make(4);
+counter.get(counter.next(k));
+
+(* A module is a value *)
+let m = counter;
+m.get(m.make(9));
+
+(* A module importing a library module *)
+interface Absolute export value(n: Int): Int end;
+module absolute: Absolute
+    import int: IntOp
+export
+    let value(n: Int): Int = int.abs(n);
+end;
+absolute.value(~7)
