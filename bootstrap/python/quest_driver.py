@@ -597,7 +597,7 @@ def run_compile(args: list[str]) -> int:
         )
         try:
             if parsed_args.compile_only:
-                engine._compile_main_file(file_path)
+                engine.compile_main_unit(Path(file_path).resolve())
             else:
                 engine.build_main(file_path, output_binary=output_path)
             return 0

@@ -19,7 +19,7 @@ In separate compilation mode:
   shadowing C standard library headers (such as `<math.h>`, `<string.h>`, or `<time.h>`).
 - Each module implementation (`.mod.quest`) is compiled independently into a C implementation file (`<stem>.mod.c`), compiled by
   the host C compiler to an object file (`.o`), and accompanied by a Quest Module metadata file (`.qm`).
-- A Quest main routine (`.quest`) is compiled into a `.c`, `.o`, and `.qm` metadata file.
+- A Quest main routine (`.quest`) is compiled into a `.main.c`, `.main.o`, and `.main.qm` metadata file (§3.2).
 - Single-module and single-interface compilations *always* operate in separate compilation mode.
 - When compiling an application starting from a main routine, compilation is driven by a dependency queue that builds
   or updates only out-of-date units across the transitive closure of needed modules, followed by linking all object
@@ -59,9 +59,9 @@ A fundamental architectural distinction exists between **compiling an individual
             ┌───────────────────────┼───────────────────────┐
             ▼                       ▼                       ▼
 ┌───────────────────────┐ ┌───────────────────────┐ ┌───────────────────────┐
-│ Interface Compilation │ │  Module Compilation   │ │  Main Compilation   │
-│ (.int.quest ->        │ │ (.mod.quest ->        │ │ (.quest ->          │
-│   <stem>.int.h/.qi)   │ │   .qm/.mod.c/.o)      │ │   .qm/.c/.o)        │
+│ Interface Compilation │ │  Module Compilation   │ │   Main Compilation    │
+│ (.int.quest ->        │ │ (.mod.quest ->        │ │ (.quest ->            │
+│   <stem>.int.h/.qi)   │ │   .qm/.mod.c/.o)      │ │   .main.{qm,c,o})     │
 └───────────────────────┘ └───────────────────────┘ └───────────────────────┘
 ```
 
@@ -103,7 +103,7 @@ A fundamental architectural distinction exists between **compiling an individual
 The compiler driver differentiates between orchestrating a full build of an application and compiling an isolated unit:
 
 - **Full Application Builds (`questc main.quest`):**
-  All intermediate artifacts (`.qi`, `*.int.h`, `.qm`, `.c`, `.mod.c`, `.o`, and `build.log`) reside strictly within a dedicated
+  All intermediate artifacts (`.qi`, `*.int.h`, `.qm`, `.mod.c`, `.main.c`, `.o`, and `build.log`) reside strictly within a dedicated
   build directory (default `.build/` in the project root, or `--build-dir <dir>`). Source trees (`lib/`, `tests/`) are
   never modified by the build process.
 - **Pipeline C Phases (`--stop-after codegen_c` / `run_c_compiled`, `--emit-c`, `-o` with objects):**
@@ -111,7 +111,7 @@ The compiler driver differentiates between orchestrating a full build of an appl
   interface and module they depend on is built there by the same build engine as a full application build (§7.3).
   Nested interface and module compilations inherit the same build directory. Only the main routine itself
   is handled differently: its C code is kept in memory (or written where `-o` / `--emit-c` say) rather than as
-  `.build/<main>.{c,o,qm}`.
+  `.build/<dir>/<main>.main.{qm,c,o}`.
 - **Standalone Unit Compilation (`questc -c unit.int.quest` or `questc -c unit.mod.quest`):**
   - If `--build-dir <dir>` is specified, outputs are routed into `<dir>`.
   - If `-o <path>` is specified, outputs are placed in the directory containing `<path>`.
@@ -138,9 +138,10 @@ quest/
     │   ├── path.qm                  # Generated module metadata
     │   └── path.o                   # Compiled native object file
     └── tests/
-        ├── test_path.qm             # Main routine metadata
-        ├── test_path.c              # Main routine C code
-        └── test_path.o              # Main routine object file
+        ├── test_path.main.qm        # Main routine metadata
+        ├── test_path.main.c         # Main routine C code
+        ├── test_path.main.o         # Main routine object file
+        └── test_path                # Linked executable (unless -o says otherwise)
 ```
 
 ### 3.2. Path Mapping Conventions
@@ -156,15 +157,21 @@ quest/
    translation unit; no C library header has a name ending in `.int.h`. Generated C code includes
    `#include "util/path.int.h"`.
 3. **Main Routines:**
-   Artifacts mirror the source file path relative to the working directory or project root:
-   - `tests/test_path.quest` -> `.build/tests/test_path.qm`, `.build/tests/test_path.c`, `.build/tests/test_path.o`.
+   Artifacts mirror the source file's directory relative to the current directory, and carry a `.main` suffix:
+   - `tests/test_path.quest` -> `.build/tests/test_path.main.qm`, `.build/tests/test_path.main.c`,
+     `.build/tests/test_path.main.o`, and (when the API is not given an output path) the executable
+     `.build/tests/test_path`.
+   - A main routine outside the current directory has its artifacts at the top of `.build/`.
+
+   Main routines are never imported, so they need no canonical name; mirroring their directory keeps `a/main.quest`
+   and `b/main.quest` apart in a shared build directory. The `.main` suffix keeps them apart from the artifacts of
+   a module with the same canonical path (`.qm` and `.o`), as `.mod.c` and `.int.h` do for modules and interfaces,
+   so a main routine `m.quest` and a module `m.mod.quest` may share a directory.
+   Even when two main routines do share artifact paths (both outside the current directory), each `.main.qm`
+   records its source, and a main routine's artifacts are reused only for that source (§7.1).
 4. **C Compiler Include Paths:**
    When compiling generated `.c` files to `.o`, the host C compiler is invoked with `-I <build-dir> -I runtime`,
    allowing `#include "util/path.int.h"` to resolve directly against generated headers in `.build/`.
-5. **No Colocated Main and Module Files:**
-   A program cannot contain both an `m.quest` and an `m.mod.quest` at the same logical path. Because both files
-   would emit `.build/m.qm` and `.build/m.o`, their compilation artifacts would collide. The driver
-   detects and forbids this conflict.
 
 ---
 
@@ -443,7 +450,8 @@ on runtime helper operations provided by standard library modules (e.g. `string`
 - Main routines are not required to manually write boilerplate import clauses for core standard library helpers.
 - After compiling a main routine's AST, the compiler driver inspects the analysis phase (`analysis.sorted_modules`)
   to discover any modules referenced implicitly during code generation.
-- These implicitly referenced modules are automatically recorded into `main.qm` under `imported_modules`.
+- These implicitly referenced modules are automatically recorded into the main routine's `.main.qm` under
+  `imported_modules`.
   (`unit_module_refs` in `build/engine.py` computes this list, explicit imports plus implicit ones, for both full
   builds and the pipeline's C phases.)
 - The build engine then queues and links them transitively into the final executable just like explicitly imported
@@ -524,7 +532,8 @@ and rebuild the transitive closure of required modules.
      - Continue to the next queue item without checking for `.mod.quest` or `.o`.
 
    - **Determine Paths:**
-     - For main routine: source is `main.quest`; artifacts are `.build/main.qm`, `.build/main.c`, `.build/main.o`.
+     - For main routine: source is `main.quest`; artifacts are `.build/main.main.qm`, `.build/main.main.c`,
+       `.build/main.main.o` (under the main routine's directory, §3.2).
      - For module `M`: source is `M.mod.quest`; artifacts are `.build/M.qm`, `.build/M.mod.c`, `.build/M.o`.
 
    - **Check Staleness:**
@@ -593,9 +602,9 @@ build engine, so there is exactly one implementation of staleness checks, artifa
   ───────────────────────                          ─────────────────
   main stale? ──yes──> compile_main_unit           Tokenize -> Parse -> Typecheck -> CodegenC
        │                (typecheck, emit C,                         │
-       │                 write .qm/.c/.o)              unit_module_refs(imports, analysis)
+       │                 write .main.{qm,c,o})         unit_module_refs(imports, analysis)
        │no                      │                                   │
-  read main.qm                  │                                   │
+  read .main.qm                 │                                   │
        │                        │                                   │
        └──────────┬─────────────┘                                   │
                   ▼                                                 ▼
@@ -673,7 +682,7 @@ circular module implementation dependencies are strictly invalid.
 ### 8.3. Native Linking
 Once the queue is empty, the driver invokes the host C compiler / linker:
 ```sh
-clang -o app .build/main.o .build/util/path.o .build/util/strutil.o ... runtime/quest_runtime.o -lgc
+clang -o app .build/main.main.o .build/util/path.o .build/util/strutil.o ... runtime/quest_runtime.o -lgc
 ```
 Passing all discovered `.o` files in `linked_objects`.
 

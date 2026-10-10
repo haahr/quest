@@ -51,9 +51,9 @@ class TestBuildEngine(unittest.TestCase):
 
         self.assertTrue(res.output_binary.is_file())
         self.assertIn("simple", res.compiled_units)
-        self.assertTrue((self.build_dir / "simple.qm").is_file())
-        self.assertTrue((self.build_dir / "simple.c").is_file())
-        self.assertTrue((self.build_dir / "simple.o").is_file())
+        self.assertTrue((self.build_dir / "simple.main.qm").is_file())
+        self.assertTrue((self.build_dir / "simple.main.c").is_file())
+        self.assertTrue((self.build_dir / "simple.main.o").is_file())
 
         proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)
         self.assertEqual(proc.returncode, 0)
@@ -225,17 +225,28 @@ class TestBuildEngine(unittest.TestCase):
         # Both show and shared import Shared, so both detect stale interface and rebuild
         self.assertIn("shared", res2.compiled_units)
 
-    def test_colocated_file_conflict(self) -> None:
-        """Tests that having m.quest and m.mod.quest at the same location raises BuildError."""
-        main_file = self.root / "conflict.quest"
-        main_file.write_text("import writer: Writer;\n", encoding="utf-8")
-        mod_file = self.root / "conflict.mod.quest"
-        mod_file.write_text("module conflict : Empty export end;\n", encoding="utf-8")
+    def test_main_routine_and_module_in_same_directory(self) -> None:
+        """Tests that m.quest and m.mod.quest can share a directory, since their artifacts have different names."""
+        (self.root / "pair.int.quest").write_text("interface Pair export get(): Int end;\n", encoding="utf-8")
+        (self.root / "pair.mod.quest").write_text(
+            "module pair : Pair export let get(): Int = 8; end;\n", encoding="utf-8"
+        )
+        main_file = self.root / "pair.quest"
+        main_file.write_text(
+            "import p = pair : Pair;\n"
+            "import writer: Writer;\n"
+            "import conv: Conv;\n"
+            "writer.putString(writer.output conv.int(p.get()));\n",
+            encoding="utf-8",
+        )
 
         engine = self._create_engine()
-        with self.assertRaises(BuildError) as ctx:
-            engine.build_main(main_file)
-        self.assertIn("Conflict", str(ctx.exception))
+        res = engine.build_main(main_file)
+        for name in ("pair.main.qm", "pair.main.o", "pair.qm", "pair.o"):
+            self.assertTrue((self.build_dir / name).is_file(), name)
+        proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)
+        self.assertEqual(proc.stdout, "8")
+        self.assertEqual(engine.build_main(main_file).compiled_units, [])
 
     def test_module_cycle_detection(self) -> None:
         """Tests that cyclic module imports raise BuildError with cycle path."""
@@ -484,6 +495,56 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
             resolve_interface_file("Counter", self.a, [self.build_dir]), (self.a / "counter.int.quest").resolve()
         )
         self.assertEqual(resolve_interface_file("Counter", self.b, [self.build_dir]), qi_b.resolve())
+
+    def test_main_routines_mirror_their_directories(self) -> None:
+        # Main routine artifacts mirror the source directory relative to the current directory.
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.root)
+        self.assertEqual(self._build_and_run(self.a)[1], "11")
+        self.assertEqual(self._build_and_run(self.b)[1], "117")
+        for d in ("a", "b"):
+            for suffix in (".main.qm", ".main.c", ".main.o", ""):
+                self.assertTrue((self.build_dir / d / f"main{suffix}").is_file(), f"{d}/main{suffix}")
+        self.assertFalse((self.build_dir / "main.main.qm").exists())
+        # a's main routine artifacts survived b's build; only the shared module counter is rebuilt.
+        units, out = self._build_and_run(self.a)
+        self.assertEqual((units, out), (["counter"], "11"))
+
+    def test_main_routine_outside_current_directory(self) -> None:
+        # The temporary directory is not under the current directory, so artifacts go to the top of the build dir.
+        self._build_and_run(self.a)
+        self.assertTrue((self.build_dir / "main.main.qm").is_file())
+        self.assertTrue((self.build_dir / "main").is_file())
+
+
+class TestMainRoutineAndModuleWithSameName(unittest.TestCase):
+    def test_artifacts_do_not_collide(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            build_dir = root / ".build"
+            prog, lib = root / "prog", root / "lib"
+            prog.mkdir()
+            lib.mkdir()
+            (lib / "tool.int.quest").write_text("interface Tool export get(): Int end;\n", encoding="utf-8")
+            (lib / "tool.mod.quest").write_text(
+                "module tool : Tool export let get(): Int = 5; end;\n", encoding="utf-8"
+            )
+            (prog / "tool.quest").write_text(
+                "import t = tool : Tool;\n"
+                "import writer: Writer;\n"
+                "import conv: Conv;\n"
+                "writer.putString(writer.output conv.int(t.get()));\n",
+                encoding="utf-8",
+            )
+            engine = BuildEngine(build_dir=build_dir, include_paths=[lib], log_file=build_dir / "build.log")
+            res = engine.build_main(prog / "tool.quest")
+            self.assertTrue({"tool"}.issubset(res.compiled_units))
+            for name in ("tool.main.qm", "tool.main.o", "tool.qm", "tool.o"):
+                self.assertTrue((build_dir / name).is_file(), name)
+            proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)
+            self.assertEqual(proc.stdout, "5")
+            # Neither unit's artifacts displaced the other's.
+            self.assertEqual(engine.build_main(prog / "tool.quest").compiled_units, [])
 
 
 if __name__ == "__main__":

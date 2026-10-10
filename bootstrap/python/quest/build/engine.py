@@ -187,15 +187,40 @@ class BuildEngine:
             paths.append(DEFAULT_PROJECT_DIR.resolve())
         return paths
 
+    def main_artifact_base(self, main_file: Path) -> Path:
+        """Where a main routine's artifacts go: build_dir/<dir>/<stem>, without a suffix (docs/build-process.md §3.2).
+
+        <dir> is the main routine's directory relative to the current directory, so a/main.quest and b/main.quest
+        get their own artifacts; a main routine outside the current directory gets build_dir/<stem>. Main routines
+        are never imported, so unlike modules they need no canonical name.
+        """
+        main_file = main_file.resolve()
+        try:
+            rel_dir = main_file.parent.relative_to(Path.cwd().resolve())
+        except ValueError:
+            rel_dir = Path()
+        return self.build_dir / rel_dir / main_file.stem
+
+    def main_artifact_paths(self, main_file: Path) -> tuple[Path, Path, Path]:
+        """A main routine's .main.qm, .main.c, and .main.o.
+
+        The .main suffix keeps them apart from a module's .qm and .o with the same canonical name, as .mod.c and
+        .int.h do for modules and interfaces.
+        """
+        base = self.main_artifact_base(main_file)
+        return (
+            base.with_name(f"{base.name}.main.qm"),
+            base.with_name(f"{base.name}.main.c"),
+            base.with_name(f"{base.name}.main.o"),
+        )
+
     def compile_main_unit(
         self,
         main_file: Path,
     ) -> tuple[Path, Path, Path, list[ImportedModuleRef]]:
-        """Compiles a main routine (.quest) into .qm, .c, and .o under build_dir."""
-        stem = main_file.stem
-        c_path = self.build_dir / f"{stem}.c"
-        o_path = self.build_dir / f"{stem}.o"
-        qm_path = self.build_dir / f"{stem}.qm"
+        """Compiles a main routine (.quest) into .main.qm, .main.c, and .main.o under build_dir."""
+        qm_path, c_path, o_path = self.main_artifact_paths(main_file)
+        c_path.parent.mkdir(parents=True, exist_ok=True)
 
         source_text = main_file.read_text(encoding="utf-8")
         source_map = SourceMap(source_text, str(main_file))
@@ -292,16 +317,8 @@ class BuildEngine:
         if not main_file.is_file():
             raise BuildError(f"Main routine file not found: {main_file}")
 
-        # Collision check on main routine
-        colocated_mod = main_file.parent / f"{main_file.stem}.mod.quest"
-        if colocated_mod.is_file():
-            raise BuildError(
-                f"Conflict: colocated main routine '{main_file.name}' and module '{colocated_mod.name}' "
-                f"cannot coexist at '{main_file.parent}'"
-            )
-
         if output_binary is None:
-            target_bin = (self.build_dir / main_file.stem).resolve()
+            target_bin = self.main_artifact_base(main_file).resolve()
         else:
             target_bin = output_binary.resolve()
 
@@ -313,9 +330,7 @@ class BuildEngine:
         item_name = main_file.stem
         self.logger.log("QUEUE INIT", f"enqueued main routine '{item_name}'")
         self.logger.log("POP QUEUE", f"'{item_name}' (kind=main)")
-        qm_path = self.build_dir / f"{item_name}.qm"
-        c_path = self.build_dir / f"{item_name}.c"
-        o_path = self.build_dir / f"{item_name}.o"
+        qm_path, c_path, o_path = self.main_artifact_paths(main_file)
 
         compiled_units: list[str] = []
         reason = self._unit_staleness(main_file, qm_path, c_path, o_path)
@@ -465,15 +480,6 @@ class BuildEngine:
             qm_path = target_sub / f"{stem}.qm"
             c_path = target_sub / f"{stem}.mod.c"
             o_path = target_sub / f"{stem}.o"
-
-            # Check collision with colocated .quest
-            if mod_src is not None:
-                colocated_quest = mod_src.parent / f"{stem}.quest"
-                if colocated_quest.is_file():
-                    raise BuildError(
-                        f"Conflict: colocated module '{mod_src.name}' and main routine "
-                        f"'{colocated_quest.name}' cannot coexist at '{mod_src.parent}'"
-                    )
 
             reason: Optional[str] = None
             if mod_src is None:

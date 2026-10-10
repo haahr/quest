@@ -107,10 +107,19 @@ class TestQuestDriverCLI(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(bin_path.is_file())
         self.assertTrue((self.build_dir / "calc.qm").is_file())
-        self.assertTrue((self.build_dir / "main.qm").is_file())
+        self.assertTrue((self.build_dir / "main.main.qm").is_file())
 
         proc = subprocess.run([str(bin_path)], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0)
+
+    def test_compile_only_main_routine(self) -> None:
+        main_file = self.root / "solo.quest"
+        main_file.write_text("let x: Int = 42;\n", encoding="utf-8")
+        exit_code = run_compile([str(main_file), "-c", "--build-dir", str(self.build_dir)])
+        self.assertEqual(exit_code, 0)
+        for suffix in (".main.qm", ".main.c", ".main.o"):
+            self.assertTrue((self.build_dir / f"solo{suffix}").is_file(), suffix)
+        self.assertFalse((self.root / "solo").exists())
 
     def test_run_driver_with_output_flag(self) -> None:
         main_file = self.root / "hello.quest"
