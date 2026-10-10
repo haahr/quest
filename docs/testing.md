@@ -100,6 +100,11 @@ directory paths in `tests/golden/`.
 - **`--print-result` Flag:** When invoking `quest_driver.py --stop-after run_c_compiled`, `--print-result` is enabled
   automatically so that the compiled binary outputs the final phrase result. For standalone compilation
   (`quest compile`), binaries are silent by default unless `--print-result` is explicitly passed.
+- **Working Directory:** Every run of the driver, in every phase and for error tests too, starts in a fresh, empty
+  temporary directory of its own, which the runner deletes afterwards. A program may create, read, and remove files
+  there with relative paths, and it cannot see or leave files in the repository; a test that inspects files creates
+  them first (`stdlib/system_fs_operations`). The runner passes the test's path as an absolute path, and the build
+  directory is shared by all runs as before.
 - **Output Streams:**
   - `stdout`: Used exclusively for valid phase artifacts (e.g. token tables, AST S-expressions, typed AST dumps,
     run output).

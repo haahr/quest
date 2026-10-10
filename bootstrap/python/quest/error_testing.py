@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -164,7 +165,7 @@ def execute_phase(
     command.extend(["--build-dir", str(build_dir)])
     if extra_args:
         command.extend(extra_args)
-    command.append(str(source_file))
+    command.append(str(source_file.resolve()))
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root_dir / "bootstrap" / "python")
@@ -172,15 +173,18 @@ def execute_phase(
         env.update(env_vars)
 
     try:
-        process = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            input=stdin_data,
-            env=env,
-            timeout=timeout,
-        )
+        # Each run starts in a fresh, empty directory of its own, where the program may create files
+        with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
+            process = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                input=stdin_data,
+                env=env,
+                timeout=timeout,
+                cwd=scratch_dir,
+            )
         return process.returncode, process.stdout, process.stderr
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout if isinstance(exc.stdout, str) else (

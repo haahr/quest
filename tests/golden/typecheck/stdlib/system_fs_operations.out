@@ -88,6 +88,27 @@
                 :target (TypedVar 'writer' :type Module 'writer'))
               (TypedString '\n' :type String)
             )))))
+    (TypedLetValue 'probe' :type Writer.T
+      :value (TypedApp :type Writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): Writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'probe.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: Writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'probe' :type Writer.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'makeDirectory' :type Fun(path: String): Ok
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedString 'probe_dir' :type String)
+        )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
@@ -96,7 +117,7 @@
             :func (TypedSelect 'isFile' :type Fun(path: String): Bool
               :target (TypedVar 'system' :type Module 'system'))
             :args (
-              (TypedString 'runtime/quest_runtime.h' :type String)
+              (TypedString 'probe.txt' :type String)
             ))
         )))
     (TypedExprStmt
@@ -107,7 +128,7 @@
             :func (TypedSelect 'isDirectory' :type Fun(path: String): Bool
               :target (TypedVar 'system' :type Module 'system'))
             :args (
-              (TypedString 'runtime/quest_runtime.h' :type String)
+              (TypedString 'probe.txt' :type String)
             ))
         )))
     (TypedExprStmt
@@ -118,7 +139,7 @@
             :func (TypedSelect 'isFile' :type Fun(path: String): Bool
               :target (TypedVar 'system' :type Module 'system'))
             :args (
-              (TypedString 'runtime' :type String)
+              (TypedString 'probe_dir' :type String)
             ))
         )))
     (TypedExprStmt
@@ -129,7 +150,7 @@
             :func (TypedSelect 'isDirectory' :type Fun(path: String): Bool
               :target (TypedVar 'system' :type Module 'system'))
             :args (
-              (TypedString 'runtime' :type String)
+              (TypedString 'probe_dir' :type String)
             ))
         )))
     (TypedExprStmt
@@ -156,26 +177,6 @@
         )))
     (TypedLetValue 'testDir' :type String
       :value (TypedString 'tmp_system_fs_test' :type String))
-    (TypedExprStmt
-      :expr (TypedIf :type Ok
-        :cond (TypedApp :type Bool
-          :func (TypedSelect 'fileExists' :type Fun(path: String): Bool
-            :target (TypedVar 'system' :type Module 'system'))
-          :args (
-            (TypedVar 'testDir' :type String)
-          ))
-        :then (TypedBlock :type Ok
-          :bindings (
-            (TypedExprStmt
-              :expr (TypedApp :type Ok
-                :func (TypedSelect 'removeDirectory' :type Fun(path: String): Ok
-                  :target (TypedVar 'system' :type Module 'system'))
-                :args (
-                  (TypedVar 'testDir' :type String)
-                )))
-          )
-          :result (TypedOk))
-        :else (TypedOk)))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedSelect 'makeDirectory' :type Fun(path: String): Ok

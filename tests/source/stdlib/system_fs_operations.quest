@@ -20,20 +20,21 @@ let printString(s: String): Ok =
         writer.putString(writer.output "\n");
     end;
 
-(* 1. Test isFile and isDirectory on known paths *)
-printBool(system.isFile("runtime/quest_runtime.h"));
-printBool(system.isDirectory("runtime/quest_runtime.h"));
-printBool(system.isFile("runtime"));
-printBool(system.isDirectory("runtime"));
+(* The test runs in a fresh, empty directory of its own (docs/testing.md §2.2), so it creates whatever it inspects. *)
+
+(* 1. Test isFile and isDirectory on a file, a directory, and a missing path *)
+let probe = writer.file("probe.txt");
+writer.close(probe);
+system.makeDirectory("probe_dir");
+printBool(system.isFile("probe.txt"));
+printBool(system.isDirectory("probe.txt"));
+printBool(system.isFile("probe_dir"));
+printBool(system.isDirectory("probe_dir"));
 printBool(system.isFile("does_not_exist_abc_123.txt"));
 printBool(system.isDirectory("does_not_exist_abc_123.txt"));
 
 (* 2. Test directory creation, navigation, file operations *)
 let testDir = "tmp_system_fs_test";
-if system.fileExists(testDir) then
-    system.removeDirectory(testDir);
-end;
-
 system.makeDirectory(testDir);
 printBool(system.isDirectory(testDir));
 

@@ -181,7 +181,7 @@ def run_single_golden_test(
     if directives.echo and phase_name in ("interpret", "run_c_compiled"):
         command.append("--echo")
 
-    command.append(str(source_file))
+    command.append(str(source_file.resolve()))
 
     if directives.args and phase_name in ("interpret", "run_c_compiled"):
         command.append("--")
@@ -195,15 +195,19 @@ def run_single_golden_test(
         environment.update(directives.env)
 
     try:
-        process = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            input=directives.stdin_data if phase_name in ("interpret", "run_c_compiled") else None,
-            env=environment,
-            timeout=effective_timeout,
-        )
+        # Each run starts in a fresh, empty directory of its own, where the program may create files
+        # (docs/testing.md §2.2)
+        with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
+            process = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                input=directives.stdin_data if phase_name in ("interpret", "run_c_compiled") else None,
+                env=environment,
+                timeout=effective_timeout,
+                cwd=scratch_dir,
+            )
     except subprocess.TimeoutExpired as exc:
         print(f"  [FAIL] {phase_name}:{test_id} (TIMED OUT after {effective_timeout:.1f}s)")
         stderr = exc.stderr if isinstance(exc.stderr, str) else (
