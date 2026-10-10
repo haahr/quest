@@ -197,6 +197,8 @@ ASTNode
   ├── Phrase                  (Top-level statements & declarations)
   │     ├── LetValueBinding   (let [var] [rec] x [: T] = e)
   │     ├── TypeBinding       (Let [Rec] T [:: K] = Type, or Def [Rec] ... with is_def)
+  │     ├── TypeBindingGroup  (Let [Rec] T = Type and U = Type ...: two or more TypeBindings sharing Rec and Def;
+  │     │                      parsed, but rejected by the typechecker until simultaneous declarations are elaborated)
   │     ├── DefKindBinding    (DEF K = Kind)
   │     ├── InterfaceDecl     (interface I [import ...] export ... end)
   │     ├── ModuleDecl        (module M : I [import ...] export ... end)

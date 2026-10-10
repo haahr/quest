@@ -75,9 +75,12 @@ the main routine. Units under different roots may share a canonical name (a prog
 importers record the source file they found in their `.qm` ([build-process.md §4.3](build-process.md)), so the build
 engine compiles the right one, but two such units cannot be linked into one program.
 
-*Limitation:* the typechecker and interpreter still register loaded interfaces and modules under the names they are
-imported by as well, so a compilation unit (or, for the interpreter, a whole program) cannot import two different
-units with the same base name, such as `counter` and `util/counter`.
+Loaded interfaces and modules are shared by canonical name: every importer of a file, in any phase, gets the same
+interface scope, module export scope (with the same abstract types), and module value. The names an import binds
+(`counter`, `Counter`, or an alias) are local to the importing unit: a module loaded from a file sees only the builtins
+and its own imports, so `counter` beside a program and `util/counter` imported as `counter` by a module in `util/` are
+different modules, even in one program. Builtin interfaces with sources in `lib/` (such as `Writer`) are those files'
+interfaces, so importing them by name or by file gives the same scope.
 
 ---
 

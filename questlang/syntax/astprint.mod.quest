@@ -1395,35 +1395,9 @@ export
                             let b = stringBuilder.new();
                             stringBuilder.append(b "(ExprAuto
 ");
-                            if maybe.isSome(:ast.AutoWitness a.witness) then
-                                let wit = maybe.unwrap(:ast.AutoWitness a.witness);
-                                stringBuilder.append(b cpad);
-                                stringBuilder.append(b ":witness (
-");
-                                stringBuilder.append(b makePadding({indent + 2}));
-                                stringBuilder.append(b pyRepr(wit.typeVar));
-                                stringBuilder.append(b "
-");
-                                stringBuilder.append(b makePadding({indent + 2}));
-                                if maybe.isSome(:ast.KindExpr wit.kindBound) then
-                                    stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr wit.kindBound)
-                                        {indent + 2} showOffsets));
-                                else
-                                    stringBuilder.append(b "None");
-                                end;
-                                stringBuilder.append(b "
-");
-                                stringBuilder.append(b makePadding({indent + 2}));
-                                stringBuilder.append(b dumpExpr(wit.witnessVal {indent + 2} showOffsets));
-                                stringBuilder.append(b "
-");
-                                stringBuilder.append(b cpad);
-                                stringBuilder.append(b ")
-");
-                            end;
                             stringBuilder.append(b cpad);
-                            stringBuilder.append(b ":target_type ");
-                            stringBuilder.append(b dumpTypeExpr(a.targetType {indent + 1} showOffsets));
+                            stringBuilder.append(b ":witness_type ");
+                            stringBuilder.append(b dumpTypeExpr(a.witnessType {indent + 1} showOffsets));
                             stringBuilder.append(b "
 ");
                             stringBuilder.append(b cpad);
@@ -1431,6 +1405,21 @@ export
                             stringBuilder.append(b dumpExpr(a.payload {indent + 1} showOffsets));
                             stringBuilder.append(b "
 ");
+                            if maybe.isSome(:String a.witnessName) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":witness_name ");
+                                stringBuilder.append(b pyRepr(maybe.unwrap(:String a.witnessName)));
+                                stringBuilder.append(b "
+");
+                            end;
+                            if maybe.isSome(:ast.KindExpr a.witnessBound) then
+                                stringBuilder.append(b cpad);
+                                stringBuilder.append(b ":witness_bound ");
+                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr a.witnessBound)
+                                    {indent + 1} showOffsets));
+                                stringBuilder.append(b "
+");
+                            end;
                             stringBuilder.append(b pad);
                             stringBuilder.append(b ")");
                             stringBuilder.toString(b)
@@ -1795,10 +1784,10 @@ export
                             stringBuilder.append(b ")");
                             stringBuilder.toString(b)
                         end
-                when declLetType with t then
+                when declTypeBinding with t then
                         begin
                             let b = stringBuilder.new();
-                            stringBuilder.append(b "(LetTypeBinding
+                            stringBuilder.append(b "(TypeBinding
 ");
                             stringBuilder.append(b cpad);
                             stringBuilder.append(b ":name ");
@@ -1839,52 +1828,9 @@ export
                                 stringBuilder.append(b ":is_rec True
 ");
                             end;
-                            stringBuilder.append(b pad);
-                            stringBuilder.append(b ")");
-                            stringBuilder.toString(b)
-                        end
-                when declDefType with t then
-                        begin
-                            let b = stringBuilder.new();
-                            stringBuilder.append(b "(DefTypeBinding
-");
-                            stringBuilder.append(b cpad);
-                            stringBuilder.append(b ":name ");
-                            stringBuilder.append(b pyRepr(t.name));
-                            stringBuilder.append(b "
-");
-                            stringBuilder.append(b cpad);
-                            stringBuilder.append(b ":type_val ");
-                            stringBuilder.append(b dumpTypeExpr(t.typeVal {indent + 1} showOffsets));
-                            stringBuilder.append(b "
-");
-                            let nP = vector.length(:ast.TypeFormal t.params);
-                            if nP > 0 then
+                            if t.isDef then
                                 stringBuilder.append(b cpad);
-                                stringBuilder.append(b ":params (
-");
-                                for i = 0 upto {nP - 1} do
-                                    stringBuilder.append(b makePadding({indent + 2}));
-                                    stringBuilder.append(b dumpTypeFormal(vector.get(:ast.TypeFormal t.params i)
-                                        {indent + 2} showOffsets));
-                                    stringBuilder.append(b "
-");
-                                end;
-                                stringBuilder.append(b cpad);
-                                stringBuilder.append(b ")
-");
-                            end;
-                            if maybe.isSome(:ast.KindExpr t.bound) then
-                                stringBuilder.append(b cpad);
-                                stringBuilder.append(b ":bound ");
-                                stringBuilder.append(b dumpTypeExpr(maybe.unwrap(:ast.KindExpr t.bound)
-                                    {indent + 1} showOffsets));
-                                stringBuilder.append(b "
-");
-                            end;
-                            if t.isRec then
-                                stringBuilder.append(b cpad);
-                                stringBuilder.append(b ":is_rec True
+                                stringBuilder.append(b ":is_def True
 ");
                             end;
                             stringBuilder.append(b pad);

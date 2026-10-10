@@ -75,13 +75,14 @@ printStr(astprint.dump(prog1));
  * let rec fact(n: Int): Int =
  *     if n is 0 then 1 else {n * fact({n - 1})} end;
  *)
+(* Body fields hold expressions directly, not declExprStmt phrases. *)
 let condExpr = makeInfix(makeId("n") "is" makeInt(0 "0"));
-let thenExpr = ast.declExprStmt(sp makeInt(1 "1"));
+let thenExpr = makeInt(1 "1");
 
 let recArg = makeInfix(makeId("n") "-" makeInt(1 "1"));
 let recCall = makeApp(makeId("fact") recArg);
 let multExpr = makeInfix(makeId("n") "*" recCall);
-let elseExpr = ast.declExprStmt(sp multExpr);
+let elseExpr = multExpr;
 
 let ifExpr = ast.makeExpr(sp option exprIf of ast.ExprForm with
     let cond = condExpr
@@ -116,3 +117,54 @@ let prog2: ast.Program =
 
 printStr("=== Test 2: Recursive Fact Function ===");
 printStr(astprint.dump(prog2));
+
+(* A program consisting of one declaration phrase *)
+let programOf(decl: ast.Decl): ast.Program =
+    begin
+        let phrases = vector.new(:ast.Phrase);
+        vector.append(:ast.Phrase phrases ast.makePhrase(sp option phraseDecl of ast.PhraseForm with
+            let decl = decl
+        end));
+        ast.makeProgram(sp phrases)
+    end;
+
+(* Test 3: Recursive type operator definition: Def Rec T(X::TYPE) <: Int = X *)
+let formalsT = vector.new(:ast.TypeFormal);
+vector.append(:ast.TypeFormal formalsT tuple
+    let name = "X"
+    let bound = ast.makeKind(sp option kindType of ast.TypeForm end)
+end);
+
+let declT: ast.Decl =
+    ast.makeDecl(sp option declTypeBinding of ast.ExprForm with
+        let name = "T"
+        let typeVal = ast.makeType(sp option typeFun of ast.TypeForm with
+            let params = formalsT
+            let resultKind = maybe.some(:ast.KindExpr
+                ast.makeKind(sp option kindPower of ast.TypeForm with let bound = makeTypePath("Int") end))
+            let body = makeTypePath("X")
+        end)
+        let params = vector.new(:ast.TypeFormal)
+        let bound = maybe.none(:ast.KindExpr)
+        let isRec = true
+        let isDef = true
+    end);
+
+printStr("=== Test 3: Recursive Type Definition ===");
+printStr(astprint.dump(programOf(declT)));
+
+(* Test 4: Auto value with a named, bounded witness: let p = auto let A::TYPE = :Int with 3 end *)
+let autoFields = vector.new(:ast.TupleField);
+vector.append(:ast.TupleField autoFields option fieldVal of ast.TupleField with
+    let val = ast.tupleBinding(maybe.none(:String) makeInt(3 "3") maybe.none(:ast.TypeExpr) false)
+end);
+
+let autoExpr = ast.makeExpr(sp option exprAuto of ast.ExprForm with
+    let witnessType = makeTypePath("Int")
+    let payload = ast.makeExpr(sp option exprTuple of ast.ExprForm with let fields = autoFields end)
+    let witnessName = maybe.some(:String "A")
+    let witnessBound = maybe.some(:ast.KindExpr ast.makeKind(sp option kindType of ast.TypeForm end))
+end);
+
+printStr("=== Test 4: Auto Value ===");
+printStr(astprint.dump(programOf(ast.declLetVal(sp "p" autoExpr maybe.none(:ast.TypeExpr)))));

@@ -231,18 +231,12 @@
               (TypedString '0' :type String)
             ))
         )))
-    (TypedLetValue 'thenExpr' :type Decl
-      :value (TypedApp :type Decl
-        :func (TypedSelect 'declExprStmt' :type Fun(span: location.Span expr: Expr): Decl
-          :target (TypedVar 'ast' :type Module 'ast'))
+    (TypedLetValue 'thenExpr' :type ast.Expr
+      :value (TypedApp :type ast.Expr
+        :func (TypedVar 'makeInt' :type Fun(val: Int lexeme: String): ast.Expr)
         :args (
-          (TypedVar 'sp' :type Span)
-          (TypedApp :type ast.Expr
-            :func (TypedVar 'makeInt' :type Fun(val: Int lexeme: String): ast.Expr)
-            :args (
-              (TypedInt 1 :type Int)
-              (TypedString '1' :type String)
-            ))
+          (TypedInt 1 :type Int)
+          (TypedString '1' :type String)
         )))
     (TypedLetValue 'recArg' :type ast.Expr
       :value (TypedApp :type ast.Expr
@@ -284,14 +278,8 @@
           (TypedString '*' :type String)
           (TypedVar 'recCall' :type ast.Expr)
         )))
-    (TypedLetValue 'elseExpr' :type Decl
-      :value (TypedApp :type Decl
-        :func (TypedSelect 'declExprStmt' :type Fun(span: location.Span expr: Expr): Decl
-          :target (TypedVar 'ast' :type Module 'ast'))
-        :args (
-          (TypedVar 'sp' :type Span)
-          (TypedVar 'multExpr' :type ast.Expr)
-        )))
+    (TypedLetValue 'elseExpr' :type ast.Expr
+      :value (TypedVar 'multExpr' :type ast.Expr))
     (TypedLetValue 'ifExpr' :type Expr
       :value (TypedApp :type Expr
         :func (TypedSelect 'makeExpr' :type Fun(span: location.Span form: ExprForm): Expr
@@ -302,7 +290,7 @@
             :payload (TypedTuple :type Tuple cond: Node(ast.ExprForm) thenBranch: Node(ast.ExprForm) elsifs: vector.T(Tuple cond: Node(ast.ExprForm) thenBranch: Node(ast.ExprForm) end) elseBranch: maybe.T(Node(ast.ExprForm)) end
               :elements (
                 (TypedVar 'condExpr' :type ast.Expr)
-                (TypedVar 'thenExpr' :type Decl)
+                (TypedVar 'thenExpr' :type ast.Expr)
                 (TypedTypeApp [ast.ElsifBranch] :type vector.T(ast.ElsifBranch)
                   :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
                     :target (TypedVar 'vector' :type Module 'vector')))
@@ -311,7 +299,7 @@
                     :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
                       :target (TypedVar 'maybe' :type Module 'maybe')))
                   :args (
-                    (TypedVar 'elseExpr' :type Decl)
+                    (TypedVar 'elseExpr' :type ast.Expr)
                   ))
               )))
         )))
@@ -408,6 +396,254 @@
               :target (TypedVar 'astprint' :type Module 'astprint'))
             :args (
               (TypedVar 'prog2' :type ast.Program)
+            ))
+        )))
+    (TypedLetValue 'programOf' :type Fun(decl: ast.Decl): ast.Program
+      :value (TypedFun :params (('decl' : ast.Decl)) :type Fun(decl: ast.Decl): ast.Program
+        :body (TypedBlock :type ast.Program
+          :bindings (
+            (TypedLetValue 'phrases' :type vector.T(ast.Phrase)
+              :value (TypedTypeApp [ast.Phrase] :type vector.T(ast.Phrase)
+                :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+                  :target (TypedVar 'vector' :type Module 'vector'))))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedTypeApp [ast.Phrase] :type Fun(v: vector.T(ast.Phrase) value: ast.Phrase): Ok
+                  :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'phrases' :type vector.T(ast.Phrase))
+                  (TypedApp :type Phrase
+                    :func (TypedSelect 'makePhrase' :type Fun(span: location.Span form: PhraseForm): Phrase
+                      :target (TypedVar 'ast' :type Module 'ast'))
+                    :args (
+                      (TypedVar 'sp' :type Span)
+                      (TypedOption 'phraseDecl' :type ast.PhraseForm
+                        :payload (TypedTuple :type Tuple decl: Decl end
+                          :elements (
+                            (TypedVar 'decl' :type ast.Decl)
+                          )))
+                    ))
+                )))
+          )
+          :result (TypedApp :type Program
+            :func (TypedSelect 'makeProgram' :type Fun(span: location.Span phrases: vector.T(Phrase)): Program
+              :target (TypedVar 'ast' :type Module 'ast'))
+            :args (
+              (TypedVar 'sp' :type Span)
+              (TypedVar 'phrases' :type vector.T(ast.Phrase))
+            )))))
+    (TypedLetValue 'formalsT' :type vector.T(ast.TypeFormal)
+      :value (TypedTypeApp [ast.TypeFormal] :type vector.T(ast.TypeFormal)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [ast.TypeFormal] :type Fun(v: vector.T(ast.TypeFormal) value: ast.TypeFormal): Ok
+          :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+            :target (TypedVar 'vector' :type Module 'vector')))
+        :args (
+          (TypedVar 'formalsT' :type vector.T(ast.TypeFormal))
+          (TypedTuple :type Tuple name: String bound: KindExpr end
+            :elements (
+              (TypedString 'X' :type String)
+              (TypedApp :type KindExpr
+                :func (TypedSelect 'makeKind' :type Fun(span: location.Span form: TypeForm): KindExpr
+                  :target (TypedVar 'ast' :type Module 'ast'))
+                :args (
+                  (TypedVar 'sp' :type Span)
+                  (TypedOption 'kindType' :type ast.TypeForm)
+                ))
+            ))
+        )))
+    (TypedLetValue 'declT' :type ast.Decl
+      :value (TypedApp :type Decl
+        :func (TypedSelect 'makeDecl' :type Fun(span: location.Span form: ExprForm): Decl
+          :target (TypedVar 'ast' :type Module 'ast'))
+        :args (
+          (TypedVar 'sp' :type Span)
+          (TypedOption 'declTypeBinding' :type ast.ExprForm
+            :payload (TypedTuple :type Tuple name: String typeVal: TypeExpr params: vector.T(TypeFormal) bound: maybe.T(KindExpr) isRec: Bool isDef: Bool end
+              :elements (
+                (TypedString 'T' :type String)
+                (TypedApp :type TypeExpr
+                  :func (TypedSelect 'makeType' :type Fun(span: location.Span form: TypeForm): TypeExpr
+                    :target (TypedVar 'ast' :type Module 'ast'))
+                  :args (
+                    (TypedVar 'sp' :type Span)
+                    (TypedOption 'typeFun' :type ast.TypeForm
+                      :payload (TypedTuple :type Tuple params: vector.T(Tuple name: String bound: Node(ast.TypeForm) end) resultKind: maybe.T(Node(ast.TypeForm)) body: Node(ast.TypeForm) end
+                        :elements (
+                          (TypedVar 'formalsT' :type vector.T(ast.TypeFormal))
+                          (TypedApp :type maybe.T(ast.KindExpr)
+                            :func (TypedTypeApp [ast.KindExpr] :type Fun(val: ast.KindExpr): maybe.T(ast.KindExpr)
+                              :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+                                :target (TypedVar 'maybe' :type Module 'maybe')))
+                            :args (
+                              (TypedApp :type KindExpr
+                                :func (TypedSelect 'makeKind' :type Fun(span: location.Span form: TypeForm): KindExpr
+                                  :target (TypedVar 'ast' :type Module 'ast'))
+                                :args (
+                                  (TypedVar 'sp' :type Span)
+                                  (TypedOption 'kindPower' :type ast.TypeForm
+                                    :payload (TypedTuple :type Tuple bound: Node(ast.TypeForm) end
+                                      :elements (
+                                        (TypedApp :type ast.TypeExpr
+                                          :func (TypedVar 'makeTypePath' :type Fun(name: String): ast.TypeExpr)
+                                          :args (
+                                            (TypedString 'Int' :type String)
+                                          ))
+                                      )))
+                                ))
+                            ))
+                          (TypedApp :type ast.TypeExpr
+                            :func (TypedVar 'makeTypePath' :type Fun(name: String): ast.TypeExpr)
+                            :args (
+                              (TypedString 'X' :type String)
+                            ))
+                        )))
+                  ))
+                (TypedTypeApp [ast.TypeFormal] :type vector.T(ast.TypeFormal)
+                  :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                (TypedTypeApp [ast.KindExpr] :type maybe.T(ast.KindExpr)
+                  :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                (TypedBool true)
+                (TypedBool true)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+        :args (
+          (TypedString '=== Test 3: Recursive Type Definition ===' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'dump' :type Fun(node: ast.Program): String
+              :target (TypedVar 'astprint' :type Module 'astprint'))
+            :args (
+              (TypedApp :type ast.Program
+                :func (TypedVar 'programOf' :type Fun(decl: ast.Decl): ast.Program)
+                :args (
+                  (TypedVar 'declT' :type ast.Decl)
+                ))
+            ))
+        )))
+    (TypedLetValue 'autoFields' :type vector.T(ast.TupleField)
+      :value (TypedTypeApp [ast.TupleField] :type vector.T(ast.TupleField)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [ast.TupleField] :type Fun(v: vector.T(ast.TupleField) value: ast.TupleField): Ok
+          :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+            :target (TypedVar 'vector' :type Module 'vector')))
+        :args (
+          (TypedVar 'autoFields' :type vector.T(ast.TupleField))
+          (TypedOption 'fieldVal' :type ast.TupleField
+            :payload (TypedTuple :type Tuple val: TupleFieldBinding end
+              :elements (
+                (TypedApp :type TupleFieldBinding
+                  :func (TypedSelect 'tupleBinding' :type Fun(name: maybe.T(String) value: Expr typeAnnot: maybe.T(TypeExpr) isVar: Bool): TupleFieldBinding
+                    :target (TypedVar 'ast' :type Module 'ast'))
+                  :args (
+                    (TypedTypeApp [String] :type maybe.T(String)
+                      :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                        :target (TypedVar 'maybe' :type Module 'maybe')))
+                    (TypedApp :type ast.Expr
+                      :func (TypedVar 'makeInt' :type Fun(val: Int lexeme: String): ast.Expr)
+                      :args (
+                        (TypedInt 3 :type Int)
+                        (TypedString '3' :type String)
+                      ))
+                    (TypedTypeApp [ast.TypeExpr] :type maybe.T(ast.TypeExpr)
+                      :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                        :target (TypedVar 'maybe' :type Module 'maybe')))
+                    (TypedBool false)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'autoExpr' :type Expr
+      :value (TypedApp :type Expr
+        :func (TypedSelect 'makeExpr' :type Fun(span: location.Span form: ExprForm): Expr
+          :target (TypedVar 'ast' :type Module 'ast'))
+        :args (
+          (TypedVar 'sp' :type Span)
+          (TypedOption 'exprAuto' :type ast.ExprForm
+            :payload (TypedTuple :type Tuple witnessType: TypeExpr payload: Node(ast.ExprForm) witnessName: maybe.T(String) witnessBound: maybe.T(KindExpr) end
+              :elements (
+                (TypedApp :type ast.TypeExpr
+                  :func (TypedVar 'makeTypePath' :type Fun(name: String): ast.TypeExpr)
+                  :args (
+                    (TypedString 'Int' :type String)
+                  ))
+                (TypedApp :type Expr
+                  :func (TypedSelect 'makeExpr' :type Fun(span: location.Span form: ExprForm): Expr
+                    :target (TypedVar 'ast' :type Module 'ast'))
+                  :args (
+                    (TypedVar 'sp' :type Span)
+                    (TypedOption 'exprTuple' :type ast.ExprForm
+                      :payload (TypedTuple :type Tuple fields: vector.T(Option fieldVal with Tuple val: Tuple name: maybe.T(String) value: Node(ast.ExprForm) typeAnnot: maybe.T(TypeExpr) isVar: Bool end end fieldDecl with Tuple val: Node(ast.ExprForm) end end) end
+                        :elements (
+                          (TypedVar 'autoFields' :type vector.T(ast.TupleField))
+                        )))
+                  ))
+                (TypedApp :type maybe.T(String)
+                  :func (TypedTypeApp [String] :type Fun(val: String): maybe.T(String)
+                    :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedString 'A' :type String)
+                  ))
+                (TypedApp :type maybe.T(ast.KindExpr)
+                  :func (TypedTypeApp [ast.KindExpr] :type Fun(val: ast.KindExpr): maybe.T(ast.KindExpr)
+                    :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedApp :type KindExpr
+                      :func (TypedSelect 'makeKind' :type Fun(span: location.Span form: TypeForm): KindExpr
+                        :target (TypedVar 'ast' :type Module 'ast'))
+                      :args (
+                        (TypedVar 'sp' :type Span)
+                        (TypedOption 'kindType' :type ast.TypeForm)
+                      ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+        :args (
+          (TypedString '=== Test 4: Auto Value ===' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'dump' :type Fun(node: ast.Program): String
+              :target (TypedVar 'astprint' :type Module 'astprint'))
+            :args (
+              (TypedApp :type ast.Program
+                :func (TypedVar 'programOf' :type Fun(decl: ast.Decl): ast.Program)
+                :args (
+                  (TypedApp :type Decl
+                    :func (TypedSelect 'declLetVal' :type Fun(span: location.Span name: String value: Expr typeAnnot: maybe.T(TypeExpr)): Decl
+                      :target (TypedVar 'ast' :type Module 'ast'))
+                    :args (
+                      (TypedVar 'sp' :type Span)
+                      (TypedString 'p' :type String)
+                      (TypedVar 'autoExpr' :type Expr)
+                      (TypedTypeApp [ast.TypeExpr] :type maybe.T(ast.TypeExpr)
+                        :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                          :target (TypedVar 'maybe' :type Module 'maybe')))
+                    ))
+                ))
             ))
         )))
   ))

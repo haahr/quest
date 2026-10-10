@@ -313,43 +313,113 @@ void quest_raise_system_error(void) {
     quest_raise(&quest_exc_system_error, Q_OK_VAL);
 }
 
+/* Writes a real as the interpreter does (Python's repr): the shortest digits that read back as the same value, in
+ * positional notation when the decimal exponent is in [-4, 16) and in scientific notation otherwise. */
+static void quest_put_real(double r) {
+    if (isnan(r)) {
+        fputs("nan", stdout);
+        return;
+    }
+    if (isinf(r)) {
+        fputs(r > 0.0 ? "inf" : "-inf", stdout);
+        return;
+    }
+    char buf[40];
+    for (int precision = 1; precision <= 17; ++precision) {
+        snprintf(buf, sizeof buf, "%.*e", precision - 1, r);
+        if (strtod(buf, NULL) == r) break;
+    }
+    const char *p = buf;
+    if (*p == '-') {
+        putchar('-');
+        ++p;
+    }
+    char digits[24];
+    int n = 0;
+    for (; *p != '\0' && *p != 'e'; ++p) {
+        if (*p >= '0' && *p <= '9') digits[n++] = *p;
+    }
+    while (n > 1 && digits[n - 1] == '0') --n;
+    digits[n] = '\0';
+    int exponent = *p == 'e' ? atoi(p + 1) : 0;
+    if (exponent < -4 || exponent >= 16) {
+        putchar(digits[0]);
+        if (n > 1) printf(".%s", digits + 1);
+        printf("e%c%02d", exponent < 0 ? '-' : '+', exponent < 0 ? -exponent : exponent);
+    } else if (exponent < 0) {
+        fputs("0.", stdout);
+        for (int i = 0; i < -exponent - 1; ++i) putchar('0');
+        fputs(digits, stdout);
+    } else {
+        for (int i = 0; i <= exponent; ++i) putchar(i < n ? digits[i] : '0');
+        putchar('.');
+        fputs(n > exponent + 1 ? digits + exponent + 1 : "0", stdout);
+    }
+}
+
+/* Writes a character of a char or string literal, escaped as the interpreter does */
+static void quest_put_escaped_char(unsigned char c, char quote) {
+    switch (c) {
+        case '\n': fputs("\\n", stdout); return;
+        case '\t': fputs("\\t", stdout); return;
+        case '\r': fputs("\\r", stdout); return;
+        case '\\': fputs("\\\\", stdout); return;
+        default: break;
+    }
+    if (c == (unsigned char)quote) {
+        putchar('\\');
+        putchar(c);
+    } else if (c >= 32 && c <= 126) {
+        putchar(c);
+    } else {
+        printf("\\x%02x", c);
+    }
+}
+
+/* Writes prefix, val, suffix, and a newline. kind says how to write the value, as the interpreter writes a value of
+ * that type (format_value_with_type): a base type (Int, Real, Bool, Char, String, Ok, or Word), "fun" for a
+ * function, "hidden" for a value of an abstract type, and anything else as <val> (compiled code writes values of
+ * other types with quest_print_typed). */
+void quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix) {
+    fputs(prefix, stdout);
+    if (strcmp(kind, "Int") == 0) {
+        printf("%lld", (long long)val.i);
+    } else if (strcmp(kind, "Real") == 0) {
+        quest_put_real(val.r);
+    } else if (strcmp(kind, "Bool") == 0) {
+        fputs(val.i ? "true" : "false", stdout);
+    } else if (strcmp(kind, "Char") == 0) {
+        putchar('\'');
+        quest_put_escaped_char((unsigned char)val.i, '\'');
+        putchar('\'');
+    } else if (strcmp(kind, "String") == 0) {
+        const QString *s = (const QString *)val.p;
+        putchar('"');
+        for (int64_t i = 0; s != NULL && i < s->length; ++i) quest_put_escaped_char((unsigned char)s->data[i], '"');
+        putchar('"');
+    } else if (strcmp(kind, "Ok") == 0) {
+        fputs("ok", stdout);
+    } else if (strcmp(kind, "Word") == 0 || strcmp(kind, "Word.T") == 0 || strcmp(kind, "word.T") == 0) {
+        printf("16#%llx#", (unsigned long long)val.u);
+    } else if (strcmp(kind, "fun") == 0) {
+        fputs("<fun>", stdout);
+    } else if (strcmp(kind, "hidden") == 0) {
+        fputs("<hidden>", stdout);
+    } else {
+        fputs("<val>", stdout);
+    }
+    fputs(suffix, stdout);
+    putchar('\n');
+}
+
+/* Writes the result of an expression of type type_name, whose value is formatted by that name (see
+ * quest_print_value); nothing for Ok */
 void quest_print_val(QVal val, const char *type_name) {
-    if (type_name == NULL) return;
-    if (strcmp(type_name, "Ok") == 0) {
-        return;
-    }
-    if (strcmp(type_name, "Int") == 0) {
-        printf("%lld : Int\n", (long long)val.i);
-        return;
-    }
-    if (strcmp(type_name, "Real") == 0) {
-        if (isinf(val.r)) {
-            printf("%s : Real\n", val.r > 0.0 ? "inf" : "-inf");
-        } else if (fabs(val.r) < 9223372036854775808.0 && val.r == (double)(int64_t)val.r) {
-            printf("%.1f : Real\n", val.r);
-        } else {
-            printf("%g : Real\n", val.r);
-        }
-        return;
-    }
-    if (strcmp(type_name, "Bool") == 0) {
-        printf("%s : Bool\n", val.i ? "true" : "false");
-        return;
-    }
-    if (strcmp(type_name, "Char") == 0) {
-        printf("'%c' : Char\n", (char)val.i);
-        return;
-    }
-    if (strcmp(type_name, "String") == 0) {
-        QString *s = (QString *)val.p;
-        printf("\"%s\" : String\n", s ? s->data : "");
-        return;
-    }
-    if (strcmp(type_name, "Word") == 0 || strcmp(type_name, "Word.T") == 0 || strcmp(type_name, "word.T") == 0) {
-        printf("16#%llx# : Word.T\n", (unsigned long long)val.u);
-        return;
-    }
-    printf("<val> : %s\n", type_name);
+    if (type_name == NULL || strcmp(type_name, "Ok") == 0) return;
+    bool is_word = strcmp(type_name, "Word") == 0 || strcmp(type_name, "word.T") == 0;
+    char suffix[256];
+    snprintf(suffix, sizeof suffix, " : %s", is_word ? "Word.T" : type_name);
+    quest_print_value("", val, type_name, suffix);
 }
 
 /* Universal subtyping predicate forward declaration */
@@ -1578,6 +1648,220 @@ QVal quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_
     QRecordStoredTypes stored = quest_record_stored_types(rec, meta->field_count);
     if (stored != NULL && stored[i] != NULL) return quest_convert(quest_slot_read(stored[i], slot), stored[i], field_type);
     return quest_slot_read(field_type, slot);
+}
+
+/* Writes a string literal, escaped as the interpreter does */
+static void quest_put_string(const QString *s) {
+    putchar('"');
+    for (int64_t i = 0; s != NULL && i < s->length; ++i) quest_put_escaped_char((unsigned char)s->data[i], '"');
+    putchar('"');
+}
+
+/* The tuples, records, and arrays being written, so that a cyclic value is cut off as the interpreter does */
+#define Q_PRINT_NESTING_MAX 256
+static const void *quest_print_nesting[Q_PRINT_NESTING_MAX];
+static int quest_print_depth = 0;
+
+/* Starts writing the aggregate at p, or returns false (writing opening and " ... end") if p is already being
+ * written; a true result is matched by a call of quest_print_leave */
+static bool quest_print_enter(const void *p, const char *opening) {
+    for (int i = 0; p != NULL && i < quest_print_depth && i < Q_PRINT_NESTING_MAX; ++i) {
+        if (quest_print_nesting[i] == p) {
+            printf("%s ... end", opening);
+            return false;
+        }
+    }
+    if (quest_print_depth < Q_PRINT_NESTING_MAX) quest_print_nesting[quest_print_depth] = p;
+    ++quest_print_depth;
+    fputs(opening, stdout);
+    return true;
+}
+
+static void quest_print_leave(void) {
+    --quest_print_depth;
+}
+
+static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness);
+
+/* Writes the elements of a tuple-shaped block (a tuple, or an option case's payload) laid out as t */
+static void quest_put_elements(const char *base, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
+    const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)t->extra;
+    for (size_t i = 0; meta != NULL && i < meta->element_count; ++i) {
+        const QTupleElementDescriptor *e = &meta->elements[i];
+        putchar(' ');
+        if (e->name != NULL && e->name[0] != '\0') printf("%s=", e->name);
+        quest_put_value(quest_slot_read(e->type, base + e->offset), e->type, witness);
+    }
+}
+
+/* Writes a tuple-shaped block as `tuple ... end` */
+static void quest_put_tuple(const char *base, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
+    if (!quest_print_enter(base, "tuple")) return;
+    quest_put_elements(base, t, witness);
+    fputs(" end", stdout);
+    quest_print_leave();
+}
+
+/* Writes a value of the type t as the interpreter does (format_value_with_type). witness is the type component of
+ * the auto value whose components are being written, which a component's type refers to as its type parameter. */
+static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
+    if (t == NULL) {
+        fputs("<val>", stdout);
+        return;
+    }
+    switch (t->kind) {
+        case QTYPE_KIND_INT:
+            printf("%lld", (long long)v.i);
+            return;
+        case QTYPE_KIND_REAL:
+            quest_put_real(v.r);
+            return;
+        case QTYPE_KIND_BOOL:
+            fputs(v.i ? "true" : "false", stdout);
+            return;
+        case QTYPE_KIND_CHAR:
+            putchar('\'');
+            quest_put_escaped_char((unsigned char)v.i, '\'');
+            putchar('\'');
+            return;
+        case QTYPE_KIND_STRING:
+            quest_put_string((const QString *)v.p);
+            return;
+        case QTYPE_KIND_OK:
+            fputs("ok", stdout);
+            return;
+        case QTYPE_KIND_FUN:
+            fputs("<fun>", stdout);
+            return;
+        case QTYPE_KIND_TUPLE:
+            quest_put_tuple((const char *)v.p, t, witness);
+            return;
+        case QTYPE_KIND_RECORD: {
+            const QRecordVal *rec = (const QRecordVal *)v.p;
+            const QRecordTypeDescriptor *meta = (const QRecordTypeDescriptor *)t->extra;
+            if (rec == NULL || meta == NULL || meta->field_count == 0) {
+                fputs("record end", stdout);
+                return;
+            }
+            if (!quest_print_enter(rec->val, "record")) return;
+            /* The fields are sorted by name, as the interpreter writes them */
+            for (size_t i = 0; i < meta->field_count; ++i) {
+                printf(" %s=", meta->fields[i].name);
+                quest_put_value(quest_record_field_value(*rec, t, i), meta->fields[i].type, witness);
+            }
+            fputs(" end", stdout);
+            quest_print_leave();
+            return;
+        }
+        case QTYPE_KIND_VARIANT:
+        case QTYPE_KIND_OPTION: {
+            const QVariantTypeDescriptor *meta = (const QVariantTypeDescriptor *)t->extra;
+            const char *opening = t->kind == QTYPE_KIND_VARIANT ? "variant" : "option";
+            if (v.p == NULL || meta == NULL) {
+                fputs("<val>", stdout);
+                return;
+            }
+            /* A variant is a QVariantVal; an option points to its tag followed by its payload, laid out as the
+             * payload's tuple type (see QOptionLayout) */
+            int64_t tag = t->kind == QTYPE_KIND_VARIANT ? ((const QVariantVal *)v.p)->tag : *(const int64_t *)v.p;
+            if (tag < 0 || (size_t)tag >= meta->case_count) {
+                fputs("<val>", stdout);
+                return;
+            }
+            const QVariantCaseDescriptor *c = &meta->cases[tag];
+            printf("%s %s", opening, c->name);
+            const QTypeDescriptor *payload_type = c->payload_type;
+            if (payload_type != NULL && payload_type->kind != QTYPE_KIND_OK) {
+                fputs(" with ", stdout);
+                if (t->kind == QTYPE_KIND_VARIANT) {
+                    quest_put_value(((const QVariantVal *)v.p)->payload, payload_type, witness);
+                } else {
+                    const char *payload = (const char *)v.p + offsetof(QOptionLayout, u);
+                    if (payload_type->kind == QTYPE_KIND_TUPLE) {
+                        quest_put_tuple(payload, payload_type, witness);
+                    } else {
+                        quest_put_value(quest_slot_read(payload_type, payload), payload_type, witness);
+                    }
+                }
+            }
+            fputs(" end", stdout);
+            return;
+        }
+        case QTYPE_KIND_ARRAY: {
+            const QTypeDescriptor *elem = ((const QArrayTypeDescriptor *)t->extra)->element_type;
+            if (v.p == NULL) {
+                fputs("array of end", stdout);
+                return;
+            }
+            if (!quest_print_enter(v.p, "array of")) return;
+            /* Records and variants are stored in wide arrays, any other element as its QVal form */
+            int64_t length = ((const QArray *)v.p)->length;
+            for (int64_t i = 0; i < length; ++i) {
+                QVal e;
+                if (elem != NULL && elem->kind == QTYPE_KIND_RECORD) {
+                    e = (QVal){ .p = &((QArrayWideRecord *)v.p)->data[i] };
+                } else if (elem != NULL && elem->kind == QTYPE_KIND_VARIANT) {
+                    e = (QVal){ .p = &((QArrayWideVariant *)v.p)->data[i] };
+                } else {
+                    e = ((const QArray *)v.p)->data[i];
+                }
+                putchar(' ');
+                quest_put_value(e, elem, witness);
+            }
+            fputs(" end", stdout);
+            quest_print_leave();
+            return;
+        }
+        case QTYPE_KIND_AUTO: {
+            const QAuto *a = (const QAuto *)v.p;
+            const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)t->extra;
+            if (a == NULL || meta == NULL) {
+                fputs("<val>", stdout);
+                return;
+            }
+            printf("auto :%s with", a->type_desc != NULL ? a->type_desc->name : "?");
+            const char *payload = (const char *)a->payload.p;
+            for (size_t i = 0; payload != NULL && i < meta->component_count; ++i) {
+                const QAutoComponentDescriptor *c = &meta->components[i];
+                /* Records and variants are stored inline, any other component as its QVal form */
+                QVal cv = c->storage != NULL ? quest_slot_read(c->storage, payload + c->offset)
+                                              : *(const QVal *)(payload + c->offset);
+                printf(" %s=", c->name);
+                quest_put_value(cv, c->type, a->type_desc);
+            }
+            fputs(" end", stdout);
+            return;
+        }
+        case QTYPE_KIND_EXCEPTION: {
+            const QException *exc = (const QException *)v.p;
+            printf("exception %s", exc != NULL && exc->name != NULL ? exc->name : "?");
+            return;
+        }
+        case QTYPE_KIND_BOUND_VAR:
+            /* An auto value's components refer to its type component as the innermost type parameter */
+            if (witness != NULL && t == &quest_type_bound_vars[0]) {
+                quest_put_value(v, witness, NULL);
+            } else {
+                fputs("<hidden>", stdout);
+            }
+            return;
+        case QTYPE_KIND_OPAQUE:
+            /* Word.T is a library type with literals of its own; any other abstract type's values are hidden */
+            if (t->name != NULL && (strcmp(t->name, "Word.T") == 0 || strcmp(t->name, "word.T") == 0)) {
+                printf("16#%llx#", (unsigned long long)v.u);
+            } else {
+                fputs("<hidden>", stdout);
+            }
+            return;
+    }
+    fputs("<val>", stdout);
+}
+
+void quest_print_typed(const char *prefix, QVal val, const QTypeDescriptor *type, const char *suffix) {
+    fputs(prefix, stdout);
+    quest_put_value(val, type, NULL);
+    fputs(suffix, stdout);
+    putchar('\n');
 }
 
 const void *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {

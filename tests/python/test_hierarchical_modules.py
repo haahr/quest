@@ -421,9 +421,8 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
     def test_sibling_import_under_project_directory(self) -> None:
         """Units beside a program in the project directory are named relative to it, with or without -I."""
         # Under build/ (ignored by git), with only letters and digits in its path as canonical names require.
-        parent = ROOT_DIR / "build"
-        created_parent = not parent.exists()
-        program_dir = parent / f"canonical{uuid.uuid4().hex}"
+        # The directory is left behind (empty), since concurrent test runs may share it.
+        program_dir = ROOT_DIR / "build" / f"canonical{uuid.uuid4().hex}"
         program_dir.mkdir(parents=True)
         try:
             _write_units(program_dir, {k: v.format(scale=2) for k, v in COUNTER_UNITS.items()})
@@ -443,7 +442,7 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
             self.assertEqual(manifest.name, f"{program_dir.name}/counter")
             self.assertEqual(manifest.interface, f"{program_dir.name}/Counter")
         finally:
-            shutil.rmtree(parent if created_parent else program_dir)
+            shutil.rmtree(program_dir)
 
     def test_path_with_other_characters_is_an_error(self) -> None:
         """Directory and file names in canonical names may contain only letters and digits."""
@@ -452,6 +451,34 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
             proc = self._run_process(self.root / "x-y" / "main.quest", phase, "-I", str(self.root))
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("'x-y' contains characters other than letters and digits", proc.stdout + proc.stderr)
+
+    def test_units_with_the_same_base_name_in_one_program(self) -> None:
+        """counter and util/counter are different units, whichever is imported first and by whom."""
+        _write_units(self.root, {k: v.format(scale=1) for k, v in COUNTER_UNITS.items() if k != "main.quest"})
+        _write_units(self.root, {
+            "util/counter.int.quest": "interface Counter\nexport\n    step: Int\nend;\n",
+            "util/counter.mod.quest": "module counter : Counter\nexport\n    let step = 100;\nend;\n",
+            "util/arith.int.quest": "interface Arith\nexport\n    bump(x: Int): Int\nend;\n",
+            "util/arith.mod.quest": (
+                "module arith : Arith\nimport counter: Counter;\nexport\n"
+                "    let bump(x: Int): Int = x + counter.step;\nend;\n"
+            ),
+            "first.quest": (
+                "import counter: Counter;\nimport arith = util/arith : util/Arith;\n"
+                "arith.bump(counter.get(counter.new(11)))\n"
+            ),
+            "last.quest": (
+                "import arith = util/arith : util/Arith;\nimport counter: Counter;\n"
+                "arith.bump(counter.get(counter.new(11)))\n"
+            ),
+            "both.quest": (
+                "import counter: Counter;\nimport c2 = util/counter : util/Counter;\n"
+                "counter.get(counter.new(c2.step))\n"
+            ),
+        })
+        self._assert_c_matches_interpreter(self.root / "first.quest", "111 : Int")
+        self._assert_c_matches_interpreter(self.root / "last.quest", "111 : Int")
+        self._assert_c_matches_interpreter(self.root / "both.quest", "100 : Int")
 
     def test_same_unit_name_in_two_directories_shares_build_directory(self) -> None:
         """Programs in different directories under one include root keep their same-named units apart."""

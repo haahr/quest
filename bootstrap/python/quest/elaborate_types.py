@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional, Union
 
 import quest.ast as ast
+from quest.diagnostics import QuestTypeError
 from quest.types import (
     TYPE_KIND,
     alias_reference,
@@ -239,6 +240,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
         case ast.TypeTuple(fields=tup_fields):
             components: list[QTupleComponent] = []
             with env.scoped("tuple_sig"):
+                reject_type_binding_groups(tup_fields)
                 for f in tup_fields:
                     match f:
                         case ast.TypeFormal(name=name, bound=bound):
@@ -508,6 +510,18 @@ def elaborate_kind_binding(binding: ast.DefKindBinding, env: Environment) -> Kin
     check_kind_well_formed(kind_val, env)
     symbol = KindSymbol(name=binding.name, symbol_id=env.fresh_symbol_id(), kind=kind_val)
     return env.current_scope.declare_kind(symbol)
+
+
+def reject_type_binding_groups(bindings: Any) -> None:
+    """Rejects simultaneous type bindings (Let [Rec] A = ... and B = ...) among bindings: they parse, but are not
+    elaborated yet."""
+    for binding in bindings:
+        if isinstance(binding, ast.TypeBindingGroup):
+            names = ", ".join(f"'{member.name}'" for member in binding.bindings)
+            raise QuestTypeError(
+                f"Simultaneous type declarations with 'and' ({names}) are not supported yet",
+                offset=binding.offset,
+            )
 
 
 def elaborate_type_binding(

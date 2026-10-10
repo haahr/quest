@@ -33,6 +33,7 @@ ARGS_PATTERN = re.compile(r"\(\*\s*@args:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 ENV_PATTERN = re.compile(r"\(\*\s*@env:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 EXIT_PATTERN = re.compile(r"\(\*\s*@exit:\s*([0-9]+)\s*\*\)", re.IGNORECASE)
 TIMEOUT_PATTERN = re.compile(r"\(\*\s*@timeout:\s*([0-9.]+)\s*\*\)", re.IGNORECASE)
+ECHO_PATTERN = re.compile(r"\(\*\s*@echo\s*\*\)", re.IGNORECASE)
 STDIN_PATTERN = re.compile(r"\(\*\s*@stdin:(?:[ \t]*\r?\n)?(.*?)\*\)", re.DOTALL | re.IGNORECASE)
 
 
@@ -45,10 +46,11 @@ class TestDirectives:
     exit_code: int = 0
     timeout: Optional[float] = None
     stdin_data: Optional[str] = None
+    echo: bool = False
 
 
 def parse_test_directives(source_file: Path) -> TestDirectives:
-    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin) from comments."""
+    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin, @echo) from comments."""
     text = source_file.read_text(encoding="utf-8")
 
     skipped: set[str] = set()
@@ -96,6 +98,7 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
         exit_code=exit_code,
         timeout=custom_timeout,
         stdin_data=stdin_data,
+        echo=ECHO_PATTERN.search(text) is not None,
     )
 
 
@@ -154,7 +157,6 @@ def run_single_golden_test(
     target_dir = golden_base / rel_source.parent
     target_dir.mkdir(parents=True, exist_ok=True)
     out_file = target_dir / f"{source_file.stem}.out"
-    error_file = target_dir / f"{source_file.stem}.error"
     test_id = str(rel_source.with_suffix(""))
 
     directives = parse_test_directives(source_file)
@@ -176,6 +178,8 @@ def run_single_golden_test(
     command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
+    if directives.echo and phase_name in ("interpret", "run_c_compiled"):
+        command.append("--echo")
 
     command.append(str(source_file))
 
@@ -210,66 +214,9 @@ def run_single_golden_test(
                 print(f"    {line}")
         return False
 
-    if update_golden:
-        if process.returncode == expected_exit:
-            out_file.write_text(process.stdout, encoding="utf-8")
-            if error_file.exists():
-                error_file.unlink()
-            print(f"  [UPDATED] {phase_name}:{test_id} (.out)")
-        else:
-            error_file.write_text(process.stderr, encoding="utf-8")
-            if out_file.exists():
-                out_file.unlink()
-            print(f"  [UPDATED] {phase_name}:{test_id} (.error)")
-        return True
-
-    # Case 1: Process exit code matches expected_exit
-    if process.returncode == expected_exit:
-        if out_file.exists():
-            expected_output = out_file.read_text(encoding="utf-8")
-            if process.stdout == expected_output:
-                print(f"  [PASS] {phase_name}:{test_id}")
-                return True
-            else:
-                print(f"  [FAIL] {phase_name}:{test_id} (stdout mismatch)")
-                diff = difflib.unified_diff(
-                    expected_output.splitlines(keepends=True),
-                    process.stdout.splitlines(keepends=True),
-                    fromfile=f"golden/{golden_base.name}/{rel_source.with_suffix('.out')}",
-                    tofile=f"actual/{golden_base.name}/{rel_source.with_suffix('.out')}",
-                )
-                print("".join(diff))
-                return False
-        elif error_file.exists():
-            print(
-                f"  [FAIL] {phase_name}:{test_id} "
-                f"(expected compiler error in {error_file.name}, but command succeeded)"
-            )
-            return False
-        else:
-            print(
-                f"  [MISSING GOLDEN] {phase_name}:{test_id} "
-                f"(expected {out_file.relative_to(ROOT_DIR)})"
-            )
-            return False
-
-    # Case 2: Process return code mismatch
-    if error_file.exists():
-        expected_error = error_file.read_text(encoding="utf-8")
-        if process.stderr == expected_error:
-            print(f"  [PASS] {phase_name}:{test_id} (expected error)")
-            return True
-        else:
-            print(f"  [FAIL] {phase_name}:{test_id} (stderr mismatch)")
-            diff = difflib.unified_diff(
-                expected_error.splitlines(keepends=True),
-                process.stderr.splitlines(keepends=True),
-                fromfile=f"golden/{golden_base.name}/{rel_source.with_suffix('.error')}",
-                tofile=f"actual/{golden_base.name}/{rel_source.with_suffix('.error')}",
-            )
-            print("".join(diff))
-            return False
-    elif out_file.exists():
+    # A golden test is a valid program: one that exits with any other code fails, even when updating goldens.
+    # Programs that should be rejected are error tests (docs/testing.md §3).
+    if process.returncode != expected_exit:
         print(
             f"  [FAIL] {phase_name}:{test_id} "
             f"(failed with returncode {process.returncode}, expected {expected_exit})"
@@ -277,14 +224,28 @@ def run_single_golden_test(
         if process.stderr:
             print(process.stderr)
         return False
-    else:
-        print(
-            f"  [MISSING GOLDEN] {phase_name}:{test_id} "
-            f"(expected error golden in {error_file.relative_to(ROOT_DIR)})"
-        )
+
+    if update_golden:
+        out_file.write_text(process.stdout, encoding="utf-8")
+        print(f"  [UPDATED] {phase_name}:{test_id}")
+        return True
+
+    if not out_file.exists():
+        print(f"  [MISSING GOLDEN] {phase_name}:{test_id} (expected {out_file.relative_to(ROOT_DIR)})")
         return False
-
-
+    expected_output = out_file.read_text(encoding="utf-8")
+    if process.stdout == expected_output:
+        print(f"  [PASS] {phase_name}:{test_id}")
+        return True
+    print(f"  [FAIL] {phase_name}:{test_id} (stdout mismatch)")
+    diff = difflib.unified_diff(
+        expected_output.splitlines(keepends=True),
+        process.stdout.splitlines(keepends=True),
+        fromfile=f"golden/{golden_base.name}/{rel_source.with_suffix('.out')}",
+        tofile=f"actual/{golden_base.name}/{rel_source.with_suffix('.out')}",
+    )
+    print("".join(diff))
+    return False
 
 
 def main() -> int:

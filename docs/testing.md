@@ -132,6 +132,10 @@ python3 run_tests.py --update-golden
 
 If stdout does not match the golden file, `run_tests.py` prints a unified diff detailing the exact mismatch.
 
+`--update-golden` records a test's output only when the test exits as expected (with 0, or the code given by
+`@exit`); a test that fails is reported as `[FAIL]` and no golden is written, since a golden test is a valid program.
+Programs that must be rejected belong in the error suite (§3).
+
 **Hermetic builds:** every phase builds into a fresh temporary build directory for each run (shared by the tests of
 that run and deleted afterwards), so results never depend on artifacts left by earlier runs or compiler versions.
 Pass `--build-dir <dir>` to reuse a build directory across runs for speed. Unit tests that invoke the driver give it
@@ -160,9 +164,9 @@ C compilation backend (or for tests specific to certain phases), tests can inclu
 - **Reporting**: Skipped phases are explicitly noted during test execution (`[SKIP] phase:test_name`) and counted in
   the test summary without being counted as failures.
 - **Golden Management**: When updating goldens with `--update-golden`, skipped phases are ignored and will not
-  generate unexpected `.out` or `.error` files.
+  generate unexpected `.out` files.
 
-### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`)
+### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`, `@echo`)
 Tests that interact with host OS primitives (command-line arguments, environment variables, exit codes, and standard
 input) can specify host execution requirements via top-level comment directives:
 
@@ -207,6 +211,16 @@ input) can specify host execution requirements via top-level comment directives:
   ```
   Available in Quest via `reader.input`.
 
+- **Echoed Results (`(* @echo *)`)**:
+  Runs the program with `--echo` in `interpret` and `run_c_compiled`, so that every top-level phrase prints its result
+  as the interactive REPL does (`let x:Int = 5`, `3 : Int`, `exception E`, `Let T::TYPE = Int`), not only the last.
+  A test can then check many values without printing each with `writer` and `conv`. Compiled code echoes exactly as
+  the interpreter does, because both format a value by its static type all the way down: a record shows the fields
+  of its type (sorted by name), a function is `<fun>`, a value of an abstract type (such as `list.T(Int)` or a
+  module's `T`) is `<hidden>`, and an auto value names its type component as its runtime descriptor does. Compiled
+  code writes compound values from their type descriptors (`quest_print_typed`). One difference remains: a tuple
+  with type components nested inside another value prints only its value components in compiled code.
+
 ### 2.6. Interfaces and Modules Used by Tests
 A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the
 ordinary sibling search (`docs/modules.md` §2.2). These files are not tests: the runner does not discover them, so no
@@ -224,8 +238,8 @@ Units may also be in subdirectories of a test's directory, imported by their pat
 util/Arith;` in `tests/source/modules/subdirectory_units.quest`). A unit's canonical name is its path relative to the
 project directory (`tests/source/modules/counter`; `docs/modules.md` §2.3), so units in different test directories may
 share names, and may share names with library units, without their artifacts colliding in the shared build directory.
-One test cannot, however, import two different units with the same base name (`counter` and `util/counter`), because
-the typechecker and interpreter register units by the names they are imported by.
+One test may also use different units with the same base name (`counter` and `util/counter` in
+`tests/source/modules/same_name_units.quest`).
 
 ---
 

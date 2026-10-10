@@ -419,6 +419,8 @@ Q_NORETURN void quest_raise_variant_error(void);
 Q_NORETURN void quest_raise_dynamic_error(void);
 Q_NORETURN void quest_option_ordinal_error(int64_t n, int64_t count);
 void     quest_print_val(QVal val, const char *type_name);
+void     quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix);
+void     quest_print_typed(const char *prefix, QVal val, const QTypeDescriptor *type, const char *suffix);
 
 /* Standard library singleton exceptions */
 extern const QException quest_exc_writer_error;

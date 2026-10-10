@@ -582,6 +582,16 @@ class TypeBinding(BindingNode):
 
 
 @dataclass(frozen=True)
+class TypeBindingGroup(BindingNode):
+    """Let [Rec] T = Type and U = Type ..., or the same with Def: two or more simultaneous type bindings.
+
+    The members share the keyword's Rec and Def (their is_rec and is_def); the group is positioned at the keyword
+    and each member at its name.
+    """
+    bindings: tuple[TypeBinding, ...]
+
+
+@dataclass(frozen=True)
 class DefKindBinding(BindingNode):
     """DEF K = Kind"""
     name: str

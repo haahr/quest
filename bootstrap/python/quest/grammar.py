@@ -143,7 +143,7 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
     result: list[Any] = []
     for item in bindings:
         match item:
-            case ast.TypeBinding():
+            case ast.TypeBinding() | ast.TypeBindingGroup():
                 result.append(item)
             case ast.LetValueBinding(params=params) if params:
                 fn_expr = ast.ExprFun(
@@ -350,10 +350,18 @@ def _build_type_decl(
 
 
 def _build_type_binding(
-    keyword_token: Token, rec_token: Optional[Token], decl: ast.TypeBinding, is_def: bool
-) -> ast.TypeBinding:
-    """A `Let [Rec] TypeDecl` or `Def [Rec] TypeDecl` binding, positioned at its keyword."""
-    return dataclasses.replace(decl, is_rec=bool(rec_token), is_def=is_def, offset=keyword_token.offset)
+    keyword_token: Token, rec_token: Optional[Token], decls: tuple[ast.TypeBinding, ...], is_def: bool
+) -> ast.TypeBinding | ast.TypeBindingGroup:
+    """A `Let [Rec] TypeDecl {and TypeDecl}` or `Def [Rec] TypeDecl {and TypeDecl}` phrase.
+
+    One declaration is a TypeBinding positioned at its keyword; two or more are a TypeBindingGroup positioned at the
+    keyword, whose members share its Rec and Def and keep their own positions.
+    """
+    is_rec = bool(rec_token)
+    if len(decls) == 1:
+        return dataclasses.replace(decls[0], is_rec=is_rec, is_def=is_def, offset=keyword_token.offset)
+    members = tuple(dataclasses.replace(decl, is_rec=is_rec, is_def=is_def) for decl in decls)
+    return ast.TypeBindingGroup(bindings=members, offset=keyword_token.offset)
 
 
 # --- case / inspect / try branches ---
@@ -644,11 +652,11 @@ def build_quest_grammar() -> None:
 
     # DEF KindDecl
     TYPE_SIGNATURE.add_rule((P(TK.KW_DEF_KIND), KIND_DECL), lambda kind_declaration: (kind_declaration,))
-    # Def [Rec] TypeDecl
+    # Def [Rec] TypeDecl {and TypeDecl}
     TYPE_SIGNATURE.add_rule(
-        (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
-        lambda def_token, rec_token, type_declaration: (
-            _build_type_binding(def_token, rec_token, type_declaration, is_def=True),
+        (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), SepBy(TYPE_DECL, P(TK.KW_AND))),
+        lambda def_token, rec_token, type_declarations: (
+            _build_type_binding(def_token, rec_token, type_declarations, is_def=True),
         ),
     )
     # [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals; plain fields have no groups)
@@ -1178,11 +1186,11 @@ def build_quest_grammar() -> None:
             offset=module_token.offset,
         ),
     )
-    # Let [Rec] TypeDecl
+    # Let [Rec] TypeDecl {and TypeDecl}
     PHRASE.add_rule(
-        (T(TK.KW_LET_TYPE), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
-        lambda let_token, rec_token, type_declaration: _build_type_binding(
-            let_token, rec_token, type_declaration, is_def=False
+        (T(TK.KW_LET_TYPE), Opt(T(TK.KW_REC_TYPE)), SepBy(TYPE_DECL, P(TK.KW_AND))),
+        lambda let_token, rec_token, type_declarations: _build_type_binding(
+            let_token, rec_token, type_declarations, is_def=False
         ),
     )
     # let [rec] ValueDecl
@@ -1201,11 +1209,11 @@ def build_quest_grammar() -> None:
     )
     # DEF KindDecl
     PHRASE.add_rule((P(TK.KW_DEF_KIND), KIND_DECL), lambda kind_declaration: kind_declaration)
-    # Def [Rec] TypeDecl
+    # Def [Rec] TypeDecl {and TypeDecl}
     PHRASE.add_rule(
-        (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), TYPE_DECL),
-        lambda def_token, rec_token, type_declaration: _build_type_binding(
-            def_token, rec_token, type_declaration, is_def=True
+        (T(TK.KW_DEF), Opt(T(TK.KW_REC_TYPE)), SepBy(TYPE_DECL, P(TK.KW_AND))),
+        lambda def_token, rec_token, type_declarations: _build_type_binding(
+            def_token, rec_token, type_declarations, is_def=True
         ),
     )
     # : Type (TypeArgument in call bindings / phrases)

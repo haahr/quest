@@ -25,6 +25,7 @@ from quest.codegen.c_types import (
     descriptor_form,
     fun_descriptor_tag,
     hole_var,
+    is_word_type,
     RecordNamingContext,
     c_char_literal,
     c_string_literal,
@@ -215,6 +216,27 @@ def _strip_typed_aliases(node: Any, memo: dict[int, Any]) -> Any:
 def _display_type(node: Any) -> QType:
     """The type of a node or symbol as the source wrote it, for printing results (aliases included)."""
     return node.__dict__.get("_display_type", node.type_val)
+
+
+_BASE_VALUE_KINDS = (
+    (INT_TYPE, "Int"), (REAL_TYPE, "Real"), (BOOL_TYPE, "Bool"), (CHAR_TYPE, "Char"), (STRING_TYPE, "String"),
+    (OK_TYPE, "Ok"),
+)
+
+
+def _value_kind(t: QType) -> str:
+    """How quest_print_value writes a value of type t, as the interpreter does (format_value_with_type), or "" if
+    quest_print_typed writes it from its type descriptor."""
+    t = normalize_type(t)
+    if is_word_type(t):
+        return "Word"
+    if isinstance(t, (QFunType, QAllType)):
+        return "fun"
+    if isinstance(t, (QPathType, QTypeVar, QAbstractType)):
+        return "hidden"
+    return next((kind for base, kind in _BASE_VALUE_KINDS if t is base), "")
+
+
 
 
 def _strip_aliases_for_codegen(
@@ -2379,20 +2401,31 @@ class CEmitter:
                     parts.append(elem_str)
         return f"tuple {' '.join(parts)} end" if parts else "tuple end"
 
+    def _print_value_call(self, prefix: str, value: str, t: QType, suffix: str = "") -> str:
+        """A statement printing prefix, a value of type t, and suffix on a line of its own.
+
+        Values of base, function, and abstract types are written by kind, and any other value from its type's
+        descriptor.
+        """
+        prefix_c, suffix_c, value_c = _c_string_literal(prefix), _c_string_literal(suffix), _qval_wrap(value, t)
+        if kind := _value_kind(t):
+            return f"    quest_print_value({prefix_c}, {value_c}, {_c_string_literal(kind)}, {suffix_c});"
+        return f"    quest_print_typed({prefix_c}, {value_c}, {self.c_type_descriptor(t)}, {suffix_c});"
+
     def _emit_phrase(self, phrase: TypedNode, lines: list[str], is_last: bool = False) -> None:
-        """Translates a top-level binding or expression phrase."""
-        should_print_result = self.print_result and is_last
+        """Translates a top-level binding or expression phrase.
+
+        With echo, every phrase prints its result, and otherwise only the last one when print_result is set, as the
+        interpreter formats it (format_interactive_result).
+        """
+        show = self.echo or (self.print_result and is_last)
         match phrase:
             case TypedLetValue(name=name, value=val, symbol=symbol):
+                var_str = "var " if symbol.is_var else ""
+                prefix = f"let {var_str}{name}:{_display_type(symbol)} = "
                 if isinstance(val, TypedFun):
-                    if self.echo:
-                        type_str = _c_string_literal(qtype_to_name_str(_display_type(symbol)))
-                        lines.append(f"    quest_print_val(((QVal){{ .u = 0 }}), {type_str});")
-                    elif should_print_result:
-                        var_str = "var " if symbol.is_var else ""
-                        type_str = str(_display_type(symbol))
-                        msg = f"let {var_str}{name}:{type_str} = <fun>"
-                        lines.append(f"    puts({_c_string_literal(msg)});")
+                    if show:
+                        lines.append(f"    puts({_c_string_literal(prefix + '<fun>')});")
                     return
 
                 c_ident = mangle_ident(name)
@@ -2404,54 +2437,18 @@ class CEmitter:
                     val_c = self.emit_val(val, phrase_lines)
                     self._coerce_val(val_c, val, symbol.type_val, phrase_lines, dest=c_ident)
                 _append_block(lines, phrase_lines)
-                if self.echo:
-                    wrap = _qval_wrap(c_ident, symbol.type_val)
-                    type_str = _c_string_literal(qtype_to_name_str(_display_type(symbol)))
-                    lines.append(f"    quest_print_val({wrap}, {type_str});")
-                elif should_print_result:
-                    var_str = "var " if symbol.is_var else ""
-                    if symbol.type_val is OK_TYPE:
-                        msg = f"let {var_str}{name}:Ok = ok"
-                        lines.append(f"    puts({_c_string_literal(msg)});")
-                    elif isinstance(symbol.type_val, (QFunType, QAllType)):
-                        type_str = str(_display_type(symbol))
-                        msg = f"let {var_str}{name}:{type_str} = <fun>"
-                        lines.append(f"    puts({_c_string_literal(msg)});")
-                    elif symbol.type_val is INT_TYPE:
-                        lines.append(
-                            f'    printf("let {var_str}{name}:Int = %lld\\n", (long long){c_ident});'
-                        )
-                    elif symbol.type_val is REAL_TYPE:
-                        lines.append(
-                            f'    if ({c_ident} == (double)(int64_t){c_ident}) '
-                            f'printf("let {var_str}{name}:Real = %.1f\\n", {c_ident}); '
-                            f'else printf("let {var_str}{name}:Real = %g\\n", {c_ident});'
-                        )
-                    elif symbol.type_val is BOOL_TYPE:
-                        lines.append(
-                            f'    printf("let {var_str}{name}:Bool = %s\\n", {c_ident} ? "true" : "false");'
-                        )
-                    elif symbol.type_val is CHAR_TYPE:
-                        lines.append(
-                            f'    printf("let {var_str}{name}:Char = \'%c\'\\n", (char){c_ident});'
-                        )
-                    elif symbol.type_val is STRING_TYPE:
-                        lines.append(
-                            f'    printf("let {var_str}{name}:String = \\"%s\\"\\n", '
-                            f'{c_ident} ? {c_ident}->data : "");'
-                        )
-                    elif isinstance(symbol.type_val, QTupleType) and symbol.type_val.is_existential:
-                        type_str = str(_display_type(symbol))
-                        val_str = self._format_existential_tuple_val(symbol.type_val)
-                        msg = f"let {var_str}{name}:{type_str} = {val_str}"
-                        lines.append(f"    puts({_c_string_literal(msg)});")
-                    else:
-                        type_str = str(_display_type(symbol))
-                        msg = f"let {var_str}{name}:{type_str} = <val>"
-                        lines.append(f"    puts({_c_string_literal(msg)});")
+                if not show:
+                    return
+                if symbol.type_val is OK_TYPE:
+                    lines.append(f"    puts({_c_string_literal(prefix + 'ok')});")
+                elif isinstance(symbol.type_val, QTupleType) and symbol.type_val.is_existential:
+                    val_str = self._format_existential_tuple_val(symbol.type_val)
+                    lines.append(f"    puts({_c_string_literal(prefix + val_str)});")
+                else:
+                    lines.append(self._print_value_call(prefix, c_ident, symbol.type_val))
 
             case TypedLetType(name=name, symbol=symbol):
-                if should_print_result:
+                if show:
                     kind_str = str(symbol.kind)
                     if symbol.definition is not None:
                         msg = f"Let {name}::{kind_str} = {symbol.definition}"
@@ -2460,9 +2457,8 @@ class CEmitter:
                     lines.append(f"    puts({_c_string_literal(msg)});")
 
             case TypedDefKind(name=name, symbol=symbol):
-                if should_print_result:
-                    kind_str = str(symbol.kind)
-                    msg = f"DEF {name} = {kind_str}"
+                if show:
+                    msg = f"DEF {name} = {symbol.kind}"
                     lines.append(f"    puts({_c_string_literal(msg)});")
 
             case TypedException(name=name) as exc_node:
@@ -2472,11 +2468,7 @@ class CEmitter:
                     self.emit_to(exc_node, c_ident, phrase_lines)
                     for s in phrase_lines:
                         lines.append(f"    {s}" if s.strip() else s)
-                    if self.echo:
-                        wrap = _qval_wrap(c_ident, exc_node.type_val)
-                        type_str = _c_string_literal(qtype_to_name_str(_display_type(exc_node)))
-                        lines.append(f"    quest_print_val({wrap}, {type_str});")
-                    elif should_print_result:
+                    if show:
                         lines.append(f"    puts({_c_string_literal(f'exception {name}')});")
                 else:
                     self._emit_expr_phrase(phrase, lines, is_last=is_last)
@@ -2524,9 +2516,7 @@ class CEmitter:
         self.emit_to(expr, tmp, phrase_lines)
         _append_block(lines, phrase_lines)
         if self.echo or is_last:
-            wrap = _qval_wrap(tmp, expr_type)
-            type_str = _c_string_literal(qtype_to_name_str(_display_type(expr)))
-            lines.append(f"    quest_print_val({wrap}, {type_str});")
+            lines.append(self._print_value_call("", tmp, expr_type, f" : {qtype_to_name_str(_display_type(expr))}"))
 
     def emit_val(self, expr: TypedExpr, lines: list[str]) -> str:
         """Emits any preparatory statements into lines and returns a C99 expression value."""
