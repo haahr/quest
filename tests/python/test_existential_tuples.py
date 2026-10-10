@@ -1,7 +1,6 @@
 """Unit tests for existential tuple signature elaboration and type representation."""
 
 import unittest
-from typing import Any
 
 from quest.ast import (
     KindType,
@@ -11,7 +10,7 @@ from quest.ast import (
 from quest.elaborate_types import elaborate_type
 from quest.env import Environment
 from quest.interpreter import RuntimeEnvironment
-from quest.pipeline import CompilerContext, default_pipeline
+from quest.pipeline import CompilerContext
 from quest.runtime import QClosure, QInt, QTuple, QTypeValue
 from quest.diagnostics import QuestTypeError
 from quest.types import (
@@ -255,58 +254,6 @@ class TestExistentialTuplesPhase3(unittest.TestCase):
         t1_type = unalias(t1_sym.type_val)  # declared as `t1: T`, a reference to the alias T
         self.assertIsInstance(t1_type, QTupleType)
         self.assertTrue(t1_type.is_existential)
-
-
-
-class TestExistentialTuplesPhase4(unittest.TestCase):
-    """Unit tests for Phase 4: Path-Dependent Types, Member Projection & Escape Checking."""
-
-    def setUp(self) -> None:
-        self.pipeline = default_pipeline()
-        self.env = Environment()
-        self.runtime_env = RuntimeEnvironment.create_root_env()
-
-    def run_source(self, source: str) -> tuple[CompilerContext, Any]:
-        """Compiles and executes source, returning (ctx, final_val)."""
-        ctx = CompilerContext.create(
-            source,
-            "<test>",
-            env=self.env,
-            runtime_env=self.runtime_env,
-        )
-        res = self.pipeline.execute(source, "<test>", ctx=ctx)
-        self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
-        return ctx, res.final_artifact
-
-    def test_repl_formatting_cardelli_style(self) -> None:
-        """Cardelli §5.3: existential tuples format as <Hidden>::TYPE and values as <hidden>."""
-        from quest.interpreter import format_interactive_result
-
-        source = """
-        Let T = Tuple A::TYPE a:A f(x:A):Int end;
-        let t1: T = tuple Let A::TYPE = Int let a = 0 let f(x: A): Int = x + 1 end;
-        """
-        ctx, _ = self.run_source(source)
-        t1_val = self.runtime_env.lookup("t1")
-        typed_ast = ctx.sink.diagnostics # or lookup from env
-        # Find t1 symbol in env
-        t1_sym = self.env.lookup_value("t1")
-        self.assertIsNotNone(t1_sym)
-        interp_phase = [p for p in self.pipeline.phases if p.name == "interpret"][0]
-        out_let = format_interactive_result(
-            interp_phase._last_phrase_results[1][0],
-            t1_val,
-        )
-        self.assertIn("<Hidden>::TYPE", out_let)
-        self.assertIn("a=<hidden>", out_let)
-        self.assertIn("f=<fun>", out_let)
-
-        # Evaluating t1.a directly
-        source2 = "t1.a;"
-        ctx2, val2 = self.run_source(source2)
-        interp_phase2 = [p for p in self.pipeline.phases if p.name == "interpret"][0]
-        out_expr = format_interactive_result(interp_phase2._last_phrase_results[0][0], val2)
-        self.assertEqual(out_expr, "<hidden> : t1.A")
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
 """Unit tests for Quest Module & Interface File Loader (module_loader.py).
 
 Tests:
-- Interface resolution from <name.lower()>.int.quest
-- Module resolution from <name.lower()>.mod.quest
-- Implicit current directory precedence over -I include paths
-- Case-insensitivity / case normalization in file search
-- Nested imports in construct clauses
-- Singleton module evaluation (shared mutable state across diamond imports)
+- Search of -I include paths, and the current directory's precedence over them
 - Strict validation: single definition, name matching, interface conformance
 - Circular dependency detection
+- Errors in imported units located in their own files
+
+Programs importing units beside them are golden tests in tests/source/modules: case normalization in file search
+(capitalized_unit_names), interfaces importing interfaces (interface_imports_interface), and modules shared by their
+importers (diamond_dependency).
 """
 
 import os
@@ -49,40 +49,6 @@ class TestModuleFileImports(unittest.TestCase):
         ctx = CompilerContext.create(source_text, file_name=str(file_path), options=options)
         res = self.pipeline.execute(source_text, file_name=str(file_path), options=options, ctx=ctx)
         return res, ctx
-
-    def test_case_normalization_in_search(self):
-        """Tests that interface and module names are lowercased to find .int.quest and .mod.quest."""
-        self._write_file(
-            "mymath.int.quest",
-            """
-            interface MyMath
-            export
-                add(a: Int b: Int): Int
-            end;
-            """,
-        )
-
-        self._write_file(
-            "mymath.mod.quest",
-            """
-            module MyMath : MyMath
-            export
-                let add(a: Int b: Int): Int = a + b;
-            end;
-            """,
-        )
-
-        main_quest = self._write_file(
-            "main.quest",
-            """
-            import MyMath: MyMath;
-            let ans = MyMath.add(20 22);
-            """,
-        )
-
-        res, ctx = self._run_pipeline(main_quest)
-        self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
-        self.assertEqual(ctx.runtime_env.lookup("ans"), QInt(42))
 
     def test_include_path_search(self):
         """Tests that files in -I directories are found when not in current dir."""
@@ -189,138 +155,6 @@ class TestModuleFileImports(unittest.TestCase):
         res, ctx = self._run_pipeline(main_quest, options=options)
         self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
         self.assertEqual(ctx.runtime_env.lookup("v"), QInt(999))
-
-    def test_nested_imports_in_interface_and_module_clauses(self):
-        """Tests importing an interface/module that internally imports another."""
-        self._write_file(
-            "sub.int.quest",
-            """
-            interface Sub
-            export
-                mul2(x: Int): Int
-            end;
-            """,
-        )
-        self._write_file(
-            "sub.mod.quest",
-            """
-            module sub : Sub
-            export
-                let mul2(x: Int): Int = x * 2;
-            end;
-            """,
-        )
-
-        self._write_file(
-            "comp.int.quest",
-            """
-            interface Comp
-            import : Sub
-            export
-                calc(x: Int): Int
-            end;
-            """,
-        )
-        self._write_file(
-            "comp.mod.quest",
-            """
-            module comp : Comp
-            import sub: Sub
-            export
-                let calc(x: Int): Int = sub.mul2(x) + 1;
-            end;
-            """,
-        )
-
-        main_quest = self._write_file(
-            "main.quest",
-            """
-            import comp: Comp;
-            let res = comp.calc(5);
-            """,
-        )
-
-        res, ctx = self._run_pipeline(main_quest)
-        self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
-        self.assertEqual(ctx.runtime_env.lookup("res"), QInt(11))
-
-    def test_singleton_module_shared_state(self):
-        """Tests that a module is instantiated at most once at link time (Cardelli §7.1)."""
-        self._write_file(
-            "store.int.quest",
-            """
-            interface Store
-            export
-                inc(dummy: Ok): Ok
-                get(dummy: Ok): Int
-            end;
-            """,
-        )
-        self._write_file(
-            "store.mod.quest",
-            """
-            module store : Store
-            export
-                let var count = 0;
-                let inc(dummy: Ok): Ok = begin count := count + 1; ok end;
-                let get(dummy: Ok): Int = count;
-            end;
-            """,
-        )
-
-        self._write_file(
-            "clienta.int.quest",
-            """
-            interface ClientA
-            export
-                doInc(dummy: Ok): Ok
-            end;
-            """,
-        )
-        self._write_file(
-            "clienta.mod.quest",
-            """
-            module clienta : ClientA
-            import store: Store
-            export
-                let doInc(dummy: Ok): Ok = store.inc(ok);
-            end;
-            """,
-        )
-
-        self._write_file(
-            "clientb.int.quest",
-            """
-            interface ClientB
-            export
-                readVal(dummy: Ok): Int
-            end;
-            """,
-        )
-        self._write_file(
-            "clientb.mod.quest",
-            """
-            module clientb : ClientB
-            import store: Store
-            export
-                let readVal(dummy: Ok): Int = store.get(ok);
-            end;
-            """,
-        )
-
-        main_quest = self._write_file(
-            "main.quest",
-            """
-            import clienta: ClientA clientb: ClientB;
-            clienta.doInc(ok);
-            clienta.doInc(ok);
-            let finalCount = clientb.readVal(ok);
-            """,
-        )
-
-        res, ctx = self._run_pipeline(main_quest)
-        self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
-        self.assertEqual(ctx.runtime_env.lookup("finalCount"), QInt(2))
 
     def test_missing_interface_file_raises_error(self):
         """Tests that referencing a nonexistent interface raises QuestTypeError."""
