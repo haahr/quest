@@ -25,6 +25,7 @@ from quest.typed_ast import (
     TypedSelect,
     TypedTypeApp,
     TypedVar,
+    binding_members,
 )
 from quest.codegen.c_types import (
     RecordNamingContext,
@@ -720,10 +721,11 @@ def analyze_program_for_c(
     top_funs: list[tuple[str, TypedFun, Any]] = []
     top_vars: list[tuple[str, TypedExpr, Any]] = []
 
-    for phrase in prog.phrases:
+    # The members of a group of mutually recursive declarations are top-level declarations of their own
+    for phrase in (member for phrase in prog.phrases for member in binding_members(phrase)):
         match phrase:
             case TypedModule() as mod:
-                for b in mod.bindings:
+                for b in (member for b in mod.bindings for member in binding_members(b)):
                     match b:
                         case TypedLetValue(name=name, value=val, symbol=symbol):
                             if isinstance(val, TypedFun):
@@ -755,7 +757,7 @@ def analyze_program_for_c(
     fun_origin_module: dict[str, str] = {}
     for mod in sorted_modules:
         clean_mod = mangle_module_name(mod.name)
-        for b in mod.bindings:
+        for b in (member for b in mod.bindings for member in binding_members(b)):
             if isinstance(b, TypedLetValue) and isinstance(b.value, TypedFun):
                 module_funs_dict[f"{mod.name}.{b.name}"] = (b.value, b.symbol)
                 module_funs_dict[f"{clean_mod}.{b.name}"] = (b.value, b.symbol)
@@ -873,7 +875,7 @@ def analyze_program_for_c(
     # 5. Closures
     top_fun_objs = {id(f) for _, f, _ in top_funs}
     for mod in sorted_modules:
-        for b in mod.bindings:
+        for b in (member for b in mod.bindings for member in binding_members(b)):
             if isinstance(b, TypedLetValue) and isinstance(b.value, TypedFun):
                 top_fun_objs.add(id(b.value))
     agnostic_lambdas = analyze_closures(prog, top_fun_objs, top_names)

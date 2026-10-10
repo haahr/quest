@@ -14,6 +14,7 @@ from quest.typed_ast import (
     TypedFun,
     TypedInspect,
     TypedLetValue,
+    TypedLetValueGroup,
     TypedModule,
     TypedTry,
     TypedVar,
@@ -61,6 +62,11 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
             case TypedLetValue(name=name, value=v):
                 walk(v, bound)
                 bound.add(name)
+            case TypedLetValueGroup(members=members):
+                # As with a single let rec, a member's references to the group are captured
+                for member in members:
+                    walk(member.value, bound)
+                bound.update(member.name for member in members)
             case TypedException(name=name):
                 # An exception expression declares its name in the enclosing scope.
                 if name:
@@ -76,6 +82,10 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
                         case TypedLetValue(name=name, value=v):
                             walk(v, b_bound)
                             b_bound.add(name)
+                        case TypedLetValueGroup(members=members):
+                            for member in members:
+                                walk(member.value, b_bound)
+                            b_bound.update(member.name for member in members)
                         case TypedExprStmt(expr=e):
                             walk(e, b_bound)
                         case _:

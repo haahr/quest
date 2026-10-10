@@ -363,6 +363,10 @@ Inner `TypedFun` expressions undergo free variable analysis (`_find_free_vars`):
      _clos->fn = (void *)qv_lambda_1;
      _clos->env = (void *)_env;
      ```
+   - A local recursive function (`let rec f ...`, or the members of `let rec f ... and g ...`) captures its own
+     variable and those of the other members, which hold no value yet when its closure is built. Every member's
+     variable is declared first, and those captures are copied into the environments only after every member has
+     been assigned (`_emit_rec_bindings`).
 2. **Non-Capturing Lambdas:**
    - Lifted to file scope with `(void)_raw_env;`.
    - Emits a static singleton closure `static QClosure qv_<lid>_closure = { (void *)qv_<lid>, NULL };` and passes

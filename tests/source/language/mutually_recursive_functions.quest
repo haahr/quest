@@ -1,0 +1,79 @@
+(* Language: mutually recursive functions with 'let rec ... and ...' *)
+
+import writer: Writer;
+import conv: Conv;
+import arrayOp: ArrayOp;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+let printBool(b: Bool): Ok = printInt(if b then 1 else 0 end);
+
+(* 1. At the top level *)
+let rec even(n: Int): Bool = if n is 0 then true else odd(n - 1) end
+and odd(n: Int): Bool = if n is 0 then false else even(n - 1) end;
+printBool(even(10));
+printBool(odd(7));
+
+(* 2. Local to a function, capturing a parameter *)
+let countDown(k: Int): Int =
+    begin
+        let rec down(n: Int): Int = if n <= 0 then k else up(n - 1) + 1 end
+        and up(n: Int): Int = if n <= 0 then k else down(n - 1) + 10 end;
+        down(4)
+    end;
+printInt(countDown(100));
+
+(* 3. A single local let rec capturing a variable *)
+let total(k: Int): Int =
+    begin
+        let rec sum(n: Int): Int = if n <= 0 then k else n + sum(n - 1) end;
+        sum(4)
+    end;
+printInt(total(1000));
+
+(* 4. Closures that escape their block keep referring to each other *)
+let pair =
+    begin
+        let base = 5;
+        let rec f(n: Int): Int = if n <= 0 then base else g(n - 1) * 2 end
+        and g(n: Int): Int = if n <= 0 then base else f(n - 1) + 1 end;
+        tuple let f = f let g = g end
+    end;
+printInt(pair.f(3));
+printInt(pair.g(3));
+
+(* 5. Three members *)
+let rec r0(n: Int): Int = if n is 0 then 0 else r1(n - 1) end
+and r1(n: Int): Int = if n is 0 then 1 else r2(n - 1) end
+and r2(n: Int): Int = if n is 0 then 2 else r0(n - 1) end;
+printInt(r0(7));
+
+(* 6. Over mutually recursive types *)
+Let Rec Forest = Record trees: Array(Tree) end
+and Tree = Variant leaf: Int node: Forest end;
+let rec sumTree(t: Tree): Int =
+    case t
+        when leaf with n then n
+        when node with f then sumForest(f)
+        else 0
+    end
+and sumForest(f: Forest): Int =
+    begin
+        let var s = 0;
+        for i = 0 upto arrayOp.size(:Tree f.trees) - 1 do
+            s := s + sumTree(f.trees[i])
+        end;
+        s
+    end;
+let leaf(n: Int): Tree = variant leaf of Tree with n end;
+let node(f: Forest): Tree = variant node of Tree with f end;
+printInt(sumForest(record trees = array of leaf(1) node(record trees = array of leaf(2) leaf(3) end end) end end));
+
+(* 7. Polymorphic members *)
+let rec ping(A::TYPE x: A n: Int): A = if n <= 0 then x else pong(:A x n - 1) end
+and pong(A::TYPE x: A n: Int): A = if n <= 0 then x else ping(:A x n - 1) end;
+printInt(ping(:Int 42 5));

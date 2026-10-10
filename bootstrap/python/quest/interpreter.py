@@ -111,6 +111,7 @@ from quest.typed_ast import (
     TypedInt,
     TypedLetType,
     TypedLetTypeGroup,
+    TypedLetValueGroup,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -1097,6 +1098,12 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                 env.define(name, val)
             return val
 
+        case TypedLetValueGroup(members=members):
+            # Each member's closure captures env, where the others are defined before any is called; the result
+            # holds the members' values, for echo
+            values = tuple(eval_binding(member, env) for member in members)
+            return QTuple(values, tuple(member.name for member in members))
+
         case TypedLetType() | TypedLetTypeGroup() | TypedDefKind() | TypedInterface():
             # Types, kinds, and interface declarations are erased at runtime
             return OK_VALUE
@@ -1312,6 +1319,12 @@ def format_interactive_result(
 
         case TypedLetTypeGroup(members=members):
             return "\n".join(format_interactive_result(member, val) for member in members)
+
+        case TypedLetValueGroup(members=members):
+            assert isinstance(val, QTuple)
+            return "\n".join(
+                format_interactive_result(member, member_val) for member, member_val in zip(members, val.elements)
+            )
 
         case TypedDefKind(name=name, symbol=symbol):
             kind_str = str(symbol.kind)

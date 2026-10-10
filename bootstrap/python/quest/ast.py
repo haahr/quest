@@ -571,6 +571,16 @@ class LetValueBinding(BindingNode):
 
 
 @dataclass(frozen=True)
+class LetValueBindingGroup(BindingNode):
+    """let [rec] x = ... and y = ...: two or more simultaneous value bindings.
+
+    The members share the keyword's rec (their is_rec); the group is positioned at the keyword and each member at
+    its name.
+    """
+    bindings: tuple[LetValueBinding, ...]
+
+
+@dataclass(frozen=True)
 class TypeBinding(BindingNode):
     """Let [Rec] T(X::K)::K' = Type, or Def [Rec] T = Type (is_def, e.g. in an interface signature)."""
     name: str

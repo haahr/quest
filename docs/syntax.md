@@ -196,6 +196,8 @@ class `ASTNode(offset: int)`:
 ASTNode
   ├── Phrase                  (Top-level statements & declarations)
   │     ├── LetValueBinding   (let [var] [rec] x [: T] = e)
+  │     ├── LetValueBindingGroup (let [rec] x = e and y = e' ...: two or more LetValueBindings sharing rec;
+  │     │                      the typechecker supports them only with rec, as mutually recursive declarations)
   │     ├── TypeBinding       (Let [Rec] T [:: K] = Type, or Def [Rec] ... with is_def)
   │     ├── TypeBindingGroup  (Let [Rec] T = Type and U = Type ...: two or more TypeBindings sharing Rec and Def,
   │     │                      declared simultaneously; with Rec, mutually recursive)

@@ -511,6 +511,10 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   {\Gamma \vdash \text{let rec } f(S): \text{Ret} = b}$$
   Without an explicit return type annotation, $f$'s signature cannot be formed prior to checking the body.
   Omitting return types or parameter types on recursive definitions triggers a compilation error.
+- **Mutually Recursive Bindings:** `let rec f(S): Ret = b and g(S'): Ret' = b' ...` introduces every member into
+  $\Gamma$, with the type its annotations give, before any body is checked, so each body can call every member. The
+  members follow the rules above, and a name may not be declared twice. Value declarations joined by `and` without
+  `rec` are not supported yet, nor are recursive value declarations inside tuples.
 - **Recursive Value Bindings:**
   Any recursive value binding without parameters (`let rec x: T = e`) similarly requires an explicit type
   annotation, and its right-hand side entity must syntactically be a constructor or abstraction (Cardelli,

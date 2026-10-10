@@ -82,6 +82,7 @@ from quest.typed_ast import (
     TypedInt,
     TypedLetType,
     TypedLetTypeGroup,
+    TypedLetValueGroup,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -110,6 +111,7 @@ from quest.typed_ast import (
     TypedVariantAssert,
     TypedVariantCheck,
     TypedWhile,
+    binding_members,
 )
 from quest.types import (
     QKind,
@@ -176,6 +178,11 @@ def _append_block(lines: list[str], block: list[str], indent: int = 4) -> None:
     pad = " " * indent
     for line in block:
         lines.append(f"{pad}{line}" if line.strip() else line)
+
+
+def _flat_bindings(bindings: Sequence[Any]) -> list[Any]:
+    """bindings with each group of mutually recursive value declarations replaced by its members."""
+    return [member for b in bindings for member in binding_members(b)]
 
 
 def _strip_typed_aliases(node: Any, memo: dict[int, Any]) -> Any:
@@ -272,6 +279,10 @@ class CEmitter:
         self.lambda_info_by_id: dict[int, LambdaInfo] = {}
         self.lifted_lambdas: list[LambdaInfo] = []
         self.current_env_vars: dict[str, str] = {}
+        # Local recursive declarations being emitted (_emit_rec_bindings): the names whose captures each of their
+        # closures defers, by id of its function, and the deferred captures, as (environment, name)
+        self.rec_fun_names: dict[int, frozenset[str]] = {}
+        self.deferred_captures: list[tuple[str, str]] = []
         self.record_ctx = RecordNamingContext()
         self.needed_dicts: list[tuple[QRecordType, QRecordType]] = []
         self.tuple_coercions: list[tuple[QTupleType, QTupleType]] = []
@@ -986,6 +997,29 @@ class CEmitter:
         lines.append(f"{clos_tmp}->fn = (void *)({adapt_fn_name});")
         lines.append(f"{clos_tmp}->env = (void *)({env_tmp});")
         return clos_tmp
+
+    def _emit_rec_bindings(self, members: Sequence[TypedLetValue], lines: list[str]) -> None:
+        """Emits local recursive declarations: a let rec, or a group of mutually recursive ones.
+
+        Every variable is declared first. A closure that captures one of the declarations' variables cannot copy it
+        when the closure is built, since the variable may not hold its value yet, so the copy is deferred until every
+        variable has been assigned.
+        """
+        names = frozenset(member.name for member in members)
+        for member in members:
+            lines.append(f"{self.c_type(member.symbol.type_val)} {mangle_ident(member.name)};")
+            if isinstance(member.value, TypedFun):
+                self.rec_fun_names[id(member.value)] = names
+        saved_deferred = self.deferred_captures
+        self.deferred_captures = []
+        for member in members:
+            self._declare_local_exceptions(member.value, lines)
+            val_c = self.emit_val(member.value, lines)
+            self._coerce_val(val_c, member.value, member.symbol.type_val, lines, dest=mangle_ident(member.name))
+        for env_tmp, vname in self.deferred_captures:
+            src_val = self.current_env_vars.get(vname, mangle_ident(vname))
+            lines.append(f"{env_tmp}->{mangle_ident(vname)} = {src_val};")
+        self.deferred_captures = saved_deferred
 
     def _emit_closure_alloc(
         self,
@@ -1723,7 +1757,7 @@ class CEmitter:
                     if orig_mod_name in all_module_map:
                         orig_mod = all_module_map[orig_mod_name]
                         clean_mod = mangle_module_name(orig_mod.name)
-                        for b in orig_mod.bindings:
+                        for b in _flat_bindings(orig_mod.bindings):
                             match b:
                                 case TypedLetValue(name=b_name, value=b_val):
                                     for exc in named_exceptions_in(b_val):
@@ -1907,7 +1941,7 @@ class CEmitter:
         mod_native_vals: list[TypedNativeBinding] = []
         mod_imported_mods: list[str] = []
         mod_imported_env: dict[str, str] = {}
-        for b in mod.bindings:
+        for b in _flat_bindings(mod.bindings):
             match b:
                 case TypedLetValue(name=b_name, value=b_val, symbol=b_sym):
                     if isinstance(b_val, TypedFun):
@@ -2320,7 +2354,7 @@ class CEmitter:
                         mod_emitter.current_env_vars[mpath] = (
                             module_record_ident(mangle_module_name(mod_ref))
                         )
-        for b in mod.bindings:
+        for b in _flat_bindings(mod.bindings):
             match b:
                 case TypedLetValue(name=vname, value=vval, symbol=vsym):
                     if any(vname == mv[0] for mv in mod_vars):
@@ -2370,7 +2404,7 @@ class CEmitter:
                 lines.append(f"    {payload_var}->qf_{fld.name} = {val_str};")
             else:
                 m_ident = mangle_module_ident(clean_mod, fld.name)
-                val_b = next((b for b in mod.bindings if getattr(b, "name", None) == fld.name), None)
+                val_b = next((b for b in _flat_bindings(mod.bindings) if getattr(b, "name", None) == fld.name), None)
                 val_t = getattr(getattr(val_b, "symbol", None), "type_val", None)
                 if val_t is None:
                     val_t = getattr(val_b, "type_val", None)
@@ -2463,7 +2497,7 @@ class CEmitter:
                         msg = f"Let {name}::{kind_str}"
                     lines.append(f"    puts({_c_string_literal(msg)});")
 
-            case TypedLetTypeGroup(members=members):
+            case TypedLetTypeGroup(members=members) | TypedLetValueGroup(members=members):
                 for member in members:
                     self._emit_phrase(member, lines, is_last=is_last)
 
@@ -2826,7 +2860,7 @@ class CEmitter:
                         mod = self.all_modules[mod_name]
                         clean_mod = mangle_module_name(mod_name)
                         binding = next(
-                            (b for b in mod.bindings if getattr(b, "name", None) == fld),
+                            (b for b in _flat_bindings(mod.bindings) if getattr(b, "name", None) == fld),
                             None,
                         )
                         if isinstance(binding, TypedNativeBinding):
@@ -3035,6 +3069,10 @@ class CEmitter:
                 saved_env = dict(self.current_env_vars)
                 for b in bindings:
                     match b:
+                        case TypedLetValueGroup(members=members):
+                            self._emit_rec_bindings(members, block_lines)
+                        case TypedLetValue(is_rec=True, value=TypedFun()):
+                            self._emit_rec_bindings((b,), block_lines)
                         case TypedLetValue(name=name, value=val, symbol=symbol):
                             self._declare_local_exceptions(val, block_lines)
                             c_ident = mangle_ident(name)
@@ -3150,7 +3188,11 @@ class CEmitter:
                         f"{linfo.env_struct_name} *{env_tmp} = "
                         f"({linfo.env_struct_name} *)quest_alloc(sizeof({linfo.env_struct_name}));"
                     )
+                    deferred = self.rec_fun_names.get(id(expr), frozenset())
                     for vname, _ in linfo.free_vars:
+                        if vname in deferred:
+                            self.deferred_captures.append((env_tmp, vname))
+                            continue
                         src_val = (
                             self.current_env_vars[vname]
                             if vname in self.current_env_vars

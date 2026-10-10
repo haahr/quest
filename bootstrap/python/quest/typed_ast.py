@@ -789,6 +789,23 @@ class TypedLetValue(TypedBinding):
 
 
 @dataclass(frozen=True)
+class TypedLetValueGroup(TypedBinding):
+    """Mutually recursive value declarations: let rec x = expr and y = expr ..."""
+    members: tuple[TypedLetValue, ...]
+
+    def dump_header(self) -> str:
+        return " ".join(f"'{member.name}'" for member in self.members)
+
+    def dump_children(self) -> list[tuple[str, Any]]:
+        return [(":members", self.members)]
+
+
+def binding_members(binding: Any) -> tuple[Any, ...]:
+    """The bindings a binding declares: the members of a group of value declarations, or the binding itself."""
+    return binding.members if isinstance(binding, TypedLetValueGroup) else (binding,)
+
+
+@dataclass(frozen=True)
 class TypedNativeBinding(TypedBinding):
     """Module binding implemented natively in C."""
     name: str

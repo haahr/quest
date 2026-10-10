@@ -145,6 +145,9 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
         match item:
             case ast.TypeBinding() | ast.TypeBindingGroup():
                 result.append(item)
+            case ast.LetValueBinding(is_rec=True) | ast.LetValueBindingGroup():
+                # Rejected by the typechecker: tuples do not support recursive or simultaneous value declarations
+                result.append(item)
             case ast.LetValueBinding(params=params) if params:
                 fn_expr = ast.ExprFun(
                     params=params,
@@ -362,6 +365,21 @@ def _build_type_binding(
         return dataclasses.replace(decls[0], is_rec=is_rec, is_def=is_def, offset=keyword_token.offset)
     members = tuple(dataclasses.replace(decl, is_rec=is_rec, is_def=is_def) for decl in decls)
     return ast.TypeBindingGroup(bindings=members, offset=keyword_token.offset)
+
+
+def _build_value_binding(
+    let_token: Token, rec_token: Optional[Token], decls: tuple[ast.LetValueBinding, ...]
+) -> ast.LetValueBinding | ast.LetValueBindingGroup:
+    """A `let [rec] ValueDecl {and ValueDecl}` phrase.
+
+    One declaration is a LetValueBinding positioned at its keyword; two or more are a LetValueBindingGroup positioned
+    at the keyword, whose members share its rec and keep their own positions.
+    """
+    is_rec = bool(rec_token)
+    if len(decls) == 1:
+        return dataclasses.replace(decls[0], is_rec=is_rec, offset=let_token.offset)
+    members = tuple(dataclasses.replace(decl, is_rec=is_rec) for decl in decls)
+    return ast.LetValueBindingGroup(bindings=members, offset=let_token.offset)
 
 
 # --- case / inspect / try branches ---
@@ -1193,12 +1211,10 @@ def build_quest_grammar() -> None:
             let_token, rec_token, type_declarations, is_def=False
         ),
     )
-    # let [rec] ValueDecl
+    # let [rec] ValueDecl {and ValueDecl}
     PHRASE.add_rule(
-        (T(TK.KW_LET), Opt(T(TK.KW_REC)), VALUE_DECL),
-        lambda let_token, rec_token, val_declaration: dataclasses.replace(
-            val_declaration, is_rec=bool(rec_token), offset=let_token.offset
-        ),
+        (T(TK.KW_LET), Opt(T(TK.KW_REC)), SepBy(VALUE_DECL, P(TK.KW_AND))),
+        _build_value_binding,
     )
     # var ValueDecl (allows 'var x = 0' inside tuples, blocks, or module phrases)
     PHRASE.add_rule(

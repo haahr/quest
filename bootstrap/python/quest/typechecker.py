@@ -128,6 +128,7 @@ from quest.typed_ast import (
     TypedInt,
     TypedLetType,
     TypedLetTypeGroup,
+    TypedLetValueGroup,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -339,6 +340,23 @@ def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
             result = dataclasses.replace(node, **changes)
     memo[key] = result
     return result
+
+
+def _simultaneous_values_message(group: ast.LetValueBindingGroup) -> str:
+    names = ", ".join(f"'{member.name}'" for member in group.bindings)
+    return (
+        f"Simultaneous value declarations with 'and' ({names}) are not supported yet; "
+        f"use 'let rec' for mutually recursive ones, or separate declarations"
+    )
+
+
+def _reject_value_declarations_in_tuple(fields: Any) -> None:
+    """Rejects recursive and simultaneous value declarations among the components of a tuple."""
+    for f in fields:
+        if isinstance(f, ast.LetValueBindingGroup) and not f.bindings[0].is_rec:
+            raise TypeError(_simultaneous_values_message(f), offset=f.offset)
+        if isinstance(f, (ast.LetValueBinding, ast.LetValueBindingGroup)):
+            raise TypeError("Recursive value declarations are not supported in tuples", offset=f.offset)
 
 
 class TypeElaborator:
@@ -1556,6 +1574,7 @@ class TypeElaborator:
 
     def _synth_tuple_expr(self, expr: ast.ExprTuple, env: Environment, loop_depth: int) -> TypedTuple:
         """Synthesizes a tuple constructor: tuple ... end."""
+        _reject_value_declarations_in_tuple(expr.fields)
         with env.scoped("tuple_synth"):
             elem_typeds: list[TypedExpr] = []
             q_fields: list[QTupleComponent] = []
@@ -1630,6 +1649,7 @@ class TypeElaborator:
         if not isinstance(expected_lazy, QTupleType):
             return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
 
+        _reject_value_declarations_in_tuple(expr.fields)
         # Each member of a group is a component of its own
         fields: list[ast.BindingNode] = []
         groups: dict[int, tuple[ast.TypeBinding, ...]] = {}
@@ -3133,6 +3153,99 @@ class TypeElaborator:
             )
 
 
+    def _declare_rec_value(self, binding: ast.LetValueBinding, env: Environment) -> ValueSymbol:
+        """Declares the symbol of a recursive value declaration (let rec), typed by its annotations, before its value
+        is checked, so that the value (and the other members of its group) can refer to it."""
+        if binding.params:
+            if binding.type_annot is None:
+                raise TypeError(
+                    f"Recursive function '{binding.name}' requires an explicit return type annotation",
+                    offset=binding.offset,
+                )
+            for p in binding.params:
+                if p.type_annot is None:
+                    raise TypeError(
+                        f"Parameter '{p.name}' in recursive function '{binding.name}' "
+                        f"requires an explicit type annotation",
+                        offset=p.offset,
+                    )
+            q_params = tuple(
+                QParam(
+                    name=p.name,
+                    type_val=elaborate_type(p.type_annot, env),
+                    is_var=(p.mode == ast.ParamMode.VAR),
+                    is_out=(p.mode == ast.ParamMode.OUT),
+                )
+                for p in binding.params
+            )
+            rec_fn_type = QFunType(params=q_params, result_type=elaborate_type(binding.type_annot, env))
+            sym = ValueSymbol(name=binding.name, type_val=rec_fn_type, function_depth=self.function_depth)
+        else:
+            if binding.type_annot is None:
+                raise TypeError(
+                    f"Recursive definition '{binding.name}' requires an explicit type annotation",
+                    offset=binding.offset,
+                )
+            sym = ValueSymbol(
+                name=binding.name,
+                type_val=elaborate_type(binding.type_annot, env),
+                is_var=binding.is_var,
+                function_depth=self.function_depth,
+            )
+        return env.current_scope.declare_value(sym)
+
+    def _check_rec_value(
+        self,
+        binding: ast.LetValueBinding,
+        sym: ValueSymbol,
+        env: Environment,
+        loop_depth: int,
+    ) -> TypedLetValue:
+        """Checks the value of a recursive value declaration against the type its symbol was declared with."""
+        if binding.params:
+            fn_expr = ast.ExprFun(
+                params=binding.params,
+                return_type=binding.type_annot,
+                body=binding.value,
+                offset=binding.offset,
+            )
+            typed_val = self.check_expr(fn_expr, sym.type_val, env, loop_depth=0)
+        else:
+            typed_val = self.check_expr(binding.value, sym.type_val, env, loop_depth)
+        return TypedLetValue(
+            name=binding.name,
+            value=typed_val,
+            symbol=sym,
+            is_rec=True,
+            offset=binding.offset,
+        )
+
+    def _elaborate_value_group(
+        self,
+        group: ast.LetValueBindingGroup,
+        env: Environment,
+        loop_depth: int,
+    ) -> TypedLetValueGroup:
+        """Elaborates mutually recursive value declarations: let rec x = ... and y = .... Every member is declared
+        before any value is checked."""
+        if not group.bindings[0].is_rec:
+            raise TypeError(_simultaneous_values_message(group), offset=group.offset)
+        seen: set[str] = set()
+        for member in group.bindings:
+            if member.name in seen:
+                raise TypeError(
+                    f"'{member.name}' is declared more than once in one simultaneous declaration",
+                    offset=member.offset,
+                )
+            seen.add(member.name)
+        syms = [self._declare_rec_value(member, env) for member in group.bindings]
+        return TypedLetValueGroup(
+            members=tuple(
+                self._check_rec_value(member, sym, env, loop_depth) for member, sym in zip(group.bindings, syms)
+            ),
+            offset=group.offset,
+        )
+
     def _elaborate_binding(self, binding: ast.BindingNode, env: Environment, loop_depth: int) -> TypedBinding:
         """Elaborates a single binding or statement inside a block or module."""
         match binding:
@@ -3210,48 +3323,8 @@ class TypeElaborator:
                     offset=binding.offset,
                 )
                 if is_rec:
-                    if binding.type_annot is None:
-                        raise TypeError(
-                            f"Recursive function '{binding.name}' requires an explicit return type annotation",
-                            offset=binding.offset,
-                        )
-                    for p in params:
-                        if p.type_annot is None:
-                            raise TypeError(
-                                f"Parameter '{p.name}' in recursive function '{binding.name}' "
-                                f"requires an explicit type annotation",
-                                offset=p.offset,
-                            )
-                    param_types = tuple(
-                        elaborate_type(p.type_annot, env)
-                        for p in params
-                    )
-                    ret_type = elaborate_type(binding.type_annot, env)
-                    q_params = tuple(
-                        QParam(
-                            name=p.name,
-                            type_val=param_types[i],
-                            is_var=(p.mode == ast.ParamMode.VAR),
-                            is_out=(p.mode == ast.ParamMode.OUT),
-                        )
-                        for i, p in enumerate(params)
-                    )
-                    rec_fn_type = QFunType(params=q_params, result_type=ret_type)
-                    rec_sym = ValueSymbol(
-                        name=binding.name,
-                        type_val=rec_fn_type,
-                        function_depth=self.function_depth,
-                    )
-                    env.current_scope.declare_value(rec_sym)
-
-                    typed_val = self.check_expr(fn_expr, rec_fn_type, env, loop_depth=0)
-                    return TypedLetValue(
-                        name=binding.name,
-                        value=typed_val,
-                        symbol=rec_sym,
-                        is_rec=True,
-                        offset=binding.offset,
-                    )
+                    rec_sym = self._declare_rec_value(binding, env)
+                    return self._check_rec_value(binding, rec_sym, env, loop_depth)
                 else:
                     typed_val = self.synth_expr(fn_expr, env, loop_depth)
                     val_type = typed_val.type_val
@@ -3272,27 +3345,11 @@ class TypeElaborator:
                     )
 
             case ast.LetValueBinding(is_rec=True):
-                if binding.type_annot is None:
-                    raise TypeError(
-                        f"Recursive definition '{binding.name}' requires an explicit type annotation",
-                        offset=binding.offset,
-                    )
-                expected = elaborate_type(binding.type_annot, env)
-                sym = ValueSymbol(
-                    name=binding.name,
-                    type_val=expected,
-                    is_var=binding.is_var,
-                    function_depth=self.function_depth,
-                )
-                env.current_scope.declare_value(sym)
-                typed_val = self.check_expr(binding.value, expected, env, loop_depth)
-                return TypedLetValue(
-                    name=binding.name,
-                    value=typed_val,
-                    symbol=sym,
-                    is_rec=True,
-                    offset=binding.offset,
-                )
+                rec_sym = self._declare_rec_value(binding, env)
+                return self._check_rec_value(binding, rec_sym, env, loop_depth)
+
+            case ast.LetValueBindingGroup():
+                return self._elaborate_value_group(binding, env, loop_depth)
 
             case ast.LetValueBinding():
                 if binding.type_annot is not None:
