@@ -97,6 +97,50 @@ end;
             self.assertIn("Shape", scope.types)
             self.assertIsNone(scope.types["Shape"].definition)
 
+    def test_mutually_recursive_types_round_trip(self) -> None:
+        from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
+        from quest.elaborate_types import elaborate_type_binding_group
+        from quest.types import QAliasType, QRecGroupType, is_type_equal
+        from tests.python.helpers import parse_phrase
+
+        group_src = "Def Rec Wood = Record trees: Array(Tree) end and Tree = Variant leaf: Int node: Wood end"
+        src = f"""
+interface Forests
+export
+    {group_src}
+    Def Pair = Tuple w: Wood t: Tree end
+    node(trees: Array(Tree)): Tree
+end;
+"""
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "forests.int.quest"
+            p.write_text(src, encoding="utf-8")
+            _, qi_path = compile_interface_file(p)
+            qi_text = qi_path.read_text(encoding="utf-8")
+            # Members record their bodies and a shared group number
+            self.assertIn('"group":1', qi_text)
+            self.assertIn('"manifestType":"Record trees: Array(Tree) end"', qi_text)
+
+            env = Environment()
+            scope = load_interface_from_qi_file(qi_path, env)
+            wood, tree = scope.types["Wood"], scope.types["Tree"]
+            self.assertIsInstance(wood.definition, QRecGroupType)
+            self.assertIsInstance(tree.definition, QRecGroupType)
+            self.assertIs(wood.definition.bindings, tree.definition.bindings)
+            self.assertEqual([b[1] for b in wood.definition.bindings], [wood.symbol_id, tree.symbol_id])
+
+            # The loaded types are the types elaborated from source, with the same C representation
+            source_env = Environment()
+            source_wood, source_tree = elaborate_type_binding_group(parse_phrase(group_src + ";"), source_env)
+            self.assertTrue(is_type_equal(wood.definition, source_wood.definition))
+            self.assertTrue(is_type_equal(tree.definition, source_tree.definition))
+            self.assertEqual(type_to_c_tag(wood.definition), type_to_c_tag(source_wood.definition))
+            param_type = scope.values["node"].type_val.params[0].type_val
+            self.assertEqual(qtype_to_c_type(param_type), "QArrayWideVariant *")
+            pair_fields = scope.types["Pair"].definition.fields
+            self.assertIsInstance(pair_fields[1].type_val, QAliasType)
+            self.assertIs(pair_fields[1].type_val.target, tree.definition)
+
     def test_compile_interface_inheritance(self) -> None:
         c_src = """
 interface BaseCounter

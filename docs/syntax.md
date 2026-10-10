@@ -198,7 +198,7 @@ ASTNode
   │     ├── LetValueBinding   (let [var] [rec] x [: T] = e)
   │     ├── TypeBinding       (Let [Rec] T [:: K] = Type, or Def [Rec] ... with is_def)
   │     ├── TypeBindingGroup  (Let [Rec] T = Type and U = Type ...: two or more TypeBindings sharing Rec and Def,
-  │     │                      declared simultaneously; with Rec, mutually recursive. Rejected in interfaces)
+  │     │                      declared simultaneously; with Rec, mutually recursive)
   │     ├── DefKindBinding    (DEF K = Kind)
   │     ├── InterfaceDecl     (interface I [import ...] export ... end)
   │     ├── ModuleDecl        (module M : I [import ...] export ... end)

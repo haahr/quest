@@ -88,7 +88,7 @@ QI_SCHEMA_TYPE_STR = (
     "name: String "
     "producer: String "
     "source: String "
-    "types: Array(Record isManifest: Bool kind: String manifestType: String name: String end) "
+    "types: Array(Record group: Int isManifest: Bool kind: String manifestType: String name: String end) "
     "values: Array(Record isPoly: Bool name: String typeSig: String end) "
     "end"
 )
@@ -294,6 +294,26 @@ def _parse_and_elaborate_type_in_env(type_str: str, env: Environment) -> QType:
     return elaborate_type(ast_t, env)
 
 
+def _type_signatures(
+    decl: ast.InterfaceDecl,
+) -> list[tuple[ast.TypeFormal | ast.TypeBinding | ast.FieldSig | ast.DefKindBinding, int]]:
+    """The signatures of an interface with each simultaneous type declaration replaced by its members, paired with
+    the number of the recursive group each belongs to (counting from 1), or 0 if it is not in one. The members of a
+    group without Rec are independent declarations once elaborated."""
+    result: list[tuple[Any, int]] = []
+    groups = 0
+    for sig in decl.signatures:
+        if isinstance(sig, ast.TypeBindingGroup):
+            if sig.bindings[0].is_rec:
+                groups += 1
+                result.extend((member, groups) for member in sig.bindings)
+            else:
+                result.extend((member, 0) for member in sig.bindings)
+        else:
+            result.append((sig, 0))
+    return result
+
+
 def compile_interface_to_qi(
     decl: ast.InterfaceDecl,
     iface_scope: Scope,
@@ -322,13 +342,15 @@ def compile_interface_to_qi(
     type_records: list[QRecord] = []
     value_records: list[QRecord] = []
 
-    # Collect types
-    for sig in decl.signatures:
+    # Collect types. A member of a recursive group records its body, with the other members as their names, and
+    # the group's number; the loader rebuilds the group from its members' records.
+    for sig, group in _type_signatures(decl):
         if isinstance(sig, ast.TypeFormal):
             kind_str = format_kind_for_qi(sig.bound)
             type_records.append(
                 QRecord(
                     {
+                        "group": QInt(0),
                         "name": QString(sig.name),
                         "kind": QString(kind_str),
                         "isManifest": FALSE_VALUE,
@@ -339,6 +361,8 @@ def compile_interface_to_qi(
         elif isinstance(sig, ast.TypeBinding):
             type_sym = iface_scope.lookup_type_local(sig.name)
             concrete_t = type_sym.definition if type_sym and type_sym.definition else None
+            if group and isinstance(concrete_t, QRecGroupType):
+                concrete_t = concrete_t.bindings[concrete_t.active_index][3]
             m_type_str = (
                 format_type_for_qi(concrete_t)
                 if concrete_t
@@ -348,6 +372,7 @@ def compile_interface_to_qi(
             type_records.append(
                 QRecord(
                     {
+                        "group": QInt(group),
                         "name": QString(sig.name),
                         "kind": QString(kind_str),
                         "isManifest": TRUE_VALUE,
@@ -450,7 +475,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
     # Abstract types (erased to QVal in C)
     lines.append("/* --- Type Declarations --- */")
     has_types = False
-    for sig in decl.signatures:
+    for sig, _ in _type_signatures(decl):
         if isinstance(sig, ast.TypeFormal):
             has_types = True
             kind_desc = (
@@ -825,7 +850,7 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
     env.current_scope = iface_scope
     try:
         if "types" in rec.fields and isinstance(rec.fields["types"], QArray):
-            type_records_list: list[tuple[str, bool, str, str, TypeSymbol]] = []
+            type_records_list: list[tuple[str, bool, str, str, TypeSymbol, int]] = []
             # Pass 1: Declare all type symbols with fresh IDs and bound kinds so they are visible in iface_scope
             for t_item in rec.fields["types"].elements:
                 if isinstance(t_item, QRecord):
@@ -837,6 +862,7 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                     )
                     kind_str = str(t_item.fields["kind"].value)
                     manifest_str = str(t_item.fields["manifestType"].value)
+                    group = t_item.fields["group"].value if "group" in t_item.fields else 0
 
                     bound_kind: QKind = TYPE_KIND
                     if kind_str and kind_str != "TYPE":
@@ -850,11 +876,26 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                         definition=None,
                     )
                     iface_scope.declare_type(type_sym)
-                    type_records_list.append((t_name, is_manifest, kind_str, manifest_str, type_sym))
+                    type_records_list.append((t_name, is_manifest, kind_str, manifest_str, type_sym, group))
 
-            # Pass 2: Elaborate concrete definitions with all interface types in scope
-            for t_name, is_manifest, kind_str, manifest_str, type_sym in type_records_list:
-                if is_manifest and manifest_str:
+            # Pass 2: Elaborate concrete definitions with all interface types in scope. The members of a recursive
+            # group are consecutive; their bodies are elaborated before any member is defined, so that each refers
+            # to the others by their symbols, which become the group's variables.
+            group_members: list[tuple[str, TypeSymbol, QType]] = []
+            for idx, (t_name, is_manifest, kind_str, manifest_str, type_sym, group) in enumerate(
+                type_records_list
+            ):
+                if group:
+                    body = _parse_and_elaborate_type_in_env(manifest_str, env)
+                    group_members.append((t_name, type_sym, body))
+                    if idx + 1 == len(type_records_list) or type_records_list[idx + 1][5] != group:
+                        bindings = tuple(
+                            (name, sym.symbol_id, sym.kind, body) for name, sym, body in group_members
+                        )
+                        for active, (_, sym, _) in enumerate(group_members):
+                            sym.definition = QRecGroupType(bindings=bindings, active_index=active)
+                        group_members = []
+                elif is_manifest and manifest_str:
                     concrete_def = _parse_and_elaborate_type_in_env(manifest_str, env)
                     type_sym.definition = concrete_def
 

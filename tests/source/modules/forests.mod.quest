@@ -1,0 +1,21 @@
+module forests : Forests
+import arrayOp: ArrayOp
+export
+    Let Rec Wood = Record trees: Array(Tree) end
+    and Tree = Variant leaf: Int node: Wood end;
+    let leaf(n: Int): Tree = variant leaf of Tree with n end;
+    let node(trees: Array(Tree)): Tree = variant node of Tree with record trees = trees end end;
+    let rec sum(t: Tree): Int =
+        case t
+            when leaf with n then n
+            when node with w then
+                begin
+                    let var total = 0;
+                    for i = 0 upto arrayOp.size(:Tree w.trees) - 1 do
+                        total := total + sum(w.trees[i])
+                    end;
+                    total
+                end
+            else 0
+        end;
+end;

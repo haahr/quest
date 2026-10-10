@@ -50,7 +50,9 @@ from quest.types import (
     QParam,
     QQuantifier,
     QRecordField,
+    QRecGroupType,
     QRecordType,
+    QRecType,
     QTupleType,
     QType,
     QTypeVar,
@@ -546,6 +548,10 @@ def collect_aggregate_types(
         if isinstance(n, (list, tuple)):
             for item in n:
                 visit_node(item)
+            return
+
+        # A recursive type's bodies mention its variables free; visit_type has visited its unfolding
+        if isinstance(n, (QRecType, QRecGroupType)):
             return
 
         if hasattr(n, "__dataclass_fields__"):

@@ -1,0 +1,74 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('forests') : 'Forests')
+      ))
+    (TypedLetValue 't' :type Tree
+      :value (TypedApp :type Tree
+        :func (TypedSelect 'node' :type Fun(trees: Array(Tree)): Tree
+          :target (TypedVar 'forests' :type Module 'forests'))
+        :args (
+          (TypedArray :type Array(Tree)
+            :elements (
+              (TypedApp :type Tree
+                :func (TypedSelect 'leaf' :type Fun(n: Int): Tree
+                  :target (TypedVar 'forests' :type Module 'forests'))
+                :args (
+                  (TypedInt 1 :type Int)
+                ))
+              (TypedApp :type Tree
+                :func (TypedSelect 'leaf' :type Fun(n: Int): Tree
+                  :target (TypedVar 'forests' :type Module 'forests'))
+                :args (
+                  (TypedInt 2 :type Int)
+                ))
+            ))
+        )))
+    (TypedLetValue 'direct' :type forests.Tree
+      :value (TypedVariant 'node' :type forests.Tree
+        :payload (TypedRecord :type Record trees: Array(forests.Tree) end
+          :fields (
+            (TypedRecordField 'trees'
+              :value (TypedArray :type Array(forests.Tree)
+                :elements (
+                  (TypedVar 't' :type Tree)
+                  (TypedApp :type Tree
+                    :func (TypedSelect 'leaf' :type Fun(n: Int): Tree
+                      :target (TypedVar 'forests' :type Module 'forests'))
+                    :args (
+                      (TypedInt 3 :type Int)
+                    ))
+                )))
+          ))))
+    (TypedLetValue 'wood' :type forests.Wood
+      :value (TypedCase :type forests.Wood
+        :target (TypedVar 'direct' :type forests.Tree)
+        :branches (
+          (TypedCaseBranch tags=(node) :binder 'w'
+            :body (TypedVar 'w' :type forests.Wood))
+        )
+        :else (TypedRecord :type Record trees: Array(forests.Tree) end
+          :fields (
+            (TypedRecordField 'trees'
+              :value (TypedArray :type Array(forests.Tree)
+                :elements ()))
+          ))))
+    (TypedExprStmt
+      :expr (TypedInfix '+' :type Int
+        :left (TypedApp :type Int
+          :func (TypedSelect 'sum' :type Fun(t: Tree): Int
+            :target (TypedVar 'forests' :type Module 'forests'))
+          :args (
+            (TypedVar 'direct' :type forests.Tree)
+          ))
+        :right (TypedApp :type Int
+          :func (TypedSelect 'sum' :type Fun(t: Tree): Int
+            :target (TypedVar 'forests' :type Module 'forests'))
+          :args (
+            (TypedIndex :type forests.Tree
+              :target (TypedSelect 'trees' :type Array(forests.Tree)
+                :target (TypedVar 'wood' :type forests.Wood))
+              :index (TypedInt 1 :type Int))
+          ))))
+  ))

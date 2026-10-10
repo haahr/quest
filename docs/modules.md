@@ -376,6 +376,7 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - A serialized dynamic value ([dynamic.md](dynamic.md) §2) of Quest's shadow record types (`InterfaceDesc`):
      ```quest
      Let InterfaceTypeDecl = Record
+         group: Int
          isManifest: Bool
          kind: String
          manifestType: String
@@ -395,6 +396,10 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
          values: Array(InterfaceValueDecl)
      end;
      ```
+   - A manifest type's `manifestType` is its definition in Quest type syntax. The members of a mutually recursive
+     group (`Def Rec A = ... and B = ...`) are consecutive declarations sharing a nonzero `group` number (0 for any
+     other type), and each records only its body, naming the other members; the loader elaborates the bodies of a
+     group together and rebuilds the group from them.
    - Serialized via `dynamic.extern` / `jsog_encode` and deserialized via `dynamic.intern` / `jsog_decode`.
    - Allows the compiler to typecheck client code or implementing modules without the original `.int.quest` source.
 

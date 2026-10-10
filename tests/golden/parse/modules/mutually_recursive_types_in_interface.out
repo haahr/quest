@@ -1,0 +1,122 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('forests') 'Forests')
+      )
+    )
+    (LetValueBinding
+      :name 't'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'forests')
+          :field 'node'
+        )
+        :args (
+          (ExprArray
+            :elements (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'forests')
+                  :field 'leaf'
+                )
+                :args (
+                  (ExprInt 1 '1')
+                )
+              )
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'forests')
+                  :field 'leaf'
+                )
+                :args (
+                  (ExprInt 2 '2')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'direct'
+      :value (ExprVariant
+        :tag 'node'
+        :variant_type (TypePath ('forests' 'Tree'))
+        :payload (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'trees'
+              :value (ExprArray
+                :elements (
+                  (ExprId 't')
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'forests')
+                      :field 'leaf'
+                    )
+                    :args (
+                      (ExprInt 3 '3')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('forests' 'Tree'))
+    )
+    (LetValueBinding
+      :name 'wood'
+      :value (ExprCase
+        :target (ExprId 'direct')
+        :branches (
+          (CaseBranch
+            :tags ('node')
+            :binder 'w'
+            :body (ExprId 'w')
+          )
+        )
+        :else_branch (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'trees'
+              :value (ExprArray ())
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('forests' 'Wood'))
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'forests')
+            :field 'sum'
+          )
+          :args (
+            (ExprId 'direct')
+          )
+        )
+        :op '+'
+        :right (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'forests')
+            :field 'sum'
+          )
+          :args (
+            (ExprIndex
+              :target (ExprSelect
+                :target (ExprId 'wood')
+                :field 'trees'
+              )
+              :index (ExprInt 1 '1')
+            )
+          )
+        )
+      )
+    )
+  )
+)
