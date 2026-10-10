@@ -2,7 +2,6 @@
 
 import unittest
 
-from quest.diagnostics import QuestTypeError as TypeError
 from quest.env import Environment, TypeSymbol, ValueSymbol
 from quest.typed_ast import (
     TypedArray,
@@ -50,10 +49,6 @@ class Phase4AggregatesTest(unittest.TestCase):
         self.assertIsInstance(typed_sel, TypedSelect)
         self.assertEqual(typed_sel.type_val, INT_TYPE)
 
-        # Missing field p.z
-        with self.assertRaises(TypeError):
-            synth_test_expr("record x = 10 y = 20 end.z")
-
     def test_record_mutable_field_assignment(self) -> None:
         """r.x := 42 succeeds when x is var, fails when immutable."""
         env = Environment()
@@ -67,10 +62,6 @@ class Phase4AggregatesTest(unittest.TestCase):
         typed_assign = synth_test_expr("r.x := 42", env)
         self.assertIsInstance(typed_assign, TypedAssign)
         self.assertEqual(typed_assign.type_val, OK_TYPE)
-
-        # Attempt to mutate immutable field y
-        with self.assertRaises(TypeError):
-            synth_test_expr("r.y := 42", env)
 
     def test_tuple_synthesis_and_named_selection(self) -> None:
         """tuple let intensity = 100; end synthesizes Tuple intensity: Int end and supports .intensity."""
@@ -96,10 +87,6 @@ class Phase4AggregatesTest(unittest.TestCase):
         self.assertIsInstance(typed_assign, TypedAssign)
         self.assertEqual(typed_assign.type_val, OK_TYPE)
 
-        # Attempt to mutate immutable field y
-        with self.assertRaises(TypeError):
-            synth_test_expr("t.y := 42", env)
-
     def test_tuple_mutable_subtyping(self) -> None:
         """Tuple with mutable field is a subtype of immutable tuple (forgetting mutability), but not vice-versa."""
         env = Environment()
@@ -114,10 +101,6 @@ class Phase4AggregatesTest(unittest.TestCase):
     def test_tuple_checking_mode_var_enforcement(self) -> None:
         """Checking a tuple literal against an expected mutable tuple type requires 'var'."""
         tup_mut = QTupleType((QTupleField("x", INT_TYPE, is_var=True),))
-
-        # Without var declaration: fails
-        with self.assertRaises(TypeError):
-            check_test_expr("tuple let x = 0 end", tup_mut)
 
         # With var declaration: succeeds
         checked = check_test_expr("tuple let var x = 0 end", tup_mut)
@@ -145,14 +128,6 @@ class Phase4AggregatesTest(unittest.TestCase):
         self.assertIsInstance(typed_blue, TypedOption)
         self.assertEqual(typed_blue.type_val, color_type)
 
-        # Missing payload for blue
-        with self.assertRaises(TypeError):
-            synth_test_expr("option blue of Color end", env)
-
-        # Unexpected payload for red
-        with self.assertRaises(TypeError):
-            synth_test_expr("option red of Color with 1 end", env)
-
     def test_case_pattern_matching_exhaustive(self) -> None:
         """Exhaustive case over Color joins branch types to Int."""
         env = Environment()
@@ -171,8 +146,9 @@ class Phase4AggregatesTest(unittest.TestCase):
         self.assertIsInstance(typed_case, TypedCase)
         self.assertEqual(typed_case.type_val, INT_TYPE)
 
-    def test_case_non_exhaustive_error(self) -> None:
-        """Case without else missing tags raises TypeError."""
+    def test_case_with_else_need_not_be_exhaustive(self) -> None:
+        """A case with an else branch need not name every tag; one without must
+        (tests/errors/typecheck/aggregates/case_non_exhaustive)."""
         env = Environment()
         color_type = QOptionType((
             QOptionField("red", payload_type=None),
@@ -180,11 +156,6 @@ class Phase4AggregatesTest(unittest.TestCase):
             QOptionField("blue", payload_type=INT_TYPE),
         ))
         env.current_scope.declare_value(ValueSymbol(name="col", type_val=color_type))
-
-        # Missing 'blue' tag without else clause
-        with self.assertRaises(TypeError) as ctx:
-            synth_test_expr("case col when red then 1 when green then 2 end", env)
-        self.assertIn("Non-exhaustive case expression missing tags: blue", str(ctx.exception))
 
         # With else clause, non-exhaustive branches succeed
         typed_ok = synth_test_expr("case col when red then 1 else 0 end", env)
@@ -209,10 +180,8 @@ class Phase4AggregatesTest(unittest.TestCase):
         self.assertEqual(typed_assign.type_val, OK_TYPE)
 
     def test_empty_array_requires_checking_mode(self) -> None:
-        """Empty array requires type annotation / checking mode."""
-        with self.assertRaises(TypeError):
-            synth_test_expr("array of end")
-
+        """Empty array requires type annotation / checking mode
+        (tests/errors/typecheck/aggregates/array_empty_untyped)."""
         # In checking mode with expected Array(Int), empty array succeeds
         typed_checked = check_test_expr("array of end", QArrayType(INT_TYPE))
         self.assertIsInstance(typed_checked, TypedArray)

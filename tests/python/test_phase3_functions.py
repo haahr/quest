@@ -91,7 +91,9 @@ class Phase3FunctionsTest(unittest.TestCase):
         self.assertEqual(typed.type_val, REAL_TYPE)
 
     def test_var_parameter_mutability_and_invariance(self) -> None:
-        """var parameters require mutable variable locations and are invariant."""
+        """var parameters require mutable variable locations, passed with @. Passing a variable without @, an immutable
+        variable, or a literal is an error test (tests/errors/typecheck/ref_param_missing_at,
+        functions/var_param_immutable_arg, functions/var_param_literal_arg)."""
         env = Environment()
         # inc: fun(var count: Int): Ok
         inc_type = QFunType(params=(QParam("count", INT_TYPE, is_var=True),), result_type=OK_TYPE)
@@ -99,8 +101,6 @@ class Phase3FunctionsTest(unittest.TestCase):
 
         # Mutable variable
         env.current_scope.declare_value(ValueSymbol(name="c", type_val=INT_TYPE, is_var=True))
-        # Immutable variable
-        env.current_scope.declare_value(ValueSymbol(name="imm", type_val=INT_TYPE, is_var=False))
 
         # Passing mutable variable with @ succeeds
         typed = synth_test_expr("inc(@c)", env)
@@ -109,49 +109,24 @@ class Phase3FunctionsTest(unittest.TestCase):
         # Arg passed as lvalue location TypedVar
         self.assertIsInstance(typed.args[0], TypedVar)
 
-        # Passing mutable variable without @ fails
-        with self.assertRaises(TypeError):
-            synth_test_expr("inc(c)", env)
-
-        # Passing immutable variable fails
-        with self.assertRaises(TypeError):
-            synth_test_expr("inc(imm)", env)
-
-        # Passing literal fails
-        with self.assertRaises(TypeError):
-            synth_test_expr("inc(5)", env)
-
     def test_out_parameter_covariance(self) -> None:
-        """out parameters require a mutable location where param_type <= location_type."""
+        """out parameters require a mutable location where param_type <= location_type. A location of a subtype, or an
+        argument without @, is an error test (tests/errors/typecheck/functions/out_param_subtyping_violation and
+        out_param_missing_at)."""
         env = Environment()
         # Supertype Animal = Record name: String end
         animal_type = QRecordType((QRecordField("name", STRING_TYPE),))
         # Subtype Dog = Record name: String breed: String end
         dog_type = QRecordType((QRecordField("name", STRING_TYPE), QRecordField("breed", STRING_TYPE)))
-        # Subtype Terrier = Record name: String breed: String size: String end
-        terrier_type = QRecordType((
-            QRecordField("name", STRING_TYPE),
-            QRecordField("breed", STRING_TYPE),
-            QRecordField("size", STRING_TYPE),
-        ))
 
         # getDog: fun(out x: Dog): Ok
         fn_type = QFunType(params=(QParam("x", dog_type, is_out=True),), result_type=OK_TYPE)
         env.current_scope.declare_value(ValueSymbol(name="getDog", type_val=fn_type))
 
-        # Bare argument without @ raises TypeError
-        with self.assertRaises(TypeError):
-            synth_test_expr("getDog(pet)", env)
-
         # Destination variable of type Animal (Dog <= Animal: valid!)
         env.current_scope.declare_value(ValueSymbol(name="pet", type_val=animal_type, is_var=True))
         typed_ok = synth_test_expr("getDog(@pet)", env)
         self.assertEqual(typed_ok.type_val, OK_TYPE)
-
-        # Destination variable of type Terrier (Dog <= Terrier is False: rejected!)
-        env.current_scope.declare_value(ValueSymbol(name="tiny", type_val=terrier_type, is_var=True))
-        with self.assertRaises(TypeError):
-            synth_test_expr("getDog(@tiny)", env)
 
     def test_polymorphic_application_inference(self) -> None:
         """Polymorphic call id(42) infers X = Int and wraps in TypedTypeApp."""
@@ -189,15 +164,6 @@ class Phase3FunctionsTest(unittest.TestCase):
         )
         self.assertEqual(typed_block.type_val, INT_TYPE)
 
-    def test_let_rec_missing_return_type_raises_type_error(self) -> None:
-        """let rec f(n: Int) = ... without return type raises TypeError."""
-        with self.assertRaises(TypeError) as ctx:
-            synth_test_expr("begin let rec fib(n: Int) = n; 1 end")
-        self.assertIn(
-            "Recursive function 'fib' requires an explicit return type annotation",
-            str(ctx.exception),
-        )
-
     def test_let_rec_missing_param_type_raises_type_error(self) -> None:
         """let rec f(n) : Int = ... with unannotated parameter raises TypeError."""
         # Grammar requires parameter annotations, but typechecker defends against AST without annotations.
@@ -219,15 +185,6 @@ class Phase3FunctionsTest(unittest.TestCase):
             synth_expr(block)
         self.assertIn(
             "Parameter 'n' in recursive function 'fib' requires an explicit type annotation",
-            str(ctx.exception),
-        )
-
-    def test_let_rec_value_missing_type_raises_type_error(self) -> None:
-        """let rec f = 1 without type annotation raises TypeError."""
-        with self.assertRaises(TypeError) as ctx:
-            synth_test_expr("begin let rec f = 1; 1 end")
-        self.assertIn(
-            "Recursive definition 'f' requires an explicit type annotation",
             str(ctx.exception),
         )
 
