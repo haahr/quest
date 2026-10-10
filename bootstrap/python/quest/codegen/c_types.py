@@ -848,6 +848,10 @@ def _may_recur(node: Any) -> bool:
 def _canonical_type_uncached(t: QType) -> Optional[QType]:
     if not _may_recur(t):
         return None
+    if any(_is_rec_self_symbol(sym) for sym in t._fv):
+        # A body of a recursive type being named (_recursive_tag), its variables replaced by placeholders: the
+        # recursive type is in canonical form already (or is named as written), and so are the body's parts
+        return None
     s = _canonical_structure(t)
     node = _CANONICAL_NODES.get(id(s))
     if node is not None and node[0] is s:
@@ -871,6 +875,9 @@ def _canonical_type_uncached(t: QType) -> Optional[QType]:
         # The type is named as written, as before canonical forms compared binders; the program is still compiled
         sys.stderr.write(f"quest: warning: internal: {message}; naming it as written (please report this)\n")
         return None
+    # Tags and descriptors ask next for the parts of the canonical form and of its unfoldings: its graph has them
+    if id(canonical_structure := _canonical_structure(canonical)) not in _CANONICAL_NODES:
+        _register_graph(canonical_structure)
     if _check_canonical() and _canonical_type(canonical) is not None:
         raise AssertionError(f"canonical form of {descriptor_display_name(t)} is not a fixed point")
     return canonical
