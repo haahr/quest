@@ -196,10 +196,12 @@ export
             ordinalExpr: maybe.T(Node(ExprForm))
         end
         exprVariant with tag: String variantType: TypeExpr isVar: Bool payload: maybe.T(Node(ExprForm)) end
+        (* auto [let witnessName [witnessBound] =] :witnessType with payload end *)
         exprAuto with
-            witness: maybe.T(Tuple typeVar: String kindBound: maybe.T(KindExpr) witnessVal: Node(ExprForm) end)
-            targetType: TypeExpr
+            witnessType: TypeExpr
             payload: Node(ExprForm)
+            witnessName: maybe.T(String)
+            witnessBound: maybe.T(KindExpr)
         end
 
         (* Selection, Indexing, and References *)
@@ -254,24 +256,22 @@ export
             isRec: Bool
             isVar: Bool
         end
-        declLetType with
+        (* Let [Rec] T = Type, or Def [Rec] T = Type (isDef) *)
+        declTypeBinding with
             name: String
             typeVal: TypeExpr
             params: vector.T(TypeFormal)
             bound: maybe.T(KindExpr)
             isRec: Bool
-        end
-        declDefType with
-            name: String
-            typeVal: TypeExpr
-            params: vector.T(TypeFormal)
-            bound: maybe.T(KindExpr)
-            isRec: Bool
+            isDef: Bool
         end
         declDefKind with name: String kindVal: KindExpr end
         declExprStmt with expr: Node(ExprForm) end
     end
 
+    (* Expr and Decl share one representation. Body fields (thenBranch, elseBranch, loop and
+     * branch bodies) hold an expression, never a declExprStmt; a body that is a lone
+     * declaration is a one-phrase exprBlock. *)
     Def Expr = Node(ExprForm)
     Def Decl = Node(ExprForm)
 
@@ -321,12 +321,6 @@ export
         binder: maybe.T(String)
         binderType: maybe.T(TypeExpr)
         body: Expr
-    end
-
-    Def AutoWitness = Tuple
-        typeVar: String
-        kindBound: maybe.T(KindExpr)
-        witnessVal: Expr
     end
 
     (* =========================================================================
@@ -409,8 +403,7 @@ export
 
     (* Helper constructors for declarations *)
     declLetVal(span: location.Span name: String value: Expr typeAnnot: maybe.T(TypeExpr)): Decl
-    declLetType(span: location.Span name: String typeVal: TypeExpr): Decl
-    declDefType(span: location.Span name: String typeVal: TypeExpr): Decl
+    declTypeBinding(span: location.Span name: String typeVal: TypeExpr isDef: Bool): Decl
     declExprStmt(span: location.Span expr: Expr): Decl
 
     (* Auxiliary constructors *)

@@ -169,9 +169,10 @@ export
         end
         exprVariant with tag: String variantType: TypeExpr isVar: Bool payload: maybe.T(Node(ExprForm)) end
         exprAuto with
-            witness: maybe.T(Tuple typeVar: String kindBound: maybe.T(KindExpr) witnessVal: Node(ExprForm) end)
-            targetType: TypeExpr
+            witnessType: TypeExpr
             payload: Node(ExprForm)
+            witnessName: maybe.T(String)
+            witnessBound: maybe.T(KindExpr)
         end
         exprSelect with target: Node(ExprForm) field: String end
         exprIndex with target: Node(ExprForm) index: Node(ExprForm) end
@@ -220,19 +221,13 @@ export
             isRec: Bool
             isVar: Bool
         end
-        declLetType with
+        declTypeBinding with
             name: String
             typeVal: TypeExpr
             params: vector.T(TypeFormal)
             bound: maybe.T(KindExpr)
             isRec: Bool
-        end
-        declDefType with
-            name: String
-            typeVal: TypeExpr
-            params: vector.T(TypeFormal)
-            bound: maybe.T(KindExpr)
-            isRec: Bool
+            isDef: Bool
         end
         declDefKind with name: String kindVal: KindExpr end
         declExprStmt with expr: Node(ExprForm) end
@@ -287,12 +282,6 @@ export
         binder: maybe.T(String)
         binderType: maybe.T(TypeExpr)
         body: Expr
-    end;
-
-    Let AutoWitness = Tuple
-        typeVar: String
-        kindBound: maybe.T(KindExpr)
-        witnessVal: Expr
     end;
 
     Let ImportItem = Tuple
@@ -427,22 +416,14 @@ export
             let isVar = false
         end);
 
-    let declLetType(span: location.Span name: String typeVal: TypeExpr): Decl =
-        makeDecl(span option declLetType of ExprForm with
+    let declTypeBinding(span: location.Span name: String typeVal: TypeExpr isDef: Bool): Decl =
+        makeDecl(span option declTypeBinding of ExprForm with
             let name = name
             let typeVal = typeVal
             let params = vector.new(:TypeFormal)
             let bound = maybe.none(:KindExpr)
             let isRec = false
-        end);
-
-    let declDefType(span: location.Span name: String typeVal: TypeExpr): Decl =
-        makeDecl(span option declDefType of ExprForm with
-            let name = name
-            let typeVal = typeVal
-            let params = vector.new(:TypeFormal)
-            let bound = maybe.none(:KindExpr)
-            let isRec = false
+            let isDef = isDef
         end);
 
     let declExprStmt(span: location.Span expr: Expr): Decl =
