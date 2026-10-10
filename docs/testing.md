@@ -132,6 +132,10 @@ python3 run_tests.py --update-golden
 
 If stdout does not match the golden file, `run_tests.py` prints a unified diff detailing the exact mismatch.
 
+`--update-golden` records a test's output only when the test exits as expected (with 0, or the code given by
+`@exit`); a test that fails is reported as `[FAIL]` and no golden is written, since a golden test is a valid program.
+Programs that must be rejected belong in the error suite (§3).
+
 **Hermetic builds:** every phase builds into a fresh temporary build directory for each run (shared by the tests of
 that run and deleted afterwards), so results never depend on artifacts left by earlier runs or compiler versions.
 Pass `--build-dir <dir>` to reuse a build directory across runs for speed. Unit tests that invoke the driver give it
@@ -160,7 +164,7 @@ C compilation backend (or for tests specific to certain phases), tests can inclu
 - **Reporting**: Skipped phases are explicitly noted during test execution (`[SKIP] phase:test_name`) and counted in
   the test summary without being counted as failures.
 - **Golden Management**: When updating goldens with `--update-golden`, skipped phases are ignored and will not
-  generate unexpected `.out` or `.error` files.
+  generate unexpected `.out` files.
 
 ### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`)
 Tests that interact with host OS primitives (command-line arguments, environment variables, exit codes, and standard
