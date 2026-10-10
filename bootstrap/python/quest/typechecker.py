@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional, Union
 import quest.ast as ast
 from quest.types import (
     BOOL_TYPE,
+    binds_module,
     BOTTOM_TYPE,
     CHAR_TYPE,
     EXCEPTION_TYPE,
@@ -1809,8 +1810,9 @@ class TypeElaborator:
         """Synthesizes a field selection on a record, tuple, or module: target.field."""
         if isinstance(expr.target, ast.ExprId):
             module_scope = env.lookup_module(expr.target.name)
-            if module_scope is not None:
-                mod_sym = env.lookup_value(expr.target.name)
+            mod_sym = env.lookup_value(expr.target.name)
+            # A value binding that shadows the module is selected from as any other value
+            if module_scope is not None and (mod_sym is None or binds_module(expr.target.name, mod_sym.type_val)):
                 if mod_sym is None:
                     raise TypeError(
                         f"Undefined identifier '{expr.target.name}'",

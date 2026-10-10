@@ -657,6 +657,14 @@ class QRecordType(QType):
         return f"Record {fields_str} end" if fields_str else "Record end"
 
 
+def binds_module(name: str, t: QType) -> bool:
+    """Whether a value binding of name with type t is the module bound to that name, not a binding shadowing it.
+
+    A module's binding has the module's record type, whose provenance is the name the module is bound to.
+    """
+    return isinstance(t, QRecordType) and t.provenance == name
+
+
 @dataclass(frozen=True)
 class QVariantField(metaclass=_InternedNode):
     """A tagged branch inside a variant type."""

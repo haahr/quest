@@ -1,0 +1,47 @@
+(* A binding shadows a module of the same name, whether the module is imported or prelinked: in a function, in a
+   block, and at top level, by a value, a record, and a function. Uses before the shadowing still name the module. *)
+(* @echo *)
+
+import writer: Writer;
+
+let size(l: List.T(Int)): Int = list.length(:Int l);
+let two = list.cons(:Int 1 list.cons(:Int 2 list.nil(:Int)));
+size(two);
+
+(* A parameter and a local binding shadow an imported module *)
+let plusOne(writer: Int): Int = writer + 1;
+plusOne(3);
+let local(): Int = begin let writer = 10; writer * 2 end;
+local();
+
+(* A closure captures a local binding that shadows both an imported module and a later top-level binding *)
+let capture(): Int = begin
+    let writer = 20;
+    let add = fun(n: Int): Int writer + n;
+    add(1)
+end;
+capture();
+
+(* A record whose field has the name of a member of the module it shadows *)
+begin
+    let writer = record output = 5 end;
+    writer.output + 1
+end;
+
+(* A local binding shadows a prelinked module *)
+begin
+    let list = 4;
+    list + size(two)
+end;
+
+(* A top-level function named as a module *)
+let int(n: Int): Int = n * 3;
+int(5);
+
+(* A top-level value shadows the imported module from here on *)
+writer.close(writer.file("unused.txt"));
+let writer = 7;
+writer + 1;
+
+(* The prelinked list is still a module after a function shadowed it in its body *)
+list.length(:Int two)

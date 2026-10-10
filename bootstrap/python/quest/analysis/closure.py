@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from quest.typed_ast import (
     TypedBlock,
@@ -41,8 +41,11 @@ class LambdaAnalysis:
     module_name: Optional[str] = None
 
 
-def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
-    """Finds all free variables captured by a function from enclosing non-global scopes."""
+def find_free_vars(fun: TypedFun, is_global: Callable[[TypedVar], bool]) -> list[CapturedVar]:
+    """Finds all free variables captured by a function from enclosing non-global scopes.
+
+    is_global tells whether a variable refers to a global binding, which is not captured.
+    """
     free_vars: list[CapturedVar] = []
     seen: set[str] = set()
 
@@ -53,7 +56,7 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
             case TypedVar(name=name, type_val=t):
                 if (
                     name not in bound
-                    and name not in global_names
+                    and not is_global(node)
                     and name not in BUILTIN_NAMES
                     and name not in seen
                 ):
@@ -132,7 +135,7 @@ def find_free_vars(fun: TypedFun, global_names: set[str]) -> list[CapturedVar]:
 def analyze_closures(
     prog: Any,
     top_fun_objs: set[int],
-    global_names: set[str],
+    is_global: Callable[[TypedVar], bool],
 ) -> list[LambdaAnalysis]:
     """Scans AST to find all lambdas needing lifting and collects their free variables."""
     lambdas: list[LambdaAnalysis] = []
@@ -154,7 +157,7 @@ def analyze_closures(
             if id(node) not in top_fun_objs:
                 lambda_counter += 1
                 lid = f"lambda_{lambda_counter}"
-                fvars = find_free_vars(node, global_names)
+                fvars = find_free_vars(node, is_global)
                 lambdas.append(
                     LambdaAnalysis(
                         id=lid,

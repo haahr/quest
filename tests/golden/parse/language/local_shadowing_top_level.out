@@ -1,0 +1,157 @@
+(Program
+  :phrases (
+    (LetValueBinding
+      :name 'twice'
+      :value (ExprInfix
+        :left (ExprId 'n')
+        :op '*'
+        :right (ExprInt 2 '2')
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'shadowFun'
+      :value (ExprFun
+        :return_type (TypePath ('Int'))
+        :body (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 'twice'
+              :value (ExprInfix
+                :left (ExprId 'n')
+                :op '*'
+                :right (ExprInt 10 '10')
+              )
+              :params (
+                (FormalParam
+                  :name 'n'
+                  :type_annot (TypePath ('Int'))
+                  :mode VALUE
+                )
+              )
+              :type_annot (TypePath ('Int'))
+            )
+            (LetValueBinding
+              :name 'viaClosure'
+              :value (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'n'
+                    :type_annot (TypePath ('Int'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Int'))
+                :body (ExprInfix
+                  :left (ExprApp
+                    :func (ExprId 'twice')
+                    :args (
+                      (ExprId 'n')
+                    )
+                  )
+                  :op '+'
+                  :right (ExprInt 1 '1')
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprInfix
+                :left (ExprApp
+                  :func (ExprId 'twice')
+                  :args (
+                    (ExprInt 1 '1')
+                  )
+                )
+                :op '+'
+                :right (ExprApp
+                  :func (ExprId 'viaClosure')
+                  :args (
+                    (ExprInt 2 '2')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :result_type (TypePath ('Int'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'shadowFun')
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'twice')
+        :args (
+          (ExprInt 4 '4')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'captureValue'
+      :value (ExprFun
+        :return_type (TypePath ('Int'))
+        :body (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 'base'
+              :value (ExprInt 100 '100')
+            )
+            (LetValueBinding
+              :name 'add'
+              :value (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'n'
+                    :type_annot (TypePath ('Int'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Int'))
+                :body (ExprInfix
+                  :left (ExprId 'base')
+                  :op '+'
+                  :right (ExprId 'n')
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'add')
+                :args (
+                  (ExprInt 5 '5')
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :result_type (TypePath ('Int'))
+      )
+    )
+    (LetValueBinding
+      :name 'base'
+      :value (ExprInt 1 '1')
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'captureValue')
+      )
+    )
+    (ExprStmt
+      :expr (ExprId 'base')
+    )
+  )
+)

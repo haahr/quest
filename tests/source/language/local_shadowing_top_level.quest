@@ -1,0 +1,24 @@
+(* A local binding shadows a top-level binding of the same name, wherever the top-level binding is: called directly,
+   called from a closure, and captured by a closure. *)
+(* @echo *)
+
+let twice(n: Int): Int = n * 2;
+
+(* A local function shadows a top-level function, called directly and from a closure that captures it *)
+let shadowFun(): Int = begin
+    let twice(n: Int): Int = n * 10;
+    let viaClosure = fun(n: Int): Int twice(n) + 1;
+    twice(1) + viaClosure(2)
+end;
+shadowFun();
+twice(4);
+
+(* A closure captures a local value shadowing a top-level value declared after the function *)
+let captureValue(): Int = begin
+    let base = 100;
+    let add = fun(n: Int): Int base + n;
+    add(5)
+end;
+let base = 1;
+captureValue();
+base

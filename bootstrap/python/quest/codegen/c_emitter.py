@@ -38,6 +38,7 @@ from quest.codegen.c_types import (
     mangle_module_ident,
     mangle_module_name,
     normalize_type,
+    MODULE_RECORD_PREFIX,
     module_record_ident,
     option_struct_name,
     qtype_to_c_type,
@@ -116,6 +117,7 @@ from quest.typed_ast import (
 from quest.types import (
     QKind,
     strip_aliases,
+    binds_module,
     BOOL_TYPE,
     CHAR_TYPE,
     INFIX_OPERATORS,
@@ -1214,9 +1216,7 @@ class CEmitter:
 
             if formal_c == "QVal" and actual_c != "QVal" and writebacks is not None:
                 if isinstance(actual_a, TypedVar):
-                    c_name = self.current_env_vars.get(
-                        actual_a.name, mangle_ident(actual_a.name)
-                    )
+                    c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
                     loc_ptr = c_name if actual_a.name in self.pointer_params else f"(&{c_name})"
                 elif isinstance(actual_a, TypedVarCell):
                     tmp = self.fresh_tmp("_var_cell")
@@ -1244,9 +1244,7 @@ class CEmitter:
                 return f"(&{shadow_tmp})"
 
             if isinstance(actual_a, TypedVar):
-                c_name = self.current_env_vars.get(
-                    actual_a.name, mangle_ident(actual_a.name)
-                )
+                c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
                 if actual_a.name in self.pointer_params:
                     return c_name
                 return f"(&{c_name})"
@@ -2531,6 +2529,29 @@ class CEmitter:
                 # Type / Kind declarations are erased at runtime
                 pass
 
+    def _is_top_fun(self, var: TypedVar) -> bool:
+        """Whether var names a top-level function, rather than a local binding shadowing one."""
+        if var.name not in self.top_fun_names:
+            return False
+        entry = self.top_funs_dict.get(var.name)
+        symbol = entry[1] if entry is not None else None
+        return not isinstance(symbol, ValueSymbol) or symbol.symbol_id == var.symbol.symbol_id
+
+    def _module_of(self, expr: TypedExpr) -> Optional[TypedModule]:
+        """The module expr names, if it is a variable bound to a module rather than a binding shadowing one."""
+        if isinstance(expr, TypedVar) and binds_module(expr.name, expr.symbol.type_val):
+            return self.all_modules.get(expr.name)
+        return None
+
+    def _env_ident(self, var: TypedVar) -> Optional[str]:
+        """The C identifier current_env_vars gives var's name, unless that is the record of a module var shadows."""
+        ident = self.current_env_vars.get(var.name)
+        if ident is not None and ident.startswith(MODULE_RECORD_PREFIX) and not binds_module(
+            var.name, var.symbol.type_val
+        ):
+            return None
+        return ident
+
     def _exception_ident(self, name: str) -> str:
         """The C variable holding the exception value bound to name."""
         return self.current_env_vars.get(name, mangle_ident(name))
@@ -2591,11 +2612,11 @@ class CEmitter:
                 return "((void)0)"
 
             case TypedVar(name=name):
-                if name in self.current_env_vars:
-                    return self.current_env_vars[name]
+                if (ident := self._env_ident(expr)) is not None:
+                    return ident
                 if name in INFIX_OPERATORS:
                     return f"(&{mangle_ident(name)}_closure)"
-                if name in self.top_fun_names:
+                if self._is_top_fun(expr):
                     return f"(&{self.mangle_ident(name)}_closure)"
                 return mangle_ident(name)
 
@@ -2610,7 +2631,7 @@ class CEmitter:
 
             case TypedDerefCell(target=tgt):
                 if isinstance(tgt, TypedVar) and tgt.name in self.pointer_params:
-                    c_name = self.current_env_vars.get(tgt.name, self.mangle_ident(tgt.name))
+                    c_name = self._env_ident(tgt) or self.mangle_ident(tgt.name)
                     return f"(*{c_name})"
                 return self.emit_val(tgt, lines)
 
@@ -2623,7 +2644,7 @@ class CEmitter:
                     target_t = target_t.element_type
                 target_t = normalize_type(target_t)
                 if isinstance(tgt, TypedVar) and tgt.name in self.pointer_params:
-                    c_name = self.current_env_vars.get(tgt.name, self.mangle_ident(tgt.name))
+                    c_name = self._env_ident(tgt) or self.mangle_ident(tgt.name)
                     c_tgt = f"(*{c_name})"
                 else:
                     c_tgt = self.emit_val(tgt, lines)
@@ -2716,8 +2737,7 @@ class CEmitter:
                 return f"quest_auto_new({desc}, {_qval_wrap(c_payload, stored_t)})"
 
             case TypedSelect(target=tgt, field=fld):
-                if isinstance(tgt, TypedVar) and tgt.name in self.all_modules:
-                    mod = self.all_modules[tgt.name]
+                if (mod := self._module_of(tgt)) is not None:
                     nb = next(
                         (b for b in mod.bindings if isinstance(b, TypedNativeBinding) and b.name == fld),
                         None,
@@ -2822,7 +2842,11 @@ class CEmitter:
                     return self._emit_infix(c_l, effective_func.name, c_r, args[0].type_val)
 
                 # Direct lowering for built-in arrayOp calls
-                if isinstance(effective_func, TypedSelect) and isinstance(effective_func.target, TypedVar):
+                if (
+                    isinstance(effective_func, TypedSelect)
+                    and isinstance(effective_func.target, TypedVar)
+                    and binds_module(effective_func.target.name, effective_func.target.symbol.type_val)
+                ):
                     mod_name = effective_func.target.name
                     fld = effective_func.field
                     if mod_name == "arrayOp":
@@ -2917,10 +2941,8 @@ class CEmitter:
                     return self._emit_native_binding_call(
                         binding, type_args, args, expr.type_val, lines
                     )
-                elif isinstance(effective_func, TypedVar) and effective_func.name in self.top_fun_names:
-                    c_func = self.current_env_vars.get(
-                        effective_func.name, self.mangle_ident(effective_func.name)
-                    )
+                elif isinstance(effective_func, TypedVar) and self._is_top_fun(effective_func):
+                    c_func = self._env_ident(effective_func) or self.mangle_ident(effective_func.name)
                     fun, _ = self.top_funs_dict[effective_func.name]
                     _, formal_params, _, ret_type = self._collect_fun_params(fun)
                     writebacks: list[str] = []
@@ -2933,10 +2955,8 @@ class CEmitter:
                     )
                 elif (
                     isinstance(effective_func, TypedSelect)
-                    and isinstance(effective_func.target, TypedVar)
-                    and effective_func.target.name in self.all_modules
                     and (
-                        (mod := self.all_modules[effective_func.target.name]) is not None
+                        (mod := self._module_of(effective_func.target)) is not None
                         and getattr(mod, "is_precompiled", False)
                         and effective_func.field in mod.scope.values
                         and isinstance(mod.scope.values[effective_func.field].type_val, (QFunType, QAllType))
@@ -3025,9 +3045,9 @@ class CEmitter:
                         c_func, func.type_val, expr.type_val, descriptor_args, lines
                     )
                 if isinstance(func, TypedVar) and (
-                    func.name in self.top_fun_names or func.name in self.current_env_vars
+                    self._is_top_fun(func) or self._env_ident(func) is not None
                 ):
-                    c_func = self.current_env_vars.get(func.name, self.mangle_ident(func.name))
+                    c_func = self._env_ident(func) or self.mangle_ident(func.name)
                     call_str = f"{c_func}({', '.join(descriptor_args)})"
                     return call_str
                 else:
@@ -3189,15 +3209,15 @@ class CEmitter:
                         f"({linfo.env_struct_name} *)quest_alloc(sizeof({linfo.env_struct_name}));"
                     )
                     deferred = self.rec_fun_names.get(id(expr), frozenset())
-                    for vname, _ in linfo.free_vars:
+                    for vname, vtype in linfo.free_vars:
                         if vname in deferred:
                             self.deferred_captures.append((env_tmp, vname))
                             continue
-                        src_val = (
-                            self.current_env_vars[vname]
-                            if vname in self.current_env_vars
-                            else mangle_ident(vname)
-                        )
+                        src_val = self.current_env_vars.get(vname)
+                        if src_val is None or (
+                            src_val.startswith(MODULE_RECORD_PREFIX) and not binds_module(vname, vtype)
+                        ):
+                            src_val = mangle_ident(vname)
                         lines.append(f"{env_tmp}->{mangle_ident(vname)} = {src_val};")
                     self._emit_closure_alloc(
                         linfo.c_fn_name, env_tmp, lines, dest=target_dest

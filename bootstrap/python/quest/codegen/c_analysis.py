@@ -869,7 +869,18 @@ def analyze_program_for_c(
     tuple_coercions = list(tuple_coercions_map.values())
     variant_coercions = list(variant_coercions_map.values())
 
-    top_names = top_fun_names | top_var_names
+    # A variable is global if it refers to a top-level binding, not to a local binding of the same name
+    top_symbols: dict[str, list[Any]] = {}
+    for name, _, symbol in top_funs + top_vars:
+        top_symbols.setdefault(name, []).append(symbol)
+
+    def is_global(var: TypedVar) -> bool:
+        return any(
+            # Named exceptions are entered without a value symbol
+            not isinstance(symbol, ValueSymbol) or symbol.symbol_id == var.symbol.symbol_id
+            for symbol in top_symbols.get(var.name, ())
+        )
+
     val_referenced_top_funs = find_val_referenced_top_funs(prog, top_fun_names)
 
     # 5. Closures
@@ -878,13 +889,13 @@ def analyze_program_for_c(
         for b in (member for b in mod.bindings for member in binding_members(b)):
             if isinstance(b, TypedLetValue) and isinstance(b.value, TypedFun):
                 top_fun_objs.add(id(b.value))
-    agnostic_lambdas = analyze_closures(prog, top_fun_objs, top_names)
+    agnostic_lambdas = analyze_closures(prog, top_fun_objs, is_global)
     for mod in sorted_modules:
         # Modules that are phrases of prog were already covered by analyze_closures(prog).
         if mod.name in current_unit_modules:
             continue
         if not getattr(mod, "is_precompiled", False):
-            agnostic_lambdas.extend(analyze_closures(mod, top_fun_objs, top_names))
+            agnostic_lambdas.extend(analyze_closures(mod, top_fun_objs, is_global))
 
     lifted_lambdas: list[CLambdaInfo] = []
     for l in agnostic_lambdas:

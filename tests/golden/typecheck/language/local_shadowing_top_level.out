@@ -1,0 +1,73 @@
+(TypedProgram
+  :phrases (
+    (TypedLetValue 'twice' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedInfix '*' :type Int
+          :left (TypedVar 'n' :type Int)
+          :right (TypedInt 2 :type Int))))
+    (TypedLetValue 'shadowFun' :type Fun(): Int
+      :value (TypedFun :params () :type Fun(): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'twice' :type Fun(n: Int): Int
+              :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+                :body (TypedInfix '*' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 10 :type Int))))
+            (TypedLetValue 'viaClosure' :type Fun(n: Int): Int
+              :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+                :body (TypedInfix '+' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedVar 'twice' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedVar 'n' :type Int)
+                    ))
+                  :right (TypedInt 1 :type Int))))
+          )
+          :result (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedVar 'twice' :type Fun(n: Int): Int)
+              :args (
+                (TypedInt 1 :type Int)
+              ))
+            :right (TypedApp :type Int
+              :func (TypedVar 'viaClosure' :type Fun(n: Int): Int)
+              :args (
+                (TypedInt 2 :type Int)
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'shadowFun' :type Fun(): Int)
+        :args ()))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'twice' :type Fun(n: Int): Int)
+        :args (
+          (TypedInt 4 :type Int)
+        )))
+    (TypedLetValue 'captureValue' :type Fun(): Int
+      :value (TypedFun :params () :type Fun(): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'base' :type Int
+              :value (TypedInt 100 :type Int))
+            (TypedLetValue 'add' :type Fun(n: Int): Int
+              :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+                :body (TypedInfix '+' :type Int
+                  :left (TypedVar 'base' :type Int)
+                  :right (TypedVar 'n' :type Int))))
+          )
+          :result (TypedApp :type Int
+            :func (TypedVar 'add' :type Fun(n: Int): Int)
+            :args (
+              (TypedInt 5 :type Int)
+            )))))
+    (TypedLetValue 'base' :type Int
+      :value (TypedInt 1 :type Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'captureValue' :type Fun(): Int)
+        :args ()))
+    (TypedExprStmt
+      :expr (TypedVar 'base' :type Int))
+  ))
