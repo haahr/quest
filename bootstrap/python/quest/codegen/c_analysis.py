@@ -65,6 +65,11 @@ from quest.types import (
 )
 
 
+# Prelinked modules (Cardelli §11.3) compiled from library source rather than built into the runtime, with their
+# interfaces: a program that uses one without importing it links it as if it had imported it.
+PRELINKED_LIBRARY_MODULES = {"list": "List"}
+
+
 @dataclass
 class CLambdaInfo:
     """C-specific decoration of a lifted lambda closure."""
@@ -98,6 +103,7 @@ class CProgramAnalysis:
     specializations: dict[tuple[str, tuple[QType, ...]], tuple[str, TypedFun]]
     specialization_origin_modules: dict[str, str] = field(default_factory=dict)
     needed_builtin_modules: list[str] = field(default_factory=list)
+    implicit_library_imports: list[str] = field(default_factory=list)
 
 
 def topological_sort_modules(modules: list[TypedModule]) -> list[TypedModule]:
@@ -574,6 +580,7 @@ def analyze_program_for_c(
         "arrayOp", "word",
     }
     needed_builtin_modules: list[str] = []
+    implicit_library_imports: list[str] = []
 
     def _check_import_item(iname: str) -> None:
         if iname in known_builtins and iname not in needed_builtin_modules:
@@ -585,6 +592,13 @@ def analyze_program_for_c(
         if isinstance(n, TypedVar) and n.name in known_builtins:
             if n.name not in needed_builtin_modules:
                 needed_builtin_modules.append(n.name)
+        if (
+            isinstance(n, TypedVar)
+            and n.name in PRELINKED_LIBRARY_MODULES
+            and n.name not in implicit_library_imports
+            and n.symbol.type_val is BuiltinModuleRegistry.get_module_type(n.name)
+        ):
+            implicit_library_imports.append(n.name)
         if hasattr(n, "__dataclass_fields__"):
             for fld_name in n.__dataclass_fields__:
                 _scan_for_builtin_vars(getattr(n, fld_name))
@@ -601,6 +615,16 @@ def analyze_program_for_c(
                 if isinstance(b, TypedImport):
                     all_imports.append(b)
         _scan_for_builtin_vars(phrase)
+
+    def _add_precompiled_stub(name: str, interface_name: str, scope: Optional[Scope], aliases: tuple[str, ...]) -> None:
+        """Maps a module compiled separately, known here only by its interface, under its name and aliases."""
+        stub_mod = TypedModule(
+            name=name, interface_name=interface_name, bindings=(), scope=scope or Scope(), is_precompiled=True
+        )
+        clean_mod = mangle_module_name(name)
+        for key in (name, name.lower(), clean_mod, clean_mod.lower(), *aliases):
+            if key:
+                all_module_map[key] = stub_mod
 
     for imp in all_imports:
         for it in imp.items:
@@ -620,19 +644,13 @@ def analyze_program_for_c(
                         scope = env.lookup_module(clean_name) or env.lookup_module(mpath) or env.lookup_module(iname)
                         if scope is None and it.interface_name:
                             scope = env.lookup_interface(it.interface_name)
-                    if scope is None:
-                        scope = Scope()
-                    stub_mod = TypedModule(
-                        name=clean_name,
-                        interface_name=it.interface_name or "",
-                        bindings=(),
-                        scope=scope,
-                        is_precompiled=True,
-                    )
-                    clean_mod = mangle_module_name(clean_name)
-                    for key in (clean_name, clean_name.lower(), mpath, iname, iname.lower(), clean_mod, clean_mod.lower()):
-                        if key:
-                            all_module_map[key] = stub_mod
+                    _add_precompiled_stub(clean_name, it.interface_name or "", scope, (mpath, iname, iname.lower()))
+
+    for name in implicit_library_imports:
+        if name not in all_module_map:
+            _add_precompiled_stub(
+                name, PRELINKED_LIBRARY_MODULES[name], env.lookup_module(name) if env is not None else None, ()
+            )
 
 
     linked_stems = {
@@ -910,4 +928,5 @@ def analyze_program_for_c(
         specializations=specializations,
         specialization_origin_modules=specialization_origin_modules,
         needed_builtin_modules=needed_builtin_modules,
+        implicit_library_imports=implicit_library_imports,
     )

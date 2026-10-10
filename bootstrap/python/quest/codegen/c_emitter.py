@@ -1682,6 +1682,10 @@ class CEmitter:
                             all_module_map[mpath.lower()] = mod
                         self.current_env_vars[iname] = module_record_ident(mangle_module_name(mod_ref))
                         self.current_env_vars[mpath] = module_record_ident(mangle_module_name(mod_ref))
+        # A prelinked library module used without an import is its module record, as an imported one is
+        for name in analysis.implicit_library_imports:
+            if name not in self.current_env_vars:
+                self.current_env_vars[name] = module_record_ident(mangle_module_name(all_module_map[name].name))
         self.all_modules = all_module_map
         # 7. Emit module functions and initializers
         if sorted_modules:

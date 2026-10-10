@@ -450,6 +450,9 @@ on runtime helper operations provided by standard library modules (e.g. `string`
 - Main routines are not required to manually write boilerplate import clauses for core standard library helpers.
 - After compiling a main routine's AST, the compiler driver inspects the analysis phase (`analysis.sorted_modules`)
   to discover any modules referenced implicitly during code generation.
+- The same holds for a prelinked module compiled from library source (`list`, from `lib/list.mod.quest`) that a
+  main routine uses without importing it: the C analysis treats the use as an import of it with its interface
+  (`PRELINKED_LIBRARY_MODULES` in `codegen/c_analysis.py`).
 - These implicitly referenced modules are automatically recorded into the main routine's `.main.qm` under
   `imported_modules`.
   (`unit_module_refs` in `build/engine.py` computes this list, explicit imports plus implicit ones, for both full
