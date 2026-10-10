@@ -90,6 +90,7 @@ from quest.elaborate_types import (
     elaborate_mutual_rec_type_group,
     elaborate_type,
     elaborate_type_binding,
+    reject_type_binding_groups,
 )
 from quest.typed_ast import (
     TypedApp,
@@ -1519,6 +1520,7 @@ class TypeElaborator:
 
     def _synth_tuple_expr(self, expr: ast.ExprTuple, env: Environment, loop_depth: int) -> TypedTuple:
         """Synthesizes a tuple constructor: tuple ... end."""
+        reject_type_binding_groups(expr.fields)
         with env.scoped("tuple_synth"):
             elem_typeds: list[TypedExpr] = []
             q_fields: list[QTupleComponent] = []
@@ -1588,6 +1590,7 @@ class TypeElaborator:
         if not isinstance(expected_lazy, QTupleType):
             return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
 
+        reject_type_binding_groups(expr.fields)
         if len(expr.fields) != len(expected_lazy.fields):
             raise TypeError(
                 f"Tuple arity mismatch: expected {len(expected_lazy.fields)} components, got {len(expr.fields)}",
@@ -3241,6 +3244,9 @@ class TypeElaborator:
             case ast.TypeBinding():
                 sym = elaborate_type_binding(binding, env)
                 return TypedLetType(name=binding.name, symbol=sym, offset=binding.offset)
+
+            case ast.TypeBindingGroup():
+                reject_type_binding_groups((binding,))
 
             case ast.DefKindBinding():
                 k_sym = elaborate_kind_binding(binding, env)

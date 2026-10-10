@@ -1,0 +1,19 @@
+(* Language: simultaneous type declarations with 'and' (parsed; typechecking them comes later) *)
+(* @skip-phase: typecheck, interpret, run_c_compiled *)
+
+(* 1. Mutually recursive types *)
+Let Rec Forest::TYPE = Record trees: Array(Tree) end
+and Tree::TYPE = Variant leaf: Int node: Forest end;
+
+(* 2. Simultaneous non-recursive types *)
+Let Name = String and Count::TYPE = Int;
+
+(* 3. Members with type parameters *)
+Let Pair(A::TYPE B::TYPE)::TYPE = Tuple fst: A snd: B end and Box(A::TYPE)::TYPE = Tuple v: A end;
+
+(* 4. In a tuple type (Def) and in a tuple value (Let) *)
+Let Sig = Tuple Def Rec X = Record y: Array(Y) end and Y = Record x: X end end;
+let pkg = tuple Let A = Int and B = String let x = 1 end;
+
+(* 5. A single declaration is a plain TypeBinding, not a group *)
+Let Single = Int;

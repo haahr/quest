@@ -19,6 +19,7 @@ from quest.elaborate_types import (
     elaborate_kind_binding,
     elaborate_type,
     elaborate_type_binding,
+    reject_type_binding_groups,
 )
 from quest.env import (
     Environment,
@@ -140,6 +141,9 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
             elif isinstance(sig, ast.TypeBinding):
                 type_symbol = elaborate_type_binding(sig, env)
                 interface_scope.declare_type(type_symbol)
+
+            elif isinstance(sig, ast.TypeBindingGroup):
+                reject_type_binding_groups((sig,))
 
             elif isinstance(sig, ast.FieldSig):
                 if sig.name:
