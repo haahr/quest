@@ -1,0 +1,61 @@
+(* Raising and handling exceptions, with payloads and else branches, catching a library exception, and inspecting
+   dynamic values. Uncaught exceptions are error tests (tests/errors/run). *)
+(* @echo *)
+
+import int: IntOp;
+import dynamic: Dynamic;
+
+exception E: Ok end;
+let var x = 0;
+try
+    raise E end
+when E then
+    x := 42;
+end;
+x;
+
+(* A handler binds the payload *)
+exception ValExc: Int end;
+let f(dummy: Int): Int = raise ValExc with 50 end;
+try
+    f(0)
+when ValExc with p then
+    p + 25
+else
+    0
+end;
+
+(* else handles an exception no branch names *)
+exception E1: Ok end;
+exception E2: Ok end;
+let g(dummy: Int): Int = raise E1 end;
+try
+    g(0)
+when E2 then
+    10
+else
+    20
+end;
+
+(* Integer division by zero raises int.error *)
+let zero = 0;
+try
+    10 / zero
+when int.error then
+    999
+else
+    0
+end;
+
+(* inspect discriminates a dynamic value on its type; the binder is its component tuple *)
+let d = dynamic.new(42);
+inspect d
+    when Int with n then n.a + 1
+    else 0
+end;
+let s = dynamic.new("hello");
+inspect s
+    when Int with n then 1
+    when String with str then 2
+    else 3
+end

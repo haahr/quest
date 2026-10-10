@@ -54,11 +54,17 @@ class TestDynamicFormat(unittest.TestCase):
         for r in (math.inf, -math.inf):
             text = jsog_encode(_dynamic(QReal(r), "Real"))
             self.assertEqual(jsog_decode(text).value.elements[0].value, r)
+        # Infinities extern as the strings "Infinity" and "-Infinity"
+        self.assertIn('"value":"Infinity"', jsog_encode(_dynamic(QReal(math.inf), "Real")))
         with self.assertRaises(QuestException):
             jsog_encode(_dynamic(QReal(math.nan), "Real"))
         for value in ('"NaN"', "NaN", "Infinity", "-Infinity"):  # NaN is not a Real; bare tokens are not JSON
-            with self.assertRaises(QuestException):
+            with self.assertRaises(QuestException) as cm:
                 jsog_decode('{"quest":1,"types":[],"type":"Real","value":' + value + "}")
+            self.assertEqual(cm.exception.exc_val.name, "dynamic.error")
+        # An overflowing number interns as an infinity
+        overflow = jsog_decode('{"quest":1,"types":[],"type":"Real","value":1e999}')
+        self.assertEqual(overflow.value.elements[0].value, math.inf)
 
     def test_malformed_documents_are_rejected(self) -> None:
         good = {"quest": 1, "types": INT_LIST_TABLE, "type": 0, "value": "nil"}

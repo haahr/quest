@@ -1,0 +1,123 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('int') : 'IntOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedExprStmt
+      :expr (TypedException 'E' :type Exception))
+    (TypedLetValue 'x' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedTry :type Ok
+        :body (TypedRaise :type Ok
+          :exc (TypedVar 'E' :type Exception))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'E' :type Exception)
+            :body (TypedAssign
+              :target (TypedVar 'x' :type Var(Int))
+              :value (TypedInt 42 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedDerefCell :type Int
+        :target (TypedVar 'x' :type Var(Int))))
+    (TypedExprStmt
+      :expr (TypedException 'ValExc' :type Exception(Int)))
+    (TypedLetValue 'f' :type Fun(dummy: Int): Int
+      :value (TypedFun :params (('dummy' : Int)) :type Fun(dummy: Int): Int
+        :body (TypedRaise :type Int
+          :exc (TypedVar 'ValExc' :type Exception(Int))
+          :payload (TypedInt 50 :type Int))))
+    (TypedExprStmt
+      :expr (TypedTry :type Int
+        :body (TypedApp :type Int
+          :func (TypedVar 'f' :type Fun(dummy: Int): Int)
+          :args (
+            (TypedInt 0 :type Int)
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'ValExc' :type Exception(Int))
+            :body (TypedInfix '+' :type Int
+              :left (TypedVar 'p' :type Int)
+              :right (TypedInt 25 :type Int)))
+        )
+        :else (TypedInt 0 :type Int)))
+    (TypedExprStmt
+      :expr (TypedException 'E1' :type Exception))
+    (TypedExprStmt
+      :expr (TypedException 'E2' :type Exception))
+    (TypedLetValue 'g' :type Fun(dummy: Int): Int
+      :value (TypedFun :params (('dummy' : Int)) :type Fun(dummy: Int): Int
+        :body (TypedRaise :type Int
+          :exc (TypedVar 'E1' :type Exception))))
+    (TypedExprStmt
+      :expr (TypedTry :type Int
+        :body (TypedApp :type Int
+          :func (TypedVar 'g' :type Fun(dummy: Int): Int)
+          :args (
+            (TypedInt 0 :type Int)
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'E2' :type Exception)
+            :body (TypedInt 10 :type Int))
+        )
+        :else (TypedInt 20 :type Int)))
+    (TypedLetValue 'zero' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedTry :type Int
+        :body (TypedInfix '/' :type Int
+          :left (TypedInt 10 :type Int)
+          :right (TypedVar 'zero' :type Int))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'int' :type Module 'int'))
+            :body (TypedInt 999 :type Int))
+        )
+        :else (TypedInt 0 :type Int)))
+    (TypedLetValue 'd' :type T
+      :value (TypedApp :type T
+        :func (TypedTypeApp [Int] :type Fun(a: Int): T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedInt 42 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedInspect :type Int
+        :target (TypedVar 'd' :type T)
+        :branches (
+          (TypedInspectBranch match=Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedSelect 'a' :type Int
+                :target (TypedVar 'n' :type Tuple a: Int end))
+              :right (TypedInt 1 :type Int)))
+        )
+        :else (TypedInt 0 :type Int)))
+    (TypedLetValue 's' :type T
+      :value (TypedApp :type T
+        :func (TypedTypeApp [String] :type Fun(a: String): T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedString 'hello' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedInspect :type Int
+        :target (TypedVar 's' :type T)
+        :branches (
+          (TypedInspectBranch match=Int
+            :body (TypedInt 1 :type Int))
+          (TypedInspectBranch match=String
+            :body (TypedInt 2 :type Int))
+        )
+        :else (TypedInt 3 :type Int)))
+  ))

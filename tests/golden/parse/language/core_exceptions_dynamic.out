@@ -1,0 +1,222 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('int') 'IntOp')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('dynamic') 'Dynamic')
+      )
+    )
+    (ExprStmt
+      :expr (ExprException
+        :name 'E'
+        :type_annot (TypePath ('Ok'))
+      )
+    )
+    (LetValueBinding
+      :name 'x'
+      :value (ExprInt 0 '0')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprTry
+        :body (ExprRaise
+          :exc (ExprId 'E')
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'E')
+            :body (ExprInfix
+              :left (ExprId 'x')
+              :op ':='
+              :right (ExprInt 42 '42')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprId 'x')
+    )
+    (ExprStmt
+      :expr (ExprException
+        :name 'ValExc'
+        :type_annot (TypePath ('Int'))
+      )
+    )
+    (LetValueBinding
+      :name 'f'
+      :value (ExprRaise
+        :exc (ExprId 'ValExc')
+        :payload (ExprInt 50 '50')
+      )
+      :params (
+        (FormalParam
+          :name 'dummy'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprTry
+        :body (ExprApp
+          :func (ExprId 'f')
+          :args (
+            (ExprInt 0 '0')
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'ValExc')
+            :binder 'p'
+            :body (ExprInfix
+              :left (ExprId 'p')
+              :op '+'
+              :right (ExprInt 25 '25')
+            )
+          )
+        )
+        :else_branch (ExprInt 0 '0')
+      )
+    )
+    (ExprStmt
+      :expr (ExprException
+        :name 'E1'
+        :type_annot (TypePath ('Ok'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprException
+        :name 'E2'
+        :type_annot (TypePath ('Ok'))
+      )
+    )
+    (LetValueBinding
+      :name 'g'
+      :value (ExprRaise
+        :exc (ExprId 'E1')
+      )
+      :params (
+        (FormalParam
+          :name 'dummy'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprTry
+        :body (ExprApp
+          :func (ExprId 'g')
+          :args (
+            (ExprInt 0 '0')
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'E2')
+            :body (ExprInt 10 '10')
+          )
+        )
+        :else_branch (ExprInt 20 '20')
+      )
+    )
+    (LetValueBinding
+      :name 'zero'
+      :value (ExprInt 0 '0')
+    )
+    (ExprStmt
+      :expr (ExprTry
+        :body (ExprInfix
+          :left (ExprInt 10 '10')
+          :op '/'
+          :right (ExprId 'zero')
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'int')
+              :field 'error'
+            )
+            :body (ExprInt 999 '999')
+          )
+        )
+        :else_branch (ExprInt 0 '0')
+      )
+    )
+    (LetValueBinding
+      :name 'd'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'new'
+        )
+        :args (
+          (ExprInt 42 '42')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInspect
+        :target (ExprId 'd')
+        :branches (
+          (InspectBranch
+            :match_type (TypePath ('Int'))
+            :binders (
+              ('n' None)
+            )
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'n')
+                :field 'a'
+              )
+              :op '+'
+              :right (ExprInt 1 '1')
+            )
+          )
+        )
+        :else_branch (ExprInt 0 '0')
+      )
+    )
+    (LetValueBinding
+      :name 's'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'new'
+        )
+        :args (
+          (ExprString 'hello' '"hello"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInspect
+        :target (ExprId 's')
+        :branches (
+          (InspectBranch
+            :match_type (TypePath ('Int'))
+            :binders (
+              ('n' None)
+            )
+            :body (ExprInt 1 '1')
+          )
+          (InspectBranch
+            :match_type (TypePath ('String'))
+            :binders (
+              ('str' None)
+            )
+            :body (ExprInt 2 '2')
+          )
+        )
+        :else_branch (ExprInt 3 '3')
+      )
+    )
+  )
+)
