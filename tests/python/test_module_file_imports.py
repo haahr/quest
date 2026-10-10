@@ -568,5 +568,52 @@ class TestModuleFileImports(unittest.TestCase):
         self.assertTrue(any("Cyclic dependency detected in module imports" in d.message for d in res.diagnostics))
 
 
+class TestDiagnosticsInImportedUnits(unittest.TestCase):
+    """An error in an imported unit is reported in the unit's own file, in every phase (docs/diagnostics.md §4.4).
+
+    Error tests cover typecheck; this covers C compilation, where a module's body is compiled only when the program
+    is linked, which no error test reaches (its typecheck precursor reports the error first).
+    """
+
+    def setUp(self):
+        self.temp_dir_obj = tempfile.TemporaryDirectory()
+        self.temp_dir = Path(self.temp_dir_obj.name)
+        (self.temp_dir / "cnt.int.quest").write_text("interface Cnt\nexport\n    get(): Int\nend;\n")
+        (self.temp_dir / "cnt.mod.quest").write_text(
+            'module cnt : Cnt\nexport\n\n    let get(): Int = "oops";\nend;\n'
+        )
+        (self.temp_dir / "usecnt.quest").write_text("import cnt: Cnt;\ncnt.get();\n")
+
+    def tearDown(self):
+        self.temp_dir_obj.cleanup()
+
+    def _driver_stderr(self, phase: str) -> str:
+        import subprocess
+        root = Path(__file__).resolve().parent.parent.parent
+        env = dict(os.environ, PYTHONPATH=str(root / "bootstrap" / "python"))
+        proc = subprocess.run(
+            [
+                sys.executable, str(root / "bootstrap" / "python" / "quest_driver.py"),
+                "--stop-after", phase, "--build-dir", str(self.temp_dir / "build"), "usecnt.quest",
+            ],
+            cwd=self.temp_dir, env=env, capture_output=True, text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0, proc.stdout)
+        return proc.stderr
+
+    def test_module_body_error_is_located_in_the_module(self):
+        for phase in ("typecheck", "run_c_compiled"):
+            with self.subTest(phase=phase):
+                stderr = self._driver_stderr(phase)
+                self.assertIn("cnt.mod.quest:4:22: error: Type mismatch", stderr)
+                self.assertIn('let get(): Int = "oops";', stderr)
+                self.assertNotIn("Traceback", stderr)
+
+    def test_import_that_loaded_the_unit_is_noted(self):
+        stderr = self._driver_stderr("typecheck")
+        self.assertIn("::: usecnt.quest:1:11", stderr)
+        self.assertIn("note: imported here", stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

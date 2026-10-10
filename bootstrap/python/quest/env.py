@@ -254,6 +254,9 @@ class Environment:
         self._modules: dict[str, Scope] = {}
         self.include_paths: list[Path] = []
         self.current_dir: Optional[Path] = None
+        # The source map of the file being elaborated (the program, or an imported unit; see unit_source), which
+        # imports are located in when they report errors in the units they load
+        self.source_map: Optional[Any] = None
         # The directory of the program being compiled, which names units under no include root (docs/modules.md §2.3)
         self.program_dir: Optional[Path] = None
         self.loaded_modules_ast: dict[str, Any] = {}
@@ -339,6 +342,19 @@ class Environment:
 
     def lookup_module(self, name: str) -> Optional[Scope]:
         return self._modules.get(name)
+
+    @contextmanager
+    def unit_source(self, source_map: Any) -> Iterator[None]:
+        """Elaborates a unit loaded from the file of source_map: errors raised inside are located in that file
+        (diagnostics.in_unit), and imports it makes are located in it (source_map)."""
+        from quest.diagnostics import in_unit
+        saved = self.source_map
+        self.source_map = source_map
+        try:
+            with in_unit(source_map):
+                yield
+        finally:
+            self.source_map = saved
 
     @contextmanager
     def unit_names(self) -> Iterator[None]:

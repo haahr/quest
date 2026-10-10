@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
@@ -22,6 +25,9 @@ class DiagnosticLabel:
     length: int = 1
     message: Optional[str] = None
     is_primary: bool = True
+    # The source map of the file the offset is in, when it is not the diagnostic's (such as an import that loaded the
+    # file the error is in)
+    source_map: Optional[Any] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -44,6 +50,9 @@ class Diagnostic:
     help_text: Optional[str] = None
     suggestions: list[CodeSuggestion] = field(default_factory=list)
     error_code: Optional[str] = None
+    # The source map of the file the labels' offsets are in, when it is not the file being compiled (an imported
+    # interface or module; see in_unit)
+    source_map: Optional[Any] = None
 
     @classmethod
     def make_error(
@@ -133,7 +142,15 @@ class Diagnostic:
 
 
 class QuestCompilerError(Exception):
-    """Base class for all Quest compilation and evaluation errors."""
+    """Base class for all Quest compilation and evaluation errors.
+
+    An error raised in an imported interface or module records that file's source map, and the imports through
+    which the file was loaded, innermost first, as it propagates (in_unit and at_import); diagnostic_of puts them on
+    its diagnostic.
+    """
+
+    source_map: Optional[Any] = None
+    import_labels: tuple[DiagnosticLabel, ...] = ()
 
     def __init__(
         self,
@@ -163,6 +180,49 @@ class QuestCompilerError(Exception):
     def format_with_source(self, source_map: Any, length: Optional[int] = None) -> str:
         """Renders this error as a formatted diagnostic message with source context."""
         return DiagnosticRenderer.render_diagnostic(self.to_diagnostic(length), source_map)
+
+
+def diagnostic_of(error: QuestCompilerError) -> Diagnostic:
+    """The diagnostic for error, located in the file it was raised in, with the imports that loaded that file."""
+    diag = error.to_diagnostic()
+    if error.source_map is None and not error.import_labels:
+        return diag
+    return dataclasses.replace(
+        diag,
+        source_map=diag.source_map or error.source_map,
+        secondary_labels=[*diag.secondary_labels, *error.import_labels],
+    )
+
+
+@contextmanager
+def in_unit(source_map: Any) -> Iterator[None]:
+    """Attributes errors raised while elaborating an imported unit (an interface or module file) to that file."""
+    try:
+        yield
+    except QuestCompilerError as error:
+        if error.source_map is None:
+            error.source_map = source_map
+        raise
+
+
+@contextmanager
+def at_import(offset: int, source_map: Any, length: int = 1) -> Iterator[None]:
+    """Notes the import at offset in the file of source_map on errors raised while loading the unit it imports.
+
+    An error located in the unit gets an "imported here" label. An error with no location yet was raised before the
+    unit was read (the unit could not be found, say), so it is located at the import itself.
+    """
+    try:
+        yield
+    except QuestCompilerError as error:
+        if error.source_map is None:
+            error.source_map = source_map
+            if not error.offset:
+                error.offset, error.length = offset, length
+        elif error.source_map is not source_map:
+            label = DiagnosticLabel(offset, length, "imported here", is_primary=False, source_map=source_map)
+            error.import_labels = (*error.import_labels, label)
+        raise
 
 
 class FatalDiagnosticError(QuestCompilerError):
@@ -316,6 +376,8 @@ class DiagnosticRenderer:
         """Renders a single Diagnostic with header, source line context, notes, and help."""
         code_str = f"[{diag.error_code}]" if diag.error_code else ""
         sev_str = f"{diag.severity.value}{code_str}"
+        # A diagnostic in an imported unit is rendered against that unit's source
+        source_map = diag.source_map or source_map
 
         # If no source map or no primary label offset, emit plain message header
         if source_map is None or diag.primary_label is None:
@@ -343,11 +405,13 @@ class DiagnosticRenderer:
             label_msg = f" {diag.primary_label.message}" if diag.primary_label.message else ""
             lines.append(f"    {caret_pad}{underline}{label_msg}")
 
-        # Secondary contextual labels
+        # Secondary contextual labels, each in its own file (an import in the main file, say)
         for sec in diag.secondary_labels:
-            sec_loc = source_map.locate(sec.offset)
-            if 1 <= sec_loc.line <= len(src_lines):
-                sec_src = src_lines[sec_loc.line - 1]
+            sec_map = sec.source_map or source_map
+            sec_loc = sec_map.locate(sec.offset)
+            sec_lines = sec_map.source_text.splitlines()
+            if 1 <= sec_loc.line <= len(sec_lines):
+                sec_src = sec_lines[sec_loc.line - 1]
                 sec_pad = " " * (sec_loc.column - 1)
                 sec_dash = "-" * max(1, sec.length)
                 sec_msg = f" note: {sec.message}" if sec.message else ""

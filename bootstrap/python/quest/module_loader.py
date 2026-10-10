@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Optional
 import quest.ast as ast
 from quest.diagnostics import QuestCompilerError, QuestTypeError
 from quest.grammar import parse_quest_program
-from quest.tokens import SourceMap, TokenKind
+from quest.tokens import SourceMap, TokenKind, display_file_name
 from quest.tokenizer import Tokenizer
 
 if TYPE_CHECKING:
@@ -436,45 +436,46 @@ def load_interface(name: str, env: Environment) -> Scope:
     except OSError as err:
         raise QuestTypeError(f"Error reading interface file '{file_path}': {err}")
 
-    source_map = SourceMap(source_text, str(file_path))
-    tokenizer = Tokenizer(source_text, str(file_path))
-    tokens = tokenizer.tokenize_all()
-    prog = parse_quest_program(tokens, source_map)
+    source_map = SourceMap(source_text, display_file_name(file_path))
+    with env.unit_source(source_map):
+        tokenizer = Tokenizer(source_text, str(file_path))
+        tokens = tokenizer.tokenize_all()
+        prog = parse_quest_program(tokens, source_map)
 
-    if not isinstance(prog, ast.Program):
-        raise QuestTypeError(f"Malformed parse result in '{file_path}'")
+        if not isinstance(prog, ast.Program):
+            raise QuestTypeError(f"Malformed parse result in '{file_path}'")
 
-    if len(prog.phrases) != 1:
-        raise QuestTypeError(
-            f"Interface file '{file_path.name}' must contain only a single interface declaration, "
-            f"but found {len(prog.phrases)} phrases"
-        )
+        if len(prog.phrases) != 1:
+            raise QuestTypeError(
+                f"Interface file '{file_path.name}' must contain only a single interface declaration, "
+                f"but found {len(prog.phrases)} phrases"
+            )
 
-    decl = prog.phrases[0]
-    if not isinstance(decl, ast.InterfaceDecl):
-        raise QuestTypeError(
-            f"Expected interface declaration in '{file_path.name}', but found {type(decl).__name__}"
-        )
+        decl = prog.phrases[0]
+        if not isinstance(decl, ast.InterfaceDecl):
+            raise QuestTypeError(
+                f"Expected interface declaration in '{file_path.name}', but found {type(decl).__name__}"
+            )
 
-    expected_base = file_path.name.split(".")[0].lower()
-    if decl.name.lower() != expected_base or decl.name.lower() != norm_name.split("/")[-1]:
-        raise QuestTypeError(
-            f"Interface declared in '{file_path.name}' has name '{decl.name}', which does not match file name"
-        )
+        expected_base = file_path.name.split(".")[0].lower()
+        if decl.name.lower() != expected_base or decl.name.lower() != norm_name.split("/")[-1]:
+            raise QuestTypeError(
+                f"Interface declared in '{file_path.name}' has name '{decl.name}', which does not match file name"
+            )
 
-    saved_dir = env.current_dir
-    env.current_dir = file_path.parent
-    env._loading_interfaces.append(canon_name)
-    try:
-        from quest.modules import elaborate_interface
-        with env.unit_names():
-            typed_iface = elaborate_interface(decl, env)
-    finally:
-        env._loading_interfaces.pop()
-        env.current_dir = saved_dir
-    if decl.name != name:
-        env.register_interface(decl.name, typed_iface.scope)
-    return _register(typed_iface.scope)
+        saved_dir = env.current_dir
+        env.current_dir = file_path.parent
+        env._loading_interfaces.append(canon_name)
+        try:
+            from quest.modules import elaborate_interface
+            with env.unit_names():
+                typed_iface = elaborate_interface(decl, env)
+        finally:
+            env._loading_interfaces.pop()
+            env.current_dir = saved_dir
+        if decl.name != name:
+            env.register_interface(decl.name, typed_iface.scope)
+        return _register(typed_iface.scope)
 
 
 def _declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
@@ -604,83 +605,84 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
     except OSError as err:
         raise QuestTypeError(f"Error reading module file '{file_path}': {err}")
 
-    source_map = SourceMap(source_text, str(file_path))
-    tokenizer = Tokenizer(source_text, str(file_path))
-    tokens = tokenizer.tokenize_all()
-    prog = parse_quest_program(tokens, source_map)
+    source_map = SourceMap(source_text, display_file_name(file_path))
+    with env.unit_source(source_map):
+        tokenizer = Tokenizer(source_text, str(file_path))
+        tokens = tokenizer.tokenize_all()
+        prog = parse_quest_program(tokens, source_map)
 
-    if not isinstance(prog, ast.Program):
-        raise QuestTypeError(f"Malformed parse result in '{file_path}'")
+        if not isinstance(prog, ast.Program):
+            raise QuestTypeError(f"Malformed parse result in '{file_path}'")
 
-    if len(prog.phrases) != 1:
-        raise QuestTypeError(
-            f"Module file '{file_path.name}' must contain only a single module definition, "
-            f"but found {len(prog.phrases)} phrases"
-        )
+        if len(prog.phrases) != 1:
+            raise QuestTypeError(
+                f"Module file '{file_path.name}' must contain only a single module definition, "
+                f"but found {len(prog.phrases)} phrases"
+            )
 
-    decl = prog.phrases[0]
-    if not isinstance(decl, ast.ModuleDecl):
-        raise QuestTypeError(
-            f"Expected module definition in '{file_path.name}', but found {type(decl).__name__}"
-        )
+        decl = prog.phrases[0]
+        if not isinstance(decl, ast.ModuleDecl):
+            raise QuestTypeError(
+                f"Expected module definition in '{file_path.name}', but found {type(decl).__name__}"
+            )
 
-    expected_base = file_path.name.split(".")[0].lower()
-    if decl.name.lower() != expected_base or decl.name.lower() != norm_name.split("/")[-1]:
-        raise QuestTypeError(
-            f"Module declared in '{file_path.name}' has name '{decl.name}', which does not match file name"
-        )
+        expected_base = file_path.name.split(".")[0].lower()
+        if decl.name.lower() != expected_base or decl.name.lower() != norm_name.split("/")[-1]:
+            raise QuestTypeError(
+                f"Module declared in '{file_path.name}' has name '{decl.name}', which does not match file name"
+            )
 
-    if (
-        decl.interface_name != expected_interface
-        and decl.interface_name.split("/")[-1] != expected_interface
-        and decl.interface_name != expected_interface.split("/")[-1]
-    ):
-        raise QuestTypeError(
-            f"Module '{decl.name}' in '{file_path.name}' implements interface '{decl.interface_name}', "
-            f"expected '{expected_interface}'"
-        )
+        if (
+            decl.interface_name != expected_interface
+            and decl.interface_name.split("/")[-1] != expected_interface
+            and decl.interface_name != expected_interface.split("/")[-1]
+        ):
+            raise QuestTypeError(
+                f"Module '{decl.name}' in '{file_path.name}' implements interface '{decl.interface_name}', "
+                f"expected '{expected_interface}'"
+            )
 
-    # The interface the importer expects, which the module's header names unless it cannot be resolved from the
-    # module's directory (a hierarchical path relative to the program's directory, which is not searched).
-    importer_interface = env.lookup_interface(expected_interface)
+        # The interface the importer expects, which the module's header names unless it cannot be resolved from the
+        # module's directory (a hierarchical path relative to the program's directory, which is not searched).
+        importer_interface = env.lookup_interface(expected_interface)
 
-    saved_dir = env.current_dir
-    saved_scope = env.current_scope
-    env.current_dir = file_path.parent
-    env._loading_modules.append(canon_name)
-    try:
-        # The module is elaborated with its own interface and module names, resolved from its directory.
-        with env.unit_names():
-            if (
-                importer_interface is not None
-                and resolve_interface_file(decl.interface_name, env.current_dir, env.include_paths) is None
-            ):
-                env.register_interface(decl.interface_name, importer_interface)
-            elif env.lookup_interface(decl.interface_name) is None:
-                load_interface(decl.interface_name, env)
+        saved_dir = env.current_dir
+        saved_scope = env.current_scope
+        env.current_dir = file_path.parent
+        env._loading_modules.append(canon_name)
+        try:
+            # The module is elaborated with its own interface and module names, resolved from its directory.
+            with env.unit_names():
+                if (
+                    importer_interface is not None
+                    and resolve_interface_file(decl.interface_name, env.current_dir, env.include_paths) is None
+                ):
+                    env.register_interface(decl.interface_name, importer_interface)
+                elif env.lookup_interface(decl.interface_name) is None:
+                    load_interface(decl.interface_name, env)
 
-            from quest.modules import elaborate_module
-            from quest.env import Scope
-            temp_scope = Scope(parent=env.base_scope, name=f"temp_load_{decl.name}")
-            env.current_scope = temp_scope
-            typed_mod = elaborate_module(decl, env)
-    finally:
-        env.current_scope = saved_scope
-        env._loading_modules.pop()
-        env.current_dir = saved_dir
+                from quest.modules import elaborate_module
+                from quest.env import Scope
+                temp_scope = Scope(parent=env.base_scope, name=f"temp_load_{decl.name}")
+                env.current_scope = temp_scope
+                typed_mod = elaborate_module(decl, env)
+        finally:
+            env.current_scope = saved_scope
+            env._loading_modules.pop()
+            env.current_dir = saved_dir
 
-    # The module is named in C symbols by its canonical name, as importers refer to it. Mangling ignores case,
-    # and a name differing only in case (arrayOp) is kept, as builtin modules are known by it.
-    if typed_mod.name.lower() != canon_name.lower():
-        from dataclasses import replace
-        typed_mod = replace(typed_mod, name=canon_name)
+        # The module is named in C symbols by its canonical name, as importers refer to it. Mangling ignores case,
+        # and a name differing only in case (arrayOp) is kept, as builtin modules are known by it.
+        if typed_mod.name.lower() != canon_name.lower():
+            from dataclasses import replace
+            typed_mod = replace(typed_mod, name=canon_name)
 
-    # Importers look the export scope up by the path they imported.
-    env.register_module(name, typed_mod.scope)
-    if canon_name != name:
-        env.register_module(canon_name, typed_mod.scope)
-    env.loaded_modules_ast[canon_name] = typed_mod
-    return typed_mod
+        # Importers look the export scope up by the path they imported.
+        env.register_module(name, typed_mod.scope)
+        if canon_name != name:
+            env.register_module(canon_name, typed_mod.scope)
+        env.loaded_modules_ast[canon_name] = typed_mod
+        return typed_mod
 
 
 def load_module_for_interpreter(

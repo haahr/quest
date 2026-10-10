@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 import quest.ast as ast
 from quest.builtins import BuiltinModuleRegistry
-from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError
+from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
 from quest.elaborate_types import (
     elaborate_kind,
     elaborate_kind_binding,
@@ -67,65 +67,69 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
 
     # 1. Resolve imports into import_scope (available for signatures, not exported by interface)
     for imp in decl.imports:
-        iface_path = imp.effective_interface_path
-        source_interface_scope = import_interface(iface_path, imp.interface_name, env)
+        with at_import(imp.offset, env.source_map):
+            iface_path = imp.effective_interface_path
+            source_interface_scope = import_interface(iface_path, imp.interface_name, env)
 
-        if not imp.names:
-            # Unaliased interface import / interface inheritance
-            is_alias = imp.interface_path is not None and imp.interface_name != imp.effective_interface_path
-            target_scope = import_scope if is_alias else interface_scope
-            for type_name, type_sym in source_interface_scope.types.items():
-                target_scope.declare_type(type_sym)
-            for kind_name, kind_sym in source_interface_scope.kinds.items():
-                target_scope.declare_kind(kind_sym)
-        else:
-            for name, mod_path in zip(imp.names, imp.effective_module_paths):
-                type_symbol = source_interface_scope.lookup_type_local(name)
-                if type_symbol is not None:
-                    interface_scope.declare_type(type_symbol)
-                    continue
-                value_symbol = source_interface_scope.lookup_value_local(name)
-                if value_symbol is not None:
-                    interface_scope.declare_value(value_symbol)
-                    continue
-                kind_symbol = source_interface_scope.lookup_kind_local(name)
-                if kind_symbol is not None:
-                    interface_scope.declare_kind(kind_symbol)
-                    continue
+            if not imp.names:
+                # Unaliased interface import / interface inheritance
+                is_alias = imp.interface_path is not None and imp.interface_name != imp.effective_interface_path
+                target_scope = import_scope if is_alias else interface_scope
+                for type_name, type_sym in source_interface_scope.types.items():
+                    target_scope.declare_type(type_sym)
+                for kind_name, kind_sym in source_interface_scope.kinds.items():
+                    target_scope.declare_kind(kind_sym)
+            else:
+                for name, mod_path in zip(imp.names, imp.effective_module_paths):
+                    type_symbol = source_interface_scope.lookup_type_local(name)
+                    if type_symbol is not None:
+                        interface_scope.declare_type(type_symbol)
+                        continue
+                    value_symbol = source_interface_scope.lookup_value_local(name)
+                    if value_symbol is not None:
+                        interface_scope.declare_value(value_symbol)
+                        continue
+                    kind_symbol = source_interface_scope.lookup_kind_local(name)
+                    if kind_symbol is not None:
+                        interface_scope.declare_kind(kind_symbol)
+                        continue
 
-                from quest.module_loader import (
-                    load_module,
-                    resolve_module_file,
-                    resolve_object_file,
-                )
-                mod_scope = None
-                if (
-                    mod_path in env.loaded_modules_ast
-                    or mod_path in env.precompiled_modules
-                    or resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
-                    or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
-                ):
-                    try:
-                        typed_mod = load_module(mod_path, iface_path, env)
-                        mod_scope = typed_mod.scope
-                    except (QuestCompilerError, OSError) as err:
-                        if getattr(env, "sink", None) is not None:
-                            env.sink.emit(Diagnostic.make_from_exception(err, 0))
-                        mod_scope = None
-
-                registered_scope = (
-                    mod_scope if mod_scope is not None
-                    else separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                )
-                env.register_module(name, registered_scope)
-                if mod_path != name:
-                    env.register_module(mod_path, registered_scope)
-                mod_type = BuiltinModuleRegistry.get_module_type(name, env)
-                if mod_type is None:
-                    mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
-                        registered_scope, provenance=name
+                    from quest.module_loader import (
+                        load_module,
+                        resolve_module_file,
+                        resolve_object_file,
                     )
-                import_scope.declare_value(ValueSymbol(name=name, type_val=mod_type))
+                    mod_scope = None
+                    if (
+                        mod_path in env.loaded_modules_ast
+                        or mod_path in env.precompiled_modules
+                        or resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
+                        or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
+                    ):
+                        try:
+                            typed_mod = load_module(mod_path, iface_path, env)
+                            mod_scope = typed_mod.scope
+                        except (QuestCompilerError, OSError) as err:
+                            if getattr(env, "sink", None) is not None:
+                                if isinstance(err, QuestCompilerError):
+                                    env.sink.emit(diagnostic_of(err))
+                                else:
+                                    env.sink.emit(Diagnostic.make_from_exception(err, 0))
+                            mod_scope = None
+
+                    registered_scope = (
+                        mod_scope if mod_scope is not None
+                        else separately_compiled_module_scope(mod_path, source_interface_scope, env)
+                    )
+                    env.register_module(name, registered_scope)
+                    if mod_path != name:
+                        env.register_module(mod_path, registered_scope)
+                    mod_type = BuiltinModuleRegistry.get_module_type(name, env)
+                    if mod_type is None:
+                        mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                            registered_scope, provenance=name
+                        )
+                    import_scope.declare_value(ValueSymbol(name=name, type_val=mod_type))
 
     # 2. Elaborate signatures in a child scope of the interface
     saved_scope = env.current_scope
@@ -255,69 +259,70 @@ def elaborate_module(
 
     # 1. Resolve imports into module_internal_scope
     for imp in decl.imports:
-        iface_path = imp.effective_interface_path
-        source_interface_scope = import_interface(iface_path, imp.interface_name, env)
+        with at_import(imp.offset, env.source_map):
+            iface_path = imp.effective_interface_path
+            source_interface_scope = import_interface(iface_path, imp.interface_name, env)
 
-        if not imp.names:
-            for type_name, type_sym in source_interface_scope.types.items():
-                module_internal_scope.declare_type(type_sym)
-            for kind_name, kind_sym in source_interface_scope.kinds.items():
-                module_internal_scope.declare_kind(kind_sym)
-        else:
-            for local_name, mod_path in zip(imp.names, imp.effective_module_paths):
-                if local_name == mod_path:
-                    type_symbol = source_interface_scope.lookup_type_local(local_name)
-                    if type_symbol is not None:
-                        module_internal_scope.declare_type(type_symbol)
-                        continue
-                    value_symbol = source_interface_scope.lookup_value_local(local_name)
-                    if value_symbol is not None:
-                        module_internal_scope.declare_value(value_symbol)
-                        continue
-                    kind_symbol = source_interface_scope.lookup_kind_local(local_name)
-                    if kind_symbol is not None:
-                        module_internal_scope.declare_kind(kind_symbol)
-                        continue
-                from quest.module_loader import (
-                    is_c_compilation_mode,
-                    load_module,
-                    resolve_module_file,
-                    resolve_object_file,
-                )
-                if is_c_compilation_mode(env):
-                    mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                    mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
-                        mod_scope, provenance=local_name
+            if not imp.names:
+                for type_name, type_sym in source_interface_scope.types.items():
+                    module_internal_scope.declare_type(type_sym)
+                for kind_name, kind_sym in source_interface_scope.kinds.items():
+                    module_internal_scope.declare_kind(kind_sym)
+            else:
+                for local_name, mod_path in zip(imp.names, imp.effective_module_paths):
+                    if local_name == mod_path:
+                        type_symbol = source_interface_scope.lookup_type_local(local_name)
+                        if type_symbol is not None:
+                            module_internal_scope.declare_type(type_symbol)
+                            continue
+                        value_symbol = source_interface_scope.lookup_value_local(local_name)
+                        if value_symbol is not None:
+                            module_internal_scope.declare_value(value_symbol)
+                            continue
+                        kind_symbol = source_interface_scope.lookup_kind_local(local_name)
+                        if kind_symbol is not None:
+                            module_internal_scope.declare_kind(kind_symbol)
+                            continue
+                    from quest.module_loader import (
+                        is_c_compilation_mode,
+                        load_module,
+                        resolve_module_file,
+                        resolve_object_file,
                     )
-                    registered_scope = mod_scope
-                else:
-                    on_disk = (
-                        resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
-                        or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
-                        or mod_path in env.precompiled_modules
-                    )
-                    if on_disk or mod_path in env.loaded_modules_ast:
-                        if mod_path not in env.loaded_modules_ast:
-                            load_module(mod_path, iface_path, env)
+                    if is_c_compilation_mode(env):
                         mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
                         mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
                             mod_scope, provenance=local_name
                         )
+                        registered_scope = mod_scope
                     else:
-                        mod_type = BuiltinModuleRegistry.get_module_type(mod_path, env)
-                        mod_scope = env.lookup_module(mod_path)
-                        if mod_type is None:
+                        on_disk = (
+                            resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
+                            or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
+                            or mod_path in env.precompiled_modules
+                        )
+                        if on_disk or mod_path in env.loaded_modules_ast:
                             if mod_path not in env.loaded_modules_ast:
                                 load_module(mod_path, iface_path, env)
                             mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
                             mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
                                 mod_scope, provenance=local_name
                             )
-                    registered_scope = mod_scope if mod_scope is not None else source_interface_scope
-                env.register_module(mod_path, registered_scope)
-                if local_name != mod_path:
-                    env.register_module(local_name, registered_scope)
-                module_internal_scope.declare_value(ValueSymbol(name=local_name, type_val=mod_type))
+                        else:
+                            mod_type = BuiltinModuleRegistry.get_module_type(mod_path, env)
+                            mod_scope = env.lookup_module(mod_path)
+                            if mod_type is None:
+                                if mod_path not in env.loaded_modules_ast:
+                                    load_module(mod_path, iface_path, env)
+                                mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
+                                mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                                    mod_scope, provenance=local_name
+                                )
+                        registered_scope = mod_scope if mod_scope is not None else source_interface_scope
+                    env.register_module(mod_path, registered_scope)
+                    if local_name != mod_path:
+                        env.register_module(local_name, registered_scope)
+                    module_internal_scope.declare_value(ValueSymbol(name=local_name, type_val=mod_type))
 
     # 2. Elaborate module internal bindings
     if binding_elaborator is None:
@@ -429,80 +434,81 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
     """Elaborates a top-level import statement, loading interfaces/modules from BuiltinModuleRegistry or files."""
     typed_items: list[TypedImportItem] = []
     for item in phrase.items:
-        iface_path = item.effective_interface_path
-        local_iface_name = item.interface_name
-        iface_scope = import_interface(iface_path, local_iface_name, env)
+        with at_import(item.offset, env.source_map):
+            iface_path = item.effective_interface_path
+            local_iface_name = item.interface_name
+            iface_scope = import_interface(iface_path, local_iface_name, env)
 
-        if not item.names:
-            # import : Interface
-            # Direct interface import: bind interface types and kinds into current scope
-            for type_name, type_sym in iface_scope.types.items():
-                env.current_scope.declare_type(type_sym)
-            for kind_name, kind_sym in iface_scope.kinds.items():
-                env.current_scope.declare_kind(kind_sym)
-            typed_items.append(
-                TypedImportItem(
-                    names=(),
-                    interface_name=local_iface_name,
-                    module_paths=(),
-                    interface_path=item.interface_path,
-                )
-            )
-        else:
-            # import mod1, mod2: Interface
-            for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
-                from quest.module_loader import (
-                    is_c_compilation_mode,
-                    load_module,
-                    resolve_module_file,
-                    resolve_object_file,
-                )
-                if is_c_compilation_mode(env):
-                    # In separate compilation mode, type the module via its interface without loading source
-                    mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
-                    mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
-                        mod_scope, provenance=local_mod_name
+            if not item.names:
+                # import : Interface
+                # Direct interface import: bind interface types and kinds into current scope
+                for type_name, type_sym in iface_scope.types.items():
+                    env.current_scope.declare_type(type_sym)
+                for kind_name, kind_sym in iface_scope.kinds.items():
+                    env.current_scope.declare_kind(kind_sym)
+                typed_items.append(
+                    TypedImportItem(
+                        names=(),
+                        interface_name=local_iface_name,
+                        module_paths=(),
+                        interface_path=item.interface_path,
                     )
-                    registered_scope = mod_scope
-                else:
-                    on_disk = (
-                        resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
-                        or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
-                        or mod_path in env.precompiled_modules
+                )
+            else:
+                # import mod1, mod2: Interface
+                for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
+                    from quest.module_loader import (
+                        is_c_compilation_mode,
+                        load_module,
+                        resolve_module_file,
+                        resolve_object_file,
                     )
-                    if on_disk or mod_path in env.loaded_modules_ast:
-                        if mod_path not in env.loaded_modules_ast:
-                            load_module(mod_path, iface_path, env)
+                    if is_c_compilation_mode(env):
+                        # In separate compilation mode, type the module via its interface without loading source
                         mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
                         mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
                             mod_scope, provenance=local_mod_name
                         )
+                        registered_scope = mod_scope
                     else:
-                        mod_type = BuiltinModuleRegistry.get_module_type(mod_path, env)
-                        mod_scope = env.lookup_module(mod_path)
-                        if mod_type is None:
+                        on_disk = (
+                            resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
+                            or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
+                            or mod_path in env.precompiled_modules
+                        )
+                        if on_disk or mod_path in env.loaded_modules_ast:
                             if mod_path not in env.loaded_modules_ast:
                                 load_module(mod_path, iface_path, env)
                             mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
                             mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
                                 mod_scope, provenance=local_mod_name
                             )
-                    registered_scope = mod_scope if mod_scope is not None else iface_scope
-                env.register_module(mod_path, registered_scope)
-                if local_mod_name != mod_path:
-                    env.register_module(local_mod_name, registered_scope)
-                env.current_scope.declare_value(ValueSymbol(name=local_mod_name, type_val=mod_type))
-            from quest.module_loader import canonical_import_name
-            typed_items.append(
-                TypedImportItem(
-                    names=item.names,
-                    interface_name=local_iface_name,
-                    module_paths=item.module_paths,
-                    interface_path=item.interface_path,
-                    canonical_module_paths=tuple(
-                        canonical_import_name(mod_path, env) for mod_path in item.effective_module_paths
-                    ),
+                        else:
+                            mod_type = BuiltinModuleRegistry.get_module_type(mod_path, env)
+                            mod_scope = env.lookup_module(mod_path)
+                            if mod_type is None:
+                                if mod_path not in env.loaded_modules_ast:
+                                    load_module(mod_path, iface_path, env)
+                                mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
+                                mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                                    mod_scope, provenance=local_mod_name
+                                )
+                        registered_scope = mod_scope if mod_scope is not None else iface_scope
+                    env.register_module(mod_path, registered_scope)
+                    if local_mod_name != mod_path:
+                        env.register_module(local_mod_name, registered_scope)
+                    env.current_scope.declare_value(ValueSymbol(name=local_mod_name, type_val=mod_type))
+                from quest.module_loader import canonical_import_name
+                typed_items.append(
+                    TypedImportItem(
+                        names=item.names,
+                        interface_name=local_iface_name,
+                        module_paths=item.module_paths,
+                        interface_path=item.interface_path,
+                        canonical_module_paths=tuple(
+                            canonical_import_name(mod_path, env) for mod_path in item.effective_module_paths
+                        ),
+                    )
                 )
-            )
 
     return TypedImport(items=tuple(typed_items), offset=phrase.offset)

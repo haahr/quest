@@ -249,6 +249,35 @@ class QuestRuntimeError(Exception):
         return "\n".join(lines)
 ```
 
+### 4.4. Errors in Imported Interfaces and Modules
+An offset means nothing without the file it is in, and an error found while loading an imported interface or module is
+in that file, not the one being compiled. So the unit's file travels with the error:
+
+- **The unit's file.** Each place that reads a unit from source (`module_loader.load_interface` and `load_module`,
+  `interface_compiler.compile_interface_file`, and `module_compiler.compile_module_file`) parses and elaborates it
+  inside `diagnostics.in_unit(source_map)` (through `Environment.unit_source` where there is an environment). A
+  `QuestCompilerError` leaving it records that unit's `SourceMap`, unless an inner unit already did.
+- **The imports that led there.** Each import is elaborated inside `diagnostics.at_import(offset, source_map)`, with
+  the importing file's source map (`Environment.source_map`). An error located in another file gets a secondary
+  label, "imported here", at the import, so a chain of imports reads innermost first. An error with no file yet was
+  raised before the unit was read (it could not be found, say), so it is located at the import itself.
+- **Rendering.** `diagnostic_of(error)` makes the diagnostic, carrying the unit's source map
+  (`Diagnostic.source_map`) and the import labels (each `DiagnosticLabel.source_map`); the renderer locates each label
+  in its own file. Diagnostics name a unit by its path relative to the current directory when it is inside it
+  (`tokens.display_file_name`).
+
+```
+grp.int.quest:3:29: error: Undefined type 'Nope'
+        Def A = Record b: Array(Nope) end
+                                ^
+  ::: usegrp.quest:1:11
+    import grp: Grp;
+              - note: imported here
+```
+
+In C builds a module's body is compiled only when the program is linked, so an error in it is located in the module's
+file but has no import label.
+
 ---
 
 ## 5. Diagnostic Renderer & Visual Formatting

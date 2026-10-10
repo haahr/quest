@@ -288,6 +288,12 @@ the diagnostic is expected:
 - `<SEVERITY>`: One of `ERROR`, `WARNING`, `INFO`, `FATAL` (case-insensitive).
 - `<REGEXP>`: A regular expression pattern matched against the diagnostic's primary `message`, `notes`, or `help_text`.
 
+A test may import interfaces and modules beside it (§2.6), and an expectation may be placed in one of those files, on
+the line of that file where the diagnostic is expected: an error in an imported interface or module is reported in its
+own file (`docs/diagnostics.md` §4.4). The runner collects the expectations of the test and of every unit beside it that
+the test imports, directly or through other units, and matches each only by a diagnostic in its own file. A unit's
+expectations apply to every test that imports it, so a unit with an error should be imported by one test.
+
 #### Examples
 ```quest
 (* tests/errors/typecheck/non_contractive_rec.quest *)

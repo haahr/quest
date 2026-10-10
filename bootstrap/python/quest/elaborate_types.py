@@ -92,7 +92,7 @@ def elaborate_kind(ast_kind: ast.Kind, env: Environment) -> QKind:
         case ast.KindId(name=name, offset=offset):
             sym = env.lookup_kind(name)
             if sym is None:
-                raise KindError(f"Undefined kind '{name}' at offset {offset}")
+                raise KindError(f"Undefined kind '{name}'", offset=offset)
             return QKindVar(name=sym.name, symbol_id=sym.symbol_id)
 
         case ast.KindManifest(interface_name=iface_name, kind_name=kname, offset=offset):
@@ -100,13 +100,14 @@ def elaborate_kind(ast_kind: ast.Kind, env: Environment) -> QKind:
             if interface_scope is None:
                 raise KindError(
                     f"Undefined interface '{iface_name}' in manifest kind "
-                    f"'{iface_name}_{kname}' at offset {offset}"
+                    f"'{iface_name}_{kname}'",
+                    offset=offset,
                 )
             sym = interface_scope.lookup_kind(kname)
             if sym is None:
                 raise KindError(
-                    f"Undefined kind '{kname}' in interface '{iface_name}' "
-                    f"at offset {offset}"
+                    f"Undefined kind '{kname}' in interface '{iface_name}'",
+                    offset=offset,
                 )
             return QKindVar(
                 name=f"{iface_name}_{kname}",
@@ -114,7 +115,7 @@ def elaborate_kind(ast_kind: ast.Kind, env: Environment) -> QKind:
             )
 
         case _:
-            raise KindError(f"Unsupported AST kind node '{ast_kind}' at offset {getattr(ast_kind, 'offset', 0)}")
+            raise KindError(f"Unsupported AST kind node '{ast_kind}'", offset=getattr(ast_kind, 'offset', 0))
 
 
 # ============================================================================
@@ -129,7 +130,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 name = path[0]
                 sym = env.lookup_type(name)
                 if sym is None:
-                    raise KindError(f"Undefined type '{name}' at offset {offset}")
+                    raise KindError(f"Undefined type '{name}'", offset=offset)
                 if sym.definition is not None:
                     return alias_reference(name, sym.symbol_id, sym.definition)
                 return QTypeVar(name=sym.name, symbol_id=sym.symbol_id, bound=sym.kind)
@@ -143,15 +144,15 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                         curr_scope = curr_scope.lookup_module(seg) or curr_scope.lookup_interface(seg)
                         if curr_scope is None:
                             raise KindError(
-                                f"Undefined module/interface '{seg}' in type path '{'.'.join(path)}' "
-                                f"at offset {offset}"
+                                f"Undefined module/interface '{seg}' in type path '{'.'.join(path)}'",
+                                offset=offset,
                             )
                     type_name = path[-1]
                     sym = curr_scope.lookup_type(type_name)
                     if sym is None:
                         raise KindError(
-                            f"Undefined type '{type_name}' in module/interface '{path[-2]}' "
-                            f"at offset {offset}"
+                            f"Undefined type '{type_name}' in module/interface '{path[-2]}'",
+                            offset=offset,
                         )
                     if sym.definition is not None:
                         return alias_reference(".".join(path), sym.symbol_id, sym.definition)
@@ -162,7 +163,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 if val_sym is not None:
                     if val_sym.is_var:
                         raise KindError(
-                            f"Cannot project type from mutable variable '{path[0]}' at offset {offset}"
+                            f"Cannot project type from mutable variable '{path[0]}'",
+                            offset=offset,
                         )
                     curr_type = val_sym.type_val.evaluate_lazily(env)
                     curr_root_name = path[0]
@@ -170,13 +172,14 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     for seg in path[1:-1]:
                         if not isinstance(curr_type, QTupleType):
                             raise KindError(
-                                f"Cannot project field '{seg}' from non-tuple type '{curr_type}' "
-                                f"at offset {offset}"
+                                f"Cannot project field '{seg}' from non-tuple type '{curr_type}'",
+                                offset=offset,
                             )
                         field_comp = curr_type.get_field(seg)
                         if field_comp is None or not isinstance(field_comp, QTupleField):
                             raise KindError(
-                                f"Tuple '{curr_root_name}' has no field named '{seg}' at offset {offset}"
+                                f"Tuple '{curr_root_name}' has no field named '{seg}'",
+                                offset=offset,
                             )
                         curr_type = field_comp.type_val.evaluate_lazily(env)
                         curr_root_name = f"{curr_root_name}.{seg}"
@@ -184,12 +187,14 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     type_name = path[-1]
                     if not isinstance(curr_type, QTupleType):
                         raise KindError(
-                            f"Cannot project type from non-tuple type '{curr_type}' at offset {offset}"
+                            f"Cannot project type from non-tuple type '{curr_type}'",
+                            offset=offset,
                         )
                     comp = curr_type.get_field(type_name)
                     if comp is None:
                         raise KindError(
-                            f"Tuple '{curr_root_name}' has no component named '{type_name}' at offset {offset}"
+                            f"Tuple '{curr_root_name}' has no component named '{type_name}'",
+                            offset=offset,
                         )
                     if isinstance(comp, QTupleTypeFormal):
                         subst = {
@@ -223,11 +228,13 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     else:
                         raise KindError(
                             f"Component '{type_name}' of tuple '{curr_root_name}' is a value field, "
-                            f"not a type component, at offset {offset}"
+                            f"not a type component",
+                            offset=offset,
                         )
 
                 raise KindError(
-                    f"Undefined identifier '{path[0]}' in type path '{'.'.join(path)}' at offset {offset}"
+                    f"Undefined identifier '{path[0]}' in type path '{'.'.join(path)}'",
+                    offset=offset,
                 )
 
         case ast.TypeInfix(left=left, op=op, right=right, offset=offset):
@@ -235,7 +242,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
             right_type = elaborate_type(right, env)
             if op == "->":
                 return QFunType(params=(QParam("", left_type),), result_type=right_type)
-            raise KindError(f"Unsupported infix type operator '{op}' at offset {offset}")
+            raise KindError(f"Unsupported infix type operator '{op}'", offset=offset)
 
         case ast.TypeTuple(fields=tup_fields):
             components: list[QTupleComponent] = []
@@ -475,13 +482,14 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
             if mod_scope is None:
                 raise KindError(
                     f"Undefined module/interface '{mname}' in manifest type "
-                    f"'{mname}_{tname}' at offset {offset}"
+                    f"'{mname}_{tname}'",
+                    offset=offset,
                 )
             sym = mod_scope.lookup_type(tname)
             if sym is None:
                 raise KindError(
-                    f"Undefined type '{tname}' in module/interface '{mname}' "
-                    f"at offset {offset}"
+                    f"Undefined type '{tname}' in module/interface '{mname}'",
+                    offset=offset,
                 )
             if sym.definition is not None:
                 return alias_reference(f"{mname}_{tname}", sym.symbol_id, sym.definition)
@@ -495,7 +503,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
             return QExternalType(name="", c_type=c_type)
 
         case _:
-            raise KindError(f"Unsupported AST type node '{ast_type}' at offset {getattr(ast_type, 'offset', 0)}")
+            raise KindError(f"Unsupported AST type node '{ast_type}'", offset=getattr(ast_type, 'offset', 0))
 
 
 # ============================================================================

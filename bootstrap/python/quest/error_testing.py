@@ -17,6 +17,8 @@ class ExpectedDiagnostic:
     line: int
     severity: str
     pattern: str
+    # The file the comment is in (the test, or a unit it imports); None matches a diagnostic in any file
+    file: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -44,15 +46,80 @@ DIAGNOSTIC_HEADER_PATTERN = re.compile(
 )
 
 
-def extract_expected_diagnostics(source_text: str) -> list[ExpectedDiagnostic]:
-    """Scans Quest source text for inline diagnostic expectations on each line."""
+def extract_expected_diagnostics(source_text: str, file: Optional[Path] = None) -> list[ExpectedDiagnostic]:
+    """Scans Quest source text (of file, if given) for inline diagnostic expectations on each line."""
     expectations: list[ExpectedDiagnostic] = []
     for line_idx, line in enumerate(source_text.splitlines(), start=1):
         for match in EXPECTATION_PATTERN.finditer(line):
             severity = match.group(1).lower()
             pattern = match.group(2).strip()
-            expectations.append(ExpectedDiagnostic(line=line_idx, severity=severity, pattern=pattern))
+            expectations.append(ExpectedDiagnostic(line=line_idx, severity=severity, pattern=pattern, file=file))
     return expectations
+
+
+def _unit_imports(path: Path) -> list[Path]:
+    """The interface and module files beside path (found from its directory) that the unit or program in it imports,
+    including a module's own interface; none if it does not parse."""
+    from quest import ast
+    from quest.grammar import parse_quest_program
+    from quest.tokenizer import Tokenizer
+    from quest.tokens import SourceMap
+
+    try:
+        text = path.read_text(encoding="utf-8")
+        prog = parse_quest_program(Tokenizer(text, str(path)).tokenize_all(), SourceMap(text, str(path)))
+    except Exception:
+        return []
+    interfaces: list[str] = []
+    modules: list[str] = []
+    for phrase in getattr(prog, "phrases", ()):
+        items: tuple[ast.ImportItem, ...] = ()
+        if isinstance(phrase, ast.ImportPhrase):
+            items = phrase.items
+        elif isinstance(phrase, ast.InterfaceDecl):
+            items = phrase.imports
+        elif isinstance(phrase, ast.ModuleDecl):
+            items = phrase.imports
+            interfaces.append(phrase.interface_name)
+        for item in items:
+            interfaces.append(item.effective_interface_path)
+            modules.extend(item.effective_module_paths)
+    candidates = [path.parent / f"{name.lower()}.int.quest" for name in interfaces]
+    candidates += [path.parent / f"{name.lower()}.mod.quest" for name in modules]
+    return [c for c in candidates if c.is_file()]
+
+
+def imported_unit_files(source_file: Path) -> list[Path]:
+    """The interface and module files beside an error test that it imports, directly or through other such units."""
+    found: list[Path] = []
+    queue = [source_file]
+    while queue:
+        for unit in _unit_imports(queue.pop(0)):
+            unit = unit.resolve()
+            if unit not in found and unit != source_file.resolve():
+                found.append(unit)
+                queue.append(unit)
+    return found
+
+
+def expected_diagnostics_of(source_file: Path) -> list[ExpectedDiagnostic]:
+    """The inline expectations of an error test: those in the test and in the units beside it that it imports
+    (docs/testing.md §3.3), each matched only by a diagnostic in its own file."""
+    expectations: list[ExpectedDiagnostic] = []
+    for file in [source_file.resolve(), *imported_unit_files(source_file)]:
+        expectations.extend(extract_expected_diagnostics(file.read_text(encoding="utf-8"), file))
+    return expectations
+
+
+def _in_file(actual: ActualDiagnostic, file: Optional[Path]) -> bool:
+    """Whether a diagnostic is located in file. The driver names the test by the absolute path it is given and
+    an imported unit by its path relative to the driver's directory, if it is inside it, else by its full path."""
+    if file is None:
+        return True
+    actual_path = Path(actual.file_name)
+    if actual_path.is_absolute():
+        return actual_path.resolve() == file
+    return actual_path.name == file.name
 
 
 def extract_expected_patterns(error_golden_text: str) -> list[str]:
@@ -262,8 +329,7 @@ def run_error_test(
             return False, "\n".join(report_lines)
 
     # Step 4: Fallback to inline (* ERROR: ... *) comments if golden file not present
-    source_text = source_file.read_text(encoding="utf-8")
-    expected = extract_expected_diagnostics(source_text)
+    expected = expected_diagnostics_of(source_file)
     if not expected:
         if golden_error_file is not None:
             return False, f"Missing golden error file: {golden_error_file}"
@@ -275,7 +341,7 @@ def run_error_test(
 
     for exp in expected:
         for act in list(unmatched_actual):
-            if act.line == exp.line and act.severity == exp.severity:
+            if act.line == exp.line and act.severity == exp.severity and _in_file(act, exp.file):
                 if re.search(exp.pattern, act.message, re.IGNORECASE) or re.search(
                     exp.pattern, act.full_text, re.IGNORECASE
                 ):
@@ -290,10 +356,12 @@ def run_error_test(
     if unmatched_expected:
         report_lines.append("  Expected diagnostics NOT found:")
         for exp in unmatched_expected:
-            report_lines.append(f"    - line {exp.line}: {exp.severity.upper()}: /{exp.pattern}/")
+            where = f"{exp.file.name}:" if exp.file is not None and exp.file != source_file.resolve() else ""
+            report_lines.append(f"    - {where}line {exp.line}: {exp.severity.upper()}: /{exp.pattern}/")
     if unmatched_actual:
         report_lines.append("  Unexpected actual diagnostics emitted:")
         for act in unmatched_actual:
-            report_lines.append(f"    - line {act.line}:{act.column}: {act.severity.upper()}: {act.message}")
+            where = "" if _in_file(act, source_file.resolve()) else f"{Path(act.file_name).name}:"
+            report_lines.append(f"    - {where}line {act.line}:{act.column}: {act.severity.upper()}: {act.message}")
 
     return False, "\n".join(report_lines)

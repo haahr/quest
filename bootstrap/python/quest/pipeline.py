@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 import quest.ast as ast
 from quest.diagnostics import (
+    diagnostic_of,
     Diagnostic,
     DiagnosticSink,
     FatalDiagnosticError,
@@ -131,6 +132,7 @@ class CompilerContext:
         source_map = SourceMap(source_text, file_name)
         sink = DiagnosticSink()
         environment.sink = sink
+        environment.source_map = source_map
         return cls(
             source_text=source_text,
             file_name=file_name,
@@ -191,7 +193,7 @@ class TokenizePhase(Phase):
         try:
             return tokenizer.tokenize_all()
         except QuestCompilerError as error:
-            ctx.sink.emit(error.to_diagnostic())
+            ctx.sink.emit(diagnostic_of(error))
             return None
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
@@ -221,7 +223,7 @@ class ParsePhase(Phase):
         try:
             return parse_quest_program(tokens, ctx.source_map, target=ctx.options.target)
         except QuestCompilerError as error:
-            ctx.sink.emit(error.to_diagnostic())
+            ctx.sink.emit(diagnostic_of(error))
             return None
         except (ValueError, TypeError) as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
@@ -255,7 +257,7 @@ class TypecheckPhase(Phase):
                 case _:
                     return input_data
         except QuestCompilerError as error:
-            ctx.sink.emit(error.to_diagnostic())
+            ctx.sink.emit(diagnostic_of(error))
             return None
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
@@ -329,7 +331,7 @@ class InterpretPhase(Phase):
                     self._last_phrase_results = []
                     return OK_VALUE
         except QuestCompilerError as error:
-            ctx.sink.emit(error.to_diagnostic())
+            ctx.sink.emit(diagnostic_of(error))
             return None
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
@@ -435,6 +437,10 @@ class RunCCompiledPhase(Phase):
                 msg = proc.stderr.strip() if proc.stderr else f"Binary exited with code {proc.returncode}"
                 ctx.sink.emit(Diagnostic.make_error(msg, 0))
             return proc.stdout
+        except QuestCompilerError as error:
+            # Such as a type error in an imported module's body, found when the module is compiled
+            ctx.sink.emit(diagnostic_of(error))
+            return None
         except Exception as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None

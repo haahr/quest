@@ -5,6 +5,7 @@ from __future__ import annotations
 import bisect
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any, Optional
 
 
@@ -18,6 +19,15 @@ class SourceLocation:
 
     def __str__(self) -> str:
         return f"{self.line}:{self.column}"
+
+
+def display_file_name(path: Path) -> str:
+    """How diagnostics name a source file found by the compiler (an imported unit): relative to the current
+    directory if it is inside it, else its full path."""
+    try:
+        return str(Path(path).resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(path)
 
 
 class SourceMap:

@@ -19,7 +19,7 @@ from typing import Optional
 import quest.ast as ast
 from quest.codegen.c_emitter import CEmitter
 from quest.codegen.compiler_runner import compile_c_to_object
-from quest.diagnostics import QuestTypeError
+from quest.diagnostics import QuestTypeError, in_unit
 from quest.build.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
@@ -41,7 +41,7 @@ from quest.module_loader import (
 )
 from quest.modules import elaborate_module
 from quest.tokenizer import Tokenizer
-from quest.tokens import SourceMap
+from quest.tokens import SourceMap, display_file_name
 
 
 class ModuleCompileResult(tuple):
@@ -270,63 +270,66 @@ def compile_module_file(
         raise FileNotFoundError(f"Module file not found: '{mod_path}'")
 
     source_text = mod_path.read_text(encoding="utf-8")
-    source_map = SourceMap(source_text, str(mod_path))
-    tokenizer = Tokenizer(source_text, str(mod_path))
-    tokens = tokenizer.tokenize_all()
-    prog = parse_quest_program(tokens, source_map)
+    source_map = SourceMap(source_text, display_file_name(mod_path))
+    # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
+    with in_unit(source_map):
+        tokenizer = Tokenizer(source_text, str(mod_path))
+        tokens = tokenizer.tokenize_all()
+        prog = parse_quest_program(tokens, source_map)
 
-    if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
-        raise QuestTypeError(
-            f"Module file '{mod_path.name}' must contain exactly one module declaration"
+        if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
+            raise QuestTypeError(
+                f"Module file '{mod_path.name}' must contain exactly one module declaration"
+            )
+
+        decl = prog.phrases[0]
+        if not isinstance(decl, ast.ModuleDecl):
+            raise QuestTypeError(
+                f"Expected module declaration in '{mod_path.name}', found {type(decl).__name__}"
+            )
+
+        file_name = mod_path.name
+        if file_name.endswith(".mod.quest"):
+            stem = file_name[:-len(".mod.quest")]
+        elif file_name.endswith(".quest"):
+            stem = file_name[:-len(".quest")]
+        else:
+            stem = mod_path.stem
+
+        env = Environment()
+        env.current_dir = mod_path.parent
+        env.include_paths = list(include_paths) if include_paths else []
+        env.program_dir = program_dir
+        env.source_map = source_map
+        if build_dir is not None:
+            b_dir = Path(build_dir).resolve()
+            if b_dir not in env.include_paths:
+                env.include_paths.insert(0, b_dir)
+
+        canon_name = canonicalize_module_path(mod_path, env.include_paths, program_dir)
+
+        if build_dir is not None and output_dir is None:
+            target_sub = Path(build_dir).resolve()
+            if "/" in canon_name:
+                target_sub = target_sub / Path(canon_name).parent
+            output_dir = target_sub
+        elif output_dir is None:
+            output_dir = mod_path.parent
+        else:
+            output_dir = Path(output_dir).resolve()
+
+        return compile_module(
+            decl,
+            env,
+            output_dir=output_dir,
+            include_paths=env.include_paths,
+            compiler_path=compiler_path,
+            nogc=nogc,
+            extra_c_flags=extra_c_flags,
+            source_map=source_map,
+            stem_name=stem,
+            canonical_name=canon_name,
+            emit_deps=emit_deps,
+            source_file=mod_path,
+            build_dir=build_dir,
         )
-
-    decl = prog.phrases[0]
-    if not isinstance(decl, ast.ModuleDecl):
-        raise QuestTypeError(
-            f"Expected module declaration in '{mod_path.name}', found {type(decl).__name__}"
-        )
-
-    file_name = mod_path.name
-    if file_name.endswith(".mod.quest"):
-        stem = file_name[:-len(".mod.quest")]
-    elif file_name.endswith(".quest"):
-        stem = file_name[:-len(".quest")]
-    else:
-        stem = mod_path.stem
-
-    env = Environment()
-    env.current_dir = mod_path.parent
-    env.include_paths = list(include_paths) if include_paths else []
-    env.program_dir = program_dir
-    if build_dir is not None:
-        b_dir = Path(build_dir).resolve()
-        if b_dir not in env.include_paths:
-            env.include_paths.insert(0, b_dir)
-
-    canon_name = canonicalize_module_path(mod_path, env.include_paths, program_dir)
-
-    if build_dir is not None and output_dir is None:
-        target_sub = Path(build_dir).resolve()
-        if "/" in canon_name:
-            target_sub = target_sub / Path(canon_name).parent
-        output_dir = target_sub
-    elif output_dir is None:
-        output_dir = mod_path.parent
-    else:
-        output_dir = Path(output_dir).resolve()
-
-    return compile_module(
-        decl,
-        env,
-        output_dir=output_dir,
-        include_paths=env.include_paths,
-        compiler_path=compiler_path,
-        nogc=nogc,
-        extra_c_flags=extra_c_flags,
-        source_map=source_map,
-        stem_name=stem,
-        canonical_name=canon_name,
-        emit_deps=emit_deps,
-        source_file=mod_path,
-        build_dir=build_dir,
-    )

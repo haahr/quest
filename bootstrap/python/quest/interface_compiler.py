@@ -22,7 +22,7 @@ from quest.build.abi import (
     incompatible_artifact_message,
 )
 from quest.codegen.c_types import qtype_to_c_type
-from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError
+from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol
@@ -40,7 +40,7 @@ from quest.runtime import (
     QString,
 )
 from quest.tokenizer import Tokenizer
-from quest.tokens import SourceMap
+from quest.tokens import SourceMap, display_file_name
 from quest.types import (
     QAliasType,
     BOOL_TYPE,
@@ -542,43 +542,47 @@ def compile_interface_file(
     except OSError as err:
         raise QuestTypeError(f"Error reading interface file '{file_path}': {err}")
 
-    source_map = SourceMap(source_text, str(file_path))
-    tokens = Tokenizer(source_text, str(file_path)).tokenize_all()
-    prog = parse_quest_program(tokens, source_map)
+    source_map = SourceMap(source_text, display_file_name(file_path))
+    # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
+    with in_unit(source_map):
+        tokens = Tokenizer(source_text, str(file_path)).tokenize_all()
+        prog = parse_quest_program(tokens, source_map)
 
-    if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
-        raise QuestTypeError(
-            f"Interface file '{file_path.name}' must contain exactly one interface declaration"
-        )
-
-    decl = prog.phrases[0]
-    if not isinstance(decl, ast.InterfaceDecl):
-        raise QuestTypeError(
-            f"Expected interface declaration in '{file_path.name}', but found {type(decl).__name__}"
-        )
-
-    env = Environment()
-    env.include_paths = list(include_paths) if include_paths else []
-    if build_dir is not None:
-        b_dir = Path(build_dir).resolve()
-        if b_dir not in env.include_paths:
-            env.include_paths.insert(0, b_dir)
-        # Imported interfaces are loaded from their (fresh or rebuilt) artifacts in the same build directory
-        # rather than re-elaborated from source in every nested compilation.
-        from quest.pipeline import CompilerOptions
-        env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
-    env.current_dir = file_path.parent
-    env.program_dir = program_dir
-
-    if build_dir is not None:
-        # The generated header #includes the headers of imported interfaces, so they must exist in the
-        # build directory too, including those of builtin interfaces that are never loaded from source.
-        for imp in decl.imports:
-            ensure_interface_artifacts(
-                imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve(),
-                header=header, program_dir=program_dir,
+        if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
+            raise QuestTypeError(
+                f"Interface file '{file_path.name}' must contain exactly one interface declaration"
             )
-    typed_iface = elaborate_interface(decl, env)
+
+        decl = prog.phrases[0]
+        if not isinstance(decl, ast.InterfaceDecl):
+            raise QuestTypeError(
+                f"Expected interface declaration in '{file_path.name}', but found {type(decl).__name__}"
+            )
+
+        env = Environment()
+        env.include_paths = list(include_paths) if include_paths else []
+        if build_dir is not None:
+            b_dir = Path(build_dir).resolve()
+            if b_dir not in env.include_paths:
+                env.include_paths.insert(0, b_dir)
+            # Imported interfaces are loaded from their (fresh or rebuilt) artifacts in the same build directory
+            # rather than re-elaborated from source in every nested compilation.
+            from quest.pipeline import CompilerOptions
+            env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
+        env.current_dir = file_path.parent
+        env.program_dir = program_dir
+        env.source_map = source_map
+
+        if build_dir is not None:
+            # The generated header #includes the headers of imported interfaces, so they must exist in the
+            # build directory too, including those of builtin interfaces that are never loaded from source.
+            for imp in decl.imports:
+                with at_import(imp.offset, source_map):
+                    ensure_interface_artifacts(
+                        imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve(),
+                        header=header, program_dir=program_dir,
+                    )
+        typed_iface = elaborate_interface(decl, env)
 
     qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path)
 
@@ -760,7 +764,10 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                                 mod_scope = typed_mod.scope
                             except (QuestCompilerError, OSError) as err:
                                 if getattr(env, "sink", None) is not None:
-                                    env.sink.emit(Diagnostic.make_from_exception(err, 0))
+                                    if isinstance(err, QuestCompilerError):
+                                        env.sink.emit(diagnostic_of(err))
+                                    else:
+                                        env.sink.emit(Diagnostic.make_from_exception(err, 0))
                                 mod_scope = None
 
                         registered_scope = mod_scope if mod_scope is not None else imp_scope
