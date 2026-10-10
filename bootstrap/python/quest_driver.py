@@ -182,6 +182,8 @@ def run_driver(args: list[str]) -> int:
     elif source_file is None:
         if parsed_args.interactive or sys.stdin.isatty():
             from quest.repl import run_repl
+            sys.argv = ["<repl>"] + target_args
+            BuiltinModuleRegistry.set_system_args(sys.argv)
             return run_repl()
         source_text = sys.stdin.read()
         file_name = "<stdin>"

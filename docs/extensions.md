@@ -95,8 +95,9 @@ When compiling a Quest program to native code via the C backend:
    ```
 2. `quest_builtins_init(argc, argv)` initializes standard I/O streams and populates `quest_system_args` as a
    length-prefixed `QArray` of length `argc`, populating each index with a `QString` copy of `argv[i]`.
-3. In the Python bootstrap interpreter and REPL, `system.args` is initialized from `sys.argv`, and `system.sysexit`
-   invokes `sys.exit(code)`.
+3. In the Python bootstrap interpreter, `system.args` holds the program name (the source file, `<string>` for `-e`,
+   `<stdin>`, or `<repl>` for the REPL without a file) followed by the driver arguments after `--`, and
+   `system.sysexit` invokes `sys.exit(code)`.
 
 ---
 

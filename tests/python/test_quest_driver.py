@@ -138,6 +138,23 @@ class TestQuestDriverCLI(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(bin_path.is_file())
 
+    def test_system_args_hold_the_program_name_and_arguments_after_dashes(self) -> None:
+        driver = Path(__file__).resolve().parents[2] / "bootstrap" / "python" / "quest_driver.py"
+        main_file = self.root / "args.quest"
+        main_file.write_text("import system: System;\nsystem.args;\n", encoding="utf-8")
+        cases = [
+            ([str(main_file), "--print-result"], "", f'"{main_file}" "a" "b"'),
+            (["-i"], "import system: System; system.args;\n", '"<repl>" "a" "b"'),
+        ]
+        for args, stdin, expected in cases:
+            with self.subTest(args=args):
+                proc = subprocess.run(
+                    [sys.executable, str(driver), *args, "--build-dir", str(self.build_dir), "--", "a", "b"],
+                    input=stdin, capture_output=True, text=True, timeout=120,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn(f"array of {expected} end", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
