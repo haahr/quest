@@ -355,6 +355,80 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         )
         compile_c_to_object(c_file, self.root / "both.o", include_paths=[build_dir])
 
+    # util/calc and a top-level calc each implement their own Calc and import a sibling helper : Helper,
+    # which also names different modules and interfaces in the two directories.
+    SAME_NAMED_FILES = {
+        "util/helper.int.quest": "interface Helper\nexport\n    offset: Int\nend;\n",
+        "util/helper.mod.quest": "module helper : Helper\nexport\n    let offset: Int = 5;\nend;\n",
+        "helper.int.quest": "interface Helper\nexport\n    bonus: Int\nend;\n",
+        "helper.mod.quest": "module helper : Helper\nexport\n    let bonus: Int = 1000;\nend;\n",
+        "util/calc.int.quest": "interface Calc\nexport\n    combine(a: Int b: Int): Int\nend;\n",
+        "util/calc.mod.quest": (
+            "module calc : Calc\n"
+            "import helper : Helper;\n"
+            "export\n"
+            "    let combine(a: Int b: Int): Int = helper.offset + a * b;\n"
+            "end;\n"
+        ),
+        "calc.int.quest": "interface Calc\nexport\n    combine(a: Int): Int\nend;\n",
+        "calc.mod.quest": (
+            "module calc : Calc\n"
+            "import helper : Helper;\n"
+            "export\n"
+            "    let combine(a: Int): Int = a + helper.bonus;\n"
+            "end;\n"
+        ),
+    }
+
+    # Each order of imports must resolve every name to the right file; 47 + 1100 + 1000.
+    SAME_NAMED_IMPORT_ORDERS = (
+        ("import helper : Helper;", "import um : UCalc = util/calc : util/Calc;", "import m = calc : Calc;"),
+        ("import m = calc : Calc;", "import um : UCalc = util/calc : util/Calc;", "import helper : Helper;"),
+        ("import um : UCalc = util/calc : util/Calc;", "import m = calc : Calc;", "import helper : Helper;"),
+    )
+
+    def _write_same_named_modules(self, root: Path, imports: tuple[str, ...], result_stmt: str) -> Path:
+        for rel, text in self.SAME_NAMED_FILES.items():
+            path = root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        main_quest = root / "main.quest"
+        main_quest.write_text(
+            "\n".join(imports) + "\n"
+            "let result: Int = um.combine(6 7) + m.combine(100) + helper.bonus;\n" + result_stmt,
+            encoding="utf-8",
+        )
+        return main_quest
+
+    def test_same_named_modules_in_different_directories_interpreter(self) -> None:
+        for i, imports in enumerate(self.SAME_NAMED_IMPORT_ORDERS):
+            with self.subTest(imports=imports):
+                root = self.root / f"order{i}"
+                main_quest = self._write_same_named_modules(root, imports, "")
+                res, ctx = self._run_pipeline(main_quest, options=CompilerOptions(include_paths=[root]))
+                self.assertTrue(res.success, f"Pipeline diagnostics: {res.diagnostics}")
+                self.assertEqual(ctx.runtime_env.lookup("result"), QInt(2147))
+
+    def test_same_named_modules_in_different_directories_c_compiled(self) -> None:
+        for i, imports in enumerate(self.SAME_NAMED_IMPORT_ORDERS):
+            with self.subTest(imports=imports):
+                root = self.root / f"order{i}"
+                main_quest = self._write_same_named_modules(
+                    root,
+                    ("import writer : Writer;", "import conv : Conv;") + imports,
+                    "writer.putString(writer.output conv.int(result));\n",
+                )
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                    ret = run_driver([
+                        "--stop-after", "run_c_compiled",
+                        str(main_quest),
+                        "-I", str(root),
+                        "--build-dir", str(root / "build"),
+                    ])
+                self.assertEqual(ret, 0, out.getvalue())
+                self.assertIn("2147", out.getvalue())
+
 
 def _write_units(directory: Path, units: dict[str, str]) -> None:
     for name, text in units.items():
