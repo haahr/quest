@@ -45,6 +45,20 @@ from quest.types import (
 )
 
 
+def import_interface(iface_path: str, local_name: str, env: Environment) -> Scope:
+    """Returns the interface an import names by iface_path, binding it to local_name (and iface_path) in env.
+
+    The path is resolved from env.current_dir, so an earlier import's binding of the same local name (`Counter`
+    for both `counter.int.quest` and `util/counter.int.quest`) does not stand in for it (docs/modules.md §2.3).
+    """
+    from quest.module_loader import load_interface
+    scope = load_interface(iface_path, env)
+    env.register_interface(local_name, scope)
+    if iface_path != local_name:
+        env.register_interface(iface_path, scope)
+    return scope
+
+
 def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInterface:
     """Elaborates an interface declaration into a specification scope and TypedInterface."""
     import_scope = Scope(name=f"interface_imports_{decl.name}", parent=env.current_scope)
@@ -53,24 +67,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
     # 1. Resolve imports into import_scope (available for signatures, not exported by interface)
     for imp in decl.imports:
         iface_path = imp.effective_interface_path
-        source_interface_scope = env.lookup_interface(iface_path)
-        if source_interface_scope is None:
-            source_interface_scope = env.lookup_interface(imp.interface_name)
-        if source_interface_scope is None:
-            source_interface_scope = BuiltinModuleRegistry.get_interface(iface_path, env)
-            if source_interface_scope is not None:
-                env.register_interface(iface_path, source_interface_scope)
-        if source_interface_scope is None:
-            source_interface_scope = BuiltinModuleRegistry.get_interface(imp.interface_name, env)
-            if source_interface_scope is not None:
-                env.register_interface(imp.interface_name, source_interface_scope)
-        if source_interface_scope is None:
-            from quest.module_loader import load_interface
-            source_interface_scope = load_interface(iface_path, env)
-
-        env.register_interface(imp.interface_name, source_interface_scope)
-        if iface_path != imp.interface_name:
-            env.register_interface(iface_path, source_interface_scope)
+        source_interface_scope = import_interface(iface_path, imp.interface_name, env)
 
         if not imp.names:
             # Unaliased interface import / interface inheritance
@@ -175,9 +172,15 @@ def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env:
     # A module registered with the interface scope itself (as builtins are pre-registered) has no
     # export scope of its own yet.
     if mod_scope is None or mod_scope is interface_scope:
-        from quest.module_loader import _declared_module_name, resolve_module_file
+        # Every importer of the module, in any unit, shares one export scope (docs/modules.md §2.3).
+        from quest.module_loader import _declared_module_name, canonicalize_module_name, resolve_module_file
         src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
-        mod_scope = create_module_export_scope(_declared_module_name(src, mod_path), interface_scope, env)
+        canon = canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
+        loaded = env.loaded_modules_ast.get(canon)
+        mod_scope = loaded.scope if loaded is not None else env.module_export_scopes.get(canon)
+        if mod_scope is None:
+            mod_scope = create_module_export_scope(_declared_module_name(src, mod_path), interface_scope, env)
+            env.module_export_scopes[canon] = mod_scope
         env.register_module(mod_path, mod_scope)
     return mod_scope
 
@@ -249,21 +252,7 @@ def elaborate_module(
     # 1. Resolve imports into module_internal_scope
     for imp in decl.imports:
         iface_path = imp.effective_interface_path
-        local_iface = imp.interface_name
-        source_interface_scope = env.lookup_interface(local_iface) or env.lookup_interface(iface_path)
-        if source_interface_scope is None:
-            source_interface_scope = BuiltinModuleRegistry.get_interface(
-                iface_path, env
-            ) or BuiltinModuleRegistry.get_interface(local_iface, env)
-            if source_interface_scope is not None:
-                env.register_interface(iface_path, source_interface_scope)
-        if source_interface_scope is None:
-            from quest.module_loader import load_interface
-            source_interface_scope = load_interface(iface_path, env)
-
-        env.register_interface(local_iface, source_interface_scope)
-        if local_iface != iface_path:
-            env.register_interface(iface_path, source_interface_scope)
+        source_interface_scope = import_interface(iface_path, imp.interface_name, env)
 
         if not imp.names:
             for type_name, type_sym in source_interface_scope.types.items():
@@ -438,21 +427,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
     for item in phrase.items:
         iface_path = item.effective_interface_path
         local_iface_name = item.interface_name
-        iface_scope = env.lookup_interface(local_iface_name) or env.lookup_interface(iface_path)
-        if iface_scope is None:
-            iface_scope = BuiltinModuleRegistry.get_interface(
-                iface_path, env
-            ) or BuiltinModuleRegistry.get_interface(local_iface_name, env)
-            if iface_scope is not None:
-                env.register_interface(iface_path, iface_scope)
-
-        if iface_scope is None:
-            from quest.module_loader import load_interface
-            iface_scope = load_interface(iface_path, env)
-
-        env.register_interface(local_iface_name, iface_scope)
-        if local_iface_name != iface_path:
-            env.register_interface(iface_path, iface_scope)
+        iface_scope = import_interface(iface_path, local_iface_name, env)
 
         if not item.names:
             # import : Interface

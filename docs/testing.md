@@ -224,8 +224,8 @@ Units may also be in subdirectories of a test's directory, imported by their pat
 util/Arith;` in `tests/source/modules/subdirectory_units.quest`). A unit's canonical name is its path relative to the
 project directory (`tests/source/modules/counter`; `docs/modules.md` §2.3), so units in different test directories may
 share names, and may share names with library units, without their artifacts colliding in the shared build directory.
-One test cannot, however, import two different units with the same base name (`counter` and `util/counter`), because
-the typechecker and interpreter register units by the names they are imported by.
+One test may also use different units with the same base name (`counter` and `util/counter` in
+`tests/source/modules/same_name_units.quest`).
 
 ---
 

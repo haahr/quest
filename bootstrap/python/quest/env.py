@@ -262,7 +262,20 @@ class Environment:
         self._loading_modules: list[str] = []
         self.subtype_cache: dict[tuple[int, int], bool] = {}
         self.options: Optional[Any] = None
+        # Interfaces loaded from files, by canonical name (docs/modules.md §2.3). The interface and module names in
+        # _interfaces and _modules are those of the unit being elaborated: the builtins and the unit's imports.
+        self.loaded_interfaces: dict[str, Scope] = {}
+        # Export scopes of modules known only through their interfaces (separate compilation), by canonical name.
+        self.module_export_scopes: dict[str, Scope] = {}
         self._init_builtins()
+        self._builtin_interfaces = dict(self._interfaces)
+        self._builtin_modules = dict(self._modules)
+        # A builtin interface with a source in lib/ is that file's interface, whoever imports it.
+        from quest.module_loader import canonicalize_module_path, resolve_interface_source_file
+        for iface_name, iface_scope in self._builtin_interfaces.items():
+            src = resolve_interface_source_file(iface_name, None, [])
+            if src is not None:
+                self.loaded_interfaces[canonicalize_module_path(src, [])] = iface_scope
 
     def fresh_symbol_id(self) -> int:
         """Allocates a unique positive integer symbol ID."""
@@ -327,12 +340,31 @@ class Environment:
     def lookup_module(self, name: str) -> Optional[Scope]:
         return self._modules.get(name)
 
+    @contextmanager
+    def unit_names(self) -> Iterator[None]:
+        """Gives a unit being loaded from a file its own interface and module names.
+
+        Inside, only the builtin names are registered, so the unit's imports are resolved from its own directory
+        rather than taken from its importer's names, which may name different units (a sibling `counter` of a
+        unit in util/ is util/counter). The importer's names are restored afterwards; loaded units are shared
+        through loaded_interfaces and loaded_modules_ast, by canonical name.
+        """
+        saved = (self._interfaces, self._modules)
+        self._interfaces = dict(self._builtin_interfaces)
+        self._modules = dict(self._builtin_modules)
+        try:
+            yield
+        finally:
+            self._interfaces, self._modules = saved
+
     def snapshot(self) -> dict[str, Any]:
         """Captures a snapshot of the current environment state for rollback on error."""
         return {
             "symbol_counter": self._symbol_counter,
             "interfaces": dict(self._interfaces),
             "modules": dict(self._modules),
+            "loaded_interfaces": dict(self.loaded_interfaces),
+            "module_export_scopes": dict(self.module_export_scopes),
             "loaded_modules_ast": dict(self.loaded_modules_ast),
             "precompiled_modules": set(self.precompiled_modules),
             "scope_declarations": list(self.current_scope._declarations),
@@ -348,6 +380,10 @@ class Environment:
         self._symbol_counter = snap["symbol_counter"]
         self._interfaces = dict(snap["interfaces"])
         self._modules = dict(snap["modules"])
+        if "loaded_interfaces" in snap:
+            self.loaded_interfaces = dict(snap["loaded_interfaces"])
+        if "module_export_scopes" in snap:
+            self.module_export_scopes = dict(snap["module_export_scopes"])
         if "loaded_modules_ast" in snap:
             self.loaded_modules_ast = dict(snap["loaded_modules_ast"])
         if "precompiled_modules" in snap:
