@@ -19,11 +19,6 @@ class TokenizerError(QuestCompilerError):
     """Raised on lexical errors (unterminated literals, invalid characters, etc.)."""
 
 
-class IncompleteInputError(TokenizerError):
-    """Raised by InteractiveTokenizer when input ends inside an unclosed comment or literal."""
-    pass
-
-
 # Single-character escapes: \n \t \r \b \f \\ \' \"
 SIMPLE_ESCAPES: dict[str, str] = {
     "n": "\n",
@@ -281,52 +276,3 @@ class Tokenizer:
             if token.kind == TokenKind.EOF:
                 break
 
-
-class InteractiveTokenizer:
-    """Incremental tokenizer for REPL sessions, maintaining continuous offsets."""
-
-    def __init__(self, file_name: str = "<stdin>"):
-        self.file_name = file_name
-        self.buffer = ""
-        self.cursor = 0
-        self.comment_depth = 0
-        self.source_map = SourceMap("", file_name)
-
-    def feed(self, line: str) -> list[Token]:
-        """Appends a new input line and yields all fully completed tokens."""
-        self.buffer += line + "\n"
-        self.source_map = SourceMap(self.buffer, self.file_name)
-        tokenizer = Tokenizer(self.buffer, self.file_name)
-        tokenizer.cursor = self.cursor
-
-        tokens: list[Token] = []
-        try:
-            while True:
-                # Save position before attempting next token
-                pos_before = tokenizer.cursor
-                tokenizer._skip_whitespace_and_comments()
-                if tokenizer.cursor >= len(self.buffer):
-                    # Reached end of buffer without trailing partial tokens
-                    self.cursor = tokenizer.cursor
-                    break
-
-                token = tokenizer.next_token()
-                if token.kind == TokenKind.EOF:
-                    self.cursor = tokenizer.cursor
-                    break
-                tokens.append(token)
-                self.cursor = tokenizer.cursor
-        except TokenizerError:
-            # If error is due to unclosed literal/comment at end of buffer, wait for more input
-            pass
-
-        return tokens
-
-    def is_complete(self) -> bool:
-        """Returns True if no comments or literals are pending completion."""
-        tokenizer = Tokenizer(self.buffer, self.file_name)
-        try:
-            tokenizer.tokenize_all()
-            return True
-        except TokenizerError:
-            return False

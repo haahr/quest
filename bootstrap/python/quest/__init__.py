@@ -11,9 +11,7 @@ from quest.tokens import (
 )
 from quest.tokenizer import (
     Tokenizer,
-    InteractiveTokenizer,
     TokenizerError,
-    IncompleteInputError,
 )
 from quest.parser import (
     Parser,
@@ -154,9 +152,7 @@ __all__ = [
     "RESERVED_PUNCTUATION",
     "DELIMITERS",
     "Tokenizer",
-    "InteractiveTokenizer",
     "TokenizerError",
-    "IncompleteInputError",
     "Parser",
     "ParserError",
     "Construct",
