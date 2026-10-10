@@ -1,0 +1,549 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('arrayOp') : 'ArrayOp')
+      ))
+    (TypedLetValue 'wOut' :type Writer.T
+      :value (TypedSelect 'output' :type Writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'printInt' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'wOut' :type Writer.T)
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'x' :type Int)
+                    ))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'wOut' :type Writer.T)
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetTypeGroup 'Expr' 'Bind'
+      :members (
+        (TypedLetType 'Expr' :kind TYPE)
+        (TypedLetType 'Bind' :kind TYPE)
+      ))
+    (TypedLetValueGroup 'eval' 'evalBind'
+      :members (
+        (TypedLetValue 'eval' :rec :type Fun(e: Expr): Int
+          :value (TypedFun :params (('e' : Expr)) :type Fun(e: Expr): Int
+            :body (TypedCase :type Int
+              :target (TypedVar 'e' :type Expr)
+              :branches (
+                (TypedCaseBranch tags=(num) :binder 'n'
+                  :body (TypedVar 'n' :type Int))
+                (TypedCaseBranch tags=(neg) :binder 'x'
+                  :body (TypedInfix '-' :type Int
+                    :left (TypedInt 0 :type Int)
+                    :right (TypedApp :type Int
+                      :func (TypedVar 'eval' :type Fun(e: Expr): Int)
+                      :args (
+                        (TypedVar 'x' :type Expr)
+                      ))))
+                (TypedCaseBranch tags=(bind) :binder 'b'
+                  :body (TypedApp :type Int
+                    :func (TypedVar 'evalBind' :type Fun(b: Bind): Int)
+                    :args (
+                      (TypedVar 'b' :type Bind)
+                    )))
+              )
+              :else (TypedInt 0 :type Int))))
+        (TypedLetValue 'evalBind' :rec :type Fun(b: Bind): Int
+          :value (TypedFun :params (('b' : Bind)) :type Fun(b: Bind): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedLetValue 's' :type Int
+                  :value (TypedApp :type Int
+                    :func (TypedVar 'eval' :type Fun(e: Expr): Int)
+                    :args (
+                      (TypedSelect 'value' :type Expr
+                        :target (TypedVar 'b' :type Bind))
+                    )))
+                (TypedExprStmt
+                  :expr (TypedFor 'i' :upto
+                    :start (TypedInt 0 :type Int)
+                    :stop (TypedInfix '-' :type Int
+                      :left (TypedApp :type Int
+                        :func (TypedTypeApp [Expr] :type Fun(array: Array(Expr)): Int
+                          :func (TypedSelect 'size' :type All(A :: TYPE) Fun(array: Array(A)): Int
+                            :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+                        :args (
+                          (TypedSelect 'body' :type Array(Expr)
+                            :target (TypedVar 'b' :type Bind))
+                        ))
+                      :right (TypedInt 1 :type Int))
+                    :body (TypedAssign
+                      :target (TypedVar 's' :type Var(Int))
+                      :value (TypedInfix '+' :type Int
+                        :left (TypedDerefCell :type Int
+                          :target (TypedVar 's' :type Var(Int)))
+                        :right (TypedApp :type Int
+                          :func (TypedVar 'eval' :type Fun(e: Expr): Int)
+                          :args (
+                            (TypedIndex :type Expr
+                              :target (TypedSelect 'body' :type Array(Expr)
+                                :target (TypedVar 'b' :type Bind))
+                              :index (TypedVar 'i' :type Int))
+                          ))))))
+              )
+              :result (TypedDerefCell :type Int
+                :target (TypedVar 's' :type Var(Int))))))
+      ))
+    (TypedLetValue 'num' :type Fun(n: Int): Expr
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Expr
+        :body (TypedVariant 'num' :type Expr
+          :payload (TypedVar 'n' :type Int))))
+    (TypedLetValue 'e' :type Expr
+      :value (TypedVariant 'bind' :type Expr
+        :payload (TypedTuple :type Tuple value: Expr body: Array(Expr) end
+          :elements (
+            (TypedApp :type Expr
+              :func (TypedVar 'num' :type Fun(n: Int): Expr)
+              :args (
+                (TypedInt 10 :type Int)
+              ))
+            (TypedArray :type Array(Expr)
+              :elements (
+                (TypedApp :type Expr
+                  :func (TypedVar 'num' :type Fun(n: Int): Expr)
+                  :args (
+                    (TypedInt 1 :type Int)
+                  ))
+                (TypedVariant 'neg' :type Expr
+                  :payload (TypedApp :type Expr
+                    :func (TypedVar 'num' :type Fun(n: Int): Expr)
+                    :args (
+                      (TypedInt 2 :type Int)
+                    )))
+              ))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(e: Expr): Int)
+            :args (
+              (TypedVar 'e' :type Expr)
+            ))
+        )))
+    (TypedLetTypeGroup 'Even' 'Odd'
+      :members (
+        (TypedLetType 'Even' :kind TYPE)
+        (TypedLetType 'Odd' :kind TYPE)
+      ))
+    (TypedLetValue 'zero' :type Even
+      :value (TypedOption 'zero' :type Even))
+    (TypedLetValue 'one' :type Odd
+      :value (TypedOption 'succ' :type Odd
+        :payload (TypedTuple :type Tuple n: Even end
+          :elements (
+            (TypedVar 'zero' :type Even)
+          ))))
+    (TypedLetValue 'two' :type Even
+      :value (TypedOption 'succ' :type Even
+        :payload (TypedTuple :type Tuple n: Odd end
+          :elements (
+            (TypedVar 'one' :type Odd)
+          ))))
+    (TypedLetValue 'three' :type Odd
+      :value (TypedOption 'succ' :type Odd
+        :payload (TypedTuple :type Tuple n: Even end
+          :elements (
+            (TypedVar 'two' :type Even)
+          ))))
+    (TypedLetValueGroup 'evenValue' 'oddValue'
+      :members (
+        (TypedLetValue 'evenValue' :rec :type Fun(x: Even): Int
+          :value (TypedFun :params (('x' : Even)) :type Fun(x: Even): Int
+            :body (TypedCase :type Int
+              :target (TypedVar 'x' :type Even)
+              :branches (
+                (TypedCaseBranch tags=(succ) :binder 'p'
+                  :body (TypedInfix '+' :type Int
+                    :left (TypedApp :type Int
+                      :func (TypedVar 'oddValue' :type Fun(x: Odd): Int)
+                      :args (
+                        (TypedSelect 'n' :type Odd
+                          :target (TypedVar 'p' :type Tuple n: Odd end))
+                      ))
+                    :right (TypedInt 1 :type Int)))
+              )
+              :else (TypedInt 0 :type Int))))
+        (TypedLetValue 'oddValue' :rec :type Fun(x: Odd): Int
+          :value (TypedFun :params (('x' : Odd)) :type Fun(x: Odd): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedApp :type Int
+                :func (TypedVar 'evenValue' :type Fun(x: Even): Int)
+                :args (
+                  (TypedSelect 'n' :type Even
+                    :target (TypedVariantAssert 'succ' :type Tuple Int n: Even end
+                      :target (TypedVar 'x' :type Odd)))
+                ))
+              :right (TypedInt 1 :type Int))))
+      ))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'oddValue' :type Fun(x: Odd): Int)
+            :args (
+              (TypedVar 'three' :type Odd)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedIf :type Int
+            :cond (TypedVariantCheck 'zero' :type Bool
+              :target (TypedSelect 'n' :type Even
+                :target (TypedVariantAssert 'succ' :type Tuple Int n: Even end
+                  :target (TypedSelect 'n' :type Odd
+                    :target (TypedVariantAssert 'succ' :type Tuple Int n: Odd end
+                      :target (TypedSelect 'n' :type Even
+                        :target (TypedVariantAssert 'succ' :type Tuple Int n: Even end
+                          :target (TypedVar 'three' :type Odd))))))))
+            :then (TypedInt 1 :type Int)
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetTypeGroup 'Person' 'Pet' 'Pets'
+      :members (
+        (TypedLetType 'Person' :kind TYPE)
+        (TypedLetType 'Pet' :kind TYPE)
+        (TypedLetType 'Pets' :kind TYPE)
+      ))
+    (TypedLetValue 'alice' :type Person
+      :value (TypedRecord :type Record name: String var pet: Pets end
+        :fields (
+          (TypedRecordField 'name'
+            :value (TypedString 'alice' :type String))
+          (TypedRecordField 'pet' :var
+            :value (TypedOption 'none' :type Pets))
+        )))
+    (TypedLetValue 'rex' :type Pet
+      :value (TypedRecord :type Record name: String owner: Person end
+        :fields (
+          (TypedRecordField 'name'
+            :value (TypedString 'rex' :type String))
+          (TypedRecordField 'owner'
+            :value (TypedVar 'alice' :type Person))
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'pet' :type Pets
+          :target (TypedVar 'alice' :type Person))
+        :value (TypedOption 'some' :type Pets
+          :payload (TypedTuple :type Tuple p: Pet end
+            :elements (
+              (TypedVar 'rex' :type Pet)
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedIf :type Int
+            :cond (TypedVariantCheck 'some' :type Bool
+              :target (TypedSelect 'pet' :type Pets
+                :target (TypedSelect 'owner' :type Person
+                  :target (TypedSelect 'p' :type Pet
+                    :target (TypedVariantAssert 'some' :type Tuple Int p: Pet end
+                      :target (TypedSelect 'pet' :type Pets
+                        :target (TypedVar 'alice' :type Person)))))))
+            :then (TypedInt 1 :type Int)
+            :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetTypeGroup 'Forest' 'Tree'
+      :members (
+        (TypedLetType 'Forest' :kind TYPE)
+        (TypedLetType 'Tree' :kind TYPE)
+      ))
+    (TypedLetType 'Tree2' :kind TYPE)
+    (TypedLetValue 'size' :rec :type Fun(t: Tree2): Int
+      :value (TypedFun :params (('t' : Tree2)) :type Fun(t: Tree2): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 't' :type Tree2)
+          :branches (
+            (TypedCaseBranch tags=(leaf) :binder 'n'
+              :body (TypedVar 'n' :type Int))
+            (TypedCaseBranch tags=(node) :binder 'f'
+              :body (TypedBlock :type Int
+                :bindings (
+                  (TypedLetValue 's' :type Int
+                    :value (TypedInt 0 :type Int))
+                  (TypedExprStmt
+                    :expr (TypedFor 'i' :upto
+                      :start (TypedInt 0 :type Int)
+                      :stop (TypedInfix '-' :type Int
+                        :left (TypedApp :type Int
+                          :func (TypedTypeApp [Tree2] :type Fun(array: Array(Tree2)): Int
+                            :func (TypedSelect 'size' :type All(A :: TYPE) Fun(array: Array(A)): Int
+                              :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+                          :args (
+                            (TypedSelect 'trees' :type Array(Tree2)
+                              :target (TypedVar 'f' :type Record trees: Array(Tree2) end))
+                          ))
+                        :right (TypedInt 1 :type Int))
+                      :body (TypedAssign
+                        :target (TypedVar 's' :type Var(Int))
+                        :value (TypedInfix '+' :type Int
+                          :left (TypedDerefCell :type Int
+                            :target (TypedVar 's' :type Var(Int)))
+                          :right (TypedApp :type Int
+                            :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+                            :args (
+                              (TypedIndex :type Tree2
+                                :target (TypedSelect 'trees' :type Array(Tree2)
+                                  :target (TypedVar 'f' :type Record trees: Array(Tree2) end))
+                                :index (TypedVar 'i' :type Int))
+                            ))))))
+                )
+                :result (TypedDerefCell :type Int
+                  :target (TypedVar 's' :type Var(Int)))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedLetValue 'leaf' :type Fun(n: Int): Tree
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Tree
+        :body (TypedVariant 'leaf' :type Tree
+          :payload (TypedVar 'n' :type Int))))
+    (TypedLetValue 't' :type Tree
+      :value (TypedVariant 'node' :type Tree
+        :payload (TypedRecord :type Record trees: Array(Tree) end
+          :fields (
+            (TypedRecordField 'trees'
+              :value (TypedArray :type Array(Tree)
+                :elements (
+                  (TypedApp :type Tree
+                    :func (TypedVar 'leaf' :type Fun(n: Int): Tree)
+                    :args (
+                      (TypedInt 4 :type Int)
+                    ))
+                  (TypedApp :type Tree
+                    :func (TypedVar 'leaf' :type Fun(n: Int): Tree)
+                    :args (
+                      (TypedInt 5 :type Int)
+                    ))
+                )))
+          ))))
+    (TypedLetValue 't2' :type Tree2
+      :value (TypedVar 't' :type Tree))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+            :args (
+              (TypedVar 't2' :type Tree2)
+            ))
+        )))
+    (TypedLetValue 'trees' :type Array(Tree2)
+      :value (TypedArray :type Array(Tree2)
+        :elements (
+          (TypedVar 't' :type Tree)
+          (TypedApp :type Tree
+            :func (TypedVar 'leaf' :type Fun(n: Int): Tree)
+            :args (
+              (TypedInt 6 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+              :args (
+                (TypedIndex :type Tree2
+                  :target (TypedVar 'trees' :type Array(Tree2))
+                  :index (TypedInt 0 :type Int))
+              ))
+            :right (TypedApp :type Int
+              :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+              :args (
+                (TypedIndex :type Tree2
+                  :target (TypedVar 'trees' :type Array(Tree2))
+                  :index (TypedInt 1 :type Int))
+              )))
+        )))
+    (TypedLetValue 'id' :type All(A :: TYPE) Fun(x: A): A
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): A
+        :body (TypedVar 'x' :type A)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+            :args (
+              (TypedApp :type Tree
+                :func (TypedTypeApp [Tree] :type Fun(x: Tree): Tree
+                  :func (TypedVar 'id' :type All(A :: TYPE) Fun(x: A): A))
+                :args (
+                  (TypedVar 't' :type Tree)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'oddValue' :type Fun(x: Odd): Int)
+            :args (
+              (TypedApp :type Odd
+                :func (TypedTypeApp [Odd] :type Fun(x: Odd): Odd
+                  :func (TypedVar 'id' :type All(A :: TYPE) Fun(x: A): A))
+                :args (
+                  (TypedVar 'three' :type Odd)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'eval' :type Fun(e: Expr): Int)
+            :args (
+              (TypedApp :type Expr
+                :func (TypedTypeApp [Expr] :type Fun(d: T): Expr
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [Expr] :type Fun(a: Expr): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'e' :type Expr)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'oddValue' :type Fun(x: Odd): Int)
+            :args (
+              (TypedApp :type Odd
+                :func (TypedTypeApp [Odd] :type Fun(d: T): Odd
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [Odd] :type Fun(a: Odd): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'three' :type Odd)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+            :args (
+              (TypedApp :type Tree2
+                :func (TypedTypeApp [Tree2] :type Fun(d: T): Tree2
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [Tree] :type Fun(a: Tree): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 't' :type Tree)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'size' :type Fun(t: Tree2): Int)
+            :args (
+              (TypedApp :type Tree
+                :func (TypedTypeApp [Tree] :type Fun(d: T): Tree
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [Tree2] :type Fun(a: Tree2): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 't2' :type Tree2)
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetValue 'mismatch' :type Int
+      :value (TypedTry :type Int
+        :body (TypedApp :type Int
+          :func (TypedVar 'evenValue' :type Fun(x: Even): Int)
+          :args (
+            (TypedApp :type Even
+              :func (TypedTypeApp [Even] :type Fun(d: T): Even
+                :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                  :target (TypedVar 'dynamic' :type Module 'dynamic')))
+              :args (
+                (TypedApp :type T
+                  :func (TypedTypeApp [Odd] :type Fun(a: Odd): T
+                    :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                      :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                  :args (
+                    (TypedVar 'three' :type Odd)
+                  ))
+              ))
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :body (TypedInt -1 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedVar 'mismatch' :type Int)
+        )))
+  ))

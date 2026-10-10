@@ -576,7 +576,13 @@ Equal types share one C representation, so a value moves between them with a pla
 - **Values:** A recursive type whose unfolding is a constructed type (directly or through a type operator
   application, as `List(Int)`) is represented like its unfolding: a recursive tuple or option is a pointer to its
   struct, whose recursive components point to that same struct, and a recursive function type
-  (`Rec(F) All(n: Int) F`) is a `QClosure *`, called as its unfolding is.
+  (`Rec(F) All(n: Int) F`) is a `QClosure *`, called as its unfolding is. A recursive type that unfolds to any
+  other type that is not itself recursive is represented as that type: `Let Rec C = Int`, or a member of a group
+  that does not refer to the group (`Count` in `Let Rec Ints = Array(Count) and Count = Int`), is an `int64_t`.
+- **Mutually recursive types:** Each member of a group (`Let Rec A = ... and B = ...`, a `QRecGroupType`) is a
+  recursive type like any other and follows the same rules: it is represented like its unfolding, and its
+  canonical form, tag, and descriptor are those of the regular tree it stands for, so a member and a single
+  recursive type with the same unfolding share one representation.
 - **Canonical forms:** A type containing recursion stands for the regular tree of its unfoldings, which any number
   of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
   period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its

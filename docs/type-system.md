@@ -194,6 +194,36 @@ type constructor (`Record`, `Tuple`, `Option`, `Variant`, `Fun`, `Array`, `Var`,
   Let Rec Tree = Option empty, node with t:Tree end; (* ACCEPTED: guarded by Option *)
   ```
 
+### 3.4. Simultaneous and Mutually Recursive Type Declarations (`and`)
+Type declarations joined by `and` (Cardelli's `TypeDecl "and" TypeDecl`) are declared together, as an
+`ast.TypeBindingGroup` elaborated by `elaborate_type_binding_group` (`elaborate_types.py`):
+```quest
+Let Rec Forest = Record trees: Array(Tree) end
+and Tree = Variant leaf: Int node: Forest end;   (* mutually recursive *)
+Let Name = String and Size = Int;                (* simultaneous *)
+```
+- **With `Rec`,** the members are mutually recursive. Every member is in scope in every body, each body must be
+  contractive in all the members' variables (§3.3), and each member is defined as a `QRecGroupType`: the group's
+  bindings `(name, symbol id, kind, body)`, shared by all members, and the index of its own. A member unfolds to its
+  body with each member's variable replaced by that member (`unfold_lazily`), so the unfoldings of a group stay one
+  finite graph, as a single `Rec(X) T` does. Equality and subtyping are equi-recursive (§3.2), so a member equals any
+  type with the same infinite unfolding, such as a single recursive type that inlines the other members
+  (`Let Rec Tree2 = Variant leaf: Int node: Record trees: Array(Tree2) end end` equals `Tree`).
+- **Without `Rec`,** the members are simultaneous: each is elaborated in the enclosing scope, so it does not see the
+  others (in `Let Size = Bool; Let Size = Int and Flag = Size;`, `Flag` is `Bool`), and all are declared once every
+  member has been elaborated.
+- **Printing:** A reference to a member is an alias node (`QAliasType`). Unfolding it replaces the other members
+  with aliases named after them, qualified as the reference is (`m.Forest` unfolds with `m.Tree`), so types reached
+  through a group print by name (`Array(Tree)`). A member's definition prints like a single recursive type,
+  `Rec(Tree :: TYPE) Variant leaf: Int node: Forest end`.
+- **Interfaces** may declare groups (`Def Rec A = ... and B = ...`). A compiled interface records each member's body
+  and a group number, and the loader rebuilds the group ([modules.md](modules.md) §9.1).
+- **Not supported:** recursive type operators (`Let Rec T(A::TYPE) = ...`, alone or in a group), and recursive type
+  declarations inside tuples and tuple types (groups without `Rec` are allowed there). The members of a group share
+  its keyword's `Rec` and `Def`.
+
+Values have the same form, `let rec f(...) = ... and g(...) = ...` (§6.10).
+
 ---
 
 ## 4. Iterated Existential Tuples and Weak Sums
