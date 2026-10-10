@@ -519,6 +519,9 @@ static Q_THREAD_LOCAL QSubtypePair quest_subtyping_trail[Q_SUBTYPE_TRAIL_MAX];
 static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0;
 
 bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type) {
+    /* A value stored as a type parameter has its type argument's type */
+    sub = quest_stored_type(sub);
+    super_type = quest_stored_type(super_type);
     if (sub == super_type) return true;
     if (sub == NULL || super_type == NULL) return false;
 
@@ -584,10 +587,21 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             break;
         }
 
-        case QTYPE_KIND_OPAQUE:
+        case QTYPE_KIND_OPAQUE: {
             result = (sub == super_type) ||
-                     (sub->name != NULL && super_type->name != NULL && strcmp(sub->name, super_type->name) == 0);
+                     (sub->kind == QTYPE_KIND_OPAQUE && sub->name != NULL && super_type->name != NULL &&
+                      strcmp(sub->name, super_type->name) == 0);
+            /* An abstract type operator's applications are equal when their arguments are equal types */
+            const QOpaqueTypeDescriptor *s = (const QOpaqueTypeDescriptor *)sub->extra;
+            const QOpaqueTypeDescriptor *t = (const QOpaqueTypeDescriptor *)super_type->extra;
+            if (result && sub != super_type && (s != NULL || t != NULL)) {
+                result = s != NULL && t != NULL && s->arg_count == t->arg_count;
+                for (size_t i = 0; result && i < t->arg_count; ++i) {
+                    result = quest_is_subtype(s->args[i], t->args[i]) && quest_is_subtype(t->args[i], s->args[i]);
+                }
+            }
             break;
+        }
 
         case QTYPE_KIND_ARRAY: {
             if (sub->kind != QTYPE_KIND_ARRAY) { result = false; break; }
@@ -805,19 +819,22 @@ static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDe
     }
 }
 
-/* True if a field stored at type `stored` must be converted to be read at type `viewed` */
+/* True if a field stored at type `stored` must be converted to be read at type `viewed`: it is stored at a proper
+ * subtype, or in a different layout (one of them stores a type parameter generically) */
 static bool quest_stored_type_differs(const QTypeDescriptor *stored, const QTypeDescriptor *viewed) {
     if (stored == viewed || stored == NULL || viewed == NULL) return false;
-    switch (viewed->kind) {
+    switch (quest_stored_type(viewed)->kind) {
         case QTYPE_KIND_RECORD:
         case QTYPE_KIND_VARIANT:
         case QTYPE_KIND_OPTION:
         case QTYPE_KIND_TUPLE:
         case QTYPE_KIND_FUN:
-            return !(quest_is_subtype(stored, viewed) && quest_is_subtype(viewed, stored));
+            if (!(quest_is_subtype(stored, viewed) && quest_is_subtype(viewed, stored))) return true;
+            break;
         default:
-            return false;
+            break;
     }
+    return !quest_slot_layout_equivalent(stored, viewed);
 }
 
 static const void *quest_build_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
@@ -842,6 +859,8 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
         if (lf == NULL) return NULL;
         dict[j] = lf->offset;
         if (quest_stored_type_differs(lf->type, v_meta->fields[j].type)) {
+            /* A var field is updated through the view, so it must be stored as the view stores it */
+            if (v_meta->fields[j].is_var) quest_layout_conversion_error(layout, view);
             if (stored_types == NULL) {
                 stored_types = (const QTypeDescriptor **)quest_alloc(sizeof(const QTypeDescriptor *) * n);
                 memset((void *)stored_types, 0, sizeof(const QTypeDescriptor *) * n);
@@ -855,6 +874,11 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
 
 QVal quest_slot_read(const QTypeDescriptor *t, const void *slot) {
     if (t == NULL || slot == NULL) return (QVal){ .p = NULL };
+    if (t->kind == QTYPE_KIND_STORED) {
+        const QStoredDescriptor *st = (const QStoredDescriptor *)t->extra;
+        if (st->storage == NULL) return *(const QVal *)slot;
+        t = st->storage;
+    }
     switch (t->kind) {
         case QTYPE_KIND_INT:
         case QTYPE_KIND_BOOL:
@@ -873,6 +897,14 @@ QVal quest_slot_read(const QTypeDescriptor *t, const void *slot) {
 
 void quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v) {
     if (t == NULL || slot == NULL) return;
+    if (t->kind == QTYPE_KIND_STORED) {
+        const QStoredDescriptor *st = (const QStoredDescriptor *)t->extra;
+        if (st->storage == NULL) {
+            *(QVal *)slot = v;
+            return;
+        }
+        t = st->storage;
+    }
     switch (t->kind) {
         case QTYPE_KIND_INT:
         case QTYPE_KIND_BOOL:
@@ -946,22 +978,86 @@ static QVal quest_convert_option(QVal v, const QTypeDescriptor *from, const QTyp
     return (QVal){ .p = dst };
 }
 
+/* True if a tuple-shaped descriptor has var components */
+static bool quest_tuple_has_var(const QTypeDescriptor *d) {
+    const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)d->extra;
+    for (size_t i = 0; meta != NULL && i < meta->element_count; ++i) {
+        if (meta->elements[i].is_var) return true;
+    }
+    return false;
+}
+
+/* Reads and writes an auto value's component in its payload (see QAutoComponentDescriptor) */
+static QVal quest_auto_component_read(const QAutoComponentDescriptor *c, const char *payload) {
+    const void *slot = payload + c->offset;
+    return c->storage != NULL ? quest_slot_read(c->storage, slot) : *(const QVal *)slot;
+}
+
+static void quest_auto_component_write(const QAutoComponentDescriptor *c, char *payload, QVal v) {
+    void *slot = payload + c->offset;
+    if (c->storage != NULL) quest_slot_write(c->storage, slot, v);
+    else *(QVal *)slot = v;
+}
+
+/* Re-stores an auto value's components in the layout of auto type `to` (keeping its type component) */
+static QVal quest_convert_auto(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    const QAuto *a = (const QAuto *)v.p;
+    const QAutoTypeDescriptor *f_meta = (const QAutoTypeDescriptor *)from->extra;
+    const QAutoTypeDescriptor *t_meta = (const QAutoTypeDescriptor *)to->extra;
+    if (a == NULL || f_meta == NULL || t_meta == NULL) return v;
+    char *payload = (char *)quest_alloc(t_meta->payload_size > 0 ? t_meta->payload_size : sizeof(QVal));
+    for (size_t i = 0; i < t_meta->component_count && i < f_meta->component_count; ++i) {
+        const QAutoComponentDescriptor *fc = &f_meta->components[i];
+        const QAutoComponentDescriptor *tc = &t_meta->components[i];
+        if (tc->is_var) quest_layout_conversion_error(from, to);
+        /* A component of the type component's type is a value of that type whatever its storage */
+        QVal c = quest_auto_component_read(fc, (const char *)a->payload.p);
+        if (fc->type->kind != QTYPE_KIND_BOUND_VAR) c = quest_convert(c, fc->type, tc->type);
+        quest_auto_component_write(tc, payload, c);
+    }
+    return (QVal){ .p = quest_auto_new(a->type_desc, (QVal){ .p = payload }) };
+}
+
+void quest_layout_conversion_error(const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    (void)from;
+    fprintf(stderr,
+            "Runtime error: a value used at type %s was laid out by generic code, and converting it would copy "
+            "mutable data\n",
+            to != NULL && to->name != NULL ? to->name : "?");
+    exit(1);
+}
+
+/* How a value stored as a type parameter is held: in its QVal form, as a value of its own type, or in the
+ * representation of the parameter's bound, viewed at the bound (generic code views such values at the bound) */
+static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor *d) {
+    if (d == NULL || d->kind != QTYPE_KIND_STORED) return d;
+    const QStoredDescriptor *st = (const QStoredDescriptor *)d->extra;
+    return st->storage != NULL ? st->storage : st->type;
+}
+
 QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
-    if (from == NULL || to == NULL || from == to || from->kind != to->kind) return v;
+    if (from == NULL || to == NULL) return v;
+    from = quest_stored_representation(from);
+    to = quest_stored_representation(to);
+    /* A record is viewed at `to` from its own layout, whatever view it had: code that knows a value only as of a
+     * type parameter's bound may view it at the bound or at its own type */
+    if (to->kind == QTYPE_KIND_RECORD && from->kind == QTYPE_KIND_RECORD && v.p != NULL) {
+        QRecordVal viewed = quest_record_view(*(const QRecordVal *)v.p, to);
+        if (viewed.dict == NULL) quest_raise_dynamic_error();
+        if (viewed.dict == ((const QRecordVal *)v.p)->dict) return v;
+        return (QVal){ .p = (void *)quest_record_box(viewed) };
+    }
+    if (from == to || from->kind != to->kind) return v;
     switch (to->kind) {
-        case QTYPE_KIND_RECORD: {
-            if (v.p == NULL) return v;
-            QRecordVal viewed = quest_record_view(*(const QRecordVal *)v.p, to);
-            if (viewed.dict == NULL) quest_raise_dynamic_error();
-            return (QVal){ .p = (void *)quest_record_box(viewed) };
-        }
         case QTYPE_KIND_VARIANT:
             if (v.p == NULL) return v;
             return (QVal){ .p = (void *)quest_variant_box(quest_variant_adapt(from, to, v)) };
         case QTYPE_KIND_OPTION:
+            if (quest_layout_equivalent(from, to)) return v;
             return quest_convert_option(v, from, to);
         case QTYPE_KIND_TUPLE: {
-            if (v.p == NULL || to->extra == NULL) return v;
+            if (v.p == NULL || to->extra == NULL || quest_layout_equivalent(from, to)) return v;
+            if (quest_tuple_has_var(to)) quest_layout_conversion_error(from, to);
             void *dst = quest_alloc(to->size > 0 ? to->size : sizeof(void *));
             quest_convert_elements(v.p, from, dst, to);
             return (QVal){ .p = dst };
@@ -969,21 +1065,519 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
         case QTYPE_KIND_FUN: {
             const QFunTypeDescriptor *meta = (const QFunTypeDescriptor *)to->extra;
             if (v.p == NULL || meta == NULL || meta->adapt == NULL) return v;
-            if (quest_is_subtype(to, from)) return v; /* equal types: nothing to adapt */
+            /* equal types in the same layout: nothing to adapt */
+            if (quest_is_subtype(to, from) && quest_layout_equivalent(from, to)) return v;
             return (QVal){ .p = meta->adapt((const QClosure *)v.p, from, to) };
         }
+        case QTYPE_KIND_AUTO:
+            if (v.p == NULL || quest_layout_equivalent(from, to)) return v;
+            return quest_convert_auto(v, from, to);
+        case QTYPE_KIND_ARRAY:
+        case QTYPE_KIND_EXCEPTION:
+            if (v.p != NULL && !quest_layout_equivalent(from, to)) quest_layout_conversion_error(from, to);
+            return v;
         default:
             return v;
     }
 }
 
+/* ------------------------------------------------------------------------- */
+/* Layout Equivalence                                                        */
+/* ------------------------------------------------------------------------- */
+
+/* Descriptors of the same type describe the same layout unless one stores a type parameter generically (as a QVal,
+ * QTYPE_KIND_STORED) where the other stores the type argument's own representation. The two agree in memory for
+ * scalars and pointers, but not for records and variants (16 bytes inline, or a pointer to a boxed copy); in
+ * registers (function parameters and results) only integers and pointers agree. Recursive descriptors are compared
+ * coinductively. */
+
+#define Q_EQUIV_TRAIL_MAX 64
+static Q_THREAD_LOCAL QSubtypePair quest_equiv_trail[Q_EQUIV_TRAIL_MAX];
+static Q_THREAD_LOCAL size_t quest_equiv_trail_len = 0;
+
+static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescriptor *b);
+
+/* Whether a slot or a parameter holding a value stored generically (`st`) holds it as `other` does. Stored as the
+ * type parameter's bound, a value has the bound's representation and is viewed at the bound. */
+static bool quest_stored_equivalent(const QStoredDescriptor *st, const QTypeDescriptor *other, bool in_register) {
+    if (st->storage != NULL) return quest_layout_equiv_rec(st->storage, other);
+    switch (other->kind) {
+        case QTYPE_KIND_RECORD:
+        case QTYPE_KIND_VARIANT:
+            return false;
+        case QTYPE_KIND_REAL:
+        case QTYPE_KIND_BOOL:
+        case QTYPE_KIND_CHAR:
+        case QTYPE_KIND_OK:
+            return !in_register;
+        case QTYPE_KIND_INT:
+        case QTYPE_KIND_STRING:
+        case QTYPE_KIND_OPAQUE:
+        case QTYPE_KIND_BOUND_VAR:
+            return true;
+        default:
+            return quest_layout_equiv_rec(st->type, other);
+    }
+}
+
+static bool quest_place_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b, bool in_register) {
+    if (a == b) return true;
+    if (a == NULL || b == NULL) return false;
+    bool a_stored = a->kind == QTYPE_KIND_STORED, b_stored = b->kind == QTYPE_KIND_STORED;
+    if (a_stored && b_stored) {
+        const QStoredDescriptor *sa = (const QStoredDescriptor *)a->extra;
+        const QStoredDescriptor *sb = (const QStoredDescriptor *)b->extra;
+        if ((sa->storage == NULL) != (sb->storage == NULL)) return false;
+        return sa->storage != NULL ? quest_layout_equiv_rec(sa->storage, sb->storage)
+                                   : quest_layout_equiv_rec(sa->type, sb->type);
+    }
+    if (a_stored) return quest_stored_equivalent((const QStoredDescriptor *)a->extra, b, in_register);
+    if (b_stored) return quest_stored_equivalent((const QStoredDescriptor *)b->extra, a, in_register);
+    return quest_layout_equiv_rec(a, b);
+}
+
+bool quest_slot_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b) {
+    return quest_place_equivalent(a, b, false);
+}
+
+static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescriptor *b) {
+    if (a == b) return true;
+    if (a == NULL || b == NULL) return false;
+    if (a->kind == QTYPE_KIND_STORED || b->kind == QTYPE_KIND_STORED) return quest_place_equivalent(a, b, false);
+    if (a->kind != b->kind) return false;
+    for (size_t i = 0; i < quest_equiv_trail_len; ++i) {
+        if (quest_equiv_trail[i].sub == a && quest_equiv_trail[i].super_type == b) return true;
+    }
+    if (quest_equiv_trail_len >= Q_EQUIV_TRAIL_MAX) return false;
+    quest_equiv_trail[quest_equiv_trail_len++] = (QSubtypePair){ a, b };
+
+    bool result = true;
+    switch (a->kind) {
+        case QTYPE_KIND_TUPLE: {
+            /* A longer tuple may be used as its prefix */
+            const QTupleTypeDescriptor *sa = (const QTupleTypeDescriptor *)a->extra;
+            const QTupleTypeDescriptor *sb = (const QTupleTypeDescriptor *)b->extra;
+            size_t na = sa != NULL ? sa->element_count : 0, nb = sb != NULL ? sb->element_count : 0;
+            result = na >= nb;
+            for (size_t i = 0; result && i < nb; ++i) {
+                result = sa->elements[i].offset == sb->elements[i].offset &&
+                         quest_place_equivalent(sa->elements[i].type, sb->elements[i].type, false);
+            }
+            break;
+        }
+        case QTYPE_KIND_RECORD: {
+            /* Record values carry their payload's layout; their offset tables depend on the view's field types */
+            const QRecordTypeDescriptor *ra = (const QRecordTypeDescriptor *)a->extra;
+            const QRecordTypeDescriptor *rb = (const QRecordTypeDescriptor *)b->extra;
+            size_t na = ra != NULL ? ra->field_count : 0, nb = rb != NULL ? rb->field_count : 0;
+            result = na == nb;
+            for (size_t i = 0; result && i < nb; ++i) {
+                result = strcmp(ra->fields[i].name, rb->fields[i].name) == 0 &&
+                         ra->fields[i].is_var == rb->fields[i].is_var &&
+                         quest_place_equivalent(ra->fields[i].type, rb->fields[i].type, false);
+            }
+            break;
+        }
+        case QTYPE_KIND_VARIANT:
+        case QTYPE_KIND_OPTION: {
+            const QVariantTypeDescriptor *va = (const QVariantTypeDescriptor *)a->extra;
+            const QVariantTypeDescriptor *vb = (const QVariantTypeDescriptor *)b->extra;
+            size_t na = va != NULL ? va->case_count : 0, nb = vb != NULL ? vb->case_count : 0;
+            result = na == nb;
+            for (size_t i = 0; result && i < nb; ++i) {
+                const QVariantCaseDescriptor *ca = &va->cases[i], *cb = &vb->cases[i];
+                result = strcmp(ca->name, cb->name) == 0 && ca->tag_index == cb->tag_index &&
+                         (ca->payload_type == NULL) == (cb->payload_type == NULL) &&
+                         (ca->payload_type == NULL || quest_place_equivalent(ca->payload_type, cb->payload_type, false));
+            }
+            break;
+        }
+        case QTYPE_KIND_ARRAY: {
+            const QArrayTypeDescriptor *ea = (const QArrayTypeDescriptor *)a->extra;
+            const QArrayTypeDescriptor *eb = (const QArrayTypeDescriptor *)b->extra;
+            result = ea != NULL && eb != NULL && quest_place_equivalent(ea->element_type, eb->element_type, false);
+            break;
+        }
+        case QTYPE_KIND_FUN: {
+            const QFunTypeDescriptor *fa = (const QFunTypeDescriptor *)a->extra;
+            const QFunTypeDescriptor *fb = (const QFunTypeDescriptor *)b->extra;
+            result = fa != NULL && fb != NULL && fa->param_count == fb->param_count &&
+                     fa->quantifier_count == fb->quantifier_count;
+            for (size_t i = 0; result && i < fb->param_count; ++i) {
+                const QFunParamDescriptor *pa = &fa->params[i], *pb = &fb->params[i];
+                /* var and out parameters are pointers to slots */
+                result = pa->is_var == pb->is_var && pa->is_out == pb->is_out &&
+                         quest_place_equivalent(pa->type, pb->type, !(pa->is_var || pa->is_out));
+            }
+            if (result) result = quest_place_equivalent(fa->result_type, fb->result_type, true);
+            break;
+        }
+        case QTYPE_KIND_AUTO: {
+            const QAutoTypeDescriptor *aa = (const QAutoTypeDescriptor *)a->extra;
+            const QAutoTypeDescriptor *ab = (const QAutoTypeDescriptor *)b->extra;
+            result = aa != NULL && ab != NULL && aa->component_count >= ab->component_count;
+            for (size_t i = 0; result && i < ab->component_count; ++i) {
+                const QAutoComponentDescriptor *ca = &aa->components[i], *cb = &ab->components[i];
+                result = ca->offset == cb->offset && (ca->storage == NULL) == (cb->storage == NULL) &&
+                         (ca->storage == NULL || quest_layout_equiv_rec(ca->storage, cb->storage)) &&
+                         quest_place_equivalent(ca->type, cb->type, false);
+            }
+            break;
+        }
+        case QTYPE_KIND_EXCEPTION: {
+            const QExceptionTypeDescriptor *xa = (const QExceptionTypeDescriptor *)a->extra;
+            const QExceptionTypeDescriptor *xb = (const QExceptionTypeDescriptor *)b->extra;
+            result = xa != NULL && xb != NULL && quest_place_equivalent(xa->payload_type, xb->payload_type, false);
+            break;
+        }
+        default:
+            result = true;
+            break;
+    }
+    quest_equiv_trail_len--;
+    return result;
+}
+
+bool quest_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b) {
+    return quest_place_equivalent(a, b, false);
+}
+
+/* How a parameter or result of type d is passed: integers and pointers alike, other scalars, records, and variants
+ * each their own way (Ok parameters are passed as QVals, and Ok results not at all) */
+typedef enum QPassingClass { QPASS_WORD, QPASS_REAL, QPASS_BOOL, QPASS_CHAR, QPASS_RECORD, QPASS_VARIANT, QPASS_VOID } QPassingClass;
+
+static QPassingClass quest_passing_class(const QTypeDescriptor *d, bool is_result) {
+    if (d == NULL) return is_result ? QPASS_VOID : QPASS_WORD;
+    if (d->kind == QTYPE_KIND_STORED) {
+        const QStoredDescriptor *st = (const QStoredDescriptor *)d->extra;
+        return st->storage != NULL ? quest_passing_class(st->storage, is_result) : QPASS_WORD;
+    }
+    switch (d->kind) {
+        case QTYPE_KIND_REAL: return QPASS_REAL;
+        case QTYPE_KIND_BOOL: return QPASS_BOOL;
+        case QTYPE_KIND_CHAR: return QPASS_CHAR;
+        case QTYPE_KIND_RECORD: return QPASS_RECORD;
+        case QTYPE_KIND_VARIANT: return QPASS_VARIANT;
+        case QTYPE_KIND_OK: return is_result ? QPASS_VOID : QPASS_WORD;
+        default: return QPASS_WORD;
+    }
+}
+
+bool quest_fun_signature_equivalent(const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    if (from == to) return true;
+    const QFunTypeDescriptor *f = (const QFunTypeDescriptor *)from->extra;
+    const QFunTypeDescriptor *t = (const QFunTypeDescriptor *)to->extra;
+    if (f == NULL || t == NULL || f->param_count != t->param_count || f->quantifier_count != t->quantifier_count) {
+        return false;
+    }
+    for (size_t i = 0; i < t->param_count; ++i) {
+        if (t->params[i].is_var || t->params[i].is_out) continue;
+        if (quest_passing_class(f->params[i].type, false) != quest_passing_class(t->params[i].type, false)) return false;
+    }
+    return quest_passing_class(f->result_type, true) == quest_passing_class(t->result_type, true);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Descriptor Templates                                                      */
+/* ------------------------------------------------------------------------- */
+
+/* The nodes of a template reachable from its root, each with its instance (NULL until made) and whether it reaches
+ * a hole (nodes that do not are their own instances) */
+typedef struct QInstNode {
+    const QTypeDescriptor *tmpl;
+    QTypeDescriptor       *inst;
+    bool                   has_hole;
+} QInstNode;
+
+typedef struct QInstWork {
+    QInstNode *nodes;
+    size_t     count;
+    size_t     capacity;
+} QInstWork;
+
+static QInstNode *quest_inst_find(QInstWork *w, const QTypeDescriptor *d) {
+    for (size_t i = 0; i < w->count; ++i) {
+        if (w->nodes[i].tmpl == d) return &w->nodes[i];
+    }
+    return NULL;
+}
+
+/* Calls f on each descriptor that d refers to */
+static void quest_desc_children(const QTypeDescriptor *d, void (*f)(void *cx, const QTypeDescriptor *c), void *cx) {
+    if (d == NULL || d->extra == NULL) return;
+    switch (d->kind) {
+        case QTYPE_KIND_TUPLE: {
+            const QTupleTypeDescriptor *m = (const QTupleTypeDescriptor *)d->extra;
+            for (size_t i = 0; i < m->element_count; ++i) f(cx, m->elements[i].type);
+            break;
+        }
+        case QTYPE_KIND_RECORD: {
+            const QRecordTypeDescriptor *m = (const QRecordTypeDescriptor *)d->extra;
+            for (size_t i = 0; i < m->field_count; ++i) f(cx, m->fields[i].type);
+            break;
+        }
+        case QTYPE_KIND_VARIANT:
+        case QTYPE_KIND_OPTION: {
+            const QVariantTypeDescriptor *m = (const QVariantTypeDescriptor *)d->extra;
+            for (size_t i = 0; i < m->case_count; ++i) f(cx, m->cases[i].payload_type);
+            break;
+        }
+        case QTYPE_KIND_ARRAY:
+            f(cx, ((const QArrayTypeDescriptor *)d->extra)->element_type);
+            break;
+        case QTYPE_KIND_FUN: {
+            const QFunTypeDescriptor *m = (const QFunTypeDescriptor *)d->extra;
+            for (size_t i = 0; i < m->param_count; ++i) f(cx, m->params[i].type);
+            f(cx, m->result_type);
+            for (size_t i = 0; m->quantifier_bounds != NULL && i < m->quantifier_count; ++i) f(cx, m->quantifier_bounds[i]);
+            break;
+        }
+        case QTYPE_KIND_AUTO: {
+            const QAutoTypeDescriptor *m = (const QAutoTypeDescriptor *)d->extra;
+            f(cx, m->bound);
+            for (size_t i = 0; i < m->component_count; ++i) {
+                f(cx, m->components[i].type);
+                f(cx, m->components[i].storage);
+            }
+            break;
+        }
+        case QTYPE_KIND_EXCEPTION:
+            f(cx, ((const QExceptionTypeDescriptor *)d->extra)->payload_type);
+            break;
+        case QTYPE_KIND_OPAQUE: {
+            const QOpaqueTypeDescriptor *m = (const QOpaqueTypeDescriptor *)d->extra;
+            for (size_t i = 0; i < m->arg_count; ++i) f(cx, m->args[i]);
+            break;
+        }
+        case QTYPE_KIND_HOLE:
+            f(cx, ((const QHoleDescriptor *)d->extra)->storage);
+            break;
+        case QTYPE_KIND_STORED:
+            f(cx, ((const QStoredDescriptor *)d->extra)->type);
+            f(cx, ((const QStoredDescriptor *)d->extra)->storage);
+            break;
+        default:
+            break;
+    }
+}
+
+static void quest_inst_collect(void *cx, const QTypeDescriptor *d) {
+    QInstWork *w = (QInstWork *)cx;
+    if (d == NULL || quest_inst_find(w, d) != NULL) return;
+    if (w->count == w->capacity) {
+        size_t capacity = w->capacity ? 2 * w->capacity : 16;
+        QInstNode *nodes = (QInstNode *)quest_alloc(sizeof(QInstNode) * capacity);
+        if (w->count > 0) memcpy(nodes, w->nodes, sizeof(QInstNode) * w->count);
+        w->nodes = nodes;
+        w->capacity = capacity;
+    }
+    w->nodes[w->count++] = (QInstNode){ d, NULL, d->kind == QTYPE_KIND_HOLE };
+    quest_desc_children(d, quest_inst_collect, cx);
+}
+
+typedef struct QInstReach {
+    QInstWork *w;
+    bool       found;
+} QInstReach;
+
+static void quest_inst_reach(void *cx, const QTypeDescriptor *c) {
+    QInstReach *r = (QInstReach *)cx;
+    QInstNode *n = c != NULL ? quest_inst_find(r->w, c) : NULL;
+    if (n != NULL && n->has_hole) r->found = true;
+}
+
+typedef struct QInstContext {
+    QInstWork                    *w;
+    const QTypeDescriptor *const *args;
+} QInstContext;
+
+/* The instance of template node d */
+static const QTypeDescriptor *quest_inst_of(const QInstContext *cx, const QTypeDescriptor *d) {
+    if (d == NULL) return NULL;
+    QInstNode *n = quest_inst_find(cx->w, d);
+    return n != NULL && n->has_hole ? n->inst : d;
+}
+
+static void *quest_copy_block(const void *src, size_t size) {
+    void *copy = quest_alloc(size);
+    memcpy(copy, src, size);
+    return copy;
+}
+
+/* Fills the instance of template node n, whose descriptor was allocated already */
+static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
+    const QTypeDescriptor *d = n->tmpl;
+    QTypeDescriptor *out = n->inst;
+    *out = *d;
+    switch (d->kind) {
+        case QTYPE_KIND_TUPLE: {
+            const QTupleTypeDescriptor *m = (const QTupleTypeDescriptor *)d->extra;
+            QTupleTypeDescriptor *c = (QTupleTypeDescriptor *)quest_copy_block(
+                m, sizeof(QTupleTypeDescriptor) + sizeof(QTupleElementDescriptor) * m->element_count);
+            for (size_t i = 0; i < m->element_count; ++i) {
+                ((QTupleElementDescriptor *)&c->elements[i])->type = quest_inst_of(cx, m->elements[i].type);
+            }
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_RECORD: {
+            const QRecordTypeDescriptor *m = (const QRecordTypeDescriptor *)d->extra;
+            QRecordTypeDescriptor *c = (QRecordTypeDescriptor *)quest_copy_block(
+                m, sizeof(QRecordTypeDescriptor) + sizeof(QRecordFieldDescriptor) * m->field_count);
+            for (size_t i = 0; i < m->field_count; ++i) {
+                ((QRecordFieldDescriptor *)&c->fields[i])->type = quest_inst_of(cx, m->fields[i].type);
+            }
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_VARIANT:
+        case QTYPE_KIND_OPTION: {
+            const QVariantTypeDescriptor *m = (const QVariantTypeDescriptor *)d->extra;
+            QVariantTypeDescriptor *c = (QVariantTypeDescriptor *)quest_copy_block(
+                m, sizeof(QVariantTypeDescriptor) + sizeof(QVariantCaseDescriptor) * m->case_count);
+            for (size_t i = 0; i < m->case_count; ++i) {
+                ((QVariantCaseDescriptor *)&c->cases[i])->payload_type = quest_inst_of(cx, m->cases[i].payload_type);
+            }
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_ARRAY: {
+            QArrayTypeDescriptor *c = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor));
+            c->element_type = quest_inst_of(cx, ((const QArrayTypeDescriptor *)d->extra)->element_type);
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_FUN: {
+            const QFunTypeDescriptor *m = (const QFunTypeDescriptor *)d->extra;
+            QFunTypeDescriptor *c = (QFunTypeDescriptor *)quest_copy_block(
+                m, sizeof(QFunTypeDescriptor) + sizeof(QFunParamDescriptor) * m->param_count);
+            for (size_t i = 0; i < m->param_count; ++i) {
+                ((QFunParamDescriptor *)&c->params[i])->type = quest_inst_of(cx, m->params[i].type);
+            }
+            c->result_type = quest_inst_of(cx, m->result_type);
+            if (m->quantifier_bounds != NULL && m->quantifier_count > 0) {
+                const QTypeDescriptor **bounds =
+                    (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * m->quantifier_count);
+                for (size_t i = 0; i < m->quantifier_count; ++i) bounds[i] = quest_inst_of(cx, m->quantifier_bounds[i]);
+                c->quantifier_bounds = bounds;
+            }
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_AUTO: {
+            const QAutoTypeDescriptor *m = (const QAutoTypeDescriptor *)d->extra;
+            QAutoTypeDescriptor *c = (QAutoTypeDescriptor *)quest_copy_block(
+                m, sizeof(QAutoTypeDescriptor) + sizeof(QAutoComponentDescriptor) * m->component_count);
+            c->bound = quest_inst_of(cx, m->bound);
+            for (size_t i = 0; i < m->component_count; ++i) {
+                QAutoComponentDescriptor *comp = (QAutoComponentDescriptor *)&c->components[i];
+                comp->type = quest_inst_of(cx, m->components[i].type);
+                comp->storage = quest_inst_of(cx, m->components[i].storage);
+            }
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_EXCEPTION: {
+            QExceptionTypeDescriptor *c = (QExceptionTypeDescriptor *)quest_alloc(sizeof(QExceptionTypeDescriptor));
+            c->payload_type = quest_inst_of(cx, ((const QExceptionTypeDescriptor *)d->extra)->payload_type);
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_OPAQUE: {
+            const QOpaqueTypeDescriptor *m = (const QOpaqueTypeDescriptor *)d->extra;
+            QOpaqueTypeDescriptor *c = (QOpaqueTypeDescriptor *)quest_alloc(sizeof(QOpaqueTypeDescriptor));
+            const QTypeDescriptor **args = (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (m->arg_count + 1));
+            for (size_t i = 0; i < m->arg_count; ++i) args[i] = quest_inst_of(cx, m->args[i]);
+            c->arg_count = m->arg_count;
+            c->args = args;
+            out->extra = c;
+            break;
+        }
+        case QTYPE_KIND_HOLE: {
+            const QHoleDescriptor *h = (const QHoleDescriptor *)d->extra;
+            QStoredDescriptor *c = (QStoredDescriptor *)quest_alloc(sizeof(QStoredDescriptor));
+            c->type = cx->args[h->index];
+            c->storage = quest_inst_of(cx, h->storage);
+            out->kind = QTYPE_KIND_STORED;
+            out->name = c->type != NULL ? c->type->name : d->name;
+            out->size = c->storage != NULL ? c->storage->size : sizeof(QVal);
+            out->extra = c;
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+/* Instances made so far, keyed by template and arguments */
+typedef struct QInstCacheEntry {
+    const QTypeDescriptor       *tmpl;
+    size_t                       arg_count;
+    const QTypeDescriptor      **args;
+    const QTypeDescriptor       *inst;
+    struct QInstCacheEntry      *next;
+} QInstCacheEntry;
+
+#define Q_INST_CACHE_SIZE 1024
+static QInstCacheEntry *quest_inst_cache[Q_INST_CACHE_SIZE];
+
+const QTypeDescriptor *quest_instantiate_descriptor(
+    const QTypeDescriptor *template_desc, size_t arg_count, const QTypeDescriptor *const *args
+) {
+    uint64_t h = (uint64_t)(uintptr_t)template_desc * 0x9E3779B97F4A7C15ULL;
+    for (size_t i = 0; i < arg_count; ++i) {
+        h = (h ^ (uint64_t)(uintptr_t)args[i]) * 0x100000001B3ULL;
+    }
+    size_t bucket = (size_t)((h ^ (h >> 29)) % Q_INST_CACHE_SIZE);
+    for (QInstCacheEntry *e = quest_inst_cache[bucket]; e != NULL; e = e->next) {
+        if (e->tmpl == template_desc && e->arg_count == arg_count &&
+            (arg_count == 0 || memcmp(e->args, args, sizeof(QTypeDescriptor *) * arg_count) == 0)) {
+            return e->inst;
+        }
+    }
+
+    QInstWork w = { NULL, 0, 0 };
+    quest_inst_collect(&w, template_desc);
+    /* Which nodes reach a hole: iterate to a fixed point, since templates may be cyclic */
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (size_t i = 0; i < w.count; ++i) {
+            if (w.nodes[i].has_hole) continue;
+            QInstReach r = { &w, false };
+            quest_desc_children(w.nodes[i].tmpl, quest_inst_reach, &r);
+            if (r.found) {
+                w.nodes[i].has_hole = true;
+                changed = true;
+            }
+        }
+    }
+    for (size_t i = 0; i < w.count; ++i) {
+        if (w.nodes[i].has_hole) w.nodes[i].inst = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    }
+    QInstContext cx = { &w, args };
+    for (size_t i = 0; i < w.count; ++i) {
+        if (w.nodes[i].has_hole) quest_inst_fill(&cx, &w.nodes[i]);
+    }
+    const QTypeDescriptor *inst = quest_inst_of(&cx, template_desc);
+
+    QInstCacheEntry *e = (QInstCacheEntry *)quest_alloc(sizeof(QInstCacheEntry));
+    e->tmpl = template_desc;
+    e->arg_count = arg_count;
+    e->args = (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (arg_count + 1));
+    if (arg_count > 0) memcpy((void *)e->args, args, sizeof(QTypeDescriptor *) * arg_count);
+    e->inst = inst;
+    e->next = quest_inst_cache[bucket];
+    quest_inst_cache[bucket] = e;
+    return inst;
+}
+
 QVal quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i) {
     const QRecordTypeDescriptor *meta = (const QRecordTypeDescriptor *)view->extra;
     const QTypeDescriptor *field_type = meta->fields[i].type;
-    QVal v = quest_slot_read(field_type, (const char *)rec.val + quest_record_field_offset(rec, i));
+    const void *slot = (const char *)rec.val + quest_record_field_offset(rec, i);
     QRecordStoredTypes stored = quest_record_stored_types(rec, meta->field_count);
-    if (stored != NULL && stored[i] != NULL) v = quest_convert(v, stored[i], field_type);
-    return v;
+    if (stored != NULL && stored[i] != NULL) return quest_convert(quest_slot_read(stored[i], slot), stored[i], field_type);
+    return quest_slot_read(field_type, slot);
 }
 
 const void *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {
@@ -1243,6 +1837,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     meta->param_count = param_count;
     meta->result_type = result_type;
     meta->adapt = NULL;
+    meta->invoke = NULL;
     meta->quantifier_count = 0;
     meta->quantifier_bounds = NULL;
     if (params != NULL && param_count > 0) {

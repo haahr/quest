@@ -149,7 +149,10 @@ Cardelli allows every dynamic value to be externed except readers and writers (T
 requires the type in a dynamic to be *closed*: it may not contain free type variables. A module's abstract type
 `a.T` is closed in that sense, because it is named through the global name space of compiled modules, in which
 `a.T` matches `b.T` precisely when `a` and `b` are the same module (§7.3, the diamond import). An abstract type
-extracted from a local tuple value (`t.A`) depends on that value and is not closed.
+extracted from a local tuple value (`t.A`) depends on that value and is not closed. Type parameters of enclosing
+polymorphic functions are not free in this sense: a type such as `Tuple fst: A snd: Int end` given to
+`dynamic.new` inside generic code stands for its instance at the call's type arguments, which is what the dynamic
+value records ([type-system.md](type-system.md) §6.11).
 
 - **`dynamic.new` rejects value-dependent abstract types.** The typechecker reports a static error when the type
   given to `dynamic.new` contains an abstract type whose root is not a module (a let-bound tuple, a parameter, a

@@ -155,7 +155,9 @@ typedef enum QTypeKind {
     QTYPE_KIND_AUTO,
     QTYPE_KIND_EXCEPTION,
     QTYPE_KIND_OPAQUE,
-    QTYPE_KIND_BOUND_VAR   /* A type parameter of an enclosing polymorphic function type (see quest_type_bound_vars) */
+    QTYPE_KIND_BOUND_VAR,  /* A type parameter of an enclosing polymorphic function type (see quest_type_bound_vars) */
+    QTYPE_KIND_HOLE,       /* A type parameter of generic code in a descriptor template (QHoleDescriptor) */
+    QTYPE_KIND_STORED      /* A type stored as generic code stores a type parameter (QStoredDescriptor) */
 } QTypeKind;
 
 typedef struct QTypeDescriptor QTypeDescriptor;
@@ -221,11 +223,18 @@ typedef struct QFunParamDescriptor {
  * (see quest_convert). Compiled code supplies one for each function type it describes. */
 typedef QClosure *(*QFunAdapter)(const QClosure *orig, const QTypeDescriptor *from, const QTypeDescriptor *to);
 
-/* The environment of a closure made by a QFunAdapter */
+/* Calls closure c, of the C signature of the function type it belongs to, with uniform arguments: the descriptors
+ * of its type parameters (in .p), then its value arguments in their QVal form (var and out parameters as pointers
+ * in .p); returns the result in its QVal form. Compiled code supplies one for each function type it describes. */
+typedef QVal (*QFunInvoker)(const QClosure *c, const QVal *args);
+
+/* The environment of a closure made by a QFunAdapter. `direct` is true when orig has the adapted closure's own C
+ * signature, so that it is called directly rather than through `from`'s invoker. */
 typedef struct QFunAdapterEnv {
     const QClosure        *orig;
     const QTypeDescriptor *from;
     const QTypeDescriptor *to;
+    bool                   direct;
 } QFunAdapterEnv;
 
 /* A function type, possibly polymorphic: All(A1..An) Fun(params) result. In the parameter and result types (and in
@@ -236,10 +245,39 @@ typedef struct QFunTypeDescriptor {
     size_t                    param_count;
     const QTypeDescriptor    *result_type;
     QFunAdapter               adapt;              /* NULL if values of this type cannot be adapted */
+    QFunInvoker               invoke;             /* NULL if closures of this type cannot be called uniformly */
     size_t                    quantifier_count;   /* n type parameters, passed as descriptors before the values */
     const QTypeDescriptor *const *quantifier_bounds; /* per type parameter: its bound B for Ai <: B, else NULL */
     const QFunParamDescriptor params[];
 } QFunTypeDescriptor;
+
+/* Descriptor templates (Cardelli §4.6 for types used at run time inside generic code). Inside a polymorphic function,
+ * a type that mentions the function's type parameters, such as Tuple fst:A snd:Int end, is laid out generically:
+ * independently of A's type argument, with each A stored as generic code stores a value of a type parameter (a
+ * QVal, or the representation of its bound). Compiled code describes such a type by a template, a descriptor in
+ * which each type parameter is a hole, and quest_instantiate_descriptor fills the holes with the run-time type
+ * arguments. The result describes the type the value has and the layout the value is in: each hole becomes a
+ * QTYPE_KIND_STORED descriptor of its type argument, which subtyping looks through and conversion (quest_convert)
+ * unwraps, so that a value laid out generically is converted when it is used at a particular type. */
+typedef struct QHoleDescriptor {
+    size_t                 index;    /* which type argument */
+    const QTypeDescriptor *storage;  /* the type parameter's bound B (for A <: B), as which it is stored, or NULL */
+} QHoleDescriptor;
+
+/* A value of type `type` stored in the representation of a type parameter: as its QVal form when `storage` is NULL,
+ * and otherwise as a value of type `storage`, the type parameter's bound (a record or variant inline, viewed at the
+ * bound, as generic code views values of a bounded type parameter) */
+typedef struct QStoredDescriptor {
+    const QTypeDescriptor *type;
+    const QTypeDescriptor *storage;
+} QStoredDescriptor;
+
+/* An application of an abstract type operator (list.T(Int)): opaque, named by the operator; descriptors with
+ * arguments are equal when their names are and their arguments are equal types */
+typedef struct QOpaqueTypeDescriptor {
+    size_t                       arg_count;
+    const QTypeDescriptor *const *args;
+} QOpaqueTypeDescriptor;
 
 /* Exception types: Exception(T) */
 typedef struct QExceptionTypeDescriptor {
@@ -566,14 +604,40 @@ static inline QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_
 }
 
 /* Values in aggregate slots (record fields, tuple elements, option payloads), in their QVal form: records and
- * variants boxed, scalars and pointers as they are */
+ * variants boxed, scalars and pointers as they are, and a value stored as a type parameter (QTYPE_KIND_STORED) as
+ * generic code stores it */
 QVal                   quest_slot_read(const QTypeDescriptor *t, const void *slot);
 void                   quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v);
 
-/* Converts v, a value stored at type `from`, to its subtype view at type `to`: records get the offset table for the
- * view, variants and options their tags in `to`, tuples are copied with their elements converted, and functions
- * are wrapped by `to`'s adapter. */
+/* Converts v, the QVal form of a value laid out as `from` describes, to its subtype view laid out as `to` describes:
+ * records get the offset table for the view, variants and options their tags in `to`, tuples and auto values are
+ * copied with their elements converted, and functions are wrapped by `to`'s adapter. A value whose layout already
+ * suits `to` (quest_layout_equivalent) is returned as it is; an array, a tuple with var components, or an exception
+ * whose layout does not is a fatal error, since a copy would not share its updates. */
 QVal                   quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to);
+
+/* True if values laid out as `a` describes can be used as laid out as `b` describes, which describes the same type:
+ * where one stores a type parameter generically and the other does not, the two representations agree. */
+bool                   quest_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b);
+
+/* True if closures of function type `from` have the C signature of closures of function type `to` */
+bool                   quest_fun_signature_equivalent(const QTypeDescriptor *from, const QTypeDescriptor *to);
+
+/* The same for a value in a slot (a tuple element, record field, array element, or payload) */
+bool                   quest_slot_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b);
+
+/* The descriptor that `template_desc` (a descriptor with holes, QHoleDescriptor) describes when its holes stand for
+ * the type arguments `args`; memoized, so equal arguments give the same descriptor */
+const QTypeDescriptor *quest_instantiate_descriptor(
+    const QTypeDescriptor *template_desc, size_t arg_count, const QTypeDescriptor *const *args);
+
+/* A descriptor's type, looking through QTYPE_KIND_STORED */
+static inline const QTypeDescriptor *quest_stored_type(const QTypeDescriptor *d) {
+    return (d != NULL && d->kind == QTYPE_KIND_STORED) ? ((const QStoredDescriptor *)d->extra)->type : d;
+}
+
+/* Exits with a fatal error: a value must be converted between layouts but holds mutable data */
+void                   quest_layout_conversion_error(const QTypeDescriptor *from, const QTypeDescriptor *to);
 
 /* The i-th field (in name order) of record value rec viewed at record type `view`, converted to the view's type */
 QVal                   quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i);

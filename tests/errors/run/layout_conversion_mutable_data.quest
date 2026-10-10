@@ -1,0 +1,12 @@
+(* @skip-phase: interpret *)
+(* C: generic code lays out a type that mentions its type parameters generically, and a value of the type used at a
+   particular type argument is converted; a value holding mutable data (here an array) whose layout differs cannot
+   be, since a copy would not share its updates. The type checker rejects such types where it sees them used at run
+   time, but here the type reaches dynamic.new as an ordinary type argument. (The interpreter has no layouts.) *)
+import dynamic: Dynamic;
+Let Car = Record age: Int fuel: String end;
+let pack(B::TYPE x: B n: Int): Dynamic = dynamic.new(:B x);
+let cars0(A::TYPE x: A): Dynamic = pack(:Array(Tuple v: A end) array of(1 tuple x end) 0);
+let cars: All(A::TYPE x: A) Dynamic = cars0;
+let d = cars(:Car record age = 1 fuel = "gas" end);
+let arr = dynamic.be(:Array(Tuple v: Car end) d);

@@ -18,6 +18,7 @@ from quest.codegen.c_types import (
     _printed,
     _type_digest,
     descriptor_form,
+    hole_var,
     lower_type,
     qtype_to_c_type,
     type_to_c_tag,
@@ -138,15 +139,49 @@ class TestTypeDigests(unittest.TestCase):
         deep_b = _pair(_doubled(INT_TYPE, depth - 1), _pair(_doubled(INT_TYPE, depth - 2), _doubled(BOOL_TYPE, depth - 2)))
         self.assertNotEqual(_type_digest(deep_a), _type_digest(deep_b))
 
-    def test_opaque_names_of_long_types_are_short_and_distinct(self) -> None:
+    def test_opaque_applications_are_named_by_operator_and_keep_their_arguments(self) -> None:
+        # An application of an abstract type operator is compared by the operator's name and its arguments (which
+        # templates may instantiate at run time), so its name stays short however long the arguments print
         operator = QAbstractType("list.T", 9010, QAllKind("E", 9011, TYPE_KIND, TYPE_KIND))
         short = QTypeApp(operator, (INT_TYPE,))
-        self.assertEqual(descriptor_form(short).name, "list.T(Int)")
+        self.assertEqual(descriptor_form(short).name, "list.T")
+        self.assertIs(descriptor_form(short).type, short)
         a = descriptor_form(QTypeApp(operator, (_doubled(INT_TYPE, 60),)))
         b = descriptor_form(QTypeApp(operator, (_doubled(STRING_TYPE, 60),)))
-        self.assertLess(len(a.name), 200)
-        self.assertNotEqual(a.name, b.name)
+        self.assertEqual(a.name, "list.T")
         self.assertNotEqual(a.tag, b.tag)
+
+
+
+class TestTemplateTypes(unittest.TestCase):
+    """Types that mention type parameters in scope are described by templates with holes (c-representation §6.4.5)."""
+
+    def test_nested_aggregate_tags_are_distinct(self) -> None:
+        a = QTypeVar("A", 9101)
+        inner_pair = QTupleType((QTupleField(None, a), QTupleField(None, INT_TYPE)))
+        inner_one = QTupleType((QTupleField(None, a),))
+        nested_pair = QTupleType((QTupleField(None, inner_pair),))
+        nested_one = QTupleType((QTupleField(None, inner_one), QTupleField(None, INT_TYPE)))
+        self.assertEqual(type_to_c_tag(nested_pair), "QTuple_QTuple_QVal_Int_end")
+        self.assertEqual(type_to_c_tag(nested_one), "QTuple_QTuple_QVal_end_Int")
+
+    def test_holes_are_described_by_index_and_bound(self) -> None:
+        unbounded = descriptor_form(hole_var(1, TYPE_KIND))
+        self.assertEqual((unbounded.kind, unbounded.tag, unbounded.name), ("hole", "hole_1", "1"))
+        record = QRecordType((QRecordField("age", INT_TYPE),))
+        bounded = descriptor_form(hole_var(1, QPowerKind(record)))
+        self.assertEqual(bounded.kind, "hole")
+        self.assertNotEqual(bounded.tag, unbounded.tag)
+        # A bounded hole is represented as its bound, as the type parameter it stands for is
+        self.assertEqual(qtype_to_c_type(hole_var(1, QPowerKind(record))), qtype_to_c_type(record))
+
+    def test_templates_are_laid_out_as_generic_code_lays_out_the_type(self) -> None:
+        a = QTypeVar("A", 9102)
+        generic = QTupleType((QTupleField("fst", a), QTupleField("snd", INT_TYPE)))
+        template = generic.substitute({9102: hole_var(0, None)})
+        self.assertEqual(type_to_c_tag(template), type_to_c_tag(generic))
+        self.assertEqual(descriptor_form(template).kind, "tuple")
+        self.assertNotEqual(descriptor_form(template).tag, descriptor_form(generic).tag)
 
 
 if __name__ == "__main__":

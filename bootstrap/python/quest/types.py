@@ -46,6 +46,7 @@ class ReservedSymbolUse(enum.IntEnum):
     REC_SELF = 4  # placeholder for a recursion variable in the C tag of a recursive type, by nesting depth
     CANONICAL_REC = 5  # recursion variable of a recursive type in the C back end's canonical form, by position
     CANONICAL_BINDER = 6  # type parameter of a binder in the C back end's canonical form, by enclosing parameters
+    HOLE = 7  # a type parameter of generic code in a C descriptor template, by position among the template's holes
 
 
 RESERVED_INDEX_LIMIT = 1 << 32

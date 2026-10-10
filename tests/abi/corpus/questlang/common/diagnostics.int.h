@@ -16,9 +16,9 @@ typedef struct QOption_fatal_error_warning_info QOption_fatal_error_warning_info
 #define QUEST_TYPE_QTuple_String_Int_Int_TYPEDEF
 typedef struct QTuple_String_Int_Int QTuple_String_Int_Int;
 #endif
-#ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_TYPEDEF
-#define QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_TYPEDEF
-typedef struct QTuple_QTuple_String_Int_Int_String_Bool QTuple_QTuple_String_Int_Int_String_Bool;
+#ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_TYPEDEF
+#define QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_TYPEDEF
+typedef struct QTuple_QTuple_String_Int_Int_end_String_Bool QTuple_QTuple_String_Int_Int_end_String_Bool;
 #endif
 #ifndef QUEST_TYPE_QOption_fatal_error_warning_info_DEFINED
 #define QUEST_TYPE_QOption_fatal_error_warning_info_DEFINED
@@ -34,16 +34,16 @@ struct QTuple_String_Int_Int {
     QInt _2;
 };
 #endif
-#ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_DEFINED
-#define QUEST_TYPE_QTuple_QTuple_String_Int_Int_String_Bool_DEFINED
-struct QTuple_QTuple_String_Int_Int_String_Bool {
+#ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_DEFINED
+#define QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_DEFINED
+struct QTuple_QTuple_String_Int_Int_end_String_Bool {
     QTuple_String_Int_Int * _0;
     QString * _1;
     QBool _2;
 };
 #endif
 typedef QOption_fatal_error_warning_info * quest_type_Diagnostics_Severity;
-typedef QTuple_QTuple_String_Int_Int_String_Bool * quest_type_Diagnostics_Label;
+typedef QTuple_QTuple_String_Int_Int_end_String_Bool * quest_type_Diagnostics_Label;
 typedef QVal quest_type_Diagnostics_Diagnostic;
 typedef QVal (*quest_sig_Diagnostics_make)(QOption_fatal_error_warning_info * sev, QString * msg, QTuple_String_Int_Int * sp);
 typedef QVal (*quest_sig_Diagnostics_fatal)(QString * msg, QTuple_String_Int_Int * sp);

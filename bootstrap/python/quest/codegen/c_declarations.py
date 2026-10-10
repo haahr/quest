@@ -27,6 +27,7 @@ from quest.codegen.c_types import (
 from quest.types import (
     auto_payload_type,
     QPowerKind,
+    QTypeApp,
     BOOL_TYPE,
     CHAR_TYPE,
     INT_TYPE,
@@ -340,10 +341,12 @@ class CDeclarationEmitter:
     ) -> list[str]:
         """Emits a static descriptor for every type of the program that has one (see descriptor_form).
 
-        desc_fn gives the descriptor expression of a component type, as c_type_descriptor does.
+        desc_fn gives the descriptor expression of a component type, as c_type_descriptor does. A later call emits
+        only descriptors (and structs) that earlier calls did not, as for the templates that function bodies need.
         """
         lines: list[str] = []
         forms: dict[str, list[DescriptorForm]] = {}
+        emitted_before: set[str] = self.__dict__.setdefault("_emitted_descriptor_tag_set", set())
         seen_tags: set[str] = set()
 
         def visit(t: Optional[QType]) -> None:
@@ -353,7 +356,7 @@ class CDeclarationEmitter:
                 form = descriptor_form(t, self.record_ctx)
             except MissingDescriptorError:
                 return
-            if form.kind in ("base", "bound_var") or form.tag in seen_tags:
+            if form.kind in ("base", "bound_var") or form.tag in seen_tags or form.tag in emitted_before:
                 return
             seen_tags.add(form.tag)
             forms.setdefault(form.kind, []).append(form)
@@ -374,6 +377,12 @@ class CDeclarationEmitter:
                 visit(dt.element_type)
             elif form.kind == "exception":
                 visit(dt.payload_type)
+            elif form.kind == "hole":
+                if isinstance(dt.bound, QPowerKind):
+                    visit(dt.bound.bound)
+            elif form.kind == "opaque" and isinstance(dt, QTypeApp):
+                for a in dt.arguments:
+                    visit(a)
             elif form.kind == "auto":
                 if isinstance(dt.kind_bound, QPowerKind):
                     visit(dt.kind_bound.bound)
@@ -403,11 +412,13 @@ class CDeclarationEmitter:
         self.emitted_fun_types = funs
         if not seen_tags:
             return lines
+        emitted_before.update(seen_tags)
 
         # Descriptors of unfolded recursive types may name tuple and record structs that the program's own types
         # do not (a recursive occurrence is named by its unfolding rather than as QVal); their layouts are the same,
         # but the structs must be defined for offsetof and sizeof
-        defined = {name for name, _ in agg_types}
+        defined: set[str] = self.__dict__.setdefault("_defined_struct_names", set())
+        defined.update(name for name, _ in agg_types)
         missing: list[tuple[str, QType]] = []
         for form in forms.get("tuple", []):
             struct_name = tuple_struct_name(form.type)
@@ -456,11 +467,38 @@ class CDeclarationEmitter:
                     f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
                     f"const QTypeDescriptor *to);"
                 )
+                lines.append(f"static QVal quest_invoke_{tag}(const QClosure *c, const QVal *args);")
             lines.append("")
 
         lines.append("/* Static runtime type descriptors for compound and opaque types */")
         for form in forms.get("opaque", []):
-            lines.extend(type_descriptor(form.tag, "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", "NULL"))
+            extra = "NULL"
+            if isinstance(form.type, QTypeApp):
+                # An application of an abstract type operator: its arguments are part of its identity
+                args = [desc_fn(a) for a in form.type.arguments]
+                lines.append(
+                    f"static const QTypeDescriptor *const qopaque_args_{form.tag}[{max(1, len(args))}] Q_UNUSED = "
+                    f"{{ {', '.join(args) if args else 'NULL'} }};"
+                )
+                lines.append(
+                    f"static const QOpaqueTypeDescriptor qopaque_desc_{form.tag} Q_UNUSED = "
+                    f"{{ .arg_count = {len(args)}, .args = qopaque_args_{form.tag} }};"
+                )
+                extra = f"&qopaque_desc_{form.tag}"
+            lines.extend(type_descriptor(form.tag, "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", extra))
+            lines.append("")
+
+        for form in forms.get("hole", []):
+            # A type parameter in a template, stored as a QVal or as its bound
+            hole_t = form.type
+            bounded = isinstance(hole_t.bound, QPowerKind)
+            storage = desc_fn(hole_t.bound.bound) if bounded else "NULL"
+            size = f"sizeof({self.c_type(hole_t)})" if bounded else "sizeof(QVal)"
+            lines.append(
+                f"static const QHoleDescriptor qhole_desc_{form.tag} Q_UNUSED = "
+                f"{{ .index = {form.name}, .storage = {storage} }};"
+            )
+            lines.extend(type_descriptor(form.tag, "QTYPE_KIND_HOLE", f"?{form.name}", size, f"&qhole_desc_{form.tag}"))
             lines.append("")
 
         for form in forms.get("fun", []):
@@ -482,6 +520,7 @@ class CDeclarationEmitter:
                 f"    .param_count = {len(params)},",
                 f"    .result_type = {desc_fn(result_t)},",
                 f"    .adapt = quest_adapt_{tag},",
+                f"    .invoke = quest_invoke_{tag},",
                 f"    .quantifier_count = {len(quants)},",
                 f"    .quantifier_bounds = {bounds},",
             ]
@@ -490,6 +529,7 @@ class CDeclarationEmitter:
                 lines.append("    size_t param_count;")
                 lines.append("    const QTypeDescriptor *result_type;")
                 lines.append("    QFunAdapter adapt;")
+                lines.append("    QFunInvoker invoke;")
                 lines.append("    size_t quantifier_count;")
                 lines.append("    const QTypeDescriptor *const *quantifier_bounds;")
                 lines.append(f"    const QFunParamDescriptor params[{len(params)}];")

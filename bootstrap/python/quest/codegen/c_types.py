@@ -989,6 +989,19 @@ def _recursive_tag(t: QType) -> Optional[str]:
     return None
 
 
+_AGGREGATE_TAG_PREFIXES = ("QTuple_", "QRecord_", "QVariant_", "QOption_", "Auto_")
+
+
+def _element_tag(t: QType) -> str:
+    """The tag of a component type inside another type's tag: an aggregate's tag, which lists its own components,
+    is closed with _end, so that tags of different nestings differ (Tuple (Tuple A Int) end and Tuple (Tuple A) Int
+    end)."""
+    tag = type_to_c_tag(t)
+    if tag.startswith(_AGGREGATE_TAG_PREFIXES) and not tag.endswith("_empty"):
+        return f"{tag}_end"
+    return tag
+
+
 def _type_to_c_tag_raw(t: QType) -> str:
     t = t.prune() if hasattr(t, "prune") else t
     t = strip_aliases(t)
@@ -1022,25 +1035,25 @@ def _type_to_c_tag_raw(t: QType) -> str:
     if isinstance(t, QTypeVar) and t.name == "Reader.T":
         return "QReader"
     if isinstance(t, QTupleType):
-        tags = [type_to_c_tag(f.type_val) for f in t.value_fields]
+        tags = [_element_tag(f.type_val) for f in t.value_fields]
         return "QTuple_" + ("_".join(tags) if tags else "empty")
     if isinstance(t, QRecordType):
         sorted_fields = sorted(t.fields, key=lambda f: f.name)
-        tags = [f"{f.name}_{type_to_c_tag(f.type_val)}" for f in sorted_fields]
+        tags = [f"{f.name}_{_element_tag(f.type_val)}" for f in sorted_fields]
         return "QRecord_" + ("_".join(tags) if tags else "empty")
     if isinstance(t, (QFunType, QAllType)):
         return "QClosure"
     if isinstance(t, (QVarType, QOutType)):
-        return f"Ref_{type_to_c_tag(t.element_type)}"
+        return f"Ref_{_element_tag(t.element_type)}"
     if isinstance(t, (QTypeVar, QAbstractType, QPathType)):
         return "QVal"
     if isinstance(t, QArrayType):
-        return f"QArray_{type_to_c_tag(t.element_type)}"
+        return f"QArray_{_element_tag(t.element_type)}"
     if isinstance(t, QVariantType):
         tags = []
         for v in t.variants:
             if v.type_val:
-                tags.append(f"{v.name}_{type_to_c_tag(v.type_val)}")
+                tags.append(f"{v.name}_{_element_tag(v.type_val)}")
             else:
                 tags.append(v.name)
         return "QVariant_" + ("_".join(tags) if tags else "empty")
@@ -1053,7 +1066,7 @@ def _type_to_c_tag_raw(t: QType) -> str:
         tags = []
         for o in opt_t.options:
             if o.payload_type:
-                tags.append(f"{o.name}_{type_to_c_tag(o.payload_type)}")
+                tags.append(f"{o.name}_{_element_tag(o.payload_type)}")
             else:
                 tags.append(o.name)
         return "QOption_" + ("_".join(tags) if tags else "empty")
@@ -1232,6 +1245,19 @@ def bound_var_index(t: QType) -> Optional[int]:
     return None
 
 
+def hole_var(index: int, bound: Optional[QKind]) -> QTypeVar:
+    """The hole for the `index`-th type parameter of a descriptor template, keeping the parameter's bound (which
+    determines its C representation, and so the template's layout)."""
+    return QTypeVar(name=f"?{index}", symbol_id=reserved_symbol_id(ReservedSymbolUse.HOLE, index), bound=bound)
+
+
+def hole_index(t: QType) -> Optional[int]:
+    """The position of a template's hole, or None for any other type."""
+    if isinstance(t, QTypeVar):
+        return reserved_symbol_index(t.symbol_id, ReservedSymbolUse.HOLE)
+    return None
+
+
 def _bound_vars_in(t: Any) -> list[QTypeVar]:
     """The bound type parameter placeholders occurring in t."""
     found: dict[int, QTypeVar] = {}
@@ -1318,8 +1344,9 @@ class DescriptorForm:
     """How a type is described at run time.
 
     kind is one of base and bound_var (expr is the descriptor expression), or record, tuple, variant, option,
-    array, exception, fun, and opaque (the descriptor is quest_type_<tag>, describing `type`; an opaque descriptor
-    is compared by `name`).
+    array, exception, fun, auto, opaque, and hole (the descriptor is quest_type_<tag>, describing `type`; an opaque
+    descriptor is compared by `name` and, for an application of an abstract type operator (`type` is a QTypeApp),
+    its arguments; a hole's `name` is its index).
     """
     kind: str
     tag: str = ""
@@ -1442,7 +1469,13 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     cyclic. Raises MissingDescriptorError for types that have none.
     """
     t = t.prune() if hasattr(t, "prune") else t
-    t = normalize_type(strip_aliases(t))
+    t = strip_aliases(t)
+    if (index := hole_index(t)) is not None:
+        # A template's hole (before normalization, which would replace a bounded hole by its bound)
+        bound = t.bound
+        tag = f"hole_{index}_{_type_digest(bound.bound)}" if isinstance(bound, QPowerKind) else f"hole_{index}"
+        return DescriptorForm("hole", tag=tag, type=t, name=str(index))
+    t = normalize_type(t)
     if (canonical := _canonical_type(t)) is not None:
         # Equal types share a descriptor: a type containing recursion is described by its canonical form
         t = normalize_type(canonical)
@@ -1480,9 +1513,10 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         if unfolded is not t and not isinstance(unfolded, QTypeApp):
             return descriptor_form(unfolded, ctx)
         if isinstance(t, QTypeApp):
-            # An application of an abstract type operator (list.T(Int)): opaque, compared by name
-            name = _opaque_name(t)
-            return DescriptorForm("opaque", tag=f"opaque_{_text_digest(name)}", name=name)
+            # An application of an abstract type operator (list.T(Int)): opaque, compared by the operator's name
+            # and the arguments
+            name = _opaque_name(t.constructor)
+            return DescriptorForm("opaque", tag=f"opaque_{_type_digest(t)}", name=name, type=t)
         raise MissingDescriptorError(f"no runtime type descriptor for the recursive type '{t}'")
     if isinstance(t, QArrayType):
         return DescriptorForm("array", tag=f"array_{_type_digest(t)}", type=t)

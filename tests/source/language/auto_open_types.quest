@@ -1,0 +1,89 @@
+(* Language: types that mention type parameters of enclosing functions as the type components of auto values, in
+   inspect when clauses, and as type arguments of dynamic.new and dynamic.be. (C: generic code lays such types out
+   generically, describes them by templates instantiated at run time, and converts their values by descriptor when
+   they are used at particular types; first-class polymorphic values below keep calls from being specialized.) *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+Let Boxed = Auto A::TYPE with a: A end;
+Let Car = Record age: Int fuel: String end;
+Let Object = Record age: Int end;
+let myCar: Car = record age = 3 fuel = "diesel" end;
+
+(* 1. An open type component, inspected at particular types, including a supertype *)
+let pairUp0(A::TYPE x: A): Boxed = auto :Tuple fst: A snd: Int end with tuple x 5 end end;
+let pairUp: All(A::TYPE x: A) Boxed = pairUp0;
+s(inspect pairUp(:Car myCar) when Tuple fst: Car snd: Int end with t then t.a.fst.fuel else "no" end);
+s(inspect pairUp(:Car myCar) when Tuple fst: Object snd: Int end with t then conv.int(t.a.fst.age) else "no" end);
+s(inspect pairUp(:Real 2.5) when Tuple fst: Real snd: Int end with t then conv.real(t.a.fst) else "no" end);
+s(inspect pairUp(:Bool true) when Tuple fst: Bool snd: Int end with t then conv.bool(t.a.fst) else "no" end);
+s(inspect pairUp(:Car myCar) when Tuple fst: Real snd: Int end with t then "wrong" else "no match" end);
+s(inspect pairUp0(:Car myCar) when Tuple fst: Car snd: Int end with t then t.a.fst.fuel else "no" end);
+
+(* 2. An open when clause, matching values made by concrete and by generic code *)
+let unpair0(A::TYPE b: Boxed default: A): A =
+    inspect b when Tuple fst: A snd: Int end with t then t.a.fst else default end;
+let unpair: All(A::TYPE b: Boxed default: A) A = unpair0;
+let concrete: Boxed = auto :Tuple fst: Car snd: Int end with tuple myCar 2 end end;
+s(unpair(:Car concrete record age = 0 fuel = "none" end).fuel);
+s(unpair(:Car pairUp(:Car myCar) record age = 0 fuel = "none" end).fuel);
+s(conv.int(unpair(:Object concrete record age = 0 end).age));
+s(conv.real(unpair(:Real pairUp(:Int 7) 0.5)));
+
+(* 3. Function components whose types mention the type parameter, made and used generically and concretely *)
+let shower0(A::TYPE x: A f(:A): String): Dynamic = dynamic.new(:Tuple v: A f(:A): String end tuple x f end);
+let shower: All(A::TYPE x: A f(:A): String) Dynamic = shower0;
+let shc = shower(:Car myCar fun(c: Car): String c.fuel);
+s(inspect shc when Tuple v: Car f(:Car): String end with t then t.a.f(t.a.v) else "no" end);
+let shr = shower(:Real 2.5 fun(r: Real): String conv.real(r));
+s(inspect shr when Tuple v: Real f(:Real): String end with t then t.a.f(t.a.v) else "no" end);
+let show20(A::TYPE d: Dynamic x: A): String =
+    inspect d when Tuple v: A f(:A): String end with t then t.a.f(x) else "no" end;
+let show2: All(A::TYPE d: Dynamic x: A) String = show20;
+s(show2(:Car shc record age = 1 fuel = "petrol" end));
+let concreteShow = dynamic.new(:Tuple v: Real f(:Real): String end tuple 1.0 fun(r: Real): String conv.real(r ++ r) end);
+s(show2(:Real concreteShow 8.0));
+let maker0(A::TYPE x: A): Dynamic = dynamic.new(:Tuple make(:Int): A end tuple fun(n: Int): A x end);
+let maker: All(A::TYPE x: A) Dynamic = maker0;
+s(inspect maker(:Real 6.5) when Tuple make(:Int): Real end with t then conv.real(t.a.make(1)) else "no" end);
+s(inspect maker(:Car myCar) when Tuple make(:Int): Car end with t then t.a.make(1).fuel else "no" end);
+
+(* 4. An auto type whose signature mentions the type component inside a larger type *)
+Let Showable = Auto A::TYPE with x: A show(:A): String end;
+let showPair0(B::TYPE y: B f(:B): String): Showable =
+    auto :Tuple first: B end with tuple y end fun(p: Tuple first: B end): String f(p.first) end;
+let showPair: All(B::TYPE y: B f(:B): String) Showable = showPair0;
+let sp = showPair(:Car myCar fun(c: Car): String c.fuel);
+s(inspect sp when Tuple first: Car end with i then i.show(i.x) else "no" end);
+s(inspect sp when Tuple first: Car end with i then i.show(tuple record age = 9 fuel = "gas" end end) else "no" end);
+
+(* 5. Records, variants, and options with open component types *)
+let recd0(A::TYPE x: A): Dynamic = dynamic.new(:Record item: A count: Int end record item = x count = 2 end);
+let recd: All(A::TYPE x: A) Dynamic = recd0;
+s(inspect recd(:Car myCar) when Record item: Car end with r then r.a.item.fuel else "no" end);
+s(inspect recd(:Real 9.5) when Record item: Real count: Int end with r then conv.real(r.a.item) else "no" end);
+let vv0(A::TYPE x: A): Dynamic = dynamic.new(:Variant some: A none: Ok end variant some of Variant some: A none: Ok end with x end);
+let vv: All(A::TYPE x: A) Dynamic = vv0;
+s(inspect vv(:Car myCar) when Variant some: Car none: Ok end with v then
+    case v.a when some with c then c.fuel else "none" end else "no" end);
+let some0(A::TYPE x: A): Dynamic =
+    dynamic.new(:Option none some with v: A end end option some of Option none some with v: A end end with let v = x end);
+let some: All(A::TYPE x: A) Dynamic = some0;
+s(inspect some(:Car myCar) when Option none some with v: Car end end with o then
+    case o.a when some with p then p.v.fuel when none then "none" end else "no" end);
+
+(* 6. Type arguments passed on by generic code, nested in larger types *)
+let wrap0(B::TYPE y: B): Boxed = pairUp(:Tuple inner: B tag: Bool end tuple y true end);
+let wrap: All(B::TYPE y: B) Boxed = wrap0;
+s(inspect wrap(:Car myCar) when Tuple fst: Tuple inner: Car tag: Bool end snd: Int end with t then
+    t.a.fst.inner.fuel else "no" end);
+s(conv.int(dynamic.be(:Tuple fst: Int end dynamic.new(:Tuple fst: Int end tuple 11 end)).fst));
+
+(* 7. A bounded type parameter, stored in its bound's representation *)
+let bounded0(A <: Object x: A): Dynamic = dynamic.new(:Tuple obj: A end tuple x end);
+let bounded: All(A <: Object x: A) Dynamic = bounded0;
+s(inspect bounded(:Car myCar) when Tuple obj: Car end with t then t.a.obj.fuel else "no" end);
+s(inspect bounded(:Car myCar) when Tuple obj: Object end with t then conv.int(t.a.obj.age) else "no" end);

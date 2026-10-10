@@ -354,6 +354,94 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertIn("VARIANT_SUBTYPING_OK", proc.stdout)
 
 
+    def test_templates_instances_and_layout_conversion(self):
+        """Templates are instantiated at run time; instances describe generic layouts, which convert to native ones."""
+        c_code = """
+        #include "quest_runtime.h"
+        #include <assert.h>
+        #include <stdio.h>
+
+        /* Tuple fst: A snd: Int end as generic code lays it out, and Tuple fst: Real snd: Int end natively */
+        typedef struct { QVal _0; QInt _1; } Generic;
+        typedef struct { QReal _0; QInt _1; } NativeReal;
+        typedef struct { QRecordVal _0; QInt _1; } NativeRecord;
+
+        static const QTypeDescriptor hole0 = {
+            QTYPE_KIND_HOLE, "?0", sizeof(QVal), sizeof(void *), quest_is_subtype,
+            &(const QHoleDescriptor){ .index = 0, .storage = NULL } };
+        static const struct { size_t n; QTupleElementDescriptor e[2]; } tmpl_meta = { 2, {
+            { "fst", &hole0, offsetof(Generic, _0), false },
+            { "snd", &quest_type_Int, offsetof(Generic, _1), false } } };
+        static const QTypeDescriptor tmpl = {
+            QTYPE_KIND_TUPLE, "Tuple fst: ?0 snd: Int end", sizeof(Generic), sizeof(void *), quest_is_subtype,
+            &tmpl_meta };
+        static const struct { size_t n; QTupleElementDescriptor e[2]; } real_meta = { 2, {
+            { "fst", &quest_type_Real, offsetof(NativeReal, _0), false },
+            { "snd", &quest_type_Int, offsetof(NativeReal, _1), false } } };
+        static const QTypeDescriptor real_tuple = {
+            QTYPE_KIND_TUPLE, "Tuple fst: Real snd: Int end", sizeof(NativeReal), sizeof(void *), quest_is_subtype,
+            &real_meta };
+
+        static const struct { size_t n; QRecordFieldDescriptor f[1]; } obj_meta = { 1, {
+            { "age", &quest_type_Int, sizeof(QRecordHeader), false } } };
+        static const QTypeDescriptor obj = {
+            QTYPE_KIND_RECORD, "Record age: Int end", sizeof(QRecordHeader) + sizeof(QInt), sizeof(void *),
+            quest_is_subtype, &obj_meta };
+        static const struct { size_t n; QTupleElementDescriptor e[2]; } rec_meta = { 2, {
+            { "fst", &obj, offsetof(NativeRecord, _0), false },
+            { "snd", &quest_type_Int, offsetof(NativeRecord, _1), false } } };
+        static const QTypeDescriptor rec_tuple = {
+            QTYPE_KIND_TUPLE, "Tuple fst: Record age: Int end snd: Int end", sizeof(NativeRecord), sizeof(void *),
+            quest_is_subtype, &rec_meta };
+
+        int main(void) {
+            quest_gc_init();
+
+            /* Instances are memoized, and have the type of the native descriptor */
+            const QTypeDescriptor *args_real[1] = { &quest_type_Real };
+            const QTypeDescriptor *at_real = quest_instantiate_descriptor(&tmpl, 1, args_real);
+            assert(at_real == quest_instantiate_descriptor(&tmpl, 1, args_real));
+            assert(at_real != &tmpl);
+            assert(quest_is_subtype(at_real, &real_tuple) && quest_is_subtype(&real_tuple, at_real));
+            const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)at_real->extra;
+            assert(meta->elements[0].type->kind == QTYPE_KIND_STORED);
+            assert(quest_stored_type(meta->elements[0].type) == &quest_type_Real);
+            assert(meta->elements[1].type == &quest_type_Int);
+
+            /* A Real stored as a QVal is laid out as a native Real: the value is used as it is */
+            assert(quest_layout_equivalent(at_real, &real_tuple));
+            Generic *g = (Generic *)quest_alloc(sizeof(Generic));
+            g->_0 = (QVal){ .r = 2.5 };
+            g->_1 = 7;
+            QVal same = quest_convert((QVal){ .p = g }, at_real, &real_tuple);
+            assert(same.p == g);
+            assert(((NativeReal *)same.p)->_0 == 2.5);
+
+            /* A record stored as a QVal (a boxed QRecordVal) is not: the tuple is copied, the record unboxed */
+            const QTypeDescriptor *args_obj[1] = { &obj };
+            const QTypeDescriptor *at_obj = quest_instantiate_descriptor(&tmpl, 1, args_obj);
+            assert(!quest_layout_equivalent(at_obj, &rec_tuple));
+            void *payload = quest_alloc(sizeof(QRecordHeader) + sizeof(QInt));
+            ((QRecordHeader *)payload)->descriptor = &obj;
+            *(QInt *)((char *)payload + sizeof(QRecordHeader)) = 42;
+            QRecordVal r = quest_record_view((QRecordVal){ .val = payload, .dict = NULL }, &obj);
+            Generic *h = (Generic *)quest_alloc(sizeof(Generic));
+            h->_0 = (QVal){ .p = quest_record_box(r) };
+            h->_1 = 3;
+            QVal native = quest_convert((QVal){ .p = h }, at_obj, &rec_tuple);
+            assert(native.p != h);
+            NativeRecord *n = (NativeRecord *)native.p;
+            assert(n->_1 == 3);
+            assert(*(QInt *)((char *)n->_0.val + quest_record_field_offset(n->_0, 0)) == 42);
+
+            printf("OK\\n");
+            return 0;
+        }
+        """
+        proc = self.compile_and_run_c(c_code)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("OK", proc.stdout)
+
 if __name__ == "__main__":
     unittest.main()
 

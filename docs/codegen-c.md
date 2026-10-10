@@ -612,9 +612,13 @@ and member projection (`p.v`):
   is also made when a closure is used at a function supertype whose arguments or result need converting (records,
   variants, options, tuples, functions): it coerces each argument from the target parameter type to the closure's
   and the result back, so `Fun(x: Small): Big` works as `Fun(x: Big): Small`.
-- **Function Type Adapters (`quest_adapt_fun_<digest>`):** Every monomorphic function type with a runtime descriptor
-  gets an adapter, referenced by the descriptor, for conversions known only at run time; see
-  [c-representation.md](c-representation.md) §6.4 (Compound Descriptor Payloads, Functions).
+- **Function Type Adapters (`quest_adapt_fun_<digest>`) and Invokers (`quest_invoke_fun_<digest>`):** Every
+  function type with a runtime descriptor gets an adapter and an invoker, referenced by the descriptor, for
+  conversions known only at run time; see [c-representation.md](c-representation.md) §6.4 (Compound Descriptor
+  Payloads, Functions).
+- **Descriptor Templates (`_emit_template_descriptors`):** A type that mentions type parameters in scope is
+  described by a template instantiated at run time with their descriptors; the templates the generated code uses are
+  emitted after it, ahead of the function definitions; see [c-representation.md](c-representation.md) §6.4.5.
 - **Tuple Structural Coercion & Generic Returns (`_coerce_tuple_val`):** Coercions between tuples whose field C types
   differ (e.g., concrete scalar to `QVal`, closure adaptation, nested tuple structural conversions, or generic tuple
   returns where `QVal` fields are unwrapped into concrete types) allocate a new target tuple and map each field.

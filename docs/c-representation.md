@@ -323,8 +323,10 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    ```
    The trailing `stored_types` handles depth subtyping without copying. It is `NULL` when the payload stores every
    field at the view's type for it; otherwise it is an array giving, for each field the payload stores at a
-   different type (a subtype: a `Record inner: Big end` payload viewed as `Record inner: Small end`), that type's
-   descriptor, and `NULL` for the others. Static tables relate only records whose shared fields have equal types, so
+   different type (a subtype: a `Record inner: Big end` payload viewed as `Record inner: Small end`) or in a different
+   layout (a record made by generic code stores an `A` field as a `QVal`, §6.4.5), that type's descriptor, and `NULL`
+   for the others. A `var` field must be stored as the view stores it, since updates go through the view; a layout
+   that stores it differently is a fatal run-time error (`quest_layout_conversion_error`). Static tables relate only records whose shared fields have equal types, so
    their `stored_types` is always `NULL`; the runtime fills it in when it builds a table.
    The header records the payload's *layout*, the descriptor of the record type it was created with
    (`&quest_type_QT_Point`); `quest_record_layout(r)` reads it. A value whose static type is `Point` may have a larger
@@ -351,10 +353,11 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
      ```c
      (*((QFieldType *)((char *)r.val + ((const OffsetDict_Target *)r.dict)->offset_x)))
      ```
-   - Reading an immutable field whose type is a record, variant, option, or nonempty tuple also checks the table's
-     `stored_types`. When it names a type for the field, the value is converted to its view at the field's type
-     with `quest_convert(v, stored, &quest_type_<FieldType>)`: records get the offset table for the view, variants
-     and options their tags in the field's type, and tuples are copied with converted elements. Scalar, `var`, and
+   - Reading an immutable field whose type is a record, variant, option, nonempty tuple, or function also checks the
+     table's `stored_types`. When it names a type for the field, the value is read as stored
+     (`quest_slot_read(stored, slot)`) and converted to its view at the field's type with
+     `quest_convert(v, stored, &quest_type_<FieldType>)`: records get the offset table for the view, variants and
+     options their tags in the field's type, tuples are copied with converted elements, and closures adapted. Scalar, `var`, and
      other fields are read with the single offset load. `quest_record_field_value` does the same for the runtime.
 6. **Storage in Aggregates:**
    - **Tuples:** Tuple fields of record type store `QRecordVal` inline (16 bytes).
@@ -696,10 +699,12 @@ In Cardelli's formal terminology (*Typeful Programming* §3 & §5), applying a p
 2. **Type Variable Instantiation / Forwarding** (*generic call forwarding* in modern generic languages):
    Inside a polymorphic function with a bound type variable in scope, the type parameter is forwarded as the runtime descriptor:
    Inside `foo(X::TYPE x:X)` calling `id(:X x)`: `qv_id(descriptor_X, qv_x);`.
-3. **Compound Type Operator Instantiation:**
-   When the type argument is formed by applying a type operator (`Array(Int)` or `Array(X)`):
-   - Ground compounds emit a memoized, statically initialized compound descriptor `&quest_type_Array_Int`.
-   - Open compounds involving type variables emit a call to an allocator helper `quest_make_array_descriptor(descriptor_X)`.
+3. **Compound Type Instantiation:**
+   When the type argument is a compound type (`Array(Int)`, `Tuple x: X end`):
+   - Closed compounds use their statically initialized descriptor (`&quest_type_array_<digest>`).
+   - Open compounds, which mention type parameters in scope, use their template, instantiated at run time with the
+     parameters' descriptors (§6.4.5):
+     `quest_instantiate_descriptor(&quest_type_QTuple_QVal_<digest>, 1, (const QTypeDescriptor *const[]){ descriptor_X })`.
 
 #### 3. Call-Site Specialization for Unbounded Quantifiers (`A::TYPE`)
 While the uniform quantifier rule guarantees modular separate compilation with uniform 8-byte `QVal` representations,
@@ -712,11 +717,14 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
   clones the `TypedFun` AST node with all occurrences of type parameter `A` substituted by `Point`. The specialized
   clone is emitted as `static Q_UNUSED ret_t qv_<name>_spec_<type_tags>(param_types...)`.
 - **Layout Alignment & Zero-Boxing**: Inside the specialized clone, any generic tuple (e.g. `Tuple item: A end`)
-  allocates a concrete specialized struct (`struct QTuple_QRecord_x_Int` with a 16-byte `QRecordVal` slot) matching the
+  allocates a concrete specialized struct (`struct QTuple_QRecord_x_Int_end` with a 16-byte `QRecordVal` slot) matching the
   exact struct and layout expected by the caller. Arguments and return values are passed unboxed in register pairs
   `(x0, x1)` without heap allocation (`quest_record_box` and `quest_variant_box` eliminated).
 - **First-Class Fallback**: The canonical boxed (`QVal`) version of any generic function is always emitted to serve
   indirect closure calls and first-class function values.
+- **Open Type Arguments**: A call whose type arguments mention the caller's own type parameters
+  (`pack(:Array(Tuple v: A end) ...)` inside a function of `A`) is not specialized, since the clone would have no
+  descriptor for `A`; the caller's own specializations specialize such calls in turn.
 
 #### 4. Optimization via Inlining and Partial Evaluation
 While the uniform quantifier rule guarantees modular separate compilation, it does not mandate runtime overhead when
@@ -734,8 +742,11 @@ typedef enum QTypeKind {
     QTYPE_KIND_INT, QTYPE_KIND_REAL, QTYPE_KIND_BOOL, QTYPE_KIND_CHAR,
     QTYPE_KIND_STRING, QTYPE_KIND_OK, QTYPE_KIND_TUPLE, QTYPE_KIND_RECORD,
     QTYPE_KIND_VARIANT, QTYPE_KIND_OPTION, QTYPE_KIND_ARRAY, QTYPE_KIND_FUN,
-    QTYPE_KIND_DYNAMIC, QTYPE_KIND_EXCEPTION,
-    QTYPE_KIND_OPAQUE  /* Nominal abstract types and existential package witnesses */
+    QTYPE_KIND_AUTO, QTYPE_KIND_EXCEPTION,
+    QTYPE_KIND_OPAQUE,     /* Nominal abstract types and existential package witnesses */
+    QTYPE_KIND_BOUND_VAR,  /* A type parameter of an enclosing polymorphic function type */
+    QTYPE_KIND_HOLE,       /* A type parameter of generic code in a descriptor template (§6.4.5) */
+    QTYPE_KIND_STORED      /* A type stored as generic code stores a type parameter (§6.4.5) */
 } QTypeKind;
 
 struct QTypeDescriptor {
@@ -758,12 +769,16 @@ struct QTypeDescriptor {
   (`name`, `payload_type`, `tag_index`, `is_var`).
 - **Arrays (`QArrayTypeDescriptor`):** Holds `const QTypeDescriptor *element_type`.
 - **Functions (`QFunTypeDescriptor`):** Holds `size_t param_count`, `QFunParamDescriptor *params`,
-  `const QTypeDescriptor *result_type`, and `QFunAdapter adapt`. Each monomorphic function type has its own descriptor
+  `const QTypeDescriptor *result_type`, `QFunAdapter adapt`, and `QFunInvoker invoke`. Each monomorphic function type has its own descriptor
   (`quest_type_fun_<digest>`, a digest of the type's text, since all closures share the C tag `QClosure`); `adapt`
   points to the compiled `quest_adapt_fun_<digest>`, which wraps a closure of a subtype in a thunk with this type's C
   signature that converts arguments and result by descriptor with `quest_convert`. `quest_convert` uses it for
   function values, so `dynamic.be`, `inspect`, and reads of function fields stored at a subtype adapt closures at run
-  time. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
+  time. The thunk calls the closure through its own C signature when the closure has it
+  (`quest_fun_signature_equivalent`, recorded in the adapter's environment as `direct`), as closures of types related
+  by subtyping do; otherwise (one of the two types is laid out generically, §6.4.5) it calls it through the invoker
+  of the closure's type, `quest_invoke_fun_<digest>`, which takes the type parameters' descriptors and the arguments
+  in their `QVal` forms, calls the closure with that type's C signature, and returns the result's `QVal` form. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
   covariant in `out` parameters and the result. Polymorphic function types (`All(A::TYPE x: A) A`) are described the
   same way, plus `quantifier_count` and `quantifier_bounds`: their type parameters are passed as descriptors before the
   values (and adapters pass them through), and within the parameter and result types a type parameter is described
@@ -780,7 +795,9 @@ types with the same representation. Recursive types (`Rec(X) ...`, recursive typ
 described by their unfoldings, which refer back to them, so their descriptors are cyclic; the emitter defines any
 struct that such an unfolding names. Applications of abstract type operators (`list.T(Int)`), type operators passed
 for higher-kinded type parameters, and abstract types of package values (`t.A`, distinguished by binding) are opaque,
-compared by name. Inside the module that implements an abstract type, the type is its representation, so a value
+compared by name; an application is named by its operator and also carries its arguments' descriptors
+(`QOpaqueTypeDescriptor`), which must be equal types, so that a template can instantiate them. A type that mentions
+type parameters in scope is described by a template (§6.4.5). Inside the module that implements an abstract type, the type is its representation, so a value
 given a run-time type there carries the representation's descriptor, which does not match the abstract type's
 name outside. A type with no descriptor (such as a type metavariable) is a compile-time error rather than a
 descriptor that matches the wrong values.
@@ -823,6 +840,49 @@ When extracting a value from a dynamic package (`dynamic.be[:T](d)` or `inspect 
    - **Variant Adaptation (`quest_variant_adapt`):** Dynamically remaps the variant tag using a synthesized tag map
      from source branch names to target branch tag indices, and adapts the payload if needed. Memoized in an adapter
      cache.
+
+#### 5. Types Used at Run Time Inside Generic Code (Descriptor Templates)
+Inside a polymorphic function, a type that mentions the function's type parameters, such as `Tuple fst: A snd: Int
+end`, is laid out generically, independently of `A`'s type argument: an `A` component is a `QVal` (or the
+representation of `A`'s bound, for `A <: B`), and a closure of type `Fun(:A): String` takes a `QVal`. The same type at
+a particular `A`, say `Tuple fst: Real snd: Int end` or `Fun(:Car): String`, is laid out natively (a `QReal`
+component, a closure taking a 16-byte `QRecordVal`). Such types reach run time as the type components of auto values,
+in `inspect` `when` clauses, as type arguments of `dynamic.new` and `dynamic.be`, and as any type argument a generic
+function passes on ([type-system.md](type-system.md) §6.11).
+
+- **Templates:** `c_type_descriptor` describes such a type by a template: the type with each type parameter in scope
+  replaced by a hole (`hole_var`, a reserved type variable `?i` keeping the parameter's bound), emitted as a static
+  descriptor whose holes are `QTYPE_KIND_HOLE` descriptors (`QHoleDescriptor`: the hole's index and, for a bounded
+  parameter, the bound's descriptor as `storage`). Templates are collected while the code is generated and emitted
+  after it, ahead of the function definitions (`_emit_template_descriptors`), with the structs and function type
+  adapters they need. The code passes the template and the parameters' descriptors to
+  `quest_instantiate_descriptor(template, n, args)`, which copies the template's nodes that reach a hole (templates
+  may be cyclic) and memoizes the result by template and arguments.
+- **Stored types:** In an instance, each hole becomes a `QTYPE_KIND_STORED` descriptor (`QStoredDescriptor`) of its
+  type argument: a value of that type stored as generic code stores a type parameter, as its `QVal` form, or, when
+  `storage` is set, as a value of the bound (a record viewed at the bound). The instance keeps the template's
+  offsets, sizes, adapters, and invokers, so it describes both the value's type and the layout it is in. Subtyping
+  (`quest_is_subtype`) looks through stored types; `quest_slot_read` and `quest_slot_write` read and write slots as
+  stored.
+- **Layout equivalence:** `quest_layout_equivalent(a, b)` tells whether values laid out as `a` describes can be used
+  as `b` describes, for two descriptors of the same type. A stored `QVal` and a native value agree in memory for
+  scalars and pointers but not for records and variants (16 bytes inline, or a pointer to a boxed copy), and in
+  function parameters and results (registers) only for integers and pointers; aggregates agree when their
+  components do, records when their views' field types do. Recursive descriptors are compared coinductively.
+- **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
+  supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
+  components their sharing); otherwise tuples, options, and auto payloads are copied with converted components,
+  records are re-viewed from their own layout (always, since code that knows a value only as of a type parameter's
+  bound views it at the bound), and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker.
+  Arrays, exceptions, and tuples with `var` components cannot be copied without losing updates: converting one whose
+  layout differs is a fatal run-time error (`quest_layout_conversion_error`). The type checker rejects types that
+  mention type parameters inside mutable data where they are used at run time, so this happens only when such a
+  type reaches run time as an ordinary type argument.
+- **Where values are converted:** where a value is used at a particular type: an `inspect` branch converts the
+  components (§8.1), `dynamic.be` converts its result, and record field reads convert fields stored differently
+  (§5.2). Values are never converted when made: `auto :Tuple fst: A snd: Int end with ... end` stores its components
+  as generic code laid them out, under the instance's descriptor.
+- **Serialization:** `dynamic.extern` reads stored types as stored and writes them at their own types.
 
 ### 6.5. Mutable Reference Parameters (`out` and `var`) and `@` Lvalues (Phase 4.12)
 
@@ -1001,17 +1061,24 @@ supports auto values with one component.
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
   with the static tuple coercion (`_coerce_tuple_val`: boxing to `QVal`, closure adapters), and calls
   `quest_auto_new(descriptor_T, payload)`.
-- **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. When every stored component has
-  the representation of the corresponding `S[T/A]` component, or is a `QVal` holding a scalar or pointer of that
-  type, the binder is the stored struct itself, cast to the `Tuple S[T/A] end` struct, so updates of `var`
-  components are shared with the auto value. Otherwise the binder is a converted copy; this is rejected with an
-  error for signatures with `var` components, whose updates would be lost (for example `Auto A::TYPE with a:A var
-  n:Int end` inspected at a record type: give the auto type a bound, `A<:Object`, so that records are stored
-  unboxed).
+- **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. The components are in the layout
+  that the code that made the value knew the type component in: natively when it was a particular type, generically
+  when generic code made the value with a type that mentions its type parameters (§6.4.5). When the type component's
+  descriptor is layout-equivalent to `T`'s (`quest_layout_equivalent`, at run time), the components are as they would
+  be for `T`: when every stored component has the representation of the corresponding `S[T/A]` component, or is a
+  `QVal` holding a scalar or pointer of that type, the binder is the stored struct itself, cast to the
+  `Tuple S[T/A] end` struct, so updates of `var` components are shared with the auto value; otherwise the binder is a
+  statically converted copy, which is rejected with an error for signatures with `var` components, whose updates would
+  be lost (for example `Auto A::TYPE with a:A var n:Int end` inspected at a record type: give the auto type a bound,
+  `A<:Object`, so that records are stored unboxed). When the layouts differ, the binder is a copy converted by
+  descriptor (`_emit_auto_arm_converted`): each component that mentions `A` is converted from its stored type,
+  described with `A` standing for the type component (a template's instance), to its type in `S[T/A]`. For a
+  signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
+  types it sees.
 - **Inspect, subtype match** (signatures where `A` is only the whole type of immutable components): a branch tests
   `quest_is_subtype(d->type_desc, descriptor_T)`; the binder is a fresh `Tuple S[T/A] end` struct whose `A`
   components are converted from the type component to `T` with `quest_convert` (record views, variant tag maps,
-  function adapters) and whose other components are copied.
+  function adapters, and layout conversions) and whose other components are copied.
 - **No match:** without an `else` branch, `quest_raise_dynamic_error()`.
 - **Auto subtyping:** converting `Auto A::K1 with S1 end` to `Auto B::K2 with S2 end` re-stores the payload with
   `_coerce_tuple_val` from the `S1` layout to the `S2` layout, keeping the type descriptor, when the two stored

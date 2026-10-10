@@ -54,6 +54,7 @@ from quest.types import (
     QTupleType,
     QType,
     QTypeVar,
+    QAbstractType,
     QVariantType,
     QVarType,
     resolve_record_bound,
@@ -345,9 +346,36 @@ def find_specialization_calls(
     node: Any,
     funs_dict: Optional[dict[str, Any]] = None,
 ) -> list[tuple[str, tuple[QType, ...]]]:
-    """Finds all polymorphic function calls needing call-site specialization."""
+    """Finds all polymorphic function calls needing call-site specialization.
+
+    A call whose type arguments mention type parameters of an enclosing function is not specialized: the clone would
+    have no run-time descriptors for them (the enclosing function's own specializations, at particular type
+    arguments, specialize the call in turn).
+    """
     calls: list[tuple[str, tuple[QType, ...]]] = []
     visited_node_ids: set[int] = set()
+    enclosing_params: list[str] = []
+
+    def mentions_enclosing_param(t: QType) -> bool:
+        free = getattr(t, "_fv", None)
+        if not free or not enclosing_params:
+            return False
+        names = set(enclosing_params)
+        seen: set[int] = set()
+
+        def visit(node: Any) -> bool:
+            if id(node) in seen:
+                return False
+            seen.add(id(node))
+            if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in free and node.name in names:
+                return True
+            if isinstance(node, (list, tuple)):
+                return any(visit(item) for item in node)
+            if hasattr(node, "__dataclass_fields__") and not isinstance(node, type):
+                return any(visit(getattr(node, f)) for f in node.__dataclass_fields__)
+            return False
+
+        return visit(t)
 
     def scan(n: Any) -> None:
         if n is None or isinstance(n, QType):
@@ -356,6 +384,15 @@ def find_specialization_calls(
         if n_id in visited_node_ids:
             return
         visited_node_ids.add(n_id)
+        if isinstance(n, TypedFun):
+            quants, _ = collect_fun_quantifiers(n.type_val)
+            enclosing_params.extend(q.name for q in quants)
+            try:
+                for field_name in n.__dataclass_fields__:
+                    scan(getattr(n, field_name))
+            finally:
+                del enclosing_params[len(enclosing_params) - len(quants):]
+            return
         match n:
             case TypedApp(func=f, args=args):
                 effective_func = f
@@ -373,7 +410,7 @@ def find_specialization_calls(
                 ):
                     func_name = f"{effective_func.target.name}.{effective_func.field}"
 
-                if func_name and type_args:
+                if func_name and type_args and not any(mentions_enclosing_param(t) for t in type_args):
                     if _should_specialize_call(func_name, tuple(type_args), funs_dict):
                         calls.append((func_name, tuple(type_args)))
 

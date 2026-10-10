@@ -528,7 +528,8 @@ name):
   of type are restricted:
   - An abstract type of a package value (`t.A`) cannot be the type of a dynamic value (`dynamic.new`, `dynamic.be`,
     or any function shaped like them) or appear in the type of an `inspect` branch on a Dynamic: its identity is the
-    package's hidden type, which is not known at run time.
+    package's hidden type, which is not known at run time. Types that mention type parameters of enclosing
+    functions are allowed, with the restrictions of §6.11.
   - An abstract type exported by a module (`list.T(Int)`) is compared by name outside the module, but inside the
     module it is its representation type, so values given run-time types inside the module do not match the
     abstract type outside. This keeps the type opaque to clients while letting the module's own code inspect it.
@@ -565,15 +566,26 @@ end
   transparent alias for `T` inside the binding, and `T` must also have its declared kind. The result is a
   `TypedAuto`.
 - **Closed types, relaxed:** Cardelli requires the type component of an auto value and the types of `inspect`'s
-  `when` clauses to be closed. Here such a type may be a type parameter of an enclosing polymorphic function by
-  itself (`let box(A::TYPE x:A):Boxed = auto :A with x end`, `inspect b when A with x then ...`): it stands for the
-  type argument of the current call, which both backends know at run time (the C backend passes descriptors for
-  type parameters, §6.10.1; the interpreter binds run-time type arguments, below). Not allowed are an abstract type
-  projected from a package value (`t.A`, a `QPathType`), which has no run-time identity, and, for now, a larger type
-  that mentions a type parameter (`Tuple x: A end`): inside generic code its values are laid out generically (an
-  `A` component is a boxed `QVal`), unlike the same type at a particular `A`, and converting between the two at run
-  time, closures included, is not implemented. Types exported abstractly by modules, such as `writer.T`, are fine:
-  they denote the same type throughout a program.
+  `when` clauses to be closed. Here such a type may mention type parameters of enclosing polymorphic functions
+  (`let box(A::TYPE x:A):Boxed = auto :A with x end`, `auto :Tuple fst: A snd: Int end with ... end`,
+  `inspect b when Tuple fst: A snd: Int end with t then ...`): they stand for the type arguments of the current
+  call, which both backends know at run time (the C backend passes descriptors for type parameters, §6.10.1; the
+  interpreter binds run-time type arguments, below). The same holds for the type argument of a function shaped like
+  `dynamic.new` or `dynamic.be`. Inside generic code, a value of a type that mentions a type parameter is laid out
+  generically (an `A` component is a `QVal`, a closure taking an `A` takes a `QVal`), unlike the same type at a
+  particular `A`; the C backend describes such a type by a template instantiated at run time and converts the value
+  when it is used at a particular type ([c-representation.md](c-representation.md) §6.4.5). Conversion copies, so for
+  now `_check_closed_type` rejects:
+  - a type that mentions a type parameter inside mutable data: an array's elements, a `var` component or field, or a
+    `var` or `out` parameter (`auto :Array(A) with ... end`), since a copy would not share updates;
+  - a larger type that mentions a type parameter as the type component or `when` type of an auto type with `var`
+    components, whose binders must share those components;
+  - an abstract type projected from a package value (`t.A`, a `QPathType`), which has no run-time identity.
+
+  Such a type can still reach run time as an ordinary type argument (`pack(:Array(Tuple v: A end) ...)` for a
+  `pack(B::TYPE x: B n: Int)` that calls `dynamic.new(:B x)`); compiled code then stops with a run-time error if
+  the value must be converted, and the interpreter, which has no layouts, runs it. Types exported abstractly by
+  modules, such as `writer.T`, are fine: they denote the same type throughout a program.
 - **Run-time type arguments (interpreter):** a closure records the symbol ids of its type parameters
   (`TypedFun.type_param_ids`); a type application returns the closure with them bound to its type arguments, which
   are first resolved through the bindings in scope (so generic code can pass its own type parameters on); a call
@@ -628,7 +640,7 @@ The `StringOp` interface and `string` module provide substring comparison:
 | **Dependent Signatures** | Fields depend on earlier type parameters | Ordered `Scope` incremental elaboration |
 | **Extended Subsignatures** | Prefix & name matching, manifest types | Subsignature rule in `is_subtype` |
 | **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_check_tuple_expr` |
-| **Auto Types** | Run-time type discrimination stays sound | Closed types; subtype matching only for covariant signatures |
+| **Auto Types** | Run-time type discrimination stays sound | Types closed up to enclosing type parameters (not in mutable data); subtype matching only for covariant signatures |
 | **Path-Dependent Types** | Abstract identity tied to bindings | `QPathType` with `root_symbol_id` |
 | **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker.py` |
 | **Type $\lambda$-Calculus** | $\beta$-reduction & variable capture | Lazy eval + `QTypeVar` symbol IDs |

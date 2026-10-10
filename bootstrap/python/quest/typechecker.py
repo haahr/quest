@@ -6,7 +6,7 @@ import dataclasses
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import quest.ast as ast
 from quest.types import (
@@ -168,10 +168,15 @@ def _is_auto_type(t: QType) -> bool:
     return isinstance(unalias(t), QAutoType)
 
 
-def _check_dynamic_type_args(all_type: QAllType, type_args: Sequence[QType], offset: int) -> None:
-    """Rejects package types as the type argument of a function shaped like dynamic.new (A::TYPE a:A): T or
-    dynamic.be (A::TYPE d:T): A for an auto type T, which record or test the type argument at run time (inside the
-    function it is a type parameter, which the closedness check allows)."""
+def _check_dynamic_type_args(
+    all_type: QAllType,
+    type_args: Sequence[QType],
+    offset: int,
+    check: Callable[[QType, str, int], None],
+) -> None:
+    """Checks with `check` (the closedness check) the type argument of a function shaped like dynamic.new
+    (A::TYPE a:A): T or dynamic.be (A::TYPE d:T): A for an auto type T, which record or test the type argument at
+    run time (inside the function it is a type parameter, which the closedness check allows)."""
     body = all_type.body
     if len(all_type.quantifiers) != 1 or not isinstance(body, QFunType) or len(body.params) != 1 or not type_args:
         return
@@ -185,7 +190,7 @@ def _check_dynamic_type_args(all_type: QAllType, type_args: Sequence[QType], off
     if (is_a(param_t) and _is_auto_type(body.result_type)) or (
         _is_auto_type(param_t) and is_a(body.result_type)
     ):
-        _check_no_package_types(type_args[0], "The type of a dynamic value", offset)
+        check(type_args[0], "The type of a dynamic value", offset)
 
 
 def _check_no_package_types(t: QType, what: str, offset: int) -> None:
@@ -206,6 +211,35 @@ def _describe_kind(k: QKind) -> str:
     if isinstance(k, QPowerKind):
         return f"<: {k.bound}"
     return f":: {k}"
+
+
+def _mutable_type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
+    """The type variables in t (a type stripped of aliases) whose symbol ids are in ids and that occur inside
+    mutable data: an array's elements, a var component or field, or a var or out parameter."""
+    found: list[Any] = []
+    seen: set[tuple[int, bool]] = set()
+
+    def visit(node: Any, mutable: bool) -> None:
+        if (id(node), mutable) in seen:
+            return
+        seen.add((id(node), mutable))
+        if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in ids and mutable:
+            found.append(node)
+        if isinstance(node, (tuple, list)):
+            for item in node:
+                visit(item, mutable)
+        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+            inner = (
+                mutable
+                or isinstance(node, QArrayType)
+                or bool(getattr(node, "is_var", False))
+                or bool(getattr(node, "is_out", False))
+            )
+            for f in dataclasses.fields(node):
+                visit(getattr(node, f.name), inner)
+
+    visit(t, False)
+    return found
 
 
 def _type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
@@ -1333,7 +1367,7 @@ class TypeElaborator:
             else:
                 instantiated_type = all_type.body.substitute(subst)
 
-            _check_dynamic_type_args(all_type, resolved_targs, expr.offset)
+            _check_dynamic_type_args(all_type, resolved_targs, expr.offset, self._check_closed_type)
             typed_type_app = TypedTypeApp(
                 func=func_typed,
                 type_args=tuple(resolved_targs),
@@ -1427,7 +1461,7 @@ class TypeElaborator:
             leaked = unsolved_metas(final_fn) + [m for t in resolved_targs for m in unsolved_metas(t)]
             assert not leaked, f"Metavariables escaped polymorphic call inference: {leaked}"
 
-        _check_dynamic_type_args(all_type, resolved_targs, expr.offset)
+        _check_dynamic_type_args(all_type, resolved_targs, expr.offset, self._check_closed_type)
         typed_type_app = TypedTypeApp(
             func=func_typed,
             type_args=tuple(resolved_targs),
@@ -2484,7 +2518,9 @@ class TypeElaborator:
         typed_branches: list[TypedInspectBranch] = []
         for branch in expr.branches:
             match_t = elaborate_type(branch.match_type, env)
-            self._check_closed_type(match_t, "The type in an inspect when clause", branch.match_type.offset)
+            self._check_closed_type(
+                match_t, "The type in an inspect when clause", branch.match_type.offset, auto_type
+            )
             arm_type: QType = auto_payload_type(auto_type, match_t)
             with env.scoped("inspect_branch"):
                 b_syms: list[ValueSymbol] = []
@@ -2520,12 +2556,18 @@ class TypeElaborator:
         else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
         return target_typed, typed_branches, else_typed
 
-    def _check_closed_type(self, t: QType, what: str, offset: int) -> None:
+    def _check_closed_type(
+        self, t: QType, what: str, offset: int, auto_type: Optional[QAutoType] = None
+    ) -> None:
         """Checks a type that is used at run time (Cardelli §4.6 requires it to be closed).
 
-        A type parameter of an enclosing polymorphic function is allowed by itself, since its run-time type argument
-        is known when the function runs; a larger type that mentions one is not yet supported, and an abstract type
-        projected from a package value (t.A) has no run-time identity.
+        A type that mentions type parameters of enclosing polymorphic functions is allowed: their run-time type
+        arguments are known when the function runs. But inside generic code such a type's values are laid out
+        generically, so using them at a particular type argument may convert them, and for now the parameters
+        may not occur inside mutable data (arrays, var components and fields, var and out parameters), whose
+        conversion would be a copy that loses updates, nor may an auto type with var components (`auto_type`)
+        have such a type component, since its binders must share those components. An abstract type projected
+        from a package value (t.A) has no run-time identity.
         """
         _check_no_package_types(t, what, offset)
         free = set(t._fv) & self._type_param_ids
@@ -2534,12 +2576,20 @@ class TypeElaborator:
         bare = unalias(t)
         if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in self._type_param_ids:
             return
-        names = sorted({v.name for v in _type_vars_with_ids(strip_aliases(t), free)})
-        raise TypeError(
-            f"{what} can be a type parameter of an enclosing function, but cannot yet mention one inside a larger "
-            f"type: '{t}' mentions {', '.join(names)}",
-            offset=offset,
-        )
+        mutable = sorted({v.name for v in _mutable_type_vars_with_ids(strip_aliases(t), free)})
+        if mutable:
+            raise TypeError(
+                f"{what} cannot yet mention a type parameter of an enclosing function inside mutable data (an "
+                f"array, a var component or field, or a var or out parameter): '{t}' mentions {', '.join(mutable)}",
+                offset=offset,
+            )
+        if auto_type is not None and any(f.is_var for f in auto_type.signature):
+            names = sorted({v.name for v in _type_vars_with_ids(strip_aliases(t), free)})
+            raise TypeError(
+                f"{what} cannot yet mention a type parameter of an enclosing function inside a larger type when "
+                f"the auto type has var components: '{t}' mentions {', '.join(names)}",
+                offset=offset,
+            )
 
     def _check_auto_expr(
         self,
@@ -2557,7 +2607,9 @@ class TypeElaborator:
                 offset=expr.offset,
             )
         witness = elaborate_type(expr.witness_type, env)
-        self._check_closed_type(witness, "The type component of an auto value", expr.witness_type.offset)
+        self._check_closed_type(
+            witness, "The type component of an auto value", expr.witness_type.offset, auto_type
+        )
         try:
             check_kind(witness, auto_type.kind_bound, env)
         except KindError:

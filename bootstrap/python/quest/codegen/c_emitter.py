@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import math
 import re
 from dataclasses import dataclass
@@ -22,6 +24,7 @@ from quest.codegen.c_types import (
     MissingDescriptorError,
     descriptor_form,
     fun_descriptor_tag,
+    hole_var,
     RecordNamingContext,
     c_char_literal,
     c_string_literal,
@@ -254,6 +257,8 @@ class CEmitter:
         self.var_dict_names: dict[str, str] = {}
         self.top_funs_dict: dict[str, tuple[TypedFun, Any]] = {}
         self.in_scope_type_descriptors: dict[str, str] = {}
+        # Templates of the types that mention type parameters in scope, by descriptor tag (see c_type_descriptor)
+        self.descriptor_templates: dict[str, QType] = {}
         self.specializations: dict[tuple[str, tuple[QType, ...]], tuple[str, TypedFun]] = {}
         self.specialization_origin_modules: dict[str, str] = {}
         self.all_modules: dict[str, TypedModule] = {}
@@ -297,17 +302,80 @@ class CEmitter:
     def c_type_descriptor(self, t: QType) -> str:
         """Returns the C expression evaluating to `const QTypeDescriptor *` for type `t`.
 
-        A type parameter in scope is described by the descriptor passed for it; any other type by its static
-        descriptor (descriptor_form). A type with no runtime descriptor is a compile-time error.
+        A type parameter in scope is described by the descriptor passed for it; a type that mentions type
+        parameters in scope by its template (a descriptor whose holes stand for them, laid out as generic code lays
+        out the type), instantiated at run time with their descriptors; any other type by its static descriptor
+        (descriptor_form). A type with no runtime descriptor is a compile-time error.
         """
         t = t.prune() if hasattr(t, "prune") else t
         t = strip_aliases(t)
         if isinstance(t, (QTypeVar, QAbstractType)) and t.name in self.in_scope_type_descriptors:
             return self.in_scope_type_descriptors[t.name]
+        params = self._type_params_in_scope(t)
         try:
-            return descriptor_form(t, self.record_ctx).c_expr
+            if not params:
+                return descriptor_form(t, self.record_ctx).c_expr
+            template = t.substitute({v.symbol_id: hole_var(i, v.bound) for i, v in enumerate(params)})
+            form = descriptor_form(template, self.record_ctx)
         except MissingDescriptorError as e:
             raise QuestCompilerError(f"C code generation: {e}") from None
+        if form.kind in ("base", "bound_var"):
+            return form.c_expr
+        self.descriptor_templates.setdefault(form.tag, template)
+        args = ", ".join(self.in_scope_type_descriptors[v.name] for v in params)
+        return (
+            f"quest_instantiate_descriptor({form.c_expr}, {len(params)}, "
+            f"(const QTypeDescriptor *const[]){{ {args} }})"
+        )
+
+    def _type_params_in_scope(self, t: QType) -> list[Any]:
+        """The type parameters in scope (with run-time descriptors) that occur free in t, in order of appearance."""
+        free = getattr(t, "_fv", None)
+        if not free or not self.in_scope_type_descriptors:
+            return []
+        found: dict[int, Any] = {}
+        seen: set[int] = set()
+
+        def visit(node: Any) -> None:
+            if id(node) in seen:
+                return
+            seen.add(id(node))
+            if (
+                isinstance(node, (QTypeVar, QAbstractType))
+                and node.symbol_id in free
+                and node.name in self.in_scope_type_descriptors
+            ):
+                found.setdefault(node.symbol_id, node)
+            if isinstance(node, (tuple, list)):
+                for item in node:
+                    visit(item)
+            elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+                for f in dataclasses.fields(node):
+                    visit(getattr(node, f.name))
+
+        visit(t)
+        return list(found.values())
+
+    def _emit_template_descriptors(self, decl_emitter: CDeclarationEmitter) -> list[str]:
+        """Emits the descriptor templates that the code needs (with any descriptors, structs, and function type
+        adapters they need that the preamble lacks), after the code that needs them was generated."""
+        lines: list[str] = []
+        done: set[str] = set()
+        saved = self.in_scope_type_descriptors
+        self.in_scope_type_descriptors = {}
+        try:
+            while True:
+                pending = [t for tag, t in self.descriptor_templates.items() if tag not in done]
+                if not pending:
+                    break
+                done.update(self.descriptor_templates)
+                lines.extend(decl_emitter.emit_type_descriptors([], [], self.c_type_descriptor, pending))
+                lines.extend(self._emit_fun_type_adapters(decl_emitter.emitted_fun_types))
+        finally:
+            self.in_scope_type_descriptors = saved
+        if lines:
+            lines[0:0] = ["/* Descriptor templates of types used at run time inside generic code */"]
+        return lines
 
     def record_struct_name(self, t: QRecordType) -> str:
         return record_struct_name(t, self.record_ctx)
@@ -698,13 +766,15 @@ class CEmitter:
         return self._emit_closure_alloc(adapt_fn_name, c_closure, lines, prefix="_adapt_clo")
 
     def _emit_fun_type_adapters(self, fun_types: Sequence[tuple[str, QFunType]]) -> list[str]:
-        """Defines the adapter of each function type that has a runtime descriptor (QFunAdapter, quest_adapt_<tag>).
+        """Defines the adapter and the invoker of each function type that has a runtime descriptor (QFunAdapter,
+        quest_adapt_<tag>, and QFunInvoker, quest_invoke_<tag>).
 
         Run-time conversions of a closure to a function type T, by dynamic.be, inspect, or the read of a record field
         stored at a subtype, are known only to be from some subtype of T. The adapter for T wraps the closure in a
         thunk with T's C signature, which converts arguments and result as described by the two descriptors. The
-        closure can be called through T's signature because types related by subtyping have the same C
-        representation.
+        closure is called through T's signature when it has the same C signature (as types related by subtyping
+        do), and otherwise, when one of the two types is laid out generically (a template's instance), through the
+        invoker of the closure's own type, which takes and returns QVal forms.
         """
         lines: list[str] = []
         if not fun_types:
@@ -716,49 +786,64 @@ class CEmitter:
             params = inner.params if isinstance(inner, QFunType) else ()
             ret_t = inner.result_type if isinstance(inner, QFunType) else inner
             ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
+            fn_ptr = _closure_fn_ptr_type(fun_t, self.record_ctx)
+            nq = len(quants)
             param_decls = ["void *_raw_env"]
-            param_decls.extend(f"const QTypeDescriptor *qv_desc_{k}" for k in range(len(quants)))
-            body = [
-                "const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;",
-                "const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;",
-                "const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;",
-                "(void)from;",
-                "(void)to;",
-            ]
-            call_args = ["e->orig->env"] + [f"qv_desc_{k}" for k in range(len(quants))]
+            param_decls.extend(f"const QTypeDescriptor *qv_desc_{k}" for k in range(nq))
+            direct: list[str] = []
+            uniform: list[str] = [f"QVal qv_args[{max(1, nq + len(params))}];"]
+            uniform.extend(f"qv_args[{k}].p = (void *)qv_desc_{k};" for k in range(nq))
+            call_args = ["e->orig->env"] + [f"qv_desc_{k}" for k in range(nq)]
             for i, p in enumerate(params):
                 name = f"qv_arg_{i}"
+                slot = f"qv_args[{nq + i}]"
                 if p.is_var or p.is_out:
                     param_decls.append(f"{self.c_type(p.type_val)} *{name}")
+                    uniform.append(f"{slot}.p = (void *){name};")
                 elif p.type_val is OK_TYPE:
                     param_decls.append(f"QVal {name}")
+                    uniform.append(f"{slot} = {name};")
                 else:
                     param_decls.append(f"{self.c_type(p.type_val)} {name}")
+                    to_from = f"to->params[{i}].type, from->params[{i}].type"
+                    uniform.append(f"{slot} = quest_convert({_qval_wrap(name, p.type_val)}, {to_from});")
                     if self._may_be_stored_as_subtype(p.type_val):
                         converted = _qval_unwrap(
-                            f"quest_convert({_qval_wrap(name, p.type_val)}, to->params[{i}].type, "
-                            f"from->params[{i}].type)",
-                            p.type_val,
-                            self,
+                            f"quest_convert({_qval_wrap(name, p.type_val)}, {to_from})", p.type_val, self
                         )
-                        body.append(f"{name} = {converted};")
+                        direct.append(f"{name} = {converted};")
                 call_args.append(name)
-            call_expr = f"(({_closure_fn_ptr_type(fun_t, self.record_ctx)})(e->orig->fn))({', '.join(call_args)})"
+            call_expr = f"(({fn_ptr})(e->orig->fn))({', '.join(call_args)})"
+            invoke_expr = "from->invoke(e->orig, qv_args)"
             if ret_t is OK_TYPE:
-                body.append(f"{call_expr};")
-            elif self._may_be_stored_as_subtype(ret_t):
-                body.append(f"{ret_c} qv_result = {call_expr};")
-                converted = _qval_unwrap(
-                    f"quest_convert({_qval_wrap('qv_result', ret_t)}, from->result_type, to->result_type)",
-                    ret_t,
-                    self,
-                )
-                body.append(f"return {converted};")
+                direct.append(f"{call_expr};")
+                direct.append("return;")
+                uniform.append(f"(void){invoke_expr};")
             else:
-                body.append(f"return {call_expr};")
+                if self._may_be_stored_as_subtype(ret_t):
+                    direct.append(f"{ret_c} qv_result = {call_expr};")
+                    converted = _qval_unwrap(
+                        f"quest_convert({_qval_wrap('qv_result', ret_t)}, from->result_type, to->result_type)",
+                        ret_t,
+                        self,
+                    )
+                    direct.append(f"return {converted};")
+                else:
+                    direct.append(f"return {call_expr};")
+                uniform.append(
+                    "return "
+                    + _qval_unwrap(f"quest_convert({invoke_expr}, from->result_type, to->result_type)", ret_t, self)
+                    + ";"
+                )
             thunk = f"quest_thunk_{tag}"
             lines.append(f"static {ret_c} {thunk}({', '.join(param_decls)}) {{")
-            lines.extend(f"    {line}" for line in body)
+            lines.append("    const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;")
+            lines.append("    const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;")
+            lines.append("    const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;")
+            lines.append("    if (e->direct) {")
+            lines.extend(f"        {line}" for line in direct)
+            lines.append("    }")
+            lines.extend(f"    {line}" for line in uniform)
             lines.append("}")
             lines.append(
                 f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
@@ -768,10 +853,30 @@ class CEmitter:
             lines.append("    e->orig = orig;")
             lines.append("    e->from = from;")
             lines.append("    e->to = to;")
+            lines.append("    e->direct = quest_fun_signature_equivalent(from, to);")
             lines.append("    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure));")
             lines.append(f"    adapted->fn = (void *){thunk};")
             lines.append("    adapted->env = e;")
             lines.append("    return adapted;")
+            lines.append("}")
+            # The invoker: a call with QVal forms, for adapters whose closure has this type's C signature
+            inv_args = ["c->env"] + [f"(const QTypeDescriptor *)args[{k}].p" for k in range(nq)]
+            for i, p in enumerate(params):
+                arg = f"args[{nq + i}]"
+                if p.is_var or p.is_out:
+                    inv_args.append(f"({self.c_type(p.type_val)} *){arg}.p")
+                elif p.type_val is OK_TYPE:
+                    inv_args.append(arg)
+                else:
+                    inv_args.append(_qval_unwrap(arg, p.type_val, self))
+            inv_call = f"(({fn_ptr})(c->fn))({', '.join(inv_args)})"
+            lines.append(f"static QVal quest_invoke_{tag}(const QClosure *c, const QVal *args) {{")
+            lines.append("    (void)args;")
+            if ret_t is OK_TYPE:
+                lines.append(f"    {inv_call};")
+                lines.append("    return Q_OK_VAL;")
+            else:
+                lines.append(f"    return {_qval_wrap(inv_call, ret_t)};")
             lines.append("}")
             lines.append("")
         return lines
@@ -1340,17 +1445,20 @@ class CEmitter:
         index = next(i for i, f in enumerate(sorted_fields) if f.name == fld)
         if sorted_fields[index].is_var or not self._may_be_stored_as_subtype(fld_t):
             return f"(*{ptr_expr})"
-        # The payload may store the field at a subtype of fld_t (depth subtyping): the offset table then names that
-        # type, and the value is converted to its view at fld_t
+        # The payload may store the field at a subtype of fld_t (depth subtyping), or in another layout (generic
+        # code stores a type parameter's values generically): the offset table then names the type it is stored
+        # at, and the value is read as stored and converted to its view at fld_t
         val = self.fresh_tmp("_fld")
         stored = f"((const {dict_t} *){c_tgt}.dict)->stored_types"
-        lines.append(f"{c_fld_t} {val} = *{ptr_expr};")
+        lines.append(f"{c_fld_t} {val};")
         converted = _qval_unwrap(
-            f"quest_convert({_qval_wrap(val, fld_t)}, {stored}[{index}], {self.c_type_descriptor(fld_t)})",
+            f"quest_convert(quest_slot_read({stored}[{index}], {ptr_expr}), {stored}[{index}], "
+            f"{self.c_type_descriptor(fld_t)})",
             fld_t,
             self,
         )
         lines.append(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
+        lines.append(f"else {val} = *{ptr_expr};")
         return val
 
     def _may_be_stored_as_subtype(self, t: QType) -> bool:
@@ -1502,6 +1610,7 @@ class CEmitter:
                 decl_emitter, analysis, include_module_decls=True
             )
         )
+        templates_index = len(lines)
         lines.extend(decl_emitter.emit_top_vars_declarations(analysis.top_vars, self.var_dict_names))
         lines.extend(decl_emitter.emit_forward_declarations_and_trampolines(
             analysis.top_funs,
@@ -1688,6 +1797,7 @@ class CEmitter:
             lines.extend(self.adapter_defs)
 
         lines.extend(main_lines)
+        lines[templates_index:templates_index] = self._emit_template_descriptors(decl_emitter)
         return "\n".join(lines)
 
     def emit_module(
@@ -1717,6 +1827,7 @@ class CEmitter:
                 decl_emitter, analysis, include_module_decls=False
             )
         )
+        templates_index = len(lines)
         # Functions of imported modules are called directly, so they need prototypes, as in emit_program.
         lines.extend(decl_emitter.emit_precompiled_module_declarations(analysis))
 
@@ -1748,6 +1859,7 @@ class CEmitter:
             lines.append("/* Closure adaptation thunks for existential packages */")
             lines.extend(self.adapter_defs)
 
+        lines[templates_index:templates_index] = self._emit_template_descriptors(decl_emitter)
         return "\n".join(lines)
 
     def _emit_single_module_definition(
@@ -1998,6 +2110,7 @@ class CEmitter:
         mod_emitter.adapter_defs = self.adapter_defs
         mod_emitter.adapter_decls = self.adapter_decls
         mod_emitter.adapter_cache = self.adapter_cache
+        mod_emitter.descriptor_templates = self.descriptor_templates
         mod_emitter.top_fun_names = {fname for fname, _, _ in mod_funs}
         mod_emitter.top_funs_dict = {fname: (ffun, fsym) for fname, ffun, fsym in mod_funs}
         mod_emitter.module_native_bindings = {nb.name: nb for nb in mod_native_funs}
@@ -3349,21 +3462,41 @@ class CEmitter:
             branch_lines: list[str] = []
             if branch.binders:
                 arm_t = auto_payload_type(auto_t, branch.match_type)
-                if branch.exact and self._auto_payload_layouts_agree(stored_t, arm_t):
-                    # The binders share the stored components (and so see updates of var components)
-                    c_arm = f"(({tuple_struct_name(arm_t)} *){stored})"
-                elif branch.exact:
-                    if any(f.is_var for f in auto_t.signature):
+                arm_struct = tuple_struct_name(arm_t)
+                if branch.exact:
+                    # The components are in the layout the code that made the value knew the type component in:
+                    # when that is not the layout of the branch's type (generic code made it, laying out the
+                    # parameter's occurrences generically), they are converted by descriptor
+                    agree = self._auto_payload_layouts_agree(stored_t, arm_t)
+                    if not agree and any(f.is_var for f in auto_t.signature):
                         raise NotImplementedError(
                             f"C code generation cannot inspect an auto value of type '{auto_t}' at type "
                             f"'{branch.match_type}': its components need conversion, so the var components "
                             f"could not be shared with the auto value"
                         )
-                    c_arm = self._coerce_tuple_val(stored, stored_t, arm_t, branch_lines)
-                else:
-                    c_arm = self._emit_auto_arm_by_subtype(
-                        auto_t, stored, stored_t, arm_t, tgt, match_desc, branch_lines
+                    c_arm = self.fresh_tmp("_insp_arm")
+                    branch_lines.append(f"{arm_struct} *{c_arm};")
+                    branch_lines.append(f"if (quest_layout_equivalent({tgt}->type_desc, {match_desc})) {{")
+                    same_lines: list[str] = []
+                    if agree:
+                        # The binders share the stored components (and so see updates of var components)
+                        same_lines.append(f"{c_arm} = ({arm_struct} *){stored};")
+                    else:
+                        coerced = self._coerce_tuple_val(stored, stored_t, arm_t, same_lines)
+                        same_lines.append(f"{c_arm} = {coerced};")
+                    _append_block(branch_lines, same_lines)
+                    branch_lines.append("} else {")
+                    other_lines: list[str] = []
+                    if any(f.is_var for f in auto_t.signature):
+                        other_lines.append(f"quest_layout_conversion_error({tgt}->type_desc, {match_desc});")
+                    converted = self._emit_auto_arm_converted(
+                        auto_t, stored, stored_t, arm_t, tgt, other_lines
                     )
+                    other_lines.append(f"{c_arm} = {converted};")
+                    _append_block(branch_lines, other_lines)
+                    branch_lines.append("}")
+                else:
+                    c_arm = self._emit_auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt, branch_lines)
                 for b_sym in branch.binders:
                     c_b_type = self.c_type(b_sym.type_val)
                     b_val = self._coerce_val(c_arm, arm_t, b_sym.type_val, branch_lines)
@@ -3398,35 +3531,47 @@ class CEmitter:
                 return False
         return True
 
-    def _emit_auto_arm_by_subtype(
+    def _emit_auto_arm_converted(
         self,
         auto_t: QAutoType,
         stored: str,
         stored_t: QTupleType,
         arm_t: QTupleType,
         tgt: str,
-        match_desc: str,
         lines: list[str],
     ) -> str:
-        """Builds the components S[T] of an auto value whose type component is a subtype of T.
+        """Builds the components S[T] of an auto value, converted by descriptor from the stored ones.
 
-        The type parameter occurs only as the whole type of components (auto_matches_subtypes); each
-        such component is converted from the auto value's own type to T as dynamic.be does, and the
-        other components are copied unchanged.
+        Each component whose type mentions the type parameter A is converted from its stored type, described with
+        A standing for the auto value's type component (stored generically: a template's instance), to its type
+        in S[T]; this views a type component that is a proper subtype of T at T (when auto_matches_subtypes allows
+        that) and converts components laid out generically by the code that made the value. The other components
+        are copied unchanged.
         """
         arm_struct = tuple_struct_name(arm_t)
         arm = self.fresh_tmp("_insp_arm")
         lines.append(f"{arm_struct} *{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
+        saved = self.in_scope_type_descriptors
         for i, (sig_f, stored_f, arm_f) in enumerate(
             zip(auto_t.signature, stored_t.value_fields, arm_t.value_fields)
         ):
             src = f"{stored}->_{i}"
-            if auto_t.symbol_id in sig_f.type_val._fv:
-                as_qval = src if self.c_type(stored_f.type_val) == "QVal" else _qval_wrap(src, stored_f.type_val)
-                viewed = f"quest_convert({as_qval}, {tgt}->type_desc, {match_desc})"
-                lines.append(f"{arm}->_{i} = {_qval_unwrap(viewed, arm_f.type_val, self)};")
-            else:
+            if auto_t.symbol_id not in sig_f.type_val._fv:
                 lines.append(f"{arm}->_{i} = {src};")
+                continue
+            bare = strip_aliases(sig_f.type_val)
+            if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id == auto_t.symbol_id:
+                # A value of the type component (stored as a QVal, or in the representation of the bound)
+                from_desc = f"{tgt}->type_desc"
+            else:
+                self.in_scope_type_descriptors = {**saved, auto_t.type_param: f"{tgt}->type_desc"}
+                try:
+                    from_desc = self.c_type_descriptor(stored_f.type_val)
+                finally:
+                    self.in_scope_type_descriptors = saved
+            as_qval = src if self.c_type(stored_f.type_val) == "QVal" else _qval_wrap(src, stored_f.type_val)
+            viewed = f"quest_convert({as_qval}, {from_desc}, {self.c_type_descriptor(arm_f.type_val)})"
+            lines.append(f"{arm}->_{i} = {_qval_unwrap(viewed, arm_f.type_val, self)};")
         return arm
 
     def _is_descriptor(self, t: QType) -> str:

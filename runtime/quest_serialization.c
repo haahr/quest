@@ -297,6 +297,7 @@ static int quest_tg_new_node(QTypeGraph *g, const QTypeDescriptor *d) {
  * format cannot express: polymorphic functions, auto types other than Dynamic.T, and abstract types. */
 static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
     if (d == NULL) quest_raise_dynamic_error();
+    d = quest_stored_type(d);
     switch (d->kind) {
         case QTYPE_KIND_OK: return QREF_OK;
         case QTYPE_KIND_BOOL: return QREF_BOOL;
@@ -587,6 +588,11 @@ static void quest_write_type_table(QWriter *wr, const QTypeGraph *g) {
 
 /* The component values of an array (records and variants are stored inline in their own array layouts) */
 static QVal quest_array_element(const QArray *arr, const QTypeDescriptor *elem_desc, int64_t i) {
+    if (elem_desc != NULL && elem_desc->kind == QTYPE_KIND_STORED) {
+        /* Elements stored as a type parameter: QVal forms, or values of the parameter's bound */
+        elem_desc = ((const QStoredDescriptor *)elem_desc->extra)->storage;
+        if (elem_desc == NULL) return arr->data[i];
+    }
     if (elem_desc != NULL && elem_desc->kind == QTYPE_KIND_RECORD) {
         return (QVal){ .p = (void *)quest_record_box(((const QArrayWideRecord *)arr)->data[i]) };
     }
@@ -622,7 +628,17 @@ static const char *quest_option_components(const void *opt) {
 
 /* Finds the records, tuples, and arrays reached more than once, and adds the types of dynamic values to the type
  * graph, in the order they are written */
+/* A value stored as a type parameter (read from its slot in its QVal form, or as a value of the parameter's bound):
+ * the value at its own type */
+static const QTypeDescriptor *quest_unstore(const QTypeDescriptor *desc, QVal *val) {
+    if (desc == NULL || desc->kind != QTYPE_KIND_STORED) return desc;
+    const QStoredDescriptor *st = (const QStoredDescriptor *)desc->extra;
+    if (st->storage != NULL) *val = quest_convert(*val, st->storage, st->type);
+    return st->type;
+}
+
 static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *table, QTypeGraph *g) {
+    desc = quest_unstore(desc, &val);
     if (desc == NULL) quest_raise_dynamic_error();
     switch (desc->kind) {
         case QTYPE_KIND_INT:
@@ -721,6 +737,7 @@ static bool quest_emit_shared(const void *obj, QPtrTable *table, int *next_id, Q
 static void quest_emit_value(
     const QTypeDescriptor *desc, QVal val, QPtrTable *table, const QTypeGraph *g, int *next_id, QWriter *wr
 ) {
+    desc = quest_unstore(desc, &val);
     switch (desc->kind) {
         case QTYPE_KIND_INT:
             quest_write_int(wr, val.i);
@@ -1375,6 +1392,7 @@ static void quest_fill_fun_desc(const QTypeTable *t, QTypeDescriptor *desc, QJso
     meta->param_count = n;
     meta->result_type = quest_table_ref(t, result);
     meta->adapt = NULL;
+    meta->invoke = NULL;
     meta->quantifier_count = 0;
     meta->quantifier_bounds = NULL;
     desc->size = sizeof(QClosure *);

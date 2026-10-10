@@ -13,9 +13,9 @@ typedef struct QTuple_Int_Int_Int QTuple_Int_Int_Int;
 #define QUEST_TYPE_QTuple_String_Int_Int_TYPEDEF
 typedef struct QTuple_String_Int_Int QTuple_String_Int_Int;
 #endif
-#ifndef QUEST_TYPE_QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int_TYPEDEF
-#define QUEST_TYPE_QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int_TYPEDEF
-typedef struct QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int;
+#ifndef QUEST_TYPE_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_TYPEDEF
+#define QUEST_TYPE_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_TYPEDEF
+typedef struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end;
 #endif
 #ifndef QUEST_TYPE_QTuple_Int_Int_Int_DEFINED
 #define QUEST_TYPE_QTuple_Int_Int_Int_DEFINED
@@ -33,9 +33,9 @@ struct QTuple_String_Int_Int {
     QInt _2;
 };
 #endif
-#ifndef QUEST_TYPE_QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int_DEFINED
-#define QUEST_TYPE_QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int_DEFINED
-struct QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int {
+#ifndef QUEST_TYPE_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_DEFINED
+#define QUEST_TYPE_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_DEFINED
+struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end {
     QTuple_Int_Int_Int * _0;
     QTuple_Int_Int_Int * _1;
 };
@@ -50,7 +50,7 @@ typedef QString * (*quest_sig_Location_file)(QVal sm);
 typedef QString * (*quest_sig_Location_text)(QVal sm);
 typedef QInt (*quest_sig_Location_lineCount)(QVal sm);
 typedef QTuple_Int_Int_Int * (*quest_sig_Location_locate)(QVal sm, QInt offset);
-typedef QTuple_QTuple_Int_Int_Int_QTuple_Int_Int_Int * (*quest_sig_Location_locateSpan)(QVal sm, QTuple_String_Int_Int * sp);
+typedef QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end * (*quest_sig_Location_locateSpan)(QVal sm, QTuple_String_Int_Int * sp);
 typedef QString * (*quest_sig_Location_getLine)(QVal sm, QInt lineNum);
 typedef QString * (*quest_sig_Location_extractSnippet)(QVal sm, QTuple_String_Int_Int * sp);
 #ifdef __cplusplus

@@ -198,6 +198,10 @@ When functions are passed through subtype coercions or type applications:
 ### 6.2. Tuple Structs and Fields
 - **Tuple struct tag:** `struct QTuple_<type1>_<type2>...`
   - E.g. `struct QTuple_Int_String`, `struct QTuple_Int_Int_Bool`
+  - A component that is itself a tuple, record, variant, option, or auto type has its tag closed with `_end`, so
+    that different nestings get different tags: `Tuple (Tuple A Int) end` is `QTuple_QTuple_QVal_Int_end` and
+    `Tuple (Tuple A) Int end` is `QTuple_QTuple_QVal_end_Int`. The same holds inside record, variant, option, and
+    array tags.
 - **Tuple Fields:** Positional 0-indexed fields:
   - `_0`, `_1`, `_2`, ...
   - Access in C: `tup._0`, `tup._1`
