@@ -529,6 +529,11 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
     return "\n".join(lines)
 
 
+# The interface files being compiled, outermost first, with their canonical names. Compiling an interface first
+# compiles the interfaces it imports, each in an environment of its own, so a cycle of imports is detected here.
+_compiling_interfaces: list[tuple[Path, str]] = []
+
+
 def compile_interface_file(
     file_path: Path,
     output_dir: Optional[Path] = None,
@@ -541,6 +546,29 @@ def compile_interface_file(
 
     Only C compilation needs headers; typecheck and interpret runs build just the .qi.
     """
+    from quest.module_loader import canonicalize_module_path
+
+    key = file_path.resolve()
+    canon_name = canonicalize_module_path(file_path, list(include_paths or []), program_dir)
+    compiling = [path for path, _ in _compiling_interfaces]
+    if key in compiling:
+        chain = [name for _, name in _compiling_interfaces[compiling.index(key):]] + [canon_name]
+        raise QuestTypeError(f"Cyclic dependency detected in interface imports: {' -> '.join(chain)}")
+    _compiling_interfaces.append((key, canon_name))
+    try:
+        return _compile_interface_file(file_path, output_dir, include_paths, build_dir, header, program_dir)
+    finally:
+        _compiling_interfaces.pop()
+
+
+def _compile_interface_file(
+    file_path: Path,
+    output_dir: Optional[Path],
+    include_paths: Optional[list[Path]],
+    build_dir: Optional[Path],
+    header: bool,
+    program_dir: Optional[Path],
+) -> tuple[Path, Path]:
     try:
         source_text = file_path.read_text(encoding="utf-8")
     except OSError as err:
@@ -561,6 +589,11 @@ def compile_interface_file(
         if not isinstance(decl, ast.InterfaceDecl):
             raise QuestTypeError(
                 f"Expected interface declaration in '{file_path.name}', but found {type(decl).__name__}"
+            )
+        if decl.name.lower() != file_path.name.split(".")[0].lower():
+            raise QuestTypeError(
+                f"Interface declared in '{file_path.name}' has name '{decl.name}', which does not match file name",
+                offset=decl.offset,
             )
 
         env = Environment()
