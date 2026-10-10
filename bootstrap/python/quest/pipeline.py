@@ -289,12 +289,14 @@ class InterpretPhase(Phase):
                         self._last_final_phrase = input_data.phrases[-1]
                     else:
                         self._last_final_phrase = None
-                    self._last_phrase_results = eval_program_phrases(input_data, ctx.runtime_env)
-                    if ctx.options.echo:
-                        for phrase, val in self._last_phrase_results:
-                            out_str = format_interactive_result(phrase, val)
-                            if out_str:
-                                sys.stdout.write(out_str + "\n")
+                    def echo(phrase: TypedBinding | TypedExpr, val: QValue) -> None:
+                        out_str = format_interactive_result(phrase, val)
+                        if out_str:
+                            sys.stdout.write(out_str + "\n")
+
+                    self._last_phrase_results = eval_program_phrases(
+                        input_data, ctx.runtime_env, on_result=echo if ctx.options.echo else None
+                    )
                     return self._last_phrase_results[-1][1] if self._last_phrase_results else OK_VALUE
 
                 case TypedExpr():

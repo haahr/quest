@@ -215,9 +215,11 @@ input) can specify host execution requirements via top-level comment directives:
   Runs the program with `--echo` in `interpret` and `run_c_compiled`, so that every top-level phrase prints its result
   as the interactive REPL does (`let x:Int = 5`, `3 : Int`, `exception E`, `Let T::TYPE = Int`), not only the last.
   A test can then check many values without printing each with `writer` and `conv`. Compiled code echoes exactly as
-  the interpreter does for bindings, declarations, functions, exceptions, and values of base, alias, existential, and
-  abstract types; it does not yet format compound values (tuples, records, arrays, options, variants), which it
-  prints as `<val>`, so a test should not echo those.
+  the interpreter does, because both format a value by its static type all the way down: a record shows the fields
+  of its type (sorted by name), a function is `<fun>`, a value of an abstract type (such as `list.T(Int)` or a
+  module's `T`) is `<hidden>`, and an auto value names its type component as its runtime descriptor does. Compiled
+  code writes compound values from their type descriptors (`quest_print_typed`). One difference remains: a tuple
+  with type components nested inside another value prints only its value components in compiled code.
 
 ### 2.6. Interfaces and Modules Used by Tests
 A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the

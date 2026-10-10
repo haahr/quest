@@ -222,7 +222,8 @@ _BASE_VALUE_KINDS = (
 
 
 def _value_kind(t: QType) -> str:
-    """How quest_print_value writes a value of type t, as the interpreter does (format_value_with_type)."""
+    """How quest_print_value writes a value of type t, as the interpreter does (format_value_with_type), or "" if
+    quest_print_typed writes it from its type descriptor."""
     t = normalize_type(t)
     if is_word_type(t):
         return "Word"
@@ -233,10 +234,6 @@ def _value_kind(t: QType) -> str:
     return next((kind for base, kind in _BASE_VALUE_KINDS if t is base), "")
 
 
-def _print_value_call(prefix: str, value: str, t: QType, suffix: str = "") -> str:
-    """A statement printing prefix, a value of type t, and suffix on a line of its own."""
-    return f"    quest_print_value({_c_string_literal(prefix)}, {_qval_wrap(value, t)}, " \
-        f"{_c_string_literal(_value_kind(t))}, {_c_string_literal(suffix)});"
 
 
 def _strip_aliases_for_codegen(
@@ -2291,6 +2288,17 @@ class CEmitter:
                     parts.append(elem_str)
         return f"tuple {' '.join(parts)} end" if parts else "tuple end"
 
+    def _print_value_call(self, prefix: str, value: str, t: QType, suffix: str = "") -> str:
+        """A statement printing prefix, a value of type t, and suffix on a line of its own.
+
+        Values of base, function, and abstract types are written by kind, and any other value from its type's
+        descriptor.
+        """
+        prefix_c, suffix_c, value_c = _c_string_literal(prefix), _c_string_literal(suffix), _qval_wrap(value, t)
+        if kind := _value_kind(t):
+            return f"    quest_print_value({prefix_c}, {value_c}, {_c_string_literal(kind)}, {suffix_c});"
+        return f"    quest_print_typed({prefix_c}, {value_c}, {self.c_type_descriptor(t)}, {suffix_c});"
+
     def _emit_phrase(self, phrase: TypedNode, lines: list[str], is_last: bool = False) -> None:
         """Translates a top-level binding or expression phrase.
 
@@ -2324,7 +2332,7 @@ class CEmitter:
                     val_str = self._format_existential_tuple_val(symbol.type_val)
                     lines.append(f"    puts({_c_string_literal(prefix + val_str)});")
                 else:
-                    lines.append(_print_value_call(prefix, c_ident, symbol.type_val))
+                    lines.append(self._print_value_call(prefix, c_ident, symbol.type_val))
 
             case TypedLetType(name=name, symbol=symbol):
                 if show:
@@ -2395,7 +2403,7 @@ class CEmitter:
         self.emit_to(expr, tmp, phrase_lines)
         _append_block(lines, phrase_lines)
         if self.echo or is_last:
-            lines.append(_print_value_call("", tmp, expr_type, f" : {qtype_to_name_str(_display_type(expr))}"))
+            lines.append(self._print_value_call("", tmp, expr_type, f" : {qtype_to_name_str(_display_type(expr))}"))
 
     def emit_val(self, expr: TypedExpr, lines: list[str]) -> str:
         """Emits any preparatory statements into lines and returns a C99 expression value."""

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from quest.types import (
+    short_type_name,
     QAliasType,
     strip_aliases,
     BOOL_TYPE,
@@ -869,7 +870,7 @@ def _canonical_type_uncached(t: QType) -> Optional[QType]:
         return None
     # Merging binders could in principle mix up scopes: a canonical form is used only if it is equal to the type
     if not is_type_equal(canonical, strip_aliases(t)):
-        message = f"canonical form of the type {descriptor_display_name(t)} is not equal to it"
+        message = f"canonical form of the type {short_type_name(t)} is not equal to it"
         if _check_canonical():
             raise AssertionError(message)
         # The type is named as written, as before canonical forms compared binders; the program is still compiled
@@ -879,7 +880,7 @@ def _canonical_type_uncached(t: QType) -> Optional[QType]:
     if id(canonical_structure := _canonical_structure(canonical)) not in _CANONICAL_NODES:
         _register_graph(canonical_structure)
     if _check_canonical() and _canonical_type(canonical) is not None:
-        raise AssertionError(f"canonical form of {descriptor_display_name(t)} is not a fixed point")
+        raise AssertionError(f"canonical form of {short_type_name(t)} is not a fixed point")
     return canonical
 
 
@@ -1203,7 +1204,7 @@ def _opaque_name(t: QType) -> str:
     length, digest = _printed(t)
     if length <= _PRINTED_TEXT_LIMIT:
         return str(t)
-    return f"{descriptor_display_name(t)}#{digest[:16]}"
+    return f"{short_type_name(t)}#{digest[:16]}"
 
 
 def fun_descriptor_tag(t: QType) -> str:
@@ -1339,103 +1340,6 @@ class DescriptorForm:
 
 
 _BASE_DESCRIPTORS: dict[int, str] = {}
-
-
-_DISPLAY_NAME_LIMIT = 80
-
-
-class _DisplayNameFull(Exception):
-    """The display name being printed has reached its limit."""
-
-
-def descriptor_display_name(t: QType) -> str:
-    """A short name for a type's descriptor, used only in diagnostics: the type as printed, cut off at 80 characters.
-
-    Descriptors are compared structurally and serialized from their structure, so the name need not identify the
-    type (printing a large recursive type in full can take megabytes). A recursive type prints as its variable.
-    """
-    parts: list[str] = []
-    size = 0
-
-    def emit(text: str) -> None:
-        nonlocal size
-        parts.append(text)
-        size += len(text)
-        if size > _DISPLAY_NAME_LIMIT:
-            raise _DisplayNameFull()
-
-    def walk(t: Optional[QType]) -> None:
-        if t is None:
-            return
-        t = unalias(t.prune() if hasattr(t, "prune") else t)
-        if isinstance(t, QRecordType):
-            emit("Record")
-            for f in t.fields:
-                emit(f" {'var ' if f.is_var else ''}{f.name}: ")
-                walk(f.type_val)
-            emit(" end")
-        elif isinstance(t, QTupleType):
-            emit("Tuple")
-            for f in t.value_fields:
-                emit(f" {'var ' if f.is_var else ''}{f.name}: " if f.name else " :")
-                walk(f.type_val)
-            emit(" end")
-        elif isinstance(t, (QVariantType, QOptionType)):
-            emit("Variant" if isinstance(t, QVariantType) else "Option")
-            cases = (
-                [(v.name, v.type_val) for v in t.variants] if isinstance(t, QVariantType)
-                else [(o.name, o.payload_type) for o in t.options]
-            )
-            for name, payload in cases:
-                emit(f" {name}")
-                if payload is not None:
-                    emit(": ")
-                    walk(payload)
-            emit(" end")
-        elif isinstance(t, QArrayType):
-            emit("Array(")
-            walk(t.element_type)
-            emit(")")
-        elif isinstance(t, QExceptionType):
-            emit("Exception(")
-            walk(t.payload_type)
-            emit(")")
-        elif isinstance(t, QFunType):
-            emit("Fun(")
-            for i, p in enumerate(t.params):
-                emit(f"{' ' if i else ''}{'var ' if p.is_var else 'out ' if p.is_out else ''}{p.name}: ")
-                walk(p.type_val)
-            emit(") ")
-            walk(t.result_type)
-        elif isinstance(t, QAllType):
-            emit("All(" + " ".join(q.name for q in t.quantifiers) + ") ")
-            walk(t.body)
-        elif isinstance(t, QAutoType):
-            emit(f"Auto {t.type_param} with")
-            for f in t.signature:
-                emit(f" {'var ' if f.is_var else ''}{f.name}: ")
-                walk(f.type_val)
-            emit(" end")
-        elif isinstance(t, QRecType):
-            emit(t.var_name)
-        elif isinstance(t, QTypeApp):
-            walk(t.constructor)
-            emit("(")
-            for i, a in enumerate(t.arguments):
-                if i:
-                    emit(" ")
-                walk(a)
-            emit(")")
-        elif isinstance(t, (QRecGroupType, QTypeFun)):
-            emit(type(t).__name__)
-        else:
-            emit(str(t))
-
-    try:
-        walk(t)
-    except _DisplayNameFull:
-        return "".join(parts)[:_DISPLAY_NAME_LIMIT] + "..."
-    return "".join(parts)
 
 
 def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> DescriptorForm:

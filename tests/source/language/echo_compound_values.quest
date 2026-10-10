@@ -1,0 +1,67 @@
+(* With @echo compiled code prints compound values as the interpreter does, formatting each value by its static
+   type all the way down: tuples, records (the fields of their type, sorted by name), arrays, options, variants, and
+   auto values, with functions as <fun> and values of abstract types as <hidden>. *)
+(* @echo *)
+
+import word: Word;
+import writer: Writer;
+import list: List;
+import dynamic: Dynamic;
+
+(* Tuples and records *)
+let t = tuple let x = 10 let y = 2.5 end;
+let t2 = tuple 1 'c' "s\n" end;
+let et = tuple end;
+let p = record y = 40 x = 30 end;
+let er = record end;
+let nested = record pos = record x = 5 y = 7 end var count = 0 f = fun(x: Int): Int x end;
+record n = nested end;
+
+(* A record viewed at a supertype shows the supertype's fields *)
+Let Huge = Record a: Int b: Real c: String d: Char end;
+Let Mid = Record c: String d: Char end;
+let huge: Huge = record a = 1 b = 1.5 c = "q\"x" d = '\t' end;
+let mid: Mid = huge;
+let rm = record m = mid end;
+
+(* A value is echoed as it is when its phrase is evaluated, not as later phrases change it *)
+let var tv = tuple let var x = 1 let y = 'z' end;
+tv.x := 5;
+tv;
+
+(* Arrays, including arrays of records and variants *)
+let arr = array of 1 2 3 end;
+let e: Array(Int) = array of end;
+let arr2 = array of record a = 1 end record a = 2 end end;
+let tups = array of tuple 1 "a" end tuple 2 "b" end end;
+let arrs = array of array of 1 end array of :Int end end;
+
+(* Options and variants *)
+Let Traffic = Option red yellow green end;
+let c = option yellow of Traffic end;
+Let Color = Option red blue with intensity: Int end end;
+let c2 = option blue of Color with tuple let intensity = 42 end end;
+Let Shape = Variant circle: Real square: Record side: Int end none: Ok end;
+let s1 = variant square of Shape with record side = 3 end end;
+let s2 = variant none of Shape with ok end;
+let shapes = array of s1 s2 variant circle of Shape with 2.0 end end;
+
+(* Recursive types *)
+Let Rec Node::TYPE = Record v: Int kids: Array(Node) end;
+let leaf: Node = record v = 2 kids = array of :Node end end;
+let n1: Node = record v = 1 kids = array of leaf leaf end end;
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+let il = option cons of IntList with
+    let head = 1; let tail = option cons of IntList with let head = 2; let tail = option nil of IntList end; end;
+end;
+
+(* Abstract types, Word.T, exceptions, and auto values *)
+let wr = record w = word.fromInt(10) o = writer.output l = list.cons(1 list.nil(:Int)) end;
+let ex = exception Boom: Int end;
+let d = dynamic.new(3);
+Let UniformPair = Auto A::TYPE with fst,snd:A end;
+let up: UniformPair = auto :Int with 6 7 end;
+let ur: UniformPair = auto :Record k: Int end with record k = 1 end record k = 2 end end;
+Let Pair = Tuple fst: Int snd: Bool end;
+let ua: UniformPair = auto :Pair with tuple 1 true end tuple 2 false end end;
+tuple let a = tuple 1 2 end let b = arr end

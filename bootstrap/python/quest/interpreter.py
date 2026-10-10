@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
 from quest.runtime import (
@@ -55,8 +55,15 @@ from quest.types import (
     EXCEPTION_TYPE,
     INT_TYPE,
     OK_TYPE,
+    QAbstractType,
+    QAllType,
+    QArrayType,
     QAutoType,
+    QFunType,
     QOptionType,
+    QRecordType,
+    QTypeApp,
+    QVariantType,
     QTupleType,
     QTupleTypeFormal,
     QTupleTypeBinding,
@@ -66,8 +73,10 @@ from quest.types import (
     QType,
     REAL_TYPE,
     STRING_TYPE,
+    _unfold_head,
     auto_payload_type,
     is_subtype,
+    short_type_name,
     is_type_equal,
 )
 from quest.typed_ast import (
@@ -1141,8 +1150,13 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
 def eval_program_phrases(
     program: TypedProgram,
     env: Optional[RuntimeEnvironment] = None,
+    on_result: Optional[Callable[[TypedBinding | TypedExpr, QValue], None]] = None,
 ) -> list[tuple[TypedBinding | TypedExpr, QValue]]:
-    """Evaluates an entire typed program sequentially, returning (phrase, value) pairs."""
+    """Evaluates an entire typed program sequentially, returning (phrase, value) pairs.
+
+    on_result, if given, is called with each pair as soon as its phrase is evaluated, before later phrases can
+    change the value (by assigning to a component of it) or write output of their own.
+    """
     if env is None:
         env = RuntimeEnvironment.create_root_env()
 
@@ -1157,6 +1171,8 @@ def eval_program_phrases(
                 results.append((phrase, val))
             case _:
                 raise QuestRuntimeError(f"Unknown top-level phrase: {phrase.__class__.__name__}")
+        if on_result is not None:
+            on_result(*results[-1])
 
     return results
 
@@ -1168,18 +1184,39 @@ def eval_program(program: TypedProgram, env: Optional[RuntimeEnvironment] = None
 
 
 def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
-    """Formats a runtime value with respect to its static type (Cardelli §5.3)."""
+    """Formats a runtime value with respect to its static type (Cardelli §5.3).
+
+    The type decides what is shown, all the way down, so that compiled code (quest_print_typed) can print the same
+    from the value's type descriptor: a record shows its type's fields, a function is <fun>, and a value of an
+    abstract type is <hidden>.
+    """
     if typ is None:
         return qvalue_to_str(val)
-    typ = unalias(typ)
+    return _format_typed(val, typ, set())
 
-    if isinstance(typ, QPathType):
+
+def _exposed_type(typ: QType) -> QType:
+    """typ with aliases removed, recursive types unfolded, and type operator applications reduced."""
+    typ = unalias(typ)
+    while (unfolded := _unfold_head(typ)) is not None:
+        typ = unalias(unfolded)
+    return typ
+
+
+def _format_typed(val: QValue, typ: QType, visited: set[int]) -> str:
+    if isinstance(val, QRef):
+        val = val.deref()
+    typ = _exposed_type(typ)
+
+    # A value of an abstract type, such as a module's T, is hidden, so that the interpreter and compiled code (which
+    # cannot see a separately compiled module's representation) agree. Word.T is a library type with literals of
+    # its own.
+    if isinstance(typ, (QPathType, QAbstractType, QTypeApp)):
         return "<hidden>"
-    # A value of an abstract type, such as a module's T, is hidden as when it is a tuple component below, so that the
-    # interpreter and compiled code (which cannot see a separately compiled module's representation) agree. Word.T is
-    # a library type with literals of its own.
     if isinstance(typ, QTypeVar) and not isinstance(val, QWord):
         return "<hidden>"
+    if isinstance(typ, (QFunType, QAllType)):
+        return "<fun>"
 
     if isinstance(val, QTypeValue):
         if val.bound:
@@ -1187,10 +1224,38 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
         return "<Hidden>::TYPE"
 
     if isinstance(val, QAutoVal) and isinstance(typ, QAutoType):
-        components = format_value_with_type(val.value, auto_payload_type(typ, val.type_val))
+        components = _format_typed(val.value, auto_payload_type(typ, val.type_val), visited)
         components = components.removeprefix("tuple").removesuffix("end").strip()
-        return f"auto :{val.type_val} with {components} end" if components else f"auto :{val.type_val} with end"
+        # The type component is shown as compiled code shows it, by its runtime descriptor's name
+        type_name = short_type_name(val.type_val)
+        return f"auto :{type_name} with {components} end" if components else f"auto :{type_name} with end"
 
+    if isinstance(val, (QTuple, QRecord, QArray)):
+        if id(val) in visited:
+            opening = {QTuple: "tuple", QRecord: "record", QArray: "array of"}[type(val)]
+            return f"{opening} ... end"
+        visited.add(id(val))
+        try:
+            return _format_aggregate(val, typ, visited)
+        finally:
+            visited.remove(id(val))
+
+    if isinstance(val, QOption) and isinstance(typ, QOptionType):
+        case = typ.get_option(val.tag)
+        if case is None or case.payload_type is None or val.payload is None:
+            return f"option {val.tag} end"
+        return f"option {val.tag} with {_format_typed(val.payload, case.payload_type, visited)} end"
+
+    if isinstance(val, QVariant) and isinstance(typ, QVariantType):
+        case = typ.get_variant(val.tag)
+        if case is None or case.type_val is None or unalias(case.type_val) is OK_TYPE or val.payload is None:
+            return f"variant {val.tag} end"
+        return f"variant {val.tag} with {_format_typed(val.payload, case.type_val, visited)} end"
+
+    return qvalue_to_str(val)
+
+
+def _format_aggregate(val: QTuple | QRecord | QArray, typ: QType, visited: set[int]) -> str:
     if isinstance(val, QTuple) and isinstance(typ, QTupleType):
         parts: list[str] = []
         elem_idx = 0
@@ -1203,19 +1268,24 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
                 elem_idx += 1
             elif isinstance(comp, QTupleField):
                 if elem_idx < len(val.elements):
-                    elem = val.elements[elem_idx]
-                    if isinstance(unalias(comp.type_val), (QPathType, QTypeVar)):
-                        elem_str = "<hidden>"
-                    else:
-                        elem_str = format_value_with_type(elem, comp.type_val)
-                    if comp.name:
-                        parts.append(f"{comp.name}={elem_str}")
-                    else:
-                        parts.append(elem_str)
+                    elem_str = _format_typed(val.elements[elem_idx], comp.type_val, visited)
+                    parts.append(f"{comp.name}={elem_str}" if comp.name else elem_str)
                     elem_idx += 1
         return f"tuple {' '.join(parts)} end" if parts else "tuple end"
 
-    return qvalue_to_str(val)
+    if isinstance(val, QRecord) and isinstance(typ, QRecordType):
+        fields = [
+            f"{f.name}={_format_typed(val.fields[f.name], f.type_val, visited)}"
+            for f in sorted(typ.fields, key=lambda f: f.name)
+            if f.name in val.fields
+        ]
+        return f"record {' '.join(fields)} end" if fields else "record end"
+
+    if isinstance(val, QArray) and isinstance(typ, QArrayType):
+        elems = [_format_typed(e, typ.element_type, visited) for e in val.elements]
+        return f"array of {' '.join(elems)} end" if elems else "array of end"
+
+    return val.to_str(visited)
 
 
 def format_interactive_result(
