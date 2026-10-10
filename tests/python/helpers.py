@@ -1,5 +1,6 @@
 """Shared helper utilities for Quest unit tests."""
 
+import os
 import unittest
 from typing import Any, Optional, Union
 
@@ -37,6 +38,9 @@ def _qtype_aware_assertEqual(self: unittest.TestCase, first: Any, second: Any, m
 
 
 unittest.TestCase.assertEqual = _qtype_aware_assertEqual
+
+# Checks the C back end's canonical forms of types, which outside the tests only warn (as run_tests.py does)
+os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
 _parser_pipeline = default_pipeline()
 

@@ -578,13 +578,26 @@ Equal types share one C representation, so a value moves between them with a pla
   of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
   period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its
   `Rec`). Its tag (`type_to_c_tag`), descriptor (`descriptor_form`), and type digests are computed from its
-  canonical form (`_canonical_type` in `c_types.py`): the graph of its tuple, record, variant, option, array,
-  `var`, `out`, function, and exception nodes is minimized by partition refinement (as the dynamic type table is,
-  §11), and the minimal graph is written back as a type whose recursion variables have reserved ids and bind the
-  targets of the back edges of a depth-first walk. Where every cycle passes through a tuple, record, variant, or
+  canonical form (`_canonical_type` in `c_types.py`): the graph of its nodes is minimized by partition refinement
+  (as the dynamic type table is, §11), and the minimal graph is written back as a type whose recursion variables
+  have reserved ids and bind the targets of the back edges of a depth-first walk. Nodes are tuples (with or without
+  type components), records, variants, options, arrays, `var` and `out` types, function types (polymorphic or
+  not), exception and auto types, applications of abstract type operators, and occurrences of type parameters. Where every cycle passes through a tuple, record, variant, or
   option, the walk goes through those only, so that each recursive type unfolds to one; otherwise (a cycle through
   function types alone) it goes through every node. One back-edge target gives a `Rec`, several a `RecGroup` with
   the walk's root first. Types are hash-consed, so the canonical form of a type in canonical form is that type.
+- **Binders:** Type parameters are compared up to renaming, even under recursion (`Rec(F) All(A::TYPE a: A f: F) A`
+  unrolled with a differently named parameter is the same type). A node binding parameters (a polymorphic
+  function type, an auto type, a tuple with type components) is a node like any other, and an occurrence of a
+  parameter is a node with a scope edge to its binder, which refinement follows; a type object means different
+  things under different binders, so nodes are keyed by the object and the binder nodes its free variables refer
+  to. The minimal graph is written back with parameters numbered by the number of enclosing ones (reserved ids, so
+  that no binder captures another's occurrences) and each occurrence naming the nearest enclosing binder of its
+  binder's class. Merging binders could in principle mix up scopes, so a canonical form is used only if
+  `is_type_equal` finds it equal to the type it stands for; otherwise the type is named as written (as before
+  binders were compared), and the compiler prints an internal warning asking for a report. With
+  `QUEST_CHECK_CANONICAL=1`, which `run_tests.py` and the unit tests always set, such a failure, or a canonical
+  form that is not a fixed point, is an error instead.
 - **Struct tags:** The tag of a recursive type is that of its unfolding, except when the unfolding's tag is built
   from its parts' tags (a tuple, record, variant, option, array, `var`, `out`, or auto type), which would make it
   contain itself. Then it is built from its body with each recursion variable replaced by a placeholder numbered
@@ -593,9 +606,9 @@ Equal types share one C representation, so a value moves between them with a pla
   types. Canonical forms make it the same for all equal types; tuple and record field names are part of a node's
   shape, so types differing only in field names (which tags otherwise ignore) may get different tags when they
   contain recursion.
-- **Limitation:** Leaves of the graph (type variables, abstract, polymorphic, and auto types, and recursive types
-  whose unfoldings are not graph nodes) are compared by identity, so equal types that differ inside such a leaf
-  (an `All(A::TYPE)` function type mentioning `IntList` in one and `L2` in the other, say) still get different
+- **Limitation:** Leaves of the graph (free type variables, abstract, path, and external types, type operators, and
+  kinds other than `TYPE` and `<: T`, such as operator kinds) are compared by identity, so equal types that differ
+  inside one (an operator kind mentioning `IntList` in one and `L2` in the other, say) still get different
   canonical forms.
 
 ---

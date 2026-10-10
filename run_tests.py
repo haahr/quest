@@ -185,6 +185,8 @@ def run_single_golden_test(
 
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+    # Checks the C back end's canonical forms of types, which outside the tests only warn (docs/c-representation.md §5.7)
+    environment["QUEST_CHECK_CANONICAL"] = "1"
     if directives.env and phase_name in ("interpret", "run_c_compiled"):
         environment.update(directives.env)
 

@@ -1,0 +1,57 @@
+(* Language: Equal Types Differing Inside Polymorphic and Auto Types, in C Represented Alike *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(writer.output conv.int(x));
+        writer.putString(writer.output "\n")
+    end;
+
+Let Rec IntList::TYPE = Option nil cons with head: Int tail: IntList end end;
+Let Rec L2::TYPE = Option nil cons with head: Int tail: Option nil cons with head: Int tail: L2 end end end end;
+
+let rec sum(x: IntList): Int =
+    case x
+        when cons with c then c.head + sum(c.tail)
+        else 0
+    end;
+let l: IntList = option cons of IntList with 1 option cons of IntList with 2 option nil of IntList end end end;
+
+(* 1. Polymorphic function types mentioning equal recursive types at different periods *)
+let firstOr(A::TYPE x: A l: IntList): A = x;
+Let Holder = Tuple n: Int f: All(A::TYPE x: A l: IntList) A end;
+Let Holder2 = Tuple n: Int f: All(B::TYPE y: B m: L2) B end;
+let h: Holder = tuple let n = 3 let f = firstOr end;
+let h2: Holder2 = h;
+printInt(h2.f(:Int h2.n l));
+let back: Holder = h2;
+printInt(back.f(:Int sum(l) l));
+
+(* 2. Bounded quantifiers whose bounds are equal recursive types *)
+let pass(A <: IntList x: A): A = x;
+let bounded: Tuple f: All(A <: L2 x: A) A end = tuple pass end;
+printInt(sum(bounded.f(:IntList l)));
+
+(* 3. Auto types whose signatures mention equal recursive types *)
+Let Pack = Auto A::TYPE with x: A l: IntList end;
+Let Pack2 = Auto B::TYPE with x: B l: L2 end;
+let pk: Pack = auto :Int with 4 l end;
+let pk2: Pack2 = pk;
+let packs: Tuple a: Pack b: Pack2 end = tuple pk pk2 end;
+let packs2: Tuple a: Pack2 b: Pack end = packs;
+printInt(inspect packs2.b when Int with i then i.x + sum(i.l) else 0 end);
+
+(* 4. Recursion through a polymorphic function type, alpha-renamed and unrolled *)
+Let Rec Poly::TYPE = All(A::TYPE x: A next: Poly) A;
+Let Rec Poly2::TYPE = All(B::TYPE y: B next: All(C::TYPE z: C next: Poly2) C) B;
+let rec keep(A::TYPE x: A next: Poly): A = x;
+let polys: Tuple p: Poly n: Int end = tuple keep 5 end;
+let polys2: Tuple p: Poly2 n: Int end = polys;
+printInt(polys2.p(:Int polys2.n keep));
+
+(* 5. Dynamic values narrowed at the equal type *)
+printInt(dynamic.be(:Holder2 dynamic.new(:Holder h)).n);
+printInt(inspect dynamic.be(:Pack dynamic.new(:Pack2 pk2)) when Int with i then i.x else 0 end);

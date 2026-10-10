@@ -3,12 +3,17 @@ share one C representation."""
 
 from __future__ import annotations
 
+import io
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
+# Checks canonical forms, as the other tests do (see helpers.py)
+os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
+from quest.codegen import c_types
 from quest.codegen.c_types import (
     _canonical_type,
     descriptor_form,
@@ -21,11 +26,15 @@ from quest.types import (
     BOOL_TYPE,
     INT_TYPE,
     TYPE_KIND,
+    QAllType,
     QArrayType,
+    QAutoType,
     QFunType,
     QOptionField,
     QOptionType,
     QParam,
+    QPowerKind,
+    QQuantifier,
     QRecGroupType,
     QRecordField,
     QRecordType,
@@ -215,6 +224,73 @@ class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
         self.assertEqual(qtype_to_c_type(nest), "QArray *")
         self.assertEqual(type_to_c_tag(nest.unfold_lazily()), type_to_c_tag(nest))
         self.assertEqual(type_to_c_tag(QArrayType(QArrayType(nest))), type_to_c_tag(nest))
+
+
+class TestCanonicalBinders(unittest.TestCase):
+    """Equal types that differ inside binders (polymorphic and auto types) share canonical forms and descriptors."""
+
+    @staticmethod
+    def _poly(a_id: int, period: int, bound_by_list: bool = False) -> QAllType:
+        """All(A::TYPE x: A l: IntList) A, with the list at the given period (or All(A <: IntList x: A) A)."""
+        lst = _int_list(a_id + 1, period)
+        kind = QPowerKind(lst) if bound_by_list else TYPE_KIND
+        a = QTypeVar("A", a_id, kind)
+        params = (QParam("x", a),) if bound_by_list else (QParam("x", a), QParam("l", lst))
+        return QAllType((QQuantifier("A", a_id, kind),), QFunType(params, a))
+
+    def assert_shared(self, a, b) -> None:
+        self.assertIsNotNone(_canonical_type(a))
+        self.assertIs(_canonical_type(a), _canonical_type(b))
+        self.assertEqual(descriptor_form(a).tag, descriptor_form(b).tag)
+
+    def test_polymorphic_function_types(self) -> None:
+        self.assert_shared(self._poly(9701, 1), self._poly(9711, 2))
+        self.assert_shared(self._poly(9721, 1, True), self._poly(9731, 3, True))
+        # Different type parameters stay apart: All(A) Fun(x: A l: IntList) Int is not All(A) Fun(x: Int ...) A
+        a = QTypeVar("A", 9741, TYPE_KIND)
+        other = QAllType((QQuantifier("A", 9741, TYPE_KIND),),
+                         QFunType((QParam("x", INT_TYPE), QParam("l", _int_list(9742, 1))), a))
+        self.assertIsNot(_canonical_type(other), _canonical_type(self._poly(9751, 1)))
+
+    def test_records_of_polymorphic_functions(self) -> None:
+        def holder(t) -> QRecordType:
+            return QRecordType((QRecordField("f", t),))
+
+        self.assert_shared(holder(self._poly(9761, 1)), holder(self._poly(9771, 2)))
+
+    def test_auto_types(self) -> None:
+        def pack(x_id: int, period: int) -> QAutoType:
+            x = QTypeVar("X", x_id, TYPE_KIND)
+            return QAutoType("X", x_id, TYPE_KIND, (QRecordField("x", x), QRecordField("l", _int_list(x_id + 1, period))))
+
+        self.assert_shared(pack(9781, 1), pack(9791, 2))
+        self.assertEqual(type_to_c_tag(pack(9781, 1)), type_to_c_tag(pack(9791, 2)))
+
+    def test_recursion_through_a_binder(self) -> None:
+        """Rec(F) All(A::TYPE a: A f: F) A, alpha-renamed and unrolled."""
+
+        def through(f_id: int, period: int) -> QRecType:
+            t = QTypeVar("F", f_id, TYPE_KIND)
+            for i in range(period):
+                a = QTypeVar("A", f_id + 1 + i, TYPE_KIND)
+                t = QAllType((QQuantifier("A", f_id + 1 + i, TYPE_KIND),),
+                             QFunType((QParam("a", a), QParam("f", t)), a))
+            return QRecType("F", f_id, TYPE_KIND, t)
+
+        one, two = through(9801, 1), through(9811, 2)
+        self.assert_shared(one, two)
+        self.assertEqual(qtype_to_c_type(one), "QClosure *")
+        self.assertIsNone(_canonical_type(_canonical_type(one)))
+
+    def test_canonical_forms_not_equal_to_their_types_are_not_used(self) -> None:
+        with mock.patch.object(c_types, "is_type_equal", return_value=False):
+            with self.assertRaises(AssertionError):
+                _canonical_type(self._poly(9821, 2))
+            # Outside the tests, the type is named as written, with a warning
+            with mock.patch.object(c_types, "_check_canonical", return_value=False), \
+                    mock.patch.object(c_types.sys, "stderr", new_callable=io.StringIO) as stderr:
+                self.assertIsNone(_canonical_type(self._poly(9831, 2)))
+            self.assertIn("quest: warning: internal: canonical form", stderr.getvalue())
 
 
 if __name__ == "__main__":
