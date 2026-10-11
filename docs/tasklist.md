@@ -83,3 +83,35 @@ the same care.
 
 **Done when.** The program above prints `12 : Int` in both phases, and a golden test covers rebinding a value and a
 function at the top level after functions and closures that refer to them.
+
+---
+
+## Source locations for errors in interface and module files given to the driver
+
+**Problem.** When an interface or module file is passed to the driver directly, its errors are printed without a
+location: no `file:line:col` and no source line with a caret. This happens for any error, such as "Cannot find
+common supertype for conditional branches 'Ok' and 'Int'" or "Undefined variable". The same errors in a program file
+are located. This made errors slow to track down while migrating StringBuilder callers. The driver also ignores
+`--stop-after` for these files: it compiles them fully, writing `.qi`, `.qm`, `.c` and `.o` files next to the
+source unless `--build-dir` is given.
+
+**Reproduce.** With `m.int.quest` containing `interface M export f(c: Bool): Ok end;` and `m.mod.quest` containing
+
+```quest
+module m : M export
+    let f(c: Bool): Ok = begin if c then ok else 3 end; ok end;
+end;
+```
+
+`quest_driver.py --stop-after typecheck m.mod.quest` prints only `quest: error: Cannot find common supertype for
+conditional branches 'Ok' and 'Int'`. The same function in a program file is reported at `3:9` with a caret.
+
+**Where to start.** `bootstrap/python/quest_driver.py` handles `.int.quest` and `.mod.quest` files in two places,
+the default mode (around the `compile_interface_file` and `compile_module_file` calls) and `compile` mode. Both
+catch `Exception` and write `str(err)`. They should render a `QuestCompilerError` as programs do, through
+`diagnostic_of` (`diagnostics.py`, which supplies the file's source map) and `DiagnosticRenderer.render_diagnostic`.
+They should also honour `--stop-after`.
+
+**Done when.** Errors in interface and module files given to the driver are located like errors in programs, in
+both modes. `--stop-after typecheck` on such a file stops after typechecking and writes no artifacts. Tests (in the
+error suite, or in `tests/python/test_quest_driver.py`) cover an interface file and a module file passed directly.
