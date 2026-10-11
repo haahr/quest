@@ -88,3 +88,35 @@ They should also honour `--stop-after`.
 **Done when.** Errors in interface and module files given to the driver are located like errors in programs, in
 both modes. `--stop-after typecheck` on such a file stops after typechecking and writes no artifacts. Tests (in the
 error suite, or in `tests/python/test_quest_driver.py`) cover an interface file and a module file passed directly.
+
+---
+
+## Compiled echo omits a tuple value's type components
+
+**Problem.** When compiled code echoes a tuple value whose type has manifest type components (`Let X = T` in a
+tuple, `Def X = T` in a tuple type), it leaves them out, while the interpreter prints them. Echo output differs
+between the backends for any such tuple, whether it is a top-level binding's value or nested in another value.
+
+**Reproduce.** With `tuple_echo.quest` containing
+
+```quest
+let t = tuple Let A = Int let x: A = 1 end;
+Let Rec L = Option nil cons with h: Int t: L end end;
+let s = tuple Let M = L let l: M = option nil of L end end;
+```
+
+`--echo --stop-after interpret` prints `let t:Tuple Let A::TYPE = Int x: Int end = tuple Let A = Int x=1 end` (and
+`s` with `Let M = L`), while `--echo --stop-after run_c_compiled` prints `... = tuple x=1 end`.
+
+**Where to start.** The interpreter formats tuples in `_format_aggregate` (`bootstrap/python/quest/interpreter.py`),
+writing `Let name = type` for each `QTupleTypeBinding` component. Compiled code prints non-existential values through
+their type descriptors (`_print_value_call` in `codegen/c_emitter.py`, then `quest_put_tuple` and
+`quest_put_elements` in `runtime/quest_runtime.c`), and a tuple's descriptor (`QTupleTypeDescriptor`) lists only its
+value elements. Existential tuples are formatted statically instead (`_format_existential_tuple_val`). Recording
+manifest components in tuple descriptors (their names and printed types, in order among the elements) covers nested
+tuples too, but changes the descriptor layout, which the ABI version covers (`docs/build-process.md` §5.2); the type
+must print as the interpreter prints it (`str` of the type, with alias names).
+
+**Done when.** A golden test with `@echo` (or echoed phrases) shows the same output in `interpret` and
+`run_c_compiled` for tuples with manifest type components, at the top level and nested in another tuple, record,
+or array.
