@@ -73,11 +73,11 @@ from quest.types import (
     QType,
     REAL_TYPE,
     STRING_TYPE,
-    _unfold_head,
     auto_payload_type,
     is_subtype,
-    short_type_name,
     is_type_equal,
+    short_type_name,
+    unfold_head,
 )
 from quest.typed_ast import (
     TypedApp,
@@ -1239,7 +1239,7 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
 def _exposed_type(typ: QType) -> QType:
     """typ with aliases removed, recursive types unfolded, and type operator applications reduced."""
     typ = unalias(typ)
-    while (unfolded := _unfold_head(typ)) is not None:
+    while (unfolded := unfold_head(typ)) is not None:
         typ = unalias(unfolded)
     return typ
 

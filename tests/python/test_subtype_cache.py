@@ -13,6 +13,7 @@ from quest.env import Environment, TypeSymbol
 from quest.types import (
     INT_TYPE,
     STRING_TYPE,
+    SUBTYPE_CACHE,
     TYPE_KIND,
     QRecordField,
     QRecordType,
@@ -26,7 +27,7 @@ from quest.types import (
 
 
 def _cached(sub, sup, env=None):
-    entry = types._SUBTYPE_CACHE.get((id(sub), id(sup), env is None))
+    entry = SUBTYPE_CACHE.get((id(sub), id(sup), env is None))
     return entry[2] if entry is not None and entry[0] is sub and entry[1] is sup else None
 
 
