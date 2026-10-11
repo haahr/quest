@@ -7,7 +7,7 @@ import enum
 import weakref
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, Union, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, Union, runtime_checkable
 
 from quest.diagnostics import (
     Diagnostic,
@@ -309,6 +309,16 @@ def _all_same(new: Any, old: Any) -> bool:
 # 2. Base Semantic Type (Level 1)
 # ============================================================================
 
+# Formatter hook registered by quest.types.dump (breaks circular import)
+_type_formatter: Optional[Callable[[QType, Optional[Any]], str]] = None
+
+
+def register_type_formatter(fn: Callable[[QType, Optional[Any]], str]) -> None:
+    """Registers the formatting function used by QType.format()."""
+    global _type_formatter
+    _type_formatter = fn
+
+
 class QType(metaclass=_InternedNode):
     """Base class for all semantic Quest types."""
 
@@ -334,8 +344,9 @@ class QType(metaclass=_InternedNode):
 
     def format(self, env: Optional[Any] = None) -> str:
         """Formats this type into a readable string, utilizing env aliases and bounded recursions."""
-        from quest.types.dump import format_type_compact
-        return format_type_compact(self, env=env)
+        if _type_formatter is not None:
+            return _type_formatter(self, env)
+        return str(self)
 
     # The __str__ methods of types, their components, and kinds are mirrored by _printed_parts in
     # quest/codegen/c_types.py, which digests types without printing them; change both together.

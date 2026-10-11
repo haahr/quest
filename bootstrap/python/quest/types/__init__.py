@@ -76,6 +76,7 @@ from quest.types.model import (
     auto_payload_type,
     binds_module,
     find_path_types,
+    register_type_formatter,
     reserved_symbol_id,
     reserved_symbol_index,
     reserved_symbol_use,

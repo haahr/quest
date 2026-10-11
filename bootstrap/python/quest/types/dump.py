@@ -53,6 +53,7 @@ from quest.types.model import (
     QVariantField,
     QVariantType,
     QVarType,
+    register_type_formatter,
     unalias,
 )
 
@@ -463,4 +464,8 @@ def format_type_compact(
         return f"Rec({name} :: {b_str}) {body_str}"
 
     return str(t)
+
+
+# Register compact formatter for QType.format()
+register_type_formatter(format_type_compact)
 
