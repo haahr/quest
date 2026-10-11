@@ -84,21 +84,24 @@ class TypedNode:
         # 3. Non-leaf node: format labeled children consistently
         lines = [f"({header_str}"]
         for label, child in children:
-            if isinstance(child, TypedNode):
-                lines.append(f"{child_pad}{label} {child.dump(indent + 1, env=env)}")
-            elif isinstance(child, (tuple, list)):
-                if not child:
-                    lines.append(f"{child_pad}{label} ()")
-                else:
-                    lines.append(f"{child_pad}{label} (")
-                    for elem in child:
-                        if isinstance(elem, TypedNode):
-                            lines.append(f"{child_pad}  {elem.dump(indent + 2, env=env)}")
-                        else:
-                            lines.append(f"{child_pad}  {elem}")
-                    lines.append(f"{child_pad})")
-            elif child is not None:
-                lines.append(f"{child_pad}{label} {child}")
+            match child:
+                case TypedNode():
+                    lines.append(f"{child_pad}{label} {child.dump(indent + 1, env=env)}")
+                case tuple() | list():
+                    if not child:
+                        lines.append(f"{child_pad}{label} ()")
+                    else:
+                        lines.append(f"{child_pad}{label} (")
+                        for elem in child:
+                            if isinstance(elem, TypedNode):
+                                lines.append(f"{child_pad}  {elem.dump(indent + 2, env=env)}")
+                            else:
+                                lines.append(f"{child_pad}  {elem}")
+                        lines.append(f"{child_pad})")
+                case None:
+                    pass
+                case _:
+                    lines.append(f"{child_pad}{label} {child}")
 
         lines[-1] = lines[-1] + ")"
         return "\n".join(lines)

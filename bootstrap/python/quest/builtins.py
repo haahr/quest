@@ -1664,19 +1664,20 @@ class BuiltinModuleRegistry:
             return QWord(combined)
 
         def _quest_identity_hash(v: QValue) -> QWord:
-            if isinstance(v, (QInt, QWord)):
-                raw = v.value & 0xFFFF_FFFF_FFFF_FFFF
-            elif isinstance(v, QBool):
-                raw = 1 if v.value else 0
-            elif isinstance(v, QChar):
-                raw = ord(v.value)
-            elif isinstance(v, QReal):
-                # 0.0 is ~0.0, so both must hash alike; adding 0.0 turns ~0.0 into 0.0.
-                raw = struct.unpack(">Q", struct.pack(">d", v.value + 0.0))[0]
-            elif isinstance(v, QOk):
-                raw = 0
-            else:
-                raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
+            match v:
+                case QInt(value=val) | QWord(value=val):
+                    raw = val & 0xFFFF_FFFF_FFFF_FFFF
+                case QBool(value=val):
+                    raw = 1 if val else 0
+                case QChar(value=val):
+                    raw = ord(val)
+                case QReal(value=val):
+                    # 0.0 is ~0.0, so both must hash alike; adding 0.0 turns ~0.0 into 0.0.
+                    raw = struct.unpack(">Q", struct.pack(">d", val + 0.0))[0]
+                case QOk():
+                    raw = 0
+                case _:
+                    raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
             return QWord(_splitmix64(raw))
 
         cls._symbol_bridge.update({

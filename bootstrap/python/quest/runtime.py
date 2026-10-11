@@ -778,19 +778,20 @@ def qvalue_is(v1: QValue, v2: QValue) -> bool:
     if type(v1) is not type(v2):
         return False
 
-    if isinstance(v1, QOk):
-        return isinstance(v2, QOk)
-    if isinstance(v1, QBool):
-        return v1.value is v2.value  # type: ignore[attr-defined]
-    if isinstance(v1, (QInt, QWord, QReal, QChar)):
-        return v1.value == v2.value  # type: ignore[attr-defined]
-    if isinstance(v1, QTypeValue):
-        assert isinstance(v2, QTypeValue)
-        from quest.types import is_type_equal
-        return v1.type_val is v2.type_val or is_type_equal(v1.type_val, v2.type_val)
-
-    # For all other types: pointer identity
-    return v1 is v2
+    match v1:
+        case QOk():
+            return isinstance(v2, QOk)
+        case QBool(value=b_val):
+            return b_val is getattr(v2, "value", None)
+        case QInt(value=n_val) | QWord(value=n_val) | QReal(value=n_val) | QChar(value=n_val):
+            return n_val == getattr(v2, "value", None)
+        case QTypeValue(type_val=t1):
+            assert isinstance(v2, QTypeValue)
+            from quest.types import is_type_equal
+            return t1 is v2.type_val or is_type_equal(t1, v2.type_val)
+        case _:
+            # For all other types: pointer identity
+            return v1 is v2
 
 
 def qvalue_structural_eq(
@@ -813,87 +814,82 @@ def qvalue_structural_eq(
         return True
     visited.add(pair)
 
-    if isinstance(v1, QOk):
-        return isinstance(v2, QOk)
+    match (v1, v2):
+        case (QOk(), QOk()):
+            return True
 
-    if isinstance(v1, (QBool, QInt, QWord, QReal, QChar, QString)):
-        return v1.value == v2.value  # type: ignore[attr-defined]
+        case (
+            (QBool(value=x1), QBool(value=x2))
+            | (QInt(value=x1), QInt(value=x2))
+            | (QWord(value=x1), QWord(value=x2))
+            | (QReal(value=x1), QReal(value=x2))
+            | (QChar(value=x1), QChar(value=x2))
+            | (QString(value=x1), QString(value=x2))
+        ):
+            return x1 == x2
 
-    if isinstance(v1, QTypeValue):
-        assert isinstance(v2, QTypeValue)
-        from quest.types import is_type_equal
-        return v1.type_val is v2.type_val or is_type_equal(v1.type_val, v2.type_val)
+        case (QTypeValue(type_val=t1), QTypeValue(type_val=t2)):
+            from quest.types import is_type_equal
+            return t1 is t2 or is_type_equal(t1, t2)
 
-    if isinstance(v1, QRecord):
-        assert isinstance(v2, QRecord)
-        if set(v1.fields.keys()) != set(v2.fields.keys()):
-            return False
-        for k in v1.fields:
-            if not qvalue_structural_eq(v1.fields[k], v2.fields[k], visited):
+        case (QRecord(fields=f1), QRecord(fields=f2)):
+            if set(f1.keys()) != set(f2.keys()):
                 return False
-        return True
+            for k in f1:
+                if not qvalue_structural_eq(f1[k], f2[k], visited):
+                    return False
+            return True
 
-    if isinstance(v1, QTuple):
-        assert isinstance(v2, QTuple)
-        if len(v1.elements) != len(v2.elements):
-            return False
-        if v1.labels != v2.labels:
-            return False
-        for e1, e2 in zip(v1.elements, v2.elements):
-            if not qvalue_structural_eq(e1, e2, visited):
+        case (QTuple(elements=elems1, labels=labels1), QTuple(elements=elems2, labels=labels2)):
+            if len(elems1) != len(elems2) or labels1 != labels2:
                 return False
-        return True
+            for e1, e2 in zip(elems1, elems2):
+                if not qvalue_structural_eq(e1, e2, visited):
+                    return False
+            return True
 
-    if isinstance(v1, QArray):
-        assert isinstance(v2, QArray)
-        if len(v1.elements) != len(v2.elements):
-            return False
-        for e1, e2 in zip(v1.elements, v2.elements):
-            if not qvalue_structural_eq(e1, e2, visited):
+        case (QArray(elements=elems1), QArray(elements=elems2)):
+            if len(elems1) != len(elems2):
                 return False
-        return True
+            for e1, e2 in zip(elems1, elems2):
+                if not qvalue_structural_eq(e1, e2, visited):
+                    return False
+            return True
 
-    if isinstance(v1, QList):
-        assert isinstance(v2, QList)
-        if len(v1.elements) != len(v2.elements):
-            return False
-        for e1, e2 in zip(v1.elements, v2.elements):
-            if not qvalue_structural_eq(e1, e2, visited):
+        case (QList(elements=elems1), QList(elements=elems2)):
+            if len(elems1) != len(elems2):
                 return False
-        return True
+            for e1, e2 in zip(elems1, elems2):
+                if not qvalue_structural_eq(e1, e2, visited):
+                    return False
+            return True
 
-    if isinstance(v1, (QVariant, QOption)):
-        assert isinstance(v2, (QVariant, QOption))
-        if v1.tag != v2.tag:
-            return False
-        if (v1.payload is None) != (v2.payload is None):
-            return False
-        if v1.payload is not None and v2.payload is not None:
-            return qvalue_structural_eq(v1.payload, v2.payload, visited)
-        return True
+        case ((QVariant(tag=tag1, payload=p1), QVariant(tag=tag2, payload=p2))
+              | (QOption(tag=tag1, payload=p1), QOption(tag=tag2, payload=p2))):
+            if tag1 != tag2 or (p1 is None) != (p2 is None):
+                return False
+            if p1 is not None and p2 is not None:
+                return qvalue_structural_eq(p1, p2, visited)
+            return True
 
-    if isinstance(v1, QRef):
-        assert isinstance(v2, QRef)
-        return qvalue_structural_eq(v1.value, v2.value, visited)
+        case (QRef(value=val1), QRef(value=val2)):
+            return qvalue_structural_eq(val1, val2, visited)
 
-    if isinstance(v1, QAutoVal):
-        assert isinstance(v2, QAutoVal)
-        if v1.type_val != v2.type_val:
-            return False
-        return qvalue_structural_eq(v1.value, v2.value, visited)
+        case (QAutoVal(type_val=t1, value=val1), QAutoVal(type_val=t2, value=val2)):
+            if t1 != t2:
+                return False
+            return qvalue_structural_eq(val1, val2, visited)
 
-    if isinstance(v1, QExceptionVal):
-        assert isinstance(v2, QExceptionVal)
-        if v1.name != v2.name:
-            return False
-        if (v1.payload is None) != (v2.payload is None):
-            return False
-        if v1.payload is not None and v2.payload is not None:
-            return qvalue_structural_eq(v1.payload, v2.payload, visited)
-        return True
+        case (QExceptionVal(name=n1, payload=p1), QExceptionVal(name=n2, payload=p2)):
+            if n1 != n2 or (p1 is None) != (p2 is None):
+                return False
+            if p1 is not None and p2 is not None:
+                return qvalue_structural_eq(p1, p2, visited)
+            return True
 
-    # Closures and Builtins fallback to pointer identity
-    return v1 is v2
+        case _:
+            # Closures and Builtins fallback to pointer identity
+            return v1 is v2
 
 
 def qvalue_to_str(val: QValue) -> str:

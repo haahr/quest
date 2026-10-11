@@ -312,17 +312,18 @@ def _canonical_node(s: Any, bound: Any) -> Optional[_NodeInfo]:
         comps: list[tuple[Any, ...]] = []
         parts: list[Any] = []
         for f in s.fields:
-            if isinstance(f, QTupleTypeFormal):
-                comps.append(("formal", f.name))
-                parts.append(f.bound)
-            elif isinstance(f, QTupleTypeBinding):
-                comps.append(("binding", f.name, f.bound is not None))
-                parts.append(f.type_val)
-                if f.bound is not None:
-                    parts.append(f.bound)
-            else:
-                comps.append(("field", f.name, f.is_var))
-                parts.append(f.type_val)
+            match f:
+                case QTupleTypeFormal(name=f_name, bound=bound):
+                    comps.append(("formal", f_name))
+                    parts.append(bound)
+                case QTupleTypeBinding(name=f_name, type_val=type_val, bound=bound):
+                    comps.append(("binding", f_name, bound is not None))
+                    parts.append(type_val)
+                    if bound is not None:
+                        parts.append(bound)
+                case QTupleField(name=f_name, is_var=is_var, type_val=type_val):
+                    comps.append(("field", f_name, is_var))
+                    parts.append(type_val)
         binds = tuple(f.symbol_id for f in s.fields if isinstance(f, QTupleTypeFormal))
         return _NodeInfo(("xtuple", tuple(comps)), parts, binds)
     if isinstance(s, QRecordType):

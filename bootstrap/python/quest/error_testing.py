@@ -74,13 +74,14 @@ def _unit_imports(path: Path) -> list[Path]:
     modules: list[str] = []
     for phrase in getattr(prog, "phrases", ()):
         items: tuple[ast.ImportItem, ...] = ()
-        if isinstance(phrase, ast.ImportPhrase):
-            items = phrase.items
-        elif isinstance(phrase, ast.InterfaceDecl):
-            items = phrase.imports
-        elif isinstance(phrase, ast.ModuleDecl):
-            items = phrase.imports
-            interfaces.append(phrase.interface_name)
+        match phrase:
+            case ast.ImportPhrase(items=import_items):
+                items = import_items
+            case ast.InterfaceDecl(imports=import_items):
+                items = import_items
+            case ast.ModuleDecl(imports=import_items, interface_name=iface_name):
+                items = import_items
+                interfaces.append(iface_name)
         for item in items:
             interfaces.append(item.effective_interface_path)
             modules.extend(item.effective_module_paths)

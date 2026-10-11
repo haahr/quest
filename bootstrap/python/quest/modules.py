@@ -136,34 +136,35 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
     env.current_scope = interface_scope
     try:
         for sig in decl.signatures:
-            if isinstance(sig, ast.TypeFormal):
-                bound_kind = elaborate_kind(sig.bound, env) if sig.bound else TYPE_KIND
-                symbol_id = env.fresh_symbol_id()
-                type_symbol = TypeSymbol(name=sig.name, symbol_id=symbol_id, kind=bound_kind, definition=None)
-                interface_scope.declare_type(type_symbol)
-
-            elif isinstance(sig, ast.TypeBinding):
-                type_symbol = elaborate_type_binding(sig, env)
-                interface_scope.declare_type(type_symbol)
-
-            elif isinstance(sig, ast.TypeBindingGroup):
-                for type_symbol in elaborate_type_binding_group(sig, env):
+            match sig:
+                case ast.TypeFormal(name=name, bound=bound):
+                    bound_kind = elaborate_kind(bound, env) if bound else TYPE_KIND
+                    symbol_id = env.fresh_symbol_id()
+                    type_symbol = TypeSymbol(name=name, symbol_id=symbol_id, kind=bound_kind, definition=None)
                     interface_scope.declare_type(type_symbol)
 
-            elif isinstance(sig, ast.FieldSig):
-                if sig.name:
-                    val_type = elaborate_type(sig.type_sig, env)
-                    val_symbol = ValueSymbol(
-                        name=sig.name,
-                        type_val=val_type,
-                        is_var=(sig.mode == ast.ParamMode.VAR),
-                        is_out=(sig.mode == ast.ParamMode.OUT),
-                    )
-                    interface_scope.declare_value(val_symbol)
+                case ast.TypeBinding():
+                    type_symbol = elaborate_type_binding(sig, env)
+                    interface_scope.declare_type(type_symbol)
 
-            elif isinstance(sig, ast.DefKindBinding):
-                kind_symbol = elaborate_kind_binding(sig, env)
-                interface_scope.declare_kind(kind_symbol)
+                case ast.TypeBindingGroup():
+                    for type_symbol in elaborate_type_binding_group(sig, env):
+                        interface_scope.declare_type(type_symbol)
+
+                case ast.FieldSig(name=field_name, type_sig=type_sig, mode=mode):
+                    if field_name:
+                        val_type = elaborate_type(type_sig, env)
+                        val_symbol = ValueSymbol(
+                            name=field_name,
+                            type_val=val_type,
+                            is_var=(mode == ast.ParamMode.VAR),
+                            is_out=(mode == ast.ParamMode.OUT),
+                        )
+                        interface_scope.declare_value(val_symbol)
+
+                case ast.DefKindBinding():
+                    kind_symbol = elaborate_kind_binding(sig, env)
+                    interface_scope.declare_kind(kind_symbol)
     finally:
         env.current_scope = saved_scope
 

@@ -199,45 +199,46 @@ class CDeclarationEmitter:
             lines.append(f"#ifndef QUEST_TYPE_{tag_name}_DEFINED")
             lines.append(f"#define QUEST_TYPE_{tag_name}_DEFINED")
             lines.append(f"struct {tag_name} {{")
-            if isinstance(t, QTupleType):
-                if not t.value_fields:
-                    lines.append("    char _unused;")
-                else:
-                    for i, f in enumerate(t.value_fields):
-                        c_type = self.c_type(f.type_val)
-                        lines.append(f"    {c_type} _{i};")
-            elif isinstance(t, QRecordType):
-                lines.append("    QRecordHeader header;")
-                if not t.fields:
-                    lines.append("    char _unused;")
-                else:
-                    for f in sorted(t.fields, key=lambda fld: fld.name):
-                        c_type = self.c_type(f.type_val)
-                        lines.append(f"    {c_type} qf_{f.name};")
-            elif isinstance(t, QOptionType):
-                lines.append("    int64_t tag;")
-                payload_branches = [o for o in t.options if o.payload_type is not None]
-                if payload_branches:
-                    lines.append("    union {")
-                    for o in payload_branches:
-                        pt = o.payload_type
-                        if isinstance(pt, QTupleType):
-                            lines.append(f"        struct {tag_name}_{o.name}_payload {{")
-                            for i, f in enumerate(pt.value_fields):
-                                c_f_type = self.c_type(f.type_val)
-                                f_ident = f"_{i}" if not f.name else f"_{i}"
-                                lines.append(f"            {c_f_type} {f_ident};")
-                            lines.append(f"        }} {o.name};")
-                        elif isinstance(pt, QRecordType):
-                            lines.append(f"        struct {tag_name}_{o.name}_payload {{")
-                            for f in sorted(pt.fields, key=lambda fld: fld.name):
-                                c_f_type = self.c_type(f.type_val)
-                                lines.append(f"            {c_f_type} qf_{f.name};")
-                            lines.append(f"        }} {o.name};")
-                        else:
-                            c_pt = self.c_type(pt)
-                            lines.append(f"        struct {{ {c_pt} val; }} {o.name};")
-                    lines.append("    } u;")
+            match t:
+                case QTupleType(value_fields=value_fields):
+                    if not value_fields:
+                        lines.append("    char _unused;")
+                    else:
+                        for i, f in enumerate(value_fields):
+                            c_type = self.c_type(f.type_val)
+                            lines.append(f"    {c_type} _{i};")
+                case QRecordType(fields=fields):
+                    lines.append("    QRecordHeader header;")
+                    if not fields:
+                        lines.append("    char _unused;")
+                    else:
+                        for f in sorted(fields, key=lambda fld: fld.name):
+                            c_type = self.c_type(f.type_val)
+                            lines.append(f"    {c_type} qf_{f.name};")
+                case QOptionType(options=options):
+                    lines.append("    int64_t tag;")
+                    payload_branches = [o for o in options if o.payload_type is not None]
+                    if payload_branches:
+                        lines.append("    union {")
+                        for o in payload_branches:
+                            match o.payload_type:
+                                case QTupleType(value_fields=pt_fields):
+                                    lines.append(f"        struct {tag_name}_{o.name}_payload {{")
+                                    for i, f in enumerate(pt_fields):
+                                        c_f_type = self.c_type(f.type_val)
+                                        f_ident = f"_{i}" if not f.name else f"_{i}"
+                                        lines.append(f"            {c_f_type} {f_ident};")
+                                    lines.append(f"        }} {o.name};")
+                                case QRecordType(fields=pt_fields):
+                                    lines.append(f"        struct {tag_name}_{o.name}_payload {{")
+                                    for f in sorted(pt_fields, key=lambda fld: fld.name):
+                                        c_f_type = self.c_type(f.type_val)
+                                        lines.append(f"            {c_f_type} qf_{f.name};")
+                                    lines.append(f"        }} {o.name};")
+                                case pt:
+                                    c_pt = self.c_type(pt)
+                                    lines.append(f"        struct {{ {c_pt} val; }} {o.name};")
+                        lines.append("    } u;")
             lines.append("};")
             lines.append("#endif")
             lines.append("")
