@@ -2154,9 +2154,28 @@ class CEmitter:
                     if exp_ret_c != int_ret_c or len(params) != 0:
                         needs_adapter = True
 
+            # A reference to the function as a value inside the module is (&{m_ident}_closure): a static closure
+            # over a trampoline with the internal signature
+            internal_args = [f"descriptor_{q.name}" for q in quants] + [
+                mangle_module_ident(clean_mod, p.name) for p in params
+            ]
+
             if needs_adapter:
                 impl_ident = f"_{m_ident}_impl"
                 lines.append(f"static {int_ret_c} {impl_ident}({sig});")
+                lines.extend(
+                    emit_trampoline(
+                        f"{impl_ident}_trampoline",
+                        int_ret_c,
+                        param_decls,
+                        f"{impl_ident}({', '.join(internal_args)})",
+                        ret_type is OK_TYPE,
+                        unused=True,
+                    )
+                )
+                lines.append(
+                    f"static Q_UNUSED QClosure {m_ident}_closure = {{ (void *){impl_ident}_trampoline, NULL }};"
+                )
                 exp_quant_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in exp_quants]
                 exp_param_decls = exp_quant_decls + [
                     (
@@ -2196,18 +2215,16 @@ class CEmitter:
             else:
                 lines.append(f"{linkage}{int_ret_c} {m_ident}({sig});")
                 tramp_name = f"{m_ident}_trampoline"
-                f_args = [f"descriptor_{q.name}" for q in quants] + [
-                    mangle_module_ident(clean_mod, p.name) for p in params
-                ]
                 lines.extend(
                     emit_trampoline(
                         tramp_name,
                         int_ret_c,
                         param_decls,
-                        f"{m_ident}({', '.join(f_args)})",
+                        f"{m_ident}({', '.join(internal_args)})",
                         ret_type is OK_TYPE,
                     )
                 )
+                lines.append(f"static Q_UNUSED QClosure {m_ident}_closure = {{ (void *){tramp_name}, NULL }};")
                 lines.append("")
 
         self.module_fun_adapters[mod.name] = {k: v[0] for k, v in fun_adapters.items()}
