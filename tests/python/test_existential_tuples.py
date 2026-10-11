@@ -9,19 +9,11 @@ from quest.ast import (
 )
 from quest.elaborate_types import elaborate_type
 from quest.env import Environment
-from quest.interpreter import RuntimeEnvironment
-from quest.pipeline import CompilerContext
-from quest.runtime import QClosure, QInt, QTuple, QTypeValue
-from quest.diagnostics import QuestTypeError
 from quest.types import (
-    unalias,
     INT_TYPE,
-    OK_TYPE,
-    STRING_TYPE,
     TYPE_KIND,
     KindError,
     QFunType,
-    QPowerKind,
     QTupleField,
     QTupleType,
     QTupleTypeBinding,
@@ -32,7 +24,6 @@ from quest.types import (
 from tests.python.helpers import (
     assert_pipeline_success,
     elaborate_test_type,
-    run_pipeline,
 )
 
 
@@ -203,57 +194,6 @@ class TestExistentialTuplesPhase2(unittest.TestCase):
         sup_tup = elaborate_test_type("Tuple A::TYPE a:A end", self.env)
 
         self.assertTrue(is_subtype(manifest_sub, sup_tup, self.env))
-
-
-class TestExistentialTuplesPhase3(unittest.TestCase):
-    """Verifies Phase 3: existential tuple packing, witness checking, and execution."""
-
-    def setUp(self) -> None:
-        self.env = Environment()
-        self.runtime_env = RuntimeEnvironment.create_root_env()
-
-    def run_source(self, source: str) -> CompilerContext:
-        return assert_pipeline_success(source, env=self.env, runtime_env=self.runtime_env)
-
-    def test_cardelli_existential_tuple_packing_and_execution(self) -> None:
-        """Cardelli §5.3: Packing existential tuple with witness and value fields."""
-        source = """
-        Let T = Tuple A::TYPE a:A f(x:A):Int end;
-        let t1: T = tuple Let A::TYPE = Int let a:A = 0 let f(x:A):Int = x+1 end;
-        """
-        ctx = self.run_source(source)
-        self.assertIn("t1", ctx.env.current_scope.values)
-        t1_val = ctx.runtime_env.lookup("t1")
-        self.assertIsInstance(t1_val, QTuple)
-        self.assertEqual(len(t1_val.elements), 3)
-        self.assertEqual(t1_val.labels, ("A", "a", "f"))
-        self.assertEqual(t1_val.get_by_name("A"), QTypeValue(INT_TYPE, name="A"))
-        self.assertEqual(t1_val.get_by_name("a"), QInt(0))
-        self.assertIsInstance(t1_val.get_by_name("f"), QClosure)
-
-    def test_unannotated_tuple_synthesis_and_coercion(self) -> None:
-        """Unannotated tuple synthesizes transparent tuple type which coerces to existential."""
-        source = """
-        Let T = Tuple A::TYPE a:A end;
-        let t = tuple Let A::TYPE = Int let a:A = 42 end;
-        let t1: T = t;
-        """
-        ctx = self.run_source(source)
-        t_sym = ctx.env.current_scope.lookup_value("t")
-        self.assertIsNotNone(t_sym)
-        t_type = t_sym.type_val
-        self.assertIsInstance(t_type, QTupleType)
-        self.assertFalse(t_type.is_existential)
-        self.assertEqual(len(t_type.fields), 2)
-        self.assertIsInstance(t_type.fields[0], QTupleTypeBinding)
-        self.assertEqual(t_type.fields[0].name, "A")
-        self.assertEqual(t_type.fields[0].type_val, INT_TYPE)
-
-        t1_sym = ctx.env.current_scope.lookup_value("t1")
-        self.assertIsNotNone(t1_sym)
-        t1_type = unalias(t1_sym.type_val)  # declared as `t1: T`, a reference to the alias T
-        self.assertIsInstance(t1_type, QTupleType)
-        self.assertTrue(t1_type.is_existential)
 
 
 if __name__ == "__main__":

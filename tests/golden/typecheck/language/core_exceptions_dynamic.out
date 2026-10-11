@@ -69,6 +69,82 @@
             :body (TypedInt 10 :type Int))
         )
         :else (TypedInt 20 :type Int)))
+    (TypedExprStmt
+      :expr (TypedException 'Fail' :type Exception(String)))
+    (TypedLetValue 'checked' :type Int
+      :value (TypedTry :type Int
+        :body (TypedIf :type Int
+          :cond (TypedBool true)
+          :then (TypedRaise :type Int
+            :exc (TypedVar 'E' :type Exception))
+          :else (TypedInt 42 :type Int))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'E' :type Exception)
+            :body (TypedInt 7 :type Int))
+        )))
+    (TypedLetValue 'asReal' :type Real
+      :value (TypedTry :type Real
+        :body (TypedRaise :type Real
+          :exc (TypedVar 'E' :type Exception))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'E' :type Exception)
+            :body (TypedReal 2.5 :type Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedTry :type Ok
+        :body (TypedRaise :type Ok
+          :exc (TypedVar 'E' :type Exception))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'E' :type Exception)
+            :body (TypedOk))
+        )))
+    (TypedLetValue 'classify' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedTry :type Int
+          :body (TypedIf :type Int
+            :cond (TypedInfix 'is' :type Bool
+              :left (TypedVar 'n' :type Int)
+              :right (TypedInt 0 :type Int))
+            :then (TypedRaise :type Int
+              :exc (TypedVar 'E' :type Exception))
+            :else (TypedIf :type Int
+              :cond (TypedInfix 'is' :type Bool
+                :left (TypedVar 'n' :type Int)
+                :right (TypedInt 1 :type Int))
+              :then (TypedRaise :type Int
+                :exc (TypedVar 'Fail' :type Exception(String))
+                :payload (TypedString 'one' :type String))
+              :else (TypedInt 100 :type Int)))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'E' :type Exception)
+              :body (TypedInt 0 :type Int))
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'Fail' :type Exception(String))
+              :body (TypedInt 1 :type Int))
+          )
+          :else (TypedInt 2 :type Int))))
+    (TypedExprStmt
+      :expr (TypedInfix '+' :type Int
+        :left (TypedApp :type Int
+          :func (TypedVar 'classify' :type Fun(n: Int): Int)
+          :args (
+            (TypedInt 0 :type Int)
+          ))
+        :right (TypedInfix '+' :type Int
+          :left (TypedApp :type Int
+            :func (TypedVar 'classify' :type Fun(n: Int): Int)
+            :args (
+              (TypedInt 1 :type Int)
+            ))
+          :right (TypedApp :type Int
+            :func (TypedVar 'classify' :type Fun(n: Int): Int)
+            :args (
+              (TypedInt 2 :type Int)
+            )))))
     (TypedLetValue 'zero' :type Int
       :value (TypedInt 0 :type Int))
     (TypedExprStmt
@@ -120,4 +196,22 @@
             :body (TypedInt 2 :type Int))
         )
         :else (TypedInt 3 :type Int)))
+    (TypedLetValue 'explicit' :type T
+      :value (TypedApp :type T
+        :func (TypedTypeApp [Int] :type Fun(a: Int): T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedInt 42 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedInspect :type Int
+        :target (TypedVar 'explicit' :type T)
+        :branches (
+          (TypedInspectBranch match=Int
+            :body (TypedSelect 'a' :type Int
+              :target (TypedVar 'n' :type Tuple a: Int end)))
+          (TypedInspectBranch match=String
+            :body (TypedInt 0 :type Int))
+        )))
   ))

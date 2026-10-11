@@ -37,6 +37,25 @@ else
     20
 end;
 
+(* raise diverges, so it fits any expected type; without one it has type Ok, or the type named after as *)
+exception Fail: String end;
+let checked: Int = try if true then raise E end else 42 end when E then 7 end;
+let asReal = try raise E as Real end when E then 2.5 end;
+try raise E end when E then ok end;
+
+(* A handler binding a String payload, next to one without a payload *)
+let classify(n: Int): Int =
+    try
+        if n is 0 then raise E end elsif n is 1 then raise Fail with "one" end else 100 end
+    when E then
+        0
+    when Fail with msg then
+        1
+    else
+        2
+    end;
+classify(0) + classify(1) + classify(2);
+
 (* Integer division by zero raises int.error *)
 let zero = 0;
 try
@@ -58,4 +77,11 @@ inspect s
     when Int with n then 1
     when String with str then 2
     else 3
+end;
+
+(* dynamic.new infers its type argument or takes it explicitly; inspect needs no else *)
+let explicit = dynamic.new(:Int 42);
+inspect explicit
+    when Int with n then n.a
+    when String with str then 0
 end

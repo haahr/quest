@@ -14,6 +14,15 @@
           :target (TypedVar 'p' :type Record x: Int y: Int end))
         :right (TypedSelect 'y' :type Int
           :target (TypedVar 'p' :type Record x: Int y: Int end))))
+    (TypedExprStmt
+      :expr (TypedSelect 'x' :type Int
+        :target (TypedRecord :type Record x: Int y: Int end
+          :fields (
+            (TypedRecordField 'x'
+              :value (TypedInt 10 :type Int))
+            (TypedRecordField 'y'
+              :value (TypedInt 20 :type Int))
+          ))))
     (TypedLetValue 'r' :type Record var count: Int end
       :value (TypedRecord :type Record var count: Int end
         :fields (
@@ -65,6 +74,27 @@
     (TypedExprStmt
       :expr (TypedSelect 'count' :type Int
         :target (TypedVar 'mt' :type Tuple var count: Int name: String end)))
+    (TypedExprStmt
+      :expr (TypedSelect 'intensity' :type Int
+        :target (TypedTuple :type Tuple intensity: Int end
+          :elements (
+            (TypedInt 100 :type Int)
+          ))))
+    (TypedLetValue 'mx' :type Tuple var x: Int end
+      :value (TypedTuple :type Tuple var x: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'x' :type Int
+          :target (TypedVar 'mx' :type Tuple var x: Int end))
+        :value (TypedInt 7 :type Int)))
+    (TypedLetValue 'ix' :type Tuple x: Int end
+      :value (TypedVar 'mx' :type Tuple var x: Int end))
+    (TypedExprStmt
+      :expr (TypedSelect 'x' :type Int
+        :target (TypedVar 'ix' :type Tuple x: Int end)))
     (TypedLetValue 'a' :type Array(Int)
       :value (TypedArray :type Array(Int)
         :elements (
@@ -101,6 +131,16 @@
         :right (TypedIndex :type Int
           :target (TypedVar 'rep' :type Array(Int))
           :index (TypedInt 4 :type Int))))
+    (TypedLetValue 'none' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements ()))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+          :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+        :args (
+          (TypedVar 'none' :type Array(Int))
+        )))
     (TypedLetType 'Color' :kind TYPE)
     (TypedLetValue 'code' :type Fun(c: Color): Int
       :value (TypedFun :params (('c' : Color)) :type Fun(c: Color): Int
@@ -145,6 +185,31 @@
           ))
         :right (TypedApp :type Int
           :func (TypedVar 'code' :type Fun(c: Color): Int)
+          :args (
+            (TypedVar 'c2' :type Color)
+          ))))
+    (TypedLetValue 'shade' :type Fun(c: Color): Int
+      :value (TypedFun :params (('c' : Color)) :type Fun(c: Color): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'c' :type Color)
+          :branches (
+            (TypedCaseBranch tags=(red)
+              :body (TypedInt 1 :type Int))
+            (TypedCaseBranch tags=(green)
+              :body (TypedInt 2 :type Int))
+            (TypedCaseBranch tags=(blue) :binder 'b'
+              :body (TypedSelect 'intensity' :type Int
+                :target (TypedVar 'b' :type Tuple intensity: Int end)))
+          ))))
+    (TypedExprStmt
+      :expr (TypedInfix '+' :type Int
+        :left (TypedApp :type Int
+          :func (TypedVar 'shade' :type Fun(c: Color): Int)
+          :args (
+            (TypedOption 'green' :type Color)
+          ))
+        :right (TypedApp :type Int
+          :func (TypedVar 'shade' :type Fun(c: Color): Int)
           :args (
             (TypedVar 'c2' :type Color)
           ))))

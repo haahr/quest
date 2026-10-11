@@ -127,6 +127,134 @@
         :else_branch (ExprInt 20 '20')
       )
     )
+    (ExprStmt
+      :expr (ExprException
+        :name 'Fail'
+        :type_annot (TypePath ('String'))
+      )
+    )
+    (LetValueBinding
+      :name 'checked'
+      :value (ExprTry
+        :body (ExprIf
+          :cond (ExprBool True)
+          :then_branch (ExprRaise
+            :exc (ExprId 'E')
+          )
+          :else_branch (ExprInt 42 '42')
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'E')
+            :body (ExprInt 7 '7')
+          )
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'asReal'
+      :value (ExprTry
+        :body (ExprRaise
+          :exc (ExprId 'E')
+          :as_type (TypePath ('Real'))
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'E')
+            :body (ExprReal 2.5 '2.5')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprTry
+        :body (ExprRaise
+          :exc (ExprId 'E')
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'E')
+            :body (ExprOk)
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'classify'
+      :value (ExprTry
+        :body (ExprIf
+          :cond (ExprInfix
+            :left (ExprId 'n')
+            :op 'is'
+            :right (ExprInt 0 '0')
+          )
+          :then_branch (ExprRaise
+            :exc (ExprId 'E')
+          )
+          :elsifs (
+            (
+              (ExprInfix
+                :left (ExprId 'n')
+                :op 'is'
+                :right (ExprInt 1 '1')
+              )
+              (ExprRaise
+                :exc (ExprId 'Fail')
+                :payload (ExprString 'one' '"one"')
+              )
+            )
+          )
+          :else_branch (ExprInt 100 '100')
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'E')
+            :body (ExprInt 0 '0')
+          )
+          (TryBranch
+            :exc_pattern (ExprId 'Fail')
+            :binder 'msg'
+            :body (ExprInt 1 '1')
+          )
+        )
+        :else_branch (ExprInt 2 '2')
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprApp
+          :func (ExprId 'classify')
+          :args (
+            (ExprInt 0 '0')
+          )
+        )
+        :op '+'
+        :right (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'classify')
+            :args (
+              (ExprInt 1 '1')
+            )
+          )
+          :op '+'
+          :right (ExprApp
+            :func (ExprId 'classify')
+            :args (
+              (ExprInt 2 '2')
+            )
+          )
+        )
+      )
+    )
     (LetValueBinding
       :name 'zero'
       :value (ExprInt 0 '0')
@@ -216,6 +344,45 @@
           )
         )
         :else_branch (ExprInt 3 '3')
+      )
+    )
+    (LetValueBinding
+      :name 'explicit'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+          (ExprInt 42 '42')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInspect
+        :target (ExprId 'explicit')
+        :branches (
+          (InspectBranch
+            :match_type (TypePath ('Int'))
+            :binders (
+              ('n' None)
+            )
+            :body (ExprSelect
+              :target (ExprId 'n')
+              :field 'a'
+            )
+          )
+          (InspectBranch
+            :match_type (TypePath ('String'))
+            :binders (
+              ('str' None)
+            )
+            :body (ExprInt 0 '0')
+          )
+        )
       )
     )
   )

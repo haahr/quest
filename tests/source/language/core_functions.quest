@@ -1,0 +1,46 @@
+(* Functions: lambdas with and without a declared result type, application with one and several arguments, var and
+   out parameters passed with @, polymorphic functions applied with inferred type arguments, and local recursion.
+   Arguments violating a parameter mode are error tests (tests/errors/typecheck/functions). *)
+(* @echo *)
+
+(* Lambdas: the result type is declared or inferred from the body *)
+let succ = fun(x: Int): Int x + 1;
+let succInferred = fun(x: Int) x + 1;
+succ(41);
+succInferred(41);
+
+(* Several arguments of different types *)
+let scale = fun(a: Int b: Real): Real b ** 2.0;
+scale(10 2.5);
+
+(* A var parameter is passed a mutable variable with @ *)
+let inc(var count: Int): Ok = count := count + 1;
+let var c = 5;
+inc(@c);
+c;
+
+(* An out parameter may write a subtype into the location it is passed *)
+Let Animal = Record name: String end;
+Let Dog = Record name: String breed: String end;
+let getDog(out d: Dog): Ok = d := record name = "Rex" breed = "collie" end;
+let var pet: Animal = record name = "cat" end;
+getDog(@pet);
+pet.name;
+let viaClosure(): String = begin
+    let getter = getDog;
+    let var local: Animal = record name = "cat" end;
+    getter(@local);
+    local.name
+end;
+viaClosure();
+
+(* A polymorphic function's type argument is inferred from its argument *)
+let id(X::TYPE x: X): X = x;
+id(42);
+id("hello");
+
+(* A recursive function local to a block *)
+begin
+    let rec factorial(n: Int): Int = if n is 0 then 1 else n * factorial(n - 1) end;
+    factorial(5)
+end

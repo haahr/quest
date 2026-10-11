@@ -237,6 +237,20 @@ class TestCompilerExceptionIntegration(unittest.TestCase):
                 f"{exc_cls.__name__} should inherit from QuestCompilerError",
             )
 
+    def test_error_formatting_with_source(self):
+        source = "let x: Int = true;"
+        sm = SourceMap(source, "test.quest")
+        type_err = QuestTypeError("Type mismatch: expected Int, got Bool", offset=13)
+        formatted = type_err.format_with_source(sm, length=4)
+        self.assertIn("test.quest:1:14: error: Type mismatch", formatted)
+        self.assertIn("let x: Int = true;", formatted)
+        self.assertIn("^^^^", formatted)
+
+        kind_err = KindError("Kind mismatch", offset=4)
+        kind_formatted = kind_err.format_with_source(sm, length=1)
+        self.assertIn("test.quest:1:5: error: Kind mismatch", kind_formatted)
+        self.assertIn("^", kind_formatted)
+
 
 if __name__ == "__main__":
     unittest.main()

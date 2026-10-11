@@ -1,0 +1,360 @@
+(Program
+  :phrases (
+    (LetValueBinding
+      :name 'succ'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('Int'))
+        :body (ExprInfix
+          :left (ExprId 'x')
+          :op '+'
+          :right (ExprInt 1 '1')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'succInferred'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+        :body (ExprInfix
+          :left (ExprId 'x')
+          :op '+'
+          :right (ExprInt 1 '1')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'succ')
+        :args (
+          (ExprInt 41 '41')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'succInferred')
+        :args (
+          (ExprInt 41 '41')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'scale'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'a'
+            :type_annot (TypePath ('Int'))
+            :mode VALUE
+          )
+          (FormalParam
+            :name 'b'
+            :type_annot (TypePath ('Real'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('Real'))
+        :body (ExprInfix
+          :left (ExprId 'b')
+          :op '**'
+          :right (ExprReal 2.0 '2.0')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'scale')
+        :args (
+          (ExprInt 10 '10')
+          (ExprReal 2.5 '2.5')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'inc'
+      :value (ExprInfix
+        :left (ExprId 'count')
+        :op ':='
+        :right (ExprInfix
+          :left (ExprId 'count')
+          :op '+'
+          :right (ExprInt 1 '1')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'count'
+          :type_annot (TypePath ('Int'))
+          :mode VAR
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'c'
+      :value (ExprInt 5 '5')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'inc')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'c')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprId 'c')
+    )
+    (TypeBinding
+      :name 'Animal'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'name'
+            :type_sig (TypePath ('String'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Dog'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'name'
+            :type_sig (TypePath ('String'))
+          )
+          (RecordFieldSig
+            :name 'breed'
+            :type_sig (TypePath ('String'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'getDog'
+      :value (ExprInfix
+        :left (ExprId 'd')
+        :op ':='
+        :right (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'name'
+              :value (ExprString 'Rex' '"Rex"')
+            )
+            (RecordBinding
+              :name 'breed'
+              :value (ExprString 'collie' '"collie"')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'd'
+          :type_annot (TypePath ('Dog'))
+          :mode OUT
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'pet'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'name'
+            :value (ExprString 'cat' '"cat"')
+          )
+        )
+      )
+      :type_annot (TypePath ('Animal'))
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'getDog')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'pet')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprSelect
+        :target (ExprId 'pet')
+        :field 'name'
+      )
+    )
+    (LetValueBinding
+      :name 'viaClosure'
+      :value (ExprFun
+        :return_type (TypePath ('String'))
+        :body (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 'getter'
+              :value (ExprId 'getDog')
+            )
+            (LetValueBinding
+              :name 'local'
+              :value (ExprRecord
+                :fields (
+                  (RecordBinding
+                    :name 'name'
+                    :value (ExprString 'cat' '"cat"')
+                  )
+                )
+              )
+              :type_annot (TypePath ('Animal'))
+              :is_var True
+            )
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'getter')
+                :args (
+                  (ExprDerefCell
+                    :target (ExprId 'local')
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprSelect
+                :target (ExprId 'local')
+                :field 'name'
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :result_type (TypePath ('String'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'viaClosure')
+      )
+    )
+    (LetValueBinding
+      :name 'id'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('X'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('X'))
+        :body (ExprId 'x')
+        :type_params (
+          (TypeFormal
+            :name 'X'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'X'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('X'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('X'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'id')
+        :args (
+          (ExprInt 42 '42')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'id')
+        :args (
+          (ExprString 'hello' '"hello"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'factorial'
+            :value (ExprIf
+              :cond (ExprInfix
+                :left (ExprId 'n')
+                :op 'is'
+                :right (ExprInt 0 '0')
+              )
+              :then_branch (ExprInt 1 '1')
+              :else_branch (ExprInfix
+                :left (ExprId 'n')
+                :op '*'
+                :right (ExprApp
+                  :func (ExprId 'factorial')
+                  :args (
+                    (ExprInfix
+                      :left (ExprId 'n')
+                      :op '-'
+                      :right (ExprInt 1 '1')
+                    )
+                  )
+                )
+              )
+            )
+            :params (
+              (FormalParam
+                :name 'n'
+                :type_annot (TypePath ('Int'))
+                :mode VALUE
+              )
+            )
+            :type_annot (TypePath ('Int'))
+            :is_rec True
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprId 'factorial')
+              :args (
+                (ExprInt 5 '5')
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

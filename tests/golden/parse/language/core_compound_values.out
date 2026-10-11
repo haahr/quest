@@ -28,6 +28,23 @@
         )
       )
     )
+    (ExprStmt
+      :expr (ExprSelect
+        :target (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'x'
+              :value (ExprInt 10 '10')
+            )
+            (RecordBinding
+              :name 'y'
+              :value (ExprInt 20 '20')
+            )
+          )
+        )
+        :field 'x'
+      )
+    )
     (LetValueBinding
       :name 'r'
       :value (ExprRecord
@@ -140,6 +157,69 @@
         :field 'count'
       )
     )
+    (ExprStmt
+      :expr (ExprSelect
+        :target (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'intensity'
+              :value (ExprInt 100 '100')
+            )
+          )
+        )
+        :field 'intensity'
+      )
+    )
+    (LetValueBinding
+      :name 'mx'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'x'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+        )
+      )
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'x'
+            :type_sig (TypePath ('Int'))
+            :mode VAR
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprSelect
+          :target (ExprId 'mx')
+          :field 'x'
+        )
+        :op ':='
+        :right (ExprInt 7 '7')
+      )
+    )
+    (LetValueBinding
+      :name 'ix'
+      :value (ExprId 'mx')
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'x'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprSelect
+        :target (ExprId 'ix')
+        :field 'x'
+      )
+    )
     (LetValueBinding
       :name 'a'
       :value (ExprArray
@@ -197,6 +277,21 @@
         :right (ExprIndex
           :target (ExprId 'rep')
           :index (ExprInt 4 '4')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'none'
+      :value (ExprArray ())
+      :type_annot (TypeArray
+        :element_type (TypePath ('Int'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'extent')
+        :args (
+          (ExprId 'none')
         )
       )
     )
@@ -310,6 +405,67 @@
         :op '+'
         :right (ExprApp
           :func (ExprId 'code')
+          :args (
+            (ExprId 'c2')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'shade'
+      :value (ExprCase
+        :target (ExprId 'c')
+        :branches (
+          (CaseBranch
+            :tags ('red')
+            :body (ExprInt 1 '1')
+          )
+          (CaseBranch
+            :tags ('green')
+            :body (ExprInt 2 '2')
+          )
+          (CaseBranch
+            :tags ('blue')
+            :binder 'b'
+            :binder_type (TypeTuple
+              :fields (
+                (FieldSig
+                  :name 'intensity'
+                  :type_sig (TypePath ('Int'))
+                  :mode VALUE
+                )
+              )
+            )
+            :body (ExprSelect
+              :target (ExprId 'b')
+              :field 'intensity'
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'c'
+          :type_annot (TypePath ('Color'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprApp
+          :func (ExprId 'shade')
+          :args (
+            (ExprOption
+              :tag 'green'
+              :option_type (TypePath ('Color'))
+            )
+          )
+        )
+        :op '+'
+        :right (ExprApp
+          :func (ExprId 'shade')
           :args (
             (ExprId 'c2')
           )

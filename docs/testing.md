@@ -13,10 +13,12 @@ The compiler test suite is organized into three complementary testing tiers:
    - Fine-grained unit tests written in Python using `unittest`.
    - Verifies individual compiler modules, functions, algorithms, and data structures:
      - `test_types_and_env.py`: Scopes, symbol tables, kind well-formedness, subkinding.
-     - `test_typechecker.py`: Term elaboration, bidirectional typing (`check_expr` / `synth_expr`), contractiveness.
      - `test_diagnostics.py`: Structured diagnostics, `DiagnosticSink`, severities, formatters.
      - `test_typed_ast.py`: Typed AST node constructors, S-expression serialization.
-     - `test_phase3_functions.py` through `test_phase6_modules_interfaces.py`: High-level feature-specific tests.
+     - `test_phase3_functions.py`, `test_phase5_exceptions_dynamic.py`, `test_phase6_modules_interfaces.py`: Typing that
+       source text cannot express, and module and interface scopes.
+   - What a program's source can show, such as the type an expression synthesizes or that a program is rejected, is a
+     golden or error test instead (sections 2 and 3).
    - Run via:
      ```bash
      PYTHONPATH=bootstrap/python python3 -m unittest discover -s tests/python

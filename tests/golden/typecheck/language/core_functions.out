@@ -1,0 +1,153 @@
+(TypedProgram
+  :phrases (
+    (TypedLetValue 'succ' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedInfix '+' :type Int
+          :left (TypedVar 'x' :type Int)
+          :right (TypedInt 1 :type Int))))
+    (TypedLetValue 'succInferred' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedInfix '+' :type Int
+          :left (TypedVar 'x' :type Int)
+          :right (TypedInt 1 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'succ' :type Fun(x: Int): Int)
+        :args (
+          (TypedInt 41 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'succInferred' :type Fun(x: Int): Int)
+        :args (
+          (TypedInt 41 :type Int)
+        )))
+    (TypedLetValue 'scale' :type Fun(a: Int b: Real): Real
+      :value (TypedFun :params (('a' : Int) ('b' : Real)) :type Fun(a: Int b: Real): Real
+        :body (TypedInfix '**' :type Real
+          :left (TypedVar 'b' :type Real)
+          :right (TypedReal 2.0 :type Real))))
+    (TypedExprStmt
+      :expr (TypedApp :type Real
+        :func (TypedVar 'scale' :type Fun(a: Int b: Real): Real)
+        :args (
+          (TypedInt 10 :type Int)
+          (TypedReal 2.5 :type Real)
+        )))
+    (TypedLetValue 'inc' :type Fun(var count: Int): Ok
+      :value (TypedFun :params (('count' : Int)) :type Fun(var count: Int): Ok
+        :body (TypedAssign
+          :target (TypedVar 'count' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'count' :type Var(Int)))
+            :right (TypedInt 1 :type Int)))))
+    (TypedLetValue 'c' :type Int
+      :value (TypedInt 5 :type Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'inc' :type Fun(var count: Int): Ok)
+        :args (
+          (TypedVar 'c' :type Var(Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedDerefCell :type Int
+        :target (TypedVar 'c' :type Var(Int))))
+    (TypedLetType 'Animal' :kind TYPE)
+    (TypedLetType 'Dog' :kind TYPE)
+    (TypedLetValue 'getDog' :type Fun(out d: Dog): Ok
+      :value (TypedFun :params (('d' : Dog)) :type Fun(out d: Dog): Ok
+        :body (TypedAssign
+          :target (TypedVar 'd' :type Var(Dog))
+          :value (TypedRecord :type Record name: String breed: String end
+            :fields (
+              (TypedRecordField 'name'
+                :value (TypedString 'Rex' :type String))
+              (TypedRecordField 'breed'
+                :value (TypedString 'collie' :type String))
+            )))))
+    (TypedLetValue 'pet' :type Animal
+      :value (TypedRecord :type Record name: String end
+        :fields (
+          (TypedRecordField 'name'
+            :value (TypedString 'cat' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'getDog' :type Fun(out d: Dog): Ok)
+        :args (
+          (TypedVar 'pet' :type Var(Animal))
+        )))
+    (TypedExprStmt
+      :expr (TypedSelect 'name' :type String
+        :target (TypedDerefCell :type Animal
+          :target (TypedVar 'pet' :type Var(Animal)))))
+    (TypedLetValue 'viaClosure' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'getter' :type Fun(out d: Dog): Ok
+              :value (TypedVar 'getDog' :type Fun(out d: Dog): Ok))
+            (TypedLetValue 'local' :type Animal
+              :value (TypedRecord :type Record name: String end
+                :fields (
+                  (TypedRecordField 'name'
+                    :value (TypedString 'cat' :type String))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'getter' :type Fun(out d: Dog): Ok)
+                :args (
+                  (TypedVar 'local' :type Var(Animal))
+                )))
+          )
+          :result (TypedSelect 'name' :type String
+            :target (TypedDerefCell :type Animal
+              :target (TypedVar 'local' :type Var(Animal)))))))
+    (TypedExprStmt
+      :expr (TypedApp :type String
+        :func (TypedVar 'viaClosure' :type Fun(): String)
+        :args ()))
+    (TypedLetValue 'id' :type All(X :: TYPE) Fun(x: X): X
+      :value (TypedFun :params (('x' : X)) :type All(X :: TYPE) Fun(x: X): X
+        :body (TypedVar 'x' :type X)))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedTypeApp [Int] :type Fun(x: Int): Int
+          :func (TypedVar 'id' :type All(X :: TYPE) Fun(x: X): X))
+        :args (
+          (TypedInt 42 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type String
+        :func (TypedTypeApp [String] :type Fun(x: String): String
+          :func (TypedVar 'id' :type All(X :: TYPE) Fun(x: X): X))
+        :args (
+          (TypedString 'hello' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedBlock :type Int
+        :bindings (
+          (TypedLetValue 'factorial' :rec :type Fun(n: Int): Int
+            :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+              :body (TypedIf :type Int
+                :cond (TypedInfix 'is' :type Bool
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 0 :type Int))
+                :then (TypedInt 1 :type Int)
+                :else (TypedInfix '*' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedApp :type Int
+                    :func (TypedVar 'factorial' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 1 :type Int))
+                    ))))))
+        )
+        :result (TypedApp :type Int
+          :func (TypedVar 'factorial' :type Fun(n: Int): Int)
+          :args (
+            (TypedInt 5 :type Int)
+          ))))
+  ))
