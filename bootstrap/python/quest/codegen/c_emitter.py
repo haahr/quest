@@ -1269,6 +1269,23 @@ class CEmitter:
             fn_lines.append(f"return {coerced};")
         self.current_env_vars = saved_env
 
+    def _ref_arg_location(self, actual_a: TypedExpr, actual_c: str, lines: list[str]) -> str:
+        """Emits a pointer to the location a var or out argument names, returning the temporary holding it."""
+        if isinstance(actual_a, TypedVar):
+            c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
+            loc_ptr = c_name if actual_a.name in self.pointer_params else f"(&{c_name})"
+        elif isinstance(actual_a, TypedVarCell):
+            tmp = self.fresh_tmp("_var_cell")
+            c_t = self.c_type(actual_a.value.type_val)
+            c_v = self.emit_val(actual_a.value, lines)
+            lines.append(f"{c_t} {tmp} = {c_v};")
+            loc_ptr = f"(&{tmp})"
+        else:
+            loc_ptr = self.emit_val(actual_a, lines)
+        ptr_tmp = self.fresh_tmp("_loc_ptr")
+        lines.append(f"{actual_c} *{ptr_tmp} = {loc_ptr};")
+        return ptr_tmp
+
     def _emit_call_arg(
         self,
         formal_t: QType,
@@ -1300,22 +1317,7 @@ class CEmitter:
             actual_c = qtype_to_c_type(actual_elem_t, self.record_ctx)
 
             if formal_c == "QVal" and actual_c != "QVal" and writebacks is not None:
-                if isinstance(actual_a, TypedVar):
-                    c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
-                    loc_ptr = c_name if actual_a.name in self.pointer_params else f"(&{c_name})"
-                elif isinstance(actual_a, TypedVarCell):
-                    tmp = self.fresh_tmp("_var_cell")
-                    c_t = self.c_type(actual_a.value.type_val)
-                    c_v = self.emit_val(actual_a.value, lines)
-                    lines.append(f"{c_t} {tmp} = {c_v};")
-                    loc_ptr = f"(&{tmp})"
-                elif isinstance(actual_a, (TypedIndexRef, TypedTupleSelectRef, TypedSelectRef)):
-                    loc_ptr = self.emit_val(actual_a, lines)
-                else:
-                    loc_ptr = self.emit_val(actual_a, lines)
-
-                ptr_tmp = self.fresh_tmp("_loc_ptr")
-                lines.append(f"{actual_c} *{ptr_tmp} = {loc_ptr};")
+                ptr_tmp = self._ref_arg_location(actual_a, actual_c, lines)
 
                 shadow_tmp = self.fresh_tmp("_shadow_cell")
                 lines.append(f"QVal {shadow_tmp};")
@@ -1327,6 +1329,17 @@ class CEmitter:
                 unwrapped = _qval_unwrap(shadow_tmp, actual_elem_t, self)
                 writebacks.append(f"(*{ptr_tmp}) = {unwrapped};")
                 return f"(&{shadow_tmp})"
+
+            # An out argument's location may have a supertype of the parameter's type: the callee writes into a
+            # temporary of the parameter's type, which is converted to the location's type after the call
+            param_t = instantiated_t if instantiated_t is not None else formal_t
+            if is_out and writebacks is not None and not is_type_equal(param_t, actual_elem_t, self.env):
+                ptr_tmp = self._ref_arg_location(actual_a, actual_c, lines)
+                out_tmp = self.fresh_tmp("_out_arg")
+                lines.append(f"{formal_c} {out_tmp};")
+                converted = self._coerce_val(out_tmp, param_t, actual_elem_t, writebacks)
+                writebacks.append(f"(*{ptr_tmp}) = {converted};")
+                return f"(&{out_tmp})"
 
             if isinstance(actual_a, TypedVar):
                 c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
