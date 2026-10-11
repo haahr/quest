@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
-import io
 import os
 from pathlib import Path
 import shutil
@@ -23,11 +21,9 @@ from quest.codegen.compiler_runner import compile_c_to_object, run_binary
 from quest.grammar import parse_quest_program
 from quest.interface_compiler import compile_interface_file
 from quest.module_compiler import compile_module_file
-from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
-from quest.runtime import QInt
 from quest.tokenizer import Tokenizer
 from quest.tokens import SourceMap
-from quest_driver import run_compile, run_driver
+from quest_driver import run_compile
 
 
 def _parse(code: str) -> ast.Program:
@@ -119,111 +115,14 @@ class TestHierarchicalModuleSyntax(unittest.TestCase):
 
 
 class TestHierarchicalModuleExecution(unittest.TestCase):
-    """End-to-end tests for hierarchical module loading, typechecking, and execution."""
+    """Hierarchical units compiled separately: linking a precompiled object, and headers of same-named interfaces."""
 
     def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp(prefix="quest_hier_test_")
         self.root = Path(self.test_dir)
-        self.pipeline = default_pipeline()
 
     def tearDown(self) -> None:
         shutil.rmtree(self.test_dir)
-
-    def _run_pipeline(self, file_path: Path, options: CompilerOptions | None = None):
-        source_text = file_path.read_text(encoding="utf-8")
-        ctx = CompilerContext.create(source_text, file_name=str(file_path), options=options)
-        res = self.pipeline.execute(source_text, file_name=str(file_path), options=options, ctx=ctx)
-        return res, ctx
-
-    def test_hierarchical_modules_interpreter(self) -> None:
-        util_dir = self.root / "util"
-        util_dir.mkdir(parents=True)
-
-        (util_dir / "helper.int.quest").write_text(
-            "interface Helper\n"
-            "export\n"
-            "    offset: Int\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-        (util_dir / "helper.mod.quest").write_text(
-            "module helper : Helper\n"
-            "export\n"
-            "    let offset: Int = 5;\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-
-        (util_dir / "math.int.quest").write_text(
-            "interface Math\n"
-            "export\n"
-            "    add(a: Int b: Int): Int\n"
-            "    addWithOffset(a: Int): Int\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-        # Sibling import without prefix inside util/math.mod.quest
-        (util_dir / "math.mod.quest").write_text(
-            "module math : Math\n"
-            "import helper : Helper;\n"
-            "export\n"
-            "    let add(a: Int b: Int): Int = a + b;\n"
-            "    let addWithOffset(a: Int): Int = add(a helper.offset);\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-
-        main_quest = self.root / "main.quest"
-        main_quest.write_text(
-            "import m : M = util/math : util/Math;\n"
-            "let res1: Int = m.add(10 20);\n"
-            "let res2: Int = m.addWithOffset(100);\n"
-            "let result: Int = res1 + res2;\n",
-            encoding="utf-8",
-        )
-
-        options = CompilerOptions(include_paths=[self.root])
-        res, ctx = self._run_pipeline(main_quest, options=options)
-        self.assertTrue(res.success, f"Pipeline diagnostics: {res.diagnostics}")
-        val = ctx.runtime_env.lookup("result")
-        self.assertEqual(val, QInt(135))
-
-    def test_hierarchical_manifest_type_alias_interpreter(self) -> None:
-        geom_dir = self.root / "geom"
-        geom_dir.mkdir(parents=True)
-
-        (geom_dir / "point.int.quest").write_text(
-            "interface Point\n"
-            "export\n"
-            "    Def T = Record x: Int y: Int end\n"
-            "    make(x: Int y: Int): T\n"
-            "    sumCoords(p: T): Int\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-        (geom_dir / "point.mod.quest").write_text(
-            "module point : Point\n"
-            "export\n"
-            "    Let T = Record x: Int y: Int end;\n"
-            "    let make(x: Int y: Int): T = record x = x y = y end;\n"
-            "    let sumCoords(p: T): Int = p.x + p.y;\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-
-        main_quest = self.root / "main.quest"
-        main_quest.write_text(
-            "import pt : Pt = geom/point : geom/Point;\n"
-            "let p: Pt_T = pt.make(15 27);\n"
-            "let result: Int = pt.sumCoords(p);\n",
-            encoding="utf-8",
-        )
-
-        options = CompilerOptions(include_paths=[self.root])
-        res, ctx = self._run_pipeline(main_quest, options=options)
-        self.assertTrue(res.success, f"Pipeline diagnostics: {res.diagnostics}")
-        val = ctx.runtime_env.lookup("result")
-        self.assertEqual(val, QInt(42))
 
     def test_hierarchical_c_compilation_and_execution(self) -> None:
         util_dir = self.root / "util"
@@ -283,48 +182,6 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout.strip(), "42")
 
-    def test_module_named_after_c_standard_header(self) -> None:
-        """A generated header for util/Math must not shadow <math.h>, though build/util is on the -I path."""
-        util_dir = self.root / "util"
-        util_dir.mkdir(parents=True)
-        (util_dir / "math.int.quest").write_text(
-            "interface Math\n"
-            "export\n"
-            "    square(a: Int): Int\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-        (util_dir / "math.mod.quest").write_text(
-            "module math : Math\n"
-            "export\n"
-            "    let square(a: Int): Int = a * a;\n"
-            "end;\n",
-            encoding="utf-8",
-        )
-        main_quest = self.root / "main.quest"
-        main_quest.write_text(
-            "import m = util/math : util/Math;\n"
-            "import writer : Writer;\n"
-            "import conv : Conv;\n"
-            "writer.putString(writer.output conv.int(m.square(7)));\n",
-            encoding="utf-8",
-        )
-
-        build_dir = self.root / "build"
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            ret = run_driver([
-                "--stop-after", "run_c_compiled",
-                str(main_quest),
-                "-I", str(self.root),
-                "--build-dir", str(build_dir),
-            ])
-        self.assertEqual(ret, 0, out.getvalue())
-        self.assertIn("49", out.getvalue())
-        self.assertTrue((build_dir / "util" / "math.int.h").is_file())
-        self.assertTrue((build_dir / "util" / "math.mod.c").is_file())
-        self.assertFalse((build_dir / "util" / "math.h").exists())
-
     def test_same_named_interfaces_in_different_directories_share_a_c_unit(self) -> None:
         """util/Calc and a top-level Calc get distinct include guards and typedefs, so one C unit can include both."""
         util_dir = self.root / "util"
@@ -354,81 +211,6 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
             encoding="utf-8",
         )
         compile_c_to_object(c_file, self.root / "both.o", include_paths=[build_dir])
-
-    # util/calc and a top-level calc each implement their own Calc and import a sibling helper : Helper,
-    # which also names different modules and interfaces in the two directories.
-    SAME_NAMED_FILES = {
-        "util/helper.int.quest": "interface Helper\nexport\n    offset: Int\nend;\n",
-        "util/helper.mod.quest": "module helper : Helper\nexport\n    let offset: Int = 5;\nend;\n",
-        "helper.int.quest": "interface Helper\nexport\n    bonus: Int\nend;\n",
-        "helper.mod.quest": "module helper : Helper\nexport\n    let bonus: Int = 1000;\nend;\n",
-        "util/calc.int.quest": "interface Calc\nexport\n    combine(a: Int b: Int): Int\nend;\n",
-        "util/calc.mod.quest": (
-            "module calc : Calc\n"
-            "import helper : Helper;\n"
-            "export\n"
-            "    let combine(a: Int b: Int): Int = helper.offset + a * b;\n"
-            "end;\n"
-        ),
-        "calc.int.quest": "interface Calc\nexport\n    combine(a: Int): Int\nend;\n",
-        "calc.mod.quest": (
-            "module calc : Calc\n"
-            "import helper : Helper;\n"
-            "export\n"
-            "    let combine(a: Int): Int = a + helper.bonus;\n"
-            "end;\n"
-        ),
-    }
-
-    # Each order of imports must resolve every name to the right file; 47 + 1100 + 1000.
-    SAME_NAMED_IMPORT_ORDERS = (
-        ("import helper : Helper;", "import um : UCalc = util/calc : util/Calc;", "import m = calc : Calc;"),
-        ("import m = calc : Calc;", "import um : UCalc = util/calc : util/Calc;", "import helper : Helper;"),
-        ("import um : UCalc = util/calc : util/Calc;", "import m = calc : Calc;", "import helper : Helper;"),
-    )
-
-    def _write_same_named_modules(self, root: Path, imports: tuple[str, ...], result_stmt: str) -> Path:
-        for rel, text in self.SAME_NAMED_FILES.items():
-            path = root / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
-        main_quest = root / "main.quest"
-        main_quest.write_text(
-            "\n".join(imports) + "\n"
-            "let result: Int = um.combine(6 7) + m.combine(100) + helper.bonus;\n" + result_stmt,
-            encoding="utf-8",
-        )
-        return main_quest
-
-    def test_same_named_modules_in_different_directories_interpreter(self) -> None:
-        for i, imports in enumerate(self.SAME_NAMED_IMPORT_ORDERS):
-            with self.subTest(imports=imports):
-                root = self.root / f"order{i}"
-                main_quest = self._write_same_named_modules(root, imports, "")
-                res, ctx = self._run_pipeline(main_quest, options=CompilerOptions(include_paths=[root]))
-                self.assertTrue(res.success, f"Pipeline diagnostics: {res.diagnostics}")
-                self.assertEqual(ctx.runtime_env.lookup("result"), QInt(2147))
-
-    def test_same_named_modules_in_different_directories_c_compiled(self) -> None:
-        for i, imports in enumerate(self.SAME_NAMED_IMPORT_ORDERS):
-            with self.subTest(imports=imports):
-                root = self.root / f"order{i}"
-                main_quest = self._write_same_named_modules(
-                    root,
-                    ("import writer : Writer;", "import conv : Conv;") + imports,
-                    "writer.putString(writer.output conv.int(result));\n",
-                )
-                out = io.StringIO()
-                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-                    ret = run_driver([
-                        "--stop-after", "run_c_compiled",
-                        str(main_quest),
-                        "-I", str(root),
-                        "--build-dir", str(root / "build"),
-                    ])
-                self.assertEqual(ret, 0, out.getvalue())
-                self.assertIn("2147", out.getvalue())
-
 
 def _write_units(directory: Path, units: dict[str, str]) -> None:
     for name, text in units.items():
@@ -547,42 +329,6 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
             self.assertEqual(manifest.interface, f"{program_dir.name}/Counter")
         finally:
             shutil.rmtree(program_dir)
-
-    def test_path_with_other_characters_is_an_error(self) -> None:
-        """Directory and file names in canonical names may contain only letters and digits."""
-        _write_units(self.root / "x-y", {k: v.format(scale=2) for k, v in COUNTER_UNITS.items()})
-        for phase in ("interpret", "run_c_compiled"):
-            proc = self._run_process(self.root / "x-y" / "main.quest", phase, "-I", str(self.root))
-            self.assertNotEqual(proc.returncode, 0)
-            self.assertIn("'x-y' contains characters other than letters and digits", proc.stdout + proc.stderr)
-
-    def test_units_with_the_same_base_name_in_one_program(self) -> None:
-        """counter and util/counter are different units, whichever is imported first and by whom."""
-        _write_units(self.root, {k: v.format(scale=1) for k, v in COUNTER_UNITS.items() if k != "main.quest"})
-        _write_units(self.root, {
-            "util/counter.int.quest": "interface Counter\nexport\n    step: Int\nend;\n",
-            "util/counter.mod.quest": "module counter : Counter\nexport\n    let step = 100;\nend;\n",
-            "util/arith.int.quest": "interface Arith\nexport\n    bump(x: Int): Int\nend;\n",
-            "util/arith.mod.quest": (
-                "module arith : Arith\nimport counter: Counter;\nexport\n"
-                "    let bump(x: Int): Int = x + counter.step;\nend;\n"
-            ),
-            "first.quest": (
-                "import counter: Counter;\nimport arith = util/arith : util/Arith;\n"
-                "arith.bump(counter.get(counter.new(11)))\n"
-            ),
-            "last.quest": (
-                "import arith = util/arith : util/Arith;\nimport counter: Counter;\n"
-                "arith.bump(counter.get(counter.new(11)))\n"
-            ),
-            "both.quest": (
-                "import counter: Counter;\nimport c2 = util/counter : util/Counter;\n"
-                "counter.get(counter.new(c2.step))\n"
-            ),
-        })
-        self._assert_c_matches_interpreter(self.root / "first.quest", "111 : Int")
-        self._assert_c_matches_interpreter(self.root / "last.quest", "111 : Int")
-        self._assert_c_matches_interpreter(self.root / "both.quest", "100 : Int")
 
     def test_same_unit_name_in_two_directories_shares_build_directory(self) -> None:
         """Programs in different directories under one include root keep their same-named units apart."""

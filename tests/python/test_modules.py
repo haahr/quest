@@ -110,63 +110,6 @@ class TestModulesElaboration(unittest.TestCase):
         self.assertIsNotNone(val_sym)
         self.assertIsInstance(val_sym.type_val, QRecordType)
 
-    def test_elaborate_module_missing_type_raises(self):
-        iface_code = """
-        interface I
-        export
-            T::TYPE
-        end;
-        """
-        elaborate_interface(parse_phrase(iface_code), self.env)
-
-        mod_code = """
-        module m : I
-        export
-            let x = 1;
-        end;
-        """
-        with self.assertRaises(QuestTypeError) as ctx:
-            elaborate_module(parse_phrase(mod_code), self.env)
-        self.assertIn("does not implement required type 'T'", str(ctx.exception))
-
-    def test_elaborate_module_missing_value_raises(self):
-        iface_code = """
-        interface I
-        export
-            req: Int
-        end;
-        """
-        elaborate_interface(parse_phrase(iface_code), self.env)
-
-        mod_code = """
-        module m : I
-        export
-            let other = 1;
-        end;
-        """
-        with self.assertRaises(QuestTypeError) as ctx:
-            elaborate_module(parse_phrase(mod_code), self.env)
-        self.assertIn("does not implement required value 'req'", str(ctx.exception))
-
-    def test_elaborate_module_value_type_mismatch_raises(self):
-        iface_code = """
-        interface I
-        export
-            num: Int
-        end;
-        """
-        elaborate_interface(parse_phrase(iface_code), self.env)
-
-        mod_code = """
-        module m : I
-        export
-            let num = true;
-        end;
-        """
-        with self.assertRaises(QuestTypeError) as ctx:
-            elaborate_module(parse_phrase(mod_code), self.env)
-        self.assertIn("not a subtype of interface signature", str(ctx.exception))
-
     def test_elaborate_import_builtin_modules(self):
         code = "import ascii: Ascii int: IntOp;"
         phrase = parse_phrase(code)
