@@ -1,55 +1,61 @@
-(* Standard library: StringBuilder operations *)
+(* Standard library: StringBuilder operations, chained, across the native buffer's boundaries *)
 
 import util/stringBuilder : util/StringBuilder;
+import stringOp = string: StringOp;
 import word: Word;
 import writer: Writer;
 import conv: Conv;
 
 let wOut = writer.output;
+let line(s: String): Ok = begin writer.putString(wOut s); writer.putString(wOut "\n") end;
 
-let printInt(n: Int): Ok =
-    begin
-        writer.putString(wOut conv.int(n));
-        writer.putString(wOut " ");
-    end;
-
-let printString(s: String): Ok =
-    begin
-        writer.putString(wOut s);
-        writer.putString(wOut " ");
-    end;
-
-let printNewline(dummy: Int): Ok =
-    writer.putString(wOut "\n");
-
-(* 1. Basic new, append, length, toString *)
+(* 1. Every method, chained *)
 let b = stringBuilder.new();
-stringBuilder.append(b "Hello");
-stringBuilder.appendChar(b ' ');
-stringBuilder.append(b "World: ");
-stringBuilder.appendInt(b 42);
-stringBuilder.appendChar(b ' ');
-stringBuilder.appendBool(b true);
-stringBuilder.appendChar(b ' ');
-stringBuilder.appendWord(b word.fromInt(255));
-printInt(stringBuilder.length(b));
-printString(stringBuilder.toString(b));
-printNewline(0);
+b.str("Hello").char(' ').str("World: ").int(42).char(' ').int(~7).char(' ').bool(true).char(' ').bool(false);
+b.char(' ').real(2.5).char(' ').real(~0.0).char(' ').word(word.fromInt(255)).char(' ').word(word.fromInt(~1));
+b.char(' ').sub("abcdef" 2 3).char(' ').repeat('*' 3).sub("xyz" 3 0).repeat('-' 0).str("");
+line(b.toString());
+line(conv.int(b.length()));
 
-(* 2. Clear and reuse *)
-stringBuilder.clear(b);
-printInt(stringBuilder.length(b));
-printString(stringBuilder.toString(b));
-printNewline(0);
+(* 2. toString returns a copy: clearing and reusing the builder leaves earlier results unchanged *)
+let first = b.clear().str("first").toString();
+let second = b.clear().str("second").toString();
+line(first <> " " <> second <> " " <> conv.int(b.length()));
+line("[" <> b.clear().toString() <> "] " <> conv.int(b.length()));
 
-stringBuilder.append(b "Reused");
-printInt(stringBuilder.length(b));
-printString(stringBuilder.toString(b));
-printNewline(0);
+(* 3. Appended strings are copied, so changing one later does not change the result *)
+let short = stringOp.new(4 'a');
+let long = stringOp.new(300 'b');
+b.clear().str(short).str(long);
+stringOp.setChar(short 0 'X');
+stringOp.setChar(long 0 'Y');
+let copied = b.toString();
+line(stringOp.getSub(copied 0 6) <> " " <> conv.int(stringOp.length(copied)));
 
-(* 3. newWithCapacity *)
-let b2 = stringBuilder.newWithCapacity(32);
-stringBuilder.append(b2 "Capacity test");
-printInt(stringBuilder.length(b2));
-printString(stringBuilder.toString(b2));
-printNewline(0);
+(* 4. Many appends, crossing the working buffer and long-string chunks *)
+let big = stringBuilder.new();
+for i = 1 upto 1000 do
+    big.int(i).char(',');
+    if {i % 100} is 0 then
+        big.str(stringOp.new(400 'L')).repeat('r' 700);
+    end;
+end;
+let bigString = big.toString();
+line(conv.int(big.length()) <> " " <> conv.int(stringOp.length(bigString)));
+line(stringOp.getSub(bigString 0 20) <> " ... " <> stringOp.getSub(bigString {stringOp.length(bigString) - 12} 12));
+
+(* 5. Builders are independent *)
+let b1 = stringBuilder.new();
+let b2 = stringBuilder.new();
+b1.str("one");
+b2.str("two");
+b1.str("!");
+line(b1.toString() <> " " <> b2.toString());
+
+(* 6. sub and repeat raise string.error when out of range *)
+let tryIt(f: All() Ok): String = try f(); "ok" when stringOp.error then "string.error" end;
+line(tryIt(fun(): Ok begin b.sub("abc" 2 2); ok end));
+line(tryIt(fun(): Ok begin b.sub("abc" ~1 1); ok end));
+line(tryIt(fun(): Ok begin b.sub("abc" 0 ~1); ok end));
+line(tryIt(fun(): Ok begin b.repeat('x' ~1); ok end));
+line(tryIt(fun(): Ok begin b.sub("abc" 1 2); ok end));

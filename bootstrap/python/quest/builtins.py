@@ -55,6 +55,7 @@ from quest.runtime import (
     QReal,
     QRecord,
     QString,
+    QStringBuilder,
     QValue,
     QWord,
     QWriter,
@@ -1724,6 +1725,49 @@ class BuiltinModuleRegistry:
             "quest_hash_mix": _quest_hash_mix,
             "quest_hash_combine": _quest_hash_combine,
             "quest_identity_hash": _quest_identity_hash,
+        })
+
+        # StringBuilder native buffer (lib/util/stringbuilder.mod.quest; quest_sb_* in the C runtime)
+        def _sb_append(b: QStringBuilder, text: str) -> QOk:
+            b.append(text)
+            return OK_VALUE
+
+        @qchecked(STRING_ERROR_EXC, QStringBuilder, QString, QInt, QInt)
+        def _sb_append_sub(b: QStringBuilder, s: QString, start: QInt, size: QInt) -> QOk:
+            st, sz = start.value, size.value
+            if st < 0 or sz < 0 or st + sz > len(s.value):
+                raise QuestException(STRING_ERROR_EXC)
+            return _sb_append(b, s.value[st : st + sz])
+
+        @qchecked(STRING_ERROR_EXC, QStringBuilder, QChar, QInt)
+        def _sb_append_repeat(b: QStringBuilder, c: QChar, n: QInt) -> QOk:
+            if n.value < 0:
+                raise QuestException(STRING_ERROR_EXC)
+            return _sb_append(b, c.value * n.value)
+
+        def _sb_to_string(b: QStringBuilder) -> QString:
+            text = "".join(b.pieces)
+            b.pieces = [text] if text else []
+            return QString(text)
+
+        def _sb_clear(b: QStringBuilder) -> QOk:
+            b.pieces.clear()
+            b.length = 0
+            return OK_VALUE
+
+        cls._symbol_bridge.update({
+            "quest_sb_new": QStringBuilder,
+            "quest_sb_append_string": lambda b, s: _sb_append(b, s.value),
+            "quest_sb_append_char": lambda b, c: _sb_append(b, c.value),
+            "quest_sb_append_int": lambda b, n: _sb_append(b, _conv_int(n).value),
+            "quest_sb_append_real": lambda b, r: _sb_append(b, _conv_real(r).value),
+            "quest_sb_append_bool": lambda b, v: _sb_append(b, "true" if v.value else "false"),
+            "quest_sb_append_word": lambda b, w: _sb_append(b, str(w.value & 0xFFFF_FFFF_FFFF_FFFF)),
+            "quest_sb_append_sub": _sb_append_sub,
+            "quest_sb_append_repeat": _sb_append_repeat,
+            "quest_sb_clear": _sb_clear,
+            "quest_sb_length": lambda b: QInt(b.length),
+            "quest_sb_to_string": _sb_to_string,
         })
 
     @classmethod

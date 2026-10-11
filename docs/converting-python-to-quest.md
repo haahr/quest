@@ -67,9 +67,9 @@ maybe.T(A)      Option type with tags none, and some with val:A:
                 some(:A val)  none(:A)
                 error:Exception(Ok)        (* raised by unwrap on none *)
 
-stringBuilder.T new()  newWithCapacity(cap)  append(b s)  appendChar(b c)
-                appendInt(b n)  appendReal(b r)  appendBool(b val)  appendWord(b w)
-                length(b)  clear(b)  toString(b)
+stringBuilder.T new(), then chained methods of a builder b:
+                b.str(s)  b.char(c)  b.int(n)  b.real(r)  b.bool(v)  b.word(w)
+                b.sub(s start size)  b.repeat(c n)  b.clear()  b.length()  b.toString()
 ```
 
 `hashMap.new` and `hashSet.new` take an equality function `All(a,b:K) Bool` and a hash function `All(k:K) word.T`. Quest
@@ -131,9 +131,8 @@ When building strings inside loops or accumulating large outputs (such as code g
 
 ```quest
 let sb = stringBuilder.new();
-stringBuilder.append(sb "header\n");
-stringBuilder.appendInt(sb 42);
-let result = stringBuilder.toString(sb);
+sb.str("header\n").int(42).char('\n');
+let result = sb.toString();
 ```
 
 **7. Rename to Quest's case conventions.** Values and functions use lowerCamel (`word_count` becomes `wordCount`). Types

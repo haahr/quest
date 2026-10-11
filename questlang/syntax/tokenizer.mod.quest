@@ -445,10 +445,10 @@ export
                     begin
                         tok.cursor := tok.cursor + 1;
                         let escChar = lexEscapeSequence(tok start);
-                        stringBuilder.appendChar(sb escChar)
+                        sb.char(escChar)
                     end
                 else
-                    stringBuilder.appendChar(sb advanceChar(tok))
+                    sb.char(advanceChar(tok))
                 end
             end;
 
@@ -465,7 +465,7 @@ export
             tokens.make(
                 option stringLit of tokens.TokenKind end
                 stringOp.getSub(tok.text start { tok.cursor - start })
-                tokens.valString(stringBuilder.toString(sb))
+                tokens.valString(sb.toString())
                 location.span(tok.file start tok.cursor)
             )
         end;
@@ -692,26 +692,19 @@ export
                 case tok.kind
                     when eof then
                         begin
-                            stringBuilder.append(sb posStr);
-                            stringBuilder.append(sb "\tEOF");
+                            sb.str(posStr).str("\tEOF");
                             i := count (* Terminate *)
                         end
                     else
                         begin
-                            stringBuilder.append(sb posStr);
-                            stringBuilder.append(sb "\t");
-                            stringBuilder.append(sb tokens.tokenKindName(tok.kind));
-                            stringBuilder.append(sb "\t");
-                            stringBuilder.append(sb tok.lexeme);
+                            sb.str(posStr).str("\t").str(tokens.tokenKindName(tok.kind)).str("\t").str(tok.lexeme);
                             if { i + 1 } < count then
-                                stringBuilder.append(sb "\n")
-                            else
-                                ok
+                                sb.str("\n");
                             end;
                             i := i + 1
                         end
                 end
             end;
-            stringBuilder.toString(sb)
+            sb.toString()
         end;
 end;

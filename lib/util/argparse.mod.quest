@@ -10,7 +10,6 @@ import
     collections/hashMap : collections/HashMap
     stringOp = string : StringOp
     writer: Writer
-    conv: Conv
     ascii: Ascii
     word: Word
 export
@@ -188,86 +187,64 @@ export
     let formatHelp(p: Parser): String =
         begin
             let b = stringBuilder.new();
-            stringBuilder.append(b "Usage: ");
-            stringBuilder.append(b p.prog);
-            stringBuilder.append(b " [options]");
+            b.str("Usage: ").str(p.prog).str(" [options]");
             let posCount = vector.length(:PositionalDef p.positionals);
             for i = 0 upto {posCount - 1} do
                 let pos = vector.get(:PositionalDef p.positionals i);
-                stringBuilder.append(b " ");
-                stringBuilder.append(b pos.name);
+                b.str(" ").str(pos.name);
             end;
-            stringBuilder.appendChar(b '\n');
+            b.char('\n');
             if stringOp.length(p.description) > 0 then
-                stringBuilder.appendChar(b '\n');
-                stringBuilder.append(b p.description);
-                stringBuilder.appendChar(b '\n');
+                b.char('\n').str(p.description).char('\n');
             end;
 
             if posCount > 0 then
-                stringBuilder.append(b "\nPositional arguments:\n");
+                b.str("\nPositional arguments:\n");
                 for i = 0 upto {posCount - 1} do
                     let pos = vector.get(:PositionalDef p.positionals i);
-                    stringBuilder.append(b "  ");
-                    stringBuilder.append(b pos.name);
+                    b.str("  ").str(pos.name);
                     let pad = {24 - stringOp.length(pos.name)};
-                    if pad > 0 then
-                        for k = 1 upto pad do stringBuilder.appendChar(b ' '); end;
-                    else
-                        stringBuilder.append(b "  ");
-                    end;
-                    stringBuilder.append(b pos.help);
-                    stringBuilder.appendChar(b '\n');
+                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end;
+                    b.str(pos.help).char('\n');
                 end;
             end;
 
             let optCount = vector.length(:OptDef p.options);
             if optCount > 0 then
-                stringBuilder.append(b "\nOptions:\n");
+                b.str("\nOptions:\n");
                 for i = 0 upto {optCount - 1} do
                     let opt = vector.get(:OptDef p.options i);
-                    stringBuilder.append(b "  ");
-                    stringBuilder.append(b opt.flagsStr);
+                    b.str("  ").str(opt.flagsStr);
                     let pad = {24 - stringOp.length(opt.flagsStr)};
-                    if pad > 0 then
-                        for k = 1 upto pad do stringBuilder.appendChar(b ' '); end;
-                    else
-                        stringBuilder.append(b "  ");
-                    end;
-                    stringBuilder.append(b opt.help);
+                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end;
+                    b.str(opt.help);
                     case opt.kind
                         when choice with cd: Tuple choices: Array(String) defaultVal: String end then
-                            stringBuilder.append(b " (choices: ");
+                            b.str(" (choices: ");
                             let cNum = extent cd.choices;
                             for ci = 0 upto {cNum - 1} do
-                                if ci > 0 then stringBuilder.append(b ", "); end;
-                                stringBuilder.append(b cd.choices[ci]);
+                                if ci > 0 then b.str(", "); end;
+                                b.str(cd.choices[ci]);
                             end;
-                            stringBuilder.append(b ")");
+                            b.str(")");
                             if stringOp.length(cd.defaultVal) > 0 then
-                                stringBuilder.append(b " [default: ");
-                                stringBuilder.append(b cd.defaultVal);
-                                stringBuilder.append(b "]");
+                                b.str(" [default: ").str(cd.defaultVal).str("]");
                             end;
                         when str with sd: Tuple defaultVal: String end then
                             if stringOp.length(sd.defaultVal) > 0 then
-                                stringBuilder.append(b " [default: ");
-                                stringBuilder.append(b sd.defaultVal);
-                                stringBuilder.append(b "]");
+                                b.str(" [default: ").str(sd.defaultVal).str("]");
                             end;
                         when integer with id: Tuple defaultVal: Int end then
                             if id.defaultVal isnot 0 then
-                                stringBuilder.append(b " [default: ");
-                                stringBuilder.append(b conv.int(id.defaultVal));
-                                stringBuilder.append(b "]");
+                                b.str(" [default: ").int(id.defaultVal).str("]");
                             end;
                         else ok
                     end;
-                    stringBuilder.appendChar(b '\n');
+                    b.char('\n');
                 end;
             end;
 
-            stringBuilder.toString(b)
+            b.toString()
         end;
 
     let printHelp(p: Parser w: writer.T): Ok =

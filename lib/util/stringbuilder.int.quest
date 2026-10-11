@@ -1,43 +1,54 @@
 interface StringBuilder
-    import word: Word
+    import wordLib = word: Word
 export
     (* =========================================================================
      * Fast String Building (StringBuilder)
+     *
+     * A builder accumulates text in a native buffer. Its methods are components of the builder itself, and each
+     * method that adds to the builder returns it, so calls chain:
+     *
+     *     let b = stringBuilder.new();
+     *     b.str("x = ").int(x).char('\n');
+     *     writer.putString(writer.output b.toString());
      * ========================================================================= *)
 
-    (* Opaque growable string builder type *)
-    T::TYPE
+    Def Rec T = Tuple
+        (* Append a string *)
+        str(s: String): T
+
+        (* Append a single character *)
+        char(c: Char): T
+
+        (* Append an integer in decimal, with ~ for negative numbers, as conv.int does *)
+        int(n: Int): T
+
+        (* Append a real number, as conv.real formats it *)
+        real(r: Real): T
+
+        (* Append "true" or "false" *)
+        bool(b: Bool): T
+
+        (* Append an unsigned 64-bit word in decimal *)
+        word(w: wordLib.T): T
+
+        (* Append the substring of s of the given size at start; raises string.error, as string.getSub does, if
+         * the substring is not within s *)
+        sub(s: String start: Int size: Int): T
+
+        (* Append n copies of character c; raises string.error if n is negative *)
+        repeat(c: Char n: Int): T
+
+        (* Reset the builder to empty *)
+        clear(): T
+
+        (* The number of characters accumulated *)
+        length(): Int
+
+        (* A new string holding the accumulated characters; the builder is unchanged, so it can be reused (for
+         * example after clear) without affecting strings it returned earlier *)
+        toString(): String
+    end
 
     (* Create a new empty string builder *)
     new(): T
-
-    (* Create a new string builder with preallocated chunk capacity *)
-    newWithCapacity(capacity: Int): T
-
-    (* Append a string to the builder *)
-    append(b: T s: String): Ok
-
-    (* Append a single character to the builder *)
-    appendChar(b: T c: Char): Ok
-
-    (* Append an integer formatted in decimal to the builder *)
-    appendInt(b: T n: Int): Ok
-
-    (* Append a real number formatted as string to the builder *)
-    appendReal(b: T r: Real): Ok
-
-    (* Append a boolean ("true" or "false") to the builder *)
-    appendBool(b: T val: Bool): Ok
-
-    (* Append an unsigned 64-bit word formatted in decimal to the builder *)
-    appendWord(b: T w: word.T): Ok
-
-    (* Return the total accumulated character length of the builder *)
-    length(b: T): Int
-
-    (* Reset the builder to empty *)
-    clear(b: T): Ok
-
-    (* Materialize the accumulated chunks into a single string in O(N) time *)
-    toString(b: T): String
 end;

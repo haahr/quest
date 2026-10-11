@@ -694,6 +694,27 @@ class QWriter(QValue):
         return "<writer>"
 
 
+class QStringBuilder(QValue):
+    """The native buffer of a string builder (lib/util/stringbuilder): the pieces appended so far, as Python strings
+    taken when they are appended."""
+
+    def __init__(self) -> None:
+        self.pieces: list[str] = []
+        self.length = 0
+
+    def append(self, text: str) -> None:
+        if text:
+            self.pieces.append(text)
+            self.length += len(text)
+
+    @property
+    def type_name(self) -> str:
+        return "StringBuilder.Buffer"
+
+    def to_str(self, visited: Optional[set[int]] = None) -> str:
+        return "<string builder>"
+
+
 class QReader(QValue):
     """Input stream handle wrapping a Python text stream or open file."""
 

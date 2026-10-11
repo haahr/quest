@@ -1,78 +1,54 @@
 module stringBuilder : StringBuilder
 import
-    collections/vector : collections/Vector
-    stringOp = string : StringOp
-    conv: Conv
-    word: Word
+    wordLib = word: Word
 export
-    Let T = Tuple
-        chunks: vector.T(String)
-        var totalLen: Int
+    Def Rec T = Tuple
+        str(s: String): T
+        char(c: Char): T
+        int(n: Int): T
+        real(r: Real): T
+        bool(b: Bool): T
+        word(w: wordLib.T): T
+        sub(s: String start: Int size: Int): T
+        repeat(c: Char n: Int): T
+        clear(): T
+        length(): Int
+        toString(): String
     end;
 
+    (* The native buffer: a fixed-size working buffer and the chunks already filled (see quest_sb_* in the
+     * runtime) *)
+    Let Buffer = external "QStringBuilder *";
+
+    let newBuffer(): Buffer = external "quest_sb_new";
+    let appendString(b: Buffer s: String): Ok = external "quest_sb_append_string";
+    let appendChar(b: Buffer c: Char): Ok = external "quest_sb_append_char";
+    let appendInt(b: Buffer n: Int): Ok = external "quest_sb_append_int";
+    let appendReal(b: Buffer r: Real): Ok = external "quest_sb_append_real";
+    let appendBool(b: Buffer v: Bool): Ok = external "quest_sb_append_bool";
+    let appendWord(b: Buffer w: wordLib.T): Ok = external "quest_sb_append_word";
+    let appendSub(b: Buffer s: String start: Int size: Int): Ok = external "quest_sb_append_sub";
+    let appendRepeat(b: Buffer c: Char n: Int): Ok = external "quest_sb_append_repeat";
+    let clearBuffer(b: Buffer): Ok = external "quest_sb_clear";
+    let bufferLength(b: Buffer): Int = external "quest_sb_length";
+    let bufferString(b: Buffer): String = external "quest_sb_to_string";
+
     let new(): T =
-        tuple
-            let chunks = vector.new(:String)
-            var totalLen = 0
-        end;
-
-    let newWithCapacity(capacity: Int): T =
-        tuple
-            let chunks = vector.new(:String)
-            var totalLen = 0
-        end;
-
-    let append(b: T s: String): Ok =
         begin
-            let sLen = stringOp.length(s);
-            if sLen > 0 then
-                vector.append(:String b.chunks s);
-                b.totalLen := b.totalLen + sLen;
-                ok
-            else
-                ok
-            end
-        end;
-
-    let appendChar(b: T c: Char): Ok =
-        begin
-            let s = stringOp.new(1 c);
-            vector.append(:String b.chunks s);
-            b.totalLen := b.totalLen + 1;
-            ok
-        end;
-
-    let appendInt(b: T n: Int): Ok =
-        append(b conv.int(n));
-
-    let appendReal(b: T r: Real): Ok =
-        append(b conv.real(r));
-
-    let appendBool(b: T val: Bool): Ok =
-        append(b conv.bool(val));
-
-    let appendWord(b: T w: word.T): Ok =
-        append(b conv.int(word.toInt(w)));
-
-    let length(b: T): Int =
-        b.totalLen;
-
-    let clear(b: T): Ok =
-        begin
-            vector.clear(:String b.chunks);
-            b.totalLen := 0;
-            ok
-        end;
-
-    let toString(b: T): String =
-        if b.totalLen is 0 then
-            ""
-        else
-            let numChunks = vector.length(:String b.chunks);
-            if numChunks is 1 then
-                vector.get(:String b.chunks 0)
-            else
-                stringOp.conc(vector.toArray(:String b.chunks))
-            end
+            let buf = newBuffer();
+            let rec self: T = tuple
+                let str(s: String): T = begin appendString(buf s); self end
+                let char(c: Char): T = begin appendChar(buf c); self end
+                let int(n: Int): T = begin appendInt(buf n); self end
+                let real(r: Real): T = begin appendReal(buf r); self end
+                let bool(b: Bool): T = begin appendBool(buf b); self end
+                let word(w: wordLib.T): T = begin appendWord(buf w); self end
+                let sub(s: String start: Int size: Int): T = begin appendSub(buf s start size); self end
+                let repeat(c: Char n: Int): T = begin appendRepeat(buf c n); self end
+                let clear(): T = begin clearBuffer(buf); self end
+                let length(): Int = bufferLength(buf)
+                let toString(): String = bufferString(buf)
+            end;
+            self
         end;
 end;

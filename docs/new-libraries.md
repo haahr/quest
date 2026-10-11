@@ -67,49 +67,37 @@ end;
 
 ### 1.2. `util/stringBuilder : util/StringBuilder`
 
-High-performance chunked string accumulator providing $O(N)$ string construction without quadratic reallocation.
+String accumulator with $O(N)$ construction, backed by a native buffer in the runtime (`quest_sb_*` in
+`runtime/quest_runtime.c`, with a matching implementation in the interpreter). Short appends are written into a fixed
+512-byte working buffer, and numbers are formatted straight into it; a full buffer becomes a finished chunk, and a
+string longer than 256 characters is copied into a chunk of its own. Appended strings are always copied, so changing a
+string after appending it does not change the result.
+
+A builder's methods are components of the builder itself, and each method that adds to it returns the builder, so
+calls chain: `b.str("x = ").int(x).char('\n')`. `toString` always returns a new string and leaves the builder
+unchanged, so a builder can be reused (for example after `clear`) without affecting strings it returned earlier.
 
 #### Interface Summary
 
 ```quest
 interface StringBuilder
-    import word: Word
+    import wordLib = word: Word
 export
-    (* Opaque growable string builder type *)
-    T::TYPE
+    Def Rec T = Tuple
+        str(s: String): T                         (* a string *)
+        char(c: Char): T                          (* a character *)
+        int(n: Int): T                            (* as conv.int: decimal, ~ for negatives *)
+        real(r: Real): T                          (* as conv.real *)
+        bool(b: Bool): T                          (* "true" or "false" *)
+        word(w: wordLib.T): T                     (* unsigned decimal *)
+        sub(s: String start: Int size: Int): T    (* a substring; string.error if not within s *)
+        repeat(c: Char n: Int): T                 (* n copies of c; string.error if n < 0 *)
+        clear(): T                                (* reset to empty *)
+        length(): Int                             (* characters accumulated *)
+        toString(): String                        (* a new string of the characters accumulated *)
+    end
 
-    (* Create a new empty string builder *)
     new(): T
-
-    (* Create a new string builder with preallocated chunk capacity *)
-    newWithCapacity(capacity: Int): T
-
-    (* Append a string to the builder *)
-    append(b: T s: String): Ok
-
-    (* Append a single character to the builder *)
-    appendChar(b: T c: Char): Ok
-
-    (* Append an integer formatted in decimal to the builder *)
-    appendInt(b: T n: Int): Ok
-
-    (* Append a real number formatted as string to the builder *)
-    appendReal(b: T r: Real): Ok
-
-    (* Append a boolean ("true" or "false") to the builder *)
-    appendBool(b: T val: Bool): Ok
-
-    (* Append an unsigned 64-bit word formatted in decimal to the builder *)
-    appendWord(b: T w: word.T): Ok
-
-    (* Return the total accumulated character length of the builder *)
-    length(b: T): Int
-
-    (* Reset the builder to empty *)
-    clear(b: T): Ok
-
-    (* Materialize accumulated chunks into a single string in O(N) time *)
-    toString(b: T): String
 end;
 ```
 

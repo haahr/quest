@@ -7,7 +7,6 @@ import
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
     writer : Writer
-    conv : Conv
     stringOp = string : StringOp
 export
     Let Severity = Option
@@ -102,63 +101,40 @@ export
             let sb = stringBuilder.new();
             let sevStr = severityString(d.severity);
             let sp = d.sp;
-            if {stringOp.length(sp.file) > 0} andif {sp.startOffset >= 0} then
-                let pos = location.locate(sm sp.startOffset);
-                stringBuilder.append(sb sp.file);
-                stringBuilder.append(sb ":");
-                stringBuilder.append(sb conv.int(pos.line));
-                stringBuilder.append(sb ":");
-                stringBuilder.append(sb conv.int(pos.col));
-                stringBuilder.append(sb ": ");
-                stringBuilder.append(sb sevStr);
-                stringBuilder.append(sb ": ");
-                stringBuilder.append(sb d.message);
-                stringBuilder.append(sb "\n");
+            let located = {stringOp.length(sp.file) > 0} andif {sp.startOffset >= 0};
+            let pos = location.locate(sm if located then sp.startOffset else 0 end);
+            if located then
+                sb.str(sp.file).char(':').int(pos.line).char(':').int(pos.col).str(": ");
+            end;
+            sb.str(sevStr).str(": ").str(d.message).char('\n');
 
-                let lineStr = location.getLine(sm pos.line);
-                let lineLen = stringOp.length(lineStr);
-                if lineLen > 0 then
-                    stringBuilder.append(sb "    ");
-                    stringBuilder.append(sb lineStr);
-                    stringBuilder.append(sb "\n");
+            let lineStr = if located then location.getLine(sm pos.line) else "" end;
+            let lineLen = stringOp.length(lineStr);
+            if lineLen > 0 then
+                sb.str("    ").str(lineStr).char('\n');
 
-                    let padCount = if pos.col > 1 then pos.col - 1 else 0 end;
-                    let padStr = stringOp.new(padCount ' ');
-                    let var spanLen = sp.endOffset - sp.startOffset;
-                    if spanLen < 1 then spanLen := 1 end;
-                    let maxLen = {lineLen - padCount};
-                    if {maxLen > 0} andif {spanLen > maxLen} then
-                        spanLen := maxLen;
-                    end;
-                    let underStr = stringOp.new(spanLen '^');
-                    stringBuilder.append(sb "    ");
-                    stringBuilder.append(sb padStr);
-                    stringBuilder.append(sb underStr);
-                    stringBuilder.append(sb "\n");
+                let padCount = if pos.col > 1 then pos.col - 1 else 0 end;
+                let var spanLen = sp.endOffset - sp.startOffset;
+                if spanLen < 1 then spanLen := 1 end;
+                let maxLen = {lineLen - padCount};
+                if {maxLen > 0} andif {spanLen > maxLen} then
+                    spanLen := maxLen;
                 end;
-            else
-                stringBuilder.append(sb sevStr);
-                stringBuilder.append(sb ": ");
-                stringBuilder.append(sb d.message);
-                stringBuilder.append(sb "\n");
+                sb.str("    ").repeat(' ' padCount).repeat('^' spanLen).char('\n');
             end;
 
             let noteCount = vector.length(:String d.notes);
             if noteCount > 0 then
                 for i = 0 upto {noteCount - 1} do
-                    stringBuilder.append(sb "  = note: ");
-                    stringBuilder.append(sb vector.get(:String d.notes i));
-                    stringBuilder.append(sb "\n");
+                    sb.str("  = note: ").str(vector.get(:String d.notes i)).char('\n');
                 end;
             end;
 
             if maybe.isSome(:String d.help) then
-                stringBuilder.append(sb "  = help: ");
-                stringBuilder.append(sb maybe.unwrap(:String d.help));
-                stringBuilder.append(sb "\n");
+                sb.str("  = help: ").str(maybe.unwrap(:String d.help)).char('\n');
             end;
 
-            stringBuilder.toString(sb)
+            sb.toString()
         end;
 
     let render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok =
