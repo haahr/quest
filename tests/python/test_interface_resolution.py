@@ -17,10 +17,10 @@ import unittest
 from pathlib import Path
 
 from quest.env import Environment
+from quest.config import CompilerOptions
 from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.loader import load_interface
 from quest.modules.module_compiler import compile_module_file
-from quest.pipeline import CompilerOptions
 
 
 class TestInterfaceResolution(unittest.TestCase):

@@ -7,9 +7,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from quest.env import Environment
+from quest.config import CompilerOptions
 from quest.pipeline import (
     CompilerContext,
-    CompilerOptions,
     PhasePipeline,
     default_pipeline,
 )

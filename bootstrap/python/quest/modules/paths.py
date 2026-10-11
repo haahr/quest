@@ -14,14 +14,14 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional, Union
 
+from quest.config.abi import built_from, has_current_abi
+from quest.modules.manifest import unit_staleness
+from quest.config import CompilerOptions
 from quest.diagnostics import QuestCompilerError, QuestTypeError
 from quest.syntax.tokens import TokenKind
 from quest.syntax.tokenizer import Tokenizer
-
-if TYPE_CHECKING:
-    from quest.env import Environment
 
 DEFAULT_PROJECT_DIR = Path(__file__).resolve().parents[4]
 DEFAULT_LIB_DIR = (DEFAULT_PROJECT_DIR / "lib").resolve()
@@ -56,35 +56,40 @@ def declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
     return fallback
 
 
-def is_c_compilation_mode(env: Any) -> bool:
-    """Checks whether the compiler environment is actively compiling or generating C code."""
-    opts = getattr(env, "options", None)
-    if opts is None:
+def is_c_compilation_mode(target: Optional[Union[CompilerOptions, Any]] = None) -> bool:
+    """Checks whether the compiler options or environment specify actively compiling C code."""
+    if target is None:
         return False
-    if getattr(opts, "whole_program", False):
-        return False
-    if getattr(opts, "stop_after", None) in ("codegen_c", "run_c_compiled"):
-        return True
-    if getattr(opts, "emit_c", False):
-        return True
-    if getattr(opts, "output_path", None) is not None:
-        return True
-    if any(p in ("codegen_c", "run_c_compiled") for p in getattr(opts, "dump_after", ())):
-        return True
+    if isinstance(target, CompilerOptions):
+        return target.is_c_compilation_mode
+    opts = getattr(target, "options", None)
+    if isinstance(opts, CompilerOptions):
+        return opts.is_c_compilation_mode
     return False
 
 
-def is_typecheck_only(env: Any) -> bool:
+def is_typecheck_only(target: Optional[Union[CompilerOptions, Any]] = None) -> bool:
     """Checks whether compiler options specify stopping after typechecking in non-C mode."""
-    opts = getattr(env, "options", None)
-    return getattr(opts, "stop_after", None) == "typecheck" and not is_c_compilation_mode(env)
+    if target is None:
+        return False
+    if isinstance(target, CompilerOptions):
+        return target.is_typecheck_only
+    opts = getattr(target, "options", None)
+    if isinstance(opts, CompilerOptions):
+        return opts.is_typecheck_only
+    return False
 
 
-def has_fresh_module_artifacts(file_path: Path, canon_name: str, env: Any) -> bool:
+def has_fresh_module_artifacts(
+    file_path: Path,
+    canon_name: str,
+    target: Optional[Union[CompilerOptions, Any]],
+) -> bool:
     """True if module source file_path has up-to-date .qm/.mod.c/.o in the build directory or beside it."""
-    from quest.build.manifest import unit_staleness
-
-    build_dir = getattr(getattr(env, "options", None), "build_dir", None)
+    if isinstance(target, CompilerOptions):
+        build_dir = target.build_dir
+    else:
+        build_dir = getattr(getattr(target, "options", None), "build_dir", None)
     stem = Path(canon_name).name.lower()
     candidates = [file_path.parent]
     if build_dir is not None:
@@ -107,8 +112,6 @@ def resolve_interface_file(
     least as new as that source (docs/build-process.md §5.2). Without a source, the first .qi found is returned
     whatever its ABI version; loading it reports an incompatible one.
     """
-    from quest.build.abi import built_from, has_current_abi
-
     source_file = resolve_interface_source_file(name, current_dir, include_paths)
     source_mtime = source_file.stat().st_mtime if source_file is not None else None
 
@@ -350,10 +353,30 @@ def canonicalize_module_name(
     return canonicalize_module_path(file_path, include_paths, program_dir)
 
 
-def canonical_import_name(mod_path: str, env: Environment) -> str:
-    """Returns the canonical name of the module an import in env's current directory names mod_path.
+def canonical_import_name(
+    mod_path: str,
+    target: Union[CompilerOptions, Any],
+    current_dir: Optional[Path] = None,
+) -> str:
+    """Returns the canonical name of the module an import in current_dir names mod_path.
 
     Builtin and source-less (precompiled) modules keep the name they are imported by.
     """
-    src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
-    return canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
+    if isinstance(target, CompilerOptions):
+        cur = current_dir if current_dir is not None else target.current_dir
+        inc = target.include_paths
+        prog = target.program_dir
+    else:
+        cur = current_dir if current_dir is not None else getattr(target, "current_dir", None)
+        inc = getattr(target, "include_paths", None)
+        prog = getattr(target, "program_dir", None)
+        opts = getattr(target, "options", None)
+        if not inc and opts is not None:
+            inc = opts.include_paths
+        if prog is None and opts is not None:
+            prog = opts.program_dir
+        if cur is None and opts is not None:
+            cur = opts.current_dir
+
+    src = resolve_module_file(mod_path, cur, inc or [])
+    return canonicalize_module_name(src, inc or [], mod_path, prog)

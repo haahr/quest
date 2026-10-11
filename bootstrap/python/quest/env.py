@@ -6,8 +6,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, Optional, Protocol
 
+from quest.diagnostics import in_unit
 from quest.types import (
     BOOL_TYPE,
     CHAR_TYPE,
@@ -241,10 +242,28 @@ def allocate_symbol_id() -> int:
     return _GLOBAL_SYMBOL_COUNTER
 
 
+class BuiltinRegistry(Protocol):
+    """Protocol for a registry that populates standard library modules and interfaces into an Environment."""
+
+    def populate_environment(self, env: Environment) -> None:
+        ...
+
+
 class Environment:
     """Manages the active lexical scope stack, built-in definitions, and module linkages."""
 
-    def __init__(self, sink: Optional[Any] = None):
+    _default_builtin_registry: ClassVar[Optional[BuiltinRegistry]] = None
+
+    @classmethod
+    def set_default_builtin_registry(cls, registry: Optional[BuiltinRegistry]) -> None:
+        """Configures the default builtin registry used when none is provided to __init__."""
+        cls._default_builtin_registry = registry
+
+    def __init__(
+        self,
+        sink: Optional[Any] = None,
+        builtin_registry: Optional[BuiltinRegistry] = None,
+    ):
         self._symbol_counter: int = 0
         self.sink = sink
         self.base_scope: Scope = Scope(parent=None, name="base")
@@ -271,14 +290,11 @@ class Environment:
         # Export scopes of modules known only through their interfaces (separate compilation), by canonical name.
         self.module_export_scopes: dict[str, Scope] = {}
         self._init_builtins()
+        reg = builtin_registry if builtin_registry is not None else self._default_builtin_registry
+        if reg is not None:
+            reg.populate_environment(self)
         self._builtin_interfaces = dict(self._interfaces)
         self._builtin_modules = dict(self._modules)
-        # A builtin interface with a source in lib/ is that file's interface, whoever imports it.
-        from quest.modules.paths import canonicalize_module_path, resolve_interface_source_file
-        for iface_name, iface_scope in self._builtin_interfaces.items():
-            src = resolve_interface_source_file(iface_name, None, [])
-            if src is not None:
-                self.loaded_interfaces[canonicalize_module_path(src, [])] = iface_scope
 
     def fresh_symbol_id(self) -> int:
         """Allocates a unique positive integer symbol ID."""
@@ -347,7 +363,6 @@ class Environment:
     def unit_source(self, source_map: Any) -> Iterator[None]:
         """Elaborates a unit loaded from the file of source_map: errors raised inside are located in that file
         (diagnostics.in_unit), and imports it makes are located in it (source_map)."""
-        from quest.diagnostics import in_unit
         saved = self.source_map
         self.source_map = source_map
         try:
@@ -490,27 +505,4 @@ class Environment:
             ),
         )
         self.base_scope.declare_value(ValueSymbol(name="ordinal", type_val=ord_fn_type))
-
-        # Pre-link standard library modules at top level (Cardelli §11.3)
-        from quest.builtins import BuiltinModuleRegistry
-        BuiltinModuleRegistry._ensure_initialized(self)
-        mod_to_iface = {
-            "writer": "Writer",
-            "reader": "Reader",
-            "conv": "Conv",
-            "ascii": "Ascii",
-            "int": "IntOp",
-            "real": "RealOp",
-            "string": "StringOp",
-            "arrayOp": "ArrayOp",
-            "list": "List",
-            "word": "Word",
-        }
-        for iface_name, iface_scope in BuiltinModuleRegistry._interfaces.items():
-            self.register_interface(iface_name, iface_scope)
-        for mod_name, mod_type in BuiltinModuleRegistry._module_types.items():
-            self.global_scope.declare_value(ValueSymbol(name=mod_name, type_val=mod_type))
-            iface_name = mod_to_iface.get(mod_name)
-            if iface_name and iface_name in BuiltinModuleRegistry._interfaces:
-                self.register_module(mod_name, BuiltinModuleRegistry._interfaces[iface_name])
 

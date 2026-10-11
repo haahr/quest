@@ -1538,8 +1538,6 @@ class QTypeMeta(QType):
 
 def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
     """Returns the unsolved metavariables occurring in t (looking through solved ones), in order."""
-    import dataclasses
-
     found: list[QTypeMeta] = []
     visited: set[int] = set()
 

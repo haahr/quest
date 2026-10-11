@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from quest.build.abi import ABI_VERSION, PRODUCER
+from quest.config.abi import ABI_VERSION, PRODUCER
 
 
 @dataclass

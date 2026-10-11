@@ -75,7 +75,7 @@ All compiler phases are named by their **Verb / Action Form**:
 
 ## 3. Core Framework Components (`bootstrap/python/quest/pipeline.py`)
 
-### 3.1. `CompilerOptions`
+### 3.1. `CompilerOptions` (`bootstrap/python/quest/config/options.py`)
 Encapsulates runtime configuration:
 - `stop_after: Optional[str]`: Pipeline milestone to halt after (implicitly dumping output).
 - `dump_after: set[str]`: Intermediate phase outputs to dump to stdout while continuing pipeline execution.

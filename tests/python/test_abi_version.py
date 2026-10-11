@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.build.abi import ABI_VERSION, PRODUCER, recorded_abi
+from quest.config.abi import ABI_VERSION, PRODUCER, recorded_abi
 from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
 from quest.env import Environment

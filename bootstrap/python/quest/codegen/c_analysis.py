@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
 from quest.analysis.closure import LambdaAnalysis, analyze_closures
+from quest.builtins import BuiltinModuleRegistry
 from quest.env import Scope, ValueSymbol
+from quest.modules.paths import is_c_compilation_mode
 from quest.typed_ast import (
     TypedApp,
     TypedBlock,
@@ -570,8 +572,6 @@ def analyze_program_for_c(
     env: Optional[Any] = None,
 ) -> CProgramAnalysis:
     """Performs full program analysis required for C code generation."""
-    from quest.builtins import BuiltinModuleRegistry
-
     # Collect modules from both loaded_modules and prog.phrases
     all_module_map: dict[str, TypedModule] = {}
     if loaded_modules:
@@ -665,7 +665,6 @@ def analyze_program_for_c(
     } if env is not None else set()
 
     current_unit_modules = {phrase.name for phrase in prog.phrases if isinstance(phrase, TypedModule)}
-    from quest.modules.paths import is_c_compilation_mode
     is_c_mode = env is not None and is_c_compilation_mode(env)
 
     for bmod in needed_builtin_modules:
@@ -677,7 +676,6 @@ def analyze_program_for_c(
                     or (env and bmod in env.precompiled_modules)
                     or (is_c_mode and bmod not in current_unit_modules)
                 ):
-                    from dataclasses import replace
                     bast = replace(bast, is_precompiled=True)
                 all_module_map[bmod] = bast
 
@@ -697,7 +695,6 @@ def analyze_program_for_c(
                                         or (env and iname in env.precompiled_modules)
                                         or (is_c_mode and iname not in current_unit_modules)
                                     ):
-                                        from dataclasses import replace
                                         bast = replace(bast, is_precompiled=True)
                                     all_module_map[iname] = bast
                                     if iname not in needed_builtin_modules:
@@ -712,7 +709,6 @@ def analyze_program_for_c(
                 or (env and (mod.name in env.precompiled_modules or mod.name.lower() in env.precompiled_modules))
                 or (is_c_mode and mod.name not in current_unit_modules)
             ):
-                from dataclasses import replace
                 all_module_map[k] = replace(mod, is_precompiled=True)
 
     sorted_modules = topological_sort_modules(list(all_module_map.values()))

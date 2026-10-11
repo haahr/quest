@@ -302,7 +302,7 @@ the build directory too, even for interfaces the typechecker resolves without lo
 interfaces like `Writer`).
 
 ### 5.2. An ABI Version and Trusting Fresh Artifacts
-**Status:** implemented (`quest/build/abi.py`, `tests/abi/`, and §5.2.4 in `module_loader.py`).
+**Status:** implemented (`quest/config/abi.py`, `tests/abi/`, and §5.2.4 in `module_loader.py`).
 
 The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `<stem>.int.h` instead of
 re-elaborating an `.int.quest`, and `.qm`, `.c` (`.mod.c` for a module), and `.o` instead of recompiling a `.mod.quest`
@@ -329,7 +329,7 @@ Every `.qi` and `.qm` records:
   artifacts from either are interchangeable at the same version. A packaged compiler carries the constant in its
   code; nothing reads compiler sources at run time. The two compilers declare the constant separately and the corpus
   test (§5.2.3) keeps them in step. That is not fully satisfying: if the self-hosted compiler gains a Makefile, it
-  should generate its constant from the Python compiler's (`bootstrap/python/quest/build/abi.py`).
+  should generate its constant from the Python compiler's (`bootstrap/python/quest/config/abi.py`).
 - **`producer`: the compiler that wrote the artifact,** its name and an ordinary version number bumped by hand (for
   example `quest-bootstrap 0.1` or `questc 0.1`). It is informational, for diagnostics only, and never affects
   whether an artifact is used.

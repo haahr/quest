@@ -341,7 +341,8 @@ def elaborate_module(
                 module_paths=imp.module_paths,
                 interface_path=imp.interface_path,
                 canonical_module_paths=tuple(
-                    canonical_import_name(mod_path, env) for mod_path in imp.effective_module_paths
+                    canonical_import_name(mod_path, env, current_dir=env.current_dir)
+                    for mod_path in imp.effective_module_paths
                 ),
             )
             for imp in decl.imports
@@ -499,7 +500,8 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                         module_paths=item.module_paths,
                         interface_path=item.interface_path,
                         canonical_module_paths=tuple(
-                            canonical_import_name(mod_path, env) for mod_path in item.effective_module_paths
+                            canonical_import_name(mod_path, env, current_dir=env.current_dir)
+                            for mod_path in item.effective_module_paths
                         ),
                     )
                 )

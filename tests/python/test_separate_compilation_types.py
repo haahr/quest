@@ -19,6 +19,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 DRIVER = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
+from quest.config import CompilerOptions
+from quest.pipeline import CompilerContext, default_pipeline
+
 FIXTURES = {
     "geo/coord.int.quest": """
 interface Coord
@@ -197,8 +200,6 @@ class TestSeparateCompilationTypes(unittest.TestCase):
 
     def _pipeline_env(self, program: str, stop_after: str):
         """Runs the pipeline in-process with the test's build directory and returns its environment."""
-        from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
-
         source = (self.root / program).read_text(encoding="utf-8")
         options = CompilerOptions(stop_after=stop_after, include_paths=[self.root], build_dir=self.build_dir)
         ctx = CompilerContext.create(source, str(self.root / program), options=options)
@@ -215,8 +216,6 @@ class TestSeparateCompilationTypes(unittest.TestCase):
         self.assertEqual((cold.returncode, warm.returncode), (0, 0), cold.stderr + warm.stderr)
         self.assertEqual(warm.stdout, cold.stdout)
         # Without a build directory everything is elaborated from source.
-        from quest.pipeline import CompilerOptions, default_pipeline
-
         source = (self.root / "uses_geo.quest").read_text(encoding="utf-8")
         result = default_pipeline().execute(
             source, program, options=CompilerOptions(stop_after="typecheck", include_paths=[self.root])

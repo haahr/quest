@@ -19,6 +19,8 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from typing import Any, Optional
 
+from quest.types import is_type_equal
+
 
 # ============================================================================
 # 1. Base Runtime Value
@@ -756,8 +758,10 @@ class QTypeValue(QValue):
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, QTypeValue):
-            from quest.types import is_type_equal
-            return (self.type_val is other.type_val or is_type_equal(self.type_val, other.type_val)) and self.name == other.name
+            return (
+                (self.type_val is other.type_val or is_type_equal(self.type_val, other.type_val))
+                and self.name == other.name
+            )
         return False
 
     def __hash__(self) -> int:
@@ -787,7 +791,6 @@ def qvalue_is(v1: QValue, v2: QValue) -> bool:
             return n_val == getattr(v2, "value", None)
         case QTypeValue(type_val=t1):
             assert isinstance(v2, QTypeValue)
-            from quest.types import is_type_equal
             return t1 is v2.type_val or is_type_equal(t1, v2.type_val)
         case _:
             # For all other types: pointer identity
@@ -829,7 +832,6 @@ def qvalue_structural_eq(
             return x1 == x2
 
         case (QTypeValue(type_val=t1), QTypeValue(type_val=t2)):
-            from quest.types import is_type_equal
             return t1 is t2 or is_type_equal(t1, t2)
 
         case (QRecord(fields=f1), QRecord(fields=f2)):

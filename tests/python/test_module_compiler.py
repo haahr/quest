@@ -18,6 +18,7 @@ import unittest
 
 from quest.codegen.compiler_runner import find_c_compiler, get_runtime_dir
 from quest.modules.interface_compiler import compile_interface_file
+from quest.modules.manifest import read_qm
 from quest.modules.module_compiler import compile_module_file
 import quest_driver
 
@@ -65,7 +66,6 @@ class TestModuleCompiler(unittest.TestCase):
 
         qm_file = self.dir_path / "counter.qm"
         self.assertTrue(qm_file.is_file())
-        from quest.build.manifest import read_qm
         manifest = read_qm(qm_file)
         self.assertIsNotNone(manifest)
         self.assertEqual(manifest.name, "counter")
@@ -337,8 +337,6 @@ class TestModuleCompiler(unittest.TestCase):
 
     def test_module_manifest_with_imports(self) -> None:
         """Tests that .qm metadata captures imported modules and interfaces."""
-        from quest.build.manifest import read_qm
-
         intf_c = self.dir_path / "depc.int.quest"
         intf_c.write_text("interface DepC export val: Int end;\n", encoding="utf-8")
         compile_interface_file(intf_c, output_dir=self.dir_path, include_paths=[self.dir_path])
@@ -377,8 +375,6 @@ class TestModuleCompiler(unittest.TestCase):
 
     def test_build_dir_support(self) -> None:
         """Tests compiling into a dedicated build_dir."""
-        from quest.build.manifest import read_qm
-
         build_dir = self.dir_path / ".build"
         intf = self.dir_path / "calc.int.quest"
         intf.write_text("interface Calc export add(a: Int b: Int): Int end;\n", encoding="utf-8")

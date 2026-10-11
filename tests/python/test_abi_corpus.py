@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from quest.build.abi import ABI_VERSION
+from quest.config.abi import ABI_VERSION
 from tests.abi.corpus import generate, read_checked_in
 
 UPDATE_HINT = "then run `python tests/abi/corpus.py --update` and commit tests/abi/corpus"
@@ -28,7 +28,7 @@ class TestAbiCorpus(unittest.TestCase):
             self.assertEqual(
                 changed, [],
                 "The artifact contract changed without an ABI version bump. If these changes are intended, "
-                f"bump ABI_VERSION in bootstrap/python/quest/build/abi.py, {UPDATE_HINT}.",
+                f"bump ABI_VERSION in bootstrap/python/quest/config/abi.py, {UPDATE_HINT}.",
             )
         else:
             self.fail(

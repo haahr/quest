@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
-from quest.build.abi import (
+from quest.config.abi import (
     ABI_VERSION,
     PRODUCER,
     built_from,
@@ -21,7 +21,19 @@ from quest.build.abi import (
     header_stamp,
     incompatible_artifact_message,
 )
-from quest.codegen.c_types import qtype_to_c_type
+from quest.builtins import BuiltinModuleRegistry
+from quest.codegen.c_analysis import collect_aggregate_types
+from quest.codegen.c_declarations import CDeclarationEmitter
+from quest.codegen.c_types import RecordNamingContext, qtype_to_c_type
+from quest.config import CompilerOptions
+from quest.modules.paths import (
+    canonicalize_interface_name,
+    canonicalize_module_path,
+    resolve_interface_file,
+    resolve_interface_source_file,
+    resolve_module_file,
+    resolve_object_file,
+)
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.elaborate_types import elaborate_kind, elaborate_type
@@ -448,10 +460,6 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
         lines.append("")
 
     # Aggregate struct definitions used in the interface
-    from quest.codegen.c_analysis import collect_aggregate_types
-    from quest.codegen.c_declarations import CDeclarationEmitter
-    from quest.codegen.c_types import RecordNamingContext
-
     record_ctx = RecordNamingContext()
     agg_types: list[tuple[str, QType]] = []
     agg_names: set[str] = set()
@@ -575,7 +583,6 @@ def compile_interface_file(
 
     Only C compilation needs headers; typecheck and interpret runs build just the .qi.
     """
-    from quest.modules.paths import canonicalize_module_path
 
     key = file_path.resolve()
     canon_name = canonicalize_module_path(file_path, list(include_paths or []), program_dir)
@@ -625,7 +632,7 @@ def _compile_interface_file(
                 offset=decl.offset,
             )
 
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
         env.include_paths = list(include_paths) if include_paths else []
         if build_dir is not None:
             b_dir = Path(build_dir).resolve()
@@ -633,7 +640,6 @@ def _compile_interface_file(
                 env.include_paths.insert(0, b_dir)
             # Imported interfaces are loaded from their (fresh or rebuilt) artifacts in the same build directory
             # rather than re-elaborated from source in every nested compilation.
-            from quest.pipeline import CompilerOptions
             env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
         env.current_dir = file_path.parent
         env.program_dir = program_dir
@@ -653,7 +659,6 @@ def _compile_interface_file(
     qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path)
 
     if build_dir is not None and output_dir is None:
-        from quest.modules.paths import canonicalize_module_path
         canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
         if "/" in canon_name:
             target_dir = Path(build_dir).resolve() / Path(canon_name).parent
@@ -674,7 +679,6 @@ def _compile_interface_file(
 
     qi_path.write_text(qi_content, encoding="utf-8")
     if header:
-        from quest.modules.paths import canonicalize_interface_name
         canonical_name = canonicalize_interface_name(file_path, env.include_paths, decl.name)
         h_path.write_text(compile_interface_to_header(decl, typed_iface.scope, canonical_name), encoding="utf-8")
 
@@ -696,11 +700,6 @@ def ensure_interface_artifacts(
     (qi_file, h_file, canonical_name); the files may not exist if the interface has neither a source
     nor prebuilt artifacts (e.g. builtin interfaces).
     """
-    from quest.modules.paths import (
-        canonicalize_module_path,
-        resolve_interface_file,
-        resolve_interface_source_file,
-    )
 
     if file_path is None:
         file_path = resolve_interface_file(name, current_dir, include_paths)
@@ -816,10 +815,6 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                 else:
                     for iname, mod_path in zip(names, mpaths):
                         from quest.modules.loader import load_module
-                        from quest.modules.paths import (
-                            resolve_module_file,
-                            resolve_object_file,
-                        )
                         mod_scope = None
                         if (
                             mod_path in env.loaded_modules_ast

@@ -13,8 +13,11 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.build.engine import BuildEngine, BuildError
-from quest.modules.interface_compiler import compile_interface_file
+from quest.config.abi import built_from
+from quest.modules.interface_compiler import compile_interface_file, ensure_interface_artifacts
+from quest.modules.manifest import unit_staleness
 from quest.modules.module_compiler import compile_module_file
+from quest.modules.paths import resolve_interface_file
 
 
 class TestBuildEngine(unittest.TestCase):
@@ -469,8 +472,6 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
         self.assertEqual(self._build_and_run(self.a)[0], [])
 
     def test_unit_staleness_checks_recorded_source(self) -> None:
-        from quest.build.manifest import unit_staleness
-
         self._build_and_run(self.a)
         artifacts = [self.build_dir / f"counter{ext}" for ext in (".qm", ".mod.c", ".o")]
         self.assertIsNone(unit_staleness(self.a / "counter.mod.quest", *artifacts))
@@ -479,10 +480,6 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
         self.assertIn("different source", reason)
 
     def test_interface_artifacts_check_recorded_source(self) -> None:
-        from quest.build.abi import built_from
-        from quest.modules.interface_compiler import ensure_interface_artifacts
-        from quest.modules.paths import resolve_interface_file
-
         qi_a, _, _ = ensure_interface_artifacts("Counter", self.a, [], self.build_dir)
         self.assertTrue(built_from(qi_a, self.a / "counter.int.quest"))
         qi_b, _, _ = ensure_interface_artifacts("Counter", self.b, [], self.build_dir)

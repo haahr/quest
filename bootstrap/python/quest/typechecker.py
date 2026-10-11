@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Optional, Union
 
 import quest.syntax.ast as ast
+import quest.typed_ast as typed_ast_module
 from quest.types import (
     BOOL_TYPE,
     binds_module,
@@ -67,6 +68,7 @@ from quest.types import (
     strip_aliases,
     unalias,
 )
+from quest.builtins import BuiltinModuleRegistry
 from quest.env import (
     Environment,
     KindSymbol,
@@ -318,9 +320,6 @@ def _check_type_arg_kind(what: str, targ: QType, bound: QKind, env: Environment,
 
 def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
     """Rebuilds a typed AST with solved metavariables in its types replaced by their solutions."""
-    import dataclasses
-    import quest.typed_ast as typed_ast_module
-
     key = id(node)
     if key in memo:
         return memo[key]
@@ -361,7 +360,7 @@ class TypeElaborator:
     """Stateful term elaboration and bidirectional typechecker for Quest AST expressions and bindings."""
 
     def __init__(self, env: Optional[Environment] = None, loop_depth: int = 0) -> None:
-        self.env: Environment = env if env is not None else Environment()
+        self.env: Environment = env if env is not None else Environment(builtin_registry=BuiltinModuleRegistry)
         self.loop_depth: int = loop_depth
         self.function_depth: int = 0
         # Implicit type arguments of the polymorphic call whose arguments are being checked, as

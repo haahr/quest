@@ -1,21 +1,26 @@
-"""Quest Build System package."""
+"""Quest Build System package.
 
-from quest.build.logger import BuildLogger
-from quest.build.manifest import (
-    ImportedInterfaceRef,
-    ImportedModuleRef,
-    ModuleManifest,
-    is_manifest_stale,
-    read_qm,
-    write_qm,
+Provides whole-program and multi-module build orchestration.
+"""
+
+from __future__ import annotations
+
+from quest.build.engine import (
+    BuildEngine,
+    BuildError,
+    BuildResult,
+    detect_module_cycle,
+    interfaces_conform,
+    unit_module_refs,
 )
+from quest.build.logger import BuildLogger
 
 __all__ = [
+    "BuildEngine",
+    "BuildError",
     "BuildLogger",
-    "ImportedInterfaceRef",
-    "ImportedModuleRef",
-    "ModuleManifest",
-    "is_manifest_stale",
-    "read_qm",
-    "write_qm",
+    "BuildResult",
+    "detect_module_cycle",
+    "interfaces_conform",
+    "unit_module_refs",
 ]

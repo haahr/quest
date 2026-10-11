@@ -16,11 +16,17 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
+try:
+    import readline
+except ImportError:
+    readline = None  # type: ignore[assignment]
+
 from quest.diagnostics import DiagnosticRenderer
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter import format_interactive_result
 from quest.syntax.parser import ParserError
-from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
+from quest.config import CompilerOptions
+from quest.pipeline import CompilerContext, default_pipeline
 from quest.runtime import QOk, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
@@ -41,12 +47,10 @@ def _is_terminal_dumb_or_emacs() -> bool:
 
 def _setup_readline(history_path: Path) -> None:
     """Configures readline for line editing and persistent history if the terminal supports it."""
-    if not sys.stdin.isatty() or _is_terminal_dumb_or_emacs():
+    if not sys.stdin.isatty() or _is_terminal_dumb_or_emacs() or readline is None:
         return
 
     try:
-        import readline
-
         try:
             if history_path.exists():
                 readline.read_history_file(str(history_path))

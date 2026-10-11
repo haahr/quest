@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -122,7 +123,6 @@ class Diagnostic:
         notes: Optional[list[str]] = None,
     ) -> Diagnostic:
         """Constructs an ERROR diagnostic from an Exception, capturing its full traceback."""
-        import traceback
         tb_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
         tb_formatted = "".join(tb_lines).strip()
         all_notes = list(notes or [])

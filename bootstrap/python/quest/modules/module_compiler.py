@@ -13,14 +13,17 @@ C standard header (math.int.h, not math.h) cannot shadow it (<math.h>) on the C 
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
 import quest.syntax.ast as ast
+from quest.builtins import BuiltinModuleRegistry
 from quest.codegen.c_emitter import CEmitter
 from quest.codegen.compiler_runner import compile_c_to_object
+from quest.config import CompilerOptions
 from quest.diagnostics import QuestTypeError, in_unit
-from quest.build.manifest import (
+from quest.modules.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
     ModuleManifest,
@@ -39,6 +42,7 @@ from quest.modules.paths import (
     resolve_interface_file,
     resolve_interface_source_file,
     resolve_module_file,
+    resolve_object_file,
 )
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap, display_file_name
@@ -79,8 +83,20 @@ def compile_module(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if getattr(env, "options", None) is None:
-        from quest.pipeline import CompilerOptions
-        env.options = CompilerOptions(stop_after="codegen_c", build_dir=build_dir)
+        env.options = CompilerOptions(
+            stop_after="codegen_c",
+            build_dir=build_dir,
+            include_paths=list(env.include_paths),
+            current_dir=env.current_dir,
+            program_dir=env.program_dir,
+        )
+    else:
+        if not env.options.include_paths and env.include_paths:
+            env.options.include_paths = list(env.include_paths)
+        if env.options.current_dir is None:
+            env.options.current_dir = env.current_dir
+        if env.options.program_dir is None:
+            env.options.program_dir = env.program_dir
 
     if canonical_name is None and source_file is not None:
         canonical_name = canonicalize_module_path(source_file, env.include_paths, env.program_dir)
@@ -174,7 +190,6 @@ def compile_module(
 
     mod_name = canonical_name or module_decl.name
     if mod_name != typed_mod.name:
-        from dataclasses import replace
         typed_mod = replace(typed_mod, name=mod_name)
 
     # 6. Emit C source
@@ -206,10 +221,6 @@ def compile_module(
     )
 
     if emit_deps:
-        from quest.modules.paths import (
-            canonicalize_module_path,
-            resolve_object_file,
-        )
         dep_objects: list[str] = []
         for imp in module_decl.imports:
             for iname, mpath in zip(imp.names, imp.effective_module_paths):
@@ -296,7 +307,7 @@ def compile_module_file(
         else:
             stem = mod_path.stem
 
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
         env.current_dir = mod_path.parent
         env.include_paths = list(include_paths) if include_paths else []
         env.program_dir = program_dir

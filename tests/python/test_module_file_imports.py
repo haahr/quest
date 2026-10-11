@@ -19,7 +19,8 @@ from pathlib import Path
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
+from quest.config import CompilerOptions
+from quest.pipeline import CompilerContext, default_pipeline
 from quest.runtime import QInt, QString
 
 

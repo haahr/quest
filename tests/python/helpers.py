@@ -6,12 +6,13 @@ from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
 from quest.elaborate_types import elaborate_kind, elaborate_type
+from quest.builtins import BuiltinModuleRegistry
+from quest.config import CompilerOptions
 from quest.env import Environment
 from quest.interpreter import RuntimeEnvironment, eval_program
 from quest.syntax.parser import SyntaxTarget
 from quest.pipeline import (
     CompilerContext,
-    CompilerOptions,
     PipelineResult,
     default_pipeline,
 )
@@ -88,21 +89,21 @@ def parse_expr(expr_source: str) -> ast.Expr:
 def elaborate_test_type(source: str, env: Optional[Environment] = None) -> QType:
     """Parse and elaborate a type expression into a semantic QType."""
     if env is None:
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
     return elaborate_type(parse_type(source), env)
 
 
 def elaborate_test_kind(source: str, env: Optional[Environment] = None) -> QKind:
     """Parse and elaborate a kind expression into a semantic QKind."""
     if env is None:
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
     return elaborate_kind(parse_kind(source), env)
 
 
 def synth_test_expr(source: str, env: Optional[Environment] = None) -> Any:
     """Parse and type-synthesize an expression AST node."""
     if env is None:
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
     return synth_expr(parse_expr(source), env)
 
 
@@ -113,7 +114,7 @@ def check_test_expr(
 ) -> Any:
     """Parse and type-check an expression AST node against an expected type."""
     if env is None:
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
     return check_expr(parse_expr(source), expected_type, env)
 
 

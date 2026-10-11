@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import quest.typed_ast as typed_ast_module
 
 import math
 import re
@@ -219,9 +220,6 @@ def _closures_built_by(value: Any) -> list[TypedFun]:
 
 def _strip_typed_aliases(node: Any, memo: dict[int, Any]) -> Any:
     """Rebuilds a typed AST with alias reference nodes removed from all of its types."""
-    import dataclasses
-    import quest.typed_ast as typed_ast_module
-
     key = id(node)
     if key in memo:
         return memo[key]

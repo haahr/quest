@@ -17,15 +17,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from quest.builtins import BuiltinModuleRegistry
 from quest.diagnostics import DiagnosticRenderer, Severity
+from quest.config import CompilerOptions
 from quest.interpreter import format_interactive_result
 from quest.pipeline import (
     CompilerContext,
-    CompilerOptions,
     compile_pipeline,
     default_pipeline,
     full_pipeline,
     link_dependencies,
 )
+from quest.build.engine import BuildEngine
+from quest.codegen import compile_c_source
+from quest.modules.interface_compiler import compile_interface_file
+from quest.modules.module_compiler import compile_module_file
+from quest.modules.paths import canonicalize_module_path
+from quest.repl import run_repl
 from quest.runtime import QOk, qvalue_to_str
 from quest import shadow
 from quest.syntax.sources import SourceMap
@@ -181,7 +187,6 @@ def run_driver(args: list[str]) -> int:
         file_name = "<string>"
     elif source_file is None:
         if parsed_args.interactive or sys.stdin.isatty():
-            from quest.repl import run_repl
             sys.argv = ["<repl>"] + target_args
             BuiltinModuleRegistry.set_system_args(sys.argv)
             return run_repl()
@@ -196,7 +201,6 @@ def run_driver(args: list[str]) -> int:
             sys.stderr.write(f"quest: error: file not found: '{file_path}'\n")
             return 1
         if file_path.name.endswith(".int.quest"):
-            from quest.modules.interface_compiler import compile_interface_file
             try:
                 include_paths = [Path(p) for p in parsed_args.include_paths]
                 build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
@@ -214,7 +218,6 @@ def run_driver(args: list[str]) -> int:
                 sys.stderr.write(f"quest: error: {err}\n")
                 return 1
         if file_path.name.endswith(".mod.quest"):
-            from quest.modules.module_compiler import compile_module_file
             try:
                 include_paths = [Path(p) for p in parsed_args.include_paths]
                 build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
@@ -253,7 +256,6 @@ def run_driver(args: list[str]) -> int:
         file_path = Path(source_file)
         build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build")
         include_paths = [Path(p) for p in parsed_args.include_paths]
-        from quest.build.engine import BuildEngine
         engine = BuildEngine(
             build_dir=build_dir,
             include_paths=include_paths,
@@ -311,7 +313,6 @@ def run_driver(args: list[str]) -> int:
     try:
         ctx = CompilerContext.create(source_text, file_name, options=options)
         for obj in extra_objects:
-            from quest.modules.paths import canonicalize_module_path
             canon_mod = canonicalize_module_path(obj, options.include_paths)
             mod_name = obj.name.split(".")[0]
             ctx.env.precompiled_modules.add(canon_mod)
@@ -359,7 +360,6 @@ def run_driver(args: list[str]) -> int:
         if c_code is None:
             return 1
         output_path = Path(parsed_args.output)
-        from quest.codegen import compile_c_source
         try:
             extra_objs = link_dependencies(ctx)
             compile_c_source(
@@ -375,7 +375,6 @@ def run_driver(args: list[str]) -> int:
 
     # If -i / --interactive was requested with a file, enter REPL with populated context
     if parsed_args.interactive:
-        from quest.repl import run_repl
         return run_repl(ctx=ctx)
 
     if parsed_args.expected_exit != 0 and parsed_args.stop_after == "run_c_compiled":
@@ -527,7 +526,6 @@ def run_compile(args: list[str]) -> int:
             sys.stderr.write(f"quest compile: error: file not found: '{file_path}'\n")
             return 1
         if file_path.name.endswith(".int.quest"):
-            from quest.modules.interface_compiler import compile_interface_file
             try:
                 include_paths = [Path(p) for p in parsed_args.include_paths]
                 build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
@@ -545,7 +543,6 @@ def run_compile(args: list[str]) -> int:
                 sys.stderr.write(f"quest compile: error: {err}\n")
                 return 1
         if file_path.name.endswith(".mod.quest"):
-            from quest.modules.module_compiler import compile_module_file
             try:
                 include_paths = [Path(p) for p in parsed_args.include_paths]
                 build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
@@ -589,7 +586,6 @@ def run_compile(args: list[str]) -> int:
         file_path = Path(source_file)
         build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build")
         include_paths = [Path(p) for p in parsed_args.include_paths]
-        from quest.build.engine import BuildEngine
         engine = BuildEngine(
             build_dir=build_dir,
             include_paths=include_paths,
@@ -624,7 +620,6 @@ def run_compile(args: list[str]) -> int:
 
     ctx = CompilerContext.create(source_text, file_name, options=options)
     for obj in extra_objects:
-        from quest.modules.paths import canonicalize_module_path
         canon_mod = canonicalize_module_path(obj, options.include_paths)
         mod_name = obj.name.split(".")[0]
         ctx.env.precompiled_modules.add(canon_mod)
@@ -667,7 +662,6 @@ def run_compile(args: list[str]) -> int:
             sys.stdout.write(c_code)
         return 0
 
-    from quest.codegen import compile_c_source
     try:
         extra_objs = link_dependencies(ctx)
         compile_c_source(

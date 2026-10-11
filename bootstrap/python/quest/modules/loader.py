@@ -385,8 +385,9 @@ def load_module_for_interpreter(
     if canon_name in r_env.loaded_modules_ast:
         typed_mod = r_env.loaded_modules_ast[canon_name]
     else:
+        from quest.builtins import BuiltinModuleRegistry
         from quest.env import Environment
-        type_env = Environment()
+        type_env = Environment(builtin_registry=BuiltinModuleRegistry)
         type_env.include_paths = list(r_env.include_paths)
         type_env.current_dir = r_env.current_dir
         type_env.program_dir = r_env.program_dir

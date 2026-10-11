@@ -9,8 +9,8 @@ from typing import Any, Iterable, Optional
 
 import quest.syntax.ast as ast
 from quest.build.logger import BuildLogger
-from quest.build.abi import has_current_abi, incompatible_artifact_message
-from quest.build.manifest import (
+from quest.config.abi import has_current_abi, incompatible_artifact_message
+from quest.modules.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
     ModuleManifest,
@@ -19,6 +19,7 @@ from quest.build.manifest import (
     unit_staleness,
     write_qm,
 )
+from quest.builtins import BuiltinModuleRegistry
 from quest.codegen import compile_c_to_object, link_objects
 from quest.codegen.c_emitter import CEmitter
 from quest.env import Environment
@@ -36,7 +37,7 @@ from quest.modules.paths import (
     resolve_module_file,
     resolve_object_file,
 )
-from quest.pipeline import CompilerOptions
+from quest.config import CompilerOptions
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap
 from quest.typechecker import TypeElaborator
@@ -238,7 +239,7 @@ class BuildEngine:
                 )
 
         search_paths = self._get_search_paths()
-        env = Environment()
+        env = Environment(builtin_registry=BuiltinModuleRegistry)
         env.current_dir = main_file.parent
         env.program_dir = main_file.parent
         env.include_paths = search_paths

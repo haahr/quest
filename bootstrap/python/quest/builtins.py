@@ -15,9 +15,13 @@ Provides implementations of the 9 standard library interfaces and modules:
 from __future__ import annotations
 
 import math
+import os
 import struct
 import sys
 from typing import Any, Callable, Optional
+
+from quest.dynamic_json import jsog_decode, jsog_encode
+from quest.modules.paths import canonicalize_module_path, resolve_interface_source_file
 
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol, allocate_symbol_id
 from quest.interpreter import (
@@ -339,6 +343,34 @@ class BuiltinModuleRegistry:
         """Returns the TypedModule AST representing the requested builtin module."""
         cls._ensure_initialized(env)
         return cls._module_asts.get(name)
+
+    @classmethod
+    def populate_environment(cls, env: Environment) -> None:
+        """Registers builtin interfaces and pre-linked modules into an Environment."""
+        cls._ensure_initialized(env)
+        mod_to_iface = {
+            "writer": "Writer",
+            "reader": "Reader",
+            "conv": "Conv",
+            "ascii": "Ascii",
+            "int": "IntOp",
+            "real": "RealOp",
+            "string": "StringOp",
+            "arrayOp": "ArrayOp",
+            "list": "List",
+            "word": "Word",
+        }
+        for iface_name, iface_scope in cls._interfaces.items():
+            env.register_interface(iface_name, iface_scope)
+        for mod_name, mod_type in cls._module_types.items():
+            env.global_scope.declare_value(ValueSymbol(name=mod_name, type_val=mod_type))
+            iface_name = mod_to_iface.get(mod_name)
+            if iface_name and iface_name in cls._interfaces:
+                env.register_module(mod_name, cls._interfaces[iface_name])
+        for iface_name, iface_scope in cls._interfaces.items():
+            src = resolve_interface_source_file(iface_name, None, [])
+            if src is not None:
+                env.loaded_interfaces[canonicalize_module_path(src, [])] = iface_scope
 
     @classmethod
     def _ensure_initialized(cls, env: Optional[Environment] = None) -> None:
@@ -1062,7 +1094,6 @@ class BuiltinModuleRegistry:
         def _dynamic_extern(wr: QWriter, d: QAutoVal) -> QOk:
             if wr.is_closed:
                 raise QuestException(DYNAMIC_ERROR_EXC)
-            from quest.dynamic_json import jsog_encode
             json_text = jsog_encode(d)
             try:
                 wr.stream.write(json_text)
@@ -1147,7 +1178,6 @@ class BuiltinModuleRegistry:
                     buf.append(c)
 
             raw = "".join(buf)
-            from quest.dynamic_json import jsog_decode
             return jsog_decode(raw)
 
         cls._symbol_bridge["quest_dynamic_copy"] = _dynamic_copy
@@ -1261,8 +1291,6 @@ class BuiltinModuleRegistry:
         # --------------------------------------------------------------------
         # 10. System Interface & Module (Necessary OS extensions)
         # --------------------------------------------------------------------
-        import os
-
         sys_b = ModuleBuilder("system", "System", cls)
         sys_b.def_const("error", EXCEPTION_TYPE, SYSTEM_ERROR_EXC, c_val="(&quest_exc_system_error)")
 
@@ -1779,4 +1807,7 @@ class BuiltinModuleRegistry:
             for name, sym in scope.values.items()
         ]
         return QRecordType(tuple(fields), provenance=provenance)
+
+
+Environment.set_default_builtin_registry(BuiltinModuleRegistry)
 

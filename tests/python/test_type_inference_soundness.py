@@ -11,7 +11,8 @@ import weakref
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.pipeline import CompilerOptions, default_pipeline
+from quest.config import CompilerOptions
+from quest.pipeline import default_pipeline
 from quest.types import (
     INT_TYPE,
     TYPE_KIND,

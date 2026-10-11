@@ -7,10 +7,17 @@ across compiler phases (tokenize, parse, typecheck, interpret, codegen).
 from __future__ import annotations
 
 import sys
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+from quest.build.engine import BuildEngine, unit_module_refs
+from quest.builtins import BuiltinModuleRegistry
+from quest.codegen.c_emitter import CEmitter
+from quest.codegen.compiler_runner import compile_c_source, run_binary
+from quest.config import CompilerOptions
 
 import quest.syntax.ast as ast
 from quest.diagnostics import (
@@ -49,30 +56,6 @@ from quest.types import KindError, QKind, QType
 
 
 @dataclass
-class CompilerOptions:
-    """Compilation configuration options passed to compiler phases."""
-    stop_after: Optional[str] = None
-    dump_after: set[str] = field(default_factory=set)
-    include_paths: list[Path] = field(default_factory=list)
-    echo: bool = False
-    show_offsets: bool = False
-    show_values: bool = False
-    target: Optional[Any] = None
-    emit_c: bool = False
-    output_path: Optional[Path] = None
-    nogc: bool = False
-    print_result: bool = False
-    target_args: list[str] = field(default_factory=list)
-    expected_exit: int = 0
-    target_env: Optional[dict[str, str]] = None
-    target_stdin: Optional[str] = None
-    extra_objects: list[Path] = field(default_factory=list)
-    build_dir: Optional[Path] = None
-    whole_program: bool = False
-    emit_deps: bool = False
-
-
-@dataclass
 class CompilerContext:
     """Shared state passed through all stages of a compilation session."""
     source_text: str
@@ -96,13 +79,12 @@ class CompilerContext:
     ) -> CompilerContext:
         """Constructs a fresh CompilerContext with initialized SourceMap."""
         opts = options or CompilerOptions()
-        environment = env if env is not None else Environment()
+        environment = env if env is not None else Environment(builtin_registry=BuiltinModuleRegistry)
         r_env = runtime_env if runtime_env is not None else RuntimeEnvironment.create_root_env()
 
         # Wire include_paths and current_dir
         environment.options = opts
-        from quest.modules.paths import is_c_compilation_mode
-        if opts.build_dir is None and is_c_compilation_mode(environment):
+        if opts.build_dir is None and opts.is_c_compilation_mode:
             # Separate compilation always has a build directory, so that nested interface and module
             # compilations agree on where artifacts live (docs/build-process.md §3.1).
             opts.build_dir = Path(".build")
@@ -129,6 +111,8 @@ class CompilerContext:
         if environment.program_dir is None:
             environment.program_dir = environment.current_dir
         r_env.program_dir = environment.program_dir
+        opts.current_dir = environment.current_dir
+        opts.program_dir = environment.program_dir
 
         source_map = SourceMap(source_text, file_name)
         sink = DiagnosticSink()
@@ -351,8 +335,6 @@ class CodegenCPhase(Phase):
     artifact_name = "c_source"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
-        from quest.codegen.c_emitter import CEmitter
-
         try:
             emitter = CEmitter(
                 echo=ctx.options.echo,
@@ -372,8 +354,6 @@ class CodegenCPhase(Phase):
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None
 
-        from quest.build.engine import unit_module_refs
-
         import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
         ctx.imported_modules = unit_module_refs(
             import_items, emitter.analysis, ctx.env.current_dir, ctx.env.include_paths, ctx.env.program_dir
@@ -390,8 +370,6 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
     Delegates to the BuildEngine, so that staleness checks, artifact placement, and object collection
     are the same as for a full application build (docs/build-process.md §7.3).
     """
-    from quest.build.engine import BuildEngine
-
     opts = ctx.options
     engine = BuildEngine(
         build_dir=opts.build_dir,
@@ -410,9 +388,6 @@ class RunCCompiledPhase(Phase):
     artifact_name = "stdout"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
-        import tempfile
-        from quest.codegen.compiler_runner import compile_c_source, run_binary
-
         if not isinstance(input_data, str):
             return None
 
