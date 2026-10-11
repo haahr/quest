@@ -327,9 +327,21 @@ class TypedTypeWitness(TypedExpr):
 
 @dataclass(frozen=True)
 class TypedTuple(TypedExpr):
-    """Tuple value construction: tuple e1, e2 end."""
+    """Tuple value construction: tuple e1, e2 end.
+
+    Components declared together are listed as groups of indices into elements: mutually recursive ones (let rec,
+    alone or joined by and), whose closures may refer to one another, and simultaneous ones (let ... and ...), whose
+    values are all computed before any of their labels is bound.
+    """
     elements: tuple[TypedExpr, ...]
     type_val: QTupleType
+    rec_groups: tuple[tuple[int, ...], ...] = ()
+    simultaneous_groups: tuple[tuple[int, ...], ...] = ()
+
+    def dump_header(self, env: Optional[Any] = None) -> str:
+        parts = [f":rec {list(group)}" for group in self.rec_groups]
+        parts += [f":and {list(group)}" for group in self.simultaneous_groups]
+        return " ".join(parts)
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":elements", self.elements)]

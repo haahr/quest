@@ -392,8 +392,22 @@ class TupleBinding(ASTNode):
 
 
 @dataclass(frozen=True)
+class TupleBindingGroup(ASTNode):
+    """Simultaneous value components of a tuple: let x = ... and y = ... (without rec)."""
+    bindings: tuple[TupleBinding, ...]
+
+
+@dataclass(frozen=True)
 class ExprTuple(Expr):
-    fields: tuple[Union[TupleBinding, TypeBinding, TypeBindingGroup, DefKindBinding], ...]
+    """A tuple constructor. Recursive value declarations (let rec ..., alone or joined by and) are components as
+    LetValueBinding and LetValueBindingGroup, which keep the annotations that type them."""
+    fields: tuple[
+        Union[
+            TupleBinding, TupleBindingGroup, LetValueBinding, LetValueBindingGroup, TypeBinding, TypeBindingGroup,
+            DefKindBinding,
+        ],
+        ...,
+    ]
 
 
 @dataclass(frozen=True)

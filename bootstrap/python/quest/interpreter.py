@@ -835,21 +835,28 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         case TypedTypeWitness(name=name, witness_type=witness_type, bound=bound):
             return QTypeValue(type_val=witness_type, bound=bound, name=name)
 
-        case TypedTuple(elements=elements, type_val=type_val):
+        case TypedTuple(elements=elements, type_val=type_val, simultaneous_groups=simultaneous_groups):
             labels: Optional[tuple[Optional[str], ...]] = None
             if isinstance(type_val, QTupleType):
                 labels = tuple(f.name for f in type_val.fields)
+            # Each component's label is bound for the components after it. A simultaneous declaration's labels are
+            # bound, in a frame of their own, once all of its members' values are computed; the closures of a let rec
+            # find their labels in the frame they capture, bound before they are called.
+            group_of = {group[0]: group for group in simultaneous_groups}
             tup_env = env.push_scope()
             elems: list[QValue] = []
-            try:
-                for idx, e in enumerate(elements):
-                    val = eval_expr(e, tup_env)
+            idx = 0
+            while idx < len(elements):
+                group = group_of.get(idx, (idx,))
+                values = [eval_expr(elements[i], tup_env) for i in group]
+                if len(group) > 1 or idx in group_of:
+                    tup_env = tup_env.push_scope()
+                for i, val in zip(group, values):
                     elems.append(val)
-                    lbl = labels[idx] if labels and idx < len(labels) else None
+                    lbl = labels[i] if labels and i < len(labels) else None
                     if lbl is not None:
                         tup_env.define(lbl, val)
-            finally:
-                tup_env.pop_scope()
+                idx += len(group)
             return QTuple(elements=tuple(elems), labels=labels)
 
         case TypedSelect(target=target, field=field, offset=offset):

@@ -1,0 +1,94 @@
+(* Language: recursive and simultaneous declarations as tuple components *)
+
+import writer: Writer;
+import conv: Conv;
+import arrayOp: ArrayOp;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+let printBool(b: Bool): Ok = printInt(if b then 1 else 0 end);
+
+(* 1. Later components refer to earlier ones, directly and from closures *)
+let basics = tuple
+    let x = 1
+    let y = x + 1
+    let addX(n: Int): Int = n + x
+end;
+printInt({basics.y * 10} + basics.addX(5));
+
+(* 2. Recursive and mutually recursive function components *)
+let numbers = tuple
+    let rec fact(n: Int): Int = if n <= 1 then 1 else n * fact(n - 1) end
+    let rec even(n: Int): Bool = if n is 0 then true else odd(n - 1) end
+    and odd(n: Int): Bool = if n is 0 then false else even(n - 1) end
+end;
+printInt(numbers.fact(5));
+printBool(numbers.even(10));
+printBool(numbers.odd(10));
+
+(* 3. Recursive components local to a function, capturing its parameter *)
+let countDown(k: Int): Int =
+    begin
+        let t = tuple
+            let rec down(n: Int): Int = if n <= 0 then k else up(n - 1) + 1 end
+            and up(n: Int): Int = if n <= 0 then k else down(n - 1) + 10 end
+        end;
+        t.down(4)
+    end;
+printInt(countDown(100));
+
+(* 4. Simultaneous components see the bindings the others shadow *)
+let x = 7;
+let shadowing = tuple let x = 2 and y = x and getX(): Int = x end;
+printInt({shadowing.x * 100} + {shadowing.y * 10} + shadowing.getX());
+
+(* 5. A recursive type component, and a mutually recursive group of them *)
+let lists = tuple
+    Let Rec L = Option nil cons with head: Int tail: L end end
+    let l: L = option cons of L with 3 option cons of L with 4 option nil of L end end end
+    let rec sum(xs: L): Int = case xs when cons with c then c.head + sum(c.tail) else 0 end
+end;
+printInt(lists.sum(lists.l));
+let trees = tuple
+    Let Rec Forest = Record trees: Array(Tree) end
+    and Tree = Variant leaf: Int node: Forest end
+    let rec size(t: Tree): Int =
+        case t
+            when leaf with n then n
+            when node with f then sizeForest(f)
+            else 0
+        end
+    and sizeForest(f: Forest): Int =
+        begin
+            let var s = 0;
+            for i = 0 upto arrayOp.size(:Tree f.trees) - 1 do
+                s := s + size(f.trees[i])
+            end;
+            s
+        end
+end;
+let leaf(n: Int): trees.Tree = variant leaf of trees.Tree with n end;
+printInt(trees.sizeForest(record trees = array of leaf(5) leaf(6) end end));
+
+(* 6. Checked against a tuple type that declares recursive types *)
+Let Sig = Tuple
+    Def Rec Nat = Option zero succ with n: Nat end end
+    toInt(n: Nat): Int
+    two: Nat
+end;
+let impl: Sig = tuple
+    Let Rec Nat = Option zero succ with n: Nat end end
+    let rec toInt(n: Nat): Int = case n when succ with p then 1 + toInt(p.n) else 0 end
+    let two: Nat = option succ of Nat with option succ of Nat with option zero of Nat end end end
+end;
+printInt(impl.toInt(impl.two));
+
+(* 7. Simultaneous components checked against a tuple type *)
+Let Pair = Tuple a: Int b: Int end;
+let a = 30;
+let pair: Pair = tuple let a = 1 and b = a end;
+printInt({pair.a * 100} + pair.b);

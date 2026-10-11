@@ -284,22 +284,11 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                                 )
 
                         case ast.TypeBinding() | ast.TypeBindingGroup():
-                            # The members of a group are elaborated simultaneously, then declared together
-                            members = tuple_type_binding_members(f)
-                            elaborated = [
-                                (member, *_elaborate_tuple_type_binding(member, env)) for member in members
-                            ]
-                            for member, m_type, bound_kind in elaborated:
-                                env.current_scope.declare_type(
-                                    TypeSymbol(
-                                        name=member.name,
-                                        symbol_id=env.fresh_symbol_id(),
-                                        kind=bound_kind or TYPE_KIND,
-                                        definition=m_type,
-                                    )
-                                )
+                            # The members of a group are elaborated together, then declared together
+                            for member, symbol, bound_kind in elaborate_tuple_type_bindings(f, env):
+                                env.current_scope.declare_type(symbol)
                                 components.append(
-                                    QTupleTypeBinding(name=member.name, type_val=m_type, bound=bound_kind)
+                                    QTupleTypeBinding(name=member.name, type_val=symbol.definition, bound=bound_kind)
                                 )
 
                         case ast.DefKindBinding(name=name, kind_val=kind_val):
@@ -531,13 +520,45 @@ def _check_distinct_member_names(group: ast.TypeBindingGroup) -> None:
 
 def tuple_type_binding_members(binding: ast.TypeBinding | ast.TypeBindingGroup) -> tuple[ast.TypeBinding, ...]:
     """Returns the type bindings declared by one component of a tuple or tuple type: the binding itself, or the
-    members of a group, which are elaborated simultaneously. Tuples do not support recursive type declarations."""
-    members = binding.bindings if isinstance(binding, ast.TypeBindingGroup) else (binding,)
-    if members[0].is_rec:
-        raise KindError("Recursive type declarations are not supported in tuples", offset=binding.offset)
+    members of a group."""
     if isinstance(binding, ast.TypeBindingGroup):
         _check_distinct_member_names(binding)
-    return members
+        return binding.bindings
+    return (binding,)
+
+
+def elaborate_tuple_type_bindings(
+    binding: ast.TypeBinding | ast.TypeBindingGroup,
+    env: Environment,
+) -> list[tuple[ast.TypeBinding, TypeSymbol, Optional[QKind]]]:
+    """Elaborates the type bindings one component of a tuple or tuple type declares, without declaring them in the
+    tuple's scope: each member with its symbol and its declared bound, if any.
+
+    The members of a group without Rec are elaborated simultaneously. Recursive ones, alone or in a group, are
+    elaborated as anywhere else, in a scope of their own.
+    """
+    members = tuple_type_binding_members(binding)
+    if members[0].is_rec:
+        with env.scoped("tuple_rec_types"):
+            if isinstance(binding, ast.TypeBindingGroup):
+                symbols = elaborate_type_binding_group(binding, env)
+            else:
+                symbols = [elaborate_type_binding(binding, env)]
+        return [
+            (member, symbol, symbol.kind if member.bound is not None else None)
+            for member, symbol in zip(members, symbols)
+        ]
+    result: list[tuple[ast.TypeBinding, TypeSymbol, Optional[QKind]]] = []
+    for member in members:
+        m_type, bound_kind = _elaborate_tuple_type_binding(member, env)
+        symbol = TypeSymbol(
+            name=member.name,
+            symbol_id=env.fresh_symbol_id(),
+            kind=bound_kind or TYPE_KIND,
+            definition=m_type,
+        )
+        result.append((member, symbol, bound_kind))
+    return result
 
 
 def _elaborate_tuple_type_binding(

@@ -138,6 +138,25 @@ def _build_array_expr(offset: int, bindings: tuple[Any, ...]) -> ast.ExprArray:
     return ast.ExprArray(elements=_call_args(bindings), element_type=elem_type, offset=offset)
 
 
+def _tuple_binding(item: ast.LetValueBinding) -> ast.TupleBinding:
+    """The tuple component a `let` declares: a function's parameters become a function value."""
+    if item.params:
+        fn_expr = ast.ExprFun(
+            params=item.params,
+            return_type=item.type_annot,
+            body=item.value,
+            offset=item.offset,
+        )
+        return ast.TupleBinding(name=item.name, value=fn_expr, is_var=item.is_var, offset=item.offset)
+    return ast.TupleBinding(
+        name=item.name,
+        value=item.value,
+        type_annot=item.type_annot,
+        is_var=item.is_var,
+        offset=item.offset,
+    )
+
+
 def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
     """Processes phrases inside a tuple constructor into tuple components."""
     result: list[Any] = []
@@ -145,34 +164,17 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
         match item:
             case ast.TypeBinding() | ast.TypeBindingGroup() | ast.DefKindBinding():
                 result.append(item)
-            case ast.LetValueBinding(is_rec=True) | ast.LetValueBindingGroup():
-                # Rejected by the typechecker: tuples do not support recursive or simultaneous value declarations
+            case ast.LetValueBinding(is_rec=True):
+                # Recursive declarations keep their parameters and annotations, which type them before their values
                 result.append(item)
-            case ast.LetValueBinding(params=params) if params:
-                fn_expr = ast.ExprFun(
-                    params=params,
-                    return_type=item.type_annot,
-                    body=item.value,
-                    offset=item.offset,
-                )
+            case ast.LetValueBindingGroup(bindings=members) if members[0].is_rec:
+                result.append(item)
+            case ast.LetValueBindingGroup(bindings=members):
                 result.append(
-                    ast.TupleBinding(
-                        name=item.name,
-                        value=fn_expr,
-                        is_var=item.is_var,
-                        offset=item.offset,
-                    )
+                    ast.TupleBindingGroup(bindings=tuple(_tuple_binding(m) for m in members), offset=item.offset)
                 )
             case ast.LetValueBinding():
-                result.append(
-                    ast.TupleBinding(
-                        name=item.name,
-                        value=item.value,
-                        type_annot=item.type_annot,
-                        is_var=item.is_var,
-                        offset=item.offset,
-                    )
-                )
+                result.append(_tuple_binding(item))
             case ast.ExprStmt(expr=expr):
                 result.append(ast.TupleBinding(name=None, value=expr, offset=item.offset))
             case ast.TupleBinding():

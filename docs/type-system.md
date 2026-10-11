@@ -218,9 +218,10 @@ Let Name = String and Size = Int;                (* simultaneous *)
   `Rec(Tree :: TYPE) Variant leaf: Int node: Forest end`.
 - **Interfaces** may declare groups (`Def Rec A = ... and B = ...`). A compiled interface records each member's body
   and a group number, and the loader rebuilds the group ([modules.md](modules.md) §9.1).
-- **Not supported:** recursive type operators (`Let Rec T(A::TYPE) = ...`, alone or in a group), and recursive type
-  declarations inside tuples and tuple types (groups without `Rec` are allowed there). The members of a group share
-  its keyword's `Rec` and `Def`.
+- **Tuples and tuple types** may declare groups, with or without `Rec`, and single recursive types, as components
+  (§4.1).
+- **Not supported:** recursive type operators (`Let Rec T(A::TYPE) = ...`, alone or in a group). The members of a
+  group share its keyword's `Rec` and `Def`.
 
 Values have the same form: `let rec f(...) = ... and g(...) = ...` for mutually recursive ones, and `let x = ... and
 y = ...` for simultaneous ones (§6.10).
@@ -244,6 +245,16 @@ end;
 Signature elaboration (`bootstrap/python/quest/elaborate_types.py`) proceeds sequentially in an ordered dependent
 scope. Each type formal `X::K` introduces a `TypeSymbol` into the local scope so subsequent fields can refer to `X`.
 Anonymous type formals (`::TYPE`) are prohibited; type formals must specify an identifier.
+
+Tuple values are sequential in the same way: each component's label is in scope in the components after it. Components
+declared together follow the rules for declarations elsewhere. Type declarations joined by `and`, recursive or not, and
+single recursive types (`Let Rec`, or `Def Rec` in a tuple type) are elaborated as in §3.4 and become one manifest
+component each. A `let rec`, alone or joined by `and`, declares its members, typed by their annotations, before
+their values are checked, so its functions may call one another; `let x = ... and y = ...` computes every member's
+value before any of their labels is bound (§6.10). Each member is a component of its own, so a tuple checked against
+a tuple type matches the members against the type's components one by one. A `TypedTuple` lists the components
+declared together (`rec_groups`, `simultaneous_groups`), which the interpreter and the C emitter evaluate as they do
+the same declarations in a block.
 
 ### 4.2. Extended Subsignatures (`is_subtype`)
 Subtyping between tuple types implements Cardelli's extended subsignature rules (§7.1, §10.2):
@@ -547,14 +558,13 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   Omitting return types or parameter types on recursive definitions triggers a compilation error.
 - **Mutually Recursive Bindings:** `let rec f(S): Ret = b and g(S'): Ret' = b' ...` introduces every member into
   $\Gamma$, with the type its annotations give, before any body is checked, so each body can call every member. The
-  members follow the rules above, and a name may not be declared twice. Recursive value declarations are not
-  supported inside tuples.
+  members follow the rules above, and a name may not be declared twice. They may also be tuple components (§4.1).
 - **Simultaneous Bindings:** Without `rec`, `let x = e and y = e' ...` declares its members simultaneously, as type
   declarations without `Rec` are (§3.4): each member is elaborated in the enclosing scope, so it sees the bindings
   the other members shadow and not the members themselves (after `let x = 1;`, `let x = 2 and y = x;` binds `y` to
   1, and `let p = q and q = p;` swaps), and all are declared once every member has been elaborated. At run time
   every value is computed, in order, before any member is bound, and a closure a member's value builds keeps the
-  bindings the members shadow. They are not supported inside tuples yet.
+  bindings the members shadow. They may also be tuple components (§4.1).
 - **Recursive Value Bindings:**
   Any recursive value binding without parameters (`let rec x: T = e`) similarly requires an explicit type
   annotation, and its right-hand side entity must syntactically be a constructor or abstraction (Cardelli,

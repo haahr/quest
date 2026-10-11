@@ -213,7 +213,8 @@ ASTNode
   │     ├── ExprApp           (Function / operator call)
   │     ├── ExprIf, ExprWhile, ExprLoop, ExprTry, ExprRaise
   │     ├── ExprRecord        (record x = 1, y = 2 end)
-  │     ├── ExprTuple         (tuple 1, 2, 3 end)
+  │     ├── ExprTuple         (tuple 1, 2, 3 end; components are TupleBindings, TupleBindingGroups for let ... and
+  │     │                      ..., type bindings, and let rec declarations, which keep their annotations)
   │     ├── ExprArray         (array of [:T] a1 ... an end)
   │     ├── ExprArrayRep      (array of(n init))
   │     ├── ExprOption        (option (tag | ordinal(n)) of T [with Binding] end)

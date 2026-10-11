@@ -92,6 +92,7 @@ from quest.elaborate_types import (
     elaborate_type,
     elaborate_type_binding,
     elaborate_type_binding_group,
+    elaborate_tuple_type_bindings,
     tuple_type_binding_members,
 )
 from quest.typed_ast import (
@@ -130,6 +131,7 @@ from quest.typed_ast import (
     TypedLetType,
     TypedLetTypeGroup,
     TypedLetValueGroup,
+    binding_members,
     TypedLetValue,
     TypedLoop,
     TypedModule,
@@ -343,13 +345,16 @@ def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
     return result
 
 
-def _reject_value_declarations_in_tuple(fields: Any) -> None:
-    """Rejects recursive and simultaneous value declarations among the components of a tuple."""
-    for f in fields:
-        if isinstance(f, ast.LetValueBindingGroup) and not f.bindings[0].is_rec:
-            raise TypeError("Value declarations joined by 'and' are not supported in tuples yet", offset=f.offset)
-        if isinstance(f, (ast.LetValueBinding, ast.LetValueBindingGroup)):
-            raise TypeError("Recursive value declarations are not supported in tuples", offset=f.offset)
+def _check_distinct_names(members: Any) -> None:
+    """Rejects a simultaneous declaration (members joined by and) that declares one name twice."""
+    seen: set[str] = set()
+    for member in members:
+        if member.name in seen:
+            raise TypeError(
+                f"'{member.name}' is declared more than once in one simultaneous declaration",
+                offset=member.offset,
+            )
+        seen.add(member.name)
 
 
 class TypeElaborator:
@@ -1565,60 +1570,66 @@ class TypeElaborator:
         return TypedRecord(fields=tuple(field_typeds), type_val=expected_lazy, offset=expr.offset)
 
 
+    def _synth_tuple_component(self, b: ast.TupleBinding, env: Environment, loop_depth: int) -> TypedExpr:
+        """Synthesizes the value of a tuple's value component, without declaring its label."""
+        if b.type_annot is not None:
+            return self.check_expr(b.value, elaborate_type(b.type_annot, env), env, loop_depth)
+        return self.synth_expr(b.value, env, loop_depth)
+
+    def _declare_tuple_label(self, name: Optional[str], type_val: QType, is_var: bool, env: Environment) -> None:
+        """Declares the label of a tuple's value component, for the components after it."""
+        if name is not None:
+            env.current_scope.declare_value(
+                ValueSymbol(name=name, type_val=type_val, is_var=is_var, function_depth=self.function_depth)
+            )
+
     def _synth_tuple_expr(self, expr: ast.ExprTuple, env: Environment, loop_depth: int) -> TypedTuple:
         """Synthesizes a tuple constructor: tuple ... end."""
-        _reject_value_declarations_in_tuple(expr.fields)
         with env.scoped("tuple_synth"):
             elem_typeds: list[TypedExpr] = []
             q_fields: list[QTupleComponent] = []
+            rec_groups: list[tuple[int, ...]] = []
+            simultaneous_groups: list[tuple[int, ...]] = []
 
             for b in expr.fields:
                 if isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
-                    # The members of a group are elaborated simultaneously, then declared together
-                    witnesses: list[tuple[ast.TypeBinding, QType, QKind]] = []
-                    for member in tuple_type_binding_members(b):
-                        witness_type = elaborate_type(member.type_val, env)
-                        if member.bound is not None:
-                            k_bound = elaborate_kind(member.bound, env)
-                        else:
-                            k_bound = TYPE_KIND
-                        check_kind(witness_type, k_bound, env)
-                        witnesses.append((member, witness_type, k_bound))
-                    for member, witness_type, k_bound in witnesses:
-                        sym_id = env.fresh_symbol_id()
-                        env.current_scope.declare_type(
-                            TypeSymbol(
-                                name=member.name,
-                                symbol_id=sym_id,
-                                kind=k_bound,
-                                definition=witness_type,
-                            )
-                        )
+                    # The members of a group are elaborated together, then declared together
+                    for member, symbol, bound in elaborate_tuple_type_bindings(b, env):
+                        k_bound = bound or TYPE_KIND
+                        env.current_scope.declare_type(symbol)
                         elem_typeds.append(
                             TypedTypeWitness(
                                 name=member.name,
-                                witness_type=witness_type,
+                                witness_type=symbol.definition,
                                 bound=k_bound,
                                 offset=member.offset,
                             )
                         )
-                        q_fields.append(QTupleTypeBinding(name=member.name, type_val=witness_type, bound=k_bound))
+                        q_fields.append(QTupleTypeBinding(name=member.name, type_val=symbol.definition, bound=k_bound))
                 elif isinstance(b, ast.TupleBinding):
-                    if b.type_annot is not None:
-                        annot_type = elaborate_type(b.type_annot, env)
-                        val_typed = self.check_expr(b.value, annot_type, env, loop_depth)
-                    else:
-                        val_typed = self.synth_expr(b.value, env, loop_depth)
+                    val_typed = self._synth_tuple_component(b, env, loop_depth)
                     elem_typeds.append(val_typed)
                     q_fields.append(QTupleField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))
-                    if b.name is not None:
-                        env.current_scope.declare_value(
-                            ValueSymbol(
-                                name=b.name,
-                                type_val=val_typed.type_val,
-                                is_var=b.is_var,
-                                function_depth=self.function_depth,
-                            )
+                    self._declare_tuple_label(b.name, val_typed.type_val, b.is_var, env)
+                elif isinstance(b, ast.TupleBindingGroup):
+                    # Simultaneous: every member's value is elaborated before any label is declared
+                    _check_distinct_names(b.bindings)
+                    members = [(m, self._synth_tuple_component(m, env, loop_depth)) for m in b.bindings]
+                    simultaneous_groups.append(tuple(range(len(elem_typeds), len(elem_typeds) + len(members))))
+                    for m, val_typed in members:
+                        elem_typeds.append(val_typed)
+                        q_fields.append(QTupleField(name=m.name, type_val=val_typed.type_val, is_var=m.is_var))
+                    for m, val_typed in members:
+                        self._declare_tuple_label(m.name, val_typed.type_val, m.is_var, env)
+                elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
+                    # Recursive: let rec, alone or joined by and, declares its members before checking their values
+                    typed_binding = self._elaborate_binding(b, env, loop_depth)
+                    members = binding_members(typed_binding)
+                    rec_groups.append(tuple(range(len(elem_typeds), len(elem_typeds) + len(members))))
+                    for member in members:
+                        elem_typeds.append(member.value)
+                        q_fields.append(
+                            QTupleField(name=member.name, type_val=member.symbol.type_val, is_var=member.symbol.is_var)
                         )
                 elif isinstance(b, ast.DefKindBinding):
                     # A manifest kind names a kind for the later components; it is not a component itself
@@ -1630,7 +1641,13 @@ class TypeElaborator:
                     )
 
             tuple_type = QTupleType(tuple(q_fields))
-            return TypedTuple(elements=tuple(elem_typeds), type_val=tuple_type, offset=expr.offset)
+            return TypedTuple(
+                elements=tuple(elem_typeds),
+                type_val=tuple_type,
+                rec_groups=tuple(rec_groups),
+                simultaneous_groups=tuple(simultaneous_groups),
+                offset=expr.offset,
+            )
 
 
     def _check_tuple_expr(
@@ -1645,11 +1662,14 @@ class TypeElaborator:
         if not isinstance(expected_lazy, QTupleType):
             return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
 
-        _reject_value_declarations_in_tuple(expr.fields)
         # Each member of a group is a component of its own. A manifest kind is not a component: it is declared
         # just before the component that follows it (kinds_before[i] precedes fields[i]).
         fields: list[ast.BindingNode] = []
-        groups: dict[int, tuple[ast.TypeBinding, ...]] = {}
+        # The type binding or group each type member comes from, and the members of the recursive (let rec) and
+        # simultaneous (let ... and ...) value declarations each value member belongs to
+        type_bindings: dict[int, ast.TypeBinding | ast.TypeBindingGroup] = {}
+        rec_members: dict[int, tuple[ast.LetValueBinding, ...]] = {}
+        simultaneous_members: dict[int, tuple[ast.TupleBinding, ...]] = {}
         kinds_before: dict[int, list[ast.DefKindBinding]] = {}
         for b in expr.fields:
             if isinstance(b, ast.DefKindBinding):
@@ -1657,7 +1677,16 @@ class TypeElaborator:
             elif isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
                 members = tuple_type_binding_members(b)
                 fields.extend(members)
-                groups.update((id(member), members) for member in members)
+                type_bindings.update((id(member), b) for member in members)
+            elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
+                value_members = b.bindings if isinstance(b, ast.LetValueBindingGroup) else (b,)
+                _check_distinct_names(value_members)
+                fields.extend(value_members)
+                rec_members.update((id(member), value_members) for member in value_members)
+            elif isinstance(b, ast.TupleBindingGroup):
+                _check_distinct_names(b.bindings)
+                fields.extend(b.bindings)
+                simultaneous_members.update((id(member), b.bindings) for member in b.bindings)
             else:
                 fields.append(b)
         if len(fields) != len(expected_lazy.fields):
@@ -1670,13 +1699,20 @@ class TypeElaborator:
             witness_subst: dict[int, QType] = {}
             elem_typeds: list[TypedExpr] = []
             witnesses: dict[int, QType] = {}
+            # The symbols of recursive value members, declared once the first member of their declaration is reached
+            rec_symbols: dict[int, ValueSymbol] = {}
+            rec_groups: list[tuple[int, ...]] = []
+            simultaneous_groups: list[tuple[int, ...]] = []
+            # The labels of a simultaneous declaration's members, declared once its last member has been checked
+            pending_labels: list[ValueSymbol] = []
+            group_indices: list[int] = []
 
             def witness_of(binding: ast.TypeBinding) -> QType:
                 """Elaborates a type binding's witness; the members of a group are elaborated together, before any
                 of them is declared."""
                 if id(binding) not in witnesses:
-                    for member in groups[id(binding)]:
-                        witnesses[id(member)] = elaborate_type(member.type_val, env)
+                    for member, symbol, _ in elaborate_tuple_type_bindings(type_bindings[id(binding)], env):
+                        witnesses[id(member)] = symbol.definition
                 return witnesses[id(binding)]
 
             for index, (b, exp_f) in enumerate(zip(fields, expected_lazy.fields)):
@@ -1734,6 +1770,14 @@ class TypeElaborator:
                                 f"got '{witness_type}'",
                                 offset=b.offset,
                             )
+                        env.current_scope.declare_type(
+                            TypeSymbol(
+                                name=bind_name,
+                                symbol_id=env.fresh_symbol_id(),
+                                kind=bind_bound or TYPE_KIND,
+                                definition=witness_type,
+                            )
+                        )
                         elem_typeds.append(
                             TypedTypeWitness(
                                 name=bind_name,
@@ -1756,6 +1800,29 @@ class TypeElaborator:
                             )
                         expected_field_type = field_type.substitute(witness_subst)
                         b_is_var = getattr(b, "is_var", False)
+                        if id(b) in rec_members:
+                            group = rec_members[id(b)]
+                            if b is group[0]:
+                                rec_symbols.update((id(m), self._declare_rec_value(m, env)) for m in group)
+                            rec_sym = rec_symbols[id(b)]
+                            if exp_is_var:
+                                raise TypeError(
+                                    f"Tuple field '{field_name or ''}' must be declared mutable (var)",
+                                    offset=b.offset,
+                                )
+                            if not is_subtype(rec_sym.type_val, expected_field_type, env):
+                                raise TypeError(
+                                    f"Tuple field '{b.name}' declared type '{rec_sym.type_val}' is not a subtype "
+                                    f"of expected field type '{expected_field_type}'",
+                                    offset=b.offset,
+                                )
+                            if b is group[0]:
+                                group_indices = []
+                            group_indices.append(len(elem_typeds))
+                            elem_typeds.append(self._check_rec_value(b, rec_sym, env, loop_depth).value)
+                            if b is group[-1]:
+                                rec_groups.append(tuple(group_indices))
+                            continue
                         if exp_is_var:
                             if not b_is_var:
                                 raise TypeError(
@@ -1780,22 +1847,44 @@ class TypeElaborator:
                             val_typed = self.check_expr(b.value, annot_type, env, loop_depth)
                         else:
                             val_typed = self.check_expr(b.value, expected_field_type, env, loop_depth)
-                        elem_typeds.append(val_typed)
+                        label = None
                         if field_name is not None:
-                            env.current_scope.declare_value(
-                                ValueSymbol(
-                                    name=field_name,
-                                    type_val=expected_field_type,
-                                    is_var=exp_is_var,
-                                    function_depth=self.function_depth,
-                                )
+                            label = ValueSymbol(
+                                name=field_name,
+                                type_val=expected_field_type,
+                                is_var=exp_is_var,
+                                function_depth=self.function_depth,
                             )
+                        if id(b) in simultaneous_members:
+                            # The labels of a simultaneous declaration are declared after its last member
+                            group = simultaneous_members[id(b)]
+                            if b is group[0]:
+                                group_indices = []
+                            group_indices.append(len(elem_typeds))
+                            elem_typeds.append(val_typed)
+                            if label is not None:
+                                pending_labels.append(label)
+                            if b is group[-1]:
+                                simultaneous_groups.append(tuple(group_indices))
+                                for pending in pending_labels:
+                                    env.current_scope.declare_value(pending)
+                                pending_labels = []
+                            continue
+                        elem_typeds.append(val_typed)
+                        if label is not None:
+                            env.current_scope.declare_value(label)
 
             # Trailing manifest kinds name nothing, but are still checked
             for kind_binding in kinds_before.get(len(fields), ()):
                 elaborate_kind_binding(kind_binding, env)
 
-            return TypedTuple(elements=tuple(elem_typeds), type_val=expected_lazy, offset=expr.offset)
+            return TypedTuple(
+                elements=tuple(elem_typeds),
+                type_val=expected_lazy,
+                rec_groups=tuple(rec_groups),
+                simultaneous_groups=tuple(simultaneous_groups),
+                offset=expr.offset,
+            )
 
 
     def _synth_select_expr(self, expr: ast.ExprSelect, env: Environment, loop_depth: int) -> TypedSelect:
@@ -3239,14 +3328,7 @@ class TypeElaborator:
         Without rec, each member is elaborated in a scope of its own, so it sees the enclosing scope and not the other
         members, and all are declared once every member has been elaborated.
         """
-        seen: set[str] = set()
-        for member in group.bindings:
-            if member.name in seen:
-                raise TypeError(
-                    f"'{member.name}' is declared more than once in one simultaneous declaration",
-                    offset=member.offset,
-                )
-            seen.add(member.name)
+        _check_distinct_names(group.bindings)
         if not group.bindings[0].is_rec:
             members: list[TypedLetValue] = []
             for member in group.bindings:

@@ -3308,7 +3308,9 @@ class CEmitter:
             case TypedExit():
                 lines.append("break;")
 
-            case TypedTuple(elements=elems, type_val=t):
+            case TypedTuple(
+                elements=elems, type_val=t, rec_groups=rec_groups, simultaneous_groups=simultaneous_groups
+            ):
                 struct_name = tuple_struct_name(t)
                 alloc_expr = f"({struct_name} *)quest_alloc(sizeof({struct_name}))"
                 target_dest = dest
@@ -3317,16 +3319,65 @@ class CEmitter:
                     lines.append(f"{struct_name} *{target_dest} = {alloc_expr};")
                 else:
                     lines.append(f"{target_dest} = {alloc_expr};")
-                val_idx = 0
-                for elem in elems:
-                    if isinstance(elem, TypedTypeWitness):
+                # A component's label stands for its field in the components after it (and in the closures they
+                # build), from the time its value is stored
+                saved_env = dict(self.current_env_vars)
+                field_index: dict[int, int] = {}
+                for i, elem in enumerate(elems):
+                    if not isinstance(elem, TypedTypeWitness):
+                        field_index[i] = len(field_index)
+
+                def store(i: int, value_c: str, elem: TypedExpr) -> None:
+                    field = t.value_fields[field_index[i]]
+                    field_c = f"{target_dest}->_{field_index[i]}"
+                    self._coerce_val(value_c, elem, field.type_val, lines, dest=field_c)
+                    if field.name is not None:
+                        self.current_env_vars[field.name] = field_c
+
+                rec_start = {group[0]: group for group in rec_groups}
+                simultaneous_start = {group[0]: group for group in simultaneous_groups}
+                i = 0
+                while i < len(elems):
+                    if i in simultaneous_start:
+                        # Every member's value is computed before any of their labels stands for its field
+                        group = simultaneous_start[i]
+                        temps: list[str] = []
+                        for j in group:
+                            tmp = self.fresh_tmp("_and")
+                            lines.append(f"{self.c_type(t.value_fields[field_index[j]].type_val)} {tmp};")
+                            self._coerce_val(
+                                self.emit_val(elems[j], lines), elems[j], t.value_fields[field_index[j]].type_val,
+                                lines, dest=tmp,
+                            )
+                            temps.append(tmp)
+                        for j, tmp in zip(group, temps):
+                            store(j, tmp, elems[j])
+                        i += len(group)
                         continue
-                    expected_fld_t = t.value_fields[val_idx].type_val
-                    val_c = self.emit_val(elem, lines)
-                    self._coerce_val(
-                        val_c, elem, expected_fld_t, lines, dest=f"{target_dest}->_{val_idx}"
-                    )
-                    val_idx += 1
+                    if i in rec_start:
+                        # The closures the members build capture the members' labels once every member is stored,
+                        # as in a block's let rec (_emit_rec_bindings)
+                        group = rec_start[i]
+                        names = frozenset(
+                            t.value_fields[field_index[j]].name for j in group
+                            if t.value_fields[field_index[j]].name is not None
+                        )
+                        for j in group:
+                            for fun in _closures_built_by(elems[j]):
+                                self.rec_fun_names[id(fun)] = names
+                        saved_deferred = self.deferred_captures
+                        self.deferred_captures = []
+                        for j in group:
+                            store(j, self.emit_val(elems[j], lines), elems[j])
+                        for env_tmp, vname in self.deferred_captures:
+                            lines.append(f"{env_tmp}->{mangle_ident(vname)} = {self.current_env_vars[vname]};")
+                        self.deferred_captures = saved_deferred
+                        i += len(group)
+                        continue
+                    if i in field_index:
+                        store(i, self.emit_val(elems[i], lines), elems[i])
+                    i += 1
+                self.current_env_vars = saved_env
 
             case TypedRecord(fields=flds, type_val=t):
                 concrete_t = self._effective_record_type(expr)

@@ -5,33 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Recursive and simultaneous declarations inside tuples
-
-**Problem.** A tuple or tuple type cannot contain recursive declarations: `Let Rec` (single or a group) in a tuple or
-tuple type gets "Recursive type declarations are not supported in tuples", and `let rec` (single or a group) in a
-tuple gets "Recursive value declarations are not supported in tuples". Value declarations joined by `and` without
-`rec`, which work elsewhere (`docs/type-system.md` §6.10), get "Value declarations joined by 'and' are not supported
-in tuples yet". Non-recursive declarations, and type groups without `Rec`, work there.
-
-**Reproduce.** The error tests `rec_type_in_tuple.quest`, `type_binding_group_rec_in_tuple.quest`,
-`type_binding_group_rec_in_tuple_type.quest`, `rec_value_in_tuple.quest`, `value_group_in_tuple.quest`, and
-`value_group_without_rec_in_tuple.quest` in `tests/errors/typecheck/` pin the rejections.
-
-**Where to start.** Types: `tuple_type_binding_members` in `bootstrap/python/quest/elaborate_types.py` rejects them,
-for the tuple-type case of `elaborate_type` and for `_synth_tuple_expr` and `_check_tuple_expr` in `typechecker.py`.
-A recursive type component is a `QTupleTypeBinding` whose type is a `QRecType` or `QRecGroupType`; check what path
-types (`p.T`, `QPathType`) and tuple subtyping do with it. Values: `_process_tuple_bindings` in `grammar.py` passes
-recursive bindings through, and `_reject_value_declarations_in_tuple` in `typechecker.py` rejects them. A recursive
-function component must see its own name (and its group's) while its value is checked, although tuple components
-are otherwise sequential, and in C its closure must capture the others after they exist, as `_emit_rec_bindings`
-does for blocks. A simultaneous group's members are components whose values must all be computed before any of
-their names is bound for the later components, as `_emit_simultaneous_bindings` does for blocks.
-
-**Done when.** Recursive types and functions, and simultaneous value declarations, work as tuple components in
-`interpret` and `run_c_compiled`, a golden test covers them, and the error tests above are removed or converted.
-
----
-
 ## Recursive type operators
 
 **Problem.** A recursive type cannot have type parameters: `Let Rec T(A::TYPE) = ...`, alone or in a group, gets
