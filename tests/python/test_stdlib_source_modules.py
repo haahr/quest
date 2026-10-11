@@ -10,10 +10,12 @@ from __future__ import annotations
 import unittest
 
 from quest.env import Environment
-from quest.module_loader import (
-    DEFAULT_LIB_DIR,
+from quest.modules.loader import (
     load_interface,
     load_module,
+)
+from quest.modules.paths import (
+    DEFAULT_LIB_DIR,
     resolve_interface_file,
     resolve_module_file,
 )

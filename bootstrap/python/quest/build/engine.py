@@ -23,15 +23,15 @@ from quest.codegen import compile_c_to_object, link_objects
 from quest.codegen.c_emitter import CEmitter
 from quest.env import Environment
 from quest.grammar import parse_quest_program
-from quest.module_compiler import compile_module_file
-from quest.module_loader import (
+from quest.modules.loader import load_interface
+from quest.modules.module_compiler import compile_module_file
+from quest.modules.paths import (
     DEFAULT_LIB_DIR,
     DEFAULT_PROJECT_DIR,
     canonicalize_interface_name,
     canonicalize_module_name,
     canonicalize_module_path,
     find_canonical_module_source,
-    load_interface,
     resolve_interface_source_file,
     resolve_module_file,
     resolve_object_file,

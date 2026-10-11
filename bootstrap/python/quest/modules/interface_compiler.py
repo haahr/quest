@@ -27,7 +27,7 @@ from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol
 from quest.grammar import parse_quest_program
-from quest.modules import elaborate_interface
+from quest.modules.elaboration import elaborate_interface
 from quest.runtime import (
     FALSE_VALUE,
     TRUE_VALUE,
@@ -575,7 +575,7 @@ def compile_interface_file(
 
     Only C compilation needs headers; typecheck and interpret runs build just the .qi.
     """
-    from quest.module_loader import canonicalize_module_path
+    from quest.modules.paths import canonicalize_module_path
 
     key = file_path.resolve()
     canon_name = canonicalize_module_path(file_path, list(include_paths or []), program_dir)
@@ -653,7 +653,7 @@ def _compile_interface_file(
     qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path)
 
     if build_dir is not None and output_dir is None:
-        from quest.module_loader import canonicalize_module_path
+        from quest.modules.paths import canonicalize_module_path
         canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
         if "/" in canon_name:
             target_dir = Path(build_dir).resolve() / Path(canon_name).parent
@@ -674,7 +674,7 @@ def _compile_interface_file(
 
     qi_path.write_text(qi_content, encoding="utf-8")
     if header:
-        from quest.module_loader import canonicalize_interface_name
+        from quest.modules.paths import canonicalize_interface_name
         canonical_name = canonicalize_interface_name(file_path, env.include_paths, decl.name)
         h_path.write_text(compile_interface_to_header(decl, typed_iface.scope, canonical_name), encoding="utf-8")
 
@@ -696,7 +696,7 @@ def ensure_interface_artifacts(
     (qi_file, h_file, canonical_name); the files may not exist if the interface has neither a source
     nor prebuilt artifacts (e.g. builtin interfaces).
     """
-    from quest.module_loader import (
+    from quest.modules.paths import (
         canonicalize_module_path,
         resolve_interface_file,
         resolve_interface_source_file,
@@ -774,7 +774,7 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
 
     # 1. Resolve imported interfaces
     if "imports" in rec.fields and isinstance(rec.fields["imports"], QArray):
-        from quest.module_loader import load_interface
+        from quest.modules.loader import load_interface
 
         for imp_elem in rec.fields["imports"].elements:
             imp_str = str(imp_elem.value)
@@ -815,8 +815,8 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                         imp_scope_frame.declare_kind(k_sym)
                 else:
                     for iname, mod_path in zip(names, mpaths):
-                        from quest.module_loader import (
-                            load_module,
+                        from quest.modules.loader import load_module
+                        from quest.modules.paths import (
                             resolve_module_file,
                             resolve_object_file,
                         )

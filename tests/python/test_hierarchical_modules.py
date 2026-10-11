@@ -19,8 +19,8 @@ import quest.ast as ast
 from quest.build.manifest import read_qm
 from quest.codegen.compiler_runner import compile_c_to_object, run_binary
 from quest.grammar import parse_quest_program
-from quest.interface_compiler import compile_interface_file
-from quest.module_compiler import compile_module_file
+from quest.modules.interface_compiler import compile_interface_file
+from quest.modules.module_compiler import compile_module_file
 from quest.tokenizer import Tokenizer
 from quest.tokens import SourceMap
 from quest_driver import run_compile

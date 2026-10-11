@@ -16,11 +16,11 @@ from pathlib import Path
 import unittest
 
 from quest.env import Environment
-from quest.interface_compiler import (
+from quest.modules.interface_compiler import (
     compile_interface_file,
     load_interface_from_qi_file,
 )
-from quest.module_loader import load_interface
+from quest.modules.loader import load_interface
 
 
 class TestInterfaceCompiler(unittest.TestCase):

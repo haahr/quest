@@ -27,6 +27,14 @@ from quest.env import (
     TypeSymbol,
     ValueSymbol,
 )
+from quest.modules.paths import (
+    canonical_import_name,
+    canonicalize_module_name,
+    declared_module_name,
+    is_c_compilation_mode,
+    resolve_module_file,
+    resolve_object_file,
+)
 from quest.typed_ast import (
     TypedBinding,
     TypedImport,
@@ -52,7 +60,7 @@ def import_interface(iface_path: str, local_name: str, env: Environment) -> Scop
     The path is resolved from env.current_dir, so an earlier import's binding of the same local name (`Counter`
     for both `counter.int.quest` and `util/counter.int.quest`) does not stand in for it (docs/modules.md §2.3).
     """
-    from quest.module_loader import load_interface
+    from quest.modules.loader import load_interface
     scope = load_interface(iface_path, env)
     env.register_interface(local_name, scope)
     if iface_path != local_name:
@@ -94,11 +102,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                         interface_scope.declare_kind(kind_symbol)
                         continue
 
-                    from quest.module_loader import (
-                        load_module,
-                        resolve_module_file,
-                        resolve_object_file,
-                    )
+                    from quest.modules.loader import load_module
                     mod_scope = None
                     if (
                         mod_path in env.loaded_modules_ast
@@ -183,13 +187,12 @@ def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env:
     # export scope of its own yet.
     if mod_scope is None or mod_scope is interface_scope:
         # Every importer of the module, in any unit, shares one export scope (docs/modules.md §2.3).
-        from quest.module_loader import _declared_module_name, canonicalize_module_name, resolve_module_file
         src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
         canon = canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
         loaded = env.loaded_modules_ast.get(canon)
         mod_scope = loaded.scope if loaded is not None else env.module_export_scopes.get(canon)
         if mod_scope is None:
-            mod_scope = create_module_export_scope(_declared_module_name(src, mod_path), interface_scope, env)
+            mod_scope = create_module_export_scope(declared_module_name(src, mod_path), interface_scope, env)
             env.module_export_scopes[canon] = mod_scope
         env.register_module(mod_path, mod_scope)
     return mod_scope
@@ -254,7 +257,7 @@ def elaborate_module(
         if target_interface_scope is not None:
             env.register_interface(decl.interface_name, target_interface_scope)
     if target_interface_scope is None:
-        from quest.module_loader import load_interface
+        from quest.modules.loader import load_interface
         target_interface_scope = load_interface(decl.interface_name, env)
 
     module_internal_scope = Scope(name=f"module_internal_{decl.name}", parent=env.base_scope)
@@ -285,12 +288,7 @@ def elaborate_module(
                         if kind_symbol is not None:
                             module_internal_scope.declare_kind(kind_symbol)
                             continue
-                    from quest.module_loader import (
-                        is_c_compilation_mode,
-                        load_module,
-                        resolve_module_file,
-                        resolve_object_file,
-                    )
+                    from quest.modules.loader import load_module
                     if is_c_compilation_mode(env):
                         mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
                         mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
@@ -328,14 +326,13 @@ def elaborate_module(
 
     # 2. Elaborate module internal bindings
     if binding_elaborator is None:
-        from quest.typechecker import _elaborate_binding
-        binding_elaborator = _elaborate_binding
+        from quest.typechecker import elaborate_binding
+        binding_elaborator = elaborate_binding
 
     saved_scope = env.current_scope
     env.current_scope = module_internal_scope
     typed_bindings: list[TypedBinding] = []
     if decl.imports:
-        from quest.module_loader import canonical_import_name
         from quest.typed_ast import TypedImportItem
         typed_items = tuple(
             TypedImportItem(
@@ -459,12 +456,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
             else:
                 # import mod1, mod2: Interface
                 for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
-                    from quest.module_loader import (
-                        is_c_compilation_mode,
-                        load_module,
-                        resolve_module_file,
-                        resolve_object_file,
-                    )
+                    from quest.modules.loader import load_module
                     if is_c_compilation_mode(env):
                         # In separate compilation mode, type the module via its interface without loading source
                         mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
@@ -500,7 +492,6 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                     if local_mod_name != mod_path:
                         env.register_module(local_mod_name, registered_scope)
                     env.current_scope.declare_value(ValueSymbol(name=local_mod_name, type_val=mod_type))
-                from quest.module_loader import canonical_import_name
                 typed_items.append(
                     TypedImportItem(
                         names=item.names,

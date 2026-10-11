@@ -3542,7 +3542,7 @@ def elaborate_program(
     return TypeElaborator(env=env).elaborate_program(program, env=env)
 
 
-def _elaborate_binding(
+def elaborate_binding(
     binding: ast.BindingNode,
     env: Optional[Environment] = None,
     loop_depth: int = 0,
@@ -3551,3 +3551,6 @@ def _elaborate_binding(
     return TypeElaborator(env=env, loop_depth=loop_depth)._elaborate_binding(
         binding, env=env, loop_depth=loop_depth
     )
+
+
+_elaborate_binding = elaborate_binding

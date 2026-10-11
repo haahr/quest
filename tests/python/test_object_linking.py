@@ -12,8 +12,8 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bootstrap" / "python"))
 
 from quest.codegen.compiler_runner import run_binary
-from quest.interface_compiler import compile_interface_file
-from quest.module_compiler import compile_module_file
+from quest.modules.interface_compiler import compile_interface_file
+from quest.modules.module_compiler import compile_module_file
 from quest_driver import run_compile, run_driver
 
 

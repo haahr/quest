@@ -28,18 +28,18 @@ from quest.build.manifest import (
 )
 from quest.env import Environment
 from quest.grammar import parse_quest_program
-from quest.module_loader import (
+from quest.modules.elaboration import elaborate_module
+from quest.modules.loader import load_interface
+from quest.modules.paths import (
     DEFAULT_LIB_DIR,
     DEFAULT_PROJECT_DIR,
     canonicalize_interface_name,
     canonicalize_module_name,
     canonicalize_module_path,
-    load_interface,
     resolve_interface_file,
     resolve_interface_source_file,
     resolve_module_file,
 )
-from quest.modules import elaborate_module
 from quest.tokenizer import Tokenizer
 from quest.tokens import SourceMap, display_file_name
 
@@ -206,7 +206,7 @@ def compile_module(
     )
 
     if emit_deps:
-        from quest.module_loader import (
+        from quest.modules.paths import (
             canonicalize_module_path,
             resolve_object_file,
         )

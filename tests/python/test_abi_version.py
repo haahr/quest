@@ -16,9 +16,13 @@ from quest.build.abi import ABI_VERSION, PRODUCER, recorded_abi
 from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
 from quest.env import Environment
-from quest.interface_compiler import compile_interface_file, ensure_interface_artifacts, load_interface_from_qi_file
-from quest.module_compiler import compile_module_file
-from quest.module_loader import resolve_interface_file
+from quest.modules.interface_compiler import (
+    compile_interface_file,
+    ensure_interface_artifacts,
+    load_interface_from_qi_file,
+)
+from quest.modules.module_compiler import compile_module_file
+from quest.modules.paths import resolve_interface_file
 
 CALC_INT = "interface Calc export add(a: Int b: Int): Int end;\n"
 CALC_MOD = "module calc : Calc export let add(a: Int b: Int): Int = a + b; end;\n"

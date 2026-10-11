@@ -100,7 +100,7 @@ class CompilerContext:
 
         # Wire include_paths and current_dir
         environment.options = opts
-        from quest.module_loader import is_c_compilation_mode
+        from quest.modules.paths import is_c_compilation_mode
         if opts.build_dir is None and is_c_compilation_mode(environment):
             # Separate compilation always has a build directory, so that nested interface and module
             # compilations agree on where artifacts live (docs/build-process.md §3.1).

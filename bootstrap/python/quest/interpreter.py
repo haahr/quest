@@ -1173,7 +1173,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                         if mod_val is None:
                             mod_val = BuiltinModuleRegistry.get_runtime_module(local_name)
                         if mod_val is None:
-                            from quest.module_loader import load_module_for_interpreter
+                            from quest.modules.loader import load_module_for_interpreter
                             mod_val = load_module_for_interpreter(mod_path, item.effective_interface_path, env)
                         if mod_val is not None:
                             env.evaluated_modules[canon] = mod_val

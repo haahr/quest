@@ -665,7 +665,7 @@ def analyze_program_for_c(
     } if env is not None else set()
 
     current_unit_modules = {phrase.name for phrase in prog.phrases if isinstance(phrase, TypedModule)}
-    from quest.module_loader import is_c_compilation_mode
+    from quest.modules.paths import is_c_compilation_mode
     is_c_mode = env is not None and is_c_compilation_mode(env)
 
     for bmod in needed_builtin_modules:

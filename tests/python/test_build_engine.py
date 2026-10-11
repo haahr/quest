@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.build.engine import BuildEngine, BuildError
-from quest.interface_compiler import compile_interface_file
-from quest.module_compiler import compile_module_file
+from quest.modules.interface_compiler import compile_interface_file
+from quest.modules.module_compiler import compile_module_file
 
 
 class TestBuildEngine(unittest.TestCase):
@@ -480,8 +480,8 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
 
     def test_interface_artifacts_check_recorded_source(self) -> None:
         from quest.build.abi import built_from
-        from quest.interface_compiler import ensure_interface_artifacts
-        from quest.module_loader import resolve_interface_file
+        from quest.modules.interface_compiler import ensure_interface_artifacts
+        from quest.modules.paths import resolve_interface_file
 
         qi_a, _, _ = ensure_interface_artifacts("Counter", self.a, [], self.build_dir)
         self.assertTrue(built_from(qi_a, self.a / "counter.int.quest"))

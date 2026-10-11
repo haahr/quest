@@ -274,7 +274,7 @@ class Environment:
         self._builtin_interfaces = dict(self._interfaces)
         self._builtin_modules = dict(self._modules)
         # A builtin interface with a source in lib/ is that file's interface, whoever imports it.
-        from quest.module_loader import canonicalize_module_path, resolve_interface_source_file
+        from quest.modules.paths import canonicalize_module_path, resolve_interface_source_file
         for iface_name, iface_scope in self._builtin_interfaces.items():
             src = resolve_interface_source_file(iface_name, None, [])
             if src is not None:
