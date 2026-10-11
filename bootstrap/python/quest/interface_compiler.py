@@ -215,6 +215,10 @@ def format_type_for_qi(
             return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type, visited)}"
         return f"All({quants_str}) {format_type_for_qi(t.body, visited)}"
 
+    if isinstance(t, QTypeFun):
+        params_str = " ".join(f"{p.name}::{format_kind_for_qi(p.bound)}" for p in t.params)
+        return f"Fun({params_str}) {format_type_for_qi(t.body, visited)}"
+
     if isinstance(t, QTypeApp):
         args_str = " ".join(format_type_for_qi(a, visited) for a in t.arguments)
         ctor_str = format_type_for_qi(t.constructor, visited)

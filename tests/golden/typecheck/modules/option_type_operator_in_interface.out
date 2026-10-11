@@ -1,0 +1,62 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('shapes') : 'Shapes')
+      ))
+    (TypedLetValue 'c' :type shapes.Shape
+      :value (TypedOption 'circle' :type shapes.Shape
+        :payload (TypedTuple :type Tuple radius: Int end
+          :elements (
+            (TypedInt 2 :type Int)
+          ))))
+    (TypedLetValue 's' :type shapes.ShapeOf(Int)
+      :value (TypedOption 'square' :type shapes.ShapeOf(Int)
+        :payload (TypedTuple :type Tuple side: Int end
+          :elements (
+            (TypedInt 3 :type Int)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: Writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type Writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'area' :type Fun(s: Shape): Int
+                    :target (TypedVar 'shapes' :type Module 'shapes'))
+                  :args (
+                    (TypedVar 'c' :type shapes.Shape)
+                  ))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedSelect 'area' :type Fun(s: Shape): Int
+                        :target (TypedVar 'shapes' :type Module 'shapes'))
+                      :args (
+                        (TypedVar 's' :type shapes.ShapeOf(Int))
+                      ))
+                  ))
+                :right (TypedString '\n' :type String))))
+        )))
+  ))
