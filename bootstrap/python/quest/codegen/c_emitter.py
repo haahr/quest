@@ -187,6 +187,25 @@ def _flat_bindings(bindings: Sequence[Any]) -> list[Any]:
     return [member for b in bindings for member in binding_members(b)]
 
 
+def _closures_built_by(value: Any) -> list[TypedFun]:
+    """The closures that evaluating value builds directly: those not nested in another closure's body, which are built
+    only when that closure runs."""
+    found: list[TypedFun] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, TypedFun):
+            found.append(node)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+        elif dataclasses.is_dataclass(node) and not isinstance(node, (QType, QKind)):
+            for field in dataclasses.fields(node):
+                walk(getattr(node, field.name))
+
+    walk(value)
+    return found
+
+
 def _strip_typed_aliases(node: Any, memo: dict[int, Any]) -> Any:
     """Rebuilds a typed AST with alias reference nodes removed from all of its types."""
     import dataclasses
@@ -1005,13 +1024,14 @@ class CEmitter:
 
         Every variable is declared first. A closure that captures one of the declarations' variables cannot copy it
         when the closure is built, since the variable may not hold its value yet, so the copy is deferred until every
-        variable has been assigned.
+        variable has been assigned. This covers a declared function, and also the closures inside a declared value,
+        such as the methods of a tuple that refer to the tuple itself.
         """
         names = frozenset(member.name for member in members)
         for member in members:
             lines.append(f"{self.c_type(member.symbol.type_val)} {mangle_ident(member.name)};")
-            if isinstance(member.value, TypedFun):
-                self.rec_fun_names[id(member.value)] = names
+            for fun in _closures_built_by(member.value):
+                self.rec_fun_names[id(fun)] = names
         saved_deferred = self.deferred_captures
         self.deferred_captures = []
         for member in members:
@@ -3091,7 +3111,7 @@ class CEmitter:
                     match b:
                         case TypedLetValueGroup(members=members):
                             self._emit_rec_bindings(members, block_lines)
-                        case TypedLetValue(is_rec=True, value=TypedFun()):
+                        case TypedLetValue(is_rec=True):
                             self._emit_rec_bindings((b,), block_lines)
                         case TypedLetValue(name=name, value=val, symbol=symbol):
                             self._declare_local_exceptions(val, block_lines)

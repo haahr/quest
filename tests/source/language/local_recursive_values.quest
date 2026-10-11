@@ -1,0 +1,52 @@
+(* Language: recursive values declared inside a function, whose closures refer to the value being declared. Each
+   closure must see the finished value, not the variable before it is assigned. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let say(s: String): Ok = writer.putString(writer.output s);
+
+(* 1. Each kind of constructor *)
+Let Rec T = Tuple me(): T name: String end;
+let mkT(): T = begin let rec self: T = tuple let me(): T = self let name = "tuple\n" end; self end;
+say(mkT().me().me().name);
+
+Let Rec R = Record me: All() R name: String end;
+let mkR(): R = begin let rec self: R = record me = fun(): R self name = "record\n" end; self end;
+say(mkR().me().me().name);
+
+Let Rec O = Option node with me: All() O name: String end end;
+let mkO(): O = begin let rec self: O = option node of O with let me(): O = self let name = "option\n" end; self end;
+let nameO(o: O): String = case o when node with n then case n.me() when node with m then m.name end end;
+say(nameO(mkO()));
+
+Let Rec A = Array(Tuple me: All() A name: String end);
+let mkA(): A = begin let rec self: A = array of tuple let me(): A = self let name = "array\n" end end; self end;
+say(mkA()[0].me()[0].name);
+
+(* 2. A chainable object: methods that update shared state and return the object itself *)
+Let Rec Counter = Tuple add(n: Int): Counter total(): Int end;
+let newCounter(): Counter =
+    begin
+        let state = tuple var sum = 0 end;
+        let rec self: Counter = tuple
+            let add(n: Int): Counter = begin state.sum := state.sum + n; self end
+            let total(): Int = state.sum
+        end;
+        self
+    end;
+let c1 = newCounter();
+let c2 = newCounter();
+c1.add(1).add(2).add(3);
+c2.add(10);
+say(conv.int(c1.total()) <> " " <> conv.int(c2.add(20).total()) <> "\n");
+
+(* 3. Mutually recursive values *)
+Let Rec Ping = Tuple other(): Ping name: String end;
+let pair(): Ping =
+    begin
+        let rec ping: Ping = tuple let other(): Ping = pong let name = "ping" end
+        and pong: Ping = tuple let other(): Ping = ping let name = "pong" end;
+        ping
+    end;
+say(pair().other().name <> " " <> pair().other().other().name <> "\n");
