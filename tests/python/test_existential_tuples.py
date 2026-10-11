@@ -2,7 +2,7 @@
 
 import unittest
 
-from quest.ast import (
+from quest.syntax.ast import (
     KindType,
     TypeFormal,
     TypeTuple,

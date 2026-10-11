@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from quest.diagnostics import QuestCompilerError, QuestTypeError
-from quest.tokens import TokenKind
-from quest.tokenizer import Tokenizer
+from quest.syntax.tokens import TokenKind
+from quest.syntax.tokenizer import Tokenizer
 
 if TYPE_CHECKING:
     from quest.env import Environment

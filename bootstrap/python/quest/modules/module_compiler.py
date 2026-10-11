@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.codegen.c_emitter import CEmitter
 from quest.codegen.compiler_runner import compile_c_to_object
 from quest.diagnostics import QuestTypeError, in_unit
@@ -27,7 +27,7 @@ from quest.build.manifest import (
     write_qm,
 )
 from quest.env import Environment
-from quest.grammar import parse_quest_program
+from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_module
 from quest.modules.loader import load_interface
 from quest.modules.paths import (
@@ -40,8 +40,8 @@ from quest.modules.paths import (
     resolve_interface_source_file,
     resolve_module_file,
 )
-from quest.tokenizer import Tokenizer
-from quest.tokens import SourceMap, display_file_name
+from quest.syntax.tokenizer import Tokenizer
+from quest.syntax.sources import SourceMap, display_file_name
 
 
 class ModuleCompileResult(tuple):

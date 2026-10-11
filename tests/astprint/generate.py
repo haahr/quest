@@ -26,9 +26,9 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
-import quest.ast as A  # noqa: E402
-from quest.grammar import parse_quest_program  # noqa: E402
-from quest.tokenizer import Tokenizer  # noqa: E402
+import quest.syntax.ast as A  # noqa: E402
+from quest.syntax.grammar import parse_quest_program  # noqa: E402
+from quest.syntax.tokenizer import Tokenizer  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 TEST_DIR = ROOT_DIR / "tests" / "source" / "questlang"

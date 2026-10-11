@@ -101,9 +101,9 @@ def parse_type_string(type_str: str) -> QType:
         from quest.diagnostics import QuestCompilerError
         from quest.elaborate_types import elaborate_type
         from quest.env import Environment
-        from quest.grammar import parse_quest_program
-        from quest.tokenizer import Tokenizer
-        from quest.tokens import SourceMap
+        from quest.syntax.grammar import parse_quest_program
+        from quest.syntax.tokenizer import Tokenizer
+        from quest.syntax.sources import SourceMap
 
         source_map = SourceMap(cleaned, "<type>")
         tokens = Tokenizer(cleaned, "<type>").tokenize_all()

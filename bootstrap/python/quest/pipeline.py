@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.diagnostics import (
     diagnostic_of,
     Diagnostic,
@@ -23,7 +23,7 @@ from quest.diagnostics import (
 )
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment
-from quest.grammar import parse_quest_program
+from quest.syntax.grammar import parse_quest_program
 from quest.interpreter import (
     QuestException,
     QuestRuntimeError,
@@ -34,10 +34,11 @@ from quest.interpreter import (
     eval_program_phrases,
     format_interactive_result,
 )
-from quest.parser import ParserError
+from quest.syntax.parser import ParserError
 from quest.runtime import OK_VALUE, QOk, QValue, qvalue_to_str
-from quest.tokenizer import Tokenizer, TokenizerError
-from quest.tokens import SourceMap, Token, TokenKind
+from quest.syntax.tokenizer import Tokenizer, TokenizerError
+from quest.syntax.sources import SourceMap
+from quest.syntax.tokens import Token, TokenKind
 from quest.typechecker import (
     elaborate_phrase,
     elaborate_program,

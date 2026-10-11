@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from tests.python.helpers import parse_phrase
 
 

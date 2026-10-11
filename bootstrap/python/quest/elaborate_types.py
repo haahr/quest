@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.types import (
     TYPE_KIND,
     alias_reference,

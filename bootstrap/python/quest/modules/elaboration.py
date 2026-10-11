@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.builtins import BuiltinModuleRegistry
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
 from quest.elaborate_types import (

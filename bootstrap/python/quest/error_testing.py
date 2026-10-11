@@ -60,10 +60,10 @@ def extract_expected_diagnostics(source_text: str, file: Optional[Path] = None) 
 def _unit_imports(path: Path) -> list[Path]:
     """The interface and module files beside path (found from its directory) that the unit or program in it imports,
     including a module's own interface; none if it does not parse."""
-    from quest import ast
-    from quest.grammar import parse_quest_program
-    from quest.tokenizer import Tokenizer
-    from quest.tokens import SourceMap
+    import quest.syntax.ast as ast
+    from quest.syntax.grammar import parse_quest_program
+    from quest.syntax.tokenizer import Tokenizer
+    from quest.syntax.sources import SourceMap
 
     try:
         text = path.read_text(encoding="utf-8")

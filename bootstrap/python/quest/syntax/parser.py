@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Optional as Opt
 
-from quest.tokens import SourceMap, Token, TokenKind
+from quest.syntax.sources import SourceMap
+from quest.syntax.tokens import Token, TokenKind
 from quest.diagnostics import QuestCompilerError
 
 

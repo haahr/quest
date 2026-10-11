@@ -4,11 +4,11 @@ import os
 import unittest
 from typing import Any, Optional, Union
 
-from quest import ast
+import quest.syntax.ast as ast
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment
 from quest.interpreter import RuntimeEnvironment, eval_program
-from quest.parser import SyntaxTarget
+from quest.syntax.parser import SyntaxTarget
 from quest.pipeline import (
     CompilerContext,
     CompilerOptions,

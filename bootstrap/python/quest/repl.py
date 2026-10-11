@@ -17,13 +17,14 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from quest.diagnostics import DiagnosticRenderer
-from quest.grammar import parse_quest_program
+from quest.syntax.grammar import parse_quest_program
 from quest.interpreter import format_interactive_result
-from quest.parser import ParserError
+from quest.syntax.parser import ParserError
 from quest.pipeline import CompilerContext, CompilerOptions, default_pipeline
 from quest.runtime import QOk, QValue
-from quest.tokenizer import Tokenizer, TokenizerError
-from quest.tokens import SourceMap, TokenKind
+from quest.syntax.tokenizer import Tokenizer, TokenizerError
+from quest.syntax.sources import SourceMap
+from quest.syntax.tokens import TokenKind
 from quest.typed_ast import TypedBinding, TypedExpr
 
 PROMPT_MAIN = ">>  "

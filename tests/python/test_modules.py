@@ -7,7 +7,7 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
 from quest.env import Environment
 from quest.modules import (

@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.build.abi import (
     ABI_VERSION,
     PRODUCER,
@@ -26,7 +26,7 @@ from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol
-from quest.grammar import parse_quest_program
+from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_interface
 from quest.runtime import (
     FALSE_VALUE,
@@ -39,8 +39,8 @@ from quest.runtime import (
     QRecord,
     QString,
 )
-from quest.tokenizer import Tokenizer
-from quest.tokens import SourceMap, display_file_name
+from quest.syntax.tokenizer import Tokenizer
+from quest.syntax.sources import SourceMap, display_file_name
 from quest.types import (
     QAliasType,
     BOOL_TYPE,

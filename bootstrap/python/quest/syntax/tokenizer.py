@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from typing import Callable, Iterator
-from quest.tokens import (
+from quest.syntax.sources import SourceMap
+from quest.syntax.tokens import (
     DELIMITERS,
     KEYWORDS,
     RESERVED_PUNCTUATION,
     SYMBOLIC_CHARS,
-    SourceMap,
     Token,
     TokenKind,
 )
@@ -275,4 +275,3 @@ class Tokenizer:
             yield token
             if token.kind == TokenKind.EOF:
                 break
-

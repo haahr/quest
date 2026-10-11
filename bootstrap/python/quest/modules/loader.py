@@ -16,9 +16,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
-from quest.grammar import parse_quest_program
+from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import (
     create_module_export_scope,
     elaborate_interface,
@@ -41,8 +41,8 @@ from quest.modules.paths import (
     resolve_module_file,
     resolve_object_file,
 )
-from quest.tokenizer import Tokenizer
-from quest.tokens import SourceMap, display_file_name
+from quest.syntax.tokenizer import Tokenizer
+from quest.syntax.sources import SourceMap, display_file_name
 
 if TYPE_CHECKING:
     from quest.env import Environment, Scope

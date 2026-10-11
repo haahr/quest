@@ -28,7 +28,7 @@ from quest.pipeline import (
 )
 from quest.runtime import QOk, qvalue_to_str
 from quest import shadow
-from quest.tokens import SourceMap
+from quest.syntax.sources import SourceMap
 
 
 def run_driver(args: list[str]) -> int:

@@ -6,8 +6,9 @@ import dataclasses
 from functools import reduce
 from typing import Any, Callable
 
-from quest.tokens import SourceMap, Token, TokenKind
-from quest.parser import (
+from quest.syntax.sources import SourceMap
+from quest.syntax.tokens import Token, TokenKind
+from quest.syntax.parser import (
     Construct,
     MatchToken,
     Optional,
@@ -17,7 +18,7 @@ from quest.parser import (
     SepBy,
     SyntaxTarget,
 )
-import quest.ast as ast
+import quest.syntax.ast as ast
 
 
 # ============================================================================

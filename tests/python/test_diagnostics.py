@@ -7,9 +7,9 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.tokens import SourceMap
-from quest.tokenizer import TokenizerError
-from quest.parser import ParserError
+from quest.syntax.sources import SourceMap
+from quest.syntax.tokenizer import TokenizerError
+from quest.syntax.parser import ParserError
 from quest.types import KindError
 from quest.interpreter import QuestException, QuestRuntimeError
 from quest.runtime import QExceptionVal, QInt

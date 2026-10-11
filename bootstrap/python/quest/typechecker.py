@@ -8,7 +8,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, Callable, Optional, Union
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.types import (
     BOOL_TYPE,
     binds_module,

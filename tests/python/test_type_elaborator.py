@@ -2,7 +2,7 @@
 
 import unittest
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
 from quest.env import Environment, ValueSymbol
 from quest.typed_ast import TypedExprStmt, TypedLetValue

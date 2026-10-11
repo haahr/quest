@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-import quest.ast as ast
+import quest.syntax.ast as ast
 from quest.build.logger import BuildLogger
 from quest.build.abi import has_current_abi, incompatible_artifact_message
 from quest.build.manifest import (
@@ -22,7 +22,7 @@ from quest.build.manifest import (
 from quest.codegen import compile_c_to_object, link_objects
 from quest.codegen.c_emitter import CEmitter
 from quest.env import Environment
-from quest.grammar import parse_quest_program
+from quest.syntax.grammar import parse_quest_program
 from quest.modules.loader import load_interface
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import (
@@ -37,8 +37,8 @@ from quest.modules.paths import (
     resolve_object_file,
 )
 from quest.pipeline import CompilerOptions
-from quest.tokenizer import Tokenizer
-from quest.tokens import SourceMap
+from quest.syntax.tokenizer import Tokenizer
+from quest.syntax.sources import SourceMap
 from quest.typechecker import TypeElaborator
 
 
