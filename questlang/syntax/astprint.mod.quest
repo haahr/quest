@@ -1,9 +1,12 @@
-(* Quest Self-Hosted Compiler: Canonical AST Pretty-Printer Implementation *)
+(* Quest Self-Hosted Compiler: Canonical AST Pretty-Printer Implementation
+ *
+ * An AST is printed in two steps: each node is converted to a generic S-expression (S) that has the shape of
+ * the corresponding Python AST node, field for field, and a single renderer prints S-expressions with the
+ * same layout rules as ast_dump in bootstrap/python/quest/ast.py. *)
 
 module astprint : AstPrint
 import
     questlang/syntax/ast : questlang/syntax/Ast
-    questlang/common/location : questlang/common/Location
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
@@ -11,2074 +14,491 @@ import
     ascii : Ascii
     conv : Conv
 export
-    let makePadding(indent: Int): String =
-        begin
-            let b = stringBuilder.new();
-            for i = 1 upto indent do
-                b.str("  ");
-            end;
-            b.toString()
-        end;
+    (* =========================================================================
+     * 1. S-Expressions
+     * ========================================================================= *)
 
+    (* A value in ast_dump's output: Python's None; a bool; a leaf already rendered (an int, a real, an enum
+     * member, or a quoted string); a tuple of strings; a tuple of other values; or a node with named fields *)
+    Let Rec S = Option
+        nil
+        flag with value: Bool end
+        atom with text: String end
+        strs with items: vector.T(String) end
+        seq with items: Array(S) end
+        node with name: String fields: Array(Tuple name: String value: S end) end
+    end;
+
+    Let Field = Tuple name: String value: S end;
+
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n);
+
+    (* Python's repr of a string: single quotes unless the string holds a single quote and no double quote *)
     let pyRepr(s: String): String =
         begin
-            let sLen = stringOp.length(s);
+            let size = stringOp.length(s);
             let var hasSingle = false;
             let var hasDouble = false;
-            for i = 0 upto {sLen - 1} do
-                let v = ascii.val(stringOp.getChar(s i));
-                if v is 39 then
-                    hasSingle := true;
-                elsif v is 34 then
-                    hasDouble := true;
-                end;
-            end;
-            let quoteChar = if hasSingle andif not(hasDouble) then ascii.char(34) else ascii.char(39) end;
-            let b = stringBuilder.new();
-            b.char(quoteChar);
-            for i = 0 upto {sLen - 1} do
+            for i = 0 upto {size - 1} do
                 let c = stringOp.getChar(s i);
-                let v = ascii.val(c);
-                if v is 92 then
-                    b.char(ascii.char(92));
-                elsif v is 10 then
-                    b.str("\n");
-                elsif v is 13 then
-                    b.str("\r");
-                elsif v is 9 then
-                    b.str("\t");
-                elsif c is quoteChar then
-                    b.char(ascii.char(92));
-                    b.char(quoteChar);
-                else
-                    b.char(c);
-                end;
+                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end;
             end;
-            b.char(quoteChar);
-            b.toString()
-        end;
-    let paramModeName(mode: ast.ParamMode): String =
-        case mode
-            when modeValue then "VALUE"
-            when modeVar then "VAR"
-            when modeOut then "OUT"
-        end;
-
-    let dumpStringTuple(items: vector.T(String)): String =
-        begin
-            let n = vector.length(:String items);
-            if n is 0 then
-                "()"
-            else
-                let b = stringBuilder.new();
-                b.str("(");
-                for i = 0 upto {n - 1} do
-                    if i > 0 then
-                        b.str(" ");
-                    end;
-                    b.str(pyRepr(vector.get(:String items i)));
-                end;
-                b.str(")");
-                b.toString()
-            end
-        end;
-
-    let rec dumpTypeExpr(node: ast.TypeExpr indent: Int showOffsets: Bool): String =
-        begin
-        let dumpQuantifier(q: ast.Quantifier indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(Quantifier
-");
-                b.str(cpad);
-                b.str(":name ");
-                b.str(pyRepr(q.name));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":bound ");
-                b.str(dumpTypeExpr(q.bound {indent + 1} showOffsets));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":mode ");
-                b.str(paramModeName(q.mode));
-                b.str("
-");
-                if q.isType then
-                    b.str(cpad);
-                    b.str(":is_type True
-");
-                end;
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpFieldSig(f: ast.FieldSig indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(FieldSig
-");
-                if maybe.isSome(:String f.name) then
-                    b.str(cpad);
-                    b.str(":name ");
-                    b.str(pyRepr(maybe.unwrap(:String f.name)));
-                    b.str("
-");
-                end;
-                if maybe.isSome(:ast.TypeExpr f.typeSig) then
-                    b.str(cpad);
-                    b.str(":type_sig ");
-                    b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr f.typeSig)
-                        {indent + 1} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(":mode ");
-                b.str(paramModeName(f.mode));
-                b.str("
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpRecordFieldSig(r: ast.RecordFieldSig indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(RecordFieldSig
-");
-                b.str(cpad);
-                b.str(":name ");
-                b.str(pyRepr(r.name));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":type_sig ");
-                b.str(dumpTypeExpr(r.typeSig {indent + 1} showOffsets));
-                b.str("
-");
-                if r.isVar then
-                    b.str(cpad);
-                    b.str(":is_var True
-");
-                end;
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpOptionFieldSig(o: ast.OptionFieldSig indent: Int showOffsets: Bool): String =
-            begin
-                let nP = vector.length(:ast.FieldSig o.payloadSig);
-                if nP is 0 then
-                    stringOp.cat("(OptionFieldSig " stringOp.cat(pyRepr(o.tag) " ())"))
-                else
-                    let pad = makePadding(indent);
-                    let cpad = makePadding({indent + 1});
-                    let b = stringBuilder.new();
-                    b.str("(OptionFieldSig
-");
-                    b.str(cpad);
-                    b.str(":tag ");
-                    b.str(pyRepr(o.tag));
-                    b.str("
-");
-                    b.str(cpad);
-                    b.str(":payload_sig (
-");
-                    for i = 0 upto {nP - 1} do
-                        b.str(makePadding({indent + 2}));
-                        b.str(dumpFieldSig(vector.get(:ast.FieldSig o.payloadSig i)
-                            {indent + 2} showOffsets));
-                        b.str("
-");
-                    end;
-                    b.str(cpad);
-                    b.str(")
-");
-                    b.str(pad);
-                    b.str(")");
-                    b.toString()
-                end
-            end;
-
-        let dumpVariantFieldSig(v: ast.VariantFieldSig indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(VariantFieldSig
-");
-                b.str(cpad);
-                b.str(":tag ");
-                b.str(pyRepr(v.tag));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":type_sig ");
-                b.str(dumpTypeExpr(v.typeSig {indent + 1} showOffsets));
-                b.str("
-");
-                if v.isVar then
-                    b.str(cpad);
-                    b.str(":is_var True
-");
-                end;
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpTypeFormal(t: ast.TypeFormal indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(TypeFormal
-");
-                b.str(cpad);
-                b.str(":name ");
-                b.str(pyRepr(t.name));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":bound ");
-                b.str(dumpTypeExpr(t.bound {indent + 1} showOffsets));
-                b.str("
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-        let dumpTypeForm(span: location.Span form: ast.TypeForm indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                case form
-                when kindType then
-                        "(KindType)"
-                when kindPower with p then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(KindPower
-");
-                            b.str(cpad);
-                            b.str(":bound ");
-                            b.str(dumpTypeExpr(p.bound {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when kindAll with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(KindAll
-");
-                            b.str(cpad);
-                            b.str(":param_name ");
-                            b.str(pyRepr(a.paramName));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":param_kind ");
-                            b.str(dumpTypeExpr(a.paramKind {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":body_kind ");
-                            b.str(dumpTypeExpr(a.bodyKind {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when kindId with k then
-                        stringOp.cat("(KindId " stringOp.cat(pyRepr(k.name) ")"))
-                when kindManifest with m then
-                        stringOp.cat("(KindManifest " stringOp.cat(pyRepr(m.interfaceName)
-                            stringOp.cat(" " stringOp.cat(pyRepr(m.kindName) ")"))))
-                when typePath with p then
-                        stringOp.cat("(TypePath " stringOp.cat(dumpStringTuple(p.path) ")"))
-                when typeAll with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeAll
-");
-                            b.str(cpad);
-                            b.str(":quantifiers (
-");
-                            let nQ = vector.length(:ast.Quantifier a.quantifiers);
-                            for i = 0 upto {nQ - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpQuantifier(vector.get(:ast.Quantifier a.quantifiers i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            b.str(cpad);
-                            b.str(":result_type ");
-                            b.str(dumpTypeExpr(a.resultType {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeTuple with t then
-                        begin
-                            let nF = vector.length(:ast.FieldSig t.fields);
-                            if nF is 0 then
-                                "(TypeTuple ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(TypeTuple
-");
-                                b.str(cpad);
-                                b.str(":fields (
-");
-                                for i = 0 upto {nF - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpFieldSig(vector.get(:ast.FieldSig t.fields i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when typeRecord with r then
-                        begin
-                            let nF = vector.length(:ast.RecordFieldSig r.fields);
-                            if nF is 0 then
-                                "(TypeRecord ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(TypeRecord
-");
-                                b.str(cpad);
-                                b.str(":fields (
-");
-                                for i = 0 upto {nF - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpRecordFieldSig(vector.get(:ast.RecordFieldSig r.fields i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when typeOption with o then
-                        begin
-                            let nV = vector.length(:ast.OptionFieldSig o.variants);
-                            if nV is 0 then
-                                "(TypeOption ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(TypeOption
-");
-                                b.str(cpad);
-                                b.str(":variants (
-");
-                                for i = 0 upto {nV - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    let variantSig = vector.get(:ast.OptionFieldSig o.variants i);
-                                    b.str(dumpOptionFieldSig(variantSig {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when typeVariant with v then
-                        begin
-                            let nF = vector.length(:ast.VariantFieldSig v.fields);
-                            if nF is 0 then
-                                "(TypeVariant ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(TypeVariant
-");
-                                b.str(cpad);
-                                b.str(":fields (
-");
-                                for i = 0 upto {nF - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    let fieldSig = vector.get(:ast.VariantFieldSig v.fields i);
-                                    b.str(dumpVariantFieldSig(fieldSig {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when typeAuto with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeAuto
-");
-                            if maybe.isSome(:String a.typeParam) then
-                                b.str(cpad);
-                                b.str(":type_param ");
-                                b.str(pyRepr(maybe.unwrap(:String a.typeParam)));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(":kind_bound ");
-                            b.str(dumpTypeExpr(a.kindBound {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":signature (
-");
-                            let nS = vector.length(:ast.FieldSig a.signature);
-                            for i = 0 upto {nS - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpFieldSig(vector.get(:ast.FieldSig a.signature i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeFun with f then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeFun
-");
-                            b.str(cpad);
-                            b.str(":params (
-");
-                            let nP = vector.length(:ast.TypeFormal f.params);
-                            for i = 0 upto {nP - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpTypeFormal(vector.get(:ast.TypeFormal f.params i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            if maybe.isSome(:ast.KindExpr f.resultKind) then
-                                b.str(cpad);
-                                b.str(":result_kind ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.KindExpr f.resultKind)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpTypeExpr(f.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeRec with r then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeRec
-");
-                            b.str(cpad);
-                            b.str(":var_name ");
-                            b.str(pyRepr(r.varName));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":bound ");
-                            b.str(dumpTypeExpr(r.bound {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpTypeExpr(r.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeApp with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeApp
-");
-                            b.str(cpad);
-                            b.str(":constructor ");
-                            b.str(dumpTypeExpr(a.constructor {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":arguments (
-");
-                            let nA = vector.length(:ast.TypeExpr a.arguments);
-                            for i = 0 upto {nA - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpTypeExpr(vector.get(:ast.TypeExpr a.arguments i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeInfix with i then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeInfix
-");
-                            b.str(cpad);
-                            b.str(":left ");
-                            b.str(dumpTypeExpr(i.left {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":op ");
-                            b.str(pyRepr(i.op));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":right ");
-                            b.str(dumpTypeExpr(i.right {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeArray with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeArray
-");
-                            b.str(cpad);
-                            b.str(":element_type ");
-                            b.str(dumpTypeExpr(a.elementType {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeVar with v then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeVar
-");
-                            b.str(cpad);
-                            b.str(":element_type ");
-                            b.str(dumpTypeExpr(v.elementType {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeOut with o then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeOut
-");
-                            b.str(cpad);
-                            b.str(":element_type ");
-                            b.str(dumpTypeExpr(o.elementType {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when typeManifest with m then
-                        stringOp.cat("(TypeManifest " stringOp.cat(pyRepr(m.moduleName)
-                            stringOp.cat(" " stringOp.cat(pyRepr(m.typeName) ")"))))
-                when typeExternal with e then
-                        stringOp.cat("(TypeExternal " stringOp.cat(pyRepr(e.cType) ")"))
-                end
-            end;
-        dumpTypeForm(node.span node.form indent showOffsets)
-    end;
-    let dumpFormalParam(p: ast.FormalParam indent: Int showOffsets: Bool): String =
-        begin
-            let pad = makePadding(indent);
-            let cpad = makePadding({indent + 1});
+            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end;
             let b = stringBuilder.new();
-            b.str("(FormalParam
-");
-            b.str(cpad);
-            b.str(":name ");
-            b.str(pyRepr(p.name));
-            b.str("
-");
-            if maybe.isSome(:ast.TypeExpr p.typeAnnot) then
-                b.str(cpad);
-                b.str(":type_annot ");
-                b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr p.typeAnnot)
-                    {indent + 1} showOffsets));
-                b.str("
-");
+            b.char(quote);
+            for i = 0 upto {size - 1} do
+                let c = stringOp.getChar(s i);
+                let code = ascii.val(c);
+                if c is '\\' then b.str("\\\\")
+                elsif c is quote then b.char('\\').char(quote)
+                elsif code is 10 then b.str("\\n")
+                elsif code is 13 then b.str("\\r")
+                elsif code is 9 then b.str("\\t")
+                elsif {code < 32} orif {code is 127} then
+                    b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
+                else b.char(c)
+                end;
             end;
-            b.str(cpad);
-            b.str(":mode ");
-            b.str(paramModeName(p.mode));
-            b.str("
-");
-            b.str(pad);
-            b.str(")");
-            b.toString()
+            b.char(quote).toString()
         end;
 
-
-    let dumpTypeFormal(t: ast.TypeFormal indent: Int showOffsets: Bool): String =
-        begin
-            let pad = makePadding(indent);
-            let cpad = makePadding({indent + 1});
-            let b = stringBuilder.new();
-            b.str("(TypeFormal
-");
-            b.str(cpad);
-            b.str(":name ");
-            b.str(pyRepr(t.name));
-            b.str("
-");
-            b.str(cpad);
-            b.str(":bound ");
-            b.str(dumpTypeExpr(t.bound {indent + 1} showOffsets));
-            b.str("
-");
-            b.str(pad);
-            b.str(")");
-            b.toString()
+    (* Python writes negative numbers with -, Quest with ~ *)
+    let pyNumber(s: String): String =
+        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
+            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
+        else
+            s
         end;
 
-    let rec dumpExpr(node: ast.Expr indent: Int showOffsets: Bool): String =
+    let none: S = option nil of S end;
+    let flag(value: Bool): S = option flag of S with let value = value end;
+    let atom(text: String): S = option atom of S with let text = text end;
+    let str(s: String): S = atom(pyRepr(s));
+    let int(n: Int): S = atom(pyNumber(conv.int(n)));
+    let real(r: Real): S = atom(pyNumber(conv.real(r)));
+    let strs(items: vector.T(String)): S = option strs of S with let items = items end;
+    let seq(items: Array(S)): S = option seq of S with let items = items end;
+    let node(name: String fields: Array(Field)): S =
+        option node of S with let name = name let fields = fields end;
+    let leaf(name: String): S = node(name array of :Field end);
+    let f(name: String value: S): Field = tuple let name = name let value = value end;
+
+    let optional(A::TYPE m: maybe.T(A) dumpA: All(a: A) S): S =
+        if maybe.isSome(:A m) then dumpA(maybe.unwrap(:A m)) else none end;
+    let optStr(m: maybe.T(String)): S = optional(:String m str);
+    let each(A::TYPE v: vector.T(A) dumpA: All(a: A) S): S = seq(vector.toArray(:S vector.map(:A :S v dumpA)));
+
+    let mode(m: ast.ParamMode): S =
+        atom(case m when modeValue then "VALUE" when modeVar then "VAR" when modeOut then "OUT" end);
+
+    (* =========================================================================
+     * 2. Types and Kinds
+     * ========================================================================= *)
+
+    let rec ty(t: ast.TypeExpr): S =
+        case t.form
+            when kindType then leaf("KindType")
+            when kindPower with k then node("KindPower" array of f("bound" ty(k.bound)) end)
+            when kindAll with k then
+                node("KindAll" array of
+                    f("param_name" str(k.paramName)) f("param_kind" ty(k.paramKind)) f("body_kind" ty(k.bodyKind))
+                end)
+            when kindId with k then node("KindId" array of f("name" str(k.name)) end)
+            when kindManifest with k then
+                node("KindManifest" array of
+                    f("interface_name" str(k.interfaceName)) f("kind_name" str(k.kindName))
+                end)
+            when typePath with p then node("TypePath" array of f("path" strs(p.path)) end)
+            when typeAll with a then
+                node("TypeAll" array of
+                    f("quantifiers" each(:ast.Quantifier a.quantifiers quantifier)) f("result_type" ty(a.resultType))
+                end)
+            when typeTuple with x then node("TypeTuple" array of f("fields" each(:ast.Signature x.fields signature)) end)
+            when typeRecord with x then
+                node("TypeRecord" array of f("fields" each(:ast.RecordFieldSig x.fields recordFieldSig)) end)
+            when typeOption with x then
+                node("TypeOption" array of f("variants" each(:ast.OptionFieldSig x.variants optionFieldSig)) end)
+            when typeVariant with x then
+                node("TypeVariant" array of f("fields" each(:ast.VariantFieldSig x.fields variantFieldSig)) end)
+            when typeAuto with x then
+                node("TypeAuto" array of
+                    f("type_param" optStr(x.typeParam)) f("kind_bound" ty(x.kindBound))
+                    f("signature" each(:ast.FieldSig x.signature fieldSig))
+                end)
+            when typeFun with x then
+                node("TypeFun" array of
+                    f("params" each(:ast.TypeFormal x.params typeFormal))
+                    f("result_kind" optional(:ast.KindExpr x.resultKind ty)) f("body" ty(x.body))
+                end)
+            when typeRec with x then
+                node("TypeRec" array of f("var_name" str(x.varName)) f("bound" ty(x.bound)) f("body" ty(x.body)) end)
+            when typeApp with x then
+                node("TypeApp" array of
+                    f("constructor" ty(x.constructor)) f("arguments" each(:ast.TypeExpr x.arguments ty))
+                end)
+            when typeInfix with x then
+                node("TypeInfix" array of f("left" ty(x.left)) f("op" str(x.op)) f("right" ty(x.right)) end)
+            when typeArray with x then node("TypeArray" array of f("element_type" ty(x.elementType)) end)
+            when typeVar with x then node("TypeVar" array of f("element_type" ty(x.elementType)) end)
+            when typeOut with x then node("TypeOut" array of f("element_type" ty(x.elementType)) end)
+            when typeManifest with x then
+                node("TypeManifest" array of f("module_name" str(x.moduleName)) f("type_name" str(x.typeName)) end)
+            when typeExternal with x then node("TypeExternal" array of f("c_type" str(x.cType)) end)
+        end
+    and quantifier(q: ast.Quantifier): S =
+        node("Quantifier" array of
+            f("name" str(q.name)) f("bound" ty(q.bound)) f("mode" mode(q.mode)) f("is_type" flag(q.isType))
+        end)
+    and fieldSig(s: ast.FieldSig): S =
+        node("FieldSig" array of
+            f("name" optStr(s.name)) f("type_sig" optional(:ast.TypeExpr s.typeSig ty)) f("mode" mode(s.mode))
+        end)
+    and recordFieldSig(s: ast.RecordFieldSig): S =
+        node("RecordFieldSig" array of f("name" str(s.name)) f("type_sig" ty(s.typeSig)) f("is_var" flag(s.isVar)) end)
+    and optionFieldSig(s: ast.OptionFieldSig): S =
+        node("OptionFieldSig" array of
+            f("tag" str(s.tag)) f("payload_sig" each(:ast.FieldSig s.payloadSig fieldSig))
+        end)
+    and variantFieldSig(s: ast.VariantFieldSig): S =
+        node("VariantFieldSig" array of f("tag" str(s.tag)) f("type_sig" ty(s.typeSig)) f("is_var" flag(s.isVar)) end)
+    and typeFormal(p: ast.TypeFormal): S =
+        node("TypeFormal" array of f("name" str(p.name)) f("bound" ty(p.bound)) end)
+    and typeBinding(b: ast.TypeBinding): S =
+        node("TypeBinding" array of
+            f("name" str(b.name)) f("type_val" ty(b.typeVal)) f("params" each(:ast.TypeFormal b.params typeFormal))
+            f("bound" optional(:ast.KindExpr b.bound ty)) f("is_rec" flag(b.isRec)) f("is_def" flag(b.isDef))
+        end)
+    and signature(s: ast.Signature): S =
+        case s
+            when sigValue with x then fieldSig(x.val)
+            when sigType with x then typeFormal(x.val)
+            when sigTypeBinding with x then typeBinding(x.val)
+            when sigTypeBindingGroup with x then
+                node("TypeBindingGroup" array of f("bindings" each(:ast.TypeBinding x.val typeBinding)) end)
+            when sigKindBinding with x then
+                node("DefKindBinding" array of f("name" str(x.val.name)) f("kind_val" ty(x.val.kindVal)) end)
+        end;
+
+    let formalParam(p: ast.FormalParam): S =
+        node("FormalParam" array of
+            f("name" str(p.name)) f("type_annot" optional(:ast.TypeExpr p.typeAnnot ty)) f("mode" mode(p.mode))
+        end);
+
+    let optTy(m: maybe.T(ast.TypeExpr)): S = optional(:ast.TypeExpr m ty);
+
+    (* =========================================================================
+     * 3. Expressions and Declarations
+     * ========================================================================= *)
+
+    let rec ex(e: ast.Expr): S =
+        case e.form
+            when exprInt with x then node("ExprInt" array of f("value" int(x.value)) f("lexeme" str(x.lexeme)) end)
+            when exprReal with x then node("ExprReal" array of f("value" real(x.value)) f("lexeme" str(x.lexeme)) end)
+            when exprChar with x then
+                node("ExprChar" array of f("value" str(stringOp.new(1 x.value))) f("lexeme" str(x.lexeme)) end)
+            when exprString with x then
+                node("ExprString" array of f("value" str(x.value)) f("lexeme" str(x.lexeme)) end)
+            when exprBool with x then node("ExprBool" array of f("value" flag(x.value)) end)
+            when exprOk then leaf("ExprOk")
+            when exprId with x then node("ExprId" array of f("name" str(x.name)) end)
+            when exprExternal with x then node("ExprExternal" array of f("symbol" str(x.symbol)) end)
+            when typeArg with x then node("TypeArgument" array of f("type_val" ty(x.typeVal)) end)
+            when kindArg with x then node("KindArgument" array of f("kind_val" ty(x.kindVal)) end)
+            when exprBlock with x then node("ExprBlock" array of f("bindings" each(:ast.Expr x.bindings ex)) end)
+            when exprIf with x then
+                node("ExprIf" array of
+                    f("cond" ex(x.cond)) f("then_branch" ex(x.thenBranch))
+                    f("elsifs" each(:ast.ElsifBranch x.elsifs elsifBranch)) f("else_branch" optEx(x.elseBranch))
+                end)
+            when exprWhile with x then node("ExprWhile" array of f("cond" ex(x.cond)) f("body" ex(x.body)) end)
+            when exprLoop with x then node("ExprLoop" array of f("body" ex(x.body)) end)
+            when exprExit then leaf("ExprExit")
+            when exprFor with x then
+                node("ExprFor" array of
+                    f("var_name" str(x.varName)) f("start" ex(x.start)) f("is_downto" flag(x.isDownto))
+                    f("stop" ex(x.stop)) f("body" ex(x.body))
+                end)
+            when exprFun with x then
+                node("ExprFun" array of
+                    f("params" each(:ast.FormalParam x.params formalParam)) f("return_type" optTy(x.returnType))
+                    f("body" ex(x.body)) f("type_params" each(:ast.TypeFormal x.typeParams typeFormal))
+                end)
+            when exprApp with x then
+                node("ExprApp" array of f("func" ex(x.func)) f("args" each(:ast.Expr x.args ex)) end)
+            when exprInfix with x then
+                node("ExprInfix" array of f("left" ex(x.left)) f("op" str(x.op)) f("right" ex(x.right)) end)
+            when exprTuple with x then node("ExprTuple" array of f("fields" each(:ast.TupleField x.fields tupleField)) end)
+            when exprRecord with x then
+                node("ExprRecord" array of f("fields" each(:ast.RecordBinding x.fields recordBinding)) end)
+            when exprArray with x then
+                node("ExprArray" array of
+                    f("elements" each(:ast.Expr x.elements ex)) f("element_type" optTy(x.elementType))
+                end)
+            when exprArrayRep with x then
+                node("ExprArrayRep" array of f("count" ex(x.count)) f("init_val" ex(x.initVal)) end)
+            when exprOption with x then
+                node("ExprOption" array of
+                    f("tag" optStr(x.tag)) f("option_type" ty(x.optionType)) f("payload" optEx(x.payload))
+                    f("ordinal_expr" optEx(x.ordinalExpr))
+                end)
+            when exprVariant with x then
+                node("ExprVariant" array of
+                    f("tag" str(x.tag)) f("variant_type" ty(x.variantType)) f("is_var" flag(x.isVar))
+                    f("payload" optEx(x.payload))
+                end)
+            when exprAuto with x then
+                node("ExprAuto" array of
+                    f("witness_type" ty(x.witnessType)) f("payload" ex(x.payload))
+                    f("witness_name" optStr(x.witnessName)) f("witness_bound" optTy(x.witnessBound))
+                end)
+            when exprSelect with x then node("ExprSelect" array of f("target" ex(x.target)) f("field" str(x.field)) end)
+            when exprIndex with x then node("ExprIndex" array of f("target" ex(x.target)) f("index" ex(x.index)) end)
+            when exprIndexAssign with x then
+                node("ExprIndexAssign" array of
+                    f("target" ex(x.target)) f("index" ex(x.index)) f("value" ex(x.value))
+                end)
+            when exprVarCell with x then node("ExprVarCell" array of f("value" ex(x.value)) end)
+            when exprDerefCell with x then node("ExprDerefCell" array of f("target" ex(x.target)) end)
+            when exprVariantCheck with x then
+                node("ExprVariantCheck" array of f("target" ex(x.target)) f("tag" str(x.tag)) end)
+            when exprVariantAssert with x then
+                node("ExprVariantAssert" array of f("target" ex(x.target)) f("tag" str(x.tag)) end)
+            when exprCase with x then
+                node("ExprCase" array of
+                    f("target" ex(x.target)) f("branches" each(:ast.CaseBranch x.branches caseBranch))
+                    f("else_branch" optEx(x.elseBranch))
+                end)
+            when exprInspect with x then
+                node("ExprInspect" array of
+                    f("target" ex(x.target)) f("branches" each(:ast.InspectBranch x.branches inspectBranch))
+                    f("else_branch" optEx(x.elseBranch))
+                end)
+            when exprException with x then
+                node("ExprException" array of f("name" str(x.name)) f("type_annot" optTy(x.typeAnnot)) end)
+            when exprRaise with x then
+                node("ExprRaise" array of
+                    f("exc" ex(x.exc)) f("payload" optEx(x.payload)) f("as_type" optTy(x.asType))
+                end)
+            when exprTry with x then
+                node("ExprTry" array of
+                    f("body" ex(x.body)) f("branches" each(:ast.TryBranch x.branches tryBranch))
+                    f("else_branch" optEx(x.elseBranch))
+                end)
+            when declLetVal with x then
+                node("LetValueBinding" array of
+                    f("name" str(x.name)) f("value" ex(x.value)) f("params" each(:ast.FormalParam x.params formalParam))
+                    f("type_annot" optTy(x.typeAnnot)) f("is_rec" flag(x.isRec)) f("is_var" flag(x.isVar))
+                end)
+            when declLetValGroup with x then
+                node("LetValueBindingGroup" array of f("bindings" each(:ast.Decl x.bindings ex)) end)
+            when declTypeBinding with x then
+                typeBinding(tuple
+                    let name = x.name let typeVal = x.typeVal let params = x.params let bound = x.bound
+                    let isRec = x.isRec let isDef = x.isDef
+                end)
+            when declTypeBindingGroup with x then
+                node("TypeBindingGroup" array of f("bindings" each(:ast.Decl x.bindings ex)) end)
+            when declDefKind with x then
+                node("DefKindBinding" array of f("name" str(x.name)) f("kind_val" ty(x.kindVal)) end)
+            when declExprStmt with x then node("ExprStmt" array of f("expr" ex(x.expr)) end)
+        end
+    and optEx(m: maybe.T(ast.Expr)): S = optional(:ast.Expr m ex)
+    (* Python holds an elsif as a plain (cond, then) tuple *)
+    and elsifBranch(b: ast.ElsifBranch): S = seq(array of ex(b.cond) ex(b.thenBranch) end)
+    and tupleField(t: ast.TupleField): S =
+        case t
+            when fieldVal with v then tupleBinding(v.val)
+            when fieldGroup with g then
+                node("TupleBindingGroup" array of f("bindings" each(:ast.TupleFieldBinding g.val tupleBinding)) end)
+            when fieldDecl with d then ex(d.val)
+        end
+    and tupleBinding(b: ast.TupleFieldBinding): S =
+        node("TupleBinding" array of
+            f("name" optStr(b.name)) f("value" ex(b.value)) f("type_annot" optTy(b.typeAnnot)) f("is_var" flag(b.isVar))
+        end)
+    and recordBinding(r: ast.RecordBinding): S =
+        node("RecordBinding" array of f("name" str(r.name)) f("value" ex(r.value)) f("is_var" flag(r.isVar)) end)
+    and caseBranch(c: ast.CaseBranch): S =
+        node("CaseBranch" array of
+            f("tags" strs(c.tags)) f("binder" optStr(c.binder)) f("binder_type" optTy(c.binderType))
+            f("body" ex(c.body))
+        end)
+    (* Python holds an inspect binder as a plain (name, type) tuple *)
+    and inspectBranch(i: ast.InspectBranch): S =
+        node("InspectBranch" array of
+            f("match_type" ty(i.matchType))
+            f("binders" each(:ast.InspectBinder i.binders
+                fun(x: ast.InspectBinder): S seq(array of str(x.name) optTy(x.typeAnnot) end)))
+            f("body" ex(i.body))
+        end)
+    and tryBranch(t: ast.TryBranch): S =
+        node("TryBranch" array of
+            f("exc_pattern" ex(t.excPattern)) f("binder" optStr(t.binder)) f("binder_type" optTy(t.binderType))
+            f("body" ex(t.body))
+        end);
+
+    (* =========================================================================
+     * 4. Phrases and Programs
+     * ========================================================================= *)
+
+    let importItem(i: ast.ImportItem): S =
+        node("ImportItem" array of
+            f("names" strs(i.names)) f("interface_name" str(i.interfaceName))
+            f("module_paths" optional(:vector.T(String) i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
+        end);
+
+    let phrase(p: ast.Phrase): S =
+        case p.form
+            when phraseImport with x then
+                node("ImportPhrase" array of f("items" each(:ast.ImportItem x.phrase.items importItem)) end)
+            when phraseInterface with x then
+                node("InterfaceDecl" array of
+                    f("name" str(x.iface.name)) f("signatures" each(:ast.Signature x.iface.signatures signature))
+                    f("imports" each(:ast.ImportItem x.iface.imports importItem)) f("is_unsound" flag(x.iface.isUnsound))
+                end)
+            when phraseModule with x then
+                node("ModuleDecl" array of
+                    f("name" str(x.modDecl.name)) f("interface_name" str(x.modDecl.interfaceName))
+                    f("bindings" each(:ast.Decl x.modDecl.bindings ex))
+                    f("imports" each(:ast.ImportItem x.modDecl.imports importItem))
+                    f("is_unsound" flag(x.modDecl.isUnsound))
+                end)
+            when phraseDecl with x then ex(x.decl)
+            when phraseExpr with x then ex(x.expr)
+        end;
+
+    let program(p: ast.Program): S = node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end);
+
+    (* =========================================================================
+     * 5. Rendering, with ast_dump's layout rules
+     * ========================================================================= *)
+
+    (* A simple value is printed on its owner's line: everything but nodes and nonempty tuples of non-strings *)
+    let isSimple(v: S): Bool =
+        case v
+            when seq with x then extent x.items is 0
+            when node then false
+            else true
+        end;
+
+    (* A field that a multi-line node leaves out: None, False, or an empty tuple *)
+    let isOmitted(v: S): Bool =
+        case v
+            when nil then true
+            when flag with x then not(x.value)
+            when strs with x then vector.length(:String x.items) is 0
+            when seq with x then extent x.items is 0
+            else false
+        end;
+
+    let pad(b: stringBuilder.T indent: Int): stringBuilder.T = b.repeat(' ' {2 * indent});
+
+    let flagText(value: Bool): String = if value then "True" else "False" end;
+
+    (* The items of a tuple of strings, quoted and separated by sep *)
+    let quoted(b: stringBuilder.T items: vector.T(String) sep: String): stringBuilder.T =
         begin
-        let dumpDecl(node: ast.Decl indent: Int showOffsets: Bool): String =
-            dumpExpr(node indent showOffsets);
-        let dumpTupleBinding(bnd: ast.TupleFieldBinding indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(TupleBinding
-");
-                if maybe.isSome(:String bnd.name) then
-                    b.str(cpad);
-                    b.str(":name ");
-                    b.str(pyRepr(maybe.unwrap(:String bnd.name)));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(":value ");
-                b.str(dumpExpr(bnd.value {indent + 1} showOffsets));
-                b.str("
-");
-                if maybe.isSome(:ast.TypeExpr bnd.typeAnnot) then
-                    b.str(cpad);
-                    b.str(":type_annot ");
-                    b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr bnd.typeAnnot)
-                        {indent + 1} showOffsets));
-                    b.str("
-");
-                end;
-                if bnd.isVar then
-                    b.str(cpad);
-                    b.str(":is_var True
-");
-                end;
-                b.str(pad);
-                b.str(")");
-                b.toString()
+            for i = 0 upto {vector.length(:String items) - 1} do
+                if i > 0 then b.str(sep) end;
+                b.str(pyRepr(vector.get(:String items i)));
             end;
+            b
+        end;
 
-        let dumpTupleField(field: ast.TupleField indent: Int showOffsets: Bool): String =
-            case field
-                when fieldVal with v then
-                    dumpTupleBinding(v.val indent showOffsets)
-                when fieldDecl with d then
-                    dumpDecl(d.val indent showOffsets)
-            end;
+    (* A simple value as a field of a node *)
+    let simpleField(b: stringBuilder.T v: S): stringBuilder.T =
+        case v
+            when flag with x then b.str(flagText(x.value))
+            when atom with x then b.str(x.text)
+            when strs with x then quoted(b.char('(') x.items " ").char(')')
+            else b.str("()")
+        end;
 
-        let dumpRecordBinding(bnd: ast.RecordBinding indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(RecordBinding
-");
-                b.str(cpad);
-                b.str(":name ");
-                b.str(pyRepr(bnd.name));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":value ");
-                b.str(dumpExpr(bnd.value {indent + 1} showOffsets));
-                b.str("
-");
-                if bnd.isVar then
-                    b.str(cpad);
-                    b.str(":is_var True
-");
-                end;
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
+    (* A simple value as an item of a tuple, as Python's str prints it *)
+    let simpleItem(b: stringBuilder.T v: S): stringBuilder.T =
+        case v
+            when nil then b.str("None")
+            when strs with x then
+                begin
+                    quoted(b.char('(') x.items ", ");
+                    if vector.length(:String x.items) is 1 then b.char(',') end;
+                    b.char(')')
+                end
+            else simpleField(b v)
+        end;
 
-        let dumpCaseBranch(br: ast.CaseBranch indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(CaseBranch
-");
-                b.str(cpad);
-                b.str(":tags ");
-                b.str(dumpStringTuple(br.tags));
-                b.str("
-");
-                if maybe.isSome(:String br.binder) then
-                    b.str(cpad);
-                    b.str(":binder ");
-                    b.str(pyRepr(maybe.unwrap(:String br.binder)));
-                    b.str("
-");
-                end;
-                if maybe.isSome(:ast.TypeExpr br.binderType) then
-                    b.str(cpad);
-                    b.str(":binder_type ");
-                    b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr br.binderType)
-                        {indent + 1} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(":body ");
-                b.str(dumpExpr(br.body {indent + 1} showOffsets));
-                b.str("
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpInspectBranch(br: ast.InspectBranch indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(InspectBranch
-");
-                b.str(cpad);
-                b.str(":match_type ");
-                b.str(dumpTypeExpr(br.matchType {indent + 1} showOffsets));
-                b.str("
-");
-                b.str(cpad);
-                b.str(":binders (
-");
-                let nB = vector.length(:ast.InspectBinder br.binders);
-                for i = 0 upto {nB - 1} do
-                    let binder = vector.get(:ast.InspectBinder br.binders i);
-                    if maybe.isSome(:ast.TypeExpr binder.typeAnnot) then
-                        b.str(makePadding({indent + 2}));
-                        b.str("(
-");
-                        b.str(makePadding({indent + 3}));
-                        b.str(pyRepr(binder.name));
-                        b.str("
-");
-                        b.str(makePadding({indent + 3}));
-                        b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr binder.typeAnnot)
-                            {indent + 3} showOffsets));
-                        b.str("
-");
-                        b.str(makePadding({indent + 2}));
-                        b.str(")
-");
+    let rec render(b: stringBuilder.T v: S indent: Int): stringBuilder.T =
+        case v
+            when nil then b.str("nil")
+            when seq with x then
+                begin
+                    let count = extent x.items;
+                    let var allSimple = true;
+                    for i = 0 upto {count - 1} do
+                        if not(isSimple(x.items[i])) then allSimple := false end;
+                    end;
+                    if count is 0 then
+                        b.str("()")
+                    elsif allSimple then
+                        b.char('(');
+                        for i = 0 upto {count - 1} do
+                            if i > 0 then b.char(' ') end;
+                            simpleItem(b x.items[i]);
+                        end;
+                        b.char(')')
                     else
-                        b.str(makePadding({indent + 2}));
-                        b.str("(");
-                        b.str(pyRepr(binder.name));
-                        b.str(" None)
-");
+                        b.char('(');
+                        for i = 0 upto {count - 1} do
+                            render(pad(b.char('\n') {indent + 1}) x.items[i] {indent + 1});
+                        end;
+                        pad(b.char('\n') indent).char(')')
+                    end
+                end
+            when node with x then renderNode(b x.name x.fields indent)
+            else simpleField(b v)
+        end
+    and renderNode(b: stringBuilder.T name: String fields: Array(Field) indent: Int): stringBuilder.T =
+        begin
+            let count = extent fields;
+            let var allSimple = true;
+            for i = 0 upto {count - 1} do
+                if not(isSimple(fields[i].value)) then allSimple := false end;
+            end;
+            b.char('(').str(name);
+            if allSimple then
+                for i = 0 upto {count - 1} do
+                    let v = fields[i].value;
+                    case v when nil then ok else simpleField(b.char(' ') v); ok end;
+                end;
+                b.char(')')
+            else
+                for i = 0 upto {count - 1} do
+                    let v = fields[i].value;
+                    if not(isOmitted(v)) then
+                        pad(b.char('\n') {indent + 1}).char(':').str(fields[i].name).char(' ');
+                        case v
+                            when seq with x then
+                                begin
+                                    let itemCount = extent x.items;
+                                    b.char('(');
+                                    for k = 0 upto {itemCount - 1} do
+                                        render(pad(b.char('\n') {indent + 2}) x.items[k] {indent + 2});
+                                    end;
+                                    pad(b.char('\n') {indent + 1}).char(')')
+                                end
+                            when node then render(b v {indent + 1})
+                            else simpleField(b v)
+                        end;
                     end;
                 end;
-                b.str(cpad);
-                b.str(")
-");
-                b.str(cpad);
-                b.str(":body ");
-                b.str(dumpExpr(br.body {indent + 1} showOffsets));
-                b.str("
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpTryBranch(br: ast.TryBranch indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(TryBranch
-");
-                b.str(cpad);
-                b.str(":exc_pattern ");
-                b.str(dumpExpr(br.excPattern {indent + 1} showOffsets));
-                b.str("
-");
-                if maybe.isSome(:String br.binder) then
-                    b.str(cpad);
-                    b.str(":binder ");
-                    b.str(pyRepr(maybe.unwrap(:String br.binder)));
-                    b.str("
-");
-                end;
-                if maybe.isSome(:ast.TypeExpr br.binderType) then
-                    b.str(cpad);
-                    b.str(":binder_type ");
-                    b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr br.binderType)
-                        {indent + 1} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(":body ");
-                b.str(dumpExpr(br.body {indent + 1} showOffsets));
-                b.str("
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end;
-
-        let dumpExprForm(span: location.Span form: ast.ExprForm indent: Int showOffsets: Bool): String =
-            begin
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                case form
-                when exprInt with i then
-                        stringOp.cat("(ExprInt " stringOp.cat(conv.int(i.value)
-                            stringOp.cat(" " stringOp.cat(pyRepr(i.lexeme) ")"))))
-                when exprReal with r then
-                        stringOp.cat("(ExprReal " stringOp.cat(conv.real(r.value)
-                            stringOp.cat(" " stringOp.cat(pyRepr(r.lexeme) ")"))))
-                when exprChar with c then
-                        stringOp.cat("(ExprChar " stringOp.cat(pyRepr(conv.char(c.value))
-                            stringOp.cat(" " stringOp.cat(pyRepr(c.lexeme) ")"))))
-                when exprString with s then
-                        stringOp.cat("(ExprString " stringOp.cat(pyRepr(s.value)
-                            stringOp.cat(" " stringOp.cat(pyRepr(s.lexeme) ")"))))
-                when exprBool with b then
-                        stringOp.cat("(ExprBool " stringOp.cat(if b.value then "True" else "False" end ")"))
-                when exprOk then
-                        "(ExprOk)"
-                when exprId with i then
-                        stringOp.cat("(ExprId " stringOp.cat(pyRepr(i.name) ")"))
-                when exprExternal with e then
-                        stringOp.cat("(ExprExternal " stringOp.cat(pyRepr(e.symbol) ")"))
-                when typeArg with t then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeArgument
-");
-                            b.str(cpad);
-                            b.str(":type_val ");
-                            b.str(dumpTypeExpr(t.typeVal {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when kindArg with k then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(KindArgument
-");
-                            b.str(cpad);
-                            b.str(":kind_val ");
-                            b.str(dumpTypeExpr(k.kindVal {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprBlock with b then
-                        begin
-                            let nB = vector.length(:ast.Decl b.bindings);
-                            if nB is 0 then
-                                "(ExprBlock ())"
-                            else
-                                let sb = stringBuilder.new();
-                                sb.str("(ExprBlock
-");
-                                sb.str(cpad);
-                                sb.str(":bindings (
-");
-                                for i = 0 upto {nB - 1} do
-                                    sb.str(makePadding({indent + 2}));
-                                    sb.str(dumpDecl(vector.get(:ast.Decl b.bindings i)
-                                        {indent + 2} showOffsets));
-                                    sb.str("
-");
-                                end;
-                                sb.str(cpad);
-                                sb.str(")
-");
-                                sb.str(pad);
-                                sb.str(")");
-                                sb.toString()
-                            end
-                        end
-                when exprIf with i then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprIf
-");
-                            b.str(cpad);
-                            b.str(":cond ");
-                            b.str(dumpExpr(i.cond {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":then_branch ");
-                            b.str(dumpExpr(i.thenBranch {indent + 1} showOffsets));
-                            b.str("
-");
-                            let nEls = vector.length(:ast.ElsifBranch i.elsifs);
-                            if nEls > 0 then
-                                b.str(cpad);
-                                b.str(":elsifs (
-");
-                                for k = 0 upto {nEls - 1} do
-                                    let eb = vector.get(:ast.ElsifBranch i.elsifs k);
-                                    b.str(makePadding({indent + 2}));
-                                    b.str("(
-");
-                                    b.str(makePadding({indent + 3}));
-                                    b.str(dumpExpr(eb.cond {indent + 3} showOffsets));
-                                    b.str("
-");
-                                    b.str(makePadding({indent + 3}));
-                                    b.str(dumpExpr(eb.thenBranch {indent + 3} showOffsets));
-                                    b.str("
-");
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(")
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                            end;
-                            if maybe.isSome(:ast.Expr i.elseBranch) then
-                                b.str(cpad);
-                                b.str(":else_branch ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr i.elseBranch)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprWhile with w then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprWhile
-");
-                            b.str(cpad);
-                            b.str(":cond ");
-                            b.str(dumpExpr(w.cond {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpExpr(w.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprLoop with l then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprLoop
-");
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpExpr(l.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprExit then
-                        "(ExprExit)"
-                when exprFor with f then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprFor
-");
-                            b.str(cpad);
-                            b.str(":var_name ");
-                            b.str(pyRepr(f.varName));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":start ");
-                            b.str(dumpExpr(f.start {indent + 1} showOffsets));
-                            b.str("
-");
-                            if f.isDownto then
-                                b.str(cpad);
-                                b.str(":is_downto True
-");
-                            end;
-                            b.str(cpad);
-                            b.str(":stop ");
-                            b.str(dumpExpr(f.stop {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpExpr(f.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprFun with f then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprFun
-");
-                            b.str(cpad);
-                            b.str(":params (
-");
-                            let nP = vector.length(:ast.FormalParam f.params);
-                            for i = 0 upto {nP - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpFormalParam(vector.get(:ast.FormalParam f.params i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            if maybe.isSome(:ast.TypeExpr f.returnType) then
-                                b.str(cpad);
-                                b.str(":return_type ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr f.returnType)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpExpr(f.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            let nTP = vector.length(:ast.TypeFormal f.typeParams);
-                            if nTP > 0 then
-                                b.str(cpad);
-                                b.str(":type_params (
-");
-                                for i = 0 upto {nTP - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpTypeFormal(vector.get(:ast.TypeFormal f.typeParams i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprApp with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprApp
-");
-                            b.str(cpad);
-                            b.str(":func ");
-                            b.str(dumpExpr(a.func {indent + 1} showOffsets));
-                            b.str("
-");
-                            let nA = vector.length(:ast.Expr a.args);
-                            if nA > 0 then
-                                b.str(cpad);
-                                b.str(":args (
-");
-                                for i = 0 upto {nA - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpExpr(vector.get(:ast.Expr a.args i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprInfix with i then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprInfix
-");
-                            b.str(cpad);
-                            b.str(":left ");
-                            b.str(dumpExpr(i.left {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":op ");
-                            b.str(pyRepr(i.op));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":right ");
-                            b.str(dumpExpr(i.right {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprTuple with t then
-                        begin
-                            let nF = vector.length(:ast.TupleField t.fields);
-                            if nF is 0 then
-                                "(ExprTuple ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(ExprTuple
-");
-                                b.str(cpad);
-                                b.str(":fields (
-");
-                                for i = 0 upto {nF - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpTupleField(vector.get(:ast.TupleField t.fields i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when exprRecord with r then
-                        begin
-                            let nF = vector.length(:ast.RecordBinding r.fields);
-                            if nF is 0 then
-                                "(ExprRecord ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(ExprRecord
-");
-                                b.str(cpad);
-                                b.str(":fields (
-");
-                                for i = 0 upto {nF - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpRecordBinding(vector.get(:ast.RecordBinding r.fields i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when exprArray with a then
-                        begin
-                            let nE = vector.length(:ast.Expr a.elements);
-                            if {nE is 0} andif maybe.isNone(:ast.TypeExpr a.elementType) then
-                                "(ExprArray ())"
-                            else
-                                let b = stringBuilder.new();
-                                b.str("(ExprArray
-");
-                                if nE > 0 then
-                                    b.str(cpad);
-                                    b.str(":elements (
-");
-                                    for i = 0 upto {nE - 1} do
-                                        b.str(makePadding({indent + 2}));
-                                        b.str(dumpExpr(vector.get(:ast.Expr a.elements i)
-                                            {indent + 2} showOffsets));
-                                        b.str("
-");
-                                    end;
-                                    b.str(cpad);
-                                    b.str(")
-");
-                                end;
-                                if maybe.isSome(:ast.TypeExpr a.elementType) then
-                                    b.str(cpad);
-                                    b.str(":element_type ");
-                                    b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr a.elementType)
-                                        {indent + 1} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(pad);
-                                b.str(")");
-                                b.toString()
-                            end
-                        end
-                when exprArrayRep with r then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprArrayRep
-");
-                            b.str(cpad);
-                            b.str(":count ");
-                            b.str(dumpExpr(r.count {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":init_val ");
-                            b.str(dumpExpr(r.initVal {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprOption with o then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprOption
-");
-                            if maybe.isSome(:String o.tag) then
-                                b.str(cpad);
-                                b.str(":tag ");
-                                b.str(pyRepr(maybe.unwrap(:String o.tag)));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(":option_type ");
-                            b.str(dumpTypeExpr(o.optionType {indent + 1} showOffsets));
-                            b.str("
-");
-                            if maybe.isSome(:ast.Expr o.payload) then
-                                b.str(cpad);
-                                b.str(":payload ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr o.payload)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            if maybe.isSome(:ast.Expr o.ordinalExpr) then
-                                b.str(cpad);
-                                b.str(":ordinal_expr ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr o.ordinalExpr)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprVariant with v then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprVariant
-");
-                            b.str(cpad);
-                            b.str(":tag ");
-                            b.str(pyRepr(v.tag));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":variant_type ");
-                            b.str(dumpTypeExpr(v.variantType {indent + 1} showOffsets));
-                            b.str("
-");
-                            if v.isVar then
-                                b.str(cpad);
-                                b.str(":is_var True
-");
-                            end;
-                            if maybe.isSome(:ast.Expr v.payload) then
-                                b.str(cpad);
-                                b.str(":payload ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr v.payload)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprAuto with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprAuto
-");
-                            b.str(cpad);
-                            b.str(":witness_type ");
-                            b.str(dumpTypeExpr(a.witnessType {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":payload ");
-                            b.str(dumpExpr(a.payload {indent + 1} showOffsets));
-                            b.str("
-");
-                            if maybe.isSome(:String a.witnessName) then
-                                b.str(cpad);
-                                b.str(":witness_name ");
-                                b.str(pyRepr(maybe.unwrap(:String a.witnessName)));
-                                b.str("
-");
-                            end;
-                            if maybe.isSome(:ast.KindExpr a.witnessBound) then
-                                b.str(cpad);
-                                b.str(":witness_bound ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.KindExpr a.witnessBound)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprSelect with s then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprSelect
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(s.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":field ");
-                            b.str(pyRepr(s.field));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprIndex with idx then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprIndex
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(idx.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":index ");
-                            b.str(dumpExpr(idx.index {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprIndexAssign with ia then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprIndexAssign
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(ia.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":index ");
-                            b.str(dumpExpr(ia.index {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":value ");
-                            b.str(dumpExpr(ia.value {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprAssign with a then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprAssign
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(a.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":value ");
-                            b.str(dumpExpr(a.value {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprVarCell with vc then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprVarCell
-");
-                            b.str(cpad);
-                            b.str(":value ");
-                            b.str(dumpExpr(vc.value {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprDerefCell with dc then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprDerefCell
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(dc.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprVariantCheck with vc then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprVariantCheck
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(vc.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":tag ");
-                            b.str(pyRepr(vc.tag));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprVariantAssert with va then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprVariantAssert
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(va.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":tag ");
-                            b.str(pyRepr(va.tag));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprCase with c then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprCase
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(c.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":branches (
-");
-                            let nBr = vector.length(:ast.CaseBranch c.branches);
-                            for i = 0 upto {nBr - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpCaseBranch(vector.get(:ast.CaseBranch c.branches i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            if maybe.isSome(:ast.Expr c.elseBranch) then
-                                b.str(cpad);
-                                b.str(":else_branch ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr c.elseBranch)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprInspect with i then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprInspect
-");
-                            b.str(cpad);
-                            b.str(":target ");
-                            b.str(dumpExpr(i.target {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":branches (
-");
-                            let nBr = vector.length(:ast.InspectBranch i.branches);
-                            for k = 0 upto {nBr - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpInspectBranch(vector.get(:ast.InspectBranch i.branches k)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            if maybe.isSome(:ast.Expr i.elseBranch) then
-                                b.str(cpad);
-                                b.str(":else_branch ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr i.elseBranch)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprException with e then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprException
-");
-                            b.str(cpad);
-                            b.str(":name ");
-                            b.str(pyRepr(e.name));
-                            b.str("
-");
-                            if maybe.isSome(:ast.TypeExpr e.typeAnnot) then
-                                b.str(cpad);
-                                b.str(":type_annot ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr e.typeAnnot)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprRaise with r then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprRaise
-");
-                            b.str(cpad);
-                            b.str(":exc ");
-                            b.str(dumpExpr(r.exc {indent + 1} showOffsets));
-                            b.str("
-");
-                            if maybe.isSome(:ast.Expr r.payload) then
-                                b.str(cpad);
-                                b.str(":payload ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr r.payload)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            if maybe.isSome(:ast.TypeExpr r.asType) then
-                                b.str(cpad);
-                                b.str(":as_type ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr r.asType)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when exprTry with t then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprTry
-");
-                            b.str(cpad);
-                            b.str(":body ");
-                            b.str(dumpExpr(t.body {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":branches (
-");
-                            let nBr = vector.length(:ast.TryBranch t.branches);
-                            for i = 0 upto {nBr - 1} do
-                                b.str(makePadding({indent + 2}));
-                                b.str(dumpTryBranch(vector.get(:ast.TryBranch t.branches i)
-                                    {indent + 2} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(cpad);
-                            b.str(")
-");
-                            if maybe.isSome(:ast.Expr t.elseBranch) then
-                                b.str(cpad);
-                                b.str(":else_branch ");
-                                b.str(dumpExpr(maybe.unwrap(:ast.Expr t.elseBranch)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when declLetVal with v then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(LetValueBinding
-");
-                            b.str(cpad);
-                            b.str(":name ");
-                            b.str(pyRepr(v.name));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":value ");
-                            b.str(dumpExpr(v.value {indent + 1} showOffsets));
-                            b.str("
-");
-                            let nP = vector.length(:ast.FormalParam v.params);
-                            if nP > 0 then
-                                b.str(cpad);
-                                b.str(":params (
-");
-                                for i = 0 upto {nP - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpFormalParam(vector.get(:ast.FormalParam v.params i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                            end;
-                            if maybe.isSome(:ast.TypeExpr v.typeAnnot) then
-                                b.str(cpad);
-                                b.str(":type_annot ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.TypeExpr v.typeAnnot)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            if v.isRec then
-                                b.str(cpad);
-                                b.str(":is_rec True
-");
-                            end;
-                            if v.isVar then
-                                b.str(cpad);
-                                b.str(":is_var True
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when declTypeBinding with t then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(TypeBinding
-");
-                            b.str(cpad);
-                            b.str(":name ");
-                            b.str(pyRepr(t.name));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":type_val ");
-                            b.str(dumpTypeExpr(t.typeVal {indent + 1} showOffsets));
-                            b.str("
-");
-                            let nP = vector.length(:ast.TypeFormal t.params);
-                            if nP > 0 then
-                                b.str(cpad);
-                                b.str(":params (
-");
-                                for i = 0 upto {nP - 1} do
-                                    b.str(makePadding({indent + 2}));
-                                    b.str(dumpTypeFormal(vector.get(:ast.TypeFormal t.params i)
-                                        {indent + 2} showOffsets));
-                                    b.str("
-");
-                                end;
-                                b.str(cpad);
-                                b.str(")
-");
-                            end;
-                            if maybe.isSome(:ast.KindExpr t.bound) then
-                                b.str(cpad);
-                                b.str(":bound ");
-                                b.str(dumpTypeExpr(maybe.unwrap(:ast.KindExpr t.bound)
-                                    {indent + 1} showOffsets));
-                                b.str("
-");
-                            end;
-                            if t.isRec then
-                                b.str(cpad);
-                                b.str(":is_rec True
-");
-                            end;
-                            if t.isDef then
-                                b.str(cpad);
-                                b.str(":is_def True
-");
-                            end;
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when declDefKind with k then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(DefKindBinding
-");
-                            b.str(cpad);
-                            b.str(":name ");
-                            b.str(pyRepr(k.name));
-                            b.str("
-");
-                            b.str(cpad);
-                            b.str(":kind_val ");
-                            b.str(dumpTypeExpr(k.kindVal {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                when declExprStmt with e then
-                        begin
-                            let b = stringBuilder.new();
-                            b.str("(ExprStmt
-");
-                            b.str(cpad);
-                            b.str(":expr ");
-                            b.str(dumpExpr(e.expr {indent + 1} showOffsets));
-                            b.str("
-");
-                            b.str(pad);
-                            b.str(")");
-                            b.toString()
-                        end
-                end
-            end;
-        dumpExprForm(node.span node.form indent showOffsets)
-    end;
-    let dumpDecl(node: ast.Decl indent: Int showOffsets: Bool): String =
-        dumpExpr(node indent showOffsets);
-    let dumpImportItem(item: ast.ImportItem indent: Int showOffsets: Bool): String =
-        begin
-            let b = stringBuilder.new();
-            b.str("(ImportItem ");
-            b.str(dumpStringTuple(item.names));
-            b.str(" ");
-            b.str(pyRepr(item.interfaceName));
-            if maybe.isSome(:vector.T(String) item.modulePaths) then
-                b.str(" ");
-                b.str(dumpStringTuple(maybe.unwrap(:vector.T(String) item.modulePaths)));
-            end;
-            if maybe.isSome(:String item.interfacePath) then
-                b.str(" ");
-                b.str(pyRepr(maybe.unwrap(:String item.interfacePath)));
-            end;
-            b.str(")");
-            b.toString()
-        end;
-
-    let dumpImportPhrase(phrase: ast.ImportPhrase indent: Int showOffsets: Bool): String =
-        begin
-            let nI = vector.length(:ast.ImportItem phrase.items);
-            if nI is 0 then
-                "(ImportPhrase ())"
-            else
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(ImportPhrase
-");
-                b.str(cpad);
-                b.str(":items (
-");
-                for i = 0 upto {nI - 1} do
-                    b.str(makePadding({indent + 2}));
-                    b.str(dumpImportItem(vector.get(:ast.ImportItem phrase.items i)
-                        {indent + 2} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(")
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
+                pad(b.char('\n') indent).char(')')
             end
         end;
 
-    let dumpInterfaceDecl(iface: ast.InterfaceDecl indent: Int showOffsets: Bool): String =
-        begin
-            let pad = makePadding(indent);
-            let cpad = makePadding({indent + 1});
-            let b = stringBuilder.new();
-            b.str("(InterfaceDecl
-");
-            b.str(cpad);
-            b.str(":name ");
-            b.str(pyRepr(iface.name));
-            b.str("
-");
-            b.str(cpad);
-            b.str(":signatures (
-");
-            let nS = vector.length(:ast.Decl iface.signatures);
-            for i = 0 upto {nS - 1} do
-                b.str(makePadding({indent + 2}));
-                b.str(dumpDecl(vector.get(:ast.Decl iface.signatures i)
-                    {indent + 2} showOffsets));
-                b.str("
-");
-            end;
-            b.str(cpad);
-            b.str(")
-");
-            let nImp = vector.length(:ast.ImportItem iface.imports);
-            if nImp > 0 then
-                b.str(cpad);
-                b.str(":imports (
-");
-                for i = 0 upto {nImp - 1} do
-                    b.str(makePadding({indent + 2}));
-                    b.str(dumpImportItem(vector.get(:ast.ImportItem iface.imports i)
-                        {indent + 2} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(")
-");
-            end;
-            if iface.isUnsound then
-                b.str(cpad);
-                b.str(":is_unsound True
-");
-            end;
-            b.str(pad);
-            b.str(")");
-            b.toString()
-        end;
+    let show(v: S): String = render(stringBuilder.new() v 0).toString();
 
-    let dumpModuleDecl(modDecl: ast.ModuleDecl indent: Int showOffsets: Bool): String =
-        begin
-            let pad = makePadding(indent);
-            let cpad = makePadding({indent + 1});
-            let b = stringBuilder.new();
-            b.str("(ModuleDecl
-");
-            b.str(cpad);
-            b.str(":name ");
-            b.str(pyRepr(modDecl.name));
-            b.str("
-");
-            b.str(cpad);
-            b.str(":interface_name ");
-            b.str(pyRepr(modDecl.interfaceName));
-            b.str("
-");
-            b.str(cpad);
-            b.str(":bindings (
-");
-            let nB = vector.length(:ast.Decl modDecl.bindings);
-            for i = 0 upto {nB - 1} do
-                b.str(makePadding({indent + 2}));
-                b.str(dumpDecl(vector.get(:ast.Decl modDecl.bindings i)
-                    {indent + 2} showOffsets));
-                b.str("
-");
-            end;
-            b.str(cpad);
-            b.str(")
-");
-            let nImp = vector.length(:ast.ImportItem modDecl.imports);
-            if nImp > 0 then
-                b.str(cpad);
-                b.str(":imports (
-");
-                for i = 0 upto {nImp - 1} do
-                    b.str(makePadding({indent + 2}));
-                    b.str(dumpImportItem(vector.get(:ast.ImportItem modDecl.imports i)
-                        {indent + 2} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(")
-");
-            end;
-            if modDecl.isUnsound then
-                b.str(cpad);
-                b.str(":is_unsound True
-");
-            end;
-            b.str(pad);
-            b.str(")");
-            b.toString()
-        end;
-
-    let dumpPhrase(node: ast.Phrase indent: Int showOffsets: Bool): String =
-        case node.form
-            when phraseImport with p then
-                dumpImportPhrase(p.phrase indent showOffsets)
-            when phraseInterface with i then
-                dumpInterfaceDecl(i.iface indent showOffsets)
-            when phraseModule with m then
-                dumpModuleDecl(m.modDecl indent showOffsets)
-            when phraseDecl with d then
-                dumpDecl(d.decl indent showOffsets)
-            when phraseExpr with e then
-                dumpExpr(e.expr indent showOffsets)
-        end;
-    let dumpProgram(node: ast.Program indent: Int showOffsets: Bool): String =
-        begin
-            let nP = vector.length(:ast.Phrase node.form.phrases);
-            if nP is 0 then
-                "(Program ())"
-            else
-                let pad = makePadding(indent);
-                let cpad = makePadding({indent + 1});
-                let b = stringBuilder.new();
-                b.str("(Program
-");
-                b.str(cpad);
-                b.str(":phrases (
-");
-                for i = 0 upto {nP - 1} do
-                    b.str(makePadding({indent + 2}));
-                    b.str(dumpPhrase(vector.get(:ast.Phrase node.form.phrases i)
-                        {indent + 2} showOffsets));
-                    b.str("
-");
-                end;
-                b.str(cpad);
-                b.str(")
-");
-                b.str(pad);
-                b.str(")");
-                b.toString()
-            end
-        end;
-    let dump(node: ast.Program): String =
-        dumpProgram(node 0 false);
-
-    let dumpWithOptions(node: ast.Program showOffsets: Bool): String =
-        dumpProgram(node 0 showOffsets);
+    let dump(node: ast.Program): String = show(program(node));
+    let dumpPhrase(node: ast.Phrase): String = show(phrase(node));
+    let dumpExpr(node: ast.Expr): String = show(ex(node));
+    let dumpTypeExpr(node: ast.TypeExpr): String = show(ty(node));
 end;

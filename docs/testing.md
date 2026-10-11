@@ -154,6 +154,14 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 `python tests/abi/corpus.py --update`; to snapshot newer library interfaces, run `python tests/abi/corpus.py
 --refresh-inputs`.
 
+**Self-hosted AST printer:** `tests/astprint/generate.py` translates the bootstrap parser's AST of a Quest file into a
+Quest program that builds the same self-hosted AST (`questlang/syntax/ast`) and prints it with `astprint.dump`, whose
+output must be what `ast_dump` prints. The `astprint_*` tests in `tests/source/questlang` are generated this way from
+the inputs in `tests/astprint` (`forms.quest` uses every node the parser produces), with goldens holding `ast_dump`'s
+output; regenerate them with `python tests/astprint/generate.py` after changing the AST. `python
+tests/astprint/generate.py --check` (add `--c` to compile to C) checks every parseable `.quest` file in the
+repository, in about a minute.
+
 **Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
 type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables
 every check. See `bootstrap/python/quest/shadow.py`.

@@ -277,7 +277,8 @@ testable steps:
 - **Step 1.1:** `questlang/common/location`, `diagnostics`, `diagbag`.
 - **Step 1.2:** `questlang/syntax/tokens` and `questlang/syntax/tokenizer`
   (verified against existing `tokenize` goldens).
-- **Step 1.3:** `questlang/syntax/ast/*` and `questlang/syntax/astprint/*`.
+- **Step 1.3:** `questlang/syntax/ast/*` and `questlang/syntax/astprint/*`
+  (verified against `ast_dump` for every parseable `.quest` file by `tests/astprint/generate.py --check`).
 - **Step 1.4:** `questlang/syntax/parser/engine` (generic PEG engine with memoization).
 - **Step 1.5:** Grammar rules and actions for types and declarations.
 - **Step 1.6:** Grammar rules and actions for expressions, operators, and full modules

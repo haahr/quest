@@ -414,9 +414,10 @@ class CDeclarationEmitter:
             return lines
         emitted_before.update(seen_tags)
 
-        # Descriptors of unfolded recursive types may name tuple and record structs that the program's own types
-        # do not (a recursive occurrence is named by its unfolding rather than as QVal); their layouts are the same,
-        # but the structs must be defined for offsetof and sizeof
+        # Descriptors of unfolded recursive types may name tuple, record, and option structs that the program's own
+        # types do not (a recursive occurrence is named by its unfolding rather than as QVal, and a type reached only
+        # as the argument of an opaque type has no values in the program); their layouts are the same, but the
+        # structs must be defined for offsetof and sizeof
         defined: set[str] = self.__dict__.setdefault("_defined_struct_names", set())
         defined.update(name for name, _ in agg_types)
         missing: list[tuple[str, QType]] = []
@@ -429,6 +430,11 @@ class CDeclarationEmitter:
             if form.tag not in defined:
                 defined.add(form.tag)
                 missing.append((form.tag, form.type))
+        for form in forms.get("option", []):
+            struct_name = form.struct or option_struct_name(form.type)
+            if struct_name not in defined:
+                defined.add(struct_name)
+                missing.append((struct_name, form.type))
         for form in forms.get("auto", []):
             payload_t = auto_payload_type(form.type)
             struct_name = tuple_struct_name(payload_t)

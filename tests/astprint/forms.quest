@@ -1,0 +1,94 @@
+(* Input for tests/astprint/generate.py: a program that uses every node of the bootstrap AST. It only has to
+   parse; it is not typechecked or run. *)
+
+import writer: Writer;
+import pick = util/pick, util/other : util/Pick;
+
+interface Shapes
+import base: Base
+export
+    T::TYPE
+    Def U = Int
+    Def Rec L = Option nil cons with head: Int tail: L end end
+    Def A = Tuple x: Int end and B = Tuple y: A end
+    area(s: T): Int
+end;
+
+module shapes : Shapes
+import base: Base
+export
+    Let T = Tuple side: Int end;
+    let area(s: T): Int = s.side * s.side;
+end;
+
+unsound module raw : Raw export
+    let id(x: Int): Int = x;
+end;
+
+DEF K = TYPE;
+DEF KP = POWER(Int);
+DEF KA = ALL(X::TYPE) TYPE;
+DEF KI = K;
+DEF KM = Shapes_K;
+
+Let P = All(A::TYPE var x: A out y: A z: Int) Tuple A::K Def B = Int DEF J = TYPE Def C::TYPE = Int and D::TYPE = Int x: A end;
+Let R = Record a: Int var b: String end;
+Let O = Option red green with c: Int end blue end;
+Let V = Variant a: Int var b: String end;
+Let Au = Auto X::TYPE with x: X end;
+Let F(X::TYPE Y::K) :: TYPE = Fun(Z::TYPE) :: POWER(Z) Array(Var(Out(X)));
+Let Rec Re::TYPE = Tuple next: Re end;
+Let Ap = F(Int String) ++ Shapes_T;
+Let Ex = external "int64_t";
+Let Re2 = Rec(S::TYPE) Tuple s: S end;
+Let Rec G1 = Option g end and G2 = Option h end;
+Let Def1 <: Int = Int;
+
+let i = 42;
+let r = ~3.5e~2;
+let c = '\n';
+let s = "a\"b";
+let b = true and f = false;
+let ok1 = ok;
+let ext = external "quest_x";
+let rec fact(n: Int): Int = if n is 0 then 1 elsif n is 1 then 1 else n * fact(n - 1) end
+and other(n: Int): Int = fact(n);
+let var v: Int = 0;
+let g(A::TYPE x: A var y: Int out z: Int): A = begin z := y; x end;
+let h = fun(x: Int): Int x;
+let app = g(:Int ::K 1 v v);
+let infix = 1 + 2 * 3 <> "s" andif true orif false;
+let tup = tuple let a = 1 var b: Int = 2 Let T = Int DEF K2 = TYPE Let G3 = Int and G4 = Int 3 end;
+let rec rv: Re = tuple let next = rv end;
+let groups = tuple let a1 = 1 and a2 = 2 let rec ev(n: Int): Bool = n is 0 and od(n: Int): Bool = ev(n) Let Rec N = Option z s with p: N end end end;
+Let RecTuple = Tuple Def Rec M = Option e c with t: M end end x: M end;
+let rcd = record a = 1 var b = "x" end;
+let arr = array of 1 2 3 end;
+let arrT = array of :Int end;
+let rep = array of(3 0);
+let opt = option green of O with let c = 1 end;
+let optOrd = option ordinal(0) of O end;
+let vrt = variant a of V with 1 end;
+let vrtVar = variant var b of V with "s" end;
+let au = auto let X::TYPE = :Int with 3 end;
+let au2 = auto :Int with 3 end;
+let sel = rcd.a;
+let idx = arr[0];
+arr[1] := 5;
+v := 3;
+let cell = var(v);
+let deref = @cell;
+let chk = vrt?a;
+let asr = vrt!a;
+let cs = case opt when red, green then 1 when green with x: Tuple c: Int end then x.c else 0 end;
+let ins = inspect d when Int with x then x when Tuple a: Int b: String end with y, z: String then 1 else 2 end;
+let e = exception Bad: Int end;
+let e2 = exception Plain end;
+let rs = raise Bad with 3 as Int end;
+let rs2 = raise Plain end;
+let tr = try 1 when Bad with x: Int then x when Plain then 0 else 5 end;
+while v > 0 do v := v - 1 end;
+loop exit end;
+for k = 10 downto 1 do ok end;
+for k = 1 upto 10 do ok end;
+begin let x = 1; Let T = Int; DEF K3 = TYPE; x end;
