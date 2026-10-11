@@ -5,49 +5,17 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Value declarations joined by `and` without `rec`
-
-**Problem.** Cardelli's grammar allows `let ValueDecl and ValueDecl`, and `let x = 1 and y = 2;` parses (into an
-`ast.LetValueBindingGroup`), but the typechecker rejects it: "Simultaneous value declarations with 'and' ('x', 'y')
-are not supported yet". Only `let rec ... and ...` works. Type declarations joined by `and` without `Rec` are
-simultaneous (`docs/type-system.md` §3.4), and values should match: each member's value is elaborated and evaluated
-in the enclosing scope, so a member does not see the others (in `let x = 1; let x = 2 and y = x;`, `y` is 1), and all
-names are bound once every value has been computed.
-
-**Reproduce.** `tests/errors/typecheck/value_group_without_rec.quest` pins the rejection.
-
-**Where to start.** `_elaborate_value_group` in `bootstrap/python/quest/typechecker.py` raises the error
-(`_simultaneous_values_message`). The typechecker can elaborate each member through the single-binding path in a
-throwaway child scope and then declare all the symbols, as `elaborate_type_binding_group` does for types
-(`elaborate_types.py`). The work is in the backends, which bind by name, so translating the members in sequence
-would let `y` see the new `x`:
-- the interpreter (`eval_binding` in `interpreter.py`) must evaluate every value before defining any name;
-- the C emitter (`codegen/c_emitter.py`) must compute every value into a temporary before assigning the members'
-  variables, in blocks (the `TypedBlock` case, next to `_emit_rec_bindings`), at top level (`_emit_phrase`, where
-  names are file-scope globals), and in module initializers (`_emit_single_module_definition`);
-- echo prints one `let` line per member, as for `TypedLetValueGroup`.
-
-A typed group node is needed for this, either `TypedLetValueGroup` with an `is_rec` flag or a separate node; its
-other consumers already flatten groups (`binding_members` in `typed_ast.py`). Groups in tuples
-(`_reject_value_declarations_in_tuple`) can follow the type groups, which tuples allow without `Rec`.
-
-**Done when.** A golden test covers simultaneous value declarations at top level, in a block, in a function, and in
-a module, including a member that refers to an outer binding another member shadows, with the same output in
-`interpret` and `run_c_compiled`; `value_group_without_rec.quest` is removed; and `docs/type-system.md` (§6.10 and
-§3.4) and `docs/syntax.md` (`LetValueBindingGroup`) describe them.
-
----
-
-## Recursive declarations inside tuples
+## Recursive and simultaneous declarations inside tuples
 
 **Problem.** A tuple or tuple type cannot contain recursive declarations: `Let Rec` (single or a group) in a tuple or
 tuple type gets "Recursive type declarations are not supported in tuples", and `let rec` (single or a group) in a
-tuple gets "Recursive value declarations are not supported in tuples". Non-recursive declarations, and type groups
-without `Rec`, work there.
+tuple gets "Recursive value declarations are not supported in tuples". Value declarations joined by `and` without
+`rec`, which work elsewhere (`docs/type-system.md` §6.10), get "Value declarations joined by 'and' are not supported
+in tuples yet". Non-recursive declarations, and type groups without `Rec`, work there.
 
 **Reproduce.** The error tests `rec_type_in_tuple.quest`, `type_binding_group_rec_in_tuple.quest`,
-`type_binding_group_rec_in_tuple_type.quest`, `rec_value_in_tuple.quest`, and `value_group_in_tuple.quest` in
-`tests/errors/typecheck/` pin the rejections.
+`type_binding_group_rec_in_tuple_type.quest`, `rec_value_in_tuple.quest`, `value_group_in_tuple.quest`, and
+`value_group_without_rec_in_tuple.quest` in `tests/errors/typecheck/` pin the rejections.
 
 **Where to start.** Types: `tuple_type_binding_members` in `bootstrap/python/quest/elaborate_types.py` rejects them,
 for the tuple-type case of `elaborate_type` and for `_synth_tuple_expr` and `_check_tuple_expr` in `typechecker.py`.
@@ -56,10 +24,11 @@ types (`p.T`, `QPathType`) and tuple subtyping do with it. Values: `_process_tup
 recursive bindings through, and `_reject_value_declarations_in_tuple` in `typechecker.py` rejects them. A recursive
 function component must see its own name (and its group's) while its value is checked, although tuple components
 are otherwise sequential, and in C its closure must capture the others after they exist, as `_emit_rec_bindings`
-does for blocks.
+does for blocks. A simultaneous group's members are components whose values must all be computed before any of
+their names is bound for the later components, as `_emit_simultaneous_bindings` does for blocks.
 
-**Done when.** Recursive types and functions work as tuple components in `interpret` and `run_c_compiled`, a golden
-test covers them, and the error tests above are removed or converted.
+**Done when.** Recursive types and functions, and simultaneous value declarations, work as tuple components in
+`interpret` and `run_c_compiled`, a golden test covers them, and the error tests above are removed or converted.
 
 ---
 
@@ -84,3 +53,33 @@ they stand; reject it with its own clear error.
 **Done when.** Uniform recursive type operators, single and in groups, work in `interpret` and `run_c_compiled`, and
 equal the `Fun(A) Rec(...)` form (same C representation); a golden test covers them; non-uniform recursion gets a
 specific error test; and `docs/type-system.md` §3.4 no longer lists them as unsupported.
+
+---
+
+## Top-level rebindings change what earlier functions see
+
+**Problem.** Rebinding a name at the top level changes the value that earlier top-level functions (and closures)
+read through it, in both backends, so the function sees the later binding instead of the one in scope where it was
+defined. Inside blocks, both backends keep the earlier binding.
+
+**Reproduce.** With `rebind.quest` containing
+
+```quest
+let x = 1;
+let f(): Int = x;
+let x = 2;
+{f() * 10} + x
+```
+
+both `--stop-after interpret` and `--stop-after run_c_compiled` print `22 : Int`; lexical scoping gives `12`.
+
+**Where to start.** The interpreter evaluates top-level phrases in one `RuntimeEnvironment` frame (`pipeline.py`
+and `eval_binding` in `interpreter.py`), and `define` overwrites a name in place; the `TypedBlock` case of
+`eval_expr` instead binds a rebound name in a new frame. In C, top-level values are file-scope globals named by
+the binding's name (`c_analysis.py` collects them; `_emit_phrase` in `codegen/c_emitter.py` assigns them), so a
+rebinding assigns the same global, which top-level functions read; distinct globals per top-level binding, chosen
+by symbol (as top-level functions now are), would fix it. The echo of a rebound name and module initializers need
+the same care.
+
+**Done when.** The program above prints `12 : Int` in both phases, and a golden test covers rebinding a value and a
+function at the top level after functions and closures that refer to them.

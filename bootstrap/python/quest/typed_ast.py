@@ -790,8 +790,16 @@ class TypedLetValue(TypedBinding):
 
 @dataclass(frozen=True)
 class TypedLetValueGroup(TypedBinding):
-    """Mutually recursive value declarations: let rec x = expr and y = expr ..."""
+    """Simultaneous value declarations: let [rec] x = expr and y = expr ...
+
+    With rec (each member's is_rec), the members are mutually recursive; without it, every member's value is computed
+    before any member is bound.
+    """
     members: tuple[TypedLetValue, ...]
+
+    @property
+    def is_rec(self) -> bool:
+        return self.members[0].is_rec
 
     def dump_header(self) -> str:
         return " ".join(f"'{member.name}'" for member in self.members)

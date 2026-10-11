@@ -367,6 +367,13 @@ Inner `TypedFun` expressions undergo free variable analysis (`_find_free_vars`):
      variable and those of the other members, which hold no value yet when its closure is built. Every member's
      variable is declared first, and those captures are copied into the environments only after every member has
      been assigned (`_emit_rec_bindings`).
+   - A local binding is emitted with its value computed before its variable is declared. Its variable is the
+     binding's mangled name, or a fresh identifier (which the name then stands for in the rest of the block) when
+     the block already declares the name, which C cannot redeclare, or when the value refers to the binding it
+     shadows (`let n = n + 1`), since a C variable is in scope in its own initialization (`_declare_local`). The
+     members of a simultaneous declaration (`let x = ... and y = ...`) compute every value into a temporary before
+     any member's variable is declared (`_emit_simultaneous_bindings`), and likewise at the top level and in module
+     initializers, before any member's global is assigned.
 2. **Non-Capturing Lambdas:**
    - Lifted to file scope with `(void)_raw_env;`.
    - Emits a static singleton closure `static QClosure qv_<lid>_closure = { (void *)qv_<lid>, NULL };` and passes

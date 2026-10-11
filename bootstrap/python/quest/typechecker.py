@@ -343,19 +343,11 @@ def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
     return result
 
 
-def _simultaneous_values_message(group: ast.LetValueBindingGroup) -> str:
-    names = ", ".join(f"'{member.name}'" for member in group.bindings)
-    return (
-        f"Simultaneous value declarations with 'and' ({names}) are not supported yet; "
-        f"use 'let rec' for mutually recursive ones, or separate declarations"
-    )
-
-
 def _reject_value_declarations_in_tuple(fields: Any) -> None:
     """Rejects recursive and simultaneous value declarations among the components of a tuple."""
     for f in fields:
         if isinstance(f, ast.LetValueBindingGroup) and not f.bindings[0].is_rec:
-            raise TypeError(_simultaneous_values_message(f), offset=f.offset)
+            raise TypeError("Value declarations joined by 'and' are not supported in tuples yet", offset=f.offset)
         if isinstance(f, (ast.LetValueBinding, ast.LetValueBindingGroup)):
             raise TypeError("Recursive value declarations are not supported in tuples", offset=f.offset)
 
@@ -3241,10 +3233,12 @@ class TypeElaborator:
         env: Environment,
         loop_depth: int,
     ) -> TypedLetValueGroup:
-        """Elaborates mutually recursive value declarations: let rec x = ... and y = .... Every member is declared
-        before any value is checked."""
-        if not group.bindings[0].is_rec:
-            raise TypeError(_simultaneous_values_message(group), offset=group.offset)
+        """Elaborates simultaneous value declarations: let [rec] x = ... and y = ....
+
+        With rec, every member is declared before any value is checked, so the members are mutually recursive.
+        Without rec, each member is elaborated in a scope of its own, so it sees the enclosing scope and not the other
+        members, and all are declared once every member has been elaborated.
+        """
         seen: set[str] = set()
         for member in group.bindings:
             if member.name in seen:
@@ -3253,6 +3247,16 @@ class TypeElaborator:
                     offset=member.offset,
                 )
             seen.add(member.name)
+        if not group.bindings[0].is_rec:
+            members: list[TypedLetValue] = []
+            for member in group.bindings:
+                with env.scoped("simultaneous"):
+                    typed_member = self._elaborate_binding(member, env, loop_depth)
+                assert isinstance(typed_member, TypedLetValue)
+                members.append(typed_member)
+            for typed_member in members:
+                env.current_scope.declare_value(typed_member.symbol)
+            return TypedLetValueGroup(members=tuple(members), offset=group.offset)
         syms = [self._declare_rec_value(member, env) for member in group.bindings]
         return TypedLetValueGroup(
             members=tuple(

@@ -222,7 +222,8 @@ Let Name = String and Size = Int;                (* simultaneous *)
   declarations inside tuples and tuple types (groups without `Rec` are allowed there). The members of a group share
   its keyword's `Rec` and `Def`.
 
-Values have the same form, `let rec f(...) = ... and g(...) = ...` (§6.10).
+Values have the same form: `let rec f(...) = ... and g(...) = ...` for mutually recursive ones, and `let x = ... and
+y = ...` for simultaneous ones (§6.10).
 
 ---
 
@@ -546,8 +547,14 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   Omitting return types or parameter types on recursive definitions triggers a compilation error.
 - **Mutually Recursive Bindings:** `let rec f(S): Ret = b and g(S'): Ret' = b' ...` introduces every member into
   $\Gamma$, with the type its annotations give, before any body is checked, so each body can call every member. The
-  members follow the rules above, and a name may not be declared twice. Value declarations joined by `and` without
-  `rec` are not supported yet, nor are recursive value declarations inside tuples.
+  members follow the rules above, and a name may not be declared twice. Recursive value declarations are not
+  supported inside tuples.
+- **Simultaneous Bindings:** Without `rec`, `let x = e and y = e' ...` declares its members simultaneously, as type
+  declarations without `Rec` are (§3.4): each member is elaborated in the enclosing scope, so it sees the bindings
+  the other members shadow and not the members themselves (after `let x = 1;`, `let x = 2 and y = x;` binds `y` to
+  1, and `let p = q and q = p;` swaps), and all are declared once every member has been elaborated. At run time
+  every value is computed, in order, before any member is bound, and a closure a member's value builds keeps the
+  bindings the members shadow. They are not supported inside tuples yet.
 - **Recursive Value Bindings:**
   Any recursive value binding without parameters (`let rec x: T = e`) similarly requires an explicit type
   annotation, and its right-hand side entity must syntactically be a constructor or abstraction (Cardelli,

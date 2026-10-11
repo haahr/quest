@@ -137,6 +137,7 @@ from quest.typed_ast import (
     TypedVariantAssert,
     TypedVariantCheck,
     TypedWhile,
+    binding_members,
 )
 
 
@@ -756,6 +757,19 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             block_env = env.push_scope()
             try:
                 for b in bindings:
+                    if isinstance(b, TypedLetValueGroup) and not b.is_rec:
+                        # The members are bound in a frame of their own, so that closures built by their values
+                        # keep the bindings the members shadow
+                        values = tuple(eval_expr(member.value, block_env) for member in b.members)
+                        block_env = block_env.push_scope()
+                        _define_members(b.members, values, block_env)
+                        continue
+                    # A binding that rebinds a name of this frame gets a frame of its own, so that closures built
+                    # earlier keep the binding they captured
+                    if any(
+                        getattr(member, "name", None) in block_env.bindings for member in binding_members(b)
+                    ):
+                        block_env = block_env.push_scope()
                     eval_binding(b, block_env)
                 return eval_expr(result, block_env)
             finally:
@@ -1077,6 +1091,12 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
 # 5. Binding & Program Evaluator
 # ============================================================================
 
+def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ...], env: RuntimeEnvironment) -> None:
+    """Binds the members of a simultaneous value declaration to their values, computed beforehand."""
+    for member, val in zip(members, values):
+        env.define(member.name, QRef(val) if member.symbol.is_var else val)
+
+
 def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
     """Evaluates a declaration or binding inside a block or top-level program."""
     match binding:
@@ -1098,10 +1118,16 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                 env.define(name, val)
             return val
 
-        case TypedLetValueGroup(members=members):
+        case TypedLetValueGroup(members=members, is_rec=True):
             # Each member's closure captures env, where the others are defined before any is called; the result
             # holds the members' values, for echo
             values = tuple(eval_binding(member, env) for member in members)
+            return QTuple(values, tuple(member.name for member in members))
+
+        case TypedLetValueGroup(members=members):
+            # Simultaneous: every value is computed before any member is bound
+            values = tuple(eval_expr(member.value, env) for member in members)
+            _define_members(members, values, env)
             return QTuple(values, tuple(member.name for member in members))
 
         case TypedLetType() | TypedLetTypeGroup() | TypedDefKind() | TypedInterface():

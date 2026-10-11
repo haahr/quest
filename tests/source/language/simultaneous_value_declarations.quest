@@ -1,0 +1,70 @@
+(* Language: simultaneous value declarations with 'and' (without rec) *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+(* 1. At the top level: each member sees the binding that another member shadows *)
+let x = 1;
+let x = 2 and y = x;
+printInt({x * 10} + y);
+let a = 3 and b = 4;
+printInt({a * 10} + b);
+
+(* 2. In a block, and in a function, including swapping two names *)
+let swapped =
+    begin
+        let p = 1;
+        let q = 2;
+        let p = q and q = p;
+        {p * 10} + q
+    end;
+printInt(swapped);
+let shift(n: Int): Int =
+    begin
+        let n = n + 1 and m = n;
+        {n * 100} + m
+    end;
+printInt(shift(5));
+
+(* 3. A closure built by a member keeps the binding that another member shadows *)
+let captured(): Int =
+    begin
+        let u = 3;
+        let u = 4 and f(): Int = u;
+        {f() * 10} + u
+    end;
+printInt(captured());
+
+(* 4. Mutable members, and a member of type Ok, evaluated in order before any is bound *)
+let counted(): Int =
+    begin
+        let var c = 0;
+        let first = begin c := c + 1; c end and done = printInt(c) and second = begin c := c + 10; c end;
+        {first * 100} + second
+    end;
+printInt(counted());
+let mutable(): Int =
+    begin
+        let var v = 1 and var w = 2;
+        v := v + w;
+        w := 0;
+        {v * 10} + w
+    end;
+printInt(mutable());
+
+(* 5. Earlier closures keep the binding a later declaration shadows *)
+let later(): Int =
+    begin
+        let k = 1;
+        let get(): Int = k;
+        let k = 2;
+        {get() * 10} + k
+    end;
+printInt(later());

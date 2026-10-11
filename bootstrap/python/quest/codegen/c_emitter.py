@@ -182,6 +182,17 @@ def _append_block(lines: list[str], block: list[str], indent: int = 4) -> None:
         lines.append(f"{pad}{line}" if line.strip() else line)
 
 
+def _mentions_var(node: Any, name: str) -> bool:
+    """Whether a typed expression refers to a variable named name."""
+    if isinstance(node, TypedVar):
+        return node.name == name
+    if isinstance(node, (list, tuple)):
+        return any(_mentions_var(item, name) for item in node)
+    if isinstance(node, TypedNode):
+        return any(_mentions_var(getattr(node, f.name), name) for f in dataclasses.fields(node))
+    return False
+
+
 def _flat_bindings(bindings: Sequence[Any]) -> list[Any]:
     """bindings with each group of mutually recursive value declarations replaced by its members."""
     return [member for b in bindings for member in binding_members(b)]
@@ -1019,7 +1030,61 @@ class CEmitter:
         lines.append(f"{clos_tmp}->env = (void *)({env_tmp});")
         return clos_tmp
 
-    def _emit_rec_bindings(self, members: Sequence[TypedLetValue], lines: list[str]) -> None:
+    def _declare_local(
+        self,
+        name: str,
+        t: QType,
+        lines: list[str],
+        declared: set[str],
+        fresh: bool = False,
+    ) -> str:
+        """Declares the C variable of a local binding of a block, returning its identifier.
+
+        The identifier is the binding's mangled name, unless the block already declares that name (a binding that
+        shadows another of the same block, which C cannot redeclare) or fresh is set, for a value that refers to the
+        binding it shadows; then it is a fresh identifier, which the name stands for in the rest of the block.
+        """
+        ident = mangle_ident(name)
+        if fresh or name in declared:
+            ident = self.fresh_tmp(ident)
+        if ident != mangle_ident(name) or name in self.current_env_vars:
+            self.current_env_vars[name] = ident
+        declared.add(name)
+        lines.append(f"{self.c_type(t)} {ident};")
+        return ident
+
+    def _emit_simultaneous_bindings(
+        self,
+        members: Sequence[TypedLetValue],
+        lines: list[str],
+        declared: set[str],
+    ) -> None:
+        """Emits local simultaneous declarations (let x = ... and y = ...): every value is computed, into a
+        temporary, before any member's variable is declared, so that each refers to the bindings the members
+        shadow."""
+        temps: list[Optional[str]] = []
+        for member in members:
+            self._declare_local_exceptions(member.value, lines)
+            if member.symbol.type_val is OK_TYPE:
+                self.emit_to(member.value, None, lines)
+                temps.append(None)
+                continue
+            tmp = self.fresh_tmp("_and")
+            lines.append(f"{self.c_type(member.symbol.type_val)} {tmp};")
+            val_c = self.emit_val(member.value, lines)
+            self._coerce_val(val_c, member.value, member.symbol.type_val, lines, dest=tmp)
+            temps.append(tmp)
+        for member, tmp in zip(members, temps):
+            if tmp is not None:
+                c_ident = self._declare_local(member.name, member.symbol.type_val, lines, declared)
+                lines.append(f"{c_ident} = {tmp};")
+
+    def _emit_rec_bindings(
+        self,
+        members: Sequence[TypedLetValue],
+        lines: list[str],
+        declared: set[str],
+    ) -> None:
         """Emits local recursive declarations: a let rec, or a group of mutually recursive ones.
 
         Every variable is declared first. A closure that captures one of the declarations' variables cannot copy it
@@ -1028,16 +1093,16 @@ class CEmitter:
         such as the methods of a tuple that refer to the tuple itself.
         """
         names = frozenset(member.name for member in members)
+        idents = [self._declare_local(member.name, member.symbol.type_val, lines, declared) for member in members]
         for member in members:
-            lines.append(f"{self.c_type(member.symbol.type_val)} {mangle_ident(member.name)};")
             for fun in _closures_built_by(member.value):
                 self.rec_fun_names[id(fun)] = names
         saved_deferred = self.deferred_captures
         self.deferred_captures = []
-        for member in members:
+        for member, ident in zip(members, idents):
             self._declare_local_exceptions(member.value, lines)
             val_c = self.emit_val(member.value, lines)
-            self._coerce_val(val_c, member.value, member.symbol.type_val, lines, dest=mangle_ident(member.name))
+            self._coerce_val(val_c, member.value, member.symbol.type_val, lines, dest=ident)
         for env_tmp, vname in self.deferred_captures:
             src_val = self.current_env_vars.get(vname, mangle_ident(vname))
             lines.append(f"{env_tmp}->{mangle_ident(vname)} = {src_val};")
@@ -2372,8 +2437,30 @@ class CEmitter:
                         mod_emitter.current_env_vars[mpath] = (
                             module_record_ident(mangle_module_name(mod_ref))
                         )
-        for b in _flat_bindings(mod.bindings):
+        for b in mod.bindings:
             match b:
+                case TypedLetValueGroup(members=members, is_rec=False):
+                    # Every value is computed before any member's variable is assigned
+                    assignments: list[str] = []
+                    for member in members:
+                        if not any(member.name == mv[0] for mv in mod_vars):
+                            continue
+                        if member.symbol.type_val is OK_TYPE:
+                            mod_emitter.emit_to(member.value, None, init_lines)
+                            continue
+                        tmp = mod_emitter.fresh_tmp("_and")
+                        init_lines.append(f"{mod_emitter.c_type(member.symbol.type_val)} {tmp};")
+                        mod_emitter.emit_to(member.value, tmp, init_lines)
+                        assignments.append(f"{mangle_module_ident(clean_mod, member.name)} = {tmp};")
+                    init_lines.extend(assignments)
+                case TypedLetValueGroup(members=members):
+                    for member in members:
+                        if any(member.name == mv[0] for mv in mod_vars):
+                            m_ident = mangle_module_ident(clean_mod, member.name)
+                            if member.symbol.type_val is OK_TYPE:
+                                mod_emitter.emit_to(member.value, None, init_lines)
+                            else:
+                                mod_emitter.emit_to(member.value, m_ident, init_lines)
                 case TypedLetValue(name=vname, value=vval, symbol=vsym):
                     if any(vname == mv[0] for mv in mod_vars):
                         m_ident = mangle_module_ident(clean_mod, vname)
@@ -2471,11 +2558,18 @@ class CEmitter:
             return f"    quest_print_value({prefix_c}, {value_c}, {_c_string_literal(kind)}, {suffix_c});"
         return f"    quest_print_typed({prefix_c}, {value_c}, {self.c_type_descriptor(t)}, {suffix_c});"
 
-    def _emit_phrase(self, phrase: TypedNode, lines: list[str], is_last: bool = False) -> None:
+    def _emit_phrase(
+        self,
+        phrase: TypedNode,
+        lines: list[str],
+        is_last: bool = False,
+        computed: Optional[str] = None,
+    ) -> None:
         """Translates a top-level binding or expression phrase.
 
         With echo, every phrase prints its result, and otherwise only the last one when print_result is set, as the
-        interpreter formats it (format_interactive_result).
+        interpreter formats it (format_interactive_result). computed is set for a member of a simultaneous
+        declaration whose value has already been computed: the C variable holding it, or "" for an Ok value.
         """
         show = self.echo or (self.print_result and is_last)
         match phrase:
@@ -2489,7 +2583,10 @@ class CEmitter:
 
                 c_ident = mangle_ident(name)
                 phrase_lines: list[str] = []
-                if symbol.type_val is OK_TYPE:
+                if computed is not None:
+                    if symbol.type_val is not OK_TYPE:
+                        phrase_lines.append(f"{c_ident} = {computed};")
+                elif symbol.type_val is OK_TYPE:
                     lines.append(f"    // inlined {name}")
                     self.emit_to(val, None, phrase_lines)
                 else:
@@ -2514,6 +2611,27 @@ class CEmitter:
                     else:
                         msg = f"Let {name}::{kind_str}"
                     lines.append(f"    puts({_c_string_literal(msg)});")
+
+            case TypedLetValueGroup(members=members, is_rec=False):
+                # Every value is computed before any member's variable is assigned
+                computed_values: list[Optional[str]] = []
+                for member in members:
+                    if isinstance(member.value, TypedFun):
+                        computed_values.append(None)
+                        continue
+                    value_lines: list[str] = []
+                    if member.symbol.type_val is OK_TYPE:
+                        self.emit_to(member.value, None, value_lines)
+                        computed_values.append("")
+                    else:
+                        tmp = self.fresh_tmp("_and")
+                        value_lines.append(f"{self.c_type(member.symbol.type_val)} {tmp};")
+                        val_c = self.emit_val(member.value, value_lines)
+                        self._coerce_val(val_c, member.value, member.symbol.type_val, value_lines, dest=tmp)
+                        computed_values.append(tmp)
+                    _append_block(lines, value_lines)
+                for member, computed_value in zip(members, computed_values):
+                    self._emit_phrase(member, lines, is_last=is_last, computed=computed_value)
 
             case TypedLetTypeGroup(members=members) | TypedLetValueGroup(members=members):
                 for member in members:
@@ -3107,21 +3225,26 @@ class CEmitter:
                 lines.append("{")
                 block_lines: list[str] = []
                 saved_env = dict(self.current_env_vars)
+                declared: set[str] = set()
                 for b in bindings:
                     match b:
+                        case TypedLetValueGroup(members=members, is_rec=True):
+                            self._emit_rec_bindings(members, block_lines, declared)
                         case TypedLetValueGroup(members=members):
-                            self._emit_rec_bindings(members, block_lines)
+                            self._emit_simultaneous_bindings(members, block_lines, declared)
                         case TypedLetValue(is_rec=True):
-                            self._emit_rec_bindings((b,), block_lines)
+                            self._emit_rec_bindings((b,), block_lines, declared)
                         case TypedLetValue(name=name, value=val, symbol=symbol):
                             self._declare_local_exceptions(val, block_lines)
-                            c_ident = mangle_ident(name)
                             if symbol.type_val is OK_TYPE:
                                 self.emit_to(val, None, block_lines)
                             else:
-                                c_type = self.c_type(symbol.type_val)
-                                block_lines.append(f"{c_type} {c_ident};")
+                                # The value is emitted before the variable is declared, so that it refers to any
+                                # binding of the name it shadows
                                 val_c = self.emit_val(val, block_lines)
+                                c_ident = self._declare_local(
+                                    name, symbol.type_val, block_lines, declared, fresh=_mentions_var(val, name)
+                                )
                                 self._coerce_val(
                                     val_c, val, symbol.type_val, block_lines, dest=c_ident
                                 )
