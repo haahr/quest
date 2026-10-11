@@ -1,17 +1,21 @@
 """Quest Bootstrap Compiler Test Runner."""
 
 import argparse
+import concurrent.futures
 import difflib
 import os
+import queue
 import re
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 # Ensure bootstrap/python is importable
 ROOT_DIR = Path(__file__).parent.resolve()
@@ -24,6 +28,22 @@ TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
 TESTS_GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TESTS_ERRORS_DIR = ROOT_DIR / "tests" / "errors"
 DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
+TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
+
+
+def record_telemetry(total_duration: float, tests_run: int, workers_used: int) -> None:
+    """Appends execution telemetry to /tmp/quest_run_tests_telemetry.log on successful test runs."""
+    timestamp = datetime.now().astimezone().isoformat()
+    log_line = (
+        f"{timestamp} | duration={total_duration:.2f}s | tests={tests_run} | workers={workers_used}\n"
+    )
+    try:
+        TELEMETRY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with TELEMETRY_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(log_line)
+    except OSError as err:
+        print(f"Warning: could not write telemetry to {TELEMETRY_LOG_PATH}: {err}", file=sys.stderr)
+
 
 # Interfaces and modules beside the tests are imported by them, not run as tests (docs/testing.md §2.6).
 UNIT_SUFFIXES = (".int.quest", ".mod.quest")
@@ -151,13 +171,12 @@ def run_single_golden_test(
     timeout: float = 30.0,
     build_dir: Optional[Path] = None,
     driver_args: Optional[list[str]] = None,
-) -> bool:
+) -> tuple[bool, str, str]:
     golden_base = golden_dir_for_phase(phase_name)
     rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
     target_dir = golden_base / rel_source.parent
     target_dir.mkdir(parents=True, exist_ok=True)
     out_file = target_dir / f"{source_file.stem}.out"
-    test_id = str(rel_source.with_suffix(""))
 
     directives = parse_test_directives(source_file)
     expected_exit = directives.exit_code if phase_name in ("interpret", "run_c_compiled") else 0
@@ -189,7 +208,8 @@ def run_single_golden_test(
 
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
-    # Checks the C back end's canonical forms of types, which outside the tests only warn (docs/c-representation.md §5.7)
+    # Checks the C back end's canonical forms of types, which outside the tests only warn
+    # (docs/c-representation.md §5.7)
     environment["QUEST_CHECK_CANONICAL"] = "1"
     if directives.env and phase_name in ("interpret", "run_c_compiled"):
         environment.update(directives.env)
@@ -209,47 +229,95 @@ def run_single_golden_test(
                 cwd=scratch_dir,
             )
     except subprocess.TimeoutExpired as exc:
-        print(f"  [FAIL] {phase_name}:{test_id} (TIMED OUT after {effective_timeout:.1f}s)")
+        msg = f"  (TIMED OUT after {effective_timeout:.1f}s)"
         stderr = exc.stderr if isinstance(exc.stderr, str) else (
             exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
         )
         if stderr:
             for line in stderr.strip().splitlines()[:15]:
-                print(f"    {line}")
-        return False
+                msg += f"\n    {line}"
+        return False, "[FAIL]", msg
 
     # A golden test is a valid program: one that exits with any other code fails, even when updating goldens.
     # Programs that should be rejected are error tests (docs/testing.md §3).
     if process.returncode != expected_exit:
-        print(
-            f"  [FAIL] {phase_name}:{test_id} "
-            f"(failed with returncode {process.returncode}, expected {expected_exit})"
-        )
+        msg = f"  (failed with returncode {process.returncode}, expected {expected_exit})"
         if process.stderr:
-            print(process.stderr)
-        return False
+            msg += f"\n{process.stderr.rstrip()}"
+        return False, "[FAIL]", msg
 
     if update_golden:
         out_file.write_text(process.stdout, encoding="utf-8")
-        print(f"  [UPDATED] {phase_name}:{test_id}")
-        return True
+        return True, "[UPDATED]", ""
 
     if not out_file.exists():
-        print(f"  [MISSING GOLDEN] {phase_name}:{test_id} (expected {out_file.relative_to(ROOT_DIR)})")
-        return False
+        return False, "[MISSING GOLDEN]", f"  (expected {out_file.relative_to(ROOT_DIR)})"
+
     expected_output = out_file.read_text(encoding="utf-8")
     if process.stdout == expected_output:
-        print(f"  [PASS] {phase_name}:{test_id}")
-        return True
-    print(f"  [FAIL] {phase_name}:{test_id} (stdout mismatch)")
+        return True, "[PASS]", ""
+
     diff = difflib.unified_diff(
         expected_output.splitlines(keepends=True),
         process.stdout.splitlines(keepends=True),
         fromfile=f"golden/{golden_base.name}/{rel_source.with_suffix('.out')}",
         tofile=f"actual/{golden_base.name}/{rel_source.with_suffix('.out')}",
     )
-    print("".join(diff))
-    return False
+    return False, "[FAIL]", "  (stdout mismatch)\n" + "".join(diff).rstrip()
+
+
+@dataclass
+class PhaseTask:
+    test_id: str
+    run_fn: Callable[[Path], tuple[bool, str, str]]
+
+
+def run_phase_tasks(
+    phase: str,
+    tasks: list[PhaseTask],
+    pool: queue.Queue[Path],
+    executor: concurrent.futures.ThreadPoolExecutor,
+    jobs: int,
+) -> tuple[int, int]:
+    """Executes a list of tasks for a given phase using the worker pool, printing results."""
+    if not tasks:
+        return 0, 0
+
+    total_count = len(tasks)
+    passed_count = 0
+
+    if jobs == 1:
+        for task in tasks:
+            worker_dir = pool.get()
+            try:
+                passed, status, report = task.run_fn(worker_dir)
+            finally:
+                pool.put(worker_dir)
+            if passed:
+                passed_count += 1
+            print(f"  {status} {phase}:{task.test_id}")
+            if report:
+                print(report)
+        return total_count, passed_count
+
+    def _worker(task: PhaseTask) -> tuple[PhaseTask, bool, str, str]:
+        worker_dir = pool.get()
+        try:
+            passed, status, report = task.run_fn(worker_dir)
+            return task, passed, status, report
+        finally:
+            pool.put(worker_dir)
+
+    futures = [executor.submit(_worker, task) for task in tasks]
+    for fut in concurrent.futures.as_completed(futures):
+        task, passed, status, report = fut.result()
+        if passed:
+            passed_count += 1
+        print(f"  {status} {phase}:{task.test_id}")
+        if report:
+            print(report)
+
+    return total_count, passed_count
 
 
 def main() -> int:
@@ -291,6 +359,19 @@ def main() -> int:
         default=30.0,
         help="Timeout in seconds for each individual test run (default: 30.0s).",
     )
+    arg_parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=min(8, os.cpu_count() or 4),
+        help="Number of concurrent test workers (default: min(8, CPU count), 1 for serial).",
+    )
+    arg_parser.add_argument(
+        "--workers",
+        type=int,
+        dest="jobs",
+        help="Alias for --jobs.",
+    )
 
     arg_parser.add_argument(
         "--build-dir",
@@ -307,6 +388,7 @@ def main() -> int:
 
     args = arg_parser.parse_args()
 
+    jobs = max(1, args.jobs)
     if args.build_dir:
         build_dir = Path(args.build_dir).resolve()
         temp_build_dir: Optional[Path] = None
@@ -315,7 +397,7 @@ def main() -> int:
         build_dir = temp_build_dir
     driver_args = [f"--shadow-{check}" for check in args.shadow]
     try:
-        return run_all_tests(args, available_phases, build_dir, driver_args)
+        return run_all_tests(args, available_phases, build_dir, driver_args, jobs=jobs)
     finally:
         if temp_build_dir is not None:
             shutil.rmtree(temp_build_dir, ignore_errors=True)
@@ -326,7 +408,9 @@ def run_all_tests(
     available_phases: list[str],
     build_dir: Path,
     driver_args: list[str],
+    jobs: int = 1,
 ) -> int:
+    start_time = time.perf_counter()
 
     # Determine suite mode
     suite_mode = "errors" if args.errors else args.suite
@@ -343,116 +427,169 @@ def run_all_tests(
     passed_errors = 0
 
     print(f"Running tests with Python: {python_executable}")
-    print(f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}, Timeout: {args.timeout}s")
+    print(
+        f"Suite: {suite_mode}, Phases: {', '.join(phases_to_run)}, "
+        f"Timeout: {args.timeout}s, Workers: {jobs}"
+    )
     print(f"Build dir: {build_dir}" + (f", Driver args: {' '.join(driver_args)}" if driver_args else "") + "\n")
 
-    # 1. Run Golden Tests (if suite is 'golden' or 'all')
-    if suite_mode in ("golden", "all"):
-        source_files = discover_tests(TESTS_SOURCE_DIR)
-        if args.test:
-            source_files = [
-                sf for sf in source_files
-                if args.test in str(sf.relative_to(TESTS_SOURCE_DIR))
-            ]
+    # Set up worker pool with isolated build directories
+    worker_pool: queue.Queue[Path] = queue.Queue()
+    for i in range(jobs):
+        w_dir = build_dir if jobs == 1 else (build_dir / f"w{i}")
+        w_dir.mkdir(parents=True, exist_ok=True)
+        worker_pool.put(w_dir)
 
-        if source_files:
-            print("=== Golden Tests ===")
-            for phase in phases_to_run:
-                golden_dir = golden_dir_for_phase(phase)
-                if not golden_dir.exists():
-                    continue
-                print(f"--- Phase: {phase} ---")
-                for source_file in source_files:
-                    skipped_phases = parse_skipped_phases(source_file)
-                    rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
-                    test_id = str(rel_source.with_suffix(""))
-                    if phase.lower() in skipped_phases:
-                        skipped_golden += 1
-                        print(f"  [SKIP] {phase}:{test_id}")
-                        continue
-                    total_golden += 1
-                    if run_single_golden_test(
-                        source_file,
-                        phase,
-                        update_golden=args.update_golden,
-                        python_executable=python_executable,
-                        timeout=args.timeout,
-                        build_dir=build_dir,
-                        driver_args=driver_args,
-                    ):
-                        passed_golden += 1
-            print()
-
-    # 2. Run Diagnostic Error Tests (if suite is 'errors' or 'all')
-    if suite_mode in ("errors", "all"):
-        error_phases_found = False
-        for phase in phases_to_run:
-            phase_error_dir = error_dir_for_phase(phase)
-            if not phase_error_dir.exists():
-                if phase == "interpret" and (TESTS_ERRORS_DIR / "interpret").exists():
-                    phase_error_dir = TESTS_ERRORS_DIR / "interpret"
-                else:
-                    continue
-
-            error_files = discover_tests(phase_error_dir)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+        # 1. Run Golden Tests (if suite is 'golden' or 'all')
+        if suite_mode in ("golden", "all"):
+            source_files = discover_tests(TESTS_SOURCE_DIR)
             if args.test:
-                error_files = [
-                    ef for ef in error_files
-                    if args.test in str(ef.relative_to(TESTS_ERRORS_DIR))
+                source_files = [
+                    sf for sf in source_files
+                    if args.test in str(sf.relative_to(TESTS_SOURCE_DIR))
                 ]
-            if not error_files:
-                continue
 
-            if not error_phases_found:
-                print("=== Diagnostic Error Tests ===")
-                error_phases_found = True
+            if source_files:
+                print("=== Golden Tests ===")
+                for phase in phases_to_run:
+                    golden_dir = golden_dir_for_phase(phase)
+                    if not golden_dir.exists():
+                        continue
+                    print(f"--- Phase: {phase} ---")
+                    phase_tasks: list[PhaseTask] = []
+                    for source_file in source_files:
+                        skipped_phases = parse_skipped_phases(source_file)
+                        rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
+                        test_id = str(rel_source.with_suffix(""))
+                        if phase.lower() in skipped_phases:
+                            skipped_golden += 1
+                            print(f"  [SKIP] {phase}:{test_id}")
+                            continue
 
-            print(f"--- Phase: {phase} ---")
-            pipeline = pipeline_for_phase(phase)
-            precursors = pipeline.precursors_of(phase)
-            for error_file in error_files:
-                skipped_phases = parse_skipped_phases(error_file)
-                rel_id = str(error_file.relative_to(phase_error_dir).with_suffix(""))
-                if phase.lower() in skipped_phases:
-                    print(f"  [SKIP] {phase}:{rel_id}")
+                        def make_golden_runner(
+                            sf: Path, p: str
+                        ) -> Callable[[Path], tuple[bool, str, str]]:
+                            return lambda w_dir: run_single_golden_test(
+                                sf,
+                                p,
+                                update_golden=args.update_golden,
+                                python_executable=python_executable,
+                                timeout=args.timeout,
+                                build_dir=w_dir,
+                                driver_args=driver_args,
+                            )
+
+                        phase_tasks.append(
+                            PhaseTask(test_id=test_id, run_fn=make_golden_runner(source_file, phase))
+                        )
+
+                    p_total, p_passed = run_phase_tasks(
+                        phase, phase_tasks, worker_pool, executor, jobs
+                    )
+                    total_golden += p_total
+                    passed_golden += p_passed
+                print()
+
+        # 2. Run Diagnostic Error Tests (if suite is 'errors' or 'all')
+        if suite_mode in ("errors", "all"):
+            error_phases_found = False
+            for phase in phases_to_run:
+                phase_error_dir = error_dir_for_phase(phase)
+                if not phase_error_dir.exists():
+                    if phase == "interpret" and (TESTS_ERRORS_DIR / "interpret").exists():
+                        phase_error_dir = TESTS_ERRORS_DIR / "interpret"
+                    else:
+                        continue
+
+                error_files = discover_tests(phase_error_dir)
+                if args.test:
+                    error_files = [
+                        ef for ef in error_files
+                        if args.test in str(ef.relative_to(TESTS_ERRORS_DIR))
+                    ]
+                if not error_files:
                     continue
 
-                total_errors += 1
-                directives = parse_test_directives(error_file)
-                golden_err_file = golden_error_file_for_test(error_file, phase)
-                effective_timeout = directives.timeout if directives.timeout is not None else args.timeout
-                passed, report = run_error_test(
-                    source_file=error_file,
-                    target_phase=phase,
-                    precursor_phases=precursors,
-                    python_executable=python_executable,
-                    root_dir=ROOT_DIR,
-                    golden_error_file=golden_err_file,
-                    update_golden=args.update_golden,
-                    extra_args=directives.args,
-                    env_vars=directives.env,
-                    stdin_data=directives.stdin_data,
-                    timeout=effective_timeout,
-                    build_dir=build_dir,
-                    driver_args=driver_args,
+                if not error_phases_found:
+                    print("=== Diagnostic Error Tests ===")
+                    error_phases_found = True
+
+                print(f"--- Phase: {phase} ---")
+                pipeline = pipeline_for_phase(phase)
+                precursors = pipeline.precursors_of(phase)
+                error_tasks: list[PhaseTask] = []
+                for error_file in error_files:
+                    skipped_phases = parse_skipped_phases(error_file)
+                    rel_id = str(error_file.relative_to(phase_error_dir).with_suffix(""))
+                    if phase.lower() in skipped_phases:
+                        print(f"  [SKIP] {phase}:{rel_id}")
+                        continue
+
+                    directives = parse_test_directives(error_file)
+                    golden_err_file = golden_error_file_for_test(error_file, phase)
+                    effective_timeout = (
+                        directives.timeout if directives.timeout is not None else args.timeout
+                    )
+
+                    def make_error_runner(
+                        ef: Path,
+                        p: str,
+                        g_file: Path,
+                        d: TestDirectives,
+                        eff_timeout: float,
+                    ) -> Callable[[Path], tuple[bool, str, str]]:
+                        def runner(w_dir: Path) -> tuple[bool, str, str]:
+                            passed, report = run_error_test(
+                                source_file=ef,
+                                target_phase=p,
+                                precursor_phases=precursors,
+                                python_executable=python_executable,
+                                root_dir=ROOT_DIR,
+                                golden_error_file=g_file,
+                                update_golden=args.update_golden,
+                                extra_args=d.args,
+                                env_vars=d.env,
+                                stdin_data=d.stdin_data,
+                                timeout=eff_timeout,
+                                build_dir=w_dir,
+                                driver_args=driver_args,
+                            )
+                            if passed:
+                                status = "[UPDATED]" if report == "[UPDATED]" else "[PASS]"
+                                return True, status, ""
+                            return False, "[FAIL]", report
+
+                        return runner
+
+                    error_tasks.append(
+                        PhaseTask(
+                            test_id=rel_id,
+                            run_fn=make_error_runner(
+                                error_file, phase, golden_err_file, directives, effective_timeout
+                            ),
+                        )
+                    )
+
+                e_total, e_passed = run_phase_tasks(
+                    phase, error_tasks, worker_pool, executor, jobs
                 )
-                if passed:
-                    passed_errors += 1
-                    status = "[UPDATED]" if report == "[UPDATED]" else "[PASS]"
-                    print(f"  {status} {phase}:{rel_id}")
-                else:
-                    print(f"  [FAIL] {phase}:{rel_id}")
-                    print(report)
+                total_errors += e_total
+                passed_errors += e_passed
 
     # Summary report
     total_tests = total_golden + total_errors
     total_passed = passed_golden + passed_errors
+    total_duration = time.perf_counter() - start_time
 
     skip_str = f" ({skipped_golden} skipped)" if skipped_golden > 0 else ""
     print(f"\nSummary: {total_passed}/{total_tests} tests passed{skip_str}.")
     if suite_mode == "all":
         print(f"  Golden tests: {passed_golden}/{total_golden} passed{skip_str}")
         print(f"  Error tests:  {passed_errors}/{total_errors} passed")
+
+    if total_passed == total_tests and total_tests > 0:
+        record_telemetry(total_duration, total_tests, jobs)
 
     return 0 if total_passed == total_tests else 1
 
