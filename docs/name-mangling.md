@@ -134,7 +134,7 @@ top-level C function into a standard Quest closure (`QClosure`):
 ### 4.6. Module Local Payload Pointer
 During module initialization, the record payload is populated via a local typed pointer:
 - **Pattern:** `_<clean_mod>_payload`
-  - E.g. `struct QT_record1 *_util__path_payload = quest_alloc_record(...);`
+  - E.g. `struct QT_record_<digest> *_util__path_payload = quest_alloc_record(...);`
 
 ### 4.7. Interface C Header Files
 To avoid collision with C runtime and system headers (e.g. `<string.h>`):
@@ -186,8 +186,11 @@ When functions are passed through subtype coercions or type applications:
 ### 6.1. Record Structs and Fields
 - **Record struct tag:** `struct QT_<name>` (managed by `RecordNamingContext`; records share a struct only if their
   fields have the same names and types, which also makes their descriptors distinct):
-  - Aliased records: `struct QT_<TypeName>` (e.g. `struct QT_Point`)
-  - Anonymous / structural records: `struct QT_record<N>` or `struct QT_<module>_record<N>`
+  - Aliased records: `struct QT_<TypeName>_<digest>` (e.g. `struct QT_Point_3f1c0a9e5b7d2468`)
+  - Anonymous / structural records: `struct QT_record_<digest>`
+  - `<digest>` is 16 hex digits of a hash of the record's field names and types, so a name stands for one layout in
+    every C unit: interface headers define record structs under include guards named after them, and one unit
+    includes headers generated in other compilations.
   - Structural fallback: `struct QRecord_<fld1>_<t1>_<fld2>_<t2>`
 - **Record Header:** All record structs start with `QRecordHeader header;` (storing the descriptor of the record's layout).
 - **Record Field Mangling:** Every record field name is prefixed with `qf_`:
@@ -225,10 +228,10 @@ When functions are passed through subtype coercions or type applications:
 Quest supports Cardelli record width and depth subtyping via static offset dictionaries passed in fat pointers:
 - **Dictionary struct type:** `struct OffsetDict_<record_name>` (typedef `OffsetDict_<record_name>`)
   - Members: `size_t offset_<field_name>;`
-  - E.g. `struct OffsetDict_record1 { size_t offset_x; size_t offset_y; };`
+  - E.g. `struct OffsetDict_record_<digest> { size_t offset_x; size_t offset_y; };`
 - **Static dictionary instance:**
   - `static const OffsetDict_<target> offsetdict_<target>_<source> = { offsetof(...), ... };`
-  - E.g. `static const OffsetDict_record1 offsetdict_record1_record2 = { offsetof(struct QT_record2, qf_x), ... };`
+  - E.g. `static const OffsetDict_record_<d1> offsetdict_record_<d1>_record_<d2> = { offsetof(struct QT_record_<d2>, qf_x), ... };`
 
 ### 6.6. Variant Tag Remapping Tables
 When a variant is coerced to a supertype variant:
@@ -268,7 +271,7 @@ suffixes (`<prefix>_<counter>`):
 | `_call_ret_<n>` | Indirect closure call return | `QVal _call_ret_4 = ((QVal (*)...)(clos.fn))(...);` |
 | `_tuple_<n>` | Tuple allocation & construction | `struct QTuple_Int_Int _tuple_5 = { ... };` |
 | `_tsrc_<n>`, `_tup_up_<n>` | Tuple unpacking and coercion | `_tup_up_6._0 = _tsrc_7._0;` |
-| `_rec_<n>`, `_rec_payload_<n>` | Record allocation and packing | `struct QT_record1 *_rec_payload_8 = ...;` |
+| `_rec_<n>`, `_rec_payload_<n>` | Record allocation and packing | `struct QT_record_<digest> *_rec_payload_8 = ...;` |
 | `_clos_<n>` | Heap-allocated closure struct | `QClosure *_clos_9 = quest_alloc_closure(...);` |
 | `_env_<n>` | Heap-allocated closure environment | `struct QEnv_fn_1 *_env_10 = quest_alloc(...);` |
 | `_var_<n>` | Variant value construction | `QVariantVal _var_11 = { .tag = 0, ... };` |
@@ -310,8 +313,8 @@ suffixes (`<prefix>_<counter>`):
 | **Tuple Field** | `_<index>` | `1st field` | `_0` |
 | **Variant Struct Tag** | `struct QVariant_<tags>` | `leaf(Int)` | `struct QVariant_leaf_Int` |
 | **Option Struct Tag** | `struct QOption_<tags>` | `[ some: Int ]` | `struct QOption_some_Int` |
-| **Offset Dict Struct** | `struct OffsetDict_<rec>` | `record1` | `struct OffsetDict_record1` |
-| **Offset Dict Instance** | `offsetdict_<tgt>_<src>` | `subtyping` | `offsetdict_record1_record2` |
+| **Offset Dict Struct** | `struct OffsetDict_<rec>` | `record_<digest>` | `struct OffsetDict_record_<digest>` |
+| **Offset Dict Instance** | `offsetdict_<tgt>_<src>` | `subtyping` | `offsetdict_record_<d1>_record_<d2>` |
 | **Variant Tag Map** | `tagmap_<tgt>_<src>` | `coercion` | `tagmap_QVariant_A_QVariant_B` |
 | **Type Descriptor** | `quest_type_<tag>` | `Int` | `quest_type_Int` |
 | **Type Descriptor Param** | `descriptor_<quant>` | `T` | `descriptor_T` |

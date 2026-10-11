@@ -296,7 +296,7 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
 
 1. **Concrete Record Payload & Object Header:**
    A heap-allocated block of 64-bit words beginning with an 8-byte object header (`QRecordHeader`), followed by
-   fields sorted alphabetically by field name and prefixed with `qf_` (named `QT_<Alias>` or sequential `QT_record<N>`):
+   fields sorted alphabetically by field name and prefixed with `qf_` (named `QT_<Alias>_<digest>` or `QT_record_<digest>`, after the record's shape):
    ```c
    /* Quest: Let Point = Record x: Int y: Real end */
    typedef struct QT_Point {

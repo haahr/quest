@@ -498,8 +498,8 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
   ```
 - **Function Parameters & Returns:** Functions take `QRecordVal` directly and return `QRecordVal` directly
   (passed in `x0, x1` under AAPCS64), eliminating companion dictionary arguments.
-- **Dictionary Naming:** Uses alias name when available (`OffsetDict_<Alias>`), or sequential per-module identifier
-  `OffsetDict_<Module>_record<N>` / `OffsetDict_record<N>`.
+- **Dictionary Naming:** Uses the alias name when available (`OffsetDict_<Alias>_<digest>`), or
+  `OffsetDict_record_<digest>`, where the digest is of the record's field names and types (docs/name-mangling.md §6.1).
 - **Field Selection:** Dynamic dispatch reads fields via byte offsets from embedded dictionaries:
   ```c
   (*((QInt *)((char *)qv_pt.val + ((const OffsetDict_Point2D *)qv_pt.dict)->offset_x)))

@@ -1486,13 +1486,16 @@ def option_struct_name(t: QType) -> str:
 
 
 class RecordNamingContext:
-    """Maintains sequential and alias-based naming for record types and evidence dictionaries."""
+    """Names record types and evidence dictionaries in C, after a type alias for the record where there is one.
+
+    Every name ends with a digest of the record's shape, so a name stands for one layout in every C unit: the generated
+    headers of interfaces define record structs under include guards named after them, and a unit includes headers
+    whose records were named in other compilations.
+    """
 
     def __init__(self) -> None:
         self.alias_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
-        self.seq_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
         self.shape_to_canonical_name: dict[tuple[tuple[str, str, str], ...], str] = {}
-        self._record_counter = 0
 
     def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
         # Records share a struct (and so a descriptor) only if their fields have the same types, not merely the same
@@ -1500,22 +1503,22 @@ class RecordNamingContext:
         sorted_fields = sorted(t.fields, key=lambda f: f.name)
         return tuple((f.name, type_to_c_tag(f.type_val), _type_digest(f.type_val)) for f in sorted_fields)
 
+    @staticmethod
+    def _shape_digest(key: tuple[tuple[str, str, str], ...]) -> str:
+        return _text_digest(repr(key))
+
     def register_alias(self, alias_name: str, t: QRecordType) -> None:
         key = self._shape_key(t)
         if key not in self.alias_by_shape:
-            self.alias_by_shape[key] = alias_name
-            self.shape_to_canonical_name[key] = alias_name
+            name = f"{alias_name}_{self._shape_digest(key)}"
+            self.alias_by_shape[key] = name
+            self.shape_to_canonical_name[key] = name
 
-    def get_or_create_name(self, t: QRecordType, module_name: Optional[str] = None) -> str:
+    def get_or_create_name(self, t: QRecordType) -> str:
         key = self._shape_key(t)
-        if key in self.shape_to_canonical_name:
-            return self.shape_to_canonical_name[key]
-        self._record_counter += 1
-        prefix = f"{module_name}_" if module_name else ""
-        name = f"{prefix}record{self._record_counter}"
-        self.seq_by_shape[key] = name
-        self.shape_to_canonical_name[key] = name
-        return name
+        if key not in self.shape_to_canonical_name:
+            self.shape_to_canonical_name[key] = f"record_{self._shape_digest(key)}"
+        return self.shape_to_canonical_name[key]
 
     def record_struct_name(self, t: QRecordType) -> str:
         name = self.get_or_create_name(t)
