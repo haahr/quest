@@ -70,19 +70,7 @@ from quest.types import (
 )
 
 
-PRELINKED_LIBRARY_MODULES = {
-    "list": "List",
-    "string": "StringOp",
-    "conv": "Conv",
-    "int": "IntOp",
-    "real": "RealOp",
-    "ascii": "Ascii",
-    "arrayOp": "ArrayOp",
-    "word": "Word",
-    "writer": "Writer",
-    "reader": "Reader",
-    "system": "System",
-}
+from quest.builtins import STANDARD_LIBRARY_MODULES as PRELINKED_LIBRARY_MODULES
 
 
 @dataclass

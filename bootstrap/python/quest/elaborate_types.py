@@ -155,7 +155,12 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                         )
                     if sym.definition is not None:
                         return alias_reference(".".join(path), sym.symbol_id, sym.definition)
-                    return QTypeVar(name=".".join(path), symbol_id=sym.symbol_id, bound=sym.kind)
+                    var_name = (
+                        f"{curr_scope.module_name}.{type_name}"
+                        if curr_scope.module_name
+                        else ".".join(path)
+                    )
+                    return QTypeVar(name=var_name, symbol_id=sym.symbol_id, bound=sym.kind)
 
                 # 2. Value binding lookup for path-dependent types (e.g. x.A or x.y.A)
                 val_sym = env.lookup_value(path[0])

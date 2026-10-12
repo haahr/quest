@@ -128,6 +128,7 @@ class Scope:
     def __init__(self, parent: Optional[Scope] = None, name: str = "local"):
         self.parent = parent
         self.name = name
+        self.module_name: Optional[str] = None
         self._declarations: list[Symbol] = []
         self._values: dict[str, ValueSymbol] = {}
         self._types: dict[str, TypeSymbol] = {}
@@ -306,6 +307,8 @@ class Environment:
         self.loaded_interfaces: dict[str, Scope] = {}
         # Export scopes of modules known only through their interfaces (separate compilation), by canonical name.
         self.module_export_scopes: dict[str, Scope] = {}
+        self._builtin_interfaces: dict[str, Scope] = {}
+        self._builtin_modules: dict[str, Scope] = {}
         self._init_builtins()
         reg = builtin_registry if builtin_registry is not None else self._default_builtin_registry
         if reg is not None:

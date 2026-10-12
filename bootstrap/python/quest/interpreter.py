@@ -315,10 +315,12 @@ class RuntimeEnvironment:
         env.define("false", FALSE_VALUE)
         env.define("ok", OK_VALUE)
 
-        from quest.builtins import BuiltinModuleRegistry
-        BuiltinModuleRegistry._ensure_initialized()
-        for mod_name, mod_val in BuiltinModuleRegistry._modules.items():
-            env.define(mod_name, mod_val)
+        from quest.builtins import STANDARD_LIBRARY_MODULES
+        from quest.modules.loader import load_module_for_interpreter
+        for mod_name, iface_name in STANDARD_LIBRARY_MODULES.items():
+            mod_val = load_module_for_interpreter(mod_name, iface_name, env)
+            if mod_val is not None:
+                env.define(mod_name, mod_val)
 
         # Built-in operators as callable functions (Cardelli §4.2)
         for op in ("+", "-", "*", "/", "mod", "%"):
@@ -1158,8 +1160,6 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             return rec
 
         case TypedImport(items=items):
-            from quest.builtins import BuiltinModuleRegistry
-
             for item in items:
                 # Evaluated modules are shared by canonical name, which distinguishes modules imported by the same
                 # name from different directories (docs/modules.md §2.3).
@@ -1169,12 +1169,8 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                     if canon in env.evaluated_modules:
                         mod_val = env.evaluated_modules[canon]
                     else:
-                        mod_val = BuiltinModuleRegistry.get_runtime_module(mod_path)
-                        if mod_val is None:
-                            mod_val = BuiltinModuleRegistry.get_runtime_module(local_name)
-                        if mod_val is None:
-                            from quest.modules.loader import load_module_for_interpreter
-                            mod_val = load_module_for_interpreter(mod_path, item.effective_interface_path, env)
+                        from quest.modules.loader import load_module_for_interpreter
+                        mod_val = load_module_for_interpreter(mod_path, item.effective_interface_path, env)
                         if mod_val is not None:
                             env.evaluated_modules[canon] = mod_val
                     if mod_val is not None:

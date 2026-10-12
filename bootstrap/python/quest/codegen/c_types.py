@@ -1047,9 +1047,9 @@ def _type_to_c_tag_raw(t: QType) -> str:
         return "Ok"
     if isinstance(t, QExternalType):
         return t.name.replace(".", "_") if t.name else t.c_type.replace("*", "").strip()
-    if isinstance(t, QTypeVar) and t.name == "Writer.T":
+    if isinstance(t, QTypeVar) and t.name in ("Writer.T", "writer.T"):
         return "QWriter"
-    if isinstance(t, QTypeVar) and t.name == "Reader.T":
+    if isinstance(t, QTypeVar) and t.name in ("Reader.T", "reader.T"):
         return "QReader"
     if isinstance(t, QTupleType):
         tags = [_element_tag(f.type_val) for f in t.value_fields]
@@ -1325,7 +1325,8 @@ def canonical_fun_type(t: QType) -> QType:
     placeholders: list[QTypeVar] = []
     for k, q in enumerate(quants):
         bound = _shift_bound_vars(q.bound, k)
-        bound = bound.substitute_types({quants[j].symbol_id: bound_var(k - 1 - j, new_quants[j].bound) for j in range(k)})
+        subst = {quants[j].symbol_id: bound_var(k - 1 - j, new_quants[j].bound) for j in range(k)}
+        bound = bound.substitute_types(subst)
         quant_id = reserved_symbol_id(ReservedSymbolUse.CANONICAL_QUANTIFIER, k)
         new_quants.append(QQuantifier(name=f"${k}", symbol_id=quant_id, bound=bound))
     body = _shift_bound_vars(t.body, n)
@@ -1559,9 +1560,9 @@ def _qtype_to_c_type_raw(t: QType) -> str:
         return "QAuto *"
     if isinstance(t, QExternalType):
         return t.c_type
-    if isinstance(t, QTypeVar) and t.name == "Writer.T":
+    if isinstance(t, QTypeVar) and t.name in ("Writer.T", "writer.T"):
         return "QWriter *"
-    if isinstance(t, QTypeVar) and t.name == "Reader.T":
+    if isinstance(t, QTypeVar) and t.name in ("Reader.T", "reader.T"):
         return "QReader *"
     if isinstance(t, QTupleType):
         return f"{tuple_struct_name(t)} *"
@@ -1692,7 +1693,7 @@ def qtype_to_name_str(t: QType) -> str:
     if isinstance(t, QAliasType):
         return t.name
     if is_word_type(t):
-        return "Word.T"
+        return "word.T"
     if t is INT_TYPE:
         return "Int"
     if t is REAL_TYPE:

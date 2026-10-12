@@ -814,26 +814,8 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                         imp_scope_frame.declare_kind(k_sym)
                 else:
                     for iname, mod_path in zip(names, mpaths):
-                        from quest.modules.loader import load_module
-                        mod_scope = None
-                        if (
-                            mod_path in env.loaded_modules_ast
-                            or mod_path in env.precompiled_modules
-                            or resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
-                            or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
-                        ):
-                            try:
-                                typed_mod = load_module(mod_path, imp_name, env)
-                                mod_scope = typed_mod.scope
-                            except (QuestCompilerError, OSError) as err:
-                                if getattr(env, "sink", None) is not None:
-                                    if isinstance(err, QuestCompilerError):
-                                        env.sink.emit(diagnostic_of(err))
-                                    else:
-                                        env.sink.emit(Diagnostic.make_from_exception(err, 0))
-                                mod_scope = None
-
-                        registered_scope = mod_scope if mod_scope is not None else imp_scope
+                        from quest.modules.elaboration import separately_compiled_module_scope
+                        registered_scope = separately_compiled_module_scope(mod_path, imp_scope, env)
                         env.register_module(iname, registered_scope)
                         env.register_module(mod_path, registered_scope)
                         env.register_module(imp_name, registered_scope)

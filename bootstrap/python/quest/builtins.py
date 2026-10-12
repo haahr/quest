@@ -287,6 +287,21 @@ class ModuleBuilder:
         return rec
 
 
+STANDARD_LIBRARY_MODULES: dict[str, str] = {
+    "list": "List",
+    "string": "StringOp",
+    "conv": "Conv",
+    "int": "IntOp",
+    "real": "RealOp",
+    "ascii": "Ascii",
+    "arrayOp": "ArrayOp",
+    "word": "Word",
+    "writer": "Writer",
+    "reader": "Reader",
+    "system": "System",
+}
+
+
 class BuiltinModuleRegistry:
     """Central registry of Cardelli standard library interfaces and runtime modules."""
 
@@ -346,31 +361,20 @@ class BuiltinModuleRegistry:
 
     @classmethod
     def populate_environment(cls, env: Environment) -> None:
-        """Registers builtin interfaces and pre-linked modules into an Environment."""
-        cls._ensure_initialized(env)
-        mod_to_iface = {
-            "writer": "Writer",
-            "reader": "Reader",
-            "conv": "Conv",
-            "ascii": "Ascii",
-            "int": "IntOp",
-            "real": "RealOp",
-            "string": "StringOp",
-            "arrayOp": "ArrayOp",
-            "list": "List",
-            "word": "Word",
-        }
-        for iface_name, iface_scope in cls._interfaces.items():
-            env.register_interface(iface_name, iface_scope)
-        for mod_name, mod_type in cls._module_types.items():
+        """Registers standard library interfaces and prelinked modules into an Environment."""
+        from quest.modules.elaboration import (
+            build_record_type_from_scope,
+            separately_compiled_module_scope,
+        )
+        from quest.modules.loader import load_interface
+
+        for mod_name, iface_name in STANDARD_LIBRARY_MODULES.items():
+            iface_scope = env.lookup_interface(iface_name)
+            if iface_scope is None:
+                iface_scope = load_interface(iface_name, env)
+            mod_scope = separately_compiled_module_scope(mod_name, iface_scope, env)
+            mod_type = build_record_type_from_scope(mod_scope, provenance=mod_name)
             env.global_scope.declare_value(ValueSymbol(name=mod_name, type_val=mod_type))
-            iface_name = mod_to_iface.get(mod_name)
-            if iface_name and iface_name in cls._interfaces:
-                env.register_module(mod_name, cls._interfaces[iface_name])
-        for iface_name, iface_scope in cls._interfaces.items():
-            src = resolve_interface_source_file(iface_name, None, [])
-            if src is not None:
-                env.loaded_interfaces[canonicalize_module_path(src, [])] = iface_scope
 
     @classmethod
     def _ensure_initialized(cls, env: Optional[Environment] = None) -> None:

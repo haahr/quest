@@ -131,12 +131,6 @@ def load_interface(name: str, env: Environment) -> Scope:
             return _register(_load_qi(qi_file))
 
     if file_path is None:
-        from quest.builtins import BuiltinModuleRegistry
-        builtin_iface = BuiltinModuleRegistry.get_interface(name, env)
-        if builtin_iface is not None:
-            env.register_interface(name, builtin_iface)
-            return builtin_iface
-
         searched = [str(env.current_dir)] if env.current_dir else []
         searched.extend(str(p) for p in env.include_paths)
         if DEFAULT_LIB_DIR.is_dir():
@@ -260,12 +254,6 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         return _synthesize_precompiled_module()
 
     if file_path is None:
-        from quest.builtins import BuiltinModuleRegistry
-        builtin_ast = BuiltinModuleRegistry.get_module_ast(name, env)
-        if builtin_ast is not None:
-            env.loaded_modules_ast[name] = builtin_ast
-            return builtin_ast
-
         obj_file = resolve_object_file(name, env.current_dir, env.include_paths)
         if obj_file is not None or name in env.precompiled_modules:
             env.precompiled_modules.add(name)
@@ -385,20 +373,13 @@ def load_module_for_interpreter(
     if canon_name in r_env.loaded_modules_ast:
         typed_mod = r_env.loaded_modules_ast[canon_name]
     else:
-        from quest.builtins import BuiltinModuleRegistry
         from quest.env import Environment
-        type_env = Environment(builtin_registry=BuiltinModuleRegistry)
+        type_env = Environment()
         type_env.include_paths = list(r_env.include_paths)
         type_env.current_dir = r_env.current_dir
         type_env.program_dir = r_env.program_dir
         typed_mod = load_module(name, expected_interface, type_env)
         r_env.loaded_modules_ast[canon_name] = typed_mod
-
-    from quest.builtins import BuiltinModuleRegistry
-    builtin_rec = BuiltinModuleRegistry.get_runtime_module(name)
-    if not typed_mod.bindings and builtin_rec is not None:
-        r_env.evaluated_modules[canon_name] = builtin_rec
-        return builtin_rec
 
     from quest.interpreter import eval_binding
     from quest.runtime import QRecord

@@ -4,15 +4,15 @@ Implements Cardelli's module system for Quest:
 - Interface declarations with type formals, manifest types, and value signatures.
 - Module definitions with conformance checking (type equality, subkinding, subtyping).
 - Information hiding via opaque type variables for abstract interface types.
-- Top-level and module-level import resolution with BuiltinModuleRegistry integration.
+- Top-level and module-level import resolution.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, Optional
 
 import quest.syntax.ast as ast
-from quest.builtins import BuiltinModuleRegistry
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
 from quest.elaborate_types import (
     elaborate_kind,
@@ -44,6 +44,7 @@ from quest.typed_ast import (
 )
 from quest.types import (
     TYPE_KIND,
+    QExternalType,
     QRecordField,
     QRecordType,
     QType,
@@ -81,6 +82,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
     """Elaborates an interface declaration into a specification scope and TypedInterface."""
     import_scope = Scope(name=f"interface_imports_{decl.name}", parent=env.current_scope)
     interface_scope = Scope(name=f"interface_{decl.name}", parent=import_scope)
+    interface_scope.module_name = decl.name
 
     # 1. Resolve imports into import_scope (available for signatures, not exported by interface)
     for imp in decl.imports:
@@ -137,11 +139,9 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                     env.register_module(name, registered_scope)
                     if mod_path != name:
                         env.register_module(mod_path, registered_scope)
-                    mod_type = BuiltinModuleRegistry.get_module_type(name, env)
-                    if mod_type is None:
-                        mod_type = build_record_type_from_scope(
-                            registered_scope, provenance=name
-                        )
+                    mod_type = build_record_type_from_scope(
+                        registered_scope, provenance=name
+                    )
                     import_scope.declare_value(ValueSymbol(name=name, type_val=mod_type))
 
     # 2. Elaborate signatures in a child scope of the interface
@@ -185,25 +185,49 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
     return TypedInterface(name=decl.name, signatures=(), scope=interface_scope, offset=decl.offset)
 
 
+def extract_module_external_types(src: Optional[Path]) -> dict[str, QType]:
+    """Extracts external type declarations (Let T = external "...") from a module source file."""
+    if src is None or not src.is_file():
+        return {}
+    try:
+        source_text = src.read_text(encoding="utf-8")
+        from quest.syntax.grammar import parse_quest_program
+        from quest.syntax.sources import SourceMap
+        from quest.syntax.tokenizer import Tokenizer
+
+        source_map = SourceMap(source_text, src.name)
+        tokens = Tokenizer(source_text, str(src)).tokenize_all()
+        prog = parse_quest_program(tokens, source_map)
+        if isinstance(prog, ast.Program) and len(prog.phrases) == 1:
+            decl = prog.phrases[0]
+            if isinstance(decl, ast.ModuleDecl):
+                defs: dict[str, QType] = {}
+                for b in decl.bindings:
+                    if isinstance(b, ast.TypeBinding) and isinstance(b.type_val, ast.TypeExternal):
+                        defs[b.name] = QExternalType(name=f"{decl.name}.{b.name}", c_type=b.type_val.c_type)
+                return defs
+    except Exception:
+        pass
+    return {}
+
+
 def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env: Environment) -> Scope:
     """Returns the export scope of a module known only through its interface (separate compilation).
 
     Each module gets its own opaque copies of the interface's abstract types, exactly as elaborating
     its source would, so that two modules implementing one interface never share an abstract type.
     """
-    mod_scope = env.lookup_module(mod_path)
-    # A module registered with the interface scope itself (as builtins are pre-registered) has no
-    # export scope of its own yet.
-    if mod_scope is None or mod_scope is interface_scope:
-        # Every importer of the module, in any unit, shares one export scope (docs/modules.md §2.3).
-        src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
-        canon = canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
-        loaded = env.loaded_modules_ast.get(canon)
-        mod_scope = loaded.scope if loaded is not None else env.module_export_scopes.get(canon)
-        if mod_scope is None:
-            mod_scope = create_module_export_scope(declared_module_name(src, mod_path), interface_scope, env)
-            env.module_export_scopes[canon] = mod_scope
-        env.register_module(mod_path, mod_scope)
+    src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
+    canon = canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
+    loaded = env.loaded_modules_ast.get(canon)
+    mod_scope = loaded.scope if loaded is not None else env.module_export_scopes.get(canon)
+    if mod_scope is None:
+        concrete_defs = extract_module_external_types(src)
+        mod_scope = create_module_export_scope(
+            declared_module_name(src, mod_path), interface_scope, env, concrete_defs=concrete_defs
+        )
+        env.module_export_scopes[canon] = mod_scope
+    env.register_module(mod_path, mod_scope)
     return mod_scope
 
 
@@ -211,19 +235,29 @@ def create_module_export_scope(
     module_name: str,
     target_interface_scope: Scope,
     env: Environment,
+    concrete_defs: Optional[dict[str, QType]] = None,
 ) -> Scope:
     """Creates the exported scope for a module conforming to an interface scope."""
     module_export_scope = Scope(name=f"module_export_{module_name}")
+    module_export_scope.module_name = module_name
     export_type_subst: dict[int, QType] = {}
 
     for type_name, interface_type_symbol in target_interface_scope.types.items():
         if interface_type_symbol.definition is None:
             export_sym_id = env.fresh_symbol_id()
+            if (
+                concrete_defs is not None
+                and type_name in concrete_defs
+                and isinstance(concrete_defs[type_name], QExternalType)
+            ):
+                ext_def: Optional[QType] = concrete_defs[type_name]
+            else:
+                ext_def = None
             opaque_type_symbol = TypeSymbol(
                 name=type_name,
                 symbol_id=export_sym_id,
                 kind=interface_type_symbol.kind,
-                definition=None,
+                definition=ext_def,
             )
             module_export_scope.declare_type(opaque_type_symbol)
             export_type_subst[interface_type_symbol.symbol_id] = QTypeVar(
@@ -261,10 +295,6 @@ def elaborate_module(
 ) -> TypedModule:
     """Elaborates and typechecks a module against its interface, enforcing information hiding."""
     target_interface_scope = env.lookup_interface(decl.interface_name)
-    if target_interface_scope is None:
-        target_interface_scope = BuiltinModuleRegistry.get_interface(decl.interface_name, env)
-        if target_interface_scope is not None:
-            env.register_interface(decl.interface_name, target_interface_scope)
     if target_interface_scope is None:
         from quest.modules.loader import load_interface
         target_interface_scope = load_interface(decl.interface_name, env)
@@ -305,29 +335,13 @@ def elaborate_module(
                         )
                         registered_scope = mod_scope
                     else:
-                        on_disk = (
-                            resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
-                            or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
-                            or mod_path in env.precompiled_modules
+                        if mod_path not in env.loaded_modules_ast:
+                            load_module(mod_path, iface_path, env)
+                        mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
+                        mod_type = build_record_type_from_scope(
+                            mod_scope, provenance=local_name
                         )
-                        if on_disk or mod_path in env.loaded_modules_ast:
-                            if mod_path not in env.loaded_modules_ast:
-                                load_module(mod_path, iface_path, env)
-                            mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                            mod_type = build_record_type_from_scope(
-                                mod_scope, provenance=local_name
-                            )
-                        else:
-                            mod_type = BuiltinModuleRegistry.get_module_type(mod_path, env)
-                            mod_scope = env.lookup_module(mod_path)
-                            if mod_type is None:
-                                if mod_path not in env.loaded_modules_ast:
-                                    load_module(mod_path, iface_path, env)
-                                mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                                mod_type = build_record_type_from_scope(
-                                    mod_scope, provenance=local_name
-                                )
-                        registered_scope = mod_scope if mod_scope is not None else source_interface_scope
+                        registered_scope = mod_scope
                     env.register_module(mod_path, registered_scope)
                     if local_name != mod_path:
                         env.register_module(local_name, registered_scope)
@@ -418,7 +432,24 @@ def elaborate_module(
         env.current_scope = saved_scope
 
     # 4. Create exported module scope (strictly opaque for abstract interface types)
-    module_export_scope = create_module_export_scope(decl.name, target_interface_scope, env)
+    src = resolve_module_file(decl.name, env.current_dir, env.include_paths)
+    canon = canonicalize_module_name(src, env.include_paths, decl.name, env.program_dir)
+    module_export_scope = env.module_export_scopes.get(canon)
+    if module_export_scope is None:
+        concrete_defs = {
+            name: sym.definition
+            for name, sym in module_internal_scope.types.items()
+            if sym.definition is not None
+        }
+        module_export_scope = create_module_export_scope(
+            decl.name, target_interface_scope, env, concrete_defs=concrete_defs
+        )
+        env.module_export_scopes[canon] = module_export_scope
+    else:
+        for t_name, mod_type_sym in module_internal_scope.types.items():
+            if t_name in module_export_scope.types and module_export_scope.types[t_name].definition is None:
+                if isinstance(mod_type_sym.definition, QExternalType):
+                    module_export_scope.types[t_name].definition = mod_type_sym.definition
 
     env.register_module(decl.name, module_export_scope)
 
@@ -475,29 +506,13 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                         )
                         registered_scope = mod_scope
                     else:
-                        on_disk = (
-                            resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
-                            or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
-                            or mod_path in env.precompiled_modules
+                        if mod_path not in env.loaded_modules_ast:
+                            load_module(mod_path, iface_path, env)
+                        mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
+                        mod_type = build_record_type_from_scope(
+                            mod_scope, provenance=local_mod_name
                         )
-                        if on_disk or mod_path in env.loaded_modules_ast:
-                            if mod_path not in env.loaded_modules_ast:
-                                load_module(mod_path, iface_path, env)
-                            mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
-                            mod_type = build_record_type_from_scope(
-                                mod_scope, provenance=local_mod_name
-                            )
-                        else:
-                            mod_type = BuiltinModuleRegistry.get_module_type(mod_path, env)
-                            mod_scope = env.lookup_module(mod_path)
-                            if mod_type is None:
-                                if mod_path not in env.loaded_modules_ast:
-                                    load_module(mod_path, iface_path, env)
-                                mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
-                                mod_type = build_record_type_from_scope(
-                                    mod_scope, provenance=local_mod_name
-                                )
-                        registered_scope = mod_scope if mod_scope is not None else iface_scope
+                        registered_scope = mod_scope
                     env.register_module(mod_path, registered_scope)
                     if local_mod_name != mod_path:
                         env.register_module(local_mod_name, registered_scope)
