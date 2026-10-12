@@ -310,8 +310,8 @@ class Environment:
         self._builtin_interfaces: dict[str, Scope] = {}
         self._builtin_modules: dict[str, Scope] = {}
         self._init_builtins()
-        reg = builtin_registry if builtin_registry is not None else self._default_builtin_registry
-        if reg is not None:
+        reg = self._default_builtin_registry if builtin_registry is None else builtin_registry
+        if reg:
             reg.populate_environment(self)
         self._builtin_interfaces = dict(self._interfaces)
         self._builtin_modules = dict(self._modules)

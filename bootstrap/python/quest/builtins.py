@@ -359,6 +359,13 @@ class BuiltinModuleRegistry:
         cls._ensure_initialized(env)
         return cls._module_asts.get(name)
 
+    _cached_env_populated: bool = False
+    _cached_interfaces: dict[str, Scope] = {}
+    _cached_mod_scopes: dict[str, Scope] = {}
+    _cached_mod_types: dict[str, QType] = {}
+    _cached_loaded_interfaces: dict[str, Scope] = {}
+    _cached_module_export_scopes: dict[str, Scope] = {}
+
     @classmethod
     def populate_environment(cls, env: Environment) -> None:
         """Registers standard library interfaces and prelinked modules into an Environment."""
@@ -368,13 +375,26 @@ class BuiltinModuleRegistry:
         )
         from quest.modules.loader import load_interface
 
-        for mod_name, iface_name in STANDARD_LIBRARY_MODULES.items():
-            iface_scope = env.lookup_interface(iface_name)
-            if iface_scope is None:
-                iface_scope = load_interface(iface_name, env)
-            mod_scope = separately_compiled_module_scope(mod_name, iface_scope, env)
-            mod_type = build_record_type_from_scope(mod_scope, provenance=mod_name)
+        if not cls._cached_env_populated:
+            base_env = Environment(builtin_registry=False)
+            for mod_name, iface_name in STANDARD_LIBRARY_MODULES.items():
+                iface_scope = load_interface(iface_name, base_env)
+                cls._cached_interfaces[iface_name] = iface_scope
+                mod_scope = separately_compiled_module_scope(mod_name, iface_scope, base_env)
+                cls._cached_mod_scopes[mod_name] = mod_scope
+                cls._cached_mod_types[mod_name] = build_record_type_from_scope(mod_scope, provenance=mod_name)
+            cls._cached_loaded_interfaces = dict(base_env.loaded_interfaces)
+            cls._cached_module_export_scopes = dict(base_env.module_export_scopes)
+            cls._cached_env_populated = True
+
+        env.loaded_interfaces.update(cls._cached_loaded_interfaces)
+        env.module_export_scopes.update(cls._cached_module_export_scopes)
+        for iface_name, iface_scope in cls._cached_interfaces.items():
+            env.register_interface(iface_name, iface_scope)
+        for mod_name, mod_type in cls._cached_mod_types.items():
             env.global_scope.declare_value(ValueSymbol(name=mod_name, type_val=mod_type))
+        for mod_name, mod_scope in cls._cached_mod_scopes.items():
+            env.register_module(mod_name, mod_scope)
 
     @classmethod
     def _ensure_initialized(cls, env: Optional[Environment] = None) -> None:
