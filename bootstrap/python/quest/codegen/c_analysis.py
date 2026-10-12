@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
 from quest.analysis.closure import LambdaAnalysis, analyze_closures
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.elaboration import build_record_type_from_scope
 from quest.env import Scope, ValueSymbol
 from quest.modules.paths import is_c_compilation_mode
 from quest.typed_ast import (
@@ -70,9 +70,19 @@ from quest.types import (
 )
 
 
-# Prelinked modules (Cardelli §11.3) compiled from library source rather than built into the runtime, with their
-# interfaces: a program that uses one without importing it links it as if it had imported it.
-PRELINKED_LIBRARY_MODULES = {"list": "List"}
+PRELINKED_LIBRARY_MODULES = {
+    "list": "List",
+    "string": "StringOp",
+    "conv": "Conv",
+    "int": "IntOp",
+    "real": "RealOp",
+    "ascii": "Ascii",
+    "arrayOp": "ArrayOp",
+    "word": "Word",
+    "writer": "Writer",
+    "reader": "Reader",
+    "system": "System",
+}
 
 
 @dataclass
@@ -582,28 +592,28 @@ def analyze_program_for_c(
         if isinstance(phrase, TypedModule):
             all_module_map[phrase.name] = phrase
 
-    known_builtins = {
-        "writer", "reader", "conv", "ascii", "int", "real", "string", "system",
-        "arrayOp", "word",
-    }
     needed_builtin_modules: list[str] = []
     implicit_library_imports: list[str] = []
 
     def _check_import_item(iname: str) -> None:
-        if iname in known_builtins and iname not in needed_builtin_modules:
+        if iname in PRELINKED_LIBRARY_MODULES and iname not in needed_builtin_modules:
             needed_builtin_modules.append(iname)
 
     def _scan_for_builtin_vars(n: Any) -> None:
         if isinstance(n, (QType, QKind)):
             return
-        if isinstance(n, TypedVar) and n.name in known_builtins:
+        if isinstance(n, TypedVar) and n.name in PRELINKED_LIBRARY_MODULES:
             if n.name not in needed_builtin_modules:
                 needed_builtin_modules.append(n.name)
+        mod_scope = env.lookup_module(n.name) if (isinstance(n, TypedVar) and env is not None) else None
         if (
             isinstance(n, TypedVar)
             and n.name in PRELINKED_LIBRARY_MODULES
             and n.name not in implicit_library_imports
-            and n.symbol.type_val is BuiltinModuleRegistry.get_module_type(n.name)
+            and (
+                mod_scope is None
+                or is_type_equal(n.symbol.type_val, build_record_type_from_scope(mod_scope), env)
+            )
         ):
             implicit_library_imports.append(n.name)
         if hasattr(n, "__dataclass_fields__"):
@@ -643,7 +653,7 @@ def analyze_program_for_c(
                 if target is not None:
                     all_module_map[iname] = all_module_map[target]
                     all_module_map[mpath] = all_module_map[target]
-                elif iname not in known_builtins and mpath not in known_builtins:
+                elif iname not in PRELINKED_LIBRARY_MODULES and mpath not in PRELINKED_LIBRARY_MODULES:
                     # A module compiled separately is named by its canonical name, as it names itself (§2.3).
                     clean_name = canon if canon else iname
                     scope = None
@@ -669,15 +679,12 @@ def analyze_program_for_c(
 
     for bmod in needed_builtin_modules:
         if bmod not in all_module_map:
-            bast = BuiltinModuleRegistry.get_module_ast(bmod)
-            if bast is not None:
-                if (
-                    bmod in linked_stems
-                    or (env and bmod in env.precompiled_modules)
-                    or (is_c_mode and bmod not in current_unit_modules)
-                ):
-                    bast = replace(bast, is_precompiled=True)
-                all_module_map[bmod] = bast
+            iface_name = PRELINKED_LIBRARY_MODULES.get(bmod, "")
+            scope = (
+                env.lookup_module(bmod)
+                or (env.lookup_interface(iface_name) if iface_name and env else None)
+            ) if env is not None else None
+            _add_precompiled_stub(bmod, iface_name, scope, ())
 
     changed = True
     while changed:
@@ -687,19 +694,16 @@ def analyze_program_for_c(
                 if isinstance(b, TypedImport):
                     for it in b.items:
                         for iname in it.names:
-                            if iname in known_builtins and iname not in all_module_map:
-                                bast = BuiltinModuleRegistry.get_module_ast(iname)
-                                if bast is not None:
-                                    if (
-                                        iname in linked_stems
-                                        or (env and iname in env.precompiled_modules)
-                                        or (is_c_mode and iname not in current_unit_modules)
-                                    ):
-                                        bast = replace(bast, is_precompiled=True)
-                                    all_module_map[iname] = bast
-                                    if iname not in needed_builtin_modules:
-                                        needed_builtin_modules.append(iname)
-                                    changed = True
+                            if iname in PRELINKED_LIBRARY_MODULES and iname not in all_module_map:
+                                iface_name = PRELINKED_LIBRARY_MODULES.get(iname, "")
+                                scope = (
+                                    env.lookup_module(iname)
+                                    or (env.lookup_interface(iface_name) if iface_name and env else None)
+                                ) if env is not None else None
+                                _add_precompiled_stub(iname, iface_name, scope, ())
+                                if iname not in needed_builtin_modules:
+                                    needed_builtin_modules.append(iname)
+                                changed = True
 
     for k, mod in list(all_module_map.items()):
         if not getattr(mod, "is_precompiled", False):
@@ -823,7 +827,7 @@ def analyze_program_for_c(
             for v in b_var:
                 if not any(vt is v or is_type_equal(vt, v) for vt in variant_types):
                     variant_types.append(v)
-        mod_rec_t = BuiltinModuleRegistry._build_record_type_from_scope(mod.scope)
+        mod_rec_t = build_record_type_from_scope(mod.scope)
         rec_agg, rec_var, rec_types = collect_aggregate_types(
             mod_rec_t, record_ctx, visited_names, visited_type_ids, visited_node_ids
         )

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 # 1. Elaboration
 from quest.modules.elaboration import (
+    build_record_type_from_scope,
     create_module_export_scope,
     elaborate_import,
     elaborate_interface,

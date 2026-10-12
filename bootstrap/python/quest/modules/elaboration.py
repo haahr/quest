@@ -54,6 +54,15 @@ from quest.types import (
 )
 
 
+def build_record_type_from_scope(scope: Scope, provenance: Optional[str] = None) -> QRecordType:
+    """Constructs a QRecordType matching the values exposed by a module or interface scope."""
+    fields = [
+        QRecordField(name=name, type_val=sym.type_val, is_var=sym.is_var)
+        for name, sym in scope.values.items()
+    ]
+    return QRecordType(tuple(fields), provenance=provenance)
+
+
 def import_interface(iface_path: str, local_name: str, env: Environment) -> Scope:
     """Returns the interface an import names by iface_path, binding it to local_name (and iface_path) in env.
 
@@ -130,7 +139,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                         env.register_module(mod_path, registered_scope)
                     mod_type = BuiltinModuleRegistry.get_module_type(name, env)
                     if mod_type is None:
-                        mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                        mod_type = build_record_type_from_scope(
                             registered_scope, provenance=name
                         )
                     import_scope.declare_value(ValueSymbol(name=name, type_val=mod_type))
@@ -291,7 +300,7 @@ def elaborate_module(
                     from quest.modules.loader import load_module
                     if is_c_compilation_mode(env):
                         mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                        mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                        mod_type = build_record_type_from_scope(
                             mod_scope, provenance=local_name
                         )
                         registered_scope = mod_scope
@@ -305,7 +314,7 @@ def elaborate_module(
                             if mod_path not in env.loaded_modules_ast:
                                 load_module(mod_path, iface_path, env)
                             mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                            mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                            mod_type = build_record_type_from_scope(
                                 mod_scope, provenance=local_name
                             )
                         else:
@@ -315,7 +324,7 @@ def elaborate_module(
                                 if mod_path not in env.loaded_modules_ast:
                                     load_module(mod_path, iface_path, env)
                                 mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
-                                mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                                mod_type = build_record_type_from_scope(
                                     mod_scope, provenance=local_name
                                 )
                         registered_scope = mod_scope if mod_scope is not None else source_interface_scope
@@ -461,7 +470,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                     if is_c_compilation_mode(env):
                         # In separate compilation mode, type the module via its interface without loading source
                         mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
-                        mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                        mod_type = build_record_type_from_scope(
                             mod_scope, provenance=local_mod_name
                         )
                         registered_scope = mod_scope
@@ -475,7 +484,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                             if mod_path not in env.loaded_modules_ast:
                                 load_module(mod_path, iface_path, env)
                             mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
-                            mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                            mod_type = build_record_type_from_scope(
                                 mod_scope, provenance=local_mod_name
                             )
                         else:
@@ -485,7 +494,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                                 if mod_path not in env.loaded_modules_ast:
                                     load_module(mod_path, iface_path, env)
                                 mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
-                                mod_type = BuiltinModuleRegistry._build_record_type_from_scope(
+                                mod_type = build_record_type_from_scope(
                                     mod_scope, provenance=local_mod_name
                                 )
                         registered_scope = mod_scope if mod_scope is not None else iface_scope

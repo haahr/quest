@@ -10,7 +10,43 @@ import re
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.elaboration import build_record_type_from_scope
+
+BUILTIN_INLINE_TEMPLATES: dict[str, str] = {
+    # String
+    "quest_string_length": "({0}->length)",
+    "string.length": "({0}->length)",
+    # Word
+    "quest_word_not_bits": "(~({0}))",
+    "quest_word_and_bits": "(({0}) & ({1}))",
+    "quest_word_or_bits": "(({0}) | ({1}))",
+    "quest_word_xor_bits": "(({0}) ^ ({1}))",
+    "quest_word_shift_val": "quest_word_shift({0}, {1})",
+    "quest_word_rotate_val": "quest_word_rotate({0}, {1})",
+    "quest_word_extract_val": "quest_word_extract({0}, {1}, {2})",
+    "quest_word_replace_val": "quest_word_replace({0}, {1}, {2}, {3})",
+    "quest_word_pop_count_val": "quest_word_pop_count({0})",
+    "quest_word_count_leading_zeros_val": "quest_word_count_leading_zeros({0})",
+    "quest_word_count_trailing_zeros_val": "quest_word_count_trailing_zeros({0})",
+    "quest_word_add": "(({0}) + ({1}))",
+    "quest_word_sub": "(({0}) - ({1}))",
+    "quest_word_mul": "(({0}) * ({1}))",
+    "quest_word_div_val": "quest_word_div({0}, {1})",
+    "quest_word_mod_val": "quest_word_mod({0}, {1})",
+    "quest_word_to_int": "((int64_t)({0}))",
+    "quest_word_from_int": "((uint64_t)({0}))",
+    "quest_word_lt": "(({0}) < ({1}))",
+    "quest_word_le": "(({0}) <= ({1}))",
+    "quest_word_gt": "(({0}) > ({1}))",
+    "quest_word_ge": "(({0}) >= ({1}))",
+    "quest_word_from_real_val": "(((QVal){{ .r = ({0}) }}).u)",
+    "quest_word_get_bit_val": "quest_word_get_bit({0}, {1})",
+    "quest_word_set_bit_val": "quest_word_set_bit({0}, {1})",
+    "quest_word_clear_bit_val": "quest_word_clear_bit({0}, {1})",
+    # Real
+    "quest_real_from_int": "((double)({0}))",
+    "real.int": "((double)({0}))",
+}
 from quest.codegen.c_analysis import (
     CLambdaInfo,
     CProgramAnalysis,
@@ -2044,17 +2080,10 @@ class CEmitter:
                         isinstance(b_val, TypedExternal)
                         and isinstance(b_sym.type_val, (QFunType, QAllType))
                     ):
-                        builtin_ast = BuiltinModuleRegistry.get_module_ast(mod.name)
-                        inline_tmpl = None
-                        if builtin_ast is not None:
-                            for b_item in builtin_ast.bindings:
-                                if (
-                                    isinstance(b_item, TypedNativeBinding)
-                                    and b_item.name == b_name
-                                    and b_item.inline_template
-                                    ):
-                                    inline_tmpl = b_item.inline_template
-                                    break
+                        inline_tmpl = (
+                            BUILTIN_INLINE_TEMPLATES.get(b_val.symbol)
+                            or BUILTIN_INLINE_TEMPLATES.get(f"{mod.name}.{b_name}")
+                        )
                         mod_native_funs.append(
                             TypedNativeBinding(
                                 name=b_name,
@@ -2506,7 +2535,7 @@ class CEmitter:
         for il in init_lines:
             lines.append(f"    {il}" if il.strip() else il)
 
-        mod_rec_t = BuiltinModuleRegistry._build_record_type_from_scope(mod.scope)
+        mod_rec_t = build_record_type_from_scope(mod.scope)
         rec_struct = self.record_struct_name(mod_rec_t)
         payload_var = f"_{clean_mod}_payload"
         lines.append(
