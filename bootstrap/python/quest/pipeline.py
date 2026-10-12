@@ -46,7 +46,7 @@ from quest.runtime import OK_VALUE, QOk, QValue, qvalue_to_str
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
 from quest.syntax.tokens import Token, TokenKind
-from quest.typechecker import (
+from quest.typechecker.typecheck import (
     elaborate_phrase,
     elaborate_program,
     synth_expr,

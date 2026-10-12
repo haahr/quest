@@ -7,7 +7,7 @@ from quest.modules import (
     elaborate_interface,
     elaborate_module,
 )
-from quest.typechecker import (
+from quest.typechecker.typecheck import (
     elaborate_program,
     synth_expr,
 )

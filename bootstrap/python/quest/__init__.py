@@ -106,7 +106,7 @@ from quest.modules import (
     elaborate_interface,
     elaborate_module,
 )
-from quest.typechecker import (
+from quest.typechecker.typecheck import (
     TypeElaborator,
     check_expr,
     elaborate_phrase,

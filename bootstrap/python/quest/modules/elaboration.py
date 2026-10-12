@@ -326,7 +326,7 @@ def elaborate_module(
 
     # 2. Elaborate module internal bindings
     if binding_elaborator is None:
-        from quest.typechecker import elaborate_binding
+        from quest.typechecker.typecheck import elaborate_binding
         binding_elaborator = elaborate_binding
 
     saved_scope = env.current_scope

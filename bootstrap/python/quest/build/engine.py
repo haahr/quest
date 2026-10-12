@@ -40,7 +40,7 @@ from quest.modules.paths import (
 from quest.config import CompilerOptions
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap
-from quest.typechecker import TypeElaborator
+from quest.typechecker.typecheck import TypeElaborator
 
 
 

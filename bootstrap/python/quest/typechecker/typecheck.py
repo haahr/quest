@@ -41,7 +41,6 @@ from quest.types import (
     QTupleTypeBinding,
     QTupleTypeFormal,
     QPathType,
-    find_path_types,
     type_mentions_symbol_ids,
     QType,
     QTypeMeta,
@@ -163,197 +162,32 @@ from quest.typed_ast import (
 )
 
 
+from quest.typechecker.checks import (
+    check_distinct_names,
+    check_type_arg_kind,
+    describe_kind,
+    join_types,
+    require_subtype,
+)
+from quest.typechecker.escape import (
+    check_dynamic_type_args,
+    check_no_escaping_path_types,
+    check_no_package_types,
+    inspected_auto_type,
+    is_auto_type,
+    mutable_type_vars_with_ids,
+    type_vars_with_ids,
+)
+from quest.typechecker.lvalues import check_lvalue_mode_type
+from quest.typechecker.metas import resolve_typed_metas
+
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
-
-
-def _inspected_auto_type(target: TypedExpr, env: Environment) -> Optional[QAutoType]:
-    """The auto type of an inspect target."""
-    target_type = target.type_val.evaluate_lazily(env)
-    return target_type if isinstance(target_type, QAutoType) else None
-
-
-def _is_auto_type(t: QType) -> bool:
-    return isinstance(unalias(t), QAutoType)
-
-
-def _check_dynamic_type_args(
-    all_type: QAllType,
-    type_args: Sequence[QType],
-    offset: int,
-    check: Callable[[QType, str, int], None],
-) -> None:
-    """Checks with `check` (the closedness check) the type argument of a function shaped like dynamic.new
-    (A::TYPE a:A): T or dynamic.be (A::TYPE d:T): A for an auto type T, which record or test the type argument at
-    run time (inside the function it is a type parameter, which the closedness check allows)."""
-    body = all_type.body
-    if len(all_type.quantifiers) != 1 or not isinstance(body, QFunType) or len(body.params) != 1 or not type_args:
-        return
-    a_id = all_type.quantifiers[0].symbol_id
-
-    def is_a(t: QType) -> bool:
-        t = unalias(t)
-        return isinstance(t, QTypeVar) and t.symbol_id == a_id
-
-    param_t = body.params[0].type_val
-    if (is_a(param_t) and _is_auto_type(body.result_type)) or (
-        _is_auto_type(param_t) and is_a(body.result_type)
-    ):
-        check(type_args[0], "The type of a dynamic value", offset)
-
-
-def _check_no_package_types(t: QType, what: str, offset: int) -> None:
-    """Rejects a type that mentions an abstract type projected from a package value (t.A): its identity is the
-    package's hidden type, which is not known at run time."""
-    paths = find_path_types(strip_aliases(t))
-    if paths:
-        names = ", ".join(sorted({f"{p.root_name}.{p.field_name}" for p in paths}))
-        raise TypeError(
-            f"{what} cannot mention {names}, an abstract type of a package value, because its identity is not "
-            f"known at run time",
-            offset=offset,
-        )
-
-
-def _describe_kind(k: QKind) -> str:
-    """Formats a kind as written in a HasKind clause: <: T for POWER(T), :: K otherwise."""
-    if isinstance(k, QPowerKind):
-        return f"<: {k.bound}"
-    return f":: {k}"
-
-
-def _mutable_type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
-    """The type variables in t (a type stripped of aliases) whose symbol ids are in ids and that occur inside
-    mutable data: an array's elements, a var component or field, or a var or out parameter."""
-    found: list[Any] = []
-    seen: set[tuple[int, bool]] = set()
-
-    def visit(node: Any, mutable: bool) -> None:
-        if (id(node), mutable) in seen:
-            return
-        seen.add((id(node), mutable))
-        if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in ids and mutable:
-            found.append(node)
-        if isinstance(node, (tuple, list)):
-            for item in node:
-                visit(item, mutable)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            inner = (
-                mutable
-                or isinstance(node, QArrayType)
-                or bool(getattr(node, "is_var", False))
-                or bool(getattr(node, "is_out", False))
-            )
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name), inner)
-
-    visit(t, False)
-    return found
-
-
-def _type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
-    """The type variables in t (a type stripped of aliases) whose symbol ids are in ids."""
-    found: list[Any] = []
-    seen: set[int] = set()
-
-    def visit(node: Any) -> None:
-        if id(node) in seen:
-            return
-        seen.add(id(node))
-        if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in ids:
-            found.append(node)
-        if isinstance(node, (tuple, list)):
-            for item in node:
-                visit(item)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name))
-
-    visit(t)
-    return found
-
-
-def check_no_escaping_path_types(
-    typ: QType,
-    local_symbol_ids: set[int],
-    context_desc: str,
-    offset: int = 0,
-) -> None:
-    """Ensures that no abstract path-dependent types rooted at local variables escape."""
-    for p in find_path_types(typ):
-        if p.root_symbol_id in local_symbol_ids:
-            raise TypeError(
-                f"Abstract type '{p.root_name}.{p.field_name}' cannot escape {context_desc} "
-                f"in type '{typ}'",
-                offset=offset,
-            )
-
-
-
-
-# ============================================================================
-# Operator Signatures (Cardelli §4.2)
-# ============================================================================
-
-# Note: INFIX_OPERATORS is imported from quest.types above.
-
 
 
 # ============================================================================
 # Bidirectional Typechecker & Elaboration Engine
 # ============================================================================
-
-def _check_type_arg_kind(what: str, targ: QType, bound: QKind, env: Environment, offset: int) -> None:
-    """Checks that a type argument (explicit or inferred) has a kind within its quantifier's bound."""
-    bound_lazy = bound.evaluate_lazily(env)
-    if isinstance(bound_lazy, QPowerKind):
-        if not is_subtype(targ, bound_lazy.bound, env):
-            raise KindError(f"{what} '{targ}' is not a subtype of bound '{bound_lazy.bound}'", offset=offset)
-        return
-    kind = synth_kind(targ, env)
-    if not is_subkind(kind, bound_lazy, env):
-        raise KindError(
-            f"{what} '{targ}' has kind '{kind}', which is not a subkind of '{bound_lazy}'",
-            offset=offset,
-        )
-
-
-def _resolve_typed_metas(node: Any, memo: dict[int, Any]) -> Any:
-    """Rebuilds a typed AST with solved metavariables in its types replaced by their solutions."""
-    key = id(node)
-    if key in memo:
-        return memo[key]
-    result = node
-    if isinstance(node, QType):
-        result = resolve_metas(node)
-    elif isinstance(node, tuple):
-        items = tuple(_resolve_typed_metas(item, memo) for item in node)
-        if any(a is not b for a, b in zip(items, node)):
-            result = items
-    elif dataclasses.is_dataclass(node) and type(node).__module__ == typed_ast_module.__name__:
-        changes = {}
-        for f in dataclasses.fields(node):
-            if f.init:
-                old = getattr(node, f.name)
-                new = _resolve_typed_metas(old, memo)
-                if new is not old:
-                    changes[f.name] = new
-        if changes:
-            result = dataclasses.replace(node, **changes)
-    memo[key] = result
-    return result
-
-
-def _check_distinct_names(members: Any) -> None:
-    """Rejects a simultaneous declaration (members joined by and) that declares one name twice."""
-    seen: set[str] = set()
-    for member in members:
-        if member.name in seen:
-            raise TypeError(
-                f"'{member.name}' is declared more than once in one simultaneous declaration",
-                offset=member.offset,
-            )
-        seen.add(member.name)
 
 
 class TypeElaborator:
@@ -396,29 +230,6 @@ class TypeElaborator:
         finally:
             self.loop_depth = saved_depth
             self.function_depth -= 1
-
-    def _join_types(
-        self,
-        types: list[QType] | tuple[QType, ...],
-        env: Environment,
-        offset: int,
-        error_msg: Optional[str] = None,
-    ) -> QType:
-        """Computes the least common supertype of a collection of types under subtyping."""
-        if not types:
-            return OK_TYPE
-        join_type = types[0]
-        for bt in types[1:]:
-            if is_subtype(join_type, bt, env):
-                join_type = bt
-            elif is_subtype(bt, join_type, env):
-                pass
-            else:
-                msg = error_msg or f"Cannot find common supertype join for branch types '{join_type}' and '{bt}'"
-                if "{t1}" in msg:
-                    msg = msg.format(t1=join_type, t2=bt)
-                raise TypeError(msg, offset=offset)
-        return join_type
 
     def _elaborate_subexpr(
         self,
@@ -468,24 +279,7 @@ class TypeElaborator:
     ) -> TypedExpr:
         """Synthesizes expr and asserts that the synthesized type is a subtype of expected_type."""
         typed = self.synth_expr(expr, env, loop_depth)
-        return self._require_subtype(expr, typed, expected_type, env, type_desc)
-
-    def _require_subtype(
-        self,
-        expr: ast.Expr,
-        typed: TypedExpr,
-        expected_type: QType,
-        env: Environment,
-        type_desc: Optional[str] = None,
-    ) -> TypedExpr:
-        """Asserts that the type of an elaborated expression is a subtype of expected_type."""
-        if not is_subtype(typed.type_val, expected_type, env):
-            prefix = "Type mismatch: synthesized" if type_desc is None else f"{type_desc}"
-            raise TypeError(
-                f"{prefix} type '{typed.type_val}' is not a subtype of expected type '{expected_type}'",
-                offset=expr.offset,
-            )
-        return typed
+        return require_subtype(expr, typed, expected_type, env, type_desc)
 
     def _check_call_args(
         self,
@@ -510,40 +304,6 @@ class TypeElaborator:
             else:
                 typed_args.append(self.check_expr(arg, param.type_val, env, loop_depth))
         return typed_args
-
-    def _check_lvalue_mode_type(
-        self,
-        param_type: QType,
-        dest_raw_type: QType,
-        is_out: bool,
-        target_desc: str,
-        offset: int,
-        env: Environment,
-    ) -> QType:
-        """Unwraps reference cell types and validates invariance (var) or covariance (out)."""
-        dest_type = (
-            dest_raw_type.element_type
-            if isinstance(dest_raw_type, (QVarType, QOutType))
-            else dest_raw_type
-        )
-        if is_out:
-            if not is_subtype(param_type, dest_type, env):
-                raise TypeError(
-                    f"Type mismatch on out parameter: parameter type '{param_type}' is not a subtype "
-                    f"of destination {target_desc} type '{dest_type}'",
-                    offset=offset,
-                )
-        else:
-            if not (
-                is_subtype(param_type, dest_type, env)
-                and is_subtype(dest_type, param_type, env)
-            ):
-                raise TypeError(
-                    f"Type mismatch on var parameter: expected exactly '{param_type}', but got "
-                    f"{target_desc} of type '{dest_type}' (var parameters are invariant)",
-                    offset=offset,
-                )
-        return dest_type
 
     def _declare_fun_params(
         self,
@@ -626,16 +386,6 @@ class TypeElaborator:
                 f"{op_desc} requires Variant or Option target, got '{target_type}'",
                 offset=offset,
             )
-
-    def check_no_escaping_path_types(
-        self,
-        typ: QType,
-        local_symbol_ids: set[int],
-        context_desc: str,
-        offset: int = 0,
-    ) -> None:
-        """Ensures that a type does not mention local path types that cannot escape."""
-        check_no_escaping_path_types(typ, local_symbol_ids, context_desc, offset)
 
     def check(
         self,
@@ -747,7 +497,7 @@ class TypeElaborator:
             #     (Cardelli, The Quest Language and System §4: cons(3 nil()))
             case ast.ExprApp():
                 typed = self._synth_app_expr(expr, env, loop_depth, expected_type=expected_type)
-                return self._require_subtype(expr, typed, expected_type, env)
+                return require_subtype(expr, typed, expected_type, env)
 
             # 14. Subsumption: synthesize minimal type and check subtyping (S <= T)
             case _:
@@ -1223,7 +973,7 @@ class TypeElaborator:
                         f"Argument to 'var' parameter '{target.name}' must be a mutable variable",
                         offset=offset,
                     )
-            dest_type = self._check_lvalue_mode_type(
+            dest_type = check_lvalue_mode_type(
                 param_type, sym.type_val, is_out, "variable", offset, env
             )
             return TypedVar(
@@ -1258,7 +1008,7 @@ class TypeElaborator:
                         f"Tuple component '{target.field}' is not mutable",
                         offset=offset,
                     )
-                dest_type = self._check_lvalue_mode_type(
+                dest_type = check_lvalue_mode_type(
                     param_type, field_type, is_out, "tuple component", offset, env
                 )
                 fld_name = target.field if not target.field.isdigit() else None
@@ -1288,7 +1038,7 @@ class TypeElaborator:
                     f"Record field '{target.field}' is not mutable",
                     offset=offset,
                 )
-            field_type = self._check_lvalue_mode_type(
+            field_type = check_lvalue_mode_type(
                 param_type, field.type_val, is_out, "field", offset, env
             )
             return TypedSelectRef(
@@ -1308,7 +1058,7 @@ class TypeElaborator:
                     offset=offset,
                 )
             idx_typed = self.check_expr(target.index, INT_TYPE, env, loop_depth)
-            dest_type = self._check_lvalue_mode_type(
+            dest_type = check_lvalue_mode_type(
                 param_type, arr_type.element_type, is_out, "array element", offset, env
             )
             return TypedIndexRef(
@@ -1363,7 +1113,7 @@ class TypeElaborator:
                 targ_ast = expr.args[i]
                 if isinstance(targ_ast, ast.TypeArgument):
                     targ_val = elaborate_type(targ_ast.type_val, env)
-                    _check_type_arg_kind(
+                    check_type_arg_kind(
                         "Type argument", targ_val, q.bound.substitute(subst), env, targ_ast.offset
                     )
                     subst[q.symbol_id] = targ_val
@@ -1385,7 +1135,7 @@ class TypeElaborator:
             else:
                 instantiated_type = all_type.body.substitute(subst)
 
-            _check_dynamic_type_args(all_type, resolved_targs, expr.offset, self._check_closed_type)
+            check_dynamic_type_args(all_type, resolved_targs, expr.offset, self._check_closed_type)
             typed_type_app = TypedTypeApp(
                 func=func_typed,
                 type_args=tuple(resolved_targs),
@@ -1467,7 +1217,7 @@ class TypeElaborator:
             solved = meta.prune()
             if solved is not meta:
                 bound = q.bound.substitute(meta_map).substitute({})  # prunes the solved metavariables
-                _check_type_arg_kind("Inferred type argument", resolve_metas(solved), bound, env, offset)
+                check_type_arg_kind("Inferred type argument", resolve_metas(solved), bound, env, offset)
 
         resolved_targs = [resolve_metas(meta_map[q.symbol_id]) for q in all_type.quantifiers]
         final_fn = resolve_metas(instantiated_fn)
@@ -1475,11 +1225,11 @@ class TypeElaborator:
             # Arguments elaborated in check mode (e.g. an array literal checked against Array(?A)) and
             # nested calls that deferred to this one still refer to the now-solved metavariables.
             memo: dict[int, Any] = {}
-            typed_args = [_resolve_typed_metas(a, memo) for a in typed_args]
+            typed_args = [resolve_typed_metas(a, memo) for a in typed_args]
             leaked = unsolved_metas(final_fn) + [m for t in resolved_targs for m in unsolved_metas(t)]
             assert not leaked, f"Metavariables escaped polymorphic call inference: {leaked}"
 
-        _check_dynamic_type_args(all_type, resolved_targs, expr.offset, self._check_closed_type)
+        check_dynamic_type_args(all_type, resolved_targs, expr.offset, self._check_closed_type)
         typed_type_app = TypedTypeApp(
             func=func_typed,
             type_args=tuple(resolved_targs),
@@ -1612,7 +1362,7 @@ class TypeElaborator:
                     self._declare_tuple_label(b.name, val_typed.type_val, b.is_var, env)
                 elif isinstance(b, ast.TupleBindingGroup):
                     # Simultaneous: every member's value is elaborated before any label is declared
-                    _check_distinct_names(b.bindings)
+                    check_distinct_names(b.bindings)
                     members = [(m, self._synth_tuple_component(m, env, loop_depth)) for m in b.bindings]
                     simultaneous_groups.append(tuple(range(len(elem_typeds), len(elem_typeds) + len(members))))
                     for m, val_typed in members:
@@ -1679,11 +1429,11 @@ class TypeElaborator:
                 type_bindings.update((id(member), b) for member in members)
             elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
                 value_members = b.bindings if isinstance(b, ast.LetValueBindingGroup) else (b,)
-                _check_distinct_names(value_members)
+                check_distinct_names(value_members)
                 fields.extend(value_members)
                 rec_members.update((id(member), value_members) for member in value_members)
             elif isinstance(b, ast.TupleBindingGroup):
-                _check_distinct_names(b.bindings)
+                check_distinct_names(b.bindings)
                 fields.extend(b.bindings)
                 simultaneous_members.update((id(member), b.bindings) for member in b.bindings)
             else:
@@ -2185,7 +1935,7 @@ class TypeElaborator:
                 offset=expr.offset,
             )
 
-        join_type = self._join_types(
+        join_type = join_types(
             branch_types,
             env,
             expr.offset,
@@ -2340,7 +2090,7 @@ class TypeElaborator:
             )
 
         elem_typeds = [self.synth_expr(e, env, loop_depth) for e in expr.elements]
-        join_type = self._join_types(
+        join_type = join_types(
             [e.type_val for e in elem_typeds],
             env,
             expr.offset,
@@ -2610,7 +2360,7 @@ class TypeElaborator:
             typed_branches, else_typed, initial_type=body_typed.type_val
         )
 
-        join_type = self._join_types(
+        join_type = join_types(
             all_types,
             env,
             expr.offset,
@@ -2712,14 +2462,14 @@ class TypeElaborator:
         have such a type component, since its binders must share those components. An abstract type projected
         from a package value (t.A) has no run-time identity.
         """
-        _check_no_package_types(t, what, offset)
+        check_no_package_types(t, what, offset)
         free = set(t._fv) & self._type_param_ids
         if not free:
             return
         bare = unalias(t)
         if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in self._type_param_ids:
             return
-        mutable = sorted({v.name for v in _mutable_type_vars_with_ids(strip_aliases(t), free)})
+        mutable = sorted({v.name for v in mutable_type_vars_with_ids(strip_aliases(t), free)})
         if mutable:
             raise TypeError(
                 f"{what} cannot yet mention a type parameter of an enclosing function inside mutable data (an "
@@ -2727,7 +2477,7 @@ class TypeElaborator:
                 offset=offset,
             )
         if auto_type is not None and any(f.is_var for f in auto_type.signature):
-            names = sorted({v.name for v in _type_vars_with_ids(strip_aliases(t), free)})
+            names = sorted({v.name for v in type_vars_with_ids(strip_aliases(t), free)})
             raise TypeError(
                 f"{what} cannot yet mention a type parameter of an enclosing function inside a larger type when "
                 f"the auto type has var components: '{t}' mentions {', '.join(names)}",
@@ -2758,7 +2508,7 @@ class TypeElaborator:
         except KindError:
             raise TypeError(
                 f"Type component '{witness}' of the auto value does not have kind "
-                f"'{_describe_kind(auto_type.kind_bound)}' required by '{expected_type}'",
+                f"'{describe_kind(auto_type.kind_bound)}' required by '{expected_type}'",
                 offset=expr.witness_type.offset,
             ) from None
         payload_type = auto_payload_type(auto_type, witness)
@@ -2772,7 +2522,7 @@ class TypeElaborator:
                 except KindError:
                     raise TypeError(
                         f"Type component '{witness}' of the auto value does not have the declared kind "
-                        f"'{_describe_kind(local_bound)}' of '{expr.witness_name}'",
+                        f"'{describe_kind(local_bound)}' of '{expr.witness_name}'",
                         offset=expr.witness_type.offset,
                     ) from None
                 env.current_scope.declare_type(
@@ -2807,7 +2557,7 @@ class TypeElaborator:
             target=target_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
-            auto_type=_inspected_auto_type(target_typed, env),
+            auto_type=inspected_auto_type(target_typed, env),
             type_val=expected_type,
             offset=expr.offset,
         )
@@ -2825,12 +2575,12 @@ class TypeElaborator:
                 target=target_typed,
                 branches=tuple(typed_branches),
                 else_branch=else_typed,
-                auto_type=_inspected_auto_type(target_typed, env),
+                auto_type=inspected_auto_type(target_typed, env),
                 type_val=OK_TYPE,
                 offset=expr.offset,
             )
 
-        join_type = self._join_types(
+        join_type = join_types(
             branch_types,
             env,
             expr.offset,
@@ -2840,7 +2590,7 @@ class TypeElaborator:
             target=target_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
-            auto_type=_inspected_auto_type(target_typed, env),
+            auto_type=inspected_auto_type(target_typed, env),
             type_val=join_type,
             offset=expr.offset,
         )
@@ -3112,7 +2862,7 @@ class TypeElaborator:
         then_typed = self.synth_expr(expr.then_branch, env, loop_depth)
         else_typed = self.synth_expr(desugared_else, env, loop_depth)
 
-        join_type = self._join_types(
+        join_type = join_types(
             [then_typed.type_val, else_typed.type_val],
             env,
             expr.offset,
@@ -3327,7 +3077,7 @@ class TypeElaborator:
         Without rec, each member is elaborated in a scope of its own, so it sees the enclosing scope and not the other
         members, and all are declared once every member has been elaborated.
         """
-        _check_distinct_names(group.bindings)
+        check_distinct_names(group.bindings)
         if not group.bindings[0].is_rec:
             members: list[TypedLetValue] = []
             for member in group.bindings:
@@ -3550,6 +3300,3 @@ def elaborate_binding(
     return TypeElaborator(env=env, loop_depth=loop_depth)._elaborate_binding(
         binding, env=env, loop_depth=loop_depth
     )
-
-
-_elaborate_binding = elaborate_binding

@@ -17,7 +17,7 @@ from quest.pipeline import (
     default_pipeline,
 )
 from quest.runtime import OK_VALUE
-from quest.typechecker import check_expr, synth_expr
+from quest.typechecker.typecheck import check_expr, synth_expr
 from quest.typed_ast import TypedBinding, TypedExpr, TypedProgram
 from quest.types import QKind, QType, is_type_equal
 
