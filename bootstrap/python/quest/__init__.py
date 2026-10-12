@@ -62,6 +62,10 @@ from quest.types import (
     check_kind,
     synth_kind,
     qtype_dump,
+    KindLookupEnv,
+    KindSymbolProtocol,
+    TypeLookupEnv,
+    TypeSymbolProtocol,
 )
 from quest.env import (
     Symbol,
@@ -169,6 +173,10 @@ __all__ = [
     "check_kind",
     "synth_kind",
     "qtype_dump",
+    "KindLookupEnv",
+    "KindSymbolProtocol",
+    "TypeLookupEnv",
+    "TypeSymbolProtocol",
     "Symbol",
     "ValueSymbol",
     "TypeSymbol",

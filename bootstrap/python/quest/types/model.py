@@ -22,10 +22,34 @@ MAX_TYPE_EXPANSION_DEPTH = 500
 
 
 @runtime_checkable
+class TypeSymbolProtocol(Protocol):
+    """Structural protocol for type-level symbols."""
+    name: str
+    symbol_id: int
+    kind: QKind
+    definition: Optional[QType]
+
+
+@runtime_checkable
+class KindSymbolProtocol(Protocol):
+    """Structural protocol for kind-level symbols."""
+    name: str
+    symbol_id: int
+    kind: QKind
+
+
+@runtime_checkable
 class TypeLookupEnv(Protocol):
     """Minimal environment protocol needed for lazy type variable evaluation."""
-    def lookup_type_by_id(self, symbol_id: int) -> Optional[Any]: ...
-    def lookup_type(self, name: str) -> Optional[Any]: ...
+    def lookup_type_by_id(self, symbol_id: int) -> Optional[TypeSymbolProtocol]: ...
+    def lookup_type(self, name: str) -> Optional[TypeSymbolProtocol]: ...
+
+
+@runtime_checkable
+class KindLookupEnv(Protocol):
+    """Minimal environment protocol needed for lazy kind evaluation."""
+    def lookup_kind_by_id(self, symbol_id: int) -> Optional[KindSymbolProtocol]: ...
+    def lookup_kind(self, name: str) -> Optional[KindSymbolProtocol]: ...
 
 # ============================================================================
 # Reserved Symbol Ids

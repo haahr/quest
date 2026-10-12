@@ -58,6 +58,10 @@ from quest.types import (
     find_path_types,
     type_mentions_symbol_ids,
     QPathType,
+    KindLookupEnv,
+    KindSymbolProtocol,
+    TypeLookupEnv,
+    TypeSymbolProtocol,
     qtype_dump,
 )
 from quest.env import (
@@ -551,6 +555,42 @@ class TestScopingAndEnvironment(unittest.TestCase):
         # Lazy evaluation resolves the alias via the environment
         resolved = type_var.evaluate_lazily(env)
         self.assertEqual(resolved, INT_TYPE)
+
+    def test_declare_type_variable_and_protocols(self):
+        env = Environment()
+        # Verify Environment satisfies TypeLookupEnv and KindLookupEnv
+        self.assertIsInstance(env, TypeLookupEnv)
+        self.assertIsInstance(env, KindLookupEnv)
+
+        # Declare type variable via Scope helper method
+        sym = env.current_scope.declare_type_variable(
+            name="T",
+            symbol_id=200,
+            kind=TYPE_KIND,
+            definition=None,
+        )
+        self.assertEqual(sym.name, "T")
+        self.assertEqual(sym.symbol_id, 200)
+        self.assertEqual(sym.kind, TYPE_KIND)
+        self.assertIsNone(sym.definition)
+        self.assertIsInstance(sym, TypeSymbolProtocol)
+
+        # Lookup returns symbol matching protocol
+        looked_up = env.lookup_type_by_id(200)
+        self.assertIsNotNone(looked_up)
+        self.assertIsInstance(looked_up, TypeSymbolProtocol)
+        self.assertEqual(looked_up.name, "T")
+
+        # Declare type variable via Environment helper delegation
+        sym2 = env.declare_type_variable(
+            name="U",
+            symbol_id=201,
+            kind=TYPE_KIND,
+            definition=STRING_TYPE,
+        )
+        self.assertEqual(sym2.definition, STRING_TYPE)
+        self.assertIsInstance(sym2, TypeSymbolProtocol)
+        self.assertEqual(env.lookup_type("U").definition, STRING_TYPE)
 
 
 if __name__ == "__main__":

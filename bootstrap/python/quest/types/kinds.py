@@ -109,15 +109,12 @@ def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
         ):
             check_kind_well_formed(param_kind, env)
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope(f"kind_param_{param_name}")
                 try:
-                    env.current_scope.declare_type(
-                        TypeSymbol(
-                            name=param_name,
-                            symbol_id=param_id,
-                            kind=param_kind,
-                        )
+                    env.current_scope.declare_type_variable(
+                        name=param_name,
+                        symbol_id=param_id,
+                        kind=param_kind,
                     )
                     check_kind_well_formed(result_kind, env)
                 finally:
@@ -201,26 +198,23 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
         case QTupleType(fields=fields):
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope("tuple_kind_check")
                 try:
                     for f in fields:
                         if isinstance(f, QTupleTypeFormal):
                             check_kind_well_formed(f.bound, env)
-                            env.current_scope.declare_type(
-                                TypeSymbol(name=f.name, symbol_id=f.symbol_id, kind=f.bound)
+                            env.current_scope.declare_type_variable(
+                                name=f.name, symbol_id=f.symbol_id, kind=f.bound
                             )
                         elif isinstance(f, QTupleField):
                             check_kind(f.type_val, TYPE_KIND, env)
                         elif isinstance(f, QTupleTypeBinding):
                             check_kind(f.type_val, TYPE_KIND, env)
-                            env.current_scope.declare_type(
-                                TypeSymbol(
-                                    name=f.name,
-                                    symbol_id=env.fresh_symbol_id(),
-                                    kind=f.bound or TYPE_KIND,
-                                    definition=f.type_val,
-                                )
+                            env.current_scope.declare_type_variable(
+                                name=f.name,
+                                symbol_id=env.fresh_symbol_id(),
+                                kind=f.bound or TYPE_KIND,
+                                definition=f.type_val,
                             )
                 finally:
                     env.pop_scope()
@@ -285,13 +279,12 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
         case QAllType(quantifiers=quants, body=body):
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope("all_type")
                 try:
                     for q in quants:
                         check_kind_well_formed(q.bound, env)
-                        env.current_scope.declare_type(
-                            TypeSymbol(name=q.name, symbol_id=q.symbol_id, kind=q.bound)
+                        env.current_scope.declare_type_variable(
+                            name=q.name, symbol_id=q.symbol_id, kind=q.bound
                         )
                     check_kind(body, TYPE_KIND, env)
                 finally:
@@ -304,12 +297,11 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
         case QAutoType(type_param=param_name, symbol_id=sym_id, kind_bound=kbound, signature=sig):
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope("auto_type")
                 try:
                     check_kind_well_formed(kbound, env)
-                    env.current_scope.declare_type(
-                        TypeSymbol(name=param_name, symbol_id=sym_id, kind=kbound)
+                    env.current_scope.declare_type_variable(
+                        name=param_name, symbol_id=sym_id, kind=kbound
                     )
                     for f in sig:
                         check_kind(f.type_val, TYPE_KIND, env)
@@ -324,11 +316,10 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
         case QRecType(var_name=vname, symbol_id=sym_id, bound=bound, body=body):
             check_kind_well_formed(bound, env)
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope(f"rec_{vname}")
                 try:
-                    env.current_scope.declare_type(
-                        TypeSymbol(name=vname, symbol_id=sym_id, kind=bound)
+                    env.current_scope.declare_type_variable(
+                        name=vname, symbol_id=sym_id, kind=bound
                     )
                     check_kind(body, bound, env)
                 finally:
@@ -339,13 +330,12 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
         case QRecGroupType(bindings=bindings, active_index=idx):
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope("rec_group")
                 try:
                     for b_name, b_id, b_kind, _ in bindings:
                         check_kind_well_formed(b_kind, env)
-                        env.current_scope.declare_type(
-                            TypeSymbol(name=b_name, symbol_id=b_id, kind=b_kind)
+                        env.current_scope.declare_type_variable(
+                            name=b_name, symbol_id=b_id, kind=b_kind
                         )
                     for _, _, b_kind, b_body in bindings:
                         check_kind(b_body, b_kind, env)
@@ -355,13 +345,12 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
         case QTypeFun(params=formals, body=body):
             if env is not None and hasattr(env, "push_scope"):
-                from quest.env import TypeSymbol
                 env.push_scope("type_fun")
                 try:
                     for formal in formals:
                         check_kind_well_formed(formal.bound, env)
-                        env.current_scope.declare_type(
-                            TypeSymbol(name=formal.name, symbol_id=formal.symbol_id, kind=formal.bound)
+                        env.current_scope.declare_type_variable(
+                            name=formal.name, symbol_id=formal.symbol_id, kind=formal.bound
                         )
                     body_kind = synth_kind(body, env)
                 finally:

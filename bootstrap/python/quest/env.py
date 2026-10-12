@@ -170,6 +170,23 @@ class Scope:
         _TYPE_SYMBOLS_BY_ID[symbol.symbol_id] = symbol
         return symbol
 
+    def declare_type_variable(
+        self,
+        name: str,
+        symbol_id: int,
+        kind: QKind,
+        definition: Optional[QType] = None,
+    ) -> TypeSymbol:
+        """Declares a type symbol from its constituent attributes in the current scope."""
+        return self.declare_type(
+            TypeSymbol(
+                name=name,
+                symbol_id=symbol_id,
+                kind=kind,
+                definition=definition,
+            )
+        )
+
     def declare_kind(self, symbol: KindSymbol) -> KindSymbol:
         self._declarations.append(symbol)
         self._kinds[symbol.name] = symbol
@@ -322,7 +339,22 @@ class Environment:
         finally:
             self.pop_scope()
 
-    # --- Direct Delegation Lookups ---
+    # --- Direct Delegation Lookups and Declarations ---
+
+    def declare_type_variable(
+        self,
+        name: str,
+        symbol_id: int,
+        kind: QKind,
+        definition: Optional[QType] = None,
+    ) -> TypeSymbol:
+        """Declares a type symbol in the active scope."""
+        return self.current_scope.declare_type_variable(
+            name=name,
+            symbol_id=symbol_id,
+            kind=kind,
+            definition=definition,
+        )
 
     def lookup_value(self, name: str) -> Optional[ValueSymbol]:
         return self.current_scope.lookup_value(name)
