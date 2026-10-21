@@ -285,12 +285,14 @@ the envelope changed, with `ABI_VERSION` 4.
 
 ### 3.5. Abstract Types
 
-> **Status:** planned. Until it is implemented, both backends raise `dynamic.error` when externing a value
+> **Status:** implemented in the interpreter. Compiled code still raises `dynamic.error` when externing a value
 > whose type mentions a module's abstract type.
 
-- **Interpreter.** Elaborating a module records each exported abstract type in a process-wide registry, by the
-  symbol id of its opaque type and by its global name: the global name, the type's kind, and its representation
-  (the definition in the module's internal scope). The writer looks up an abstract type, or the operator of an
+- **Interpreter.** Elaborating a module records each exported abstract type in a process-wide registry
+  (`quest/modules/abstract_types.py`), by the symbol id of its opaque type and by its global name, with its
+  representation (the definition in the module's internal scope). The opaque type has one symbol id per global
+  name, in every environment: the interpreter evaluates a module in an environment of its own, and the type it
+  reads must be the one the program was checked with. The writer looks up an abstract type, or the operator of an
   application, and writes the value at the representation (applied to the arguments). The reader looks up the
   name: for a linked module it checks that the recorded representation is equal (`is_type_equal`) to the
   module's, applied to the arguments, and yields the module's abstract type; for an unlinked one it makes one

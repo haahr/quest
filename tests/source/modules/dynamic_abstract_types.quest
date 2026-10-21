@@ -1,0 +1,57 @@
+(* Dynamic values of module abstract types (docs/dynamic.md §2.3): an abstract type is written by its global name
+   (the module's canonical path and the type's name) and its representation, an application of an abstract type
+   operator also with its arguments, and word.T as the external type uint64_t. intern checks a representation
+   against the linked module's, and keeps the type of a module the program does not link opaque. *)
+(* @skip-phase: run_c_compiled *)
+(* @stdin:
+{"quest":1,"types":[{"abstract":"tests/source/modules/geom/ring.T","rep":1},{"record":{"items":2,"label":"String"}},
+ {"abstract":"list.T","args":["Int"],"rep":3},{"option":{"nil":null,"cons":4}},{"tuple":[["head","Int"],["tail",3]]}],
+ "type":0,"value":{"items":{"cons":[4,{"cons":[5,"nil"]}]},"label":"read"}}
+{"quest":1,"types":[{"abstract":"tests/source/modules/geom/box.T","args":["String"],"rep":1},{"record":{"count":"Int","value":"String"}}],
+ "type":0,"value":{"count":3,"value":"boxed"}}
+{"quest":1,"types":[{"abstract":"tests/source/modules/geom/ring.T","rep":1},{"record":{"label":"String"}}],"type":0,"value":{"label":"old"}}
+{"quest":1,"types":[{"abstract":"elsewhere/thing.T","rep":"Int"}],"type":0,"value":42}
+{"quest":1,"types":[{"external":"uint64_t"}],"type":0,"value":18446744073709551615}
+*)
+
+import ring: Ring = geom/ring : geom/Ring;
+import box: Box = geom/box : geom/Box;
+import dynamic: Dynamic;
+import reader: Reader;
+import writer: Writer;
+import word: Word;
+import conv: Conv;
+
+let nl() = writer.putString(writer.output "\n");
+let say(s: String) = begin writer.putString(writer.output s); nl() end;
+let emit(d: Dynamic.T) = begin dynamic.extern(writer.output d); nl() end;
+
+(* 1. An abstract type whose representation mentions an application of another module's abstract type operator *)
+let r = ring.make("written" arrayOp.new(:Int 2 3));
+emit(dynamic.new(:ring.T r));
+
+(* 2. Applications of an abstract type operator, built generically and at a particular argument by the module *)
+emit(dynamic.new(:box.T(Bool) box.box(:Bool true)));
+emit(dynamic.new(:box.T(Int) box.seven));
+
+(* 3. Inside a nested dynamic value, and the external type of word.T *)
+Let Labeled = Record label: String payload: Dynamic.T end;
+emit(dynamic.new(:Labeled record label = "nested" payload = dynamic.new(:list.T(Int) list.cons(:Int 1 list.nil(:Int))) end));
+emit(dynamic.new(:word.T word.fromInt(5)));
+
+(* 4. Reading a value of a linked module's abstract type *)
+let rd = dynamic.be(:ring.T dynamic.intern(reader.input));
+say(ring.label(rd));
+say(conv.int(ring.total(rd)));
+say(box.unbox(:String dynamic.be(:box.T(String) dynamic.intern(reader.input))));
+
+(* 5. A representation that does not match the linked module's *)
+say(try ring.label(dynamic.be(:ring.T dynamic.intern(reader.input))) when dynamic.error then "mismatch" end);
+
+(* 6. The type of a module the program does not link is opaque, and is written again as it was read *)
+let unlinked = dynamic.intern(reader.input);
+say(try conv.int(dynamic.be(:Int unlinked)) when dynamic.error then "opaque" end);
+emit(unlinked);
+
+(* 7. Reading a word *)
+say(conv.int(word.toInt(word.shift(dynamic.be(:word.T dynamic.intern(reader.input)) 0 - 60))));

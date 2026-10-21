@@ -36,6 +36,14 @@ from quest.runtime import (
     QTuple,
     QValue,
     QVariant,
+    QWord,
+)
+from quest.modules.abstract_types import (
+    ModuleAbstractType,
+    abstract_type_by_name,
+    abstract_type_by_symbol,
+    abstract_type_symbol_id,
+    register_unlinked_abstract_type,
 )
 from quest.types import (
     BOOL_TYPE,
@@ -47,10 +55,12 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     TYPE_KIND,
+    QAllKind,
     QAllType,
     QArrayType,
     QAutoType,
     QExceptionType,
+    QExternalType,
     QFunType,
     QOptionField,
     QOptionType,
@@ -62,10 +72,13 @@ from quest.types import (
     QTupleField,
     QTupleType,
     QType,
+    QKind,
     QTypeApp,
+    QTypeKind,
     QTypeVar,
     QVariantField,
     QVariantType,
+    is_type_equal,
     unalias,
 )
 
@@ -120,7 +133,12 @@ def parse_type_string(type_str: str) -> QType:
 #
 # A node is (shape, children). The shape holds the constructor and its labels; children are type refs, in the
 # order the node lists them: record fields sorted by name, tuple components and function parameters in order (then
-# the function's result), variant and option cases in declaration order (only those with a payload).
+# the function's result), variant and option cases in declaration order (only those with a payload), and an
+# abstract type's arguments (then its representation).
+
+# The external types whose values can be externed, and how: word.T is external "uint64_t", written as an integer
+_EXTERNAL_TYPES = ("uint64_t",)
+_WORD_LIMIT = 1 << 64
 
 _BUILTIN_TYPES: dict[str, QType] = {
     "Ok": OK_TYPE,
@@ -154,6 +172,42 @@ def _structure(t: QType) -> QType:
             t = unfolded
             continue
         return t
+    raise _fail()
+
+
+def _is_unbounded(kind: QKind) -> bool:
+    """Whether an abstract type of this kind is encodable: TYPE, or an operator from types to TYPE. A bounded
+    abstract type (POWER(B)) is not, since compiled code stores its values as the bound (docs/dynamic.md §2.2)."""
+    while isinstance(kind, QAllKind):
+        if not isinstance(kind.param_kind, QTypeKind):
+            return False
+        kind = kind.result_kind
+    return isinstance(kind, QTypeKind)
+
+
+def _module_abstract_type(s: QType) -> Optional[tuple[ModuleAbstractType, tuple[QType, ...]]]:
+    """The module abstract type s is, or is an application of, with the application's arguments."""
+    args: tuple[QType, ...] = ()
+    if isinstance(s, QTypeApp):
+        args = s.arguments
+        s = unalias(s.constructor.prune() if hasattr(s.constructor, "prune") else s.constructor)
+    if not isinstance(s, QTypeVar):
+        return None
+    entry = abstract_type_by_symbol(s.symbol_id)
+    if entry is None or not _is_unbounded(entry.type_var.bound):
+        return None
+    return entry, args
+
+
+def _representation(entry: ModuleAbstractType, args: tuple[QType, ...]) -> QType:
+    """The representation of a module abstract type, or of an application of an abstract type operator."""
+    if entry.linked:
+        if entry.rep is None:  # a module known only through its interface
+            raise _fail()
+        return QTypeApp(constructor=entry.rep, arguments=args) if args else entry.rep
+    for instance_args, rep in entry.instances:  # a type read from a module the program does not link
+        if len(instance_args) == len(args) and all(is_type_equal(a, b) for a, b in zip(instance_args, args)):
+            return rep
     raise _fail()
 
 
@@ -216,7 +270,14 @@ class _TypeGraph:
             return ("fun", modes), tuple(self.ref(p.type_val) for p in s.params) + (self.ref(s.result_type),)
         if isinstance(s, QExceptionType):
             return ("exception",), (self.ref(s.payload_type),)
-        # Polymorphic types, abstract and external types, type operators, and other auto types: not encodable yet
+        if isinstance(s, QExternalType) and s.c_type in _EXTERNAL_TYPES:
+            return ("external", s.c_type), ()
+        abstract = _module_abstract_type(s)
+        if abstract is not None:
+            entry, args = abstract
+            children = tuple(self.ref(a) for a in args)
+            return ("abstract", entry.global_name, len(args)), children + (self.ref(_representation(entry, args)),)
+        # Polymorphic types, other abstract and external types, type operators, and other auto types: not encodable
         raise _fail()
 
 
@@ -270,6 +331,14 @@ def _canonical_table(
             table.append({"array": refs[0]})
         elif kind == "fun":
             table.append({"fun": {"params": [[m, r] for m, r in zip(shape[1], refs)], "result": refs[-1]}})
+        elif kind == "external":
+            table.append({"external": shape[1]})
+        elif kind == "abstract":
+            node: dict[str, Any] = {"abstract": shape[1]}
+            if shape[2]:
+                node["args"] = refs[:-1]
+            node["rep"] = refs[-1]
+            table.append(node)
         else:
             table.append({"exception": refs[0]})
     return table, {i: number[cls[i]] for i in range(len(nodes)) if cls[i] in number}
@@ -307,8 +376,15 @@ class _Writer:
         """Whether val may be shared: records, arrays, and nonempty tuples (compiled code has one empty tuple)."""
         return isinstance(val, (QRecord, QArray)) or (isinstance(val, QTuple) and len(val.elements) > 0)
 
+    def _concrete(self, ref: TypeRef) -> TypeRef:
+        """The type a value of type ref is written at: an abstract type's value is written at its representation."""
+        while not isinstance(ref, str) and self.graph.nodes[ref][0][0] == "abstract":
+            ref = self.graph.nodes[ref][1][-1]
+        return ref
+
     def _children(self, val: QValue, ref: TypeRef) -> list[tuple[QValue, TypeRef]]:
         """The component values of val with their type refs, in the order they are written."""
+        ref = self._concrete(ref)
         if isinstance(ref, str):
             if ref == "Dynamic":
                 if not isinstance(val, QAutoVal) or len(val.value.elements) != 1:
@@ -348,6 +424,8 @@ class _Writer:
             if not isinstance(payload, QTuple) or len(payload.elements) < len(components):
                 raise _fail()
             return list(zip(payload.elements, components))
+        if kind == "external":
+            return []
         raise _fail()  # functions and exceptions cannot be externed
 
     def _case_payload(self, val: QValue, shape: tuple[Any, ...], children: tuple[TypeRef, ...]) -> Optional[TypeRef]:
@@ -378,9 +456,14 @@ class _Writer:
 
     def encode(self, val: QValue, ref: TypeRef) -> Any:
         val = self._deref(val)
+        ref = self._concrete(ref)
         if isinstance(ref, str):
             return self._encode_builtin(val, ref)
         kind = self.graph.nodes[ref][0][0]
+        if kind == "external":
+            if not isinstance(val, QWord):
+                raise _fail()
+            return val.value
         obj_id: Optional[int] = None
         if self._has_identity(val) and id(val) in self.shared:
             if id(val) in self.ids:
@@ -458,7 +541,22 @@ def jsog_encode(dyn: QAutoVal) -> str:
 # Reading
 # ============================================================================
 
-_NODE_KINDS = ("record", "tuple", "variant", "option", "array", "fun", "exception")
+_NODE_KINDS = ("record", "tuple", "variant", "option", "array", "fun", "exception", "external", "abstract")
+
+
+def _arity(kind: QKind) -> int:
+    n = 0
+    while isinstance(kind, QAllKind):
+        n, kind = n + 1, kind.result_kind
+    return n
+
+
+def _operator_kind(arity: int) -> QKind:
+    """TYPE, or the kind of an operator from `arity` types to TYPE: that of an abstract type of an unlinked module."""
+    kind: QKind = TYPE_KIND
+    for i in reversed(range(arity)):
+        kind = QAllKind(param_name=f"A{i + 1}", param_id=allocate_symbol_id(), param_kind=TYPE_KIND, result_kind=kind)
+    return kind
 
 
 class _Reader:
@@ -485,6 +583,16 @@ class _Reader:
             raise _fail()
 
     def _check_node(self, node: Any) -> None:
+        if isinstance(node, dict) and "abstract" in node:
+            if set(node) - {"abstract", "args", "rep"} or "rep" not in node or not isinstance(node["abstract"], str):
+                raise _fail()
+            args = node.get("args", [None])
+            if not isinstance(args, list) or not args:
+                raise _fail()
+            for ref in node.get("args", []):
+                self._check_ref(ref)
+            self._check_ref(node["rep"])
+            return
         if not isinstance(node, dict) or len(node) != 1:
             raise _fail()
         ((kind, body),) = node.items()
@@ -509,6 +617,9 @@ class _Reader:
                 self._check_ref(ref)
         elif kind in ("array", "exception"):
             self._check_ref(body)
+        elif kind == "external":
+            if body not in _EXTERNAL_TYPES:
+                raise _fail()
         elif kind == "fun":
             if not isinstance(body, dict) or set(body) != {"params", "result"} or not isinstance(body["params"], list):
                 raise _fail()
@@ -521,8 +632,44 @@ class _Reader:
             raise _fail()
 
     def node(self, ref: int) -> tuple[str, Any]:
+        if "abstract" in self.table[ref]:
+            return "abstract", self.table[ref]
         ((kind, body),) = self.table[ref].items()
         return kind, body
+
+    def concrete(self, ref: TypeRef) -> TypeRef:
+        """The type a value of type ref is written at: an abstract type's value is written at its representation."""
+        for _ in range(len(self.table) + 1):
+            if isinstance(ref, str) or "abstract" not in self.table[ref]:
+                return ref
+            ref = self.table[ref]["rep"]
+        raise _fail()
+
+    def abstract_type(self, name: str, args: tuple[QType, ...], rep: QType) -> QType:
+        """The module abstract type `name` (applied to args), whose recorded representation is rep: the linked
+        module's type if rep is its representation, or the opaque type of an unlinked module (docs/dynamic.md §2.3)."""
+        entry = abstract_type_by_name(name)
+        closed = not (rep._fv & self.binder_id_set) and not any(a._fv & self.binder_id_set for a in args)
+        if entry is None:
+            if not closed:
+                raise _fail()
+            var = QTypeVar(name=name, symbol_id=abstract_type_symbol_id(name), bound=_operator_kind(len(args)))
+            entry = register_unlinked_abstract_type(name, var)
+        if _arity(entry.type_var.bound) != len(args) or not _is_unbounded(entry.type_var.bound):
+            raise _fail()
+        if not entry.linked:
+            try:
+                known = _representation(entry, args)
+            except QuestException:
+                if not closed:
+                    raise
+                entry.instances.append((args, rep))
+                known = rep
+        else:
+            known = _representation(entry, args)
+        if not is_type_equal(known, rep):
+            raise _fail()
+        return QTypeApp(constructor=entry.type_var, arguments=args) if args else entry.type_var
 
     def type_of(self, ref: TypeRef) -> QType:
         """The QType of a table entry; a node reached again while it is being built becomes a recursive type."""
@@ -564,6 +711,11 @@ class _Reader:
             ))
         elif kind == "array":
             t = QArrayType(element_type=self.type_of(body))
+        elif kind == "external":
+            t = QExternalType(name=body, c_type=body)
+        elif kind == "abstract":
+            args = tuple(self.type_of(a) for a in body.get("args", ()))
+            t = self.abstract_type(body["abstract"], args, self.type_of(body["rep"]))
         elif kind == "fun":
             t = QFunType(
                 params=tuple(
@@ -604,9 +756,14 @@ class _Reader:
         return None, None, data
 
     def value(self, data: Any, ref: TypeRef) -> QValue:
+        ref = self.concrete(ref)
         if isinstance(ref, str):
             return self._builtin_value(data, ref)
         kind, body = self.node(ref)
+        if kind == "external":
+            if not isinstance(data, int) or isinstance(data, bool) or not 0 <= data < _WORD_LIMIT:
+                raise _fail()
+            return QWord(data)
         if kind == "record":
             existing, obj_id, fields = self._shared(data, kind)
             if existing is not None:

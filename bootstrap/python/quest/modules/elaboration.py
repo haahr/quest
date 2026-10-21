@@ -224,7 +224,7 @@ def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env:
     if mod_scope is None:
         concrete_defs = extract_module_external_types(src)
         mod_scope = create_module_export_scope(
-            declared_module_name(src, mod_path), interface_scope, env, concrete_defs=concrete_defs
+            declared_module_name(src, mod_path), canon, interface_scope, env, concrete_defs=concrete_defs
         )
         env.module_export_scopes[canon] = mod_scope
     env.register_module(mod_path, mod_scope)
@@ -233,18 +233,25 @@ def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env:
 
 def create_module_export_scope(
     module_name: str,
+    canon: str,
     target_interface_scope: Scope,
     env: Environment,
     concrete_defs: Optional[dict[str, QType]] = None,
 ) -> Scope:
-    """Creates the exported scope for a module conforming to an interface scope."""
+    """Creates the exported scope for a module conforming to an interface scope.
+
+    canon is the module's canonical name. Each abstract type's opaque type has the symbol id of its global name,
+    canon.T, in every environment (docs/dynamic.md §2.3).
+    """
+    from quest.modules.abstract_types import abstract_type_symbol_id, register_exported_abstract_type
+
     module_export_scope = Scope(name=f"module_export_{module_name}")
     module_export_scope.module_name = module_name
     export_type_subst: dict[int, QType] = {}
 
     for type_name, interface_type_symbol in target_interface_scope.types.items():
         if interface_type_symbol.definition is None:
-            export_sym_id = env.fresh_symbol_id()
+            export_sym_id = abstract_type_symbol_id(f"{canon}.{type_name}")
             if (
                 concrete_defs is not None
                 and type_name in concrete_defs
@@ -260,11 +267,14 @@ def create_module_export_scope(
                 definition=ext_def,
             )
             module_export_scope.declare_type(opaque_type_symbol)
-            export_type_subst[interface_type_symbol.symbol_id] = QTypeVar(
+            opaque_type = QTypeVar(
                 name=f"{module_name}.{type_name}",
                 symbol_id=export_sym_id,
                 bound=interface_type_symbol.kind,
             )
+            export_type_subst[interface_type_symbol.symbol_id] = opaque_type
+            if ext_def is None:
+                register_exported_abstract_type(f"{canon}.{type_name}", opaque_type)
         else:
             manifest_type_symbol = TypeSymbol(
                 name=type_name,
@@ -286,6 +296,19 @@ def create_module_export_scope(
         )
 
     return module_export_scope
+
+
+def _register_abstract_types(canon: str, export_scope: Scope, internal_scope: Scope) -> None:
+    """Records the abstract types a module exports with their representations (docs/dynamic.md §2.3)."""
+    from quest.modules.abstract_types import register_abstract_type_representation
+
+    for type_name, export_sym in export_scope.types.items():
+        internal_sym = internal_scope.types.get(type_name)
+        if export_sym.definition is not None or internal_sym is None or internal_sym.definition is None:
+            continue
+        type_var = QTypeVar(name=f"{export_scope.module_name}.{type_name}", symbol_id=export_sym.symbol_id,
+                            bound=export_sym.kind)
+        register_abstract_type_representation(f"{canon}.{type_name}", type_var, internal_sym.definition)
 
 
 def elaborate_module(
@@ -442,7 +465,7 @@ def elaborate_module(
             if sym.definition is not None
         }
         module_export_scope = create_module_export_scope(
-            decl.name, target_interface_scope, env, concrete_defs=concrete_defs
+            decl.name, canon, target_interface_scope, env, concrete_defs=concrete_defs
         )
         env.module_export_scopes[canon] = module_export_scope
     else:
@@ -450,6 +473,7 @@ def elaborate_module(
             if t_name in module_export_scope.types and module_export_scope.types[t_name].definition is None:
                 if isinstance(mod_type_sym.definition, QExternalType):
                     module_export_scope.types[t_name].definition = mod_type_sym.definition
+    _register_abstract_types(canon, module_export_scope, module_internal_scope)
 
     env.register_module(decl.name, module_export_scope)
 

@@ -219,7 +219,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         module_export_scope = env.module_export_scopes.get(canon_name)
         if module_export_scope is None:
             module_export_scope = create_module_export_scope(
-                declared_module_name(file_path, canon_name), target_interface_scope, env
+                declared_module_name(file_path, canon_name), canon_name, target_interface_scope, env
             )
             env.module_export_scopes[canon_name] = module_export_scope
         env.register_module(canon_name, module_export_scope)

@@ -102,12 +102,69 @@ class TestDynamicFormat(unittest.TestCase):
                     jsog_decode(json.dumps(doc))
                 self.assertIs(cm.exception.exc_val, DYNAMIC_ERROR_EXC)
 
-    def test_abstract_types_are_not_encodable_yet(self) -> None:
-        from quest.types import TYPE_KIND, QAbstractType
+    def test_module_abstract_types(self) -> None:
+        """A linked module's abstract type is written by global name and representation, and read back only with
+        the representation the module has (docs/dynamic.md §2.3)."""
+        from quest.modules.abstract_types import (
+            abstract_type_symbol_id,
+            register_abstract_type_representation,
+            register_exported_abstract_type,
+        )
+        from quest.types import TYPE_KIND, QTypeVar
 
-        d = QAutoVal(QTuple((QInt(1),), labels=("a",)), QAbstractType(name="T", symbol_id=-77, bound=TYPE_KIND))
+        name = "test/dynamicformat.P"
+        var = QTypeVar(name="dynamicformat.P", symbol_id=abstract_type_symbol_id(name), bound=TYPE_KIND)
+        register_exported_abstract_type(name, var)
+        with self.assertRaises(QuestException):  # a module known only through its interface
+            jsog_encode(QAutoVal(QTuple((QInt(1),), labels=("a",)), var))
+        register_abstract_type_representation(name, var, parse_type_string("Record x: Int end"))
+        text = jsog_encode(QAutoVal(QTuple((QRecord({"x": QInt(1)}),), labels=("a",)), var))
+        self.assertEqual(json.loads(text), {
+            "quest": 1, "types": [{"abstract": name, "rep": 1}, {"record": {"x": "Int"}}], "type": 0,
+            "value": {"x": 1},
+        })
+        self.assertIs(jsog_decode(text).type_val, var)
+        stale = {"quest": 1, "types": [{"abstract": name, "rep": "Int"}], "type": 0, "value": 1}
         with self.assertRaises(QuestException):
-            jsog_encode(d)
+            jsog_decode(json.dumps(stale))
+
+    def test_unlinked_abstract_types_are_opaque(self) -> None:
+        doc = {"quest": 1, "types": [{"abstract": "test/elsewhere.T", "args": ["Int"], "rep": "String"}],
+               "type": 0, "value": "s"}
+        first, second = jsog_decode(json.dumps(doc)), jsog_decode(json.dumps(doc))
+        self.assertTrue(is_type_equal(first.type_val, second.type_val))
+        self.assertEqual(json.loads(jsog_encode(first)), doc)
+        for changed in ({**doc["types"][0], "rep": "Int"}, {**doc["types"][0], "args": []},
+                        {**doc["types"][0], "args": ["Int", "Int"]}):
+            with self.subTest(node=changed), self.assertRaises(QuestException):
+                jsog_decode(json.dumps({**doc, "types": [changed], "value": 1}))
+
+    def test_types_that_are_not_encodable(self) -> None:
+        from quest.modules.abstract_types import (
+            abstract_type_symbol_id,
+            register_abstract_type_representation,
+        )
+        from quest.types import INT_TYPE, TYPE_KIND, QAbstractType, QExternalType, QPowerKind, QTypeVar
+
+        bounded_name = "test/dynamicformat.Small"
+        bounded = QTypeVar(name="dynamicformat.Small", symbol_id=abstract_type_symbol_id(bounded_name),
+                           bound=QPowerKind(INT_TYPE))
+        register_abstract_type_representation(bounded_name, bounded, INT_TYPE)
+        for t in (bounded, QAbstractType(name="T", symbol_id=-77, bound=TYPE_KIND),
+                  QExternalType(name="F", c_type="FILE *")):
+            with self.subTest(t=t), self.assertRaises(QuestException):
+                jsog_encode(QAutoVal(QTuple((QInt(1),), labels=("a",)), t))
+
+    def test_words(self) -> None:
+        from quest.runtime import QWord
+
+        doc = {"quest": 1, "types": [{"external": "uint64_t"}], "type": 0, "value": 2**64 - 1}
+        d = jsog_decode(json.dumps(doc))
+        self.assertEqual(d.value.elements[0], QWord(2**64 - 1))
+        self.assertEqual(json.loads(jsog_encode(d)), doc)
+        for bad in ({**doc, "value": 2**64}, {**doc, "value": -1}, {**doc, "types": [{"external": "FILE *"}]}):
+            with self.subTest(doc=bad), self.assertRaises(QuestException):
+                jsog_decode(json.dumps(bad))
 
 
     def test_extern_and_intern_through_streams(self) -> None:
