@@ -83,7 +83,7 @@ def qchecked(error_exc: Optional[QExceptionVal], *expected_types: type) -> Calla
 
 def _writer_file(name_val: QString) -> QWriter:
     try:
-        f = open(name_val.value, "w", encoding="utf-8")
+        f = open(name_val.value, "w", encoding="utf-8", newline="")
         return QWriter(stream=f, is_file=True, file_name=name_val.value)
     except OSError:
         raise QuestException(WRITER_ERROR_EXC)
@@ -141,7 +141,7 @@ def _writer_close(w: QWriter) -> QOk:
 
 def _reader_file(name_val: QString) -> QReader:
     try:
-        f = open(name_val.value, "r", encoding="utf-8")
+        f = open(name_val.value, "r", encoding="utf-8", newline="")
         return QReader(stream=f, is_file=True, file_name=name_val.value)
     except OSError:
         raise QuestException(READER_ERROR_EXC)

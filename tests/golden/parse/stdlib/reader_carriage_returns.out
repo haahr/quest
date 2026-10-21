@@ -1,0 +1,151 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('reader') 'Reader')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('ascii') 'Ascii')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'w'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'carriage_returns.txt' '"carriage_returns.txt"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprId 'w')
+          (ExprString 'a\r\nb\rc\n' '"a\\r\\nb\\rc\\n"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'w')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'reader')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'carriage_returns.txt' '"carriage_returns.txt"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprWhile
+        :cond (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'reader')
+            :field 'more'
+          )
+          :args (
+            (ExprId 'r')
+          )
+        )
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'writer')
+            :field 'putString'
+          )
+          :args (
+            (ExprSelect
+              :target (ExprId 'writer')
+              :field 'output'
+            )
+            (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'ascii')
+                      :field 'val'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'reader')
+                          :field 'getChar'
+                        )
+                        :args (
+                          (ExprId 'r')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprString ' ' '" "')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'reader')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'r')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprString '\n' '"\\n"')
+        )
+      )
+    )
+  )
+)

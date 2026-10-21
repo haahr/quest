@@ -1,0 +1,97 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('ascii') : 'Ascii')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'w' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'carriage_returns.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+          (TypedString 'a\r\nb\rc\n' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedSelect 'file' :type Fun(name: String): reader.T
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedString 'carriage_returns.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedWhile
+        :cond (TypedApp :type Bool
+          :func (TypedSelect 'more' :type Fun(reader: reader.T): Bool
+            :target (TypedVar 'reader' :type Module 'reader'))
+          :args (
+            (TypedVar 'r' :type reader.T)
+          ))
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'val' :type Fun(c: Char): Int
+                      :target (TypedVar 'ascii' :type Module 'ascii'))
+                    :args (
+                      (TypedApp :type Char
+                        :func (TypedSelect 'getChar' :type Fun(reader: reader.T): Char
+                          :target (TypedVar 'reader' :type Module 'reader'))
+                        :args (
+                          (TypedVar 'r' :type reader.T)
+                        ))
+                    ))
+                ))
+              :right (TypedString ' ' :type String))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedString '\n' :type String)
+        )))
+  ))
