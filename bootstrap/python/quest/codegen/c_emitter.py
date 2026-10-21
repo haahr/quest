@@ -349,6 +349,9 @@ class CEmitter:
         # closures defers, by id of its function, and the deferred captures, as (environment, name)
         self.rec_fun_names: dict[int, frozenset[str]] = {}
         self.deferred_captures: list[tuple[str, str]] = []
+        # The loops being emitted, innermost last: each loop's exit label and whether an exit uses it. An exit
+        # jumps to the label rather than breaking, since it may be inside a switch (a case) within the loop.
+        self.loop_exits: list[list[Any]] = []
         self.record_ctx = RecordNamingContext()
         self.needed_dicts: list[tuple[QRecordType, QRecordType]] = []
         self.tuple_coercions: list[tuple[QTupleType, QTupleType]] = []
@@ -1141,6 +1144,21 @@ class CEmitter:
             src_val = self.current_env_vars.get(vname, mangle_ident(vname))
             lines.append(f"{env_tmp}->{mangle_ident(vname)} = {src_val};")
         self.deferred_captures = saved_deferred
+
+    def _enter_loop(self) -> None:
+        self.loop_exits.append([self.fresh_tmp("_loop_exit"), False])
+
+    def _leave_loop(self, lines: list[str]) -> None:
+        label, used = self.loop_exits.pop()
+        if used:
+            lines.append(f"{label}:;")
+
+    def _exit_statement(self) -> str:
+        """The statement for exit: a jump past the innermost loop."""
+        if not self.loop_exits:
+            return "break;"
+        self.loop_exits[-1][1] = True
+        return f"goto {self.loop_exits[-1][0]};"
 
     def _emit_closure_alloc(
         self,
@@ -3212,7 +3230,7 @@ class CEmitter:
                 return "((void)0)"
 
             case TypedExit():
-                lines.append("break;")
+                lines.append(self._exit_statement())
                 return "((void)0)"
 
             case TypedException(name=name):
@@ -3322,18 +3340,22 @@ class CEmitter:
             case TypedWhile(cond=cond, body=body):
                 lines.append("while (1) {")
                 loop_lines: list[str] = []
+                self._enter_loop()
                 c_cond = self.emit_val(cond, loop_lines)
                 loop_lines.append(f"if (!({c_cond})) break;")
                 self.emit_to(body, None, loop_lines)
                 _append_block(lines, loop_lines)
                 lines.append("}")
+                self._leave_loop(lines)
 
             case TypedLoop(body=body):
                 lines.append("while (1) {")
                 loop_lines = []
+                self._enter_loop()
                 self.emit_to(body, None, loop_lines)
                 _append_block(lines, loop_lines)
                 lines.append("}")
+                self._leave_loop(lines)
 
             case TypedFor(start=start, stop=stop, body=body, is_downto=is_downto, var_name=var_name):
                 c_start = self.emit_val(start, lines)
@@ -3345,12 +3367,14 @@ class CEmitter:
                 lines.append(f"QInt {stop_tmp} = {c_stop};")
                 lines.append(f"for (QInt {v} = {c_start}; {v} {cmp_op} {stop_tmp}; {v}{step_op}) {{")
                 for_lines: list[str] = []
+                self._enter_loop()
                 self.emit_to(body, None, for_lines)
                 _append_block(lines, for_lines)
                 lines.append("}")
+                self._leave_loop(lines)
 
             case TypedExit():
-                lines.append("break;")
+                lines.append(self._exit_statement())
 
             case TypedTuple(
                 elements=elems, type_val=t, rec_groups=rec_groups, simultaneous_groups=simultaneous_groups
