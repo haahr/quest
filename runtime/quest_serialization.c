@@ -21,6 +21,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <ctype.h>
+#include <errno.h>
 
 #define Q_FORMAT_VERSION 1
 #define Q_PTR_TABLE_SIZE 1024
@@ -234,15 +235,19 @@ typedef enum QTypeNodeKind {
     QTN_ARRAY,
     QTN_FUN,
     QTN_EXCEPTION,
+    QTN_EXTERNAL,
+    QTN_ABSTRACT,
 } QTypeNodeKind;
 
+/* The nodes with one key, which names them (an abstract node has "abstract", "args", and "rep") */
 static const char *const quest_type_node_names[] = { "record", "tuple", "variant", "option", "array", "fun", "exception" };
 #define Q_TYPE_NODE_KIND_COUNT 7
 
 /* A type node: its constructor and labels (its shape), and the refs of its component types. Labels are field names
- * (with "var " for mutable fields), case tags, or function parameter modes. Children are in the order the node
- * lists them: record fields by name, tuple components and parameters in order (then a function's result), and the
- * cases of a variant or option that have a payload, in declaration order. */
+ * (with "var " for mutable fields), case tags, function parameter modes, an external type's C type, or an abstract
+ * type's global name. Children are in the order the node lists them: record fields by name, tuple components and
+ * parameters in order (then a function's result), the cases of a variant or option that have a payload, in
+ * declaration order, and an abstract type's arguments (then its representation). */
 typedef struct QTypeNode {
     QTypeNodeKind kind;
     size_t        label_count;
@@ -293,8 +298,14 @@ static int quest_tg_new_node(QTypeGraph *g, const QTypeDescriptor *d) {
     return index;
 }
 
+/* word.T: the external type uint64_t, the only external type that can be externed */
+static bool quest_is_word_type(const QTypeDescriptor *d) {
+    return d == &quest_type_Word || (d->kind == QTYPE_KIND_OPAQUE && d->extra == NULL && strcmp(d->name, "word.T") == 0);
+}
+
 /* The ref of a descriptor's type, adding nodes for it and the types it mentions. Raises dynamic.error for types the
- * format cannot express: polymorphic functions, auto types other than Dynamic.T, and abstract types. */
+ * format cannot express: polymorphic functions, auto types other than Dynamic.T, and abstract types other than
+ * those of modules (docs/dynamic.md §2.2). */
 static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
     if (d == NULL) quest_raise_dynamic_error();
     d = quest_stored_type(d);
@@ -310,6 +321,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             quest_raise_dynamic_error();
             break;
         case QTYPE_KIND_OPAQUE:
+            if (!quest_is_word_type(d) && quest_abstract_type_rep(d) == NULL) quest_raise_dynamic_error();
+            break;
         case QTYPE_KIND_BOUND_VAR:
             quest_raise_dynamic_error();
             break;
@@ -415,6 +428,25 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             child_count = 1;
             break;
         }
+        case QTYPE_KIND_OPAQUE: {
+            labels = (const char **)quest_alloc(sizeof(char *));
+            label_count = 1;
+            if (quest_is_word_type(d)) {
+                labels[0] = "uint64_t";
+                kind = QTN_EXTERNAL;
+                break;
+            }
+            /* A module abstract type: its global name, its arguments, and its representation */
+            const QOpaqueTypeDescriptor *meta = (const QOpaqueTypeDescriptor *)d->extra;
+            size_t n = meta != NULL ? meta->arg_count : 0;
+            labels[0] = d->name;
+            children = (int *)quest_alloc(sizeof(int) * (n + 1));
+            for (size_t i = 0; i < n; ++i) children[i] = quest_tg_ref(g, meta->args[i]);
+            children[n] = quest_tg_ref(g, quest_abstract_type_rep(d));
+            kind = QTN_ABSTRACT;
+            child_count = n + 1;
+            break;
+        }
         default:
             quest_raise_dynamic_error();
     }
@@ -515,6 +547,28 @@ static void quest_write_type_table(QWriter *wr, const QTypeGraph *g) {
     for (size_t t = 0; t < g->order_count; ++t) {
         const QTypeNode *node = &g->nodes[g->order[t]];
         if (t > 0) quest_writer_put_char(wr, ',');
+        if (node->kind == QTN_EXTERNAL) {
+            quest_write_raw(wr, "{\"external\":");
+            quest_write_json_string(wr, node->labels[0], strlen(node->labels[0]));
+            quest_writer_put_char(wr, '}');
+            continue;
+        }
+        if (node->kind == QTN_ABSTRACT) {
+            quest_write_raw(wr, "{\"abstract\":");
+            quest_write_json_string(wr, node->labels[0], strlen(node->labels[0]));
+            if (node->child_count > 1) {
+                quest_write_raw(wr, ",\"args\":[");
+                for (size_t i = 0; i + 1 < node->child_count; ++i) {
+                    if (i > 0) quest_writer_put_char(wr, ',');
+                    quest_write_type_ref(wr, g, node->children[i]);
+                }
+                quest_writer_put_char(wr, ']');
+            }
+            quest_write_raw(wr, ",\"rep\":");
+            quest_write_type_ref(wr, g, node->children[node->child_count - 1]);
+            quest_writer_put_char(wr, '}');
+            continue;
+        }
         quest_write_raw(wr, "{\"");
         quest_write_raw(wr, quest_type_node_names[node->kind]);
         quest_write_raw(wr, "\":");
@@ -575,6 +629,8 @@ static void quest_write_type_table(QWriter *wr, const QTypeGraph *g) {
                 quest_write_raw(wr, "],\"result\":");
                 quest_write_type_ref(wr, g, node->children[node->label_count]);
                 quest_writer_put_char(wr, '}');
+                break;
+            default:
                 break;
         }
         quest_writer_put_char(wr, '}');
@@ -637,10 +693,21 @@ static const QTypeDescriptor *quest_unstore(const QTypeDescriptor *desc, QVal *v
     return st->type;
 }
 
+/* The type a value is written at: its own type (quest_unstore), or for a value of a module abstract type, held as a
+ * QVal as a value stored as a type parameter is, its representation */
+static const QTypeDescriptor *quest_concrete(const QTypeDescriptor *desc, QVal *val) {
+    desc = quest_unstore(desc, val);
+    while (desc != NULL && desc->kind == QTYPE_KIND_OPAQUE && !quest_is_word_type(desc)) {
+        desc = quest_unstore(quest_abstract_type_rep(desc), val);
+    }
+    return desc;
+}
+
 static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *table, QTypeGraph *g) {
-    desc = quest_unstore(desc, &val);
+    desc = quest_concrete(desc, &val);
     if (desc == NULL) quest_raise_dynamic_error();
     switch (desc->kind) {
+        case QTYPE_KIND_OPAQUE:  /* word.T */
         case QTYPE_KIND_INT:
         case QTYPE_KIND_REAL:
         case QTYPE_KIND_BOOL:
@@ -737,11 +804,19 @@ static bool quest_emit_shared(const void *obj, QPtrTable *table, int *next_id, Q
 static void quest_emit_value(
     const QTypeDescriptor *desc, QVal val, QPtrTable *table, const QTypeGraph *g, int *next_id, QWriter *wr
 ) {
-    desc = quest_unstore(desc, &val);
+    desc = quest_concrete(desc, &val);
+    if (desc == NULL) quest_raise_dynamic_error();
     switch (desc->kind) {
         case QTYPE_KIND_INT:
             quest_write_int(wr, val.i);
             break;
+
+        case QTYPE_KIND_OPAQUE: {  /* word.T */
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%" PRIu64, val.u);
+            quest_write_raw(wr, buf);
+            break;
+        }
 
         case QTYPE_KIND_REAL:
             quest_write_real(wr, val.r);
@@ -924,7 +999,8 @@ typedef struct QJsonKeyValue {
 } QJsonKeyValue;
 
 struct QJsonValue {
-    QJsonKind kind;
+    QJsonKind   kind;
+    const char *text;  /* an integer's digits, for values read as unsigned (word.T) */
     union {
         bool   b;
         int64_t i;
@@ -1082,6 +1158,9 @@ static QJsonValue *quest_parse_json_number(QJsonReader *jr) {
     } else {
         val->kind = QJSON_INT;
         val->u.i = (int64_t)strtoll(buf, &endptr, 10);
+        char *text = (char *)quest_alloc_atomic(len + 1);
+        memcpy(text, buf, len + 1);
+        val->text = text;
     }
     if (endptr == buf) quest_raise_dynamic_error();
     return val;
@@ -1399,8 +1478,54 @@ static void quest_fill_fun_desc(const QTypeTable *t, QTypeDescriptor *desc, QJso
     desc->extra = meta;
 }
 
+/* The descriptor of an abstract node, {"abstract": name, "args": [ref, ...], "rep": ref}: an opaque descriptor named
+ * by the type's global name, whose representation is checked once the whole table is built */
+static QTypeDescriptor *quest_new_abstract_desc(QJsonValue *node) {
+    QJsonValue *name = quest_json_obj_get(node, "abstract");
+    QJsonValue *args = quest_json_obj_get(node, "args");
+    if (name == NULL || name->kind != QJSON_STRING || quest_json_obj_get(node, "rep") == NULL ||
+        node->u.o.count != (args != NULL ? 3u : 2u) ||
+        (args != NULL && (args->kind != QJSON_ARRAY || args->u.a.count == 0))) {
+        quest_raise_dynamic_error();
+    }
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    desc->kind = QTYPE_KIND_OPAQUE;
+    desc->name = name->u.s.str;
+    desc->size = sizeof(QVal);
+    desc->alignment = sizeof(QVal);
+    desc->is_subtype = quest_is_subtype;
+    desc->extra = quest_alloc(sizeof(QOpaqueTypeDescriptor));
+    return desc;
+}
+
+static void quest_fill_abstract_desc(const QTypeTable *t, QTypeDescriptor *desc, QJsonValue *node) {
+    QOpaqueTypeDescriptor *meta = (QOpaqueTypeDescriptor *)desc->extra;
+    QJsonValue *args = quest_json_obj_get(node, "args");
+    size_t n = args != NULL ? args->u.a.count : 0;
+    const QTypeDescriptor **arg_descs = (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (n + 1));
+    for (size_t i = 0; i < n; ++i) arg_descs[i] = quest_table_ref(t, args->u.a.items[i]);
+    meta->arg_count = n;
+    meta->args = arg_descs;
+    meta->rep = quest_table_ref(t, quest_json_obj_get(node, "rep"));
+}
+
+/* Checks an abstract type's recorded representation (docs/dynamic.md §2.3): a linked module's type must have the
+ * representation the module registers, and then has it (in the layout the program holds its values in); the type
+ * of a module the program does not link keeps the recorded representation */
+static void quest_check_abstract_desc(QTypeDescriptor *desc) {
+    QOpaqueTypeDescriptor *meta = (QOpaqueTypeDescriptor *)desc->extra;
+    bool registered;
+    const QTypeDescriptor *rep = quest_registered_abstract_rep(desc->name, meta->arg_count, meta->args, &registered);
+    if (!registered) return;
+    if (rep == NULL || !quest_is_subtype(rep, meta->rep) || !quest_is_subtype(meta->rep, rep)) {
+        quest_raise_dynamic_error();
+    }
+    meta->rep = NULL;
+}
+
 /* Builds a descriptor for every node of a type table: first each node's kind (which determines how a component of
- * that type is stored), then the nodes' contents, which may refer to any node */
+ * that type is stored), then the nodes' contents, which may refer to any node, and then checks the representations
+ * of abstract types, which may refer to nodes after them */
 static QTypeTable *quest_read_type_table(QJsonValue *types) {
     if (types == NULL || types->kind != QJSON_ARRAY) quest_raise_dynamic_error();
     QTypeTable *t = (QTypeTable *)quest_alloc(sizeof(QTypeTable));
@@ -1415,7 +1540,19 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
         "Record", "Tuple", "Variant", "Option", "Array", "Fun", "Exception",
     };
     for (size_t i = 0; i < t->count; ++i) {
-        const char *key = quest_type_node_entry(t->nodes[i])->key;
+        if (quest_json_obj_get(t->nodes[i], "abstract") != NULL) {
+            t->descs[i] = quest_new_abstract_desc(t->nodes[i]);
+            continue;
+        }
+        QJsonKeyValue *entry = quest_type_node_entry(t->nodes[i]);
+        if (strcmp(entry->key, "external") == 0) {
+            if (entry->val->kind != QJSON_STRING || strcmp(entry->val->u.s.str, "uint64_t") != 0) {
+                quest_raise_dynamic_error();
+            }
+            t->descs[i] = (QTypeDescriptor *)&quest_type_Word;
+            continue;
+        }
+        const char *key = entry->key;
         int k = 0;
         while (k < Q_TYPE_NODE_KIND_COUNT && strcmp(quest_type_node_names[k], key) != 0) ++k;
         if (k == Q_TYPE_NODE_KIND_COUNT) quest_raise_dynamic_error();
@@ -1430,6 +1567,11 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
     }
     for (size_t i = 0; i < t->count; ++i) {
         QTypeDescriptor *desc = t->descs[i];
+        if (desc == &quest_type_Word) continue;
+        if (desc->kind == QTYPE_KIND_OPAQUE) {
+            quest_fill_abstract_desc(t, desc, t->nodes[i]);
+            continue;
+        }
         QJsonValue *body = quest_type_node_entry(t->nodes[i])->val;
         switch (desc->kind) {
             case QTYPE_KIND_RECORD: quest_fill_record_desc(t, desc, body); break;
@@ -1450,6 +1592,11 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
                 desc->extra = meta;
                 break;
             }
+        }
+    }
+    for (size_t i = 0; i < t->count; ++i) {
+        if (t->descs[i] != &quest_type_Word && t->descs[i]->kind == QTYPE_KIND_OPAQUE) {
+            quest_check_abstract_desc(t->descs[i]);
         }
     }
     return t;
@@ -1520,6 +1667,28 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
     if (node == NULL || desc == NULL) quest_raise_dynamic_error();
 
     switch (desc->kind) {
+        case QTYPE_KIND_STORED: {
+            /* A value stored as a type parameter, in a representation the module of an abstract type registers */
+            const QStoredDescriptor *st = (const QStoredDescriptor *)desc->extra;
+            QVal val = quest_read_value(cx, node, st->type);
+            return st->storage != NULL ? quest_convert(val, st->type, st->storage) : val;
+        }
+
+        case QTYPE_KIND_OPAQUE: {
+            if (desc == &quest_type_Word || quest_is_word_type(desc)) {
+                if (node->kind != QJSON_INT || node->text == NULL || node->text[0] == '-') quest_raise_dynamic_error();
+                char *end = NULL;
+                errno = 0;
+                unsigned long long u = strtoull(node->text, &end, 10);
+                if (errno == ERANGE || end == node->text || *end != '\0') quest_raise_dynamic_error();
+                return (QVal){ .u = (uint64_t)u };
+            }
+            /* A module abstract type: its value, held as a QVal, at its representation */
+            const QTypeDescriptor *rep = quest_abstract_type_rep(desc);
+            if (rep == NULL) quest_raise_dynamic_error();
+            return quest_read_value(cx, node, rep);
+        }
+
         case QTYPE_KIND_INT:
             if (node->kind != QJSON_INT) quest_raise_dynamic_error();
             return (QVal){ .i = node->u.i };

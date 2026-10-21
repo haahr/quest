@@ -818,6 +818,11 @@ descriptor that matches the wrong values.
   canonical pointer equality for dynamically constructed types.
 - **Opaque Types (`QTYPE_KIND_OPAQUE`):** Represent nominal abstract types (`T::TYPE` in an interface or existential
   package). Subtyping checks compare pointers or canonical nominal names to preserve module encapsulation barriers.
+  A module's abstract type is named by its global name, the module's canonical path and the type's name
+  (`geo/coord.P`), so same-named modules in different directories have different types. Each module registers
+  its abstract types' representations when it is initialized (`quest_register_abstract_type`; an abstract type
+  operator's as a template whose holes are its parameters), which `dynamic.extern` and `dynamic.intern` use
+  ([dynamic.md](dynamic.md) §3.5). `word.T`, the external type `uint64_t`, is `quest_type_Word`.
 - **Manifest Types (`Def T = ...`):** Pure compile-time aliases, completely erased at runtime with no separate
   descriptors.
 

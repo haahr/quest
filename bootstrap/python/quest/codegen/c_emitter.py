@@ -163,6 +163,7 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     QAbstractType,
+    QAllKind,
     QAllType,
     QArrayType,
     QAutoType,
@@ -179,6 +180,8 @@ from quest.types import (
     QTupleTypeBinding,
     QTupleTypeFormal,
     QType,
+    QTypeFun,
+    QTypeKind,
     QTypeVar,
     QVarType,
     QOutType,
@@ -2073,6 +2076,33 @@ class CEmitter:
         lines[templates_index:templates_index] = self._emit_template_descriptors(decl_emitter)
         return "\n".join(lines)
 
+    def _abstract_type_registrations(self, canon: str) -> list[str]:
+        """Registers the module's abstract types with their representations, for dynamic values (docs/dynamic.md
+        §2.3): an abstract type operator's representation as a template whose holes are its parameters."""
+        from quest.modules.abstract_types import module_abstract_types
+
+        lines: list[str] = []
+        for entry in module_abstract_types(canon):
+            rep = strip_aliases(entry.rep)
+            arity = 0
+            kind = entry.type_var.bound
+            while isinstance(kind, QAllKind):
+                arity, kind = arity + 1, kind.result_kind
+            if not isinstance(kind, QTypeKind):
+                continue  # a bounded abstract type is described by its bound
+            if arity:
+                if not isinstance(rep, QTypeFun) or len(rep.params) != arity:
+                    continue
+                rep = rep.body.substitute({p.symbol_id: hole_var(i, p.bound) for i, p in enumerate(rep.params)})
+            try:
+                form = descriptor_form(rep, self.record_ctx)
+            except MissingDescriptorError:
+                continue
+            if form.kind not in ("base", "bound_var"):
+                self.descriptor_templates.setdefault(form.tag, rep)
+            lines.append(f'    quest_register_abstract_type("{entry.global_name}", {arity}, {form.c_expr});')
+        return lines
+
     def _emit_single_module_definition(
         self,
         mod: TypedModule,
@@ -2484,6 +2514,7 @@ class CEmitter:
             lines.append(f"static void qv_mod_{clean_mod}_init(void) {{")
         lines.append(f"    if (qv_mod_{clean_mod}_initialized) return;")
         lines.append(f"    qv_mod_{clean_mod}_initialized = true;")
+        lines.extend(self._abstract_type_registrations(mod.name))
         for dep in mod_imported_mods:
             dep_clean = mangle_module_name(dep)
             lines.append(f"    qv_mod_{dep_clean}_init();")

@@ -78,3 +78,13 @@ def abstract_type_by_symbol(symbol_id: int) -> Optional[ModuleAbstractType]:
 
 def abstract_type_by_name(global_name: str) -> Optional[ModuleAbstractType]:
     return _BY_NAME.get(global_name)
+
+
+def module_abstract_types(canon: str) -> list[ModuleAbstractType]:
+    """The abstract types the module with canonical name canon exports, with their representations, by name."""
+    prefix = canon + "."
+    return sorted(
+        (e for name, e in _BY_NAME.items() if e.linked and e.rep is not None and name.startswith(prefix)
+         and "." not in name[len(prefix):]),
+        key=lambda e: e.global_name,
+    )

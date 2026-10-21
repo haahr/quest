@@ -52,7 +52,7 @@ component cannot be selected, which would leave an `inspect` binder no way to re
 ## 2. Wire Format, Version 1
 
 > **Status:** implemented in both backends (`bootstrap/python/quest/dynamic_json.py` and
-> `runtime/quest_serialization.c`), except abstract types (§2.3), which neither writes yet. It replaced an
+> `runtime/quest_serialization.c`). It replaced an
 > unversioned predecessor in which `@type` was a Quest type expression printed as a string: printing a recursive type
 > shares nothing (a single `syntax_ast` type printed as 5 MB), both readers needed a Quest type parser (the C runtime
 > had only a partial one), and nested dynamics repeated their whole type. Files in the old form are not read.
@@ -285,9 +285,6 @@ the envelope changed, with `ABI_VERSION` 4.
 
 ### 3.5. Abstract Types
 
-> **Status:** implemented in the interpreter. Compiled code still raises `dynamic.error` when externing a value
-> whose type mentions a module's abstract type.
-
 - **Interpreter.** Elaborating a module records each exported abstract type in a process-wide registry
   (`quest/modules/abstract_types.py`), by the symbol id of its opaque type and by its global name, with its
   representation (the definition in the module's internal scope). The opaque type has one symbol id per global
@@ -306,7 +303,12 @@ the envelope changed, with `ABI_VERSION` 4.
   module as a `QVal`, so the writer writes it through its representation as it writes a value stored in the
   representation of a type parameter. The reader looks up the name, checks the representation by subtyping in
   both directions, and makes an opaque descriptor (`quest_make_opaque_descriptor`) for an unlinked name, with the
-  recorded representation. Since module objects register at startup, this bumped `ABI_VERSION`.
+  recorded representation. Since module objects register at startup, this bumped `ABI_VERSION` (to 24).
+  `word.T` has its own descriptor, `quest_type_Word`.
+- **Differences between the backends.** Compiled code describes a bounded abstract type (`T::POWER(B)`) by its
+  bound, so it writes such a value at the bound where the interpreter raises `dynamic.error`. And it does not
+  check that two documents read with the same unlinked name agree on its representation, which the interpreter
+  does.
 
 ---
 

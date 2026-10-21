@@ -1222,9 +1222,22 @@ def _printed(node: Any) -> tuple[int, str]:
     return entry[1]
 
 
+def module_abstract_type_name(t: QType) -> Optional[str]:
+    """The global name of a module's abstract type (docs/dynamic.md §2.3), or None for any other type."""
+    from quest.modules.abstract_types import abstract_type_by_symbol
+
+    if not isinstance(t, QTypeVar):
+        return None
+    entry = abstract_type_by_symbol(t.symbol_id)
+    return entry.global_name if entry is not None and entry.linked else None
+
+
 def _opaque_name(t: QType) -> str:
-    """The name of an opaque descriptor, by which descriptors are compared: the type as printed, or for a type that
-    prints longer than _PRINTED_TEXT_LIMIT, the start of it followed by the digest of the whole."""
+    """The name of an opaque descriptor, by which descriptors are compared: a module abstract type's global name, or
+    the type as printed, or for a type that prints longer than _PRINTED_TEXT_LIMIT, the start of it followed by the
+    digest of the whole."""
+    if (global_name := module_abstract_type_name(t)) is not None:
+        return global_name
     length, digest = _printed(t)
     if length <= _PRINTED_TEXT_LIMIT:
         return str(t)
@@ -1407,6 +1420,8 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         })
     if id(t) in _BASE_DESCRIPTORS:
         return DescriptorForm("base", expr=_BASE_DESCRIPTORS[id(t)])
+    if is_word_type(t):
+        return DescriptorForm("base", expr="&quest_type_Word")
     if (index := bound_var_index(t)) is not None:
         return DescriptorForm("bound_var", expr=f"(&quest_type_bound_vars[{index}])")
     if isinstance(t, QTupleType) and not t.fields:
@@ -1449,6 +1464,8 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     if isinstance(t, QExternalType):
         name = t.name or t.c_type
         return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(name)}", name=name)
+    if (global_name := module_abstract_type_name(t)) is not None:
+        return DescriptorForm("opaque", tag=f"opaque_{_text_digest(global_name)}", name=global_name)
     if isinstance(t, (QTypeVar, QAbstractType)):
         return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(t.name)}", name=t.name)
     if isinstance(t, QPathType):

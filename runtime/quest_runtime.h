@@ -273,10 +273,13 @@ typedef struct QStoredDescriptor {
 } QStoredDescriptor;
 
 /* An application of an abstract type operator (list.T(Int)): opaque, named by the operator; descriptors with
- * arguments are equal when their names are and their arguments are equal types */
+ * arguments are equal when their names are and their arguments are equal types. A module's abstract type is named
+ * by its global name (docs/dynamic.md §2.3), and its representation is the one its module registers
+ * (quest_register_abstract_type), or for a type read from a module the program does not link, `rep`. */
 typedef struct QOpaqueTypeDescriptor {
     size_t                       arg_count;
     const QTypeDescriptor *const *args;
+    const QTypeDescriptor        *rep;
 } QOpaqueTypeDescriptor;
 
 /* Exception types: Exception(T) */
@@ -338,6 +341,8 @@ extern const QTypeDescriptor quest_type_Char;
 extern const QTypeDescriptor quest_type_String;
 extern const QTypeDescriptor quest_type_Ok;
 extern const QTypeDescriptor quest_type_EmptyTuple;
+/* word.T, the external type uint64_t: opaque, and stored as a QVal (.u) */
+extern const QTypeDescriptor quest_type_Word;
 
 /* Descriptors of bound type parameters by de Bruijn index (see QFunTypeDescriptor) */
 #define Q_MAX_BOUND_VARS 32
@@ -589,6 +594,17 @@ bool                   quest_is_subtype(const QTypeDescriptor *sub, const QTypeD
 const QTypeDescriptor *quest_intern_type_descriptor(const QTypeDescriptor *desc);
 const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *element_desc);
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name);
+
+/* Module abstract types (docs/dynamic.md §2.3). Each module registers the abstract types it exports when it is
+ * initialized: by global name ("geo/coord.P"), with the number of parameters of an abstract type operator, and the
+ * representation (for an operator, a template whose holes are its parameters). */
+void                   quest_register_abstract_type(const char *name, size_t arity, const QTypeDescriptor *rep);
+/* The registered representation of the abstract type `name` applied to `args`, or NULL if no module registers it;
+ * *registered tells whether the name is registered at all (with another arity, the result is NULL) */
+const QTypeDescriptor *quest_registered_abstract_rep(
+    const char *name, size_t arg_count, const QTypeDescriptor *const *args, bool *registered);
+/* The representation of an opaque descriptor that is a module abstract type (or an application of one), or NULL */
+const QTypeDescriptor *quest_abstract_type_rep(const QTypeDescriptor *desc);
 const QTypeDescriptor *quest_make_record_descriptor(
     const char *name, size_t size, size_t alignment, size_t field_count, const QRecordFieldDescriptor *fields);
 const QTypeDescriptor *quest_make_tuple_descriptor(

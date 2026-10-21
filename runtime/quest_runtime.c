@@ -457,6 +457,15 @@ void quest_print_val(QVal val, const char *type_name) {
 bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type);
 
 /* Statically pre-allocated base type descriptors */
+const QTypeDescriptor quest_type_Word = {
+    .kind = QTYPE_KIND_OPAQUE,
+    .name = "word.T",
+    .size = sizeof(QVal),
+    .alignment = sizeof(QVal),
+    .is_subtype = quest_is_subtype,
+    .extra = NULL
+};
+
 const QTypeDescriptor quest_type_Int = {
     .kind = QTYPE_KIND_INT,
     .name = "Int",
@@ -695,9 +704,10 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             /* An abstract type operator's applications are equal when their arguments are equal types */
             const QOpaqueTypeDescriptor *s = (const QOpaqueTypeDescriptor *)sub->extra;
             const QOpaqueTypeDescriptor *t = (const QOpaqueTypeDescriptor *)super_type->extra;
-            if (result && sub != super_type && (s != NULL || t != NULL)) {
-                result = s != NULL && t != NULL && s->arg_count == t->arg_count;
-                for (size_t i = 0; result && i < t->arg_count; ++i) {
+            size_t s_args = s != NULL ? s->arg_count : 0, t_args = t != NULL ? t->arg_count : 0;
+            if (result && sub != super_type && (s_args != 0 || t_args != 0)) {
+                result = s_args == t_args;
+                for (size_t i = 0; result && i < t_args; ++i) {
                     result = quest_is_subtype(s->args[i], t->args[i]) && quest_is_subtype(t->args[i], s->args[i]);
                 }
             }
@@ -1591,6 +1601,7 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             for (size_t i = 0; i < m->arg_count; ++i) args[i] = quest_inst_of(cx, m->args[i]);
             c->arg_count = m->arg_count;
             c->args = args;
+            c->rep = m->rep;
             out->extra = c;
             break;
         }
@@ -2042,6 +2053,48 @@ const QTypeDescriptor *quest_make_opaque_descriptor(const char *name) {
     desc->extra = NULL;
     /* Do NOT intern: each opaque type creation has unique nominal identity */
     return desc;
+}
+
+typedef struct QAbstractTypeEntry {
+    const char                *name;
+    size_t                     arity;
+    const QTypeDescriptor     *rep;
+    struct QAbstractTypeEntry *next;
+} QAbstractTypeEntry;
+
+static QAbstractTypeEntry *quest_abstract_types = NULL;
+
+static QAbstractTypeEntry *quest_find_abstract_type(const char *name) {
+    for (QAbstractTypeEntry *e = quest_abstract_types; e != NULL; e = e->next) {
+        if (strcmp(e->name, name) == 0) return e;
+    }
+    return NULL;
+}
+
+void quest_register_abstract_type(const char *name, size_t arity, const QTypeDescriptor *rep) {
+    if (quest_find_abstract_type(name) != NULL) return;
+    QAbstractTypeEntry *e = (QAbstractTypeEntry *)quest_alloc(sizeof(QAbstractTypeEntry));
+    e->name = name;
+    e->arity = arity;
+    e->rep = rep;
+    e->next = quest_abstract_types;
+    quest_abstract_types = e;
+}
+
+const QTypeDescriptor *quest_registered_abstract_rep(
+    const char *name, size_t arg_count, const QTypeDescriptor *const *args, bool *registered
+) {
+    const QAbstractTypeEntry *e = name != NULL ? quest_find_abstract_type(name) : NULL;
+    if (registered != NULL) *registered = e != NULL;
+    if (e == NULL || e->arity != arg_count) return NULL;
+    return arg_count > 0 ? quest_instantiate_descriptor(e->rep, arg_count, args) : e->rep;
+}
+
+const QTypeDescriptor *quest_abstract_type_rep(const QTypeDescriptor *desc) {
+    if (desc == NULL || desc->kind != QTYPE_KIND_OPAQUE) return NULL;
+    const QOpaqueTypeDescriptor *m = (const QOpaqueTypeDescriptor *)desc->extra;
+    if (m != NULL && m->rep != NULL) return m->rep;
+    return quest_registered_abstract_rep(desc->name, m != NULL ? m->arg_count : 0, m != NULL ? m->args : NULL, NULL);
 }
 
 const QTypeDescriptor *quest_make_record_descriptor(
