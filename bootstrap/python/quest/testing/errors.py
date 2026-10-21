@@ -153,6 +153,13 @@ def match_error_patterns(stderr_text: str, patterns: list[str]) -> tuple[bool, l
     return len(unmatched) == 0, unmatched
 
 
+def relativize_root_paths(text: str, root_dir: Path) -> str:
+    """Rewrites absolute paths under root_dir in text as paths relative to it."""
+    for root in {str(root_dir), str(root_dir.resolve())}:
+        text = text.replace(root.rstrip(os.sep) + os.sep, "")
+    return text
+
+
 def format_canonical_error_golden(stderr_text: str) -> str:
     """Generates canonical pattern lines from stderr_text for --update-golden."""
     diags = parse_actual_diagnostics(stderr_text)
@@ -310,6 +317,8 @@ def run_error_test(
 
     # Step 3: Golden Pattern Matching (or update)
     if golden_error_file is not None:
+        # Golden files must not depend on where the repository is checked out
+        stderr = relativize_root_paths(stderr, root_dir)
         if update_golden:
             golden_content = format_canonical_error_golden(stderr)
             golden_error_file.parent.mkdir(parents=True, exist_ok=True)
