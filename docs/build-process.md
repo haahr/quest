@@ -227,8 +227,8 @@ A `.qm` file records the build manifest for an implementation module or main rou
   `[ { "name": "util/Path", "source": "lib/util/path.int.quest", "mtime": 1727891234 }, ... ]`.
 
 ### 4.4. Builtin Runtime Modules (`BUILTIN_RUNTIME_MODULES`)
-Certain core modules are implemented directly in the native C runtime (`runtime/quest_runtime.c` and
-`BuiltinModuleRegistry`) rather than as Quest source files:
+Certain core modules are implemented directly in the native C runtime (`runtime/quest_runtime.c`, with
+`BuiltinModuleRegistry` providing the interpreter runtime symbol bridge) rather than as Quest source files:
 - **Registry Set:** `BUILTIN_RUNTIME_MODULES = { "dynamic" }`.
 - **Interface Exposure:** Each runtime module defines a standard Quest interface (`dynamic.int.quest`), producing
   `dynamic.qi` and `dynamic.int.h` for static typechecking.

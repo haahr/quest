@@ -20,7 +20,8 @@ Quest implements a first-order module system as described by Luca Cardelli in *T
 
 ## 2. File Conventions & Search Rules
 
-When the Quest compiler or interpreter encounters an import for an interface or module that is not already registered in the lexical environment or built-in registry (`BuiltinModuleRegistry`), it automatically loads it from disk.
+When the Quest compiler or interpreter encounters an import for an interface or module that is not already
+registered in the lexical environment, it automatically loads it from disk via the unified module loader.
 
 ### 2.1. File Extensions, Case Normalization, and Hierarchical Directories
 - **Interfaces:** Saved with the extension `.int.quest`.
@@ -303,7 +304,10 @@ Rather than treating built-in modules as ad-hoc compiler-internal special cases,
 (pure Quest modules, standard library modules, and user-defined hybrid modules) through a single architectural pipeline:
 
 ### 8.1. Declarative Module Architecture
-- Built-in modules are represented as standard `TypedModule` ASTs registered in `BuiltinModuleRegistry`.
+- Standard library modules reside on disk in `lib/` as regular Quest units (`.int.quest` and `.mod.quest`)
+  or pre-compiled units (`.qi` and `.qm`), loaded through the unified module loader.
+- `BuiltinModuleRegistry` serves strictly as the runtime C symbol bridge (`EXTERNAL_SYMBOLS`), mapping external C
+  symbols to Python functions, constants, and exceptions during interpreter execution.
 - Member functions can be pure Quest functions, native functions (`TypedNativeBinding` with `c_symbol` or
   `inline_template`), or external C values (`TypedExternal` with `c_val`).
 

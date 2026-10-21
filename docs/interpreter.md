@@ -292,7 +292,8 @@ The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings
     without an `import` statement outside of modules.
   - Standalone modules (`module ... end`) are isolated from top-level pre-linked module records and must explicitly
     import any required modules using `import mod: Interface`.
-  - `BuiltinModuleRegistry` resolves all 11 standard interfaces and runtime module records.
+  - Standard library interfaces and prelinked modules are resolved on-demand from disk (`lib/`) via the
+    unified module loader, with `BuiltinModuleRegistry` providing the runtime external C symbol bridge.
 - **List Operations (`list: List`):**
   - Built-in `list` module backed by runtime `QList` values.
   - Provides `nil`, `cons`, `null`, `head`, `tail`, `length`, `enum`, and `error`.
