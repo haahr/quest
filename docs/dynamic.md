@@ -103,6 +103,8 @@ A **TypeNode** is a JSON object with exactly one key, naming the type constructo
 | `{"fun": {"params": [["<mode>", TypeRef], ...], "result": TypeRef}}` | a monomorphic function type |
 | `{"exception": TypeRef}` | `Exception(T)` |
 | `{"abstract": "<module path>.<name>", "rep": TypeRef}` | an abstract type exported by a module (§2.3) |
+| `{"abstract": "<module path>.<name>", "args": [TypeRef, ...], "rep": TypeRef}` | an application of an abstract type operator exported by a module (§2.3) |
+| `{"external": "uint64_t"}` | the external type `uint64_t`, the representation of `word.T` (§2.3) |
 
 A **label** is a field name, prefixed with `var ` when the field is mutable (`"var next"`). An unnamed tuple
 component has the label `""` (or `"var"` when mutable). Identifiers cannot contain spaces and `var` is a
@@ -135,12 +137,15 @@ from descriptors in compiled code, which unroll recursive types differently), me
 the remaining nodes in the order a depth-first walk first reaches them: from the dynamic value's type, then from
 the types of nested dynamic values in the order their values are written, visiting each node's components in the
 order the node lists them (record fields by name, cases in declaration order, tuple components and parameters in
-order, then a function's result). The table is therefore minimal, and equal types have one entry. A reader does not
+order, then a function's result; an abstract node's arguments, then its representation). An abstract node's name is
+part of its label, as a field name is. The table is therefore minimal, and equal types have one entry. A reader does not
 rely on this: it compares types structurally, never by index.
 
 **Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), auto
 types other than `Dynamic.T` (which is `Auto A::TYPE with a:A end` and is written by its built-in name), and type
-operators themselves have binders that this table does not express; abstract types, including `Word.T`, await §2.3.
+operators themselves have binders that this table does not express. Abstract types with a bound
+(`T::POWER(B)` in an interface) are not encodable either, since compiled code stores their values as the bound,
+which may not hold everything the representation does; nor are external types other than `uint64_t`.
 `dynamic.extern` raises `dynamic.error` for a type containing one. A later version can add binder nodes.
 
 ### 2.3. Abstract Types
@@ -158,9 +163,17 @@ value records ([type-system.md](type-system.md) §6.11).
   given to `dynamic.new` contains an abstract type whose root is not a module (a let-bound tuple, a parameter, a
   block variable), since the type would escape its scope.
 - **Module abstract types are written by global name and representation.** A module abstract type is written as
-  `{"abstract": "geo/coord.P", "rep": TypeRef}`: the module's import path, a dot, the type name, and the type
-  that implements it. The writer gets the representation from the module that defines it (in the interpreter,
-  the module's environment; in compiled code, a descriptor the module registers for each exported abstract type).
+  `{"abstract": "geo/coord.P", "rep": TypeRef}`: the module's canonical path (docs/modules.md §2.3), a dot, the
+  type name, and the type that implements it. The writer gets the representation from the module that defines it
+  (in the interpreter, the module's environment; in compiled code, a descriptor the module registers for each
+  exported abstract type). The canonical path is relative to the include paths and the program's directory, so a
+  program that reads with different roots sees a different name, and treats the type as unlinked.
+- **Abstract type operators are written applied.** An application such as `list.T(Int)` is written as
+  `{"abstract": "list.T", "args": ["Int"], "rep": TypeRef}`, whose representation is the operator's representation
+  applied to the arguments, so a reader never needs type operators.
+- **External representations.** `word.T` is implemented as `external "uint64_t"`, which is written as the node
+  `{"external": "uint64_t"}`, and its values as JSON integers. Other external types (the representations of
+  readers and writers among them) cannot be externed, as Cardelli excludes readers and writers.
 - **On `intern`, the representation is checked.** If the reading program links the module `geo/coord`, the
   abstract type is read as `coord.P` only if the recorded representation is equal (as an equi-recursive type) to
   that module's actual representation; otherwise `intern` raises `dynamic.error`. This catches a file written
@@ -194,6 +207,7 @@ its type raises `dynamic.error`.
 | `Option` | `"<tag>"` or `{"<tag>": [value, ...]}` | A case without components is the bare tag; otherwise its components, in order. |
 | `Dynamic.T` | `{"@type": TypeRef, "@value": value}` | The nested value's type is in the document's table. |
 | abstract type | the value at its representation type | |
+| `external "uint64_t"` | integer | From 0 to 2^64 - 1. |
 
 ### 2.5. Sharing and Cycles
 
@@ -213,7 +227,8 @@ value itself.
 
 ### 2.6. Non-Externable Values and Errors
 
-- Readers, writers and closures cannot be externed; nor can values whose type is not encodable (§2.2). `extern`
+- Readers, writers and closures cannot be externed; nor can values whose type is not encodable (§2.2), including
+  values of external types other than `uint64_t`. `extern`
   raises `dynamic.error`. (Cardelli allows functions to be externed; that needs a code representation that this
   format does not have.)
 - Exception values cannot be externed either. Each evaluation of an exception expression makes a new exception,
@@ -255,8 +270,9 @@ allocated and registered before its components are read, so `@ref`s inside it an
 ### 3.3. Descriptors in Generated C
 
 Static descriptors carry the full structure of their type (record and tuple labels with `var` flags, case
-payloads, function parameters and results), so the C writer produces the type table from them; §2.3 will add an
-abstract type's global name and representation. A descriptor's `.name` is used only in diagnostics (and, for
+payloads, function parameters and results), so the C writer produces the type table from them. The opaque
+descriptor of a module's abstract type is named by its global name (§2.3), and its representation is found
+through the module's registration (§3.5). A descriptor's `.name` is used only in diagnostics (and, for
 opaque types, in comparisons), so it is the type printed and cut off at 80 characters
 (`descriptor_display_name`). Static descriptors are no longer registered with the runtime or looked up by name,
 and the runtime no longer parses type strings.
@@ -269,8 +285,26 @@ the envelope changed, with `ABI_VERSION` 4.
 
 ### 3.5. Abstract Types
 
-Module abstract types are not yet handled as §2.3 describes: both backends raise `dynamic.error` when externing a
-value whose type mentions one.
+> **Status:** planned. Until it is implemented, both backends raise `dynamic.error` when externing a value
+> whose type mentions a module's abstract type.
+
+- **Interpreter.** Elaborating a module records each exported abstract type in a process-wide registry, by the
+  symbol id of its opaque type and by its global name: the global name, the type's kind, and its representation
+  (the definition in the module's internal scope). The writer looks up an abstract type, or the operator of an
+  application, and writes the value at the representation (applied to the arguments). The reader looks up the
+  name: for a linked module it checks that the recorded representation is equal (`is_type_equal`) to the
+  module's, applied to the arguments, and yields the module's abstract type; for an unlinked one it makes one
+  opaque type per global name and registers it with the recorded representation, so that values read with the
+  same name have the same type, and externing them again writes the same node.
+- **Compiled code.** Each module registers its exported abstract types when it is initialized
+  (`qv_mod_<name>_init`), with `quest_register_abstract_type(name, arity, rep)`. An abstract type operator
+  registers its representation as a template whose holes are the operator's parameters, so its application's
+  representation is `quest_instantiate_descriptor` of the template at the arguments, which is the layout in
+  which a value of the application is held outside the module. A value of an abstract type is held outside its
+  module as a `QVal`, so the writer writes it through its representation as it writes a value stored in the
+  representation of a type parameter. The reader looks up the name, checks the representation by subtyping in
+  both directions, and makes an opaque descriptor (`quest_make_opaque_descriptor`) for an unlinked name, with the
+  recorded representation. Since module objects register at startup, this bumped `ABI_VERSION`.
 
 ---
 
