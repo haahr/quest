@@ -209,6 +209,7 @@ REAL_ERROR_EXC = QExceptionVal("real.error")
 WORD_ERROR_EXC = QExceptionVal("word.error")
 STRING_ERROR_EXC = QExceptionVal("string.error")
 SYSTEM_ERROR_EXC = QExceptionVal("system.error")
+VARIANT_ERROR_EXC = QExceptionVal("variant.tagMismatch")
 
 
 # ============================================================================
@@ -279,6 +280,19 @@ class RuntimeEnvironment:
             return self.bindings[name]
         if self.parent is not None:
             return self.parent.lookup(name, offset)
+        from quest.builtins import STANDARD_LIBRARY_MODULES
+        norm_mod = name if name in STANDARD_LIBRARY_MODULES else next(
+            (m for m in STANDARD_LIBRARY_MODULES if m.lower() == name.lower()),
+            None,
+        )
+        if norm_mod is not None:
+            from quest.modules.loader import load_module_for_interpreter
+            mod_val = load_module_for_interpreter(norm_mod, STANDARD_LIBRARY_MODULES[norm_mod], self)
+            if mod_val is not None:
+                self.define(norm_mod, mod_val)
+                if name != norm_mod:
+                    self.define(name, mod_val)
+                return mod_val
         raise QuestRuntimeError(f"Undefined runtime symbol '{name}'", offset=offset)
 
     def assign(self, name: str, new_value: QValue, offset: Optional[int] = None) -> None:
@@ -307,20 +321,19 @@ class RuntimeEnvironment:
         self.bindings = dict(snap["bindings"])
         self.parent = snap["parent"]
 
+    _cached_base_bindings: Optional[dict[str, QValue]] = None
+
     @classmethod
     def create_root_env(cls) -> RuntimeEnvironment:
         """Creates the global root environment with standard constants pre-populated."""
         env = cls()
+        if cls._cached_base_bindings is not None:
+            env.bindings = dict(cls._cached_base_bindings)
+            return env
+
         env.define("true", TRUE_VALUE)
         env.define("false", FALSE_VALUE)
         env.define("ok", OK_VALUE)
-
-        from quest.builtins import STANDARD_LIBRARY_MODULES
-        from quest.modules.loader import load_module_for_interpreter
-        for mod_name, iface_name in STANDARD_LIBRARY_MODULES.items():
-            mod_val = load_module_for_interpreter(mod_name, iface_name, env)
-            if mod_val is not None:
-                env.define(mod_name, mod_val)
 
         # Built-in operators as callable functions (Cardelli §4.2)
         for op in ("+", "-", "*", "/", "mod", "%"):
@@ -400,6 +413,7 @@ class RuntimeEnvironment:
             ),
         )
 
+        cls._cached_base_bindings = dict(env.bindings)
         return env
 
 
@@ -969,8 +983,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     offset=offset,
                 )
             if target_val.tag != tag:
-                raise QuestRuntimeError(
-                    f"Variant tag mismatch in '!': expected '{tag}', got '{target_val.tag}'",
+                raise QuestException(
+                    VARIANT_ERROR_EXC,
                     offset=offset,
                 )
             if isinstance(target_val, QOption):

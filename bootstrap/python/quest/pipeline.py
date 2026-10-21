@@ -64,9 +64,29 @@ class CompilerContext:
     sink: DiagnosticSink = field(default_factory=DiagnosticSink)
     env: Environment = field(default_factory=Environment)
     options: CompilerOptions = field(default_factory=CompilerOptions)
-    runtime_env: RuntimeEnvironment = field(default_factory=RuntimeEnvironment.create_root_env)
+    _runtime_env: Optional[RuntimeEnvironment] = field(default=None, repr=False)
     # Modules the generated C unit links against; set by CodegenCPhase (see link_dependencies).
     imported_modules: list[Any] = field(default_factory=list)
+
+    @property
+    def runtime_env(self) -> RuntimeEnvironment:
+        if self._runtime_env is None:
+            r_env = RuntimeEnvironment.create_root_env()
+            self._configure_runtime_env(r_env)
+            self._runtime_env = r_env
+        return self._runtime_env
+
+    @runtime_env.setter
+    def runtime_env(self, value: Optional[RuntimeEnvironment]) -> None:
+        self._runtime_env = value
+        if value is not None:
+            self._configure_runtime_env(value)
+
+    def _configure_runtime_env(self, r_env: RuntimeEnvironment) -> None:
+        r_env.include_paths = list(self.env.include_paths)
+        r_env.loaded_modules_ast = self.env.loaded_modules_ast
+        r_env.current_dir = self.env.current_dir
+        r_env.program_dir = self.env.program_dir
 
     @classmethod
     def create(
@@ -80,7 +100,6 @@ class CompilerContext:
         """Constructs a fresh CompilerContext with initialized SourceMap."""
         opts = options or CompilerOptions()
         environment = env if env is not None else Environment(builtin_registry=BuiltinModuleRegistry)
-        r_env = runtime_env if runtime_env is not None else RuntimeEnvironment.create_root_env()
 
         # Wire include_paths and current_dir
         environment.options = opts
@@ -91,26 +110,20 @@ class CompilerContext:
         environment.include_paths = list(opts.include_paths)
         if opts.build_dir and Path(opts.build_dir).resolve() not in [p.resolve() for p in environment.include_paths]:
             environment.include_paths.insert(0, Path(opts.build_dir).resolve())
-        r_env.include_paths = list(environment.include_paths)
-        r_env.loaded_modules_ast = environment.loaded_modules_ast
 
         if file_name and not file_name.startswith("<"):
             try:
                 p = Path(file_name).resolve()
                 current_dir = p.parent
                 environment.current_dir = current_dir
-                r_env.current_dir = current_dir
             except (OSError, RuntimeError):
                 cwd = Path.cwd()
                 environment.current_dir = cwd
-                r_env.current_dir = cwd
         elif environment.current_dir is None:
             cwd = Path.cwd()
             environment.current_dir = cwd
-            r_env.current_dir = cwd
         if environment.program_dir is None:
             environment.program_dir = environment.current_dir
-        r_env.program_dir = environment.program_dir
         opts.current_dir = environment.current_dir
         opts.program_dir = environment.program_dir
 
@@ -118,15 +131,18 @@ class CompilerContext:
         sink = DiagnosticSink()
         environment.sink = sink
         environment.source_map = source_map
-        return cls(
+        ctx = cls(
             source_text=source_text,
             file_name=file_name,
             source_map=source_map,
             sink=sink,
             env=environment,
             options=opts,
-            runtime_env=r_env,
+            _runtime_env=runtime_env,
         )
+        if runtime_env is not None:
+            ctx._configure_runtime_env(runtime_env)
+        return ctx
 
 
 @dataclass

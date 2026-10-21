@@ -311,6 +311,7 @@ class Environment:
         self._builtin_modules: dict[str, Scope] = {}
         self._init_builtins()
         reg = self._default_builtin_registry if builtin_registry is None else builtin_registry
+        self.builtin_registry = reg
         if reg:
             reg.populate_environment(self)
         self._builtin_interfaces = dict(self._interfaces)
@@ -360,7 +361,12 @@ class Environment:
         )
 
     def lookup_value(self, name: str) -> Optional[ValueSymbol]:
-        return self.current_scope.lookup_value(name)
+        res = self.current_scope.lookup_value(name)
+        if res is None and getattr(self, "builtin_registry", None):
+            ensure = getattr(self.builtin_registry, "ensure_module", None)
+            if ensure and ensure(name, self):
+                res = self.current_scope.lookup_value(name)
+        return res
 
     def lookup_type(self, name: str) -> Optional[TypeSymbol]:
         return self.current_scope.lookup_type(name)
@@ -386,13 +392,23 @@ class Environment:
         self._interfaces[name] = scope
 
     def lookup_interface(self, name: str) -> Optional[Scope]:
-        return self._interfaces.get(name)
+        res = self._interfaces.get(name)
+        if res is None and getattr(self, "builtin_registry", None):
+            ensure = getattr(self.builtin_registry, "ensure_interface", None)
+            if ensure:
+                res = ensure(name, self)
+        return res
 
     def register_module(self, name: str, scope: Scope) -> None:
         self._modules[name] = scope
 
     def lookup_module(self, name: str) -> Optional[Scope]:
-        return self._modules.get(name)
+        res = self._modules.get(name)
+        if res is None and getattr(self, "builtin_registry", None):
+            ensure = getattr(self.builtin_registry, "ensure_module", None)
+            if ensure:
+                res = ensure(name, self)
+        return res
 
     @contextmanager
     def unit_source(self, source_map: Any) -> Iterator[None]:

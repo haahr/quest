@@ -301,6 +301,18 @@ STANDARD_LIBRARY_MODULES: dict[str, str] = {
     "system": "System",
 }
 
+STANDARD_LIBRARY_INTERFACES: dict[str, str] = {}
+for _mod, _iface in STANDARD_LIBRARY_MODULES.items():
+    STANDARD_LIBRARY_INTERFACES[_iface] = _iface
+    STANDARD_LIBRARY_INTERFACES[_iface.lower()] = _iface
+    STANDARD_LIBRARY_INTERFACES[_mod] = _iface
+    STANDARD_LIBRARY_INTERFACES[_mod.lower()] = _iface
+
+STANDARD_LIBRARY_MODULE_NAMES: dict[str, str] = {}
+for _mod in STANDARD_LIBRARY_MODULES:
+    STANDARD_LIBRARY_MODULE_NAMES[_mod] = _mod
+    STANDARD_LIBRARY_MODULE_NAMES[_mod.lower()] = _mod
+
 
 class BuiltinModuleRegistry:
     """Central registry of Cardelli standard library interfaces and runtime modules."""
@@ -329,7 +341,10 @@ class BuiltinModuleRegistry:
     def get_interface(cls, name: str, env: Optional[Environment] = None) -> Optional[Scope]:
         """Returns the Scope containing the type signatures for the requested interface."""
         cls._ensure_initialized(env)
-        return cls._interfaces.get(name)
+        scope = cls._interfaces.get(name)
+        if scope is not None:
+            return scope
+        return cls.ensure_interface(name, env)
 
     @classmethod
     def set_system_args(cls, args: list[str]) -> None:
@@ -351,7 +366,13 @@ class BuiltinModuleRegistry:
     def get_module_type(cls, name: str, env: Optional[Environment] = None) -> Optional[QType]:
         """Returns the QType (usually QRecordType) representing the module's signature."""
         cls._ensure_initialized(env)
-        return cls._module_types.get(name)
+        mod_type = cls._module_types.get(name)
+        if mod_type is not None:
+            return mod_type
+        if cls.ensure_module(name, env) is not None:
+            norm = STANDARD_LIBRARY_MODULE_NAMES.get(name, name)
+            return cls._cached_mod_types.get(norm)
+        return None
 
     @classmethod
     def get_module_ast(cls, name: str, env: Optional[Environment] = None) -> Optional[TypedModule]:
@@ -359,7 +380,6 @@ class BuiltinModuleRegistry:
         cls._ensure_initialized(env)
         return cls._module_asts.get(name)
 
-    _cached_env_populated: bool = False
     _cached_interfaces: dict[str, Scope] = {}
     _cached_mod_scopes: dict[str, Scope] = {}
     _cached_mod_types: dict[str, QType] = {}
@@ -367,34 +387,63 @@ class BuiltinModuleRegistry:
     _cached_module_export_scopes: dict[str, Scope] = {}
 
     @classmethod
-    def populate_environment(cls, env: Environment) -> None:
-        """Registers standard library interfaces and prelinked modules into an Environment."""
-        from quest.modules.elaboration import (
-            build_record_type_from_scope,
-            separately_compiled_module_scope,
-        )
-        from quest.modules.loader import load_interface
-
-        if not cls._cached_env_populated:
+    def ensure_interface(cls, iface_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
+        """Loads and caches standard library interface `iface_name`, registering it in `env`."""
+        target_iface = STANDARD_LIBRARY_INTERFACES.get(iface_name)
+        if target_iface is None:
+            return None
+        if target_iface not in cls._cached_interfaces:
+            from quest.modules.loader import load_interface
             base_env = Environment(builtin_registry=False)
-            for mod_name, iface_name in STANDARD_LIBRARY_MODULES.items():
-                iface_scope = load_interface(iface_name, base_env)
-                cls._cached_interfaces[iface_name] = iface_scope
-                mod_scope = separately_compiled_module_scope(mod_name, iface_scope, base_env)
-                cls._cached_mod_scopes[mod_name] = mod_scope
-                cls._cached_mod_types[mod_name] = build_record_type_from_scope(mod_scope, provenance=mod_name)
-            cls._cached_loaded_interfaces = dict(base_env.loaded_interfaces)
-            cls._cached_module_export_scopes = dict(base_env.module_export_scopes)
-            cls._cached_env_populated = True
+            iface_scope = load_interface(target_iface, base_env)
+            cls._cached_interfaces[target_iface] = iface_scope
+            cls._cached_loaded_interfaces.update(base_env.loaded_interfaces)
+            cls._cached_module_export_scopes.update(base_env.module_export_scopes)
 
-        env.loaded_interfaces.update(cls._cached_loaded_interfaces)
-        env.module_export_scopes.update(cls._cached_module_export_scopes)
-        for iface_name, iface_scope in cls._cached_interfaces.items():
-            env.register_interface(iface_name, iface_scope)
-        for mod_name, mod_type in cls._cached_mod_types.items():
-            env.global_scope.declare_value(ValueSymbol(name=mod_name, type_val=mod_type))
-        for mod_name, mod_scope in cls._cached_mod_scopes.items():
-            env.register_module(mod_name, mod_scope)
+        iface_scope = cls._cached_interfaces[target_iface]
+        if env is not None:
+            env.register_interface(target_iface, iface_scope)
+            if iface_name != target_iface:
+                env.register_interface(iface_name, iface_scope)
+            env._builtin_interfaces[target_iface] = iface_scope
+            env.loaded_interfaces.update(cls._cached_loaded_interfaces)
+            env.module_export_scopes.update(cls._cached_module_export_scopes)
+        return iface_scope
+
+    @classmethod
+    def ensure_module(cls, mod_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
+        """Loads and caches standard library module `mod_name`, registering it in `env`."""
+        norm_mod = STANDARD_LIBRARY_MODULE_NAMES.get(mod_name)
+        if norm_mod is None:
+            return None
+        iface_name = STANDARD_LIBRARY_MODULES[norm_mod]
+        cls.ensure_interface(iface_name, env)
+        if norm_mod not in cls._cached_mod_scopes:
+            from quest.modules.elaboration import (
+                build_record_type_from_scope,
+                separately_compiled_module_scope,
+            )
+            base_env = Environment(builtin_registry=False)
+            iface_scope = cls._cached_interfaces[iface_name]
+            mod_scope = separately_compiled_module_scope(norm_mod, iface_scope, base_env)
+            cls._cached_mod_scopes[norm_mod] = mod_scope
+            cls._cached_mod_types[norm_mod] = build_record_type_from_scope(mod_scope, provenance=norm_mod)
+
+        mod_scope = cls._cached_mod_scopes[norm_mod]
+        mod_type = cls._cached_mod_types[norm_mod]
+        if env is not None:
+            env.register_module(norm_mod, mod_scope)
+            if mod_name != norm_mod:
+                env.register_module(mod_name, mod_scope)
+            env._builtin_modules[norm_mod] = mod_scope
+            if not env.global_scope.lookup_value_local(norm_mod):
+                env.global_scope.declare_value(ValueSymbol(name=norm_mod, type_val=mod_type))
+        return mod_scope
+
+    @classmethod
+    def populate_environment(cls, env: Environment) -> None:
+        """Registers standard library resolution hook into an Environment."""
+        env.builtin_registry = cls
 
     @classmethod
     def _ensure_initialized(cls, env: Optional[Environment] = None) -> None:
