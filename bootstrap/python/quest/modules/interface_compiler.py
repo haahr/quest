@@ -362,7 +362,9 @@ def compile_interface_to_qi(
     # the group's number; the loader rebuilds the group from its members' records.
     for sig, group in _type_signatures(decl):
         if isinstance(sig, ast.TypeFormal):
-            kind_str = format_kind_for_qi(sig.bound)
+            # The elaborated kind, whose bound (for POWER) is printed as a type, not as syntax
+            formal_sym = iface_scope.lookup_type_local(sig.name)
+            kind_str = format_kind_for_qi(formal_sym.kind if formal_sym is not None else sig.bound)
             type_records.append(
                 QRecord(
                     {
@@ -490,13 +492,12 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
     for sig, _ in _type_signatures(decl):
         if isinstance(sig, ast.TypeFormal):
             has_types = True
-            kind_desc = (
-                "TYPE"
-                if sig.bound is None or isinstance(sig.bound, ast.KindType)
-                else str(sig.bound)
-            )
-            lines.append(f"/* Abstract type {sig.name}::{kind_desc} */")
-            lines.append(f"typedef QVal quest_type_{c_name}_{sig.name};")
+            # A bounded abstract type (POWER(B)) is held as a value of B, as the signatures below declare it
+            formal_sym = iface_scope.lookup_type_local(sig.name)
+            kind = formal_sym.kind if formal_sym is not None else None
+            c_rep = qtype_to_c_type(kind.bound) if isinstance(kind, QPowerKind) else "QVal"
+            lines.append(f"/* Abstract type {sig.name}::{format_kind_for_qi(kind)} */")
+            lines.append(f"typedef {c_rep} quest_type_{c_name}_{sig.name};")
         elif isinstance(sig, ast.TypeBinding) and not sig.is_rec:
             has_types = True
             type_sym = iface_scope.lookup_type_local(sig.name)

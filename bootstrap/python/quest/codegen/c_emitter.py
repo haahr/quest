@@ -164,6 +164,7 @@ from quest.types import (
     STRING_TYPE,
     QAbstractType,
     QAllKind,
+    QPowerKind,
     QAllType,
     QArrayType,
     QAutoType,
@@ -1669,6 +1670,30 @@ class CEmitter:
         lines.append(f"else {val} = *{ptr_expr};")
         return val
 
+    def _needs_bound_view(self, exported_t: QType, internal_t: QType) -> bool:
+        """Whether a module's value of type internal_t, of a bounded abstract type exported_t outside the module
+        (T::POWER(B) in its interface), must be converted at the module's boundary: outside, it is held as a value of
+        B, viewed at B, and a record, variant, or option of another type is viewed or tagged differently inside."""
+        t = exported_t.prune() if hasattr(exported_t, "prune") else exported_t
+        t = strip_aliases(t)
+        if not isinstance(t, (QTypeVar, QAbstractType)) or not isinstance(t.bound, QPowerKind):
+            return False
+        bound = t.bound.bound
+        if not self._may_be_stored_as_subtype(bound) or isinstance(normalize_type(bound), (QFunType, QAllType)):
+            return False
+        if self._type_params_in_scope(internal_t) or getattr(internal_t, "_fv", None):
+            return False
+        return not is_type_equal(bound, internal_t)
+
+    def _bound_view_conversion(self, expr: str, from_t: QType, to_t: QType) -> str:
+        """Converts expr from from_t to to_t across a module's boundary (see _needs_bound_view): by quest_convert,
+        between their descriptors, which views a record from its own layout and maps a variant's tag by name."""
+        converted = (
+            f"quest_convert({_qval_wrap(expr, from_t)}, {self.c_type_descriptor(from_t)}, "
+            f"{self.c_type_descriptor(to_t)})"
+        )
+        return _qval_unwrap(converted, to_t, self)
+
     def _may_be_stored_as_subtype(self, t: QType) -> bool:
         """True if a value of type t may be stored at a different type that is a subtype of t, and so need
         converting when used at t: records, variants, options, nonempty tuples, and functions."""
@@ -2215,11 +2240,17 @@ class CEmitter:
                     exp_ret_t = exp_fun.result_type
                     exp_params = exp_fun.params
                     exp_ret_c = "void" if exp_ret_t is OK_TYPE else self.c_type(exp_ret_t)
-                    if exp_ret_c != int_ret_c or len(exp_params) != len(params):
+                    if (
+                        exp_ret_c != int_ret_c
+                        or len(exp_params) != len(params)
+                        or self._needs_bound_view(exp_ret_t, ret_type)
+                    ):
                         needs_adapter = True
                     else:
                         for ep, ip in zip(exp_params, params):
-                            if self.c_type(ep.type_val) != self.c_type(ip.type_val):
+                            if self.c_type(ep.type_val) != self.c_type(ip.type_val) or self._needs_bound_view(
+                                ep.type_val, ip.type_val
+                            ):
                                 needs_adapter = True
                                 break
                 else:
@@ -2428,6 +2459,8 @@ class CEmitter:
                     if self.c_type(ep.type_val) != self.c_type(ip.type_val):
                         unwrapped = _qval_unwrap(ep_name, ip.type_val, self)
                         adapter_args.append(unwrapped)
+                    elif self._needs_bound_view(ep.type_val, ip.type_val):
+                        adapter_args.append(self._bound_view_conversion(ep_name, ep.type_val, ip.type_val))
                     else:
                         adapter_args.append(ep_name)
                 args_str = ", ".join(adapter_args)
@@ -2442,6 +2475,8 @@ class CEmitter:
                     if exp_ret_c != int_ret_c:
                         wrapped = _qval_wrap("_res", int_ret_t)
                         fun_lines.append(f"    return {wrapped};")
+                    elif self._needs_bound_view(exp_ret_t, int_ret_t):
+                        fun_lines.append(f"    return {self._bound_view_conversion('_res', int_ret_t, exp_ret_t)};")
                     else:
                         fun_lines.append("    return _res;")
                 fun_lines.append("}")
@@ -2622,6 +2657,8 @@ class CEmitter:
                 val_str = m_ident
                 if val_t and self.c_type(fld.type_val) == "QVal" and self.c_type(val_t) != "QVal":
                     val_str = _qval_wrap(val_str, val_t)
+                elif val_t and self._needs_bound_view(fld.type_val, val_t):
+                    val_str = self._bound_view_conversion(val_str, val_t, fld.type_val)
                 lines.append(f"    {payload_var}->qf_{fld.name} = {val_str};")
         d_name = self.record_ctx.offset_dict_instance_name(mod_rec_t, mod_rec_t)
         lines.append(

@@ -44,11 +44,13 @@ from quest.typed_ast import (
 )
 from quest.types import (
     TYPE_KIND,
+    KindError,
     QExternalType,
     QRecordField,
     QRecordType,
     QType,
     QTypeVar,
+    check_kind,
     is_subkind,
     is_subtype,
     is_type_equal,
@@ -422,7 +424,17 @@ def elaborate_module(
                         offset=decl.offset,
                     )
             if interface_type_symbol.kind is not None and mod_type_symbol.kind is not None:
-                if not is_subkind(mod_type_symbol.kind, interface_type_symbol.kind, env):
+                # A defined type has the interface's kind if it is a member of it (for POWER(B), a subtype of B),
+                # whatever kind it was declared with; an undefined one must have been declared with a subkind
+                if mod_type_symbol.definition is not None:
+                    try:
+                        check_kind(mod_type_symbol.definition, interface_type_symbol.kind, env)
+                        satisfies = True
+                    except KindError:
+                        satisfies = False
+                else:
+                    satisfies = is_subkind(mod_type_symbol.kind, interface_type_symbol.kind, env)
+                if not satisfies:
                     raise QuestTypeError(
                         f"Type '{type_name}' in module '{decl.name}' does not satisfy "
                         f"kind bound from interface '{decl.interface_name}'",
