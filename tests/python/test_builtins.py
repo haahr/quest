@@ -1,4 +1,4 @@
-"""Unit tests for Quest builtins module builder, qchecked decorator, and registry."""
+"""Unit tests for Quest builtins external symbol bridge, qchecked decorator, and registry."""
 
 import os
 import sys
@@ -7,10 +7,9 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.builtins import BuiltinModuleRegistry, ModuleBuilder, qchecked
+from quest.builtins import EXTERNAL_SYMBOLS, BuiltinModuleRegistry, qchecked
 from quest.interpreter import QuestException, QuestRuntimeError
-from quest.runtime import QExceptionVal, QInt, QString
-from quest.types import INT_TYPE, QAllType, QFunType, STRING_TYPE, TYPE_KIND
+from quest.runtime import QArray, QBuiltinFun, QExceptionVal, QInt, QString
 
 
 class TestBuiltinWrappers(unittest.TestCase):
@@ -65,53 +64,55 @@ class TestBuiltinWrappers(unittest.TestCase):
             dummy()
         self.assertIn("Expected 1 arguments, got 0", str(ctx.exception))
 
-    def test_module_builder_declaration_and_finish(self):
-        builder = ModuleBuilder("testMod", "TestMod", BuiltinModuleRegistry)
-        builder.def_type("T", 9999, TYPE_KIND)
-        builder.def_const("zero", INT_TYPE, QInt(0))
-        builder.def_fn("succ", [("n", INT_TYPE)], INT_TYPE, lambda n: QInt(n.value + 1))
-        builder.def_scope_val("hidden", STRING_TYPE)
-        builder.def_poly_fn(
-            "id",
-            "A",
-            9998,
-            [("x", INT_TYPE)],
-            INT_TYPE,
-            lambda x: x,
-        )
+    def test_external_symbols_populated(self):
+        self.assertGreaterEqual(len(EXTERNAL_SYMBOLS), 150)
+        self.assertIn("quest_writer_put_string", EXTERNAL_SYMBOLS)
+        self.assertIn("quest_system_args", EXTERNAL_SYMBOLS)
+        self.assertIn("QUEST_INT_MIN", EXTERNAL_SYMBOLS)
+        self.assertIn("(&quest_exc_writer_error)", EXTERNAL_SYMBOLS)
 
+    def test_resolve_external_symbol_function(self):
+        sym_val = BuiltinModuleRegistry.resolve_external_symbol("quest_writer_put_string")
+        self.assertIsInstance(sym_val, QBuiltinFun)
+
+    def test_resolve_external_symbol_exception(self):
+        exc_val = BuiltinModuleRegistry.resolve_external_symbol("(&quest_exc_writer_error)")
+        self.assertIsInstance(exc_val, QExceptionVal)
+        self.assertEqual(exc_val.name, "writer.error")
+
+        exc_val2 = BuiltinModuleRegistry.resolve_external_symbol("quest_exc_writer_error")
+        self.assertEqual(exc_val2, exc_val)
+
+    def test_resolve_external_symbol_constant(self):
+        int_min = BuiltinModuleRegistry.resolve_external_symbol("QUEST_INT_MIN")
+        self.assertIsInstance(int_min, QInt)
+        self.assertEqual(int_min.value, -(2**63))
+
+    def test_resolve_external_symbol_unknown_raises(self):
+        with self.assertRaises(QuestRuntimeError) as ctx:
+            BuiltinModuleRegistry.resolve_external_symbol("quest_nonexistent_symbol_xyz")
+        self.assertIn("Undefined external symbol", str(ctx.exception))
+
+    def test_set_system_args(self):
+        orig_args = EXTERNAL_SYMBOLS.get("quest_system_args")
         try:
-            rec = builder.finish()
-            self.assertIn("zero", rec.fields)
-            self.assertIn("succ", rec.fields)
-            self.assertIn("id", rec.fields)
-            self.assertNotIn("hidden", rec.fields)
-
-            scope = BuiltinModuleRegistry.get_interface("TestMod")
-            self.assertIsNotNone(scope)
-            self.assertIn("T", scope.types)
-            self.assertIn("zero", scope.values)
-            self.assertIn("succ", scope.values)
-            self.assertIn("hidden", scope.values)
-            self.assertIn("id", scope.values)
-
-            fn_sym = scope.lookup_value("succ")
-            self.assertIsInstance(fn_sym.type_val, QFunType)
-
-            poly_sym = scope.lookup_value("id")
-            self.assertIsInstance(poly_sym.type_val, QAllType)
-
-            mod_type = BuiltinModuleRegistry.get_module_type("testMod")
-            self.assertIsNotNone(mod_type)
-            field_names = [f.name for f in mod_type.fields]
-            self.assertIn("zero", field_names)
-            self.assertIn("hidden", field_names)
-            self.assertIn("succ", field_names)
-            self.assertIn("id", field_names)
+            BuiltinModuleRegistry.set_system_args(["foo", "bar"])
+            args_val = BuiltinModuleRegistry.resolve_external_symbol("quest_system_args")
+            self.assertIsInstance(args_val, QArray)
+            self.assertEqual(len(args_val.elements), 2)
+            self.assertEqual([e.value for e in args_val.elements], ["foo", "bar"])
         finally:
-            BuiltinModuleRegistry._modules.pop("testMod", None)
-            BuiltinModuleRegistry._interfaces.pop("TestMod", None)
-            BuiltinModuleRegistry._module_types.pop("testMod", None)
+            EXTERNAL_SYMBOLS["quest_system_args"] = orig_args
+
+    def test_ensure_interface_and_module(self):
+        iface = BuiltinModuleRegistry.ensure_interface("Writer")
+        self.assertIsNotNone(iface)
+        self.assertIn("putString", iface.values)
+
+        mod = BuiltinModuleRegistry.ensure_module("writer")
+        self.assertIsNotNone(mod)
+        self.assertIn("putString", mod.values)
+
 
 
 if __name__ == "__main__":
