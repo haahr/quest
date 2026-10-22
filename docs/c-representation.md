@@ -889,6 +889,9 @@ function passes on ([type-system.md](type-system.md) §6.11).
   scalars and pointers but not for records and variants (16 bytes inline, or a pointer to a boxed copy), and in
   function parameters and results (registers) only for integers and pointers; aggregates agree when their
   components do, records when their views' field types do. Recursive descriptors are compared coinductively.
+  The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
+  type arguments (`generic_layout_agrees` in `codegen/c_types.py`), conservatively: when it cannot tell, the value
+  is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
   components their sharing); otherwise tuples, options, and auto payloads are copied with converted components,

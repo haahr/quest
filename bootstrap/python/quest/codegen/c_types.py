@@ -1697,6 +1697,88 @@ def normalize_type(t: QType) -> QType:
     return lower_type(t).normalized
 
 
+# The C types of values that a QVal holds in its own bits (pointers aside): stored as generic code stores a type
+# parameter's value, they agree in memory with the native value, and in registers only for integers
+_WORD_SCALARS = frozenset({"QInt", "QReal", "QBool", "QChar", "QVal", "void"})
+_REGISTER_WORDS = frozenset({"QInt", "QVal"})
+
+
+def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
+    """Whether a value of t.substitute(subst), laid out natively, is laid out as generic code lays out t, where each
+    variable in subst is a type parameter of that code: so that the value can be used there as it is, through a
+    pointer cast, and a value made there can be used natively.
+
+    Generic code stores a value of an unbounded type parameter as a QVal, and one of a bounded parameter as a value of
+    the bound. A QVal agrees with a native scalar or pointer in memory, but not with a 16-byte record or variant, and
+    in registers (function parameters and results) only with integers and pointers. Aggregates agree when their
+    components do; recursive types are compared coinductively. This mirrors quest_layout_equivalent in the runtime,
+    conservatively: False means only that the value may need converting.
+    """
+    if not subst:
+        return True
+    return _generic_layout_agrees(t, subst, False, set())
+
+
+def _stored_value_agrees(var: QTypeVar, arg: QType, in_register: bool) -> bool:
+    """Whether a native value of arg agrees with a value of the type parameter var as generic code stores it."""
+    arg_c = qtype_to_c_type(arg)
+    bound = var.bound.bound if isinstance(var.bound, QPowerKind) else None
+    if bound is not None:
+        # Stored as a value of the bound, which agrees with one of arg only when both are the same scalar
+        return arg_c == qtype_to_c_type(bound) and arg_c in _WORD_SCALARS and (
+            not in_register or arg_c in _REGISTER_WORDS
+        )
+    if arg_c in ("QRecordVal", "QVariantVal"):
+        return False
+    if in_register:
+        return arg_c in _REGISTER_WORDS or arg_c.endswith("*")
+    return True
+
+
+def _generic_layout_agrees(t: QType, subst: dict[int, QType], in_register: bool, seen: set[int]) -> bool:
+    if not (getattr(t, "_fv", None) or frozenset()) & subst.keys():
+        return True
+    if isinstance(t, QTypeVar):
+        return _stored_value_agrees(t, subst[t.symbol_id], in_register) if t.symbol_id in subst else True
+    if isinstance(t, (QRecType, QRecGroupType, QAliasType)):
+        if id(t) in seen:
+            return True
+        seen.add(id(t))
+        if isinstance(t, QAliasType):
+            target = t.unfold_lazily() if isinstance(t.target, (QRecType, QRecGroupType)) else t.target
+        else:
+            target = t.unfold_lazily()
+        return _generic_layout_agrees(target, subst, in_register, seen)
+    if isinstance(t, QTypeApp):
+        reduced = t.evaluate_lazily()
+        if reduced is t or isinstance(reduced, QTypeApp):
+            # An application of an abstract operator, whose values are opaque pointers
+            return True
+        return _generic_layout_agrees(reduced, subst, in_register, seen)
+
+    def slot(component: QType) -> bool:
+        return _generic_layout_agrees(component, subst, False, seen)
+
+    if isinstance(t, QTupleType):
+        return all(slot(f.type_val) for f in t.value_fields)
+    if isinstance(t, QRecordType):
+        return all(slot(f.type_val) for f in t.fields)
+    if isinstance(t, QVariantType):
+        return all(v.type_val is None or slot(v.type_val) for v in t.variants)
+    if isinstance(t, QOptionType):
+        return all(o.payload_type is None or slot(o.payload_type) for o in t.options)
+    if isinstance(t, (QArrayType, QVarType, QOutType)):
+        return slot(t.element_type)
+    if isinstance(t, QFunType):
+        return all(
+            _generic_layout_agrees(p.type_val, subst, not (p.is_var or p.is_out), seen) for p in t.params
+        ) and _generic_layout_agrees(t.result_type, subst, True, seen)
+    if isinstance(t, QAllType):
+        return _generic_layout_agrees(t.body, subst, in_register, seen)
+    # Anything else that mentions a type parameter (auto types, exception types, path types) may differ
+    return False
+
+
 def is_word_type(t: QType) -> bool:
     """Returns True if t is the standard library Word.T type."""
     return lower_type(t).is_word
