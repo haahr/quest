@@ -381,6 +381,8 @@ class CDeclarationEmitter:
             elif form.kind == "hole":
                 if isinstance(dt.bound, QPowerKind):
                     visit(dt.bound.bound)
+            elif form.kind == "stored":
+                visit(dt.bound.bound)
             elif form.kind == "opaque" and isinstance(dt, QTypeApp):
                 for a in dt.arguments:
                     visit(a)
@@ -493,6 +495,18 @@ class CDeclarationEmitter:
                 )
                 extra = f"&qopaque_desc_{form.tag}"
             lines.extend(type_descriptor(form.tag, "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", extra))
+            lines.append("")
+
+        for form in forms.get("stored", []):
+            # A module's bounded abstract type: its opaque type, held as a value of its bound
+            lines.extend(type_descriptor(f"{form.tag}_abstract", "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", "NULL"))
+            lines.append(
+                f"static const QStoredDescriptor qstored_desc_{form.tag} Q_UNUSED = "
+                f"{{ .type = &quest_type_{form.tag}_abstract, .storage = {desc_fn(form.type.bound.bound)} }};"
+            )
+            lines.extend(type_descriptor(
+                form.tag, "QTYPE_KIND_STORED", form.name, f"sizeof({self.c_type(form.type)})", f"&qstored_desc_{form.tag}"
+            ))
             lines.append("")
 
         for form in forms.get("hole", []):

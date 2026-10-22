@@ -139,19 +139,26 @@ class TestDynamicFormat(unittest.TestCase):
             with self.subTest(node=changed), self.assertRaises(QuestException):
                 jsog_decode(json.dumps({**doc, "types": [changed], "value": 1}))
 
-    def test_types_that_are_not_encodable(self) -> None:
+    def test_bounded_abstract_types(self) -> None:
+        """A bounded abstract type is written as any module abstract type is, with its whole representation."""
         from quest.modules.abstract_types import (
             abstract_type_symbol_id,
             register_abstract_type_representation,
         )
-        from quest.types import INT_TYPE, TYPE_KIND, QAbstractType, QExternalType, QPowerKind, QTypeVar
+        from quest.types import INT_TYPE, QPowerKind, QTypeVar
 
-        bounded_name = "test/dynamicformat.Small"
-        bounded = QTypeVar(name="dynamicformat.Small", symbol_id=abstract_type_symbol_id(bounded_name),
+        name = "test/dynamicformat.Small"
+        bounded = QTypeVar(name="dynamicformat.Small", symbol_id=abstract_type_symbol_id(name),
                            bound=QPowerKind(INT_TYPE))
-        register_abstract_type_representation(bounded_name, bounded, INT_TYPE)
-        for t in (bounded, QAbstractType(name="T", symbol_id=-77, bound=TYPE_KIND),
-                  QExternalType(name="F", c_type="FILE *")):
+        register_abstract_type_representation(name, bounded, INT_TYPE)
+        text = jsog_encode(QAutoVal(QTuple((QInt(1),), labels=("a",)), bounded))
+        self.assertEqual(json.loads(text)["types"], [{"abstract": name, "rep": "Int"}])
+        self.assertIs(jsog_decode(text).type_val, bounded)
+
+    def test_types_that_are_not_encodable(self) -> None:
+        from quest.types import TYPE_KIND, QAbstractType, QExternalType
+
+        for t in (QAbstractType(name="T", symbol_id=-77, bound=TYPE_KIND), QExternalType(name="F", c_type="FILE *")):
             with self.subTest(t=t), self.assertRaises(QuestException):
                 jsog_encode(QAutoVal(QTuple((QInt(1),), labels=("a",)), t))
 

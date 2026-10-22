@@ -143,9 +143,8 @@ rely on this: it compares types structurally, never by index.
 
 **Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), auto
 types other than `Dynamic.T` (which is `Auto A::TYPE with a:A end` and is written by its built-in name), and type
-operators themselves have binders that this table does not express. Abstract types with a bound
-(`T::POWER(B)` in an interface) are not encodable either, since compiled code stores their values as the bound,
-which may not hold everything the representation does; nor are external types other than `uint64_t`.
+operators themselves have binders that this table does not express. Nor are external types other than
+`uint64_t`.
 `dynamic.extern` raises `dynamic.error` for a type containing one. A later version can add binder nodes.
 
 ### 2.3. Abstract Types
@@ -301,14 +300,16 @@ the envelope changed, with `ABI_VERSION` 4.
   representation is `quest_instantiate_descriptor` of the template at the arguments, which is the layout in
   which a value of the application is held outside the module. A value of an abstract type is held outside its
   module as a `QVal`, so the writer writes it through its representation as it writes a value stored in the
-  representation of a type parameter. The reader looks up the name, checks the representation by subtyping in
+  representation of a type parameter. A bounded abstract type (`T::POWER(B)`) is held outside its module as a
+  value of its bound, viewed at the bound, so its descriptor is a stored descriptor (`QTYPE_KIND_STORED`) of the
+  opaque type in the bound's representation, and `quest_convert` treats a module's abstract type as its
+  representation: the writer and `dynamic.be` view such a value at the representation or at the bound as they
+  need. The reader looks up the name, checks the representation by subtyping in
   both directions, and makes an opaque descriptor (`quest_make_opaque_descriptor`) for an unlinked name, with the
   recorded representation. Since module objects register at startup, this bumped `ABI_VERSION` (to 24).
   `word.T` has its own descriptor, `quest_type_Word`.
-- **Differences between the backends.** Compiled code describes a bounded abstract type (`T::POWER(B)`) by its
-  bound, so it writes such a value at the bound where the interpreter raises `dynamic.error`. And it does not
-  check that two documents read with the same unlinked name agree on its representation, which the interpreter
-  does.
+- **A difference between the backends.** Compiled code does not check that two documents read with the same
+  unlinked name agree on its representation, which the interpreter does.
 
 ---
 

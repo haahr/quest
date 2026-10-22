@@ -1426,6 +1426,14 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         return DescriptorForm("bound_var", expr=f"(&quest_type_bound_vars[{index}])")
     if isinstance(t, QTupleType) and not t.fields:
         return DescriptorForm("base", expr="&quest_type_EmptyTuple")
+    if (
+        isinstance(t, QTypeVar)
+        and isinstance(t.bound, QPowerKind)
+        and (global_name := module_abstract_type_name(t)) is not None
+    ):
+        # A module's abstract type with a bound: opaque, and held outside the module in the representation of its
+        # bound, viewed at the bound (a stored descriptor, as for a bounded type parameter)
+        return DescriptorForm("stored", tag=f"stored_{_text_digest(global_name)}", name=global_name, type=t)
     if isinstance(t, QRecordType) or (rec_b := resolve_record_bound(t)) is not None:
         rec_t = t if isinstance(t, QRecordType) else rec_b
         return DescriptorForm("record", tag=record_struct_name(rec_t, ctx), type=rec_t)

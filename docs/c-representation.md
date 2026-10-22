@@ -823,6 +823,10 @@ descriptor that matches the wrong values.
   its abstract types' representations when it is initialized (`quest_register_abstract_type`; an abstract type
   operator's as a template whose holes are its parameters), which `dynamic.extern` and `dynamic.intern` use
   ([dynamic.md](dynamic.md) §3.5). `word.T`, the external type `uint64_t`, is `quest_type_Word`.
+  A module's abstract type with a bound (`T::POWER(B)`) is held outside the module as a value of `B`, viewed at
+  `B`: it is described by a stored descriptor (`QTYPE_KIND_STORED`) of its opaque type in `B`'s representation,
+  and the module's exported functions and values convert between that view and the module's own type at its
+  boundary (`quest_convert`).
 - **Manifest Types (`Def T = ...`):** Pure compile-time aliases, completely erased at runtime with no separate
   descriptors.
 

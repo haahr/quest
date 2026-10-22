@@ -73,6 +73,7 @@ from quest.types import (
     QTupleType,
     QType,
     QKind,
+    QPowerKind,
     QTypeApp,
     QTypeKind,
     QTypeVar,
@@ -176,8 +177,9 @@ def _structure(t: QType) -> QType:
 
 
 def _is_unbounded(kind: QKind) -> bool:
-    """Whether an abstract type of this kind is encodable: TYPE, or an operator from types to TYPE. A bounded
-    abstract type (POWER(B)) is not, since compiled code stores its values as the bound (docs/dynamic.md §2.2)."""
+    """Whether an abstract type of this kind is encodable: TYPE or POWER(B), or an operator from types to TYPE."""
+    if isinstance(kind, QPowerKind):
+        return True
     while isinstance(kind, QAllKind):
         if not isinstance(kind.param_kind, QTypeKind):
             return False

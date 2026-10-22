@@ -1146,10 +1146,19 @@ static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor 
     return st->storage != NULL ? st->storage : st->type;
 }
 
+/* A module's abstract type is held, as a QVal or as its bound, as its representation is (docs/dynamic.md §3.5) */
+static const QTypeDescriptor *quest_concrete_representation(const QTypeDescriptor *d) {
+    if (d != NULL && d->kind == QTYPE_KIND_OPAQUE) {
+        const QTypeDescriptor *rep = quest_abstract_type_rep(d);
+        if (rep != NULL) return quest_stored_representation(rep);
+    }
+    return d;
+}
+
 QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
     if (from == NULL || to == NULL) return v;
-    from = quest_stored_representation(from);
-    to = quest_stored_representation(to);
+    from = quest_concrete_representation(quest_stored_representation(from));
+    to = quest_concrete_representation(quest_stored_representation(to));
     /* A record is viewed at `to` from its own layout, whatever view it had: code that knows a value only as of a
      * type parameter's bound may view it at the bound or at its own type */
     if (to->kind == QTYPE_KIND_RECORD && from->kind == QTYPE_KIND_RECORD && v.p != NULL) {

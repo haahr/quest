@@ -2113,8 +2113,8 @@ class CEmitter:
             kind = entry.type_var.bound
             while isinstance(kind, QAllKind):
                 arity, kind = arity + 1, kind.result_kind
-            if not isinstance(kind, QTypeKind):
-                continue  # a bounded abstract type is described by its bound
+            if not isinstance(kind, (QTypeKind, QPowerKind)) or (arity and isinstance(kind, QPowerKind)):
+                continue
             if arity:
                 if not isinstance(rep, QTypeFun) or len(rep.params) != arity:
                     continue
