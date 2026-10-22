@@ -3462,11 +3462,9 @@ class CEmitter:
                 elif isinstance(effective_func, TypedVar) and self._is_top_fun(effective_func):
                     c_func = self._env_ident(effective_func) or self.mangle_ident(effective_func.name)
                     fun, _ = self.top_funs_dict[effective_func.name]
-                    # The parameters and result of the function's type, which refer to its type's quantifiers (the
-                    # parameters' annotations in the function refer to symbols of their own)
-                    _, fun_inner = self._collect_fun_quantifiers(fun.type_val)
-                    _, typed_params, _, ret_type = self._collect_fun_params(fun)
-                    formal_params = fun_inner.params if isinstance(fun_inner, QFunType) else typed_params
+                    _, formal_params, _, ret_type = self._collect_fun_params(fun)
+                    # The function's parameters refer to the quantifiers of its own type, which may not be those of
+                    # the type the call sees
                     instantiation = self._call_instantiation(fun.type_val, type_args)
                     writebacks: list[str] = []
                     c_args = list(descriptor_args) + self._marshal_call_args(

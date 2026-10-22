@@ -260,25 +260,10 @@ def specialize_typed_fun(
     quants, inner_t = collect_fun_quantifiers(fun.type_val)
     subst: dict[int, QType] = {}
     instantiated_ids: set[int] = set()
-    quant_names: dict[str, QType] = {}
+    # The function's parameters and body refer to the quantifiers of its own type
     for q, targ in zip(quants, type_args):
         subst[q.symbol_id] = targ
         instantiated_ids.add(q.symbol_id)
-        quant_names[q.name] = targ
-
-    def collect_internal_type_vars(node: Any) -> None:
-        if isinstance(node, QTypeVar) and node.name in quant_names:
-            subst[node.symbol_id] = quant_names[node.name]
-        elif hasattr(node, "__dataclass_fields__"):
-            for f_name in node.__dataclass_fields__:
-                collect_internal_type_vars(getattr(node, f_name))
-        elif isinstance(node, (list, tuple)):
-            for item in node:
-                collect_internal_type_vars(item)
-
-    for p in fun.params:
-        collect_internal_type_vars(p)
-    collect_internal_type_vars(fun.body)
 
     remaining_quants = tuple(
         q.substitute(subst) for q in quants if q.symbol_id not in instantiated_ids
