@@ -1,0 +1,54 @@
+(TypedProgram
+  :phrases (
+    (TypedInterface 'Small'
+      :signatures ())
+    (TypedModule 'small' implements 'Small'
+      :bindings (
+        (TypedLetValue 'q' :type Fun(i: Int): Int
+          :value (TypedFun :params (('i' : Int)) :type Fun(i: Int): Int
+            :body (TypedInfix '*' :type Int
+              :left (TypedVar 'i' :type Int)
+              :right (TypedInt 10 :type Int))))
+        (TypedLetValue 'v' :type Int
+          :value (TypedInt 7 :type Int))
+        (TypedLetValue 'oops' :type Exception(Int)
+          :value (TypedException 'oops' :type Exception(Int)))
+      ))
+    (TypedLetValue 'q' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'q' :type Fun(i: Int): Int
+          :target (TypedVar 'small' :type Module 'small'))
+        :args (
+          (TypedInt 5 :type Int)
+        )))
+    (TypedLetValue 'v' :type Int
+      :value (TypedInfix '+' :type Int
+        :left (TypedSelect 'v' :type Int
+          :target (TypedVar 'small' :type Module 'small'))
+        :right (TypedInt 1 :type Int)))
+    (TypedLetValue 'oops' :type Exception(Int)
+      :value (TypedException 'oops' :type Exception(Int)))
+    (TypedLetValue 'caught' :type Int
+      :value (TypedTry :type Int
+        :body (TypedRaise :type Int
+          :exc (TypedSelect 'oops' :type Exception(Int)
+            :target (TypedVar 'small' :type Module 'small'))
+          :payload (TypedInt 3 :type Int))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'oops' :type Exception(Int))
+            :body (TypedInfix '-' :type Int
+              :left (TypedInt 0 :type Int)
+              :right (TypedVar 'n' :type Int)))
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'oops' :type Exception(Int)
+              :target (TypedVar 'small' :type Module 'small'))
+            :body (TypedVar 'n' :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedInfix '+' :type Int
+        :left (TypedVar 'q' :type Int)
+        :right (TypedInfix '+' :type Int
+          :left (TypedVar 'v' :type Int)
+          :right (TypedVar 'caught' :type Int))))
+  ))

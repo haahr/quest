@@ -1,0 +1,147 @@
+(Program
+  :phrases (
+    (InterfaceDecl
+      :name 'Small'
+      :signatures (
+        (FieldSig
+          :name 'q'
+          :type_sig (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'i'
+                :bound (KindPower
+                  :bound (TypePath ('Int'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'v'
+          :type_sig (TypePath ('Int'))
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'oops'
+          :type_sig (TypeApp
+            :constructor (TypePath ('Exception'))
+            :arguments (
+              (TypePath ('Int'))
+            )
+          )
+          :mode VALUE
+        )
+      )
+    )
+    (ModuleDecl
+      :name 'small'
+      :interface_name 'Small'
+      :bindings (
+        (LetValueBinding
+          :name 'q'
+          :value (ExprInfix
+            :left (ExprId 'i')
+            :op '*'
+            :right (ExprInt 10 '10')
+          )
+          :params (
+            (FormalParam
+              :name 'i'
+              :type_annot (TypePath ('Int'))
+              :mode VALUE
+            )
+          )
+          :type_annot (TypePath ('Int'))
+        )
+        (LetValueBinding
+          :name 'v'
+          :value (ExprInt 7 '7')
+          :type_annot (TypePath ('Int'))
+        )
+        (LetValueBinding
+          :name 'oops'
+          :value (ExprException
+            :name 'oops'
+            :type_annot (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'q'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'small')
+          :field 'q'
+        )
+        :args (
+          (ExprInt 5 '5')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'v'
+      :value (ExprInfix
+        :left (ExprSelect
+          :target (ExprId 'small')
+          :field 'v'
+        )
+        :op '+'
+        :right (ExprInt 1 '1')
+      )
+    )
+    (LetValueBinding
+      :name 'oops'
+      :value (ExprException
+        :name 'oops'
+        :type_annot (TypePath ('Int'))
+      )
+    )
+    (LetValueBinding
+      :name 'caught'
+      :value (ExprTry
+        :body (ExprRaise
+          :exc (ExprSelect
+            :target (ExprId 'small')
+            :field 'oops'
+          )
+          :payload (ExprInt 3 '3')
+          :as_type (TypePath ('Int'))
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'oops')
+            :binder 'n'
+            :body (ExprInfix
+              :left (ExprInt 0 '0')
+              :op '-'
+              :right (ExprId 'n')
+            )
+          )
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'small')
+              :field 'oops'
+            )
+            :binder 'n'
+            :body (ExprId 'n')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprId 'q')
+        :op '+'
+        :right (ExprInfix
+          :left (ExprId 'v')
+          :op '+'
+          :right (ExprId 'caught')
+        )
+      )
+    )
+  )
+)

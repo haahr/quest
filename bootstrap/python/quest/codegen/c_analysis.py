@@ -709,22 +709,11 @@ def analyze_program_for_c(
     top_funs: list[tuple[str, TypedFun, Any]] = []
     top_vars: list[tuple[str, TypedExpr, Any]] = []
 
-    # The members of a group of mutually recursive declarations are top-level declarations of their own
+    # The members of a group of mutually recursive declarations are top-level declarations of their own. A module
+    # declared in the program is not: its members are emitted with the module, named after it as the members of a
+    # module in a file of its own are (qv_<module>_<member>).
     for phrase in (member for phrase in prog.phrases for member in binding_members(phrase)):
         match phrase:
-            case TypedModule() as mod:
-                for b in (member for b in mod.bindings for member in binding_members(b)):
-                    match b:
-                        case TypedLetValue(name=name, value=val, symbol=symbol):
-                            if isinstance(val, TypedFun):
-                                top_funs.append((name, val, symbol))
-                            else:
-                                top_vars.extend(exception_var_entries(val))
-                                top_vars.append((name, val, symbol))
-                        case TypedException() | TypedExprStmt(expr=TypedException()):
-                            top_vars.extend(exception_var_entries(b))
-                        case _:
-                            pass
             case TypedLetValue(name=name, value=val, symbol=symbol):
                 if isinstance(val, TypedFun):
                     top_funs.append((name, val, symbol))
@@ -857,10 +846,22 @@ def analyze_program_for_c(
     tuple_coercions = list(tuple_coercions_map.values())
     variant_coercions = list(variant_coercions_map.values())
 
-    # A variable is global if it refers to a top-level binding, not to a local binding of the same name
+    # A variable is global if it refers to a top-level binding or a module's, not to a local binding of the same name
     top_symbols: dict[str, list[Any]] = {}
     for name, _, symbol in top_funs + top_vars:
         top_symbols.setdefault(name, []).append(symbol)
+    for mod in sorted_modules:
+        for b in (member for b in mod.bindings for member in binding_members(b)):
+            match b:
+                case TypedLetValue(name=name, value=val, symbol=symbol):
+                    top_symbols.setdefault(name, []).append(symbol)
+                    entries = exception_var_entries(val)
+                case TypedException() | TypedExprStmt(expr=TypedException()):
+                    entries = exception_var_entries(b)
+                case _:
+                    entries = []
+            for name, _, symbol in entries:
+                top_symbols.setdefault(name, []).append(symbol)
 
     def is_global(var: TypedVar) -> bool:
         return any(
