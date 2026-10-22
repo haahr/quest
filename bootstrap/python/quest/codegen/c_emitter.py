@@ -711,15 +711,36 @@ class CEmitter:
         target_type: QType,
         lines: list[str],
         dest: Optional[str] = None,
+        layout: Optional[tuple[dict[int, QType], bool]] = None,
     ) -> str:
         """Coerces a C expression from src_val's type to target_type, emitting any
-        necessary subtyping conversions, upcasts, or QVal boxing/unboxing."""
+        necessary subtyping conversions, upcasts, or QVal boxing/unboxing.
+
+        layout, for a value passed to or returned from a polymorphic callee, is the call's instantiation and whether
+        the value goes to the callee's generic layout (target_type is the callee's type) or from it (src_val's type
+        is): see _convert_generic_layout. Closures are adapted likewise."""
         src_type = src_val.type_val if isinstance(src_val, TypedExpr) else src_val
+
+        def result(res: str) -> str:
+            if dest is not None:
+                lines.append(f"{dest} = {res};")
+                return dest
+            return res
+
+        if layout is not None:
+            instantiation, to_generic = layout
+            generic_t = target_type if to_generic else src_type
+            converted = self._convert_generic_layout(c_val, generic_t, instantiation, lines, to_generic)
+            if converted is not None:
+                return result(converted)
 
         # 1. Unbox from QVal if target is not QVal
         if self.c_type(target_type) != "QVal" and self.c_type(src_type) == "QVal":
             c_val = _qval_unwrap(c_val, target_type, self)
             src_type = target_type
+
+        # Tuple and function types reached through type operators are coerced as what they reduce to
+        src_n, target_n = normalize_type(src_type), normalize_type(target_type)
 
         # 2. Record subtyping
         if isinstance(target_type, QRecordType) or (rec_b := resolve_record_bound(target_type)) is not None:
@@ -732,12 +753,12 @@ class CEmitter:
 
         # 3. Tuple subtyping
         if (
-            isinstance(target_type, QTupleType)
-            and isinstance(src_type, QTupleType)
-            and src_type is not target_type
-            and not is_type_equal(src_type, target_type, self.env)
+            isinstance(target_n, QTupleType)
+            and isinstance(src_n, QTupleType)
+            and src_n is not target_n
+            and not is_type_equal(src_n, target_n, self.env)
         ):
-            return self._coerce_tuple_val(c_val, src_type, target_type, lines, dest=dest)
+            return self._coerce_tuple_val(c_val, src_n, target_n, lines, dest=dest)
 
         # 3b. Auto subtyping: convert the stored payload between the two witness-independent layouts
         if (
@@ -779,11 +800,11 @@ class CEmitter:
 
         # 5. Closure adaptation
         if (
-            isinstance(target_type, (QFunType, QAllType))
-            and isinstance(src_type, (QFunType, QAllType))
-            and self._closure_adaptation_needed(src_type, target_type)
+            isinstance(target_n, (QFunType, QAllType))
+            and isinstance(src_n, (QFunType, QAllType))
+            and self._closure_adaptation_needed(src_n, target_n)
         ):
-            res = self._emit_closure_adaptation(c_val, src_type, target_type, lines)
+            res = self._emit_closure_adaptation(c_val, src_n, target_n, lines, layout=layout)
             if dest is not None:
                 lines.append(f"{dest} = {res};")
                 return dest
@@ -887,15 +908,20 @@ class CEmitter:
         orig_t: QType,
         target_t: QType,
         lines: list[str],
+        layout: Optional[tuple[dict[int, QType], bool]] = None,
     ) -> str:
         """Wraps a closure of type orig_t for use at its supertype target_t, if needed, in a thunk that converts each
         argument from target_t's parameter type to orig_t's (parameters are contravariant) and the result from
-        orig_t's result type to target_t's, boxing and unboxing between QVal and concrete representations."""
+        orig_t's result type to target_t's, boxing and unboxing between QVal and concrete representations.
+
+        For a closure passed to or returned from a polymorphic callee, layout (see _coerce_val) converts arguments
+        and result between the callee's generic layouts and native ones: arguments the other way from the closure."""
         if not self._closure_adaptation_needed(orig_t, target_t):
             return c_closure
         orig_fn_ptr = _closure_fn_ptr_type(orig_t, self.record_ctx)
+        arg_layout = (layout[0], not layout[1]) if layout is not None else None
 
-        cache_key = (str(orig_t), str(target_t))
+        cache_key = (str(orig_t), str(target_t), str(sorted((k, str(v)) for k, v in layout[0].items())) if layout else "")
         if cache_key in self.adapter_cache:
             adapt_fn_name = self.adapter_cache[cache_key]
         else:
@@ -933,7 +959,7 @@ class CEmitter:
                 if tp.type_val is OK_TYPE or op.type_val is OK_TYPE:
                     call_args.append(arg_name)
                 else:
-                    call_args.append(self._coerce_val(arg_name, tp.type_val, op.type_val, body))
+                    call_args.append(self._coerce_val(arg_name, tp.type_val, op.type_val, body, layout=arg_layout))
 
             sig = ", ".join(param_decls)
             self.adapter_decls.append(f"static Q_UNUSED {ret_c} {adapt_fn_name}({sig});")
@@ -945,7 +971,7 @@ class CEmitter:
             else:
                 orig_ret_c = self.c_type(orig_ret_t)
                 body.append(f"{orig_ret_c} qv_result = {call_expr};")
-                body.append(f"return {self._coerce_val('qv_result', orig_ret_t, tgt_ret_t, body)};")
+                body.append(f"return {self._coerce_val('qv_result', orig_ret_t, tgt_ret_t, body, layout=layout)};")
             self.in_scope_type_descriptors = saved_descriptors
             fn_body = [f"static Q_UNUSED {ret_c} {adapt_fn_name}({sig}) {{"]
             fn_body.extend(f"    {line}" for line in body)
@@ -1079,13 +1105,17 @@ class CEmitter:
         target_t: QType,
         descriptor_args: list[str],
         lines: list[str],
+        type_args: Sequence[QType] = (),
     ) -> str:
-        """Emits a specialized closure binding type descriptors for partially applied polymorphic function."""
+        """Emits a specialized closure binding type descriptors for partially applied polymorphic function.
+
+        The closure converts its arguments from their native layouts at the type arguments to the layouts the
+        polymorphic function gives them, and its result back, as a call does (_convert_generic_layout)."""
         if not descriptor_args:
             return c_func
 
         num_descs = len(descriptor_args)
-        cache_key = ("type_app", str(orig_t), str(target_t), num_descs)
+        cache_key = ("type_app", str(orig_t), str(target_t), num_descs, tuple(str(t) for t in type_args))
         if cache_key in self.adapter_cache:
             adapt_fn_name, env_struct_name = self.adapter_cache[cache_key]
         else:
@@ -1121,20 +1151,48 @@ class CEmitter:
             for q in tgt_quants:
                 fn_body.append(f"    (void)descriptor_{q.name};")
 
-            call_args = ["_env->orig->env"]
-            for i in range(num_descs):
-                call_args.append(f"_env->desc[{i}]")
-            for q in tgt_quants:
-                call_args.append(f"descriptor_{q.name}")
-            for idx, _ in enumerate(tgt_params):
-                call_args.append(f"qv_arg_{idx}")
+            # The polymorphic function's own parameters and result, with the bound type parameters standing for the
+            # type arguments and the rest for the closure's own type parameters
+            orig_quants, inner_orig = self._collect_fun_quantifiers(orig_t)
+            instantiation: dict[int, QType] = {q.symbol_id: t for q, t in zip(orig_quants, type_args)}
+            for oq, tq in zip(orig_quants[num_descs:], tgt_quants):
+                instantiation[oq.symbol_id] = QTypeVar(name=tq.name, symbol_id=tq.symbol_id, bound=tq.bound)
+            orig_params = inner_orig.params if isinstance(inner_orig, QFunType) else ()
+            orig_ret_t = inner_orig.result_type if isinstance(inner_orig, QFunType) else OK_TYPE
+            layout_known = len(type_args) == num_descs and len(orig_params) == len(tgt_params)
+            saved_descriptors = self.in_scope_type_descriptors
+            self.in_scope_type_descriptors = {q.name: f"descriptor_{q.name}" for q in tgt_quants}
+            conv_lines: list[str] = []
+            try:
+                call_args = ["_env->orig->env"]
+                for i in range(num_descs):
+                    call_args.append(f"_env->desc[{i}]")
+                for q in tgt_quants:
+                    call_args.append(f"descriptor_{q.name}")
+                for idx, tp in enumerate(tgt_params):
+                    arg = f"qv_arg_{idx}"
+                    if layout_known and not (tp.is_var or tp.is_out) and tp.type_val is not OK_TYPE:
+                        op = orig_params[idx]
+                        arg = self._coerce_val(arg, tp.type_val, op.type_val, conv_lines, layout=(instantiation, True))
+                    call_args.append(arg)
 
-            call_expr = f"(({orig_fn_ptr})(_env->orig->fn))({', '.join(call_args)})"
-            if ret_t is OK_TYPE:
-                fn_body.append(f"    {call_expr};")
-                fn_body.append("    return;")
-            else:
-                fn_body.append(f"    return {call_expr};")
+                call_expr = f"(({orig_fn_ptr})(_env->orig->fn))({', '.join(call_args)})"
+                fn_body.extend(f"    {line}" for line in conv_lines)
+                if ret_t is OK_TYPE:
+                    fn_body.append(f"    {call_expr};")
+                    fn_body.append("    return;")
+                elif layout_known:
+                    ret_lines: list[str] = []
+                    fn_body.append(f"    {self.c_type(orig_ret_t)} qv_result = {call_expr};")
+                    converted = self._coerce_val(
+                        "qv_result", orig_ret_t, ret_t, ret_lines, layout=(instantiation, False)
+                    )
+                    fn_body.extend(f"    {line}" for line in ret_lines)
+                    fn_body.append(f"    return {converted};")
+                else:
+                    fn_body.append(f"    return {call_expr};")
+            finally:
+                self.in_scope_type_descriptors = saved_descriptors
             fn_body.append("}")
             fn_body.append("")
             self.adapter_defs.extend(fn_body)
@@ -1280,6 +1338,7 @@ class CEmitter:
         source_struct = tuple_struct_name(source_t)
 
         def _field_can_direct_cast(sf: QType, tf: QType) -> bool:
+            sf, tf = normalize_type(sf), normalize_type(tf)
             if qtype_to_c_type(sf, self.record_ctx) != qtype_to_c_type(tf, self.record_ctx):
                 return False
             if (
@@ -1326,6 +1385,9 @@ class CEmitter:
 
         for i, tgt_vf in enumerate(target_t.value_fields):
             src_vf = source_t.value_fields[i]
+            # Fields reached through type operators are converted as what they reduce to
+            src_vf = dataclasses.replace(src_vf, type_val=normalize_type(src_vf.type_val))
+            tgt_vf = dataclasses.replace(tgt_vf, type_val=normalize_type(tgt_vf.type_val))
             src_field_access = f"{tmp_src}->_{i}"
             tgt_field_c_t = qtype_to_c_type(tgt_vf.type_val, self.record_ctx)
             src_field_c_t = qtype_to_c_type(src_vf.type_val, self.record_ctx)
@@ -1507,10 +1569,8 @@ class CEmitter:
                     f"{self.c_type_descriptor(formal_held)})"
                 )
                 return _qval_unwrap(converted, formal_held, self)
-            generic = self._convert_generic_layout(c_a, formal_t, instantiation, lines, to_generic=True)
-            if generic is not None:
-                return generic
-            return self._coerce_val(c_a, instantiated_t, formal_t, lines)
+            layout = (instantiation, True) if instantiation else None
+            return self._coerce_val(c_a, instantiated_t, formal_t, lines, layout=layout)
         return self._coerce_val(c_a, actual_a, formal_t, lines)
 
     def _call_instantiation(self, fun_type: QType, type_args: Sequence[QType]) -> Optional[dict[int, QType]]:
@@ -1568,6 +1628,8 @@ class CEmitter:
         native = self._convert_generic_layout(call_str, ret_type, instantiation, lines, to_generic=False)
         if native is not None:
             call_str = self._coerce_val(native, ret_type.substitute(instantiation), target_type, lines)
+        elif instantiation and isinstance(normalize_type(ret_type), (QFunType, QAllType)):
+            call_str = self._coerce_val(call_str, ret_type, target_type, lines, layout=(instantiation, False))
         elif ret_view is not ret_type and not is_type_equal(ret_view, target_view, self.env):
             # The callee returns a value of a bounded type parameter, held viewed at the bound (a record through the
             # bound's offset table, a variant with the bound's tags): view it as the caller holds the type
@@ -3490,7 +3552,7 @@ class CEmitter:
                 if isinstance(inner_t, QFunType):
                     c_func = self.emit_val(func, lines)
                     return self._emit_type_app_closure(
-                        c_func, func.type_val, expr.type_val, descriptor_args, lines
+                        c_func, func.type_val, expr.type_val, descriptor_args, lines, type_args=type_args
                     )
                 if isinstance(func, TypedVar) and (
                     self._is_top_fun(func) or self._env_ident(func) is not None

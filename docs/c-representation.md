@@ -277,6 +277,11 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   of type `Fun(x: Small): Big` used at `Fun(x: Big): Small` gets a thunk that coerces each argument from the target's
   parameter type to the closure's (giving the `Big` record a `Small` view) and the result from the closure's result
   type to the target's, with the ordinary coercions (record views, variant tag maps, nested thunks).
+  A closure passed to a polymorphic function, or returned from one, at a type that mentions its type parameters
+  (`All(b: Box(A)) A` at `A = Bool`) gets a thunk that converts its arguments from the callee's generic layouts to
+  native ones and its result back, as calls do (Polymorphic Calls, below). So does the closure that applies a
+  polymorphic function to types only (`getBox(:Bool)` used as a value, `_emit_type_app_closure`), which converts
+  native arguments to the function's generic layouts and its result back.
 
 - **Tuple Structural Coercion & Generic Returns:**
   When field types between source and target tuples differ in C representation (due to scalar-to-QVal boxing, closure

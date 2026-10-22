@@ -89,3 +89,29 @@ let rm: Maybe(P) = mkS(:P record a = 6 end);
 print(conv.int(rm!some.value.a));
 let rl: List(P) = consF(:P record a = 7 end consF(:P record a = 8 end option nil of List(P) end));
 print(conv.int(rl!cons.head.a + rl!cons.tail!cons.head.a));
+
+(* 7. Closures whose types mention them, passed to and returned from polymorphic functions *)
+let applyTo(A::TYPE f: All(b: Box(A)) A b: Box(A)): A = f(b);
+let isSet(b: Box(Bool)): Bool = b.x;
+print(conv.bool(applyTo(:Bool isSet bools)));
+let make(A::TYPE f: All(v: A) Box(A) v: A): A = f(v).x;
+let boxed(v: Bool): Box(Bool) = tuple let x = v end;
+print(conv.bool(make(:Bool boxed false)));
+let applyOpt(A::TYPE f: All(m: Maybe(A)) A m: Maybe(A)): A = f(m);
+let orFalse(m: Maybe(Bool)): Bool = getOr(:Bool m false);
+print(conv.bool(applyOpt(:Bool orFalse maybe)));
+let getter(A::TYPE): All(b: Box(A)) A = fun(b: Box(A)): A b.x;
+print(conv.bool(getter(:Bool)(bools)));
+
+(* 8. Polymorphic functions applied to types only, as values *)
+let getBool = getBox(:Bool);
+let getReal = getBox(:Real);
+let mkP = mkBox(:P);
+print(conv.bool(getBool(bools)) <> " " <> conv.real(getReal(mkBox(:Real 1.5))) <> " " <> conv.int(mkP(record a = 3 end).x.a));
+let lengthOf = length(:Bool);
+print(conv.int(lengthOf(flags)));
+
+(* 9. Subsumption to a type reached through a type operator *)
+let wide: Tuple x: Bool y: Int end = tuple let x = true let y = 2 end;
+let narrow: Box(Bool) = wide;
+print(conv.bool(narrow.x) <> " " <> conv.bool(getBox(:Bool wide)));
