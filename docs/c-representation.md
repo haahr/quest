@@ -751,7 +751,8 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
   exact struct and layout expected by the caller. Arguments and return values are passed unboxed in register pairs
   `(x0, x1)` without heap allocation (`quest_record_box` and `quest_variant_box` eliminated).
 - **First-Class Fallback**: The canonical boxed (`QVal`) version of any generic function is always emitted to serve
-  indirect closure calls and first-class function values.
+  indirect closure calls and first-class function values. Calls of it convert tuples and options over the type
+  parameters between native and generic layouts (§5.1, Polymorphic Calls).
 - **Open Type Arguments**: A call whose type arguments mention the caller's own type parameters
   (`pack(:Array(Tuple v: A end) ...)` inside a function of `A`) is not specialized, since the clone would have no
   descriptor for `A`; the caller's own specializations specialize such calls in turn.
@@ -908,6 +909,8 @@ function passes on ([type-system.md](type-system.md) §6.11).
   scalars and pointers but not for records and variants (16 bytes inline, or a pointer to a boxed copy), and in
   function parameters and results (registers) only for integers and pointers; aggregates agree when their
   components do, records when their views' field types do. Recursive descriptors are compared coinductively.
+  A `QBool` or `QChar` component agrees with its `QVal` form because aggregates are allocated zeroed (`quest_alloc`;
+  only strings use `quest_alloc_atomic`), so the bytes past the value are zero, and the target is little-endian.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
   type arguments (`generic_layout_agrees` in `codegen/c_types.py`), conservatively: when it cannot tell, the value
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
