@@ -421,6 +421,12 @@ class RuntimeEnvironment:
 # 3. Arithmetic & Infix Helper Functions
 # ============================================================================
 
+def _truncating_div(a: int, b: int) -> int:
+    """a / b rounded toward zero, as in C; exact, unlike int(a / b), which divides as floats."""
+    q = abs(a) // abs(b)
+    return q if (a < 0) == (b < 0) else -q
+
+
 def _eval_int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) -> int:
     """Evaluates integer arithmetic with C-style truncation and an int.error check."""
     match op:
@@ -433,13 +439,12 @@ def _eval_int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) 
         case "/":
             if b == 0:
                 raise QuestException(INT_ERROR_EXC, offset=offset)
-            # C-style truncation toward zero
-            return int(a / b)
+            return _truncating_div(a, b)
         case "mod" | "%":
             if b == 0:
                 raise QuestException(INT_ERROR_EXC, offset=offset)
             # C-style modulo: a - trunc(a / b) * b
-            return a - int(a / b) * b
+            return a - _truncating_div(a, b) * b
         case _:
             raise QuestRuntimeError(f"Unknown integer arithmetic operator '{op}'", offset=offset)
 
