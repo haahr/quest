@@ -61,6 +61,7 @@ from quest.codegen.c_types import (
     MissingDescriptorError,
     descriptor_form,
     fun_descriptor_tag,
+    generic_layout_agrees,
     hole_var,
     is_word_type,
     RecordNamingContext,
@@ -434,6 +435,88 @@ class CEmitter:
             f"quest_instantiate_descriptor({form.c_expr}, {len(params)}, "
             f"(const QTypeDescriptor *const[]){{ {args} }})"
         )
+
+    def _generic_layout_descriptor(self, t: QType, instantiation: dict[int, QType]) -> str:
+        """The descriptor of a type of a polymorphic callee at its type arguments, laid out as the callee lays it out:
+        the type's template, with a hole for each of the callee's type parameters (and for any type parameter in scope
+        that it mentions), instantiated with the type arguments' descriptors.
+
+        Unlike c_type_descriptor, this finds the callee's type parameters by symbol, since they may share names with
+        type parameters of the code making the call."""
+        t = strip_aliases(t)
+        params = self._free_type_vars(t, lambda v: v.symbol_id in instantiation)
+        in_scope = [v for v in self._type_params_in_scope(t) if v.symbol_id not in instantiation]
+        holes = params + in_scope
+        template = t.substitute({v.symbol_id: hole_var(i, v.bound) for i, v in enumerate(holes)})
+        try:
+            form = descriptor_form(template, self.record_ctx)
+        except MissingDescriptorError as e:
+            raise QuestCompilerError(f"C code generation: {e}") from None
+        if form.kind in ("base", "bound_var") or not holes:
+            return form.c_expr
+        self.descriptor_templates.setdefault(form.tag, template)
+        args = [self.c_type_descriptor(instantiation[v.symbol_id]) for v in params]
+        args.extend(self.in_scope_type_descriptors[v.name] for v in in_scope)
+        return (
+            f"quest_instantiate_descriptor({form.c_expr}, {len(holes)}, "
+            f"(const QTypeDescriptor *const[]){{ {', '.join(args)} }})"
+        )
+
+    def _convert_generic_layout(
+        self,
+        c_val: str,
+        generic_t: QType,
+        instantiation: Optional[dict[int, QType]],
+        lines: list[str],
+        to_generic: bool,
+    ) -> Optional[str]:
+        """Converts a value passed to or returned from a polymorphic callee between the layout the callee gives its
+        type generic_t (to_generic) and the native layout of the type at the call's type arguments (instantiation).
+
+        A tuple or option (or a recursive type made of them) over a type parameter has a struct whose components of
+        the parameter are QVals in the callee, and native values at the call. When the layouts agree in memory
+        (generic_layout_agrees) the value is the same, viewed through the other struct; otherwise it is converted by
+        quest_convert, which copies it. Returns None when the two C types are the same, or either is not a pointer
+        (QVals, records, variants, and scalars are converted by the ordinary coercions).
+        """
+        if not instantiation:
+            return None
+        native_t = generic_t.substitute(instantiation)
+        generic_c, native_c = self.c_type(generic_t), self.c_type(native_t)
+        if generic_c == native_c or not generic_c.endswith("*") or not native_c.endswith("*"):
+            return None
+        from_t, to_t = (native_t, generic_t) if to_generic else (generic_t, native_t)
+        if generic_layout_agrees(generic_t, instantiation):
+            return f"(({self.c_type(to_t)}){c_val})"
+        generic_desc = self._generic_layout_descriptor(generic_t, instantiation)
+        native_desc = self.c_type_descriptor(native_t)
+        from_desc, to_desc = (native_desc, generic_desc) if to_generic else (generic_desc, native_desc)
+        converted = f"quest_convert({_qval_wrap(c_val, from_t)}, {from_desc}, {to_desc})"
+        return _qval_unwrap(converted, to_t, self)
+
+    def _free_type_vars(self, t: QType, wanted: Any) -> list[Any]:
+        """The type variables occurring free in t for which wanted holds, in order of appearance."""
+        free = getattr(t, "_fv", None)
+        if not free:
+            return []
+        found: dict[int, Any] = {}
+        seen: set[int] = set()
+
+        def visit(node: Any) -> None:
+            if id(node) in seen:
+                return
+            seen.add(id(node))
+            if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in free and wanted(node):
+                found.setdefault(node.symbol_id, node)
+            if isinstance(node, (tuple, list)):
+                for item in node:
+                    visit(item)
+            elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+                for f in dataclasses.fields(node):
+                    visit(getattr(node, f.name))
+
+        visit(t)
+        return list(found.values())
 
     def _type_params_in_scope(self, t: QType) -> list[Any]:
         """The type parameters in scope (with run-time descriptors) that occur free in t, in order of appearance."""
@@ -1351,11 +1434,12 @@ class CEmitter:
         is_out: bool = False,
         writebacks: Optional[list[str]] = None,
         instantiated_t: Optional[QType] = None,
+        instantiation: Optional[dict[int, QType]] = None,
     ) -> str:
         """Emits and coerces an argument at a function or closure call site.
 
-        For a polymorphic callee, instantiated_t is the parameter's type with the call's type arguments substituted;
-        the argument is coerced to it before being passed in the formal's (generic) representation.
+        For a polymorphic callee, instantiated_t is the parameter's type with the call's type arguments (instantiation)
+        substituted; the argument is coerced to it before being passed in the formal's (generic) representation.
         """
         is_ref = (
             is_ref
@@ -1423,6 +1507,9 @@ class CEmitter:
                     f"{self.c_type_descriptor(formal_held)})"
                 )
                 return _qval_unwrap(converted, formal_held, self)
+            generic = self._convert_generic_layout(c_a, formal_t, instantiation, lines, to_generic=True)
+            if generic is not None:
+                return generic
             return self._coerce_val(c_a, instantiated_t, formal_t, lines)
         return self._coerce_val(c_a, actual_a, formal_t, lines)
 
@@ -1457,6 +1544,7 @@ class CEmitter:
                         is_out=is_o,
                         writebacks=writebacks,
                         instantiated_t=fp.type_val.substitute(instantiation) if instantiation else None,
+                        instantiation=instantiation,
                     )
                 )
             else:
@@ -1470,10 +1558,17 @@ class CEmitter:
         target_type: QType,
         lines: list[str],
         writebacks: Optional[list[str]] = None,
+        instantiation: Optional[dict[int, QType]] = None,
     ) -> str:
-        """Processes return value of a call, unwrapping/wrapping QVal, handling tuples, and writebacks."""
+        """Processes return value of a call, unwrapping/wrapping QVal, handling tuples, and writebacks.
+
+        ret_type is the callee's result type; for a polymorphic callee, instantiation gives the call's type arguments.
+        """
         ret_view, target_view = self._held_view(ret_type), self._held_view(target_type)
-        if ret_view is not ret_type and not is_type_equal(ret_view, target_view, self.env):
+        native = self._convert_generic_layout(call_str, ret_type, instantiation, lines, to_generic=False)
+        if native is not None:
+            call_str = self._coerce_val(native, ret_type.substitute(instantiation), target_type, lines)
+        elif ret_view is not ret_type and not is_type_equal(ret_view, target_view, self.env):
             # The callee returns a value of a bounded type parameter, held viewed at the bound (a record through the
             # bound's offset table, a variant with the bound's tags): view it as the caller holds the type
             converted = (
@@ -3292,14 +3387,19 @@ class CEmitter:
                 elif isinstance(effective_func, TypedVar) and self._is_top_fun(effective_func):
                     c_func = self._env_ident(effective_func) or self.mangle_ident(effective_func.name)
                     fun, _ = self.top_funs_dict[effective_func.name]
-                    _, formal_params, _, ret_type = self._collect_fun_params(fun)
+                    # The parameters and result of the function's type, which refer to its type's quantifiers (the
+                    # parameters' annotations in the function refer to symbols of their own)
+                    _, fun_inner = self._collect_fun_quantifiers(fun.type_val)
+                    _, typed_params, _, ret_type = self._collect_fun_params(fun)
+                    formal_params = fun_inner.params if isinstance(fun_inner, QFunType) else typed_params
+                    instantiation = self._call_instantiation(fun.type_val, type_args)
                     writebacks: list[str] = []
                     c_args = list(descriptor_args) + self._marshal_call_args(
                         formal_params, args, lines, writebacks=writebacks, instantiation=instantiation
                     )
                     call_str = f"{c_func}({', '.join(c_args)})"
                     return self._process_call_return(
-                        call_str, ret_type, expr.type_val, lines, writebacks=writebacks
+                        call_str, ret_type, expr.type_val, lines, writebacks=writebacks, instantiation=instantiation
                     )
                 elif (
                     isinstance(effective_func, TypedSelect)
@@ -3328,7 +3428,7 @@ class CEmitter:
                     )
                     call_str = f"{c_func}({', '.join(c_args)})"
                     return self._process_call_return(
-                        call_str, ret_type, expr.type_val, lines, writebacks=writebacks
+                        call_str, ret_type, expr.type_val, lines, writebacks=writebacks, instantiation=instantiation
                     )
                 else:
                     fn_ptr_t = _closure_fn_ptr_type(effective_func.type_val, self.record_ctx)
@@ -3343,7 +3443,7 @@ class CEmitter:
                     all_c_args = [f"{clos_val}->env"] + c_args
                     call_str = f"(({fn_ptr_t})({clos_val}->fn))({', '.join(all_c_args)})"
                     return self._process_call_return(
-                        call_str, formal_ret, expr.type_val, lines, writebacks=writebacks
+                        call_str, formal_ret, expr.type_val, lines, writebacks=writebacks, instantiation=instantiation
                     )
 
             case TypedArray() | TypedArrayRep():
@@ -3397,13 +3497,17 @@ class CEmitter:
                 ):
                     c_func = self._env_ident(func) or self.mangle_ident(func.name)
                     call_str = f"{c_func}({', '.join(descriptor_args)})"
-                    return call_str
                 else:
                     fn_ptr_t = _closure_fn_ptr_type(func.type_val, self.record_ctx)
                     clos_val = self._closure_operand(self.emit_val(func, lines), lines)
                     all_c_args = [f"{clos_val}->env"] + descriptor_args
                     call_str = f"(({fn_ptr_t})({clos_val}->fn))({', '.join(all_c_args)})"
-                    return call_str
+                # The value of a polymorphic value of no parameters, in the layout the callee gives its type
+                _, generic_t = self._collect_fun_quantifiers(func.type_val)
+                native = self._convert_generic_layout(
+                    call_str, generic_t, self._call_instantiation(func.type_val, type_args), lines, to_generic=False
+                )
+                return native if native is not None else call_str
 
             case TypedExternal(symbol=symbol):
                 if isinstance(expr.type_val, QFunType) and not expr.type_val.params:

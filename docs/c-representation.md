@@ -282,12 +282,20 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   When field types between source and target tuples differ in C representation (due to scalar-to-QVal boxing, closure
   signature adaptation, generic function returns, or nested tuple coercion), the transpiler allocates a new target
   tuple struct and maps each field via `_coerce_tuple_val`:
-  - **Generic Tuple Returns (`QVal` to Concrete):** Generic functions returning tuples (e.g.
-    `let pair(A::TYPE B::TYPE a: A b: B): Tuple :A :B end = tuple a b end`) construct tuples whose fields are `QVal`.
-    When instantiated at concrete types (e.g., `pair(:Point :Int pt 1)`), the caller coerces the returned tuple to the
-    concrete tuple struct. For each field where the source is `QVal` and the target is concrete, `_qval_unwrap` unboxes
-    the value. If the target field is a 16-byte record fat pointer (`QRecordVal`), `_qval_unwrap` unboxes it from the
-    heap cell (`quest_record_unbox`); if a 16-byte variant, it unboxes the `QVariantVal`.
+  - **Polymorphic Calls (Generic and Native Layouts):** A polymorphic function lays out a tuple or option over its
+    type parameters generically, each component of a parameter a `QVal` (`let pair(A::TYPE B::TYPE a: A b: B): Tuple
+    :A :B end` builds a `QTuple_QVal_QVal`), whether the type is written out or reached through a type operator
+    (`Box(A)`) or a recursive type (`List(A)`, whose nodes hold `QVal` heads). A call converts each such argument from
+    the native layout of its type at the call's type arguments to the callee's layout, and each such result back
+    (`_convert_generic_layout`). When the layouts agree in memory (`generic_layout_agrees`: a `QVal` holds a scalar or
+    pointer in the same bits; §6.4.5) the value is used as it is, through a pointer cast, so it keeps its identity and
+    a recursive value is not copied. When they do not, because a parameter stands for a record or a variant (16 bytes
+    natively, a pointer to a boxed copy as a `QVal`), the value is copied by `quest_convert`, from and to the
+    descriptor of the type laid out each way: for the callee's layout, the type's template with a hole for each of
+    the callee's type parameters, instantiated with the type arguments (`_generic_layout_descriptor`). Calls with
+    records or variants as type arguments are mostly specialized (§6.4.3), which avoids the conversion; it remains for
+    first-class polymorphic values and polymorphic functions of other modules. Converted records are unboxed from the
+    heap cell (`quest_record_unbox`), and variants likewise.
   - **Record Width Subtyping in Tuples:** When a tuple field contains a record subtype whose field dictionary differs
     from the target tuple field, the compiler synthesizes the new fat pointer by attaching the target evidence
     dictionary (`(QRecordVal){ .val = src._i.val, .dict = &... }`) rather than an unsafe pointer cast.
@@ -447,6 +455,8 @@ typedef struct QT_T {
   ```
 - **Zero-Cost Prefix Subtyping:** Because every union branch in C begins at offset 0 of the union (offset 8 of the
   struct), branch fields in a subtype maintain identical offsets in any extended supertype.
+- **Type Parameters:** An option over a type parameter passed to or returned from a polymorphic function is
+  converted between the callee's generic layout and the native one as a tuple is (§5.1, Polymorphic Calls).
 - **Fast Pattern Matching:**
   ```c
   switch (opt->tag) {
