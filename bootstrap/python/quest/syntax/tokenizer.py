@@ -33,6 +33,10 @@ SIMPLE_ESCAPES: dict[str, str] = {
 
 HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
+# The range of Int, a 64-bit signed integer
+INT_MIN = -(2**63)
+INT_MAX = 2**63 - 1
+
 
 class Tokenizer:
     """Batch tokenizer for strings and files."""
@@ -136,6 +140,8 @@ class Tokenizer:
             number_value = convert(lexeme.replace("~", "-"))
         except ValueError:
             raise TokenizerError(f"Invalid {what} literal '{lexeme}'", start, len(lexeme))
+        if kind == TokenKind.INT_LIT and not INT_MIN <= number_value <= INT_MAX:
+            raise TokenizerError(f"Integer literal '{lexeme}' out of range", start, len(lexeme))
         return Token(kind, lexeme, number_value, start)
 
     def _lex_escape_sequence(self) -> str:
