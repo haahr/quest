@@ -1,0 +1,20 @@
+module polytrees : PolyTrees
+export
+    Let Rec List(A::TYPE) = Option nil cons with head: A tail: List(A) end end;
+    Let Rec Tree(A::TYPE) = Variant leaf: A node: Wood(A) end
+    and Wood(A::TYPE) = Record trees: List(Tree(A)) end;
+    let leaf(n: Int): Tree(Int) = variant leaf of Tree(Int) with n end;
+    let node(trees: List(Tree(Int))): Tree(Int) = variant node of Tree(Int) with record trees = trees end end;
+    let rec sum(t: Tree(Int)): Int =
+        case t
+            when leaf with n then n
+            when node with w then sumWood(w)
+            else 0
+        end
+    and sumWood(w: Wood(Int)): Int = sumList(w.trees)
+    and sumList(l: List(Tree(Int))): Int =
+        case l
+            when cons with c then sum(c.head) + sumList(c.tail)
+            else 0
+        end;
+end;

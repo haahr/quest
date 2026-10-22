@@ -403,7 +403,9 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - A manifest type's `manifestType` is its definition in Quest type syntax. The members of a mutually recursive
      group (`Def Rec A = ... and B = ...`) are consecutive declarations sharing a nonzero `group` number (0 for any
      other type), and each records only its body, naming the other members; the loader elaborates the bodies of a
-     group together and rebuilds the group from them.
+     group together and rebuilds the group from them. A member of a group of recursive type operators (`Def Rec
+     Tree(A::TYPE) = ... and Forest(A::TYPE) = ...`) records `Fun(A::TYPE) Body`, with the other members applied to
+     the parameters (`Forest(A)`), and the loader elaborates the group as it would its declaration.
    - Serialized via `dynamic.extern` / `jsog_encode` and deserialized via `dynamic.intern` / `jsog_decode`.
    - Allows the compiler to typecheck client code or implementing modules without the original `.int.quest` source.
 

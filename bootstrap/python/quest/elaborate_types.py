@@ -130,6 +130,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 sym = env.lookup_type(name)
                 if sym is None:
                     raise KindError(f"Undefined type '{name}'", offset=offset)
+                if isinstance(sym, _RecOperatorSymbol):
+                    raise sym.non_uniform_error(offset)
                 if sym.definition is not None:
                     return alias_reference(name, sym.symbol_id, sym.definition)
                 return QTypeVar(name=sym.name, symbol_id=sym.symbol_id, bound=sym.kind)
@@ -365,6 +367,9 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 return QTypeFun(params=tuple(formals), body=body_type)
 
         case ast.TypeApp(constructor=ctor, arguments=arguments):
+            rec_operator = _rec_operator_named(ctor, env)
+            if rec_operator is not None:
+                return rec_operator.apply(tuple(elaborate_type(arg, env) for arg in arguments), ctor.offset)
             ctor_type = elaborate_type(ctor, env)
             args = tuple(elaborate_type(arg, env) for arg in arguments)
             if isinstance(ctor_type, QExceptionType):
@@ -549,6 +554,9 @@ def elaborate_tuple_type_bindings(
                 symbols = elaborate_type_binding_group(binding, env)
             else:
                 symbols = [elaborate_type_binding(binding, env)]
+        for member, symbol in zip(members, symbols):
+            # Like any type component, a recursive one must be a type unless it declares a bound
+            check_kind(symbol.definition, symbol.kind if member.bound is not None else TYPE_KIND, env)
         return [
             (member, symbol, symbol.kind if member.bound is not None else None)
             for member, symbol in zip(members, symbols)
@@ -577,10 +585,136 @@ def _elaborate_tuple_type_binding(
     return m_type, bound_kind
 
 
-def _reject_recursive_type_operator(binding: ast.TypeBinding) -> None:
-    """Rejects a recursive declaration of a type operator (Let Rec T(A::TYPE) = ...), which is not supported."""
-    if binding.params or isinstance(binding.type_val, ast.TypeFun):
-        raise KindError(f"Recursive type '{binding.name}' cannot have type parameters", offset=binding.offset)
+class _RecOperatorSymbol(TypeSymbol):
+    """A recursive type operator (Let Rec T(A::K) = ...) while its definition is elaborated. There it may occur only
+    applied to exactly its own parameters, as T(A), which stands for the variable of the recursive type the operator
+    returns (uniform recursion)."""
+
+    def __init__(self, name: str, symbol_id: int, kind: QKind, formals: tuple[QTypeFormal, ...], rec_var: QTypeVar):
+        super().__init__(name=name, symbol_id=symbol_id, kind=kind)
+        self.formals = formals
+        self.rec_var = rec_var
+
+    def apply(self, args: tuple[QType, ...], offset: int) -> QTypeVar:
+        """The recursive variable, for an application of the operator to exactly its parameters."""
+        if len(args) != len(self.formals) or not all(
+            isinstance(arg, QTypeVar) and arg.symbol_id == formal.symbol_id for arg, formal in zip(args, self.formals)
+        ):
+            raise self.non_uniform_error(offset)
+        return self.rec_var
+
+    def non_uniform_error(self, offset: int) -> KindError:
+        params = " ".join(formal.name for formal in self.formals)
+        return KindError(
+            f"Recursive type '{self.name}' must be applied to exactly its parameters, as {self.name}({params}), in "
+            f"its definition; non-uniform recursion is not supported",
+            offset=offset,
+        )
+
+
+def _rec_operator_named(ctor: ast.Type, env: Environment) -> Optional[_RecOperatorSymbol]:
+    """The recursive type operator a type application applies, if it is one being defined."""
+    if isinstance(ctor, ast.TypePath) and len(ctor.path) == 1:
+        sym = env.lookup_type(ctor.path[0])
+        if isinstance(sym, _RecOperatorSymbol):
+            return sym
+    return None
+
+
+def _operator_kind(formals: list[QTypeFormal] | tuple[QTypeFormal, ...], result_kind: QKind) -> QKind:
+    """The kind of a type operator with the given parameters and result kind: ALL(X::K) ... result_kind."""
+    kind = result_kind
+    for formal in reversed(formals):
+        kind = QAllKind(param_name=formal.name, param_id=formal.symbol_id, param_kind=formal.bound, result_kind=kind)
+    return kind
+
+
+def _is_rec_type_operator(binding: ast.TypeBinding) -> bool:
+    """Whether a recursive type declaration declares a type operator: Let Rec T(A::K) = ..., which the parser makes
+    Let Rec T = Fun(A::K) ...."""
+    return isinstance(binding.type_val, ast.TypeFun)
+
+
+def elaborate_rec_type_operators(members: list[ast.TypeBinding], env: Environment) -> list[TypeSymbol]:
+    """Elaborates recursive type operators, alone or as a group, into their symbols, without declaring them.
+
+    Let Rec T(A::K) = Body means Fun(A::K) Rec(T) Body, with T(A) in Body standing for the recursive variable. The
+    members of a group must take the same parameters, which they share: Let Rec T(A::K) = B1 and U(A::K) = B2 makes
+    T Fun(A::K) Rec(T) B1 and U Fun(A::K) Rec(U) B2, as one group of the two recursive types.
+    """
+    shapes: list[tuple[tuple[ast.TypeFormal, ...], Optional[ast.Kind], ast.Type]] = []
+    for member in members:
+        if not isinstance(member.type_val, ast.TypeFun):
+            raise _different_params_error(members[0], member)
+        if member.bound is not None:
+            raise KindError(
+                f"Recursive type operator '{member.name}' must be declared with its parameters, as "
+                f"{member.name}(A::K) :: K' = ..., not with a bound and Fun",
+                offset=member.offset,
+            )
+        fun = member.type_val
+        shapes.append((fun.params, fun.result_kind, fun.body))
+    first_params = shapes[0][0]
+    for member, (params, _, _) in zip(members, shapes):
+        if [p.name for p in params] != [p.name for p in first_params]:
+            raise _different_params_error(members[0], member)
+
+    with env.scoped(f"rec_operator_{members[0].name}"):
+        formals: list[QTypeFormal] = []
+        for idx, param in enumerate(first_params):
+            bound = elaborate_kind(param.bound, env)
+            for member, (params, _, _) in zip(members[1:], shapes[1:]):
+                if elaborate_kind(params[idx].bound, env) != bound:
+                    raise _different_params_error(members[0], member)
+            symbol_id = env.fresh_symbol_id()
+            env.current_scope.declare_type(TypeSymbol(name=param.name, symbol_id=symbol_id, kind=bound))
+            formals.append(QTypeFormal(name=param.name, symbol_id=symbol_id, bound=bound))
+        params = tuple(formals)
+
+        operators: list[_RecOperatorSymbol] = []
+        for member, (_, result_kind_ast, _) in zip(members, shapes):
+            result_kind = elaborate_kind(result_kind_ast, env) if result_kind_ast is not None else TYPE_KIND
+            check_kind_well_formed(result_kind, env)
+            rec_var = QTypeVar(name=member.name, symbol_id=env.fresh_symbol_id(), bound=result_kind)
+            operator = _RecOperatorSymbol(
+                name=member.name,
+                symbol_id=env.fresh_symbol_id(),
+                kind=_operator_kind(params, result_kind),
+                formals=params,
+                rec_var=rec_var,
+            )
+            operators.append(env.current_scope.declare_type(operator))
+
+        rec_ids = {operator.rec_var.symbol_id for operator in operators}
+        entries: list[tuple[str, int, QKind, QType]] = []
+        for member, operator, (_, _, body_ast) in zip(members, operators, shapes):
+            body = elaborate_type(body_ast, env)
+            check_kind(body, operator.rec_var.bound, env)
+            check_type_contractive(body, rec_ids, var_name=member.name, offset=member.offset, env=env)
+            entries.append((member.name, operator.rec_var.symbol_id, operator.rec_var.bound, body))
+
+    if len(entries) == 1:
+        name, rec_id, bound, body = entries[0]
+        recursive_types: list[QType] = [QRecType(var_name=name, symbol_id=rec_id, bound=bound, body=body)]
+    else:
+        recursive_types = list(QRecGroupType(bindings=tuple(entries), active_index=0).siblings())
+    return [
+        TypeSymbol(
+            name=operator.name,
+            symbol_id=operator.symbol_id,
+            kind=operator.kind,
+            definition=QTypeFun(params=params, body=recursive_type),
+        )
+        for operator, recursive_type in zip(operators, recursive_types)
+    ]
+
+
+def _different_params_error(first: ast.TypeBinding, member: ast.TypeBinding) -> KindError:
+    return KindError(
+        f"The members of a recursive group must all have the same type parameters, as '{first.name}' and "
+        f"'{member.name}' do not",
+        offset=member.offset,
+    )
 
 
 def elaborate_type_binding_group(
@@ -594,8 +728,9 @@ def elaborate_type_binding_group(
     """
     _check_distinct_member_names(group)
     if group.bindings[0].is_rec:
-        for member in group.bindings:
-            _reject_recursive_type_operator(member)
+        if any(_is_rec_type_operator(member) for member in group.bindings):
+            symbols = elaborate_rec_type_operators(list(group.bindings), env)
+            return [env.current_scope.declare_type(symbol) for symbol in symbols]
         return elaborate_mutual_rec_type_group(list(group.bindings), env)
     symbols = [_elaborate_type_binding_symbol(member, env) for member in group.bindings]
     return [env.current_scope.declare_type(symbol) for symbol in symbols]
@@ -614,8 +749,8 @@ def _elaborate_type_binding_symbol(
     env: Environment,
 ) -> TypeSymbol:
     """Elaborates a single type declaration into its symbol, without declaring it."""
-    if binding.is_rec:
-        _reject_recursive_type_operator(binding)
+    if binding.is_rec and _is_rec_type_operator(binding):
+        return elaborate_rec_type_operators([binding], env)[0]
     symbol_id = env.fresh_symbol_id()
     if binding.bound:
         declared_bound: Optional[QKind] = elaborate_kind(binding.bound, env)
@@ -637,16 +772,7 @@ def _elaborate_type_binding_symbol(
             check_kind(body_type, target_bound, env)
             qtype_val = QTypeFun(params=tuple(formals), body=body_type)
 
-        # Fold parameter kinds into overall operator kind telescope
-        overall_kind: QKind = target_bound
-        for formal in reversed(formals):
-            overall_kind = QAllKind(
-                param_name=formal.name,
-                param_id=formal.symbol_id,
-                param_kind=formal.bound,
-                result_kind=overall_kind,
-            )
-        bound_kind = overall_kind
+        bound_kind = _operator_kind(formals, target_bound)
     elif binding.is_rec:
         # Single recursive type definition Let Rec T = Body
         target_bound = declared_bound if declared_bound is not None else TYPE_KIND

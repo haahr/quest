@@ -1,0 +1,112 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('polytrees') : 'PolyTrees')
+      ))
+    (TypedLetType 'Trees' :kind TYPE)
+    (TypedLetValue 'cons' :type Fun(t: polytrees.Tree(Int) ts: Trees): Trees
+      :value (TypedFun :params (('t' : polytrees.Tree(Int)) ('ts' : Trees)) :type Fun(t: polytrees.Tree(Int) ts: Trees): Trees
+        :body (TypedOption 'cons' :type Trees
+          :payload (TypedTuple :type Tuple head: polytrees.Tree(Int) tail: Rec(List :: TYPE) Option nil cons with Tuple head: polytrees.Tree(Int) tail: List end end end
+            :elements (
+              (TypedVar 't' :type polytrees.Tree(Int))
+              (TypedVar 'ts' :type Trees)
+            )))))
+    (TypedLetValue 'none' :type Trees
+      :value (TypedOption 'nil' :type Trees))
+    (TypedLetValue 't' :type Tree(Int)
+      :value (TypedApp :type Tree(Int)
+        :func (TypedSelect 'node' :type Fun(trees: List(Tree(Int))): Tree(Int)
+          :target (TypedVar 'polytrees' :type Module 'polytrees'))
+        :args (
+          (TypedApp :type Trees
+            :func (TypedVar 'cons' :type Fun(t: polytrees.Tree(Int) ts: Trees): Trees)
+            :args (
+              (TypedApp :type Tree(Int)
+                :func (TypedSelect 'leaf' :type Fun(n: Int): Tree(Int)
+                  :target (TypedVar 'polytrees' :type Module 'polytrees'))
+                :args (
+                  (TypedInt 1 :type Int)
+                ))
+              (TypedApp :type Trees
+                :func (TypedVar 'cons' :type Fun(t: polytrees.Tree(Int) ts: Trees): Trees)
+                :args (
+                  (TypedApp :type Tree(Int)
+                    :func (TypedSelect 'leaf' :type Fun(n: Int): Tree(Int)
+                      :target (TypedVar 'polytrees' :type Module 'polytrees'))
+                    :args (
+                      (TypedInt 2 :type Int)
+                    ))
+                  (TypedVar 'none' :type Trees)
+                ))
+            ))
+        )))
+    (TypedLetValue 'direct' :type polytrees.Tree(Int)
+      :value (TypedVariant 'node' :type polytrees.Tree(Int)
+        :payload (TypedRecord :type Record trees: List(Rec(Tree :: TYPE) Variant leaf: Int node: Wood end) end
+          :fields (
+            (TypedRecordField 'trees'
+              :value (TypedApp :type Trees
+                :func (TypedVar 'cons' :type Fun(t: polytrees.Tree(Int) ts: Trees): Trees)
+                :args (
+                  (TypedVar 't' :type Tree(Int))
+                  (TypedVar 'none' :type Trees)
+                )))
+          ))))
+    (TypedLetValue 'wood' :type polytrees.Wood(Int)
+      :value (TypedCase :type polytrees.Wood(Int)
+        :target (TypedVar 'direct' :type polytrees.Tree(Int))
+        :branches (
+          (TypedCaseBranch tags=(node) :binder 'w'
+            :body (TypedVar 'w' :type Rec(Wood :: TYPE) Record trees: List(Tree) end))
+        )
+        :else (TypedRecord :type Record trees: List(Rec(Tree :: TYPE) Variant leaf: Int node: Wood end) end
+          :fields (
+            (TypedRecordField 'trees'
+              :value (TypedVar 'none' :type Trees))
+          ))))
+    (TypedLetType 'MyList' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'mine' :type MyList(polytrees.Tree(Int))
+      :value (TypedApp :type Trees
+        :func (TypedVar 'cons' :type Fun(t: polytrees.Tree(Int) ts: Trees): Trees)
+        :args (
+          (TypedApp :type Tree(Int)
+            :func (TypedSelect 'leaf' :type Fun(n: Int): Tree(Int)
+              :target (TypedVar 'polytrees' :type Module 'polytrees'))
+            :args (
+              (TypedInt 4 :type Int)
+            ))
+          (TypedVar 'none' :type Trees)
+        )))
+    (TypedExprStmt
+      :expr (TypedInfix '+' :type Int
+        :left (TypedApp :type Int
+          :func (TypedSelect 'sum' :type Fun(t: Tree(Int)): Int
+            :target (TypedVar 'polytrees' :type Module 'polytrees'))
+          :args (
+            (TypedVar 'direct' :type polytrees.Tree(Int))
+          ))
+        :right (TypedInfix '+' :type Int
+          :left (TypedInfix '*' :type Int
+            :left (TypedApp :type Int
+              :func (TypedSelect 'sumWood' :type Fun(w: Wood(Int)): Int
+                :target (TypedVar 'polytrees' :type Module 'polytrees'))
+              :args (
+                (TypedVar 'wood' :type polytrees.Wood(Int))
+              ))
+            :right (TypedInt 10 :type Int))
+          :right (TypedInfix '*' :type Int
+            :left (TypedApp :type Int
+              :func (TypedSelect 'sum' :type Fun(t: Tree(Int)): Int
+                :target (TypedVar 'polytrees' :type Module 'polytrees'))
+              :args (
+                (TypedApp :type Tree(Int)
+                  :func (TypedSelect 'node' :type Fun(trees: List(Tree(Int))): Tree(Int)
+                    :target (TypedVar 'polytrees' :type Module 'polytrees'))
+                  :args (
+                    (TypedVar 'mine' :type MyList(polytrees.Tree(Int)))
+                  ))
+              ))
+            :right (TypedInt 100 :type Int)))))
+  ))

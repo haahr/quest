@@ -220,8 +220,17 @@ Let Name = String and Size = Int;                (* simultaneous *)
   and a group number, and the loader rebuilds the group ([modules.md](modules.md) §9.1).
 - **Tuples and tuple types** may declare groups, with or without `Rec`, and single recursive types, as components
   (§4.1).
-- **Not supported:** recursive type operators (`Let Rec T(A::TYPE) = ...`, alone or in a group). The members of a
-  group share its keyword's `Rec` and `Def`.
+- **Recursive type operators** (`elaborate_rec_type_operators`): `Let Rec List(A::TYPE) = Option nil cons with
+  head: A tail: List(A) end end` (or `Let Rec List = Fun(A::TYPE) ...`) means `Fun(A::TYPE) Rec(List::TYPE) Option
+  nil cons with head: A tail: List end end`, so `List(Int)` equals the same type written that way, and has the same
+  C representation. In its definition the operator may occur only applied to exactly its own parameters, as
+  `List(A)`, which stands for the recursive variable (uniform recursion). Anything else, such as `Nest(Array(A))`
+  or a bare `List`, would denote a non-regular type, which equi-recursive equality and C canonical forms do not
+  handle, and is rejected. The members of a group must take the same parameters (names and kinds), which they
+  share: `Let Rec Tree(A::TYPE) = Variant leaf: A node: Forest(A) end and Forest(A::TYPE) = Record trees:
+  Array(Tree(A)) end` makes each member `Fun(A::TYPE)` over its own member of one `QRecGroupType`. Like other
+  type operators, recursive ones cannot be type components of tuples.
+- The members of a group share its keyword's `Rec` and `Def`.
 
 Values have the same form: `let rec f(...) = ... and g(...) = ...` for mutually recursive ones, and `let x = ... and
 y = ...` for simultaneous ones (§6.10).

@@ -1,0 +1,15 @@
+(* An interface declares recursive type operators, alone and as a group, which its module and its clients share.
+   Compiled separately, they are written to the .qi file and read back when the program is compiled. *)
+
+import polytrees: PolyTrees;
+Let Trees = polytrees.List(polytrees.Tree(Int));
+let cons(t: polytrees.Tree(Int) ts: Trees): Trees = option cons of Trees with t ts end;
+let none: Trees = option nil of Trees end;
+let t = polytrees.node(cons(polytrees.leaf(1) cons(polytrees.leaf(2) none)));
+let direct: polytrees.Tree(Int) = variant node of polytrees.Tree(Int) with record trees = cons(t none) end end;
+let wood: polytrees.Wood(Int) = case direct when node with w then w else record trees = none end end;
+
+(* The operator written with Fun and Rec is the same type *)
+Let MyList = Fun(A::TYPE) Rec(L::TYPE) Option nil cons with head: A tail: L end end;
+let mine: MyList(polytrees.Tree(Int)) = cons(polytrees.leaf(4) none);
+polytrees.sum(direct) + {polytrees.sumWood(wood) * 10} + {polytrees.sum(polytrees.node(mine)) * 100}

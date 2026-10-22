@@ -1,0 +1,280 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('polytrees') 'PolyTrees')
+      )
+    )
+    (TypeBinding
+      :name 'Trees'
+      :type_val (TypeApp
+        :constructor (TypePath ('polytrees' 'List'))
+        :arguments (
+          (TypeApp
+            :constructor (TypePath ('polytrees' 'Tree'))
+            :arguments (
+              (TypePath ('Int'))
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'cons'
+      :value (ExprOption
+        :tag 'cons'
+        :option_type (TypePath ('Trees'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :value (ExprId 't')
+            )
+            (TupleBinding
+              :value (ExprId 'ts')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 't'
+          :type_annot (TypeApp
+            :constructor (TypePath ('polytrees' 'Tree'))
+            :arguments (
+              (TypePath ('Int'))
+            )
+          )
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'ts'
+          :type_annot (TypePath ('Trees'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Trees'))
+    )
+    (LetValueBinding
+      :name 'none'
+      :value (ExprOption
+        :tag 'nil'
+        :option_type (TypePath ('Trees'))
+      )
+      :type_annot (TypePath ('Trees'))
+    )
+    (LetValueBinding
+      :name 't'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'polytrees')
+          :field 'node'
+        )
+        :args (
+          (ExprApp
+            :func (ExprId 'cons')
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'polytrees')
+                  :field 'leaf'
+                )
+                :args (
+                  (ExprInt 1 '1')
+                )
+              )
+              (ExprApp
+                :func (ExprId 'cons')
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'polytrees')
+                      :field 'leaf'
+                    )
+                    :args (
+                      (ExprInt 2 '2')
+                    )
+                  )
+                  (ExprId 'none')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'direct'
+      :value (ExprVariant
+        :tag 'node'
+        :variant_type (TypeApp
+          :constructor (TypePath ('polytrees' 'Tree'))
+          :arguments (
+            (TypePath ('Int'))
+          )
+        )
+        :payload (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'trees'
+              :value (ExprApp
+                :func (ExprId 'cons')
+                :args (
+                  (ExprId 't')
+                  (ExprId 'none')
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('polytrees' 'Tree'))
+        :arguments (
+          (TypePath ('Int'))
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'wood'
+      :value (ExprCase
+        :target (ExprId 'direct')
+        :branches (
+          (CaseBranch
+            :tags ('node')
+            :binder 'w'
+            :body (ExprId 'w')
+          )
+        )
+        :else_branch (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'trees'
+              :value (ExprId 'none')
+            )
+          )
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('polytrees' 'Wood'))
+        :arguments (
+          (TypePath ('Int'))
+        )
+      )
+    )
+    (TypeBinding
+      :name 'MyList'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+        :body (TypeRec
+          :var_name 'L'
+          :bound (KindType)
+          :body (TypeOption
+            :variants (
+              (OptionFieldSig 'nil' ())
+              (OptionFieldSig
+                :tag 'cons'
+                :payload_sig (
+                  (FieldSig
+                    :name 'head'
+                    :type_sig (TypePath ('A'))
+                    :mode VALUE
+                  )
+                  (FieldSig
+                    :name 'tail'
+                    :type_sig (TypePath ('L'))
+                    :mode VALUE
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'mine'
+      :value (ExprApp
+        :func (ExprId 'cons')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'polytrees')
+              :field 'leaf'
+            )
+            :args (
+              (ExprInt 4 '4')
+            )
+          )
+          (ExprId 'none')
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('MyList'))
+        :arguments (
+          (TypeApp
+            :constructor (TypePath ('polytrees' 'Tree'))
+            :arguments (
+              (TypePath ('Int'))
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'polytrees')
+            :field 'sum'
+          )
+          :args (
+            (ExprId 'direct')
+          )
+        )
+        :op '+'
+        :right (ExprInfix
+          :left (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'polytrees')
+                :field 'sumWood'
+              )
+              :args (
+                (ExprId 'wood')
+              )
+            )
+            :op '*'
+            :right (ExprInt 10 '10')
+          )
+          :op '+'
+          :right (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'polytrees')
+                :field 'sum'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'polytrees')
+                    :field 'node'
+                  )
+                  :args (
+                    (ExprId 'mine')
+                  )
+                )
+              )
+            )
+            :op '*'
+            :right (ExprInt 100 '100')
+          )
+        )
+      )
+    )
+  )
+)

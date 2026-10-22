@@ -36,7 +36,7 @@ from quest.modules.paths import (
 )
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
 from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
-from quest.elaborate_types import elaborate_kind, elaborate_type
+from quest.elaborate_types import elaborate_kind, elaborate_rec_type_operators, elaborate_type
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_interface
@@ -302,12 +302,37 @@ def _parse_and_elaborate_kind_in_env(kind_str: str, env: Environment) -> QKind:
     return elaborate_kind(ast_k, env)
 
 
-def _parse_and_elaborate_type_in_env(type_str: str, env: Environment) -> QType:
-    """Parses and elaborates a Quest type string within an existing environment/scope."""
+def _parse_type(type_str: str) -> ast.Type:
+    """Parses a Quest type string."""
     source_map = SourceMap(type_str, "<type>")
     tokens = Tokenizer(type_str, "<type>").tokenize_all()
-    ast_t = parse_quest_program(tokens, source_map, target="Type")
-    return elaborate_type(ast_t, env)
+    return parse_quest_program(tokens, source_map, target="Type")
+
+
+def _parse_and_elaborate_type_in_env(type_str: str, env: Environment) -> QType:
+    """Parses and elaborates a Quest type string within an existing environment/scope."""
+    return elaborate_type(_parse_type(type_str), env)
+
+
+def _format_rec_operator_member_for_qi(definition: QTypeFun, kind: QKind) -> str:
+    """Formats a member of a group of recursive type operators (Fun(A::K) applied to a group) as the operator it
+    declares, Fun(A::K) Body, with the group's variables written as their operators applied to the parameters, as in
+    its declaration; the loader elaborates the group's members together, like Let Rec T(A::K) = Body and ...."""
+    group = definition.body
+    assert isinstance(group, QRecGroupType)
+    params = tuple(QTypeVar(name=p.name, symbol_id=p.symbol_id, bound=p.bound) for p in definition.params)
+    subst: dict[int, QType] = {
+        rec_id: QTypeApp(constructor=QTypeVar(name=name, symbol_id=rec_id, bound=bound), arguments=params)
+        for name, rec_id, bound, _ in group.bindings
+    }
+    body = group.bindings[group.active_index][3].substitute(subst)
+    params_str = " ".join(f"{p.name}::{format_kind_for_qi(p.bound)}" for p in definition.params)
+    result_kind = kind
+    for _ in definition.params:
+        assert isinstance(result_kind, QAllKind)
+        result_kind = result_kind.result_kind
+    result_str = "" if isinstance(result_kind, QTypeKind) else f" :: {format_kind_for_qi(result_kind)}"
+    return f"Fun({params_str}){result_str} {format_type_for_qi(body)}"
 
 
 def _type_signatures(
@@ -381,11 +406,14 @@ def compile_interface_to_qi(
             concrete_t = type_sym.definition if type_sym and type_sym.definition else None
             if group and isinstance(concrete_t, QRecGroupType):
                 concrete_t = concrete_t.bindings[concrete_t.active_index][3]
-            m_type_str = (
-                format_type_for_qi(concrete_t)
-                if concrete_t
-                else str(sig.type_val)
-            )
+            if group and isinstance(concrete_t, QTypeFun) and isinstance(concrete_t.body, QRecGroupType):
+                m_type_str = _format_rec_operator_member_for_qi(concrete_t, type_sym.kind)
+            else:
+                m_type_str = (
+                    format_type_for_qi(concrete_t)
+                    if concrete_t
+                    else str(sig.type_val)
+                )
             kind_str = format_kind_for_qi(type_sym.kind) if type_sym and type_sym.kind else "TYPE"
             type_records.append(
                 QRecord(
@@ -863,20 +891,33 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
             # Pass 2: Elaborate concrete definitions with all interface types in scope. The members of a recursive
             # group are consecutive; their bodies are elaborated before any member is defined, so that each refers
             # to the others by their symbols, which become the group's variables.
+            # The members of a group of recursive type operators are recorded as Fun(A::K) Body, with each other
+            # applied to the parameters, and are elaborated together as declared.
             group_members: list[tuple[str, TypeSymbol, QType]] = []
+            operator_members: list[tuple[TypeSymbol, ast.TypeBinding]] = []
             for idx, (t_name, is_manifest, kind_str, manifest_str, type_sym, group) in enumerate(
                 type_records_list
             ):
                 if group:
-                    body = _parse_and_elaborate_type_in_env(manifest_str, env)
-                    group_members.append((t_name, type_sym, body))
+                    if isinstance(type_sym.kind, QAllKind):
+                        member = ast.TypeBinding(name=t_name, type_val=_parse_type(manifest_str), is_rec=True)
+                        operator_members.append((type_sym, member))
+                    else:
+                        body = _parse_and_elaborate_type_in_env(manifest_str, env)
+                        group_members.append((t_name, type_sym, body))
                     if idx + 1 == len(type_records_list) or type_records_list[idx + 1][5] != group:
-                        bindings = tuple(
-                            (name, sym.symbol_id, sym.kind, body) for name, sym, body in group_members
-                        )
-                        for active, (_, sym, _) in enumerate(group_members):
-                            sym.definition = QRecGroupType(bindings=bindings, active_index=active)
+                        if operator_members:
+                            symbols = elaborate_rec_type_operators([member for _, member in operator_members], env)
+                            for (sym, _), elaborated in zip(operator_members, symbols):
+                                sym.definition = elaborated.definition
+                        else:
+                            bindings = tuple(
+                                (name, sym.symbol_id, sym.kind, body) for name, sym, body in group_members
+                            )
+                            for active, (_, sym, _) in enumerate(group_members):
+                                sym.definition = QRecGroupType(bindings=bindings, active_index=active)
                         group_members = []
+                        operator_members = []
                 elif is_manifest and manifest_str:
                     concrete_def = _parse_and_elaborate_type_in_env(manifest_str, env)
                     type_sym.definition = concrete_def

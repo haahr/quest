@@ -1,0 +1,365 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('arrayOp') : 'ArrayOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'wOut' :type writer.T
+      :value (TypedSelect 'output' :type writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'printInt' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'wOut' :type writer.T)
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'x' :type Int)
+                    ))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'wOut' :type writer.T)
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetType 'List' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'ints' :type List(Int)
+      :value (TypedOption 'cons' :type List(Int)
+        :payload (TypedTuple :type Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end
+          :elements (
+            (TypedInt 1 :type Int)
+            (TypedOption 'cons' :type List(Int)
+              :payload (TypedTuple :type Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end
+                :elements (
+                  (TypedInt 2 :type Int)
+                  (TypedOption 'nil' :type List(Int))
+                )))
+          ))))
+    (TypedLetValue 'bools' :type List(Bool)
+      :value (TypedOption 'cons' :type List(Bool)
+        :payload (TypedTuple :type Tuple head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end
+          :elements (
+            (TypedBool true)
+            (TypedOption 'nil' :type List(Bool))
+          ))))
+    (TypedLetValue 'sum' :rec :type Fun(l: List(Int)): Int
+      :value (TypedFun :params (('l' : List(Int))) :type Fun(l: List(Int)): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'l' :type List(Int))
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedSelect 'head' :type Int
+                  :target (TypedVar 'c' :type Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'sum' :type Fun(l: List(Int)): Int)
+                  :args (
+                    (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end
+                      :target (TypedVar 'c' :type Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end))
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedLetValue 'countTrue' :rec :type Fun(l: List(Bool)): Int
+      :value (TypedFun :params (('l' : List(Bool))) :type Fun(l: List(Bool)): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'l' :type List(Bool))
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedIf :type Int
+                  :cond (TypedSelect 'head' :type Bool
+                    :target (TypedVar 'c' :type Tuple head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end))
+                  :then (TypedInt 1 :type Int)
+                  :else (TypedInt 0 :type Int))
+                :right (TypedApp :type Int
+                  :func (TypedVar 'countTrue' :type Fun(l: List(Bool)): Int)
+                  :args (
+                    (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end
+                      :target (TypedVar 'c' :type Tuple head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end))
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(l: List(Int)): Int)
+            :args (
+              (TypedVar 'ints' :type List(Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'countTrue' :type Fun(l: List(Bool)): Int)
+            :args (
+              (TypedVar 'bools' :type List(Bool))
+            ))
+        )))
+    (TypedLetType 'FunList' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetType 'IntList' :kind TYPE)
+    (TypedLetValue 'viaFun' :type FunList(Int)
+      :value (TypedVar 'ints' :type List(Int)))
+    (TypedLetValue 'viaRec' :type IntList
+      :value (TypedVar 'viaFun' :type FunList(Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(l: List(Int)): Int)
+            :args (
+              (TypedVar 'viaRec' :type IntList)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(l: List(Int)): Int)
+            :args (
+              (TypedApp :type IntList
+                :func (TypedTypeApp [IntList] :type Fun(d: T): IntList
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [List(Int)] :type Fun(a: List(Int)): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'ints' :type List(Int))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sum' :type Fun(l: List(Int)): Int)
+            :args (
+              (TypedApp :type List(Int)
+                :func (TypedTypeApp [List(Int)] :type Fun(d: T): List(Int)
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [FunList(Int)] :type Fun(a: FunList(Int)): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'viaFun' :type FunList(Int))
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetType 'Stream' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 's' :type Stream(Int)
+      :value (TypedOption 'more' :type Stream(Int)
+        :payload (TypedTuple :type Tuple head: Int rest: Rec(Stream :: TYPE) Option done more with Tuple head: Int rest: Stream end end end
+          :elements (
+            (TypedInt 5 :type Int)
+            (TypedOption 'done' :type Stream(Int))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedSelect 'head' :type Int
+            :target (TypedVariantAssert 'more' :type Tuple Int head: Int rest: Rec(Stream :: TYPE) Option done more with Tuple head: Int rest: Stream end end end
+              :target (TypedVar 's' :type Stream(Int))))
+        )))
+    (TypedLetType 'Alt' :kind ALL(A :: TYPE) ALL(B :: TYPE) TYPE)
+    (TypedLetValue 'a' :type Alt(Int Bool)
+      :value (TypedOption 'next' :type Alt(Int Bool)
+        :payload (TypedTuple :type Tuple value: Int rest: Rec(Alt :: TYPE) Option stop next with Tuple value: Int rest: Alt end end end
+          :elements (
+            (TypedInt 6 :type Int)
+            (TypedOption 'stop' :type Alt(Int Bool))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedSelect 'value' :type Int
+            :target (TypedVariantAssert 'next' :type Tuple Int value: Int rest: Rec(Alt :: TYPE) Option stop next with Tuple value: Int rest: Alt end end end
+              :target (TypedVar 'a' :type Alt(Int Bool))))
+        )))
+    (TypedLetTypeGroup 'Tree' 'Forest'
+      :members (
+        (TypedLetType 'Tree' :kind ALL(A :: TYPE) TYPE)
+        (TypedLetType 'Forest' :kind ALL(A :: TYPE) TYPE)
+      ))
+    (TypedLetValue 'leaf' :type Fun(n: Int): Tree(Int)
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Tree(Int)
+        :body (TypedVariant 'leaf' :type Tree(Int)
+          :payload (TypedVar 'n' :type Int))))
+    (TypedLetValueGroup 'size' 'sizeForest'
+      :members (
+        (TypedLetValue 'size' :rec :type Fun(t: Tree(Int)): Int
+          :value (TypedFun :params (('t' : Tree(Int))) :type Fun(t: Tree(Int)): Int
+            :body (TypedCase :type Int
+              :target (TypedVar 't' :type Tree(Int))
+              :branches (
+                (TypedCaseBranch tags=(leaf) :binder 'n'
+                  :body (TypedVar 'n' :type Int))
+                (TypedCaseBranch tags=(node) :binder 'f'
+                  :body (TypedApp :type Int
+                    :func (TypedVar 'sizeForest' :type Fun(f: Forest(Int)): Int)
+                    :args (
+                      (TypedVar 'f' :type Rec(Forest :: TYPE) Record trees: Array(Tree) end)
+                    )))
+              )
+              :else (TypedInt 0 :type Int))))
+        (TypedLetValue 'sizeForest' :rec :type Fun(f: Forest(Int)): Int
+          :value (TypedFun :params (('f' : Forest(Int))) :type Fun(f: Forest(Int)): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedLetValue 'total' :type Int
+                  :value (TypedInt 0 :type Int))
+                (TypedExprStmt
+                  :expr (TypedFor 'i' :upto
+                    :start (TypedInt 0 :type Int)
+                    :stop (TypedInfix '-' :type Int
+                      :left (TypedApp :type Int
+                        :func (TypedTypeApp [Tree(Int)] :type Fun(a: Array(Tree(Int))): Int
+                          :func (TypedSelect 'size' :type All(A :: TYPE) Fun(a: Array(A)): Int
+                            :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+                        :args (
+                          (TypedSelect 'trees' :type Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end)
+                            :target (TypedVar 'f' :type Forest(Int)))
+                        ))
+                      :right (TypedInt 1 :type Int))
+                    :body (TypedAssign
+                      :target (TypedVar 'total' :type Var(Int))
+                      :value (TypedInfix '+' :type Int
+                        :left (TypedDerefCell :type Int
+                          :target (TypedVar 'total' :type Var(Int)))
+                        :right (TypedApp :type Int
+                          :func (TypedVar 'size' :type Fun(t: Tree(Int)): Int)
+                          :args (
+                            (TypedIndex :type Rec(Tree :: TYPE) Variant leaf: Int node: Forest end
+                              :target (TypedSelect 'trees' :type Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end)
+                                :target (TypedVar 'f' :type Forest(Int)))
+                              :index (TypedVar 'i' :type Int))
+                          ))))))
+              )
+              :result (TypedDerefCell :type Int
+                :target (TypedVar 'total' :type Var(Int))))))
+      ))
+    (TypedLetValue 'forest' :type Forest(Int)
+      :value (TypedRecord :type Record trees: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) end
+        :fields (
+          (TypedRecordField 'trees'
+            :value (TypedArray :type Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end)
+              :elements (
+                (TypedApp :type Tree(Int)
+                  :func (TypedVar 'leaf' :type Fun(n: Int): Tree(Int))
+                  :args (
+                    (TypedInt 7 :type Int)
+                  ))
+                (TypedApp :type Tree(Int)
+                  :func (TypedVar 'leaf' :type Fun(n: Int): Tree(Int))
+                  :args (
+                    (TypedInt 8 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'tree' :type Tree(Int)
+      :value (TypedVariant 'node' :type Tree(Int)
+        :payload (TypedRecord :type Record trees: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) end
+          :fields (
+            (TypedRecordField 'trees'
+              :value (TypedArray :type Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end)
+                :elements (
+                  (TypedApp :type Tree(Int)
+                    :func (TypedVar 'leaf' :type Fun(n: Int): Tree(Int))
+                    :args (
+                      (TypedInt 1 :type Int)
+                    ))
+                  (TypedVariant 'node' :type Tree(Int)
+                    :payload (TypedVar 'forest' :type Forest(Int)))
+                )))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'size' :type Fun(t: Tree(Int)): Int)
+            :args (
+              (TypedVar 'tree' :type Tree(Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedVar 'sizeForest' :type Fun(f: Forest(Int)): Int)
+            :args (
+              (TypedApp :type Forest(Int)
+                :func (TypedTypeApp [Forest(Int)] :type Fun(d: T): Forest(Int)
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedTypeApp [Forest(Int)] :type Fun(a: Forest(Int)): T
+                      :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'forest' :type Forest(Int))
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetValue 'local' :type Int
+      :value (TypedBlock :type Int
+        :bindings (
+          (TypedLetType 'Chain' :kind ALL(A :: TYPE) TYPE)
+          (TypedLetValue 'c' :type Chain(Int)
+            :value (TypedOption 'more' :type Chain(Int)
+              :payload (TypedTuple :type Tuple value: Int next: Rec(Chain :: TYPE) Option last more with Tuple value: Int next: Chain end end end
+                :elements (
+                  (TypedInt 9 :type Int)
+                  (TypedOption 'last' :type Chain(Int))
+                ))))
+        )
+        :result (TypedSelect 'value' :type Int
+          :target (TypedVariantAssert 'more' :type Tuple Int value: Int next: Rec(Chain :: TYPE) Option last more with Tuple value: Int next: Chain end end end
+            :target (TypedVar 'c' :type Chain(Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
+        :args (
+          (TypedVar 'local' :type Int)
+        )))
+  ))

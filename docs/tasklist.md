@@ -5,30 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Recursive type operators
-
-**Problem.** A recursive type cannot have type parameters: `Let Rec T(A::TYPE) = ...`, alone or in a group, gets
-"Recursive type 'T' cannot have type parameters". Writing the parameter outside the recursion works when the
-recursion is uniform (`Let List = Fun(A::TYPE) Rec(L::TYPE) Option nil cons with head: A tail: L end end`,
-`tests/source/language/recursive_options.quest`), but `Let Rec List(A::TYPE) = Option nil cons with head: A
-tail: List(A) end end` should mean the same.
-
-**Reproduce.** `tests/errors/typecheck/rec_type_params.quest` and `type_binding_group_rec_params.quest`.
-
-**Where to start.** `_reject_recursive_type_operator` in `bootstrap/python/quest/elaborate_types.py`, called from
-`_elaborate_type_binding_symbol` and `elaborate_type_binding_group`. When every recursive occurrence applies the
-operator to exactly its own parameters (uniform recursion), `Let Rec T(A) = body` can be elaborated as
-`Fun(A) Rec(T') body[T(A) := T']`, and a group likewise, with one `QRecGroupType` under the shared parameters
-(members must then take the same parameters). Non-uniform recursion (`Nest(A) = ... Nest(Array(A)) ...`) denotes
-non-regular types, which equi-recursive equality and C canonical forms (`codegen/c_types.py`) cannot handle as
-they stand; reject it with its own clear error.
-
-**Done when.** Uniform recursive type operators, single and in groups, work in `interpret` and `run_c_compiled`, and
-equal the `Fun(A) Rec(...)` form (same C representation); a golden test covers them; non-uniform recursion gets a
-specific error test; and `docs/type-system.md` §3.4 no longer lists them as unsupported.
-
----
-
 ## Top-level rebindings change what earlier functions see
 
 **Problem.** Rebinding a name at the top level changes the value that earlier top-level functions (and closures)

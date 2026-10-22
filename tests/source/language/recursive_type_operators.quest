@@ -1,0 +1,72 @@
+(* Language: recursive type operators, alone and as a mutually recursive group *)
+
+import writer: Writer;
+import conv: Conv;
+import arrayOp: ArrayOp;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(x: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(x));
+        writer.putString(wOut "\n")
+    end;
+
+(* 1. A recursive type operator, applied to different types *)
+Let Rec List(A::TYPE) = Option nil cons with head: A tail: List(A) end end;
+let ints: List(Int) = option cons of List(Int) with 1 option cons of List(Int) with 2 option nil of List(Int) end end end;
+let bools: List(Bool) = option cons of List(Bool) with true option nil of List(Bool) end end;
+let rec sum(l: List(Int)): Int = case l when cons with c then c.head + sum(c.tail) else 0 end;
+let rec countTrue(l: List(Bool)): Int =
+    case l when cons with c then {if c.head then 1 else 0 end} + countTrue(c.tail) else 0 end;
+printInt(sum(ints));
+printInt(countTrue(bools));
+
+(* 2. The same type as the operator written with Fun and Rec, and as the recursive type at Int *)
+Let FunList = Fun(A::TYPE) Rec(L::TYPE) Option nil cons with head: A tail: L end end;
+Let Rec IntList = Option nil cons with head: Int tail: IntList end end;
+let viaFun: FunList(Int) = ints;
+let viaRec: IntList = viaFun;
+printInt(sum(viaRec));
+printInt(sum(dynamic.be(:IntList dynamic.new(:List(Int) ints))));
+printInt(sum(dynamic.be(:List(Int) dynamic.new(:FunList(Int) viaFun))));
+
+(* 3. Written with Fun, and with two parameters *)
+Let Rec Stream = Fun(A::TYPE) Option done more with head: A rest: Stream(A) end end;
+let s: Stream(Int) = option more of Stream(Int) with 5 option done of Stream(Int) end end;
+printInt(s!more.head);
+Let Rec Alt(A::TYPE B::TYPE) = Option stop next with value: A rest: Alt(A B) end end;
+let a: Alt(Int Bool) = option next of Alt(Int Bool) with 6 option stop of Alt(Int Bool) end end;
+printInt(a!next.value);
+
+(* 4. A mutually recursive group of type operators *)
+Let Rec Tree(A::TYPE) = Variant leaf: A node: Forest(A) end
+and Forest(A::TYPE) = Record trees: Array(Tree(A)) end;
+let leaf(n: Int): Tree(Int) = variant leaf of Tree(Int) with n end;
+let rec size(t: Tree(Int)): Int =
+    case t
+        when leaf with n then n
+        when node with f then sizeForest(f)
+        else 0
+    end
+and sizeForest(f: Forest(Int)): Int =
+    begin
+        let var total = 0;
+        for i = 0 upto arrayOp.size(:Tree(Int) f.trees) - 1 do
+            total := total + size(f.trees[i])
+        end;
+        total
+    end;
+let forest: Forest(Int) = record trees = array of leaf(7) leaf(8) end end;
+let tree: Tree(Int) = variant node of Tree(Int) with record trees = array of leaf(1) variant node of Tree(Int) with forest end end end end;
+printInt(size(tree));
+printInt(sizeForest(dynamic.be(:Forest(Int) dynamic.new(:Forest(Int) forest))));
+
+(* 5. Local to a block *)
+let local =
+    begin
+        Let Rec Chain(A::TYPE) = Option last more with value: A next: Chain(A) end end;
+        let c: Chain(Int) = option more of Chain(Int) with 9 option last of Chain(Int) end end;
+        c!more.value
+    end;
+printInt(local);
