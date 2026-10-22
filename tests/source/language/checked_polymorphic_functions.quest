@@ -1,0 +1,34 @@
+(* Language: polymorphic functions checked against an expected type, a let-function's header or an annotation *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let print(s: String): Ok = writer.putString(wOut s <> "\n");
+
+Let P = Record a: Int end;
+Let Q = Record a: Int b: Int end;
+
+(* 1. Type parameters named differently from the annotation's, matched by position *)
+let first: All(B::TYPE C::TYPE x: B y: C) B = fun(X::TYPE Y::TYPE x: X y: Y): X x;
+print(conv.int(first(:Int :Bool 1 true)));
+
+(* 2. A bound referring to an earlier type parameter *)
+let widen(A::TYPE B <: A x: B): A = x;
+print(conv.int(widen(:Int :Int 2)));
+let view(A <: P B <: A x: B): A = x;
+print(conv.int(view(:P :Q record a = 3 b = 30 end).a));
+
+(* 3. A written bound weaker than the expected one: the body is checked under the expected bound *)
+let getA: All(X <: Q x: X) Int = fun(X <: P x: X): Int x.a;
+print(conv.int(getA(:Q record a = 4 b = 40 end)));
+let pick: All(X <: Q x: X) X = fun(X <: P x: X): X x;
+print(conv.int(pick(:Q record a = 5 b = 50 end).b));
+
+(* 4. A literal without type parameters uses the annotation's names *)
+let same: All(T::TYPE x: T) T = fun(x: T): T x;
+print(conv.bool(same(:Bool true)));
+
+(* 5. A function applied to types only, and called through its type application *)
+let firstInt = first(:Int :Int);
+print(conv.int(firstInt(6 60)));

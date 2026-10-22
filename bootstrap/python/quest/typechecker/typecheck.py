@@ -784,22 +784,45 @@ class TypeElaborator:
         env: Environment,
         loop_depth: int,
     ) -> TypedFun:
-        """Checks a function abstraction against an expected function type."""
+        """Checks a function abstraction against an expected function type.
+
+        Against a polymorphic type All(X::K ...) T, the function's type parameters are the expected quantifiers renamed
+        by position, with fresh symbols (the expected type's own may be in scope), the names the function gives them
+        (or the expected names, if it writes none), and the expected bounds, with earlier quantifiers renamed. A bound
+        the function writes may be weaker than the expected one, as for subtyping in Cardelli's Quest ([TIncl Pi]),
+        and the body is checked under the expected bound. The function's type is the renamed one, so that its
+        parameters and body refer to its own quantifiers.
+        """
         expected_lazy = expected_type.evaluate_lazily(env)
         if isinstance(expected_lazy, QAllType):
+            written = tuple(getattr(expr, "type_params", ()))
+            if written and len(written) != len(expected_lazy.quantifiers):
+                raise TypeError(
+                    f"Function has {len(written)} type parameters, but its expected type '{expected_type}' has "
+                    f"{len(expected_lazy.quantifiers)}",
+                    offset=expr.offset,
+                )
             with env.scoped("poly_fun"):
                 meta_map: dict[int, QType] = {}
-                body_type_param_ids: list[int] = []
-                for q in expected_lazy.quantifiers:
+                quants: list[QQuantifier] = []
+                for idx, q in enumerate(expected_lazy.quantifiers):
+                    bound = q.bound.substitute_types(meta_map)
+                    name = written[idx].name if written else q.name
+                    if written:
+                        written_bound = elaborate_kind(written[idx].bound, env)
+                        if not is_subkind(bound, written_bound, env):
+                            raise TypeError(
+                                f"Type parameter '{name}' is declared '{QQuantifier(name, 0, written_bound)}', which "
+                                f"does not include the expected '{QQuantifier(name, 0, bound)}'",
+                                offset=written[idx].offset,
+                            )
                     sym_id = env.fresh_symbol_id()
-                    env.current_scope.declare_type(
-                        TypeSymbol(name=q.name, symbol_id=sym_id, kind=q.bound)
-                    )
+                    env.current_scope.declare_type(TypeSymbol(name=name, symbol_id=sym_id, kind=bound))
                     self._type_param_ids.add(sym_id)
-                    body_type_param_ids.append(sym_id)
-                    meta_map[q.symbol_id] = QTypeVar(name=q.name, symbol_id=sym_id, bound=q.bound)
+                    meta_map[q.symbol_id] = QTypeVar(name=name, symbol_id=sym_id, bound=bound)
+                    quants.append(QQuantifier(name=name, symbol_id=sym_id, bound=bound))
                 inner_exp = expected_lazy.body.substitute(meta_map)
-                if getattr(expr, "type_params", ()):
+                if written:
                     if expr.params:
                         inner_expr = ast.ExprFun(
                             params=expr.params,
@@ -813,11 +836,12 @@ class TypeElaborator:
                 else:
                     inner_expr = expr
                 inner_typed = self.check_expr(inner_expr, inner_exp, env, loop_depth)
+                inner_t = inner_typed.type_val if isinstance(inner_typed, TypedFun) else inner_exp
                 return TypedFun(
                     params=inner_typed.params if isinstance(inner_typed, TypedFun) else (),
                     body=inner_typed.body if isinstance(inner_typed, TypedFun) else inner_typed,
-                    type_val=expected_lazy,
-                    type_param_ids=tuple(body_type_param_ids),
+                    type_val=QAllType(quantifiers=tuple(quants), body=inner_t),
+                    type_param_ids=tuple(q.symbol_id for q in quants),
                     offset=expr.offset,
                 )
 
