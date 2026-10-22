@@ -62,6 +62,7 @@ from quest.codegen.c_types import (
     descriptor_form,
     fun_descriptor_tag,
     generic_layout_agrees,
+    generic_layout_copies_mutable_data,
     hole_var,
     is_word_type,
     RecordNamingContext,
@@ -476,18 +477,30 @@ class CEmitter:
         A tuple or option (or a recursive type made of them) over a type parameter has a struct whose components of
         the parameter are QVals in the callee, and native values at the call. When the layouts agree in memory
         (generic_layout_agrees) the value is the same, viewed through the other struct; otherwise it is converted by
-        quest_convert, which copies it. Returns None when the two C types are the same, or either is not a pointer
-        (QVals, records, variants, and scalars are converted by the ordinary coercions).
+        quest_convert, which copies it; a value whose mutable data would be copied (an array, say, whose elements'
+        layouts differ) cannot be converted, and is a compile-time error. Returns None when no conversion is needed,
+        or when either C type is not a pointer (QVals, records, variants, and scalars are converted by the ordinary
+        coercions, and closures are adapted by thunks).
+
+        Types with the same C type can still differ in layout: an array's C type is the same whatever its elements.
         """
         if not instantiation:
             return None
         native_t = generic_t.substitute(instantiation)
         generic_c, native_c = self.c_type(generic_t), self.c_type(native_t)
-        if generic_c == native_c or not generic_c.endswith("*") or not native_c.endswith("*"):
+        if not generic_c.endswith("*") or not native_c.endswith("*"):
+            return None
+        if isinstance(normalize_type(generic_t), (QFunType, QAllType)):
             return None
         from_t, to_t = (native_t, generic_t) if to_generic else (generic_t, native_t)
         if generic_layout_agrees(generic_t, instantiation):
-            return f"(({self.c_type(to_t)}){c_val})"
+            return None if generic_c == native_c else f"(({self.c_type(to_t)}){c_val})"
+        if generic_layout_copies_mutable_data(generic_t, instantiation):
+            raise QuestCompilerError(
+                f"C code generation cannot pass a value of type '{native_t}' to or from a polymorphic function that "
+                f"lays it out as '{generic_t}': the layouts differ, and converting the value would copy mutable data, "
+                f"which would then not share its updates"
+            )
         generic_desc = self._generic_layout_descriptor(generic_t, instantiation)
         native_desc = self.c_type_descriptor(native_t)
         from_desc, to_desc = (native_desc, generic_desc) if to_generic else (generic_desc, native_desc)

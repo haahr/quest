@@ -1779,6 +1779,45 @@ def _generic_layout_agrees(t: QType, subst: dict[int, QType], in_register: bool,
     return False
 
 
+def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> bool:
+    """Whether converting a value of t between the generic layout and the native one at subst (see
+    generic_layout_agrees) would copy mutable data whose layouts differ: an array, a Var cell, or a var component
+    holding a value that does not agree. The copy would not share the original's updates."""
+    seen: set[int] = set()
+
+    def disagrees(component: QType) -> bool:
+        return not _generic_layout_agrees(component, subst, False, set())
+
+    def visit(node: QType) -> bool:
+        if not (getattr(node, "_fv", None) or frozenset()) & subst.keys():
+            return False
+        if isinstance(node, (QRecType, QRecGroupType, QAliasType)):
+            if id(node) in seen:
+                return False
+            seen.add(id(node))
+            if isinstance(node, QAliasType) and not isinstance(node.target, (QRecType, QRecGroupType)):
+                return visit(node.target)
+            return visit(node.unfold_lazily())
+        if isinstance(node, QTypeApp):
+            reduced = node.evaluate_lazily()
+            return reduced is not node and not isinstance(reduced, QTypeApp) and visit(reduced)
+        if isinstance(node, (QArrayType, QVarType, QOutType)):
+            return disagrees(node.element_type) or visit(node.element_type)
+        if isinstance(node, QTupleType):
+            return any((f.is_var and disagrees(f.type_val)) or visit(f.type_val) for f in node.value_fields)
+        if isinstance(node, QRecordType):
+            return any((f.is_var and disagrees(f.type_val)) or visit(f.type_val) for f in node.fields)
+        if isinstance(node, QVariantType):
+            return any(v.type_val is not None and ((v.is_var and disagrees(v.type_val)) or visit(v.type_val))
+                       for v in node.variants)
+        if isinstance(node, QOptionType):
+            return any(o.payload_type is not None and visit(o.payload_type) for o in node.options)
+        # Closures are adapted rather than copied
+        return False
+
+    return visit(t)
+
+
 def is_word_type(t: QType) -> bool:
     """Returns True if t is the standard library Word.T type."""
     return lower_type(t).is_word

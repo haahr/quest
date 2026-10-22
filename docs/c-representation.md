@@ -301,6 +301,10 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     records or variants as type arguments are mostly specialized (§6.4.3), which avoids the conversion; it remains for
     first-class polymorphic values and polymorphic functions of other modules. Converted records are unboxed from the
     heap cell (`quest_record_unbox`), and variants likewise.
+    A value whose conversion would copy mutable data laid out differently (an array of such tuples, or a tuple with a
+    `var` component of the parameter, at a record type argument) cannot be converted, since the copy would not share
+    its updates; the compiler rejects the call (`generic_layout_copies_mutable_data`). An array's C type is the same
+    whatever its elements, so its layout is judged from its type, not its C type.
   - **Record Width Subtyping in Tuples:** When a tuple field contains a record subtype whose field dictionary differs
     from the target tuple field, the compiler synthesizes the new fat pointer by attaching the target evidence
     dictionary (`(QRecordVal){ .val = src._i.val, .dict = &... }`) rather than an unsafe pointer cast.
@@ -913,7 +917,8 @@ function passes on ([type-system.md](type-system.md) §6.11).
   records are re-viewed from their own layout (always, since code that knows a value only as of a type parameter's
   bound views it at the bound), and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker.
   Arrays, exceptions, and tuples with `var` components cannot be copied without losing updates: converting one whose
-  layout differs is a fatal run-time error (`quest_layout_conversion_error`). The type checker rejects types that
+  layout differs is a fatal run-time error (`quest_layout_conversion_error`). At a polymorphic call, where both layouts are known,
+  the compiler reports it instead (§5.1, Polymorphic Calls). The type checker rejects types that
   mention type parameters inside mutable data where they are used at run time, so this happens only when such a
   type reaches run time as an ordinary type argument.
 - **Where values are converted:** where a value is used at a particular type: an `inspect` branch converts the
