@@ -548,6 +548,17 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   The one exception is a call whose expected type still depends on the enclosing call's unknown type arguments
   (`nil()` in `cons(nil() tail)`): it defers its own to the enclosing call, which reports any that remain unknown.
   Metavariables never escape the outermost call.
+- **Checking Polymorphic Functions:** A function checked against an expected type `All(X::K ...) T` (a
+  let-function's header, as in `let f(A::TYPE x: A): A = x`, or an annotation, as in `let f: All(B::TYPE x: B) B =
+  fun(A::TYPE x: A): A x`) gets the expected quantifiers renamed by position (`_check_fun_expr`): fresh symbols,
+  since the expected type's own may be in scope; the names the function writes (or the expected names, if it writes
+  no type parameters); and the expected bounds, with earlier quantifiers renamed (`B <: A` refers to the function's
+  `A`). The function's type is the renamed type, so its parameters and body refer to its own quantifiers. A bound
+  the function writes may be weaker than the expected one, following Cardelli's [TIncl Π] (*A Semantic Basis for
+  Quest* §2: $\Pi(X::K)B <: \Pi(X::K')B'$ when $K' <:: K$ and $B <: B'$ under $X::K'$), and the body is checked
+  under the expected bound; a stronger bound, or a different number of type parameters, is an error. Subtyping
+  between `All` types (`_prove_subtype` in `types/subtyping.py`) still requires equal bounds, as Cardelli and
+  Wegner's Kernel Fun does (see `docs/tasklist.md`).
 
 ### 6.10. Function Signatures and Recursive Bindings (`let rec`)
 - **Explicit Parameter Types:** Function parameters are syntactically signatures ($S$). In Quest, every value
