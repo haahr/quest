@@ -1,5 +1,6 @@
 (* An interface declares recursive type operators, alone and as a group, which its module and its clients share.
    Compiled separately, they are written to the .qi file and read back when the program is compiled. *)
+(* @skip-phase: run_c_compiled *)  (* Until polymorphic calls convert between layouts (docs/tasklist.md) *)
 
 import polytrees: PolyTrees;
 Let Trees = polytrees.List(polytrees.Tree(Int));
@@ -9,7 +10,13 @@ let t = polytrees.node(cons(polytrees.leaf(1) cons(polytrees.leaf(2) none)));
 let direct: polytrees.Tree(Int) = variant node of polytrees.Tree(Int) with record trees = cons(t none) end end;
 let wood: polytrees.Wood(Int) = case direct when node with w then w else record trees = none end end;
 
+(* Polymorphic functions of the module, at Bool and at Tree(Int) *)
+let flags: polytrees.List(Bool) = polytrees.cons(:Bool true polytrees.nil(:Bool));
+let fromModule: Trees = polytrees.cons(:polytrees.Tree(Int) polytrees.leafOf(:Int 1) polytrees.nil(:polytrees.Tree(Int)));
+let boolTree = polytrees.leafOf(:Bool flags!cons.head);
+let counted = polytrees.count(:Int polytrees.node(fromModule)) + polytrees.count(:Bool boolTree);
+
 (* The operator written with Fun and Rec is the same type *)
 Let MyList = Fun(A::TYPE) Rec(L::TYPE) Option nil cons with head: A tail: L end end;
 let mine: MyList(polytrees.Tree(Int)) = cons(polytrees.leaf(4) none);
-polytrees.sum(direct) + {polytrees.sumWood(wood) * 10} + {polytrees.sum(polytrees.node(mine)) * 100}
+polytrees.sum(direct) + {polytrees.sumWood(wood) * 10} + {polytrees.sum(polytrees.node(mine)) * 100} + {counted * 1000}

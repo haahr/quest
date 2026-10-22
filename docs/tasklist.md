@@ -119,6 +119,9 @@ b!some.head
 `QOption_none_some_QTuple_QVal_end *` to a `QOption_none_some_QTuple_Bool_end *`. `Tuple x: A end` fails the same
 way, as do arguments (`let get(A::TYPE b: Box(A) d: A): A = ...` called with a `Box(Bool)`) and recursive types
 (`Let Rec List(A::TYPE) = Option nil cons with head: A tail: List(A) end end` with `cons(:Bool true ...)`).
+`tests/source/language/type_parameters_in_aggregates.quest` and
+`tests/source/modules/recursive_type_operators_in_interface.quest` cover these, and skip `run_c_compiled` until this
+is fixed.
 
 **Where to start.** Calls convert arguments and results between views in `codegen/c_emitter.py` (`_emit_call_arg`,
 `_coerce_val`, `_coerce_tuple_val`, and the bound-view conversions `_held_view`, `_needs_bound_view` and

@@ -1,0 +1,92 @@
+(* Language: tuples and options over type parameters passed to and returned from polymorphic functions. Generic
+   code lays out a component of a type parameter as a QVal; code that knows the type lays it out natively. *)
+(* @skip-phase: run_c_compiled *)  (* Until polymorphic calls convert between layouts (docs/tasklist.md) *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let print(s: String): Ok = writer.putString(wOut s <> "\n");
+
+(* 1. Tuples, written out and through a type operator, as arguments and results *)
+Let Box = Fun(A::TYPE) Tuple x: A end;
+let mkTuple(A::TYPE v: A): Tuple x: A end = tuple let x = v end;
+let getTuple(A::TYPE t: Tuple x: A end): A = t.x;
+let mkBox(A::TYPE v: A): Box(A) = tuple let x = v end;
+let getBox(A::TYPE b: Box(A)): A = b.x;
+let id(A::TYPE v: A): A = v;
+let bools: Box(Bool) = mkBox(:Bool true);
+print(conv.bool(getBox(:Bool bools)));
+print(conv.bool(getTuple(:Bool mkTuple(:Bool false))));
+print(conv.int(getBox(:Int mkBox(:Int 3))));
+print(conv.real(getBox(:Real mkBox(:Real 2.5))));
+print(conv.char(getBox(:Char mkBox(:Char 'c'))));
+print(getBox(:String mkBox(:String "box")));
+print(conv.bool(id(:Box(Bool) bools).x));
+
+(* 2. A tuple over a type parameter nested in another *)
+Let Pair = Fun(A::TYPE) Tuple first: Box(A) second: Int end;
+let mkPair(A::TYPE v: A): Pair(A) = tuple let first = mkBox(:A v) let second = 1 end;
+let firstOf(A::TYPE p: Pair(A)): A = p.first.x;
+let pair: Pair(Bool) = mkPair(:Bool true);
+print(conv.bool(pair.first.x) <> " " <> conv.bool(firstOf(:Bool pair)));
+
+(* 3. Options, written out and through a type operator *)
+Let Maybe = Fun(A::TYPE) Option none some with value: A end end;
+let mkSome(A::TYPE v: A): Maybe(A) = option some of Maybe(A) with v end;
+let getOr(A::TYPE m: Maybe(A) d: A): A = case m when some with s then s.value else d end;
+let mkOpt(A::TYPE v: A): Option none some with value: A end end = option some of Maybe(A) with v end;
+let getOpt(A::TYPE m: Option none some with value: A end end d: A): A =
+    case m when some with s then s.value else d end;
+let maybe: Maybe(Bool) = mkSome(:Bool true);
+print(conv.bool(maybe!some.value));
+print(conv.bool(getOr(:Bool maybe false)));
+print(conv.bool(getOr(:Bool option none of Maybe(Bool) end false)));
+print(conv.bool(getOpt(:Bool mkOpt(:Bool true) false)));
+print(conv.char(getOr(:Char mkSome(:Char 'm') ' ')));
+
+(* 4. A recursive type operator *)
+Let Rec List(A::TYPE) = Option nil cons with head: A tail: List(A) end end;
+let nil(A::TYPE): List(A) = option nil of List(A) end;
+let cons(A::TYPE head: A tail: List(A)): List(A) = option cons of List(A) with head tail end;
+let rec length(A::TYPE l: List(A)): Int = case l when cons with c then 1 + length(:A c.tail) else 0 end;
+let rec last(A::TYPE l: List(A) d: A): A = case l when cons with c then last(:A c.tail c.head) else d end;
+let flags: List(Bool) = cons(:Bool true cons(:Bool false nil(:Bool)));
+print(conv.int(length(:Bool flags)) <> " " <> conv.bool(last(:Bool flags true)));
+let words: List(String) = option cons of List(String) with "a" option cons of List(String) with "b"
+    option nil of List(String) end end end;
+print(conv.int(length(:String words)) <> " " <> last(:String words ""));
+print(conv.bool(flags!cons.tail!cons.head));
+
+(* 5. A mutually recursive group of type operators *)
+Let Rec Tree(A::TYPE) = Variant leaf: A node: Forest(A) end
+and Forest(A::TYPE) = Tuple trees: List(Tree(A)) end;
+let leaf(A::TYPE v: A): Tree(A) = variant leaf of Tree(A) with v end;
+let node(A::TYPE trees: List(Tree(A))): Tree(A) = variant node of Tree(A) with tuple let trees = trees end end;
+let rec count(A::TYPE t: Tree(A)): Int =
+    case t
+        when leaf then 1
+        when node with f then countList(:A f.trees)
+        else 0
+    end
+and countList(A::TYPE l: List(Tree(A))): Int =
+    case l when cons with c then count(:A c.head) + countList(:A c.tail) else 0 end;
+let tree: Tree(Bool) =
+    node(:Bool cons(:Tree(Bool) leaf(:Bool true) cons(:Tree(Bool) leaf(:Bool false) nil(:Tree(Bool)))));
+print(conv.int(count(:Bool tree)));
+
+(* 6. Records and variants as type arguments of first-class polymorphic values, which are not specialized *)
+Let P = Record a: Int end;
+Let V = Variant p: Int q: Bool end;
+let mkB: All(A::TYPE v: A) Box(A) = mkBox;
+let getB: All(A::TYPE b: Box(A)) A = getBox;
+let mkS: All(A::TYPE v: A) Maybe(A) = mkSome;
+let consF: All(A::TYPE head: A tail: List(A)) List(A) = cons;
+let rb: Box(P) = mkB(:P record a = 4 end);
+print(conv.int(rb.x.a) <> " " <> conv.int(getB(:P rb).a));
+let vb: Box(V) = mkB(:V variant p of V with 5 end);
+print(conv.int(case getB(:V vb) when p with n then n else 0 end));
+let rm: Maybe(P) = mkS(:P record a = 6 end);
+print(conv.int(rm!some.value.a));
+let rl: List(P) = consF(:P record a = 7 end consF(:P record a = 8 end option nil of List(P) end));
+print(conv.int(rl!cons.head.a + rl!cons.tail!cons.head.a));

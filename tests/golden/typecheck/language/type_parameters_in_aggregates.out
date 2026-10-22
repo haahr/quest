@@ -1,0 +1,771 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'wOut' :type writer.T
+      :value (TypedSelect 'output' :type writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedVar 'wOut' :type writer.T)
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Box' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'mkTuple' :type All(A :: TYPE) Fun(v: A): Tuple x: A end
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Tuple x: A end
+        :body (TypedTuple :type Tuple x: A end
+          :elements (
+            (TypedVar 'v' :type A)
+          ))))
+    (TypedLetValue 'getTuple' :type All(A :: TYPE) Fun(t: Tuple x: A end): A
+      :value (TypedFun :params (('t' : Tuple x: A end)) :type All(A :: TYPE) Fun(t: Tuple x: A end): A
+        :body (TypedSelect 'x' :type A
+          :target (TypedVar 't' :type Tuple x: A end))))
+    (TypedLetValue 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Box(A)
+        :body (TypedTuple :type Tuple x: A end
+          :elements (
+            (TypedVar 'v' :type A)
+          ))))
+    (TypedLetValue 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A
+      :value (TypedFun :params (('b' : Box(A))) :type All(A :: TYPE) Fun(b: Box(A)): A
+        :body (TypedSelect 'x' :type A
+          :target (TypedVar 'b' :type Box(A)))))
+    (TypedLetValue 'id' :type All(A :: TYPE) Fun(v: A): A
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): A
+        :body (TypedVar 'v' :type A)))
+    (TypedLetValue 'bools' :type Box(Bool)
+      :value (TypedApp :type Box(Bool)
+        :func (TypedTypeApp [Bool] :type Fun(v: Bool): Box(Bool)
+          :func (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+        :args (
+          (TypedBool true)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Bool
+                :func (TypedTypeApp [Bool] :type Fun(b: Box(Bool)): Bool
+                  :func (TypedVar 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A))
+                :args (
+                  (TypedVar 'bools' :type Box(Bool))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Bool
+                :func (TypedTypeApp [Bool] :type Fun(t: Tuple x: Bool end): Bool
+                  :func (TypedVar 'getTuple' :type All(A :: TYPE) Fun(t: Tuple x: A end): A))
+                :args (
+                  (TypedApp :type Tuple x: Bool end
+                    :func (TypedTypeApp [Bool] :type Fun(v: Bool): Tuple x: Bool end
+                      :func (TypedVar 'mkTuple' :type All(A :: TYPE) Fun(v: A): Tuple x: A end))
+                    :args (
+                      (TypedBool false)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(b: Box(Int)): Int
+                  :func (TypedVar 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A))
+                :args (
+                  (TypedApp :type Box(Int)
+                    :func (TypedTypeApp [Int] :type Fun(v: Int): Box(Int)
+                      :func (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+                    :args (
+                      (TypedInt 3 :type Int)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'real' :type Fun(r: Real): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Real
+                :func (TypedTypeApp [Real] :type Fun(b: Box(Real)): Real
+                  :func (TypedVar 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A))
+                :args (
+                  (TypedApp :type Box(Real)
+                    :func (TypedTypeApp [Real] :type Fun(v: Real): Box(Real)
+                      :func (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+                    :args (
+                      (TypedReal 2.5 :type Real)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'char' :type Fun(c: Char): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Char
+                :func (TypedTypeApp [Char] :type Fun(b: Box(Char)): Char
+                  :func (TypedVar 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A))
+                :args (
+                  (TypedApp :type Box(Char)
+                    :func (TypedTypeApp [Char] :type Fun(v: Char): Box(Char)
+                      :func (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+                    :args (
+                      (TypedChar 'c' :type Char)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedTypeApp [String] :type Fun(b: Box(String)): String
+              :func (TypedVar 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A))
+            :args (
+              (TypedApp :type Box(String)
+                :func (TypedTypeApp [String] :type Fun(v: String): Box(String)
+                  :func (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+                :args (
+                  (TypedString 'box' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'x' :type Bool
+                :target (TypedApp :type Box(Bool)
+                  :func (TypedTypeApp [Box(Bool)] :type Fun(v: Box(Bool)): Box(Bool)
+                    :func (TypedVar 'id' :type All(A :: TYPE) Fun(v: A): A))
+                  :args (
+                    (TypedVar 'bools' :type Box(Bool))
+                  )))
+            ))
+        )))
+    (TypedLetType 'Pair' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'mkPair' :type All(A :: TYPE) Fun(v: A): Pair(A)
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Pair(A)
+        :body (TypedTuple :type Tuple first: Box(A) second: Int end
+          :elements (
+            (TypedApp :type Box(A)
+              :func (TypedTypeApp [A] :type Fun(v: A): Box(A)
+                :func (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+              :args (
+                (TypedVar 'v' :type A)
+              ))
+            (TypedInt 1 :type Int)
+          ))))
+    (TypedLetValue 'firstOf' :type All(A :: TYPE) Fun(p: Pair(A)): A
+      :value (TypedFun :params (('p' : Pair(A))) :type All(A :: TYPE) Fun(p: Pair(A)): A
+        :body (TypedSelect 'x' :type A
+          :target (TypedSelect 'first' :type Box(A)
+            :target (TypedVar 'p' :type Pair(A))))))
+    (TypedLetValue 'pair' :type Pair(Bool)
+      :value (TypedApp :type Pair(Bool)
+        :func (TypedTypeApp [Bool] :type Fun(v: Bool): Pair(Bool)
+          :func (TypedVar 'mkPair' :type All(A :: TYPE) Fun(v: A): Pair(A)))
+        :args (
+          (TypedBool true)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'x' :type Bool
+                  :target (TypedSelect 'first' :type Box(Bool)
+                    :target (TypedVar 'pair' :type Pair(Bool))))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Bool] :type Fun(p: Pair(Bool)): Bool
+                      :func (TypedVar 'firstOf' :type All(A :: TYPE) Fun(p: Pair(A)): A))
+                    :args (
+                      (TypedVar 'pair' :type Pair(Bool))
+                    ))
+                ))))
+        )))
+    (TypedLetType 'Maybe' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'mkSome' :type All(A :: TYPE) Fun(v: A): Maybe(A)
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Maybe(A)
+        :body (TypedOption 'some' :type Maybe(A)
+          :payload (TypedTuple :type Tuple value: A end
+            :elements (
+              (TypedVar 'v' :type A)
+            )))))
+    (TypedLetValue 'getOr' :type All(A :: TYPE) Fun(m: Maybe(A) d: A): A
+      :value (TypedFun :params (('m' : Maybe(A)) ('d' : A)) :type All(A :: TYPE) Fun(m: Maybe(A) d: A): A
+        :body (TypedCase :type A
+          :target (TypedVar 'm' :type Maybe(A))
+          :branches (
+            (TypedCaseBranch tags=(some) :binder 's'
+              :body (TypedSelect 'value' :type A
+                :target (TypedVar 's' :type Tuple value: A end)))
+          )
+          :else (TypedVar 'd' :type A))))
+    (TypedLetValue 'mkOpt' :type All(A :: TYPE) Fun(v: A): Option none some with Tuple value: A end end
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Option none some with Tuple value: A end end
+        :body (TypedOption 'some' :type Maybe(A)
+          :payload (TypedTuple :type Tuple value: A end
+            :elements (
+              (TypedVar 'v' :type A)
+            )))))
+    (TypedLetValue 'getOpt' :type All(A :: TYPE) Fun(m: Option none some with Tuple value: A end end d: A): A
+      :value (TypedFun :params (('m' : Option none some with Tuple value: A end end) ('d' : A)) :type All(A :: TYPE) Fun(m: Option none some with Tuple value: A end end d: A): A
+        :body (TypedCase :type A
+          :target (TypedVar 'm' :type Option none some with Tuple value: A end end)
+          :branches (
+            (TypedCaseBranch tags=(some) :binder 's'
+              :body (TypedSelect 'value' :type A
+                :target (TypedVar 's' :type Tuple value: A end)))
+          )
+          :else (TypedVar 'd' :type A))))
+    (TypedLetValue 'maybe' :type Maybe(Bool)
+      :value (TypedApp :type Maybe(Bool)
+        :func (TypedTypeApp [Bool] :type Fun(v: Bool): Maybe(Bool)
+          :func (TypedVar 'mkSome' :type All(A :: TYPE) Fun(v: A): Maybe(A)))
+        :args (
+          (TypedBool true)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'value' :type Bool
+                :target (TypedVariantAssert 'some' :type Tuple Int value: Bool end
+                  :target (TypedVar 'maybe' :type Maybe(Bool))))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Bool
+                :func (TypedTypeApp [Bool] :type Fun(m: Maybe(Bool) d: Bool): Bool
+                  :func (TypedVar 'getOr' :type All(A :: TYPE) Fun(m: Maybe(A) d: A): A))
+                :args (
+                  (TypedVar 'maybe' :type Maybe(Bool))
+                  (TypedBool false)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Bool
+                :func (TypedTypeApp [Bool] :type Fun(m: Maybe(Bool) d: Bool): Bool
+                  :func (TypedVar 'getOr' :type All(A :: TYPE) Fun(m: Maybe(A) d: A): A))
+                :args (
+                  (TypedOption 'none' :type Maybe(Bool))
+                  (TypedBool false)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Bool
+                :func (TypedTypeApp [Bool] :type Fun(m: Option none some with Tuple value: Bool end end d: Bool): Bool
+                  :func (TypedVar 'getOpt' :type All(A :: TYPE) Fun(m: Option none some with Tuple value: A end end d: A): A))
+                :args (
+                  (TypedApp :type Option none some with Tuple value: Bool end end
+                    :func (TypedTypeApp [Bool] :type Fun(v: Bool): Option none some with Tuple value: Bool end end
+                      :func (TypedVar 'mkOpt' :type All(A :: TYPE) Fun(v: A): Option none some with Tuple value: A end end))
+                    :args (
+                      (TypedBool true)
+                    ))
+                  (TypedBool false)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'char' :type Fun(c: Char): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Char
+                :func (TypedTypeApp [Char] :type Fun(m: Maybe(Char) d: Char): Char
+                  :func (TypedVar 'getOr' :type All(A :: TYPE) Fun(m: Maybe(A) d: A): A))
+                :args (
+                  (TypedApp :type Maybe(Char)
+                    :func (TypedTypeApp [Char] :type Fun(v: Char): Maybe(Char)
+                      :func (TypedVar 'mkSome' :type All(A :: TYPE) Fun(v: A): Maybe(A)))
+                    :args (
+                      (TypedChar 'm' :type Char)
+                    ))
+                  (TypedChar ' ' :type Char)
+                ))
+            ))
+        )))
+    (TypedLetType 'List' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'nil' :type All(A :: TYPE) List(A)
+      :value (TypedFun :params () :type All(A :: TYPE) List(A)
+        :body (TypedOption 'nil' :type List(A))))
+    (TypedLetValue 'cons' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)
+      :value (TypedFun :params (('head' : A) ('tail' : List(A))) :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)
+        :body (TypedOption 'cons' :type List(A)
+          :payload (TypedTuple :type Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end
+            :elements (
+              (TypedVar 'head' :type A)
+              (TypedVar 'tail' :type List(A))
+            )))))
+    (TypedLetValue 'length' :rec :type All(A :: TYPE) Fun(l: List(A)): Int
+      :value (TypedFun :params (('l' : List(A))) :type All(A :: TYPE) Fun(l: List(A)): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'l' :type List(A))
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedInfix '+' :type Int
+                :left (TypedInt 1 :type Int)
+                :right (TypedApp :type Int
+                  :func (TypedTypeApp [A] :type Fun(l: List(A)): Int
+                    :func (TypedVar 'length' :type All(A :: TYPE) Fun(l: List(A)): Int))
+                  :args (
+                    (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end
+                      :target (TypedVar 'c' :type Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end))
+                  ))))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedLetValue 'last' :rec :type All(A :: TYPE) Fun(l: List(A) d: A): A
+      :value (TypedFun :params (('l' : List(A)) ('d' : A)) :type All(A :: TYPE) Fun(l: List(A) d: A): A
+        :body (TypedCase :type A
+          :target (TypedVar 'l' :type List(A))
+          :branches (
+            (TypedCaseBranch tags=(cons) :binder 'c'
+              :body (TypedApp :type A
+                :func (TypedTypeApp [A] :type Fun(l: List(A) d: A): A
+                  :func (TypedVar 'last' :type All(A :: TYPE) Fun(l: List(A) d: A): A))
+                :args (
+                  (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end
+                    :target (TypedVar 'c' :type Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end))
+                  (TypedSelect 'head' :type A
+                    :target (TypedVar 'c' :type Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end))
+                )))
+          )
+          :else (TypedVar 'd' :type A))))
+    (TypedLetValue 'flags' :type List(Bool)
+      :value (TypedApp :type List(Bool)
+        :func (TypedTypeApp [Bool] :type Fun(head: Bool tail: List(Bool)): List(Bool)
+          :func (TypedVar 'cons' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+        :args (
+          (TypedBool true)
+          (TypedApp :type List(Bool)
+            :func (TypedTypeApp [Bool] :type Fun(head: Bool tail: List(Bool)): List(Bool)
+              :func (TypedVar 'cons' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+            :args (
+              (TypedBool false)
+              (TypedTypeApp [Bool] :type List(Bool)
+                :func (TypedVar 'nil' :type All(A :: TYPE) List(A)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Bool] :type Fun(l: List(Bool)): Int
+                    :func (TypedVar 'length' :type All(A :: TYPE) Fun(l: List(A)): Int))
+                  :args (
+                    (TypedVar 'flags' :type List(Bool))
+                  ))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Bool] :type Fun(l: List(Bool) d: Bool): Bool
+                      :func (TypedVar 'last' :type All(A :: TYPE) Fun(l: List(A) d: A): A))
+                    :args (
+                      (TypedVar 'flags' :type List(Bool))
+                      (TypedBool true)
+                    ))
+                ))))
+        )))
+    (TypedLetValue 'words' :type List(String)
+      :value (TypedOption 'cons' :type List(String)
+        :payload (TypedTuple :type Tuple head: String tail: Rec(List :: TYPE) Option nil cons with Tuple head: String tail: List end end end
+          :elements (
+            (TypedString 'a' :type String)
+            (TypedOption 'cons' :type List(String)
+              :payload (TypedTuple :type Tuple head: String tail: Rec(List :: TYPE) Option nil cons with Tuple head: String tail: List end end end
+                :elements (
+                  (TypedString 'b' :type String)
+                  (TypedOption 'nil' :type List(String))
+                )))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [String] :type Fun(l: List(String)): Int
+                    :func (TypedVar 'length' :type All(A :: TYPE) Fun(l: List(A)): Int))
+                  :args (
+                    (TypedVar 'words' :type List(String))
+                  ))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(l: List(String) d: String): String
+                  :func (TypedVar 'last' :type All(A :: TYPE) Fun(l: List(A) d: A): A))
+                :args (
+                  (TypedVar 'words' :type List(String))
+                  (TypedString '' :type String)
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'head' :type Bool
+                :target (TypedVariantAssert 'cons' :type Tuple Int head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end
+                  :target (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end
+                    :target (TypedVariantAssert 'cons' :type Tuple Int head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end
+                      :target (TypedVar 'flags' :type List(Bool))))))
+            ))
+        )))
+    (TypedLetTypeGroup 'Tree' 'Forest'
+      :members (
+        (TypedLetType 'Tree' :kind ALL(A :: TYPE) TYPE)
+        (TypedLetType 'Forest' :kind ALL(A :: TYPE) TYPE)
+      ))
+    (TypedLetValue 'leaf' :type All(A :: TYPE) Fun(v: A): Tree(A)
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Tree(A)
+        :body (TypedVariant 'leaf' :type Tree(A)
+          :payload (TypedVar 'v' :type A))))
+    (TypedLetValue 'node' :type All(A :: TYPE) Fun(trees: List(Tree(A))): Tree(A)
+      :value (TypedFun :params (('trees' : List(Tree(A)))) :type All(A :: TYPE) Fun(trees: List(Tree(A))): Tree(A)
+        :body (TypedVariant 'node' :type Tree(A)
+          :payload (TypedTuple :type Tuple trees: List(Rec(Tree :: TYPE) Variant leaf: A node: Forest end) end
+            :elements (
+              (TypedVar 'trees' :type List(Tree(A)))
+            )))))
+    (TypedLetValueGroup 'count' 'countList'
+      :members (
+        (TypedLetValue 'count' :rec :type All(A :: TYPE) Fun(t: Tree(A)): Int
+          :value (TypedFun :params (('t' : Tree(A))) :type All(A :: TYPE) Fun(t: Tree(A)): Int
+            :body (TypedCase :type Int
+              :target (TypedVar 't' :type Tree(A))
+              :branches (
+                (TypedCaseBranch tags=(leaf)
+                  :body (TypedInt 1 :type Int))
+                (TypedCaseBranch tags=(node) :binder 'f'
+                  :body (TypedApp :type Int
+                    :func (TypedTypeApp [A] :type Fun(l: List(Tree(A))): Int
+                      :func (TypedVar 'countList' :type All(A :: TYPE) Fun(l: List(Tree(A))): Int))
+                    :args (
+                      (TypedSelect 'trees' :type List(Rec(Tree :: TYPE) Variant leaf: A node: Forest end)
+                        :target (TypedVar 'f' :type Rec(Forest :: TYPE) Tuple trees: List(Tree) end))
+                    )))
+              )
+              :else (TypedInt 0 :type Int))))
+        (TypedLetValue 'countList' :rec :type All(A :: TYPE) Fun(l: List(Tree(A))): Int
+          :value (TypedFun :params (('l' : List(Tree(A)))) :type All(A :: TYPE) Fun(l: List(Tree(A))): Int
+            :body (TypedCase :type Int
+              :target (TypedVar 'l' :type List(Tree(A)))
+              :branches (
+                (TypedCaseBranch tags=(cons) :binder 'c'
+                  :body (TypedInfix '+' :type Int
+                    :left (TypedApp :type Int
+                      :func (TypedTypeApp [A] :type Fun(t: Tree(A)): Int
+                        :func (TypedVar 'count' :type All(A :: TYPE) Fun(t: Tree(A)): Int))
+                      :args (
+                        (TypedSelect 'head' :type Tree(A)
+                          :target (TypedVar 'c' :type Tuple head: Tree(A) tail: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end end))
+                      ))
+                    :right (TypedApp :type Int
+                      :func (TypedTypeApp [A] :type Fun(l: List(Tree(A))): Int
+                        :func (TypedVar 'countList' :type All(A :: TYPE) Fun(l: List(Tree(A))): Int))
+                      :args (
+                        (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end
+                          :target (TypedVar 'c' :type Tuple head: Tree(A) tail: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end end))
+                      ))))
+              )
+              :else (TypedInt 0 :type Int))))
+      ))
+    (TypedLetValue 'tree' :type Tree(Bool)
+      :value (TypedApp :type Tree(Bool)
+        :func (TypedTypeApp [Bool] :type Fun(trees: List(Tree(Bool))): Tree(Bool)
+          :func (TypedVar 'node' :type All(A :: TYPE) Fun(trees: List(Tree(A))): Tree(A)))
+        :args (
+          (TypedApp :type List(Tree(Bool))
+            :func (TypedTypeApp [Tree(Bool)] :type Fun(head: Tree(Bool) tail: List(Tree(Bool))): List(Tree(Bool))
+              :func (TypedVar 'cons' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+            :args (
+              (TypedApp :type Tree(Bool)
+                :func (TypedTypeApp [Bool] :type Fun(v: Bool): Tree(Bool)
+                  :func (TypedVar 'leaf' :type All(A :: TYPE) Fun(v: A): Tree(A)))
+                :args (
+                  (TypedBool true)
+                ))
+              (TypedApp :type List(Tree(Bool))
+                :func (TypedTypeApp [Tree(Bool)] :type Fun(head: Tree(Bool) tail: List(Tree(Bool))): List(Tree(Bool))
+                  :func (TypedVar 'cons' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+                :args (
+                  (TypedApp :type Tree(Bool)
+                    :func (TypedTypeApp [Bool] :type Fun(v: Bool): Tree(Bool)
+                      :func (TypedVar 'leaf' :type All(A :: TYPE) Fun(v: A): Tree(A)))
+                    :args (
+                      (TypedBool false)
+                    ))
+                  (TypedTypeApp [Tree(Bool)] :type List(Tree(Bool))
+                    :func (TypedVar 'nil' :type All(A :: TYPE) List(A)))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Bool] :type Fun(t: Tree(Bool)): Int
+                  :func (TypedVar 'count' :type All(A :: TYPE) Fun(t: Tree(A)): Int))
+                :args (
+                  (TypedVar 'tree' :type Tree(Bool))
+                ))
+            ))
+        )))
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'V' :kind TYPE)
+    (TypedLetValue 'mkB' :type All(A :: TYPE) Fun(v: A): Box(A)
+      :value (TypedVar 'mkBox' :type All(A :: TYPE) Fun(v: A): Box(A)))
+    (TypedLetValue 'getB' :type All(A :: TYPE) Fun(b: Box(A)): A
+      :value (TypedVar 'getBox' :type All(A :: TYPE) Fun(b: Box(A)): A))
+    (TypedLetValue 'mkS' :type All(A :: TYPE) Fun(v: A): Maybe(A)
+      :value (TypedVar 'mkSome' :type All(A :: TYPE) Fun(v: A): Maybe(A)))
+    (TypedLetValue 'consF' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)
+      :value (TypedVar 'cons' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+    (TypedLetValue 'rb' :type Box(P)
+      :value (TypedApp :type Box(P)
+        :func (TypedTypeApp [P] :type Fun(v: P): Box(P)
+          :func (TypedVar 'mkB' :type All(A :: TYPE) Fun(v: A): Box(A)))
+        :args (
+          (TypedRecord :type Record a: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 4 :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'a' :type Int
+                  :target (TypedSelect 'x' :type P
+                    :target (TypedVar 'rb' :type Box(P))))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'a' :type Int
+                    :target (TypedApp :type P
+                      :func (TypedTypeApp [P] :type Fun(b: Box(P)): P
+                        :func (TypedVar 'getB' :type All(A :: TYPE) Fun(b: Box(A)): A))
+                      :args (
+                        (TypedVar 'rb' :type Box(P))
+                      )))
+                ))))
+        )))
+    (TypedLetValue 'vb' :type Box(V)
+      :value (TypedApp :type Box(V)
+        :func (TypedTypeApp [V] :type Fun(v: V): Box(V)
+          :func (TypedVar 'mkB' :type All(A :: TYPE) Fun(v: A): Box(A)))
+        :args (
+          (TypedVariant 'p' :type V
+            :payload (TypedInt 5 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedCase :type Int
+                :target (TypedApp :type V
+                  :func (TypedTypeApp [V] :type Fun(b: Box(V)): V
+                    :func (TypedVar 'getB' :type All(A :: TYPE) Fun(b: Box(A)): A))
+                  :args (
+                    (TypedVar 'vb' :type Box(V))
+                  ))
+                :branches (
+                  (TypedCaseBranch tags=(p) :binder 'n'
+                    :body (TypedVar 'n' :type Int))
+                )
+                :else (TypedInt 0 :type Int))
+            ))
+        )))
+    (TypedLetValue 'rm' :type Maybe(P)
+      :value (TypedApp :type Maybe(P)
+        :func (TypedTypeApp [P] :type Fun(v: P): Maybe(P)
+          :func (TypedVar 'mkS' :type All(A :: TYPE) Fun(v: A): Maybe(A)))
+        :args (
+          (TypedRecord :type Record a: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 6 :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedSelect 'value' :type P
+                  :target (TypedVariantAssert 'some' :type Tuple Int value: P end
+                    :target (TypedVar 'rm' :type Maybe(P)))))
+            ))
+        )))
+    (TypedLetValue 'rl' :type List(P)
+      :value (TypedApp :type List(P)
+        :func (TypedTypeApp [P] :type Fun(head: P tail: List(P)): List(P)
+          :func (TypedVar 'consF' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+        :args (
+          (TypedRecord :type Record a: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 7 :type Int))
+            ))
+          (TypedApp :type List(P)
+            :func (TypedTypeApp [P] :type Fun(head: P tail: List(P)): List(P)
+              :func (TypedVar 'consF' :type All(A :: TYPE) Fun(head: A tail: List(A)): List(A)))
+            :args (
+              (TypedRecord :type Record a: Int end
+                :fields (
+                  (TypedRecordField 'a'
+                    :value (TypedInt 8 :type Int))
+                ))
+              (TypedOption 'nil' :type List(P))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedInfix '+' :type Int
+                :left (TypedSelect 'a' :type Int
+                  :target (TypedSelect 'head' :type P
+                    :target (TypedVariantAssert 'cons' :type Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end
+                      :target (TypedVar 'rl' :type List(P)))))
+                :right (TypedSelect 'a' :type Int
+                  :target (TypedSelect 'head' :type P
+                    :target (TypedVariantAssert 'cons' :type Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end
+                      :target (TypedSelect 'tail' :type Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end
+                        :target (TypedVariantAssert 'cons' :type Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end
+                          :target (TypedVar 'rl' :type List(P))))))))
+            ))
+        )))
+  ))
