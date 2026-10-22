@@ -1,0 +1,1292 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 's'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 'text')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'text'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (TypeBinding
+      :name 'Big'
+      :type_val (TypeVariant
+        :fields (
+          (VariantFieldSig
+            :tag 'a'
+            :type_sig (TypePath ('Int'))
+          )
+          (VariantFieldSig
+            :tag 'b'
+            :type_sig (TypePath ('String'))
+          )
+          (VariantFieldSig
+            :tag 'c'
+            :type_sig (TypePath ('Bool'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Small'
+      :type_val (TypeVariant
+        :fields (
+          (VariantFieldSig
+            :tag 'b'
+            :type_sig (TypePath ('String'))
+          )
+          (VariantFieldSig
+            :tag 'c'
+            :type_sig (TypePath ('Bool'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'show'
+      :value (ExprCase
+        :target (ExprId 'x')
+        :branches (
+          (CaseBranch
+            :tags ('a')
+            :binder 'n'
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'n')
+              )
+            )
+          )
+          (CaseBranch
+            :tags ('b')
+            :binder 't'
+            :body (ExprId 't')
+          )
+          (CaseBranch
+            :tags ('c')
+            :binder 'f'
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprId 'f')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'x'
+          :type_annot (TypePath ('Big'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (LetValueBinding
+      :name 'small'
+      :value (ExprVariant
+        :tag 'c'
+        :variant_type (TypePath ('Small'))
+        :payload (ExprBool True)
+      )
+      :type_annot (TypePath ('Small'))
+    )
+    (LetValueBinding
+      :name 'other'
+      :value (ExprVariant
+        :tag 'b'
+        :variant_type (TypePath ('Small'))
+        :payload (ExprString 'other' '"other"')
+      )
+      :type_annot (TypePath ('Small'))
+    )
+    (TypeBinding
+      :name 'AnyBig'
+      :type_val (TypeAuto
+        :type_param 'A'
+        :kind_bound (KindPower
+          :bound (TypePath ('Big'))
+        )
+        :signature (
+          (FieldSig
+            :name 'a'
+            :type_sig (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'mk0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('AnyBig'))
+        :body (ExprAuto
+          :witness_type (TypePath ('A'))
+          :payload (ExprTuple
+            :fields (
+              (TupleBinding
+                :value (ExprId 'x')
+              )
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('AnyBig'))
+      )
+    )
+    (LetValueBinding
+      :name 'mk'
+      :value (ExprId 'mk0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('AnyBig'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprInspect
+            :target (ExprApp
+              :func (ExprId 'mk')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Small'))
+                )
+                (ExprId 'small')
+              )
+            )
+            :branches (
+              (InspectBranch
+                :match_type (TypePath ('Small'))
+                :binders (
+                  ('t' None)
+                )
+                :body (ExprApp
+                  :func (ExprId 'show')
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 't')
+                      :field 'a'
+                    )
+                  )
+                )
+              )
+            )
+            :else_branch (ExprString 'no' '"no"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprInspect
+            :target (ExprApp
+              :func (ExprId 'mk')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Small'))
+                )
+                (ExprId 'small')
+              )
+            )
+            :branches (
+              (InspectBranch
+                :match_type (TypePath ('Big'))
+                :binders (
+                  ('t' None)
+                )
+                :body (ExprApp
+                  :func (ExprId 'show')
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 't')
+                      :field 'a'
+                    )
+                  )
+                )
+              )
+            )
+            :else_branch (ExprString 'no' '"no"')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'unbox0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'b'
+            :type_annot (TypePath ('AnyBig'))
+            :mode VALUE
+          )
+          (FormalParam
+            :name 'default'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprInspect
+          :target (ExprId 'b')
+          :branches (
+            (InspectBranch
+              :match_type (TypePath ('A'))
+              :binders (
+                ('x' None)
+              )
+              :body (ExprSelect
+                :target (ExprId 'x')
+                :field 'a'
+              )
+            )
+          )
+          :else_branch (ExprId 'default')
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'b'
+            :bound (KindPower
+              :bound (TypePath ('AnyBig'))
+            )
+            :mode VALUE
+          )
+          (Quantifier
+            :name 'default'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'unbox'
+      :value (ExprId 'unbox0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'b'
+            :bound (KindPower
+              :bound (TypePath ('AnyBig'))
+            )
+            :mode VALUE
+          )
+          (Quantifier
+            :name 'default'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'direct'
+      :value (ExprAuto
+        :witness_type (TypePath ('Small'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :value (ExprId 'small')
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('AnyBig'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'show')
+            :args (
+              (ExprApp
+                :func (ExprId 'unbox')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprId 'direct')
+                  (ExprId 'other')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'show')
+            :args (
+              (ExprApp
+                :func (ExprId 'unbox')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Big'))
+                  )
+                  (ExprId 'direct')
+                  (ExprVariant
+                    :tag 'a'
+                    :variant_type (TypePath ('Big'))
+                    :payload (ExprInt 0 '0')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'show')
+            :args (
+              (ExprApp
+                :func (ExprId 'unbox')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprApp
+                    :func (ExprId 'mk')
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('Small'))
+                      )
+                      (ExprId 'small')
+                    )
+                  )
+                  (ExprId 'other')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'roundTrip0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprApp
+          :func (ExprId 'unbox')
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('A'))
+            )
+            (ExprApp
+              :func (ExprId 'mk')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('A'))
+                )
+                (ExprId 'x')
+              )
+            )
+            (ExprId 'x')
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'roundTrip'
+      :value (ExprId 'roundTrip0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'show')
+            :args (
+              (ExprApp
+                :func (ExprId 'roundTrip')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprId 'small')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'show')
+            :args (
+              (ExprApp
+                :func (ExprId 'roundTrip')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprId 'other')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Object'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'age'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Car'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'age'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'fuel'
+            :type_sig (TypePath ('String'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'AnyObject'
+      :type_val (TypeAuto
+        :type_param 'A'
+        :kind_bound (KindPower
+          :bound (TypePath ('Object'))
+        )
+        :signature (
+          (FieldSig
+            :name 'a'
+            :type_sig (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'mkObj0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('AnyObject'))
+        :body (ExprAuto
+          :witness_type (TypePath ('A'))
+          :payload (ExprTuple
+            :fields (
+              (TupleBinding
+                :value (ExprId 'x')
+              )
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('AnyObject'))
+      )
+    )
+    (LetValueBinding
+      :name 'mkObj'
+      :value (ExprId 'mkObj0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('AnyObject'))
+      )
+    )
+    (LetValueBinding
+      :name 'car'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'age'
+            :value (ExprInt 3 '3')
+          )
+          (RecordBinding
+            :name 'fuel'
+            :value (ExprString 'diesel' '"diesel"')
+          )
+        )
+      )
+      :type_annot (TypePath ('Car'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprInspect
+            :target (ExprApp
+              :func (ExprId 'mkObj')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Car'))
+                )
+                (ExprId 'car')
+              )
+            )
+            :branches (
+              (InspectBranch
+                :match_type (TypePath ('Car'))
+                :binders (
+                  ('t' None)
+                )
+                :body (ExprSelect
+                  :target (ExprSelect
+                    :target (ExprId 't')
+                    :field 'a'
+                  )
+                  :field 'fuel'
+                )
+              )
+            )
+            :else_branch (ExprString 'no' '"no"')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'unboxObj0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'b'
+            :type_annot (TypePath ('AnyObject'))
+            :mode VALUE
+          )
+          (FormalParam
+            :name 'default'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprInspect
+          :target (ExprId 'b')
+          :branches (
+            (InspectBranch
+              :match_type (TypePath ('A'))
+              :binders (
+                ('x' None)
+              )
+              :body (ExprSelect
+                :target (ExprId 'x')
+                :field 'a'
+              )
+            )
+          )
+          :else_branch (ExprId 'default')
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'b'
+            :bound (KindPower
+              :bound (TypePath ('AnyObject'))
+            )
+            :mode VALUE
+          )
+          (Quantifier
+            :name 'default'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'unboxObj'
+      :value (ExprId 'unboxObj0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'b'
+            :bound (KindPower
+              :bound (TypePath ('AnyObject'))
+            )
+            :mode VALUE
+          )
+          (Quantifier
+            :name 'default'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprSelect
+            :target (ExprApp
+              :func (ExprId 'unboxObj')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Car'))
+                )
+                (ExprApp
+                  :func (ExprId 'mkObj')
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Car'))
+                    )
+                    (ExprId 'car')
+                  )
+                )
+                (ExprRecord
+                  :fields (
+                    (RecordBinding
+                      :name 'age'
+                      :value (ExprInt 0 '0')
+                    )
+                    (RecordBinding
+                      :name 'fuel'
+                      :value (ExprString 'none' '"none"')
+                    )
+                  )
+                )
+              )
+            )
+            :field 'fuel'
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprSelect
+                :target (ExprApp
+                  :func (ExprId 'unboxObj')
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Object'))
+                    )
+                    (ExprApp
+                      :func (ExprId 'mkObj')
+                      :args (
+                        (TypeArgument
+                          :type_val (TypePath ('Car'))
+                        )
+                        (ExprId 'car')
+                      )
+                    )
+                    (ExprRecord
+                      :fields (
+                        (RecordBinding
+                          :name 'age'
+                          :value (ExprInt 0 '0')
+                        )
+                      )
+                    )
+                  )
+                )
+                :field 'age'
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'id0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprId 'x')
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'id'
+      :value (ExprId 'id0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Big'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'showSmall'
+      :value (ExprCase
+        :target (ExprId 'x')
+        :branches (
+          (CaseBranch
+            :tags ('b')
+            :binder 't'
+            :body (ExprId 't')
+          )
+          (CaseBranch
+            :tags ('c')
+            :binder 'f'
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprId 'f')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'x'
+          :type_annot (TypePath ('Small'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'showSmall')
+            :args (
+              (ExprApp
+                :func (ExprId 'id')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprId 'small')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'show')
+            :args (
+              (ExprApp
+                :func (ExprId 'id')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprId 'other')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'same0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprId 'x')
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'same'
+      :value (ExprId 'same0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('Object'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprSelect
+            :target (ExprApp
+              :func (ExprId 'same')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Car'))
+                )
+                (ExprId 'car')
+              )
+            )
+            :field 'fuel'
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'viaGeneric0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'y'
+            :type_annot (TypePath ('B'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('B'))
+        :body (ExprApp
+          :func (ExprId 'id')
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('B'))
+            )
+            (ExprId 'y')
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'B'
+            :bound (KindPower
+              :bound (TypePath ('Small'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'B'
+            :bound (KindPower
+              :bound (TypePath ('Small'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'y'
+            :bound (KindPower
+              :bound (TypePath ('B'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('B'))
+      )
+    )
+    (LetValueBinding
+      :name 'viaGeneric'
+      :value (ExprId 'viaGeneric0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'B'
+            :bound (KindPower
+              :bound (TypePath ('Small'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'y'
+            :bound (KindPower
+              :bound (TypePath ('B'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('B'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 's')
+        :args (
+          (ExprApp
+            :func (ExprId 'showSmall')
+            :args (
+              (ExprApp
+                :func (ExprId 'viaGeneric')
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('Small'))
+                  )
+                  (ExprId 'small')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

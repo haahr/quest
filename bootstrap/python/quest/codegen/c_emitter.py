@@ -1414,6 +1414,15 @@ class CEmitter:
         c_a = self.emit_val(actual_a, lines)
         if instantiated_t is not None and instantiated_t is not formal_t:
             c_a = self._coerce_val(c_a, actual_a, instantiated_t, lines)
+            held, formal_held = self._held_view(instantiated_t), self._held_view(formal_t)
+            if held is not instantiated_t and not is_type_equal(held, formal_held, self.env):
+                # A value of the caller's bounded type parameter, held viewed at its bound, passed for the callee's,
+                # held viewed at another bound
+                converted = (
+                    f"quest_convert({_qval_wrap(c_a, held)}, {self.c_type_descriptor(held)}, "
+                    f"{self.c_type_descriptor(formal_held)})"
+                )
+                return _qval_unwrap(converted, formal_held, self)
             return self._coerce_val(c_a, instantiated_t, formal_t, lines)
         return self._coerce_val(c_a, actual_a, formal_t, lines)
 
@@ -1463,7 +1472,16 @@ class CEmitter:
         writebacks: Optional[list[str]] = None,
     ) -> str:
         """Processes return value of a call, unwrapping/wrapping QVal, handling tuples, and writebacks."""
-        if self.c_type(ret_type) == "QVal" and self.c_type(target_type) != "QVal":
+        ret_view, target_view = self._held_view(ret_type), self._held_view(target_type)
+        if ret_view is not ret_type and not is_type_equal(ret_view, target_view, self.env):
+            # The callee returns a value of a bounded type parameter, held viewed at the bound (a record through the
+            # bound's offset table, a variant with the bound's tags): view it as the caller holds the type
+            converted = (
+                f"quest_convert({_qval_wrap(call_str, ret_view)}, {self.c_type_descriptor(ret_view)}, "
+                f"{self.c_type_descriptor(target_view)})"
+            )
+            call_str = _qval_unwrap(converted, target_view, self)
+        elif self.c_type(ret_type) == "QVal" and self.c_type(target_type) != "QVal":
             if (rec_bound := resolve_record_bound(ret_type)) is not None:
                 if isinstance(target_type, QRecordType):
                     call_str = f"quest_record_view({call_str}, {self.c_type_descriptor(target_type)})"
@@ -1669,6 +1687,43 @@ class CEmitter:
         lines.append(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
         lines.append(f"else {val} = *{ptr_expr};")
         return val
+
+    def _bounded_param_in_scope(self, t: QType) -> Optional[QType]:
+        """The bound B of t when t is a type parameter in scope bounded by a record, variant, or option type
+        (A <: B): generic code holds its values as values of B, viewed at B (a variant tagged as B tags it), not at
+        their own type. None otherwise."""
+        t = strip_aliases(t.prune() if hasattr(t, "prune") else t)
+        if not isinstance(t, (QTypeVar, QAbstractType)) or t.name not in self.in_scope_type_descriptors:
+            return None
+        if not isinstance(t.bound, QPowerKind):
+            return None
+        bound = t.bound.bound
+        if not self._may_be_stored_as_subtype(bound) or isinstance(normalize_type(bound), (QFunType, QAllType)):
+            return None
+        return bound
+
+    def _held_view(self, t: QType) -> QType:
+        """The type at which compiled code views a value of type t: for a type parameter bounded by a record, variant,
+        or option type (A <: B), the bound; otherwise t."""
+        bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
+        if isinstance(bare, (QTypeVar, QAbstractType)) and isinstance(bare.bound, QPowerKind):
+            bound = bare.bound.bound
+            if self._may_be_stored_as_subtype(bound) and not isinstance(normalize_type(bound), (QFunType, QAllType)):
+                return bound
+        return t
+
+    @staticmethod
+    def _is_auto_param(auto_t: QAutoType, t: QType) -> bool:
+        """Whether t is an auto type's own type parameter (the type of a component holding a type component value)."""
+        bare = strip_aliases(t)
+        return isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id == auto_t.symbol_id
+
+    def _materialize_payload(self, c_payload: str, stored_t: QTupleType, lines: list[str]) -> str:
+        """The payload struct pointer c_payload in a fresh variable, so that its components can be updated."""
+        struct = tuple_struct_name(stored_t)
+        tmp = self.fresh_tmp("_auto_payload")
+        lines.append(f"{struct} *{tmp} = ({struct} *)({c_payload});")
+        return tmp
 
     def _needs_bound_view(self, exported_t: QType, internal_t: QType) -> bool:
         """Whether a module's value of type internal_t, of a bounded abstract type exported_t outside the module
@@ -3015,6 +3070,18 @@ class CEmitter:
                 if isinstance(payload_t, QTupleType):
                     c_payload = self._coerce_tuple_val(c_payload, payload_t, stored_t, lines)
                 desc = self.c_type_descriptor(witness)
+                if (bound := self._bounded_param_in_scope(witness)) is not None:
+                    # Generic code holds a value of a bounded type parameter viewed at the bound (a variant tagged
+                    # as the bound tags it); concrete code stores the type component's values at their own type,
+                    # as inspect reads them, so convert them to it
+                    c_payload = self._materialize_payload(c_payload, stored_t, lines)
+                    for i, (sig_f, stored_f) in enumerate(zip(auto_t.signature, stored_t.value_fields)):
+                        if self._is_auto_param(auto_t, sig_f.type_val):
+                            src = f"{c_payload}->_{i}"
+                            converted = (
+                                f"quest_convert({_qval_wrap(src, bound)}, {self.c_type_descriptor(bound)}, {desc})"
+                            )
+                            lines.append(f"{src} = {_qval_unwrap(converted, stored_f.type_val, self)};")
                 return f"quest_auto_new({desc}, {_qval_wrap(c_payload, stored_t)})"
 
             case TypedSelect(target=tgt, field=fld):
@@ -3866,10 +3933,24 @@ class CEmitter:
                 cond = f"{cond} && quest_is_subtype({match_desc}, {tgt}->type_desc)"
             lines.append(f"{'if' if i == 0 else '} else if'} ({cond}) {{")
             branch_lines: list[str] = []
+            # At a bounded type parameter of generic code, a value of the type component is used viewed at the
+            # bound (see _bounded_param_in_scope), and so is converted to it
+            match_bound = self._bounded_param_in_scope(branch.match_type)
             if branch.binders:
                 arm_t = auto_payload_type(auto_t, branch.match_type)
                 arm_struct = tuple_struct_name(arm_t)
-                if branch.exact:
+                param_target = self.c_type_descriptor(match_bound) if match_bound is not None else None
+                if match_bound is not None:
+                    if any(f.is_var for f in auto_t.signature):
+                        raise NotImplementedError(
+                            f"C code generation cannot inspect an auto value of type '{auto_t}' at the bounded type "
+                            f"parameter '{branch.match_type}': its components are converted to the bound, so the var "
+                            f"components could not be shared with the auto value"
+                        )
+                    c_arm = self._emit_auto_arm_converted(
+                        auto_t, stored, stored_t, arm_t, tgt, branch_lines, param_target
+                    )
+                elif branch.exact:
                     # The components are in the layout the code that made the value knew the type component in:
                     # when that is not the layout of the branch's type (generic code made it, laying out the
                     # parameter's occurrences generically), they are converted by descriptor
@@ -3945,14 +4026,16 @@ class CEmitter:
         arm_t: QTupleType,
         tgt: str,
         lines: list[str],
+        param_target: Optional[str] = None,
     ) -> str:
         """Builds the components S[T] of an auto value, converted by descriptor from the stored ones.
 
         Each component whose type mentions the type parameter A is converted from its stored type, described with
         A standing for the auto value's type component (stored generically: a template's instance), to its type
         in S[T]; this views a type component that is a proper subtype of T at T (when auto_matches_subtypes allows
-        that) and converts components laid out generically by the code that made the value. The other components
-        are copied unchanged.
+        that) and converts components laid out generically by the code that made the value. A component holding a
+        value of the type component is converted to `param_target` when given (the bound's descriptor, for a branch
+        at a bounded type parameter). The other components are copied unchanged.
         """
         arm_struct = tuple_struct_name(arm_t)
         arm = self.fresh_tmp("_insp_arm")
@@ -3965,10 +4048,12 @@ class CEmitter:
             if auto_t.symbol_id not in sig_f.type_val._fv:
                 lines.append(f"{arm}->_{i} = {src};")
                 continue
-            bare = strip_aliases(sig_f.type_val)
-            if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id == auto_t.symbol_id:
+            to_desc = self.c_type_descriptor(arm_f.type_val)
+            if self._is_auto_param(auto_t, sig_f.type_val):
                 # A value of the type component (stored as a QVal, or in the representation of the bound)
                 from_desc = f"{tgt}->type_desc"
+                if param_target is not None:
+                    to_desc = param_target
             else:
                 self.in_scope_type_descriptors = {**saved, auto_t.type_param: f"{tgt}->type_desc"}
                 try:
@@ -3976,7 +4061,7 @@ class CEmitter:
                 finally:
                     self.in_scope_type_descriptors = saved
             as_qval = src if self.c_type(stored_f.type_val) == "QVal" else _qval_wrap(src, stored_f.type_val)
-            viewed = f"quest_convert({as_qval}, {from_desc}, {self.c_type_descriptor(arm_f.type_val)})"
+            viewed = f"quest_convert({as_qval}, {from_desc}, {to_desc})"
             lines.append(f"{arm}->_{i} = {_qval_unwrap(viewed, arm_f.type_val, self)};")
         return arm
 

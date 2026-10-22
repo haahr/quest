@@ -262,6 +262,11 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     assigned to abstract slots are boxed via `qval_wrap`, and extracted abstract values are unboxed via `qval_unwrap`.
   - Bounded type variables and path-types (`A::POWER(T)`, `p.T` where `p.T <: T`) resolve directly to the bound's
     native C type (e.g. `A <: Int` resolves to `QInt`, `A <: Real` to `QReal`), enabling unboxed, zero-overhead access.
+    Code holds a value of a type parameter bounded by a record, variant, or option type viewed at the bound (a record
+    with the bound's offset table, a variant with the bound's tags; `_held_view`). A call converts each argument to
+    the view the callee holds its parameter at, and converts a result of such a type parameter from the bound's view
+    to the view the caller holds the type at (`_process_call_return`), with `quest_convert` when the views are known
+    only at run time.
 
 - **Closure Adaptation Thunks:**
   When a tuple with concrete function signatures (e.g. `create: Int -> Counter` where `Counter = Int`) is coerced or
@@ -1075,7 +1080,10 @@ supports auto values with one component.
 
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
   with the static tuple coercion (`_coerce_tuple_val`: boxing to `QVal`, closure adapters), and calls
-  `quest_auto_new(descriptor_T, payload)`.
+  `quest_auto_new(descriptor_T, payload)`. Components holding values of the type component are stored at `T`'s own
+  view: when `T` is a bounded type parameter of generic code, which holds its values viewed at the bound, they are
+  converted from the bound's view to `T`'s first. Conversely, a branch at a bounded type parameter converts them to
+  the bound's view.
 - **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. The components are in the layout
   that the code that made the value knew the type component in: natively when it was a particular type, generically
   when generic code made the value with a type that mentions its type parameters (§6.4.5). When the type component's
