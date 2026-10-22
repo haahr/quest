@@ -10,6 +10,7 @@ import
     conv: Conv
     real: RealOp
     word: Word
+    intOp = int: IntOp
 export
     (* Exception raised on string parsing or invalid argument errors *)
     let error: Exception = exception error: Ok end;
@@ -430,6 +431,10 @@ export
                 if i >= sLen then
                     maybe.none(:Int)
                 else
+                    (* The magnitude accumulates as a negative number, which reaches intOp.minInt; a digit that
+                     * would take it below minInt makes the string out of range, and so not an Int *)
+                    let cutoff = intOp.minInt / base;
+                    let cutlim = 0 - {intOp.minInt % base};
                     let var acc = 0;
                     let var valid = true;
                     while {i < sLen} /\ valid do
@@ -443,17 +448,19 @@ export
                         elsif {v >= 97} /\ {v <= 122} then
                             d := v - 87;
                         end;
-                        if {d < 0} \/ {d >= base} then
+                        if {d < 0} \/ {d >= base} \/ {acc < cutoff} \/ {{acc is cutoff} /\ {d > cutlim}} then
                             valid := false;
                         else
-                            acc := {acc * base} + d;
+                            acc := {acc * base} - d;
                             i := i + 1;
                         end;
                     end;
-                    if valid then
-                        maybe.some(:Int if negative then 0 - acc else acc end)
-                    else
+                    if not(valid) \/ {not(negative) /\ {acc is intOp.minInt}} then
                         maybe.none(:Int)
+                    elsif negative then
+                        maybe.some(:Int acc)
+                    else
+                        maybe.some(:Int 0 - acc)
                     end
                 end
             end
@@ -535,84 +542,39 @@ export
     let toWord(s: String): word.T =
         toWordBase(s 10);
 
+    (* The real a valid real string denotes, correctly rounded (C's strtod); - is the minus sign *)
+    let nativeToReal(s: String): Real = external "quest_strutil_to_real";
+
+    (* A real: an optional sign, digits with an optional fraction (at least one digit in all), and an optional
+     * exponent with an optional sign; ~ and - are both minus signs *)
     let tryToReal(s: String): maybe.T(Real) =
         begin
             let sLen = stringOp.length(s);
-            if sLen is 0 then
-                maybe.none(:Real)
+            let var i = 0;
+            let at(k: Int): Char = if k < sLen then stringOp.getChar(s k) else ascii.char(0) end;
+            let isSign(c: Char): Bool = {c is '-'} \/ {c is '~'} \/ {c is '+'};
+            if isSign(at(i)) then i := i + 1 end;
+            let intStart = i;
+            while isDigit(at(i)) do i := i + 1 end;
+            let var digits = i - intStart;
+            if at(i) is '.' then
+                i := i + 1;
+                let fracStart = i;
+                while isDigit(at(i)) do i := i + 1 end;
+                digits := digits + {i - fracStart}
+            end;
+            let var valid = digits > 0;
+            if valid /\ {{at(i) is 'e'} \/ {at(i) is 'E'}} then
+                i := i + 1;
+                if isSign(at(i)) then i := i + 1 end;
+                let expStart = i;
+                while isDigit(at(i)) do i := i + 1 end;
+                valid := i > expStart
+            end;
+            if valid /\ {i is sLen} then
+                maybe.some(:Real nativeToReal(replace(s "~" "-")))
             else
-                let var i = 0;
-                let var negative = false;
-                let firstChar = stringOp.getChar(s 0);
-                if {firstChar is '-'} \/ {firstChar is '~'} then
-                    negative := true; i := 1;
-                elsif firstChar is '+' then
-                    i := 1;
-                end;
-                let var intPart = 0.0;
-                let var hasIntDigits = false;
-                while {i < sLen} andif isDigit(stringOp.getChar(s i)) do
-                    let d = ascii.val(stringOp.getChar(s i)) - 48;
-                    intPart := {intPart ** 10.0} ++ real.int(d);
-                    hasIntDigits := true;
-                    i := i + 1;
-                end;
-                let var fracPart = 0.0;
-                let var fracDiv = 1.0;
-                let var hasFracDigits = false;
-                if {i < sLen} andif {stringOp.getChar(s i) is '.'} then
-                    i := i + 1;
-                    while {i < sLen} andif isDigit(stringOp.getChar(s i)) do
-                        let d = ascii.val(stringOp.getChar(s i)) - 48;
-                        fracDiv := fracDiv ** 10.0;
-                        fracPart := fracPart ++ {real.int(d) // fracDiv};
-                        hasFracDigits := true;
-                        i := i + 1;
-                    end;
-                end;
-                if not(hasIntDigits) /\ not(hasFracDigits) then
-                    maybe.none(:Real)
-                else
-                    let var rVal = intPart ++ fracPart;
-                    let var valid = true;
-                    if {i < sLen} andif {{stringOp.getChar(s i) is 'e'} orif {stringOp.getChar(s i) is 'E'}} then
-                        i := i + 1;
-                        let var expNeg = false;
-                        if i < sLen then
-                            let expSign = stringOp.getChar(s i);
-                            if {expSign is '-'} \/ {expSign is '~'} then
-                                expNeg := true; i := i + 1;
-                            elsif expSign is '+' then
-                                i := i + 1;
-                            end;
-                        end;
-                        let var expVal = 0;
-                        let var hasExpDigits = false;
-                        while {i < sLen} andif isDigit(stringOp.getChar(s i)) do
-                            let d = ascii.val(stringOp.getChar(s i)) - 48;
-                            expVal := {expVal * 10} + d;
-                            hasExpDigits := true;
-                            i := i + 1;
-                        end;
-                        if not(hasExpDigits) then
-                            valid := false;
-                        else
-                            for k = 1 upto expVal do
-                                if expNeg then
-                                    rVal := rVal // 10.0;
-                                else
-                                    rVal := rVal ** 10.0;
-                                end;
-                            end;
-                        end;
-                    end;
-                    if valid /\ {i is sLen} then
-                        let finalVal = if negative then 0.0 -- rVal else rVal end;
-                        maybe.some(:Real finalVal)
-                    else
-                        maybe.none(:Real)
-                    end
-                end
+                maybe.none(:Real)
             end
         end;
 

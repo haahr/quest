@@ -2645,6 +2645,12 @@ QString *quest_conv_string(const QString *s) {
     return res;
 }
 
+/* Strutil module primitives */
+double quest_strutil_to_real(const QString *s) {
+    /* strutil.tryToReal has checked the syntax; strtod rounds correctly, and overflows to an infinity */
+    return s == NULL ? 0.0 : strtod(s->data, NULL);
+}
+
 /* StringBuilder native buffer (see quest_runtime.h) */
 QStringBuilder *quest_sb_new(void) {
     QStringBuilder *b = (QStringBuilder *)quest_alloc(sizeof(QStringBuilder));

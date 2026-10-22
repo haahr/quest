@@ -207,3 +207,27 @@ when strutil.error then
 end;
 printNewline(0);
 
+
+(* Reals are correctly rounded, so conv.real's output reads back exactly; integers outside the range of Int are
+   not Ints *)
+let realOf(s: String): String = conv.real(maybe.unwrapOr(:Real strutil.tryToReal(s) 0.5));
+printString(realOf("~3.5e~2"));
+printString(realOf("0.1"));
+printString(realOf("1.0e40"));
+printString(realOf("~0.0"));
+printString(realOf("4.9e~324"));
+printString(realOf("1e400"));
+printString(realOf("5."));
+printString(realOf(".5"));
+printBool(maybe.isNone(:Real strutil.tryToReal(".")));
+printBool(maybe.isNone(:Real strutil.tryToReal("1e")));
+printNewline(0);
+
+printInt(strutil.toInt("9223372036854775807"));
+printInt(strutil.toInt("~9223372036854775808"));
+printBool(maybe.isNone(:Int strutil.tryToInt("9223372036854775808")));
+printBool(maybe.isNone(:Int strutil.tryToInt("~9223372036854775809")));
+printBool(maybe.isNone(:Int strutil.tryToInt("99999999999999999999")));
+printInt(strutil.toIntBase("7fffffffffffffff" 16));
+printBool(maybe.isNone(:Int strutil.tryToIntBase("8000000000000000" 16)));
+printNewline(0);

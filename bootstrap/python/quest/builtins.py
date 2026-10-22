@@ -839,6 +839,9 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_string_precedes": lambda s1, s2: QBool(s1.value <= s2.value),
     "quest_string_precedes_sub": _string_precedes_sub,
 
+    # Strutil (strutil.tryToReal has checked the syntax; float rounds correctly, as C's strtod does)
+    "quest_strutil_to_real": lambda s: QReal(float(s.value)),
+
     # StringBuilder
     "quest_sb_new": QStringBuilder,
     "quest_sb_append_string": lambda b, s: _sb_append(b, s.value),

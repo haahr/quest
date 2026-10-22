@@ -488,6 +488,9 @@ QString *quest_conv_real(double r);
 QString *quest_conv_char(QChar ch);
 QString *quest_conv_string(const QString *s);
 
+/* Strutil module primitives */
+double   quest_strutil_to_real(const QString *s);
+
 /* StringBuilder (lib/util/stringbuilder) native buffer. Short appends are written into a fixed working buffer;
  * when it fills, it becomes a finished chunk and a new working buffer is started. A string longer than
  * QUEST_SB_LONG_APPEND is copied into a chunk of its own instead of passing through the working buffer.
