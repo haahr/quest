@@ -96,3 +96,52 @@ must print as the interpreter prints it (`str` of the type, with alias names).
 **Done when.** A golden test with `@echo` (or echoed phrases) shows the same output in `interpret` and
 `run_c_compiled` for tuples with manifest type components, at the top level and nested in another tuple, record,
 or array.
+
+---
+
+## A function's parameter annotations name its type parameters by other symbols
+
+**Problem.** In a typed polymorphic function (`TypedFun`), the types of the parameters (`TypedParam.type_val`)
+refer to the function's type parameters by symbols other than those its own type (`TypedFun.type_val`) quantifies
+over: in `let getBox(A::TYPE b: Box(A)): A = b.x`, the type of `b` mentions `A` as one symbol and the function's
+type `All(A::TYPE b: Box(A)) A` as another. Code that substitutes a call's type arguments for the quantifiers into
+the parameters' types silently does nothing, and types inside the body (with one `A`) are not equal to types derived
+from the function's type (with the other). The C emitter's direct calls of top-level functions had exactly this bug,
+and now take the parameters from the function's type instead (`emit_val`, the `_is_top_fun` case in
+`codegen/c_emitter.py`); other users of `TypedParam` types may still have it.
+
+**Reproduce.** Elaborate the function above and compare the free variables of `fun.params[0].type_val._fv` with
+those of the parameter types of the `QFunType` inside `fun.type_val` (via `_collect_fun_quantifiers`): they differ
+(for example `{15}` and `{14}`).
+
+**Where to start.** Where the typechecker builds `TypedFun` for a function with type parameters
+(`bootstrap/python/quest/typechecker/`): the parameters' annotations are presumably elaborated once to build the
+function's type and again, with fresh symbols, in the scope where the body is checked. Both should use the
+quantifiers' symbols.
+
+**Done when.** The parameters' types of a `TypedFun` refer to the quantifiers of its type, a unit test checks this,
+and the workaround in the C emitter's top-level call path is removed.
+
+---
+
+## C coercions treat variants that differ only in type arguments as needing tag maps
+
+**Problem.** `_coerce_val` in `codegen/c_emitter.py` emits a variant upcast, which remaps tags through a tag map
+table, whenever the source and target variant types are not equal. Variants whose types differ only in a type
+parameter versus its argument (`Tree(Bool)` passed as `Tree(A)` to a polymorphic function) or in which symbol names
+the same type parameter (see the task above) are not related by subtyping and need no remapping, but no table is
+emitted for such pairs, so the C fails to compile with an undeclared `tagmap_...`. The variant branch does not
+reduce types reached through type operators, which hides this today: the two types are type operator applications
+(`Tree(A)`), not `QVariantType`s, so the branch is skipped. Reducing them, as the tuple and function branches now do,
+exposes it.
+
+**Reproduce.** In `_coerce_val`, test the variant branch with `normalize_type` of both types (as the tuple branch
+does) and compile `tests/source/language/type_parameters_in_aggregates.quest`: clang reports undeclared identifiers
+`tagmap_RecGroup0_0_QVariant_...` for conversions between `Tree(Bool)` and `Tree(A)` and between two `Tree(A)`s.
+
+**Where to start.** The variant branch of `_coerce_val` and `_emit_variant_upcast`. A remap is needed only when the
+two variant types have different cases (names or order), which can be decided from their cases rather than from type
+equality; payloads are always one `QVal` word, so differing payload types need no conversion of the variant itself.
+
+**Done when.** The variant branch reduces types reached through type operators like the tuple branch, emits tag maps
+only when the cases differ, and the golden tests pass in `run_c_compiled`.
