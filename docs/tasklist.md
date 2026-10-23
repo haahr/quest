@@ -183,7 +183,7 @@ of inspect's when clauses, and in the type arguments of `dynamic.new` and `dynam
 argument, compiled code stops with a run-time error. The interpreter has no layouts and runs such programs.
 
 **Reproduce.** `tests/errors/typecheck/auto/{witness,inspect,dynamic}_type_parameter_in_mutable_data.quest` are
-rejected, and `tests/errors/run/layout_conversion_mutable_data.quest` runs interpreted but fails in both C backends
+rejected, and `tests/errors/run/layout_conversion_mutable_data.quest` runs interpreted but fails compiled
 with `a value used at type Array(Tuple v: Record age: Int fuel: String end end) was laid out by generic code, and
 converting it would copy mutable data`.
 
@@ -195,7 +195,7 @@ that reads and writes the original's layout, or a uniform layout for type-parame
 change to the represent pass.
 
 **Done when.** The four tests above run (the error tests becoming golden tests) with the same results interpreted
-and in both C backends.
+and compiled.
 
 ---
 
@@ -214,8 +214,8 @@ let cell(A::TYPE x:A):Cell = auto :Tuple y: A end with tuple x end end;
 ```
 
 **Where to start.** The `auto_type` check in `_check_closed_type` in
-`bootstrap/python/quest/typechecker/typecheck.py`, and `_emit_auto_inspect` in
-`bootstrap/python/quest/codegen/c_emitter.py`. Shares a solution with the task above: var components converted
+`bootstrap/python/quest/typechecker/typecheck.py`, and `inspect` in
+`bootstrap/python/quest/codegen/c_printer.py`. Shares a solution with the task above: var components converted
 without copying.
 
 **Done when.** The test above becomes a golden test where an inspect updates a var component and the update is
@@ -268,7 +268,7 @@ g(:String "hi")
 ```
 
 with `--print-result` prints `auto :Tuple v: String w: Int end with …` interpreted but
-`auto :Tuple v: ?0 w: Int end with …` with `--stop-after run_c_compiled` and `run_c_ir`. Serialization is
+`auto :Tuple v: ?0 w: Int end with …` with `--stop-after run_c_compiled`. Serialization is
 structural and not affected.
 
 **Where to start.** `quest_instantiate_descriptor` in `runtime/quest_runtime.c` could build the instance's name
@@ -276,7 +276,7 @@ from the template's with the holes replaced by the arguments' names (memoized wi
 (the `QTYPE_KIND_AUTO` case near `printf("auto :%s with"`) could print descriptors structurally. `hole_var` in
 `bootstrap/python/quest/codegen/c_types.py` names the holes.
 
-**Done when.** Both C backends print the program above as the interpreter does, and a golden test covers it.
+**Done when.** Compiled code prints the program above as the interpreter does, and a golden test covers it.
 
 ---
 
@@ -286,7 +286,7 @@ from the template's with the holes replaced by the arguments' names (memoized wi
 the interpreter does for `raise` in the program itself. Elsewhere it is not:
 
 - Compiled code does not know where it raised. A binary run directly prints only `Exception: E`, and the
-  `run_c_compiled` and `run_c_ir` phases report the binary's stderr at offset 0, so every uncaught exception
+  `run_c_compiled` phase reports the binary's stderr at offset 0, so every uncaught exception
   appears to be at `1:1`, under the program's first line.
 - In the interpreter, an exception raised inside a library module, such as `dynamic.error` from `dynamic.be`, is
   reported either with no location or at its offset in the module's source rendered against the program's, which
@@ -302,7 +302,7 @@ let f(n: Int): Int = raise E end;
 f(a)
 ```
 
-is reported at `4:22` interpreted but at `1:1` by `--stop-after run_c_compiled` and `run_c_ir`, and as a bare
+is reported at `4:22` interpreted but at `1:1` by `--stop-after run_c_compiled`, and as a bare
 `Exception: E` by the binary that `-o` builds. With
 
 ```quest
@@ -324,5 +324,5 @@ should then parse that, or report without a location rather than at offset 0. In
 `diagnostics.py` does for compile-time errors), or be relocated to the call in the program it escaped through.
 
 **Done when.** Both programs above report a correct location (in the program, or in the library module with its
-file name) in the interpreter and in both C backends, a binary run directly prints the location, and error tests
+file name) in the interpreter and in compiled code, a binary run directly prints the location, and error tests
 cover an exception raised in the program and one raised in a library module.
