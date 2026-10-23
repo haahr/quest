@@ -464,9 +464,19 @@ class Module:
 
 
 @dataclass(eq=False)
+class Import:
+    """A module the unit uses from elsewhere: the name it is imported as, the module's path as imported and its
+    canonical name (docs/modules.md §2.3), and the path of the interface it is imported through."""
+    name: str
+    module_path: str
+    canonical_path: str
+    interface_path: str
+
+
+@dataclass(eq=False)
 class Unit:
     """A compilation unit: the modules it defines, its main body (the program's phrases, in order), and the modules
     it uses from elsewhere."""
     main: Body
     modules: list[Module] = field(default_factory=list)
-    imports: tuple[str, ...] = ()
+    imports: tuple[Import, ...] = ()

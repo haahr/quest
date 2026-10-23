@@ -257,6 +257,8 @@ class _Printer:
 def format_unit(unit: ir.Unit) -> str:
     """The textual form of a unit: its modules, then its main body."""
     p = _Printer()
+    for i in unit.imports:
+        p.emit(0, f"import {i.name} = {json.dumps(i.module_path)} : {i.interface_path}")
     for m in unit.modules:
         p.emit(0, f"module {m.name} : {m.interface_name} {{")
         p.body(m.init, 1)

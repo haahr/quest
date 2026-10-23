@@ -426,6 +426,31 @@ class IrCorePhase(Phase):
         return format_unit(output_data) if output_data is not None else ""
 
 
+class RunIrPhase(Phase):
+    """Runs the IR in the IR interpreter (quest/ir/interp.py), a test oracle for the lowering and the passes: its
+    output is compared with the source interpreter's. The IR prints the program's results itself."""
+    artifact_name = "ir_run"
+
+    def __init__(self, stage: str) -> None:
+        self.name = f"run_ir_{stage}"
+        self.description = f"Run the IR at its {stage} stage in the IR interpreter"
+
+    def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
+        from quest.ir.interp import run_unit
+
+        if input_data is None:
+            return None
+        try:
+            run_unit(input_data, ctx.runtime_env)
+            return OK_VALUE
+        except QuestCompilerError as error:
+            ctx.sink.emit(diagnostic_of(error))
+            return None
+
+    def dump(self, output_data: Any, ctx: CompilerContext) -> str:
+        return ""
+
+
 class RunCCompiledPhase(Phase):
     """Native binary execution phase: compiles C code and runs the resulting binary."""
     name = "run_c_compiled"
@@ -614,6 +639,18 @@ def ir_pipeline() -> PhasePipeline:
     pipeline.register(TypecheckPhase())
     pipeline.register(IrCorePhase())
     return pipeline
+
+
+def ir_run_pipeline(stage: str) -> PhasePipeline:
+    """Returns the pipeline lowering to IR and running it in the IR interpreter at the given stage."""
+    if stage != "core":
+        raise ValueError(f"no IR stage '{stage}'")
+    pipeline = ir_pipeline()
+    pipeline.register(RunIrPhase(stage))
+    return pipeline
+
+
+IR_RUN_PHASES = ("run_ir_core",)
 
 
 def full_pipeline() -> PhasePipeline:

@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 
-from quest.pipeline import PhasePipeline, default_pipeline, full_pipeline
+from quest.pipeline import IR_RUN_PHASES, PhasePipeline, default_pipeline, full_pipeline, ir_run_pipeline
 from quest.testing.errors import run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
@@ -130,20 +130,26 @@ def discover_tests(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*.quest") if not p.name.endswith(UNIT_SUFFIXES))
 
 
+# The phases that run programs, whose output is compared with the run goldens
+RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
+
+
 def golden_dir_for_phase(phase_name: str) -> Path:
-    if phase_name in ("interpret", "run_c_compiled"):
+    if phase_name in RUN_PHASES:
         return TESTS_GOLDEN_DIR / "run"
     return TESTS_GOLDEN_DIR / phase_name
 
 
 def error_dir_for_phase(phase_name: str) -> Path:
+    # The IR keeps no source offsets, so the IR interpreter's run-time errors are not located; the run error tests
+    # (whose diagnostics are compared) are not run through it
     if phase_name in ("interpret", "run_c_compiled"):
         return TESTS_ERRORS_DIR / "run"
     return TESTS_ERRORS_DIR / phase_name
 
 
 def golden_error_file_for_test(source_file: Path, phase_name: str) -> Path:
-    phase_folder = "run" if phase_name in ("interpret", "run_c_compiled") else phase_name
+    phase_folder = "run" if phase_name in RUN_PHASES else phase_name
     base_dir = TESTS_ERRORS_DIR / phase_folder
     try:
         rel_path = source_file.relative_to(base_dir)
@@ -158,6 +164,8 @@ def golden_error_file_for_test(source_file: Path, phase_name: str) -> Path:
 def pipeline_for_phase(phase_name: str) -> PhasePipeline:
     if phase_name in ("codegen_c", "run_c_compiled"):
         return full_pipeline()
+    if phase_name in IR_RUN_PHASES:
+        return ir_run_pipeline(phase_name.removeprefix("run_ir_"))
     return default_pipeline()
 
 
@@ -177,7 +185,7 @@ def run_single_golden_test(
     out_file = target_dir / f"{source_file.stem}.out"
 
     directives = parse_test_directives(source_file)
-    expected_exit = directives.exit_code if phase_name in ("interpret", "run_c_compiled") else 0
+    expected_exit = directives.exit_code if phase_name in RUN_PHASES else 0
     effective_timeout = directives.timeout if directives.timeout is not None else timeout
 
     command = [
@@ -195,12 +203,12 @@ def run_single_golden_test(
     command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
-    if directives.echo and phase_name in ("interpret", "run_c_compiled"):
+    if directives.echo and phase_name in RUN_PHASES:
         command.append("--echo")
 
     command.append(str(source_file.resolve()))
 
-    if directives.args and phase_name in ("interpret", "run_c_compiled"):
+    if directives.args and phase_name in RUN_PHASES:
         command.append("--")
         command.extend(directives.args)
 
@@ -213,7 +221,7 @@ def run_single_golden_test(
     environment["QUEST_CHECK_SCOPES"] = "1"
     # Checks the IR's invariants after lowering (quest/ir/verify.py)
     environment["QUEST_CHECK_IR"] = "1"
-    if directives.env and phase_name in ("interpret", "run_c_compiled"):
+    if directives.env and phase_name in RUN_PHASES:
         environment.update(directives.env)
 
     try:
@@ -225,7 +233,7 @@ def run_single_golden_test(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                input=directives.stdin_data if phase_name in ("interpret", "run_c_compiled") else None,
+                input=directives.stdin_data if phase_name in RUN_PHASES else None,
                 env=environment,
                 timeout=effective_timeout,
                 cwd=scratch_dir,
@@ -328,6 +336,7 @@ def main() -> int:
         "parse",
         "typecheck",
         "ir_core",
+        *IR_RUN_PHASES,
         "interpret",
         "run_c_compiled",
     ]

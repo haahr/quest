@@ -90,7 +90,6 @@ from quest.types import (
     QVarType,
     QOutType,
     binds_module,
-    format_type_compact,
 )
 
 _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent", "ordinal"}
@@ -111,7 +110,7 @@ class _Lowerer:
         self.body = ir.Body()
         self.loops: list[str] = []
         self.label_counts: dict[str, int] = {}
-        self.imports: list[str] = []
+        self.imports: list[ir.Import] = []
         # Exceptions made inside an expression, whose names the enclosing scope sees: declared before the binding
         # containing them, and bound where they are made
         self.declared: set[int] = set()
@@ -694,8 +693,7 @@ class _Lowerer:
             case TypedException():
                 self.phrase_expr(b, show)
             case TypedImport(items=items):
-                for item in items:
-                    self.imports.extend(item.names)
+                self.add_imports(items)
             case TypedInterface() | TypedNativeBinding() | TypedModule():
                 raise LoweringError(f"{type(b).__name__} inside a block")
             case TypedExpr():
@@ -744,6 +742,13 @@ class _Lowerer:
 
     # Units
 
+    def add_imports(self, items) -> None:
+        for item in items:
+            for name, path, canonical in zip(
+                item.names, item.effective_module_paths, item.effective_canonical_module_paths
+            ):
+                self.imports.append(ir.Import(name, path, canonical, item.effective_interface_path))
+
     def module(self, m: TypedModule) -> ir.Module:
         init = ir.Body()
         members: dict[str, ir.Var] = {}
@@ -755,8 +760,7 @@ class _Lowerer:
                         self.emit(ir.Let(var, ir.External(symbol, template)))
                         members[name] = var
                     case TypedImport(items=items):
-                        for item in items:
-                            self.imports.extend(item.names)
+                        self.add_imports(items)
                     case _:
                         self.binding(b)
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
@@ -805,7 +809,8 @@ def _named_exceptions_in(node) -> list[TypedException]:
 
 
 def _display(t: QType) -> str:
-    return format_type_compact(t)
+    # As the interpreter prints a phrase's type
+    return str(t)
 
 
 def lower_program(

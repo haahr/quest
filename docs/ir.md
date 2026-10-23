@@ -230,8 +230,9 @@ try { body } handle (e: Exception) { body }
 raise a
 ```
 
-`try` is a region: a `raise` in the body, or in any function it calls, transfers to the handler, which receives the
-exception value; branches of a Quest `try ... when ... else ... end` become tests of the exception's identity in the
+`try` is a region: a `raise` in the body, or in any function it calls, transfers to the handler. The handler's
+variable holds the exception raised together with its payload: `prim is(e, E)` compares the exception, and
+`exception_payload(e)` reads the payload, and `raise e` raises it again with the same payload. Branches of a Quest `try ... when ... else ... end` become tests of the exception's identity in the
 handler, re-raising when none matches. The C printer prints `try` with `setjmp`/`longjmp` (as
 [c-representation.md](c-representation.md) §7 describes), popping the handler on every way out of the body (falling
 off its end, or a jump, break, continue, or return). C makes a non-`volatile` local modified between `setjmp` and
@@ -504,7 +505,13 @@ step 6.
   closures do not capture mutable variables. *Done:* `declare` (§5) declares a variable whose value one later let
   binds, so the exception is a value that closures capture.
 - An IR interpreter (`ir/interp.py`), run by the test runner on the IR after each stage and compared with
-  `tests/golden/run`, so that a pass that changes a program's meaning is caught at that pass.
+  `tests/golden/run`, so that a pass that changes a program's meaning is caught at that pass. *Done for Core:* the
+  `run_ir_core` phase runs every golden test program's Core IR, the generated ones included. It uses the source
+  interpreter's values, and the modules a unit imports (the standard library included) are loaded and run by the
+  source interpreter; IR functions are built-in functions to it, so either kind of function calls the other. The
+  run error tests are not run through it, since the IR keeps no source offsets to locate its errors. An imported
+  module's path, canonical name, and interface now are in the unit (`import` in the textual form), where the
+  interpreter (and the C printer) find them.
 - Specialize (§8.1), with calls matched by symbol, including calls of local polymorphic functions (lifting the
   restriction in [tasklist.md](tasklist.md)); the trigger stays selective (record or variant type arguments).
 - Closure-convert (§8.2).

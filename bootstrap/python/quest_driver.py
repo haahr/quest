@@ -23,7 +23,9 @@ from quest.pipeline import (
     CompilerContext,
     compile_pipeline,
     default_pipeline,
+    IR_RUN_PHASES,
     ir_pipeline,
+    ir_run_pipeline,
     full_pipeline,
     link_dependencies,
 )
@@ -43,7 +45,9 @@ def run_driver(args: list[str]) -> int:
     if args and args[0] == "compile":
         return run_compile(args[1:])
 
-    all_phases = ["tokenize", "parse", "typecheck", "ir_core", "interpret", "codegen_c", "run_c_compiled"]
+    all_phases = [
+        "tokenize", "parse", "typecheck", "ir_core", *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled",
+    ]
 
     if "--" in args:
         dash_idx = args.index("--")
@@ -281,6 +285,8 @@ def run_driver(args: list[str]) -> int:
         pipeline = compile_pipeline()
     elif needs_c_pipeline:
         pipeline = full_pipeline()
+    elif parsed_args.stop_after in IR_RUN_PHASES:
+        pipeline = ir_run_pipeline(parsed_args.stop_after.removeprefix("run_ir_"))
     elif parsed_args.stop_after == "ir_core" or "ir_core" in parsed_args.dump_after:
         pipeline = ir_pipeline()
     else:
@@ -290,7 +296,8 @@ def run_driver(args: list[str]) -> int:
     stop_after = parsed_args.stop_after
     if has_objects and not has_output and stop_after is None and not parsed_args.dump_after:
         stop_after = "run_c_compiled"
-    print_result = parsed_args.print_result or (stop_after == "run_c_compiled")
+    # Running compiled code, or IR, prints the last phrase's result as the interpreter does
+    print_result = parsed_args.print_result or stop_after == "run_c_compiled" or stop_after in IR_RUN_PHASES
 
     options = CompilerOptions(
         stop_after=stop_after,

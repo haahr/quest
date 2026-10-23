@@ -119,6 +119,10 @@ The test runner executes each test source file across active compiler phases via
 - `typecheck`: Runs `quest_driver.py --stop-after typecheck <source_file>`.
 - `ir_core`: Runs `quest_driver.py --stop-after ir_core <source_file>`, which lowers the typed program to Core IR
   ([ir.md](ir.md)) and prints it (compared against `tests/golden/ir_core/`). Generated tests skip it.
+- `run_ir_core`: Runs `quest_driver.py --stop-after run_ir_core <source_file>`, which runs the Core IR in the IR
+  interpreter (`quest/ir/interp.py`), compared against `tests/golden/run/`. Each later IR stage gets a phase of its
+  own (`run_ir_<stage>`), so that a pass that changes a program's output fails in its stage's phase. The run error
+  tests are not run through them.
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).
 - `run_c_compiled`: Runs `quest_driver.py --stop-after run_c_compiled <source_file>`
   (compared against `tests/golden/run/`).
