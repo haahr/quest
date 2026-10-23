@@ -129,7 +129,7 @@ class _Lowerer:
         self.body = ir.Body()
 
     def fresh(self, hint: str, t: QType, mutable: bool = False) -> ir.Var:
-        return ir.Var(hint, shape(t), t, mutable)
+        return ir.Var(hint, t, mutable)
 
     def label(self, prefix: str) -> str:
         n = self.label_counts.get(prefix, 0) + 1
@@ -629,7 +629,7 @@ class _Lowerer:
             if not self.body.terminated:
                 self.terminate(ir.Return(result))
         self.loops = saved_loops
-        return ir.Function(var, type_params, tuple(params), shape(result_t), body, result_t)
+        return ir.Function(var, type_params, tuple(params), result_t, body)
 
     # Bindings
 
@@ -664,7 +664,7 @@ class _Lowerer:
                     if b.is_rec:
                         raise LoweringError("recursive values other than functions")
                     # The value is lowered before the variable is bound, so that it refers to any binding it shadows
-                    var = ir.Var(symbol.name, shape(symbol.type_val), symbol.type_val)
+                    var = ir.Var(symbol.name, symbol.type_val)
                     self.value(value, var)
                     if symbol.symbol_id in self.vars:
                         raise LoweringError(f"symbol '{name}' is bound twice")

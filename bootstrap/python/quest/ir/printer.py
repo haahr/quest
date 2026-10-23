@@ -154,8 +154,7 @@ class _Printer:
     def function(self, f: ir.Function, depth: int) -> None:
         tps = (" [" + " ".join(f"{tp.name}::{tp.kind}" for tp in f.type_params) + "]") if f.type_params else ""
         params = ", ".join(f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params)
-        result = f.result_type if f.result_type is not None else f.result.type
-        self.block(f"fun {self.name(f.var)}{tps}({params}): {self.type(result)}", f.body, depth)
+        self.block(f"fun {self.name(f.var)}{tps}({params}): {self.type(f.result_type)}", f.body, depth)
 
     def statement(self, s, depth: int) -> None:
         match s:

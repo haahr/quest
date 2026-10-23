@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
-from quest.ir.shapes import Shape
+from quest.ir.shapes import Shape, shape
 from quest.types import QKind, QType
 
 
@@ -29,11 +29,15 @@ from quest.types import QKind, QType
 @dataclass(eq=False)
 class Var:
     """A variable: a value (bound once), a mutable variable (a `let var` local, or a `var`/`out` parameter), or a
-    function bound by a funs statement. `type` is the Quest type, kept for printing (with alias names)."""
+    function bound by a funs statement. `type` is its Quest type (with alias names, for printing), which passes
+    rewrite (specialization substitutes type arguments in it); its shape is the type's."""
     hint: str
-    shape: Shape
     type: QType
     mutable: bool = False
+
+    @property
+    def shape(self) -> Shape:
+        return shape(self.type)
 
     def __repr__(self) -> str:
         return f"<Var {self.hint}>"
@@ -288,14 +292,16 @@ class Do:
 
 @dataclass(eq=False)
 class Function:
-    """A function: `var` names it; its type parameters, parameters (with modes), result shape (and Quest type, for
-    printing), and body."""
+    """A function: `var` names it; its type parameters, parameters (with modes), result type, and body."""
     var: Var
     type_params: tuple[TypeParam, ...]
     params: tuple[tuple[Var, str], ...]
-    result: Shape
+    result_type: QType
     body: Body
-    result_type: Optional[QType] = None
+
+    @property
+    def result(self) -> Shape:
+        return shape(self.result_type)
 
 
 @dataclass(eq=False)

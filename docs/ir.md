@@ -126,8 +126,9 @@ agree in memory is decided by `generic_layout_agrees` (§8.3), mirroring the run
 
 The nodes are defined in `ir/nodes.py`, printed by `ir/printer.py`, and checked by `ir/verify.py`.
 
-**Variables are objects.** An IR variable (`Var`) has a name hint, a shape, and its Quest type (for printing, with
-alias names). It is bound by exactly one binder, and every use refers to the same object, so identity never depends
+**Variables are objects.** An IR variable (`Var`) has a name hint and its Quest type (with alias names, for
+printing); its shape is the type's, derived rather than stored, so that a pass rewriting types (specialization
+substitutes type arguments) cannot leave the two disagreeing. A function's result is likewise its result type. It is bound by exactly one binder, and every use refers to the same object, so identity never depends
 on names; the printer makes names distinct (`x`, `x.1`). Lowering maps each typed-AST symbol to its variable once.
 
 **Atoms** are variables and constants (`Int`, `Real`, `Bool`, `Char`, `String`, `ok`). Operations take atoms only.

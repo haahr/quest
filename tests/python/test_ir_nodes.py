@@ -19,7 +19,7 @@ BOOL = shape(BOOL_TYPE)
 
 
 def var(hint: str, t=INT_TYPE, mutable: bool = False) -> ir.Var:
-    return ir.Var(hint, shape(t), t, mutable)
+    return ir.Var(hint, t, mutable)
 
 
 def const(v) -> ir.Const:
@@ -43,7 +43,7 @@ def abs_function() -> ir.Funs:
         ir.If(neg, body(ir.Let(m, ir.Prim("-", (const(0), n))), ir.Jump("k", (m,))), body(ir.Jump("k", (n,)))),
     )
     fb = body(ir.Join("k", (r,), body(ir.Return(r)), join_body))
-    return ir.Funs((ir.Function(f, (), ((n, "value"),), INT, fb),))
+    return ir.Funs((ir.Function(f, (), ((n, "value"),), INT_TYPE, fb),))
 
 
 class TestIrNodes(unittest.TestCase):
@@ -90,14 +90,14 @@ class TestIrNodes(unittest.TestCase):
     def test_closures_do_not_capture_mutable_locals(self) -> None:
         fun_t = QFunType(params=(), result_type=INT_TYPE)
         m = var("m", mutable=True)
-        inner = ir.Function(var("g", fun_t), (), (), INT, body(ir.Return(m)))
+        inner = ir.Function(var("g", fun_t), (), (), INT_TYPE, body(ir.Return(m)))
         outer_body = body(ir.VarDecl(m, const(0)), ir.Funs((inner,)), ir.Return(m))
-        outer = ir.Function(var("f", fun_t), (), (), INT, outer_body)
+        outer = ir.Function(var("f", fun_t), (), (), INT_TYPE, outer_body)
         problems = verify_unit(ir.Unit(main=body(ir.Funs((outer,)))))
         self.assertTrue(any("mutable variable 'm' of an enclosing function" in p for p in problems), problems)
         # A top-level mutable variable is a global, which functions may use
         g = var("g", mutable=True)
-        reader = ir.Function(var("h", fun_t), (), (), INT, body(ir.Return(g)))
+        reader = ir.Function(var("h", fun_t), (), (), INT_TYPE, body(ir.Return(g)))
         self.assertEqual(verify_unit(ir.Unit(main=body(ir.VarDecl(g, const(0)), ir.Funs((reader,))))), [])
 
     def test_jumps_breaks_and_returns(self) -> None:
@@ -120,14 +120,14 @@ class TestIrNodes(unittest.TestCase):
         f, g = var("f", fun_t), var("g", fun_t)
         ok = ir.Const(None, shape(OK_TYPE))
         r1, r2 = var("r", OK_TYPE), var("r", OK_TYPE)
-        ff = ir.Function(f, (), (), shape(OK_TYPE), body(ir.Let(r1, ir.Call(g, (), ())), ir.Return(ok)))
-        gg = ir.Function(g, (), (), shape(OK_TYPE), body(ir.Let(r2, ir.Call(f, (), ())), ir.Return(ok)))
+        ff = ir.Function(f, (), (), OK_TYPE, body(ir.Let(r1, ir.Call(g, (), ())), ir.Return(ok)))
+        gg = ir.Function(g, (), (), OK_TYPE, body(ir.Let(r2, ir.Call(f, (), ())), ir.Return(ok)))
         self.assertEqual(verify_unit(ir.Unit(main=body(ir.Funs((ff, gg), recursive=True)))), [])
         # Without rec, f does not see g
         f2, g2 = var("f", fun_t), var("g", fun_t)
         ff2_body = body(ir.Let(var("r", OK_TYPE), ir.Call(g2, (), ())), ir.Return(ok))
-        ff2 = ir.Function(f2, (), (), shape(OK_TYPE), ff2_body)
-        gg2 = ir.Function(g2, (), (), shape(OK_TYPE), body(ir.Return(ok)))
+        ff2 = ir.Function(f2, (), (), OK_TYPE, ff2_body)
+        gg2 = ir.Function(g2, (), (), OK_TYPE, body(ir.Return(ok)))
         self.assertTrue(verify_unit(ir.Unit(main=body(ir.Funs((ff2, gg2))))))
 
 
