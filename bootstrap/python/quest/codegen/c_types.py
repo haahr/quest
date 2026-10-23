@@ -1098,6 +1098,13 @@ def _type_digest(t: QType) -> str:
     return _printed(t)[1][:16]
 
 
+def type_identity_key(t: QType) -> str:
+    """A key telling types apart where type_to_c_tag does not (all function types are QClosure): the tag and a
+    digest of the canonical type's text. Equal types elaborated separately get the same key; Python == is not
+    defined on types, so this stands in for them in dictionaries."""
+    return f"{type_to_c_tag(t)}#{_type_digest(t)}"
+
+
 def _text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 

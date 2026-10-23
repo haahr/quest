@@ -1,0 +1,162 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'V' :kind TYPE)
+    (TypedLetType 'Holder' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'get' :type All(A :: TYPE) Fun(s: Holder(A)): A
+      :value (TypedFun :params (('s' : Holder(A))) :type All(A :: TYPE) Fun(s: Holder(A)): A
+        :body (TypedSelect 'x' :type A
+          :target (TypedVar 's' :type Holder(A)))))
+    (TypedLetValue 'make' :type All(A :: TYPE) Fun(v: A): Holder(A)
+      :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): Holder(A)
+        :body (TypedRecord :type Record x: A end
+          :fields (
+            (TypedRecordField 'x'
+              :value (TypedVar 'v' :type A))
+          ))))
+    (TypedLetValue 'getF' :type All(A :: TYPE) Fun(s: Holder(A)): A
+      :value (TypedVar 'get' :type All(A :: TYPE) Fun(s: Holder(A)): A))
+    (TypedLetValue 'makeF' :type All(A :: TYPE) Fun(v: A): Holder(A)
+      :value (TypedVar 'make' :type All(A :: TYPE) Fun(v: A): Holder(A)))
+    (TypedLetValue 'hp' :type Holder(P)
+      :value (TypedRecord :type Record x: P end
+        :fields (
+          (TypedRecordField 'x'
+            :value (TypedRecord :type Record a: Int end
+              :fields (
+                (TypedRecordField 'a'
+                  :value (TypedInt 4 :type Int))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedTypeApp [P] :type Fun(s: Holder(P)): P
+                    :func (TypedVar 'getF' :type All(A :: TYPE) Fun(s: Holder(A)): A))
+                  :args (
+                    (TypedVar 'hp' :type Holder(P))
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedSelect 'x' :type P
+                  :target (TypedApp :type Holder(P)
+                    :func (TypedTypeApp [P] :type Fun(v: P): Holder(P)
+                      :func (TypedVar 'makeF' :type All(A :: TYPE) Fun(v: A): Holder(A)))
+                    :args (
+                      (TypedRecord :type Record a: Int end
+                        :fields (
+                          (TypedRecordField 'a'
+                            :value (TypedInt 9 :type Int))
+                        ))
+                    ))))
+            ))
+        )))
+    (TypedLetValue 'hv' :type Holder(V)
+      :value (TypedRecord :type Record x: V end
+        :fields (
+          (TypedRecordField 'x'
+            :value (TypedVariant 'p' :type V
+              :payload (TypedInt 5 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedCase :type Int
+                :target (TypedApp :type V
+                  :func (TypedTypeApp [V] :type Fun(s: Holder(V)): V
+                    :func (TypedVar 'getF' :type All(A :: TYPE) Fun(s: Holder(A)): A))
+                  :args (
+                    (TypedVar 'hv' :type Holder(V))
+                  ))
+                :branches (
+                  (TypedCaseBranch tags=(p) :binder 'k'
+                    :body (TypedVar 'k' :type Int))
+                )
+                :else (TypedInt 0 :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedCase :type Int
+                :target (TypedSelect 'x' :type V
+                  :target (TypedApp :type Holder(V)
+                    :func (TypedTypeApp [V] :type Fun(v: V): Holder(V)
+                      :func (TypedVar 'makeF' :type All(A :: TYPE) Fun(v: A): Holder(A)))
+                    :args (
+                      (TypedVariant 'p' :type V
+                        :payload (TypedInt 6 :type Int))
+                    )))
+                :branches (
+                  (TypedCaseBranch tags=(p) :binder 'k'
+                    :body (TypedVar 'k' :type Int))
+                )
+                :else (TypedInt 0 :type Int))
+            ))
+        )))
+    (TypedLetValue 'getP' :type Fun(s: Holder(P)): P
+      :value (TypedTypeApp [P] :type Fun(s: Holder(P)): P
+        :func (TypedVar 'get' :type All(A :: TYPE) Fun(s: Holder(A)): A)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'getP' :type Fun(s: Holder(P)): P)
+                  :args (
+                    (TypedVar 'hp' :type Holder(P))
+                  )))
+            ))
+        )))
+  ))

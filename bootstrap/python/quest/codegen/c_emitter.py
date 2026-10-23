@@ -55,6 +55,7 @@ from quest.codegen.c_analysis import (
     exception_var_entries,
     named_exceptions_in,
     specializable_callee,
+    specialization_key,
     topological_sort_modules,
 )
 from quest.codegen.c_declarations import CDeclarationEmitter, emit_trampoline
@@ -371,7 +372,7 @@ class CEmitter:
         self.in_scope_type_descriptors: dict[str, str] = {}
         # Templates of the types that mention type parameters in scope, by descriptor tag (see c_type_descriptor)
         self.descriptor_templates: dict[str, QType] = {}
-        self.specializations: dict[tuple[str, tuple[QType, ...]], tuple[str, TypedFun]] = {}
+        self.specializations: dict[tuple[str, tuple[str, ...]], tuple[str, TypedFun]] = {}
         self.specialization_origin_modules: dict[str, str] = {}
         self.all_modules: dict[str, TypedModule] = {}
         self.module_fun_adapters: dict[str, dict[str, str]] = {}
@@ -491,7 +492,9 @@ class CEmitter:
             return None
         native_t = generic_t.substitute(instantiation)
         generic_c, native_c = self.c_type(generic_t), self.c_type(native_t)
-        if not generic_c.endswith("*") or not native_c.endswith("*"):
+        # Records are converted too: a record's C type is the same however its fields are laid out
+        is_record = generic_c == native_c == "QRecordVal"
+        if not is_record and (not generic_c.endswith("*") or not native_c.endswith("*")):
             return None
         if isinstance(normalize_type(generic_t), (QFunType, QAllType)):
             return None
@@ -1856,7 +1859,10 @@ class CEmitter:
             return ptr_expr
         sorted_fields = sorted(rec_t.fields, key=lambda f: f.name)
         index = next(i for i, f in enumerate(sorted_fields) if f.name == fld)
-        if sorted_fields[index].is_var or not self._may_be_stored_as_subtype(fld_t):
+        # A field of a type parameter (a QVal here) may be stored natively, by code that knew the type: a record
+        # made there and passed to generic code keeps its payload, which stores a record or variant inline
+        stored_natively = c_fld_t == "QVal"
+        if sorted_fields[index].is_var or not (stored_natively or self._may_be_stored_as_subtype(fld_t)):
             return f"(*{ptr_expr})"
         # The payload may store the field at a subtype of fld_t (depth subtyping), or in another layout (generic
         # code stores a type parameter's values generically): the offset table then names the type it is stored
@@ -3444,7 +3450,7 @@ class CEmitter:
                 # Only calls of top-level and module functions are specialized, not of bindings shadowing them
                 spec_fname = specializable_callee(effective_func, self.top_funs_dict)
                 spec_entry = (
-                    self.specializations.get((spec_fname, tuple(type_args)))
+                    self.specializations.get(specialization_key(spec_fname, type_args))
                     if spec_fname and type_args
                     else None
                 )

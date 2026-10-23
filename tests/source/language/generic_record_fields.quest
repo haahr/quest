@@ -1,0 +1,27 @@
+(* Language: records over type parameters, made by code that knows the type and read by generic code, and the other
+   way round. A record field of a type parameter is a QVal in generic code; a record made natively stores a record or
+   variant there inline, so generic code reads such fields as stored, and a record made generically is viewed anew
+   when it returns to code that knows the type. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let P = Record a: Int end;
+Let V = Variant p: Int q: Bool end;
+Let Holder = Fun(A::TYPE) Record x: A end;
+let get(A::TYPE s: Holder(A)): A = s.x;
+let make(A::TYPE v: A): Holder(A) = record x = v end;
+(* First-class, so that calls are not specialized *)
+let getF: All(A::TYPE s: Holder(A)) A = get;
+let makeF: All(A::TYPE v: A) Holder(A) = make;
+
+let hp: Holder(P) = record x = record a = 4 end end;
+print(conv.int(getF(:P hp).a));
+print(conv.int(makeF(:P record a = 9 end).x.a));
+let hv: Holder(V) = record x = variant p of V with 5 end end;
+print(conv.int(case getF(:V hv) when p with k then k else 0 end));
+print(conv.int(case makeF(:V variant p of V with 6 end).x when p with k then k else 0 end));
+let getP = get(:P);
+print(conv.int(getP(hp).a));

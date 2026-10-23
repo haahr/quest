@@ -1,0 +1,147 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'Thunk' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'boxed' :type All(A :: TYPE) Fun(x: A): Tuple x: A end
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): Tuple x: A end
+        :body (TypedTuple :type Tuple x: A end
+          :elements (
+            (TypedVar 'x' :type A)
+          ))))
+    (TypedLetValue 'ti' :type Thunk(Int)
+      :value (TypedFun :params (('u' : Int)) :type Fun(u: Int): Int
+        :body (TypedInt 1 :type Int)))
+    (TypedLetValue 'tp' :type Thunk(P)
+      :value (TypedFun :params (('u' : Int)) :type Fun(u: Int): P
+        :body (TypedRecord :type Record a: Int end
+          :fields (
+            (TypedRecordField 'a'
+              :value (TypedInt 2 :type Int))
+          ))))
+    (TypedLetValue 'ts' :type Thunk(String)
+      :value (TypedFun :params (('u' : Int)) :type Fun(u: Int): String
+        :body (TypedString 'three' :type String)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedSelect 'x' :type Thunk(Int)
+                  :target (TypedApp :type Tuple x: Thunk(Int) end
+                    :func (TypedTypeApp [Thunk(Int)] :type Fun(x: Thunk(Int)): Tuple x: Thunk(Int) end
+                      :func (TypedVar 'boxed' :type All(A :: TYPE) Fun(x: A): Tuple x: A end))
+                    :args (
+                      (TypedVar 'ti' :type Thunk(Int))
+                    )))
+                :args (
+                  (TypedInt 0 :type Int)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedSelect 'x' :type Thunk(P)
+                    :target (TypedApp :type Tuple x: Thunk(P) end
+                      :func (TypedTypeApp [Thunk(P)] :type Fun(x: Thunk(P)): Tuple x: Thunk(P) end
+                        :func (TypedVar 'boxed' :type All(A :: TYPE) Fun(x: A): Tuple x: A end))
+                      :args (
+                        (TypedVar 'tp' :type Thunk(P))
+                      )))
+                  :args (
+                    (TypedInt 0 :type Int)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'x' :type Thunk(String)
+              :target (TypedApp :type Tuple x: Thunk(String) end
+                :func (TypedTypeApp [Thunk(String)] :type Fun(x: Thunk(String)): Tuple x: Thunk(String) end
+                  :func (TypedVar 'boxed' :type All(A :: TYPE) Fun(x: A): Tuple x: A end))
+                :args (
+                  (TypedVar 'ts' :type Thunk(String))
+                )))
+            :args (
+              (TypedInt 0 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedSelect 'x' :type P
+                  :target (TypedApp :type Tuple x: P end
+                    :func (TypedTypeApp [P] :type Fun(x: P): Tuple x: P end
+                      :func (TypedVar 'boxed' :type All(A :: TYPE) Fun(x: A): Tuple x: A end))
+                    :args (
+                      (TypedRecord :type Record a: Int end
+                        :fields (
+                          (TypedRecordField 'a'
+                            :value (TypedInt 4 :type Int))
+                        ))
+                    ))))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedSelect 'x' :type P
+                  :target (TypedApp :type Tuple x: P end
+                    :func (TypedTypeApp [P] :type Fun(x: P): Tuple x: P end
+                      :func (TypedVar 'boxed' :type All(A :: TYPE) Fun(x: A): Tuple x: A end))
+                    :args (
+                      (TypedRecord :type Record a: Int end
+                        :fields (
+                          (TypedRecordField 'a'
+                            :value (TypedInt 5 :type Int))
+                        ))
+                    ))))
+            ))
+        )))
+  ))

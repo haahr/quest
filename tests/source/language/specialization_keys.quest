@@ -1,0 +1,20 @@
+(* Language: a polymorphic function specialized at several type arguments whose C representations share a tag (all
+   function types are closures, and equal types elaborated separately are distinct objects). Each type argument gets
+   its own specialization. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let P = Record a: Int end;
+Let Thunk = Fun(A::TYPE) All(u: Int) A;
+let boxed(A::TYPE x: A): Tuple x: A end = tuple let x = x end;
+let ti: Thunk(Int) = fun(u: Int): Int 1;
+let tp: Thunk(P) = fun(u: Int): P record a = 2 end;
+let ts: Thunk(String) = fun(u: Int): String "three";
+print(conv.int(boxed(:Thunk(Int) ti).x(0)));
+print(conv.int(boxed(:Thunk(P) tp).x(0).a));
+print(boxed(:Thunk(String) ts).x(0));
+print(conv.int(boxed(:P record a = 4 end).x.a));
+print(conv.int(boxed(:P record a = 5 end).x.a));

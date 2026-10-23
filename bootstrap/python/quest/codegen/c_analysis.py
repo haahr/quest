@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import hashlib
+from collections.abc import Sequence
 from typing import Any, Optional
 
 from quest.analysis.closure import LambdaAnalysis, analyze_closures
@@ -42,6 +44,7 @@ from quest.codegen.c_types import (
     option_struct_name,
     record_struct_name,
     tuple_struct_name,
+    type_identity_key,
     type_to_c_tag,
 )
 from quest.types import (
@@ -106,7 +109,7 @@ class CProgramAnalysis:
     lambda_info_by_id: dict[int, CLambdaInfo]
     all_program_types: list[QType]
     top_funs_dict: dict[str, tuple[TypedFun, Any]]
-    specializations: dict[tuple[str, tuple[QType, ...]], tuple[str, TypedFun]]
+    specializations: dict[tuple[str, tuple[str, ...]], tuple[str, TypedFun]]
     specialization_origin_modules: dict[str, str] = field(default_factory=dict)
     needed_builtin_modules: list[str] = field(default_factory=list)
     implicit_library_imports: list[str] = field(default_factory=list)
@@ -323,7 +326,9 @@ def specialize_typed_fun(
     )
     clean_name = name.replace(".", "_")
     type_tags = "_".join(type_to_c_tag(t) for t in type_args)
-    spec_ident = f"{clean_name}_spec_{type_tags}"
+    # The tags name the specialization readably; the digest tells apart type arguments that share tags
+    digest = hashlib.sha256("|".join(type_identity_key(t) for t in type_args).encode("utf-8")).hexdigest()[:8]
+    spec_ident = f"{clean_name}_spec_{type_tags}_{digest}"
     return spec_ident, cloned_fun
 
 
@@ -373,6 +378,12 @@ def _should_specialize_call(
             return True
 
     return False
+
+
+def specialization_key(func_name: str, type_args: Sequence[QType]) -> tuple[str, tuple[str, ...]]:
+    """The key of a specialization: the function's name and its type arguments' identity keys. Types are not keys
+    (Python == is not defined on them, and equal types elaborated separately need not be the same object)."""
+    return func_name, tuple(type_identity_key(t) for t in type_args)
 
 
 def specializable_callee(func: Any, funs_dict: Optional[dict[str, Any]]) -> Optional[str]:
@@ -781,7 +792,7 @@ def analyze_program_for_c(
                     fun_origin_module[b.name] = clean_mod
 
     # 2. Call-site specialization discovery and synthesis
-    specializations: dict[tuple[str, tuple[QType, ...]], tuple[str, TypedFun]] = {}
+    specializations: dict[tuple[str, tuple[str, ...]], tuple[str, TypedFun]] = {}
     specialization_origin_modules: dict[str, str] = {}
     funs_dict: dict[str, tuple[TypedFun, Any]] = {**module_funs_dict, **top_funs_dict}
     worklist: list[Any] = list(prog.phrases)
@@ -790,7 +801,7 @@ def analyze_program_for_c(
         curr_node = worklist.pop(0)
         found_calls = find_specialization_calls(curr_node, funs_dict)
         for fname, targs in found_calls:
-            spec_key = (fname, targs)
+            spec_key = specialization_key(fname, targs)
             if spec_key in specializations:
                 continue
             orig = funs_dict.get(fname)
