@@ -1,0 +1,39 @@
+(* Language: calls of bindings that shadow polymorphic top-level or module functions. C specializes calls of a
+   top-level or module function with record or variant type arguments; a local binding or parameter of the same name
+   is a different function, which is called as it is. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let print(s: String): Ok = writer.putString(wOut s <> "\n");
+
+Let P = Record a: Int end;
+let first(A::TYPE x: A y: A): A = x;
+
+interface M export first(A::TYPE x: A y: A): A end;
+module m: M export let first(A::TYPE x: A y: A): A = x; end;
+
+(* 1. The top-level and module functions themselves *)
+print(conv.int(first(:P record a = 1 end record a = 10 end).a));
+print(conv.int(m.first(:P record a = 2 end record a = 20 end).a));
+
+(* 2. A local function of the same name *)
+let local(n: Int): Int =
+    begin
+        let first(A::TYPE x: A y: A): A = y;
+        first(:P record a = 3 end record a = 30 end).a
+    end;
+print(conv.int(local(0)));
+
+(* 3. A parameter of the same name *)
+let viaParam(first: All(A::TYPE x: A y: A) A): Int = first(:P record a = 4 end record a = 40 end).a;
+print(conv.int(viaParam(fun(A::TYPE x: A y: A): A y)));
+
+(* 4. A local tuple named like the module *)
+let viaTuple(n: Int): Int =
+    begin
+        let m = tuple let first(A::TYPE x: A y: A): A = y end;
+        m.first(:P record a = 5 end record a = 50 end).a
+    end;
+print(conv.int(viaTuple(0)));

@@ -43,6 +43,7 @@ from quest.codegen.c_types import (
     type_to_c_tag,
 )
 from quest.types import (
+    binds_module,
     QAllType,
     QKind,
     QArrayType,
@@ -336,6 +337,25 @@ def _should_specialize_call(
     return False
 
 
+def specializable_callee(func: Any, funs_dict: Optional[dict[str, Any]]) -> Optional[str]:
+    """The name of the top-level or module function a call applies, as specializations are keyed, or None when the
+    callee is anything else: in particular a local binding (or a parameter) that shadows such a function, whose calls
+    are not specialized (only top-level and module functions are)."""
+    if isinstance(func, TypedVar):
+        entry = funs_dict.get(func.name) if funs_dict else None
+        symbol = entry[1] if entry is not None else None
+        if isinstance(symbol, ValueSymbol) and symbol.symbol_id != func.symbol.symbol_id:
+            return None
+        return func.name
+    if (
+        isinstance(func, TypedSelect)
+        and isinstance(func.target, TypedVar)
+        and binds_module(func.target.name, func.target.symbol.type_val)
+    ):
+        return f"{func.target.name}.{func.field}"
+    return None
+
+
 def find_specialization_calls(
     node: Any,
     funs_dict: Optional[dict[str, Any]] = None,
@@ -395,14 +415,7 @@ def find_specialization_calls(
                     type_args = list(effective_func.type_args) + type_args
                     effective_func = effective_func.func
 
-                func_name = None
-                if isinstance(effective_func, TypedVar):
-                    func_name = effective_func.name
-                elif (
-                    isinstance(effective_func, TypedSelect)
-                    and isinstance(effective_func.target, TypedVar)
-                ):
-                    func_name = f"{effective_func.target.name}.{effective_func.field}"
+                func_name = specializable_callee(effective_func, funs_dict)
 
                 if func_name and type_args and not any(mentions_enclosing_param(t) for t in type_args):
                     if _should_specialize_call(func_name, tuple(type_args), funs_dict):

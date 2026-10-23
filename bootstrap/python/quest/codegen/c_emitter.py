@@ -54,6 +54,7 @@ from quest.codegen.c_analysis import (
     collect_fun_quantifiers,
     exception_var_entries,
     named_exceptions_in,
+    specializable_callee,
     topological_sort_modules,
 )
 from quest.codegen.c_declarations import CDeclarationEmitter, emit_trampoline
@@ -3425,18 +3426,8 @@ class CEmitter:
                 descriptor_args = [self.c_type_descriptor(targ) for targ in type_args]
                 instantiation = self._call_instantiation(effective_func.type_val, type_args)
 
-                spec_fname = (
-                    effective_func.name
-                    if isinstance(effective_func, TypedVar)
-                    else (
-                        f"{effective_func.target.name}.{effective_func.field}"
-                        if (
-                            isinstance(effective_func, TypedSelect)
-                            and isinstance(effective_func.target, TypedVar)
-                        )
-                        else None
-                    )
-                )
+                # Only calls of top-level and module functions are specialized, not of bindings shadowing them
+                spec_fname = specializable_callee(effective_func, self.top_funs_dict)
                 spec_entry = (
                     self.specializations.get((spec_fname, tuple(type_args)))
                     if spec_fname and type_args

@@ -148,3 +148,29 @@ converted to the weaker bound's view (a closure adaptation thunk) unless the vie
 **Done when.** A function whose type parameters have weaker bounds is a subtype as [TIncl Π] says, in both backends,
 the check still terminates on the existing tests and on a known diverging example, and `type-system.md` §3 and §6.9
 describe the rule.
+
+---
+
+## C specializes only calls of top-level and module functions
+
+**Problem.** C compiles a specialized clone of a polymorphic function called with a record or variant type argument,
+so that the record or variant is passed unboxed (`docs/c-representation.md` §6.4.3). Only calls of top-level and
+module functions are specialized: a call of a local polymorphic function, of a parameter, or of a tuple component is
+compiled as a call of the generic closure, which boxes records and variants and converts tuples and options over
+them between layouts (`quest_convert`, §5.1). This is a restriction, not a bug: such calls are correct, but slower,
+and a call that would have to convert mutable data laid out differently is rejected (§5.1, Polymorphic Calls) where
+a specialized call would not need to convert it. Specializations were found and looked up by name, so a binding that
+shadowed a top-level or module function used to get that function's specialization; `specializable_callee` in
+`codegen/c_analysis.py` now checks that the callee is the top-level or module binding itself.
+
+**Reproduce.** `let f(n: Int): Int = begin let pick(A::TYPE x: A y: A): A = y; pick(:P r1 r2).a end`, with `P` a
+record type: the generated C calls `pick`'s generic closure, with boxed records, rather than a specialized clone.
+
+**Where to start.** `find_specialization_calls` and `specialize_typed_fun` in `codegen/c_analysis.py`, which key
+specializations by name and clone a function from `funs_dict`; a local function would be keyed by its binding's
+symbol, cloned where it is bound (it may capture variables of the enclosing function, so the clone is a closure built
+alongside the original), and called directly at specialized call sites. Calls of parameters and tuple components
+cannot be specialized statically, since the function is not known.
+
+**Done when.** Calls of local polymorphic functions with record or variant type arguments use specialized clones,
+golden tests cover local functions that capture variables of the enclosing function, and §6.4.3 describes them.
