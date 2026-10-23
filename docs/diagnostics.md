@@ -306,7 +306,7 @@ error[E0105]: record type mismatch
    - Ensure diagnostic formatting operates purely on `SourceMap` offsets.
 2. **Step 3 Integration (Interpreter):**
    - Implement `QuestRuntimeError` and `RuntimeStackFrame` tracking inside `tree_eval_expr` and function calls in
-     `interpreter.py`.
+     `interpreter/treewalk.py`.
    - Ensure unhandled exceptions and runtime errors print clean, source-mapped Quest stack traces.
 3. **Step 3 REPL Integration:**
    - REPL uses `DiagnosticSink` to display concise inline diagnostics without blowing away the REPL session.

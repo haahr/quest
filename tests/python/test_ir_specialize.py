@@ -14,7 +14,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.config import CompilerOptions
-from quest.ir.interp import run_unit
+from quest.interpreter.ir_interp import run_unit
 from quest.ir.lower import lower_program
 from quest.ir.printer import format_unit
 from quest.ir.specialize import specialize_unit

@@ -67,7 +67,7 @@ from quest.types import (
     strip_aliases,
     unalias,
 )
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.env import (
     Environment,
     KindSymbol,

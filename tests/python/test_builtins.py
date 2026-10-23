@@ -7,9 +7,10 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.builtins import EXTERNAL_SYMBOLS, BuiltinModuleRegistry, qchecked
-from quest.interpreter import QuestException, QuestRuntimeError
-from quest.runtime import QArray, QBuiltinFun, QExceptionVal, QInt, QString
+from quest.interpreter.builtins import EXTERNAL_SYMBOLS, qchecked, resolve_external_symbol, set_system_args
+from quest.modules.stdlib import BuiltinModuleRegistry
+from quest.interpreter.treewalk import QuestRuntimeError
+from quest.values.model import QuestException, QArray, QBuiltinFun, QExceptionVal, QInt, QString
 
 
 class TestBuiltinWrappers(unittest.TestCase):
@@ -72,32 +73,32 @@ class TestBuiltinWrappers(unittest.TestCase):
         self.assertIn("(&quest_exc_writer_error)", EXTERNAL_SYMBOLS)
 
     def test_resolve_external_symbol_function(self):
-        sym_val = BuiltinModuleRegistry.resolve_external_symbol("quest_writer_put_string")
+        sym_val = resolve_external_symbol("quest_writer_put_string")
         self.assertIsInstance(sym_val, QBuiltinFun)
 
     def test_resolve_external_symbol_exception(self):
-        exc_val = BuiltinModuleRegistry.resolve_external_symbol("(&quest_exc_writer_error)")
+        exc_val = resolve_external_symbol("(&quest_exc_writer_error)")
         self.assertIsInstance(exc_val, QExceptionVal)
         self.assertEqual(exc_val.name, "writer.error")
 
-        exc_val2 = BuiltinModuleRegistry.resolve_external_symbol("quest_exc_writer_error")
+        exc_val2 = resolve_external_symbol("quest_exc_writer_error")
         self.assertEqual(exc_val2, exc_val)
 
     def test_resolve_external_symbol_constant(self):
-        int_min = BuiltinModuleRegistry.resolve_external_symbol("QUEST_INT_MIN")
+        int_min = resolve_external_symbol("QUEST_INT_MIN")
         self.assertIsInstance(int_min, QInt)
         self.assertEqual(int_min.value, -(2**63))
 
     def test_resolve_external_symbol_unknown_raises(self):
         with self.assertRaises(QuestRuntimeError) as ctx:
-            BuiltinModuleRegistry.resolve_external_symbol("quest_nonexistent_symbol_xyz")
+            resolve_external_symbol("quest_nonexistent_symbol_xyz")
         self.assertIn("Undefined external symbol", str(ctx.exception))
 
     def test_set_system_args(self):
         orig_args = EXTERNAL_SYMBOLS.get("quest_system_args")
         try:
-            BuiltinModuleRegistry.set_system_args(["foo", "bar"])
-            args_val = BuiltinModuleRegistry.resolve_external_symbol("quest_system_args")
+            set_system_args(["foo", "bar"])
+            args_val = resolve_external_symbol("quest_system_args")
             self.assertIsInstance(args_val, QArray)
             self.assertEqual(len(args_val.elements), 2)
             self.assertEqual([e.value for e in args_val.elements], ["foo", "bar"])

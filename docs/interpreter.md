@@ -1,8 +1,10 @@
 # Quest Bootstrap Tree-Walking Interpreter & REPL
 
 This document details the architecture, runtime value representation, evaluation engine, and semantic decisions
-implemented for the Step 3 bootstrap tree-walking interpreter in `bootstrap/python/quest/runtime.py` and
-`bootstrap/python/quest/interpreter.py`.
+implemented for the Step 3 bootstrap tree-walking interpreter in `bootstrap/python/quest/values/model.py` (the values,
+which compilation shares, for the dynamic format and `.qi` files) and `bootstrap/python/quest/interpreter/treewalk.py`.
+The `quest/interpreter/` package also holds the standard library's Python implementations (`builtins.py`) and the IR
+interpreter (`ir_interp.py`); compilation does not depend on it (`tests/python/test_dependencies.py`).
 
 ---
 
@@ -28,7 +30,7 @@ The interpreter consumes the typed AST produced by `typecheck` and produces runt
 │                                                                                     │
 │   ┌───────────────────────────────┐           ┌─────────────────────────────────┐   │
 │   │   RuntimeEnvironment          │           │   Operational Evaluator         │   │
-│   │   (interpreter.py)            │           │   (interpreter.py)              │   │
+│   │   (treewalk.py)               │           │   (treewalk.py)                 │   │
 │   │                               │           │                                 │   │
 │   │   • Scoped lexical frames     │           │   • eval_expr(expr, env)        │   │
 │   │   • push_scope() / pop_scope()│ ◄───────► │   • eval_binding(binding, env)  │   │
@@ -38,7 +40,7 @@ The interpreter consumes the typed AST produced by `typecheck` and produces runt
 │                                                                │                    │
 │                                                                ▼                    │
 │   ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│   │   Runtime Values & Memory Model (runtime.py)                                │   │
+│   │   Runtime Values & Memory Model (quest/values/model.py)                     │   │
 │   │                                                                             │   │
 │   │   • QOk, QBool, QInt, QReal, QChar, QString                                 │   │
 │   │   • QRecord (sorted keys), QTuple (positional/named), QArray (mutable)      │   │
@@ -58,7 +60,7 @@ The interpreter consumes the typed AST produced by `typecheck` and produces runt
 
 ## 2. Runtime Value Hierarchy (`QValue`)
 
-All runtime Quest values derive from the abstract base class `QValue` in `quest/runtime.py`. Every `QValue` provides
+All runtime Quest values derive from the abstract base class `QValue` in `quest/values/model.py`. Every `QValue` provides
 a human-readable `type_name` and a `to_str(visited)` method supporting cycle detection.
 
 ### 2.1. Primitive Values
@@ -114,7 +116,7 @@ a human-readable `type_name` and a `to_str(visited)` method supporting cycle det
 
 ## 3. Operational Evaluation Engine
 
-The evaluator in `quest/interpreter.py` evaluates typed expressions and bindings:
+The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and bindings:
 
 ### 3.1. Scoped Runtime Environment (`RuntimeEnvironment`)
 - Operates as a tree of lexical environment frames (`parent: Optional[RuntimeEnvironment]`).

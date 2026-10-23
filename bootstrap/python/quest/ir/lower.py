@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from quest.builtins import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
+from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions
 from quest.env import Environment, ValueSymbol
 from quest.ir import nodes as ir

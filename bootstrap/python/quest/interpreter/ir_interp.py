@@ -2,8 +2,9 @@
 
 The test runner runs every golden test program's IR through it and compares the output with the source interpreter's
 (tests/golden/run), so that a lowering or a pass that changes a program's meaning fails at that stage, before any C is
-printed. Values are the source interpreter's (quest/runtime.py), and the modules a unit imports, the standard library
-included, are loaded and run by the source interpreter; functions of either kind may call the other's.
+printed. Values are the tree-walking interpreter's (quest/values/model.py), and the modules a unit imports, the
+standard library included, are loaded and run by the source interpreter; functions of either kind may call the
+other's.
 
 Variables are looked up by identity in frames: a frame per function activation, its parent the frame its closure was
 made in, and a frame per loop iteration, so that a closure made in one iteration keeps that iteration's values. A
@@ -17,11 +18,9 @@ from __future__ import annotations
 import sys
 from typing import Any, Optional
 
-from quest.interpreter import (
+from quest.interpreter.treewalk import (
     ARRAY_OP_ERROR_EXC,
-    DYNAMIC_ERROR_EXC,
     VARIANT_ERROR_EXC,
-    QuestException,
     QuestRuntimeError,
     RuntimeEnvironment,
     _eval_int_arithmetic,
@@ -31,8 +30,9 @@ from quest.interpreter import (
     _exposed_type,
     format_value_with_type,
 )
-from quest.ir import nodes as ir
-from quest.runtime import (
+from quest.values.model import (
+    DYNAMIC_ERROR_EXC,
+    QuestException,
     FALSE_VALUE,
     OK_VALUE,
     TRUE_VALUE,
@@ -59,6 +59,7 @@ from quest.runtime import (
     QVariant,
     qvalue_is,
 )
+from quest.ir import nodes as ir
 from quest.types import (
     QAllType,
     QFunType,
@@ -214,7 +215,7 @@ class Interpreter:
             raise IRInterpreterError(f"a top level ends with {signal[0]}")
 
     def import_module(self, imp: ir.Import) -> None:
-        from quest.modules.loader import load_module_for_interpreter
+        from quest.interpreter.treewalk import load_module_for_interpreter
 
         evaluated = self.renv.evaluated_modules
         if imp.canonical_path in evaluated:
@@ -281,7 +282,7 @@ class Interpreter:
             case QBuiltinFun(fn=fn):
                 return fn(*args)
             case QClosure():
-                from quest.interpreter import eval_expr
+                from quest.interpreter.treewalk import eval_expr
                 from quest.typed_ast import TypedExternal
 
                 call_env = callee.env.push_scope()
@@ -289,9 +290,9 @@ class Interpreter:
                 for name, arg in zip(callee.params, args):
                     call_env.define(name, arg)
                 if isinstance(callee.body, TypedExternal):
-                    from quest.builtins import BuiltinModuleRegistry
+                    from quest.interpreter.builtins import resolve_external_symbol
 
-                    ext = BuiltinModuleRegistry.resolve_external_symbol(callee.body.symbol)
+                    ext = resolve_external_symbol(callee.body.symbol)
                     if isinstance(ext, QBuiltinFun):
                         return ext.fn(*args)
                     return ext(*args) if callable(ext) else ext
@@ -310,7 +311,7 @@ class Interpreter:
             case QClosure():
                 inst = callee.instantiate(type_args) if callee.type_param_ids else callee
                 if len(inst.params) == 0:
-                    from quest.interpreter import eval_expr
+                    from quest.interpreter.treewalk import eval_expr
 
                     call_env = inst.env.push_scope()
                     call_env.bind_types(inst.type_bindings)
@@ -354,13 +355,13 @@ class Interpreter:
                 # A change of representation, which values here do not have
                 return self.atom(v, frame)
             case ir.External(symbol=symbol):
-                from quest.builtins import BuiltinModuleRegistry
+                from quest.interpreter.builtins import resolve_external_symbol
 
-                return BuiltinModuleRegistry.resolve_external_symbol(symbol)
+                return resolve_external_symbol(symbol)
             case ir.CallExternal(symbol=symbol, args=args):
-                from quest.builtins import BuiltinModuleRegistry
+                from quest.interpreter.builtins import resolve_external_symbol
 
-                ext = BuiltinModuleRegistry.resolve_external_symbol(symbol)
+                ext = resolve_external_symbol(symbol)
                 values = self.atoms(args, frame)
                 if isinstance(ext, QBuiltinFun):
                     return ext.fn(*values)

@@ -21,7 +21,7 @@ from quest.config.abi import (
     header_stamp,
     incompatible_artifact_message,
 )
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.c_declarations import CDeclarationEmitter, collect_aggregate_types
 from quest.codegen.c_types import RecordNamingContext, qtype_to_c_type
 from quest.config import CompilerOptions
@@ -34,12 +34,12 @@ from quest.modules.paths import (
     resolve_object_file,
 )
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
-from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
+from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.elaborate_types import elaborate_kind, elaborate_rec_type_operators, elaborate_type
 from quest.env import Environment, Scope, TypeSymbol, ValueSymbol
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_interface
-from quest.runtime import (
+from quest.values.model import (
     FALSE_VALUE,
     TRUE_VALUE,
     QArray,

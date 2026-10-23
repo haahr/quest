@@ -1,8 +1,8 @@
-"""Unit tests for Quest Runtime Values and Memory Model (bootstrap/python/quest/runtime.py)."""
+"""Unit tests for Quest Runtime Values and Memory Model (bootstrap/python/quest/values/model.py)."""
 
 import unittest
 
-from quest.runtime import (
+from quest.values.model import (
     FALSE_VALUE,
     OK_VALUE,
     TRUE_VALUE,

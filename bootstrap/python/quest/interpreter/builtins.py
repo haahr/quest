@@ -1,10 +1,7 @@
-"""Quest Cardelli Standard Library Modules & Builtin External Symbols Bridge.
-
-Provides the runtime external symbol bridge for the Quest standard library:
-- Resolves external C symbols to Python functions, values, and exceptions.
-- Maintains system arguments for System.args.
-- Provides standard library interface and prelinked module resolution.
-"""
+"""The standard library's external C functions and values, implemented in Python for the interpreters: each
+`external "symbol"` of lib/ resolves to a Python function, value, or exception (resolve_external_symbol), and
+system.args is set from the driver's arguments (set_system_args). The library's interfaces and modules, which the
+type checker loads, are quest.modules.stdlib's."""
 
 from __future__ import annotations
 
@@ -14,12 +11,10 @@ import struct
 import sys
 from typing import Any, Callable, Optional
 
-from quest.dynamic_json import jsog_decode, jsog_encode
-from quest.env import Environment, Scope, ValueSymbol
-from quest.interpreter import (
+from quest.values.dynamic_json import jsog_decode, jsog_encode
+from quest.interpreter.treewalk import (
     ARRAY_OP_ERROR_EXC,
     ASCII_ERROR_EXC,
-    DYNAMIC_ERROR_EXC,
     INT_ERROR_EXC,
     LIST_ERROR_EXC,
     READER_ERROR_EXC,
@@ -28,12 +23,13 @@ from quest.interpreter import (
     SYSTEM_ERROR_EXC,
     WORD_ERROR_EXC,
     WRITER_ERROR_EXC,
-    QuestException,
     QuestRuntimeError,
     real_divide,
     real_pow,
 )
-from quest.runtime import (
+from quest.values.model import (
+    DYNAMIC_ERROR_EXC,
+    QuestException,
     FALSE_VALUE,
     OK_VALUE,
     TRUE_VALUE,
@@ -55,7 +51,6 @@ from quest.runtime import (
     QWord,
     QWriter,
 )
-from quest.types import QType
 
 
 def qchecked(error_exc: Optional[QExceptionVal], *expected_types: type) -> Callable:
@@ -924,119 +919,18 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_dynamic_extern": _dynamic_extern,
 }
 
-STANDARD_LIBRARY_MODULES: dict[str, str] = {
-    "list": "List",
-    "string": "StringOp",
-    "conv": "Conv",
-    "int": "IntOp",
-    "real": "RealOp",
-    "ascii": "Ascii",
-    "arrayOp": "ArrayOp",
-    "word": "Word",
-    "writer": "Writer",
-    "reader": "Reader",
-    "system": "System",
-}
 
-STANDARD_LIBRARY_INTERFACES: dict[str, str] = {}
-for _mod, _iface in STANDARD_LIBRARY_MODULES.items():
-    STANDARD_LIBRARY_INTERFACES[_iface] = _iface
-    STANDARD_LIBRARY_INTERFACES[_iface.lower()] = _iface
-    STANDARD_LIBRARY_INTERFACES[_mod] = _iface
-    STANDARD_LIBRARY_INTERFACES[_mod.lower()] = _iface
-
-STANDARD_LIBRARY_MODULE_NAMES: dict[str, str] = {}
-for _mod in STANDARD_LIBRARY_MODULES:
-    STANDARD_LIBRARY_MODULE_NAMES[_mod] = _mod
-    STANDARD_LIBRARY_MODULE_NAMES[_mod.lower()] = _mod
+def resolve_external_symbol(symbol: str) -> QValue:
+    """Resolves an external C symbol into a Python QValue for interpreter evaluation."""
+    clean = symbol.strip("(&)").strip()
+    val = EXTERNAL_SYMBOLS.get(symbol) or EXTERNAL_SYMBOLS.get(clean)
+    if val is None:
+        raise QuestRuntimeError(f"Undefined external symbol '{symbol}' in interpreter")
+    if callable(val) and not isinstance(val, QValue):
+        return QBuiltinFun(symbol, val)
+    return val
 
 
-class BuiltinModuleRegistry:
-    """Central registry of Cardelli standard library interfaces and runtime modules."""
-
-    _symbol_bridge = EXTERNAL_SYMBOLS
-    _cached_interfaces: dict[str, Scope] = {}
-    _cached_mod_scopes: dict[str, Scope] = {}
-    _cached_mod_types: dict[str, QType] = {}
-    _cached_loaded_interfaces: dict[str, Scope] = {}
-    _cached_module_export_scopes: dict[str, Scope] = {}
-
-    @classmethod
-    def resolve_external_symbol(cls, symbol: str) -> QValue:
-        """Resolves an external C symbol into a Python QValue for interpreter evaluation."""
-        clean = symbol.strip("(&)").strip()
-        val = EXTERNAL_SYMBOLS.get(symbol) or EXTERNAL_SYMBOLS.get(clean)
-        if val is None:
-            raise QuestRuntimeError(f"Undefined external symbol '{symbol}' in interpreter")
-        if callable(val) and not isinstance(val, QValue):
-            return QBuiltinFun(symbol, val)
-        return val
-
-    @classmethod
-    def set_system_args(cls, args: list[str]) -> None:
-        """Updates system.args with the provided argument list."""
-        sys_args_elements = tuple(QString(a) for a in args)
-        EXTERNAL_SYMBOLS["quest_system_args"] = QArray(sys_args_elements)
-
-    @classmethod
-    def ensure_interface(cls, iface_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
-        """Loads and caches standard library interface `iface_name`, registering it in `env`."""
-        target_iface = STANDARD_LIBRARY_INTERFACES.get(iface_name)
-        if target_iface is None:
-            return None
-        if target_iface not in cls._cached_interfaces:
-            from quest.modules.loader import load_interface
-            base_env = Environment(builtin_registry=False)
-            iface_scope = load_interface(target_iface, base_env)
-            cls._cached_interfaces[target_iface] = iface_scope
-            cls._cached_loaded_interfaces.update(base_env.loaded_interfaces)
-            cls._cached_module_export_scopes.update(base_env.module_export_scopes)
-
-        iface_scope = cls._cached_interfaces[target_iface]
-        if env is not None:
-            env.register_interface(target_iface, iface_scope)
-            if iface_name != target_iface:
-                env.register_interface(iface_name, iface_scope)
-            env._builtin_interfaces[target_iface] = iface_scope
-            env.loaded_interfaces.update(cls._cached_loaded_interfaces)
-            env.module_export_scopes.update(cls._cached_module_export_scopes)
-        return iface_scope
-
-    @classmethod
-    def ensure_module(cls, mod_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
-        """Loads and caches standard library module `mod_name`, registering it in `env`."""
-        norm_mod = STANDARD_LIBRARY_MODULE_NAMES.get(mod_name)
-        if norm_mod is None:
-            return None
-        iface_name = STANDARD_LIBRARY_MODULES[norm_mod]
-        cls.ensure_interface(iface_name, env)
-        if norm_mod not in cls._cached_mod_scopes:
-            from quest.modules.elaboration import (
-                build_record_type_from_scope,
-                separately_compiled_module_scope,
-            )
-            base_env = Environment(builtin_registry=False)
-            iface_scope = cls._cached_interfaces[iface_name]
-            mod_scope = separately_compiled_module_scope(norm_mod, iface_scope, base_env)
-            cls._cached_mod_scopes[norm_mod] = mod_scope
-            cls._cached_mod_types[norm_mod] = build_record_type_from_scope(mod_scope, provenance=norm_mod)
-
-        mod_scope = cls._cached_mod_scopes[norm_mod]
-        mod_type = cls._cached_mod_types[norm_mod]
-        if env is not None:
-            env.register_module(norm_mod, mod_scope)
-            if mod_name != norm_mod:
-                env.register_module(mod_name, mod_scope)
-            env._builtin_modules[norm_mod] = mod_scope
-            if not env.global_scope.lookup_value_local(norm_mod):
-                env.global_scope.declare_value(ValueSymbol(name=norm_mod, type_val=mod_type))
-        return mod_scope
-
-    @classmethod
-    def populate_environment(cls, env: Environment) -> None:
-        """Registers standard library resolution hook into an Environment."""
-        env.builtin_registry = cls
-
-
-Environment.set_default_builtin_registry(BuiltinModuleRegistry)
-
+def set_system_args(args: list[str]) -> None:
+    """Updates system.args with the provided argument list."""
+    EXTERNAL_SYMBOLS["quest_system_args"] = QArray(tuple(QString(a) for a in args))

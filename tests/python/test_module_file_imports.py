@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.config import CompilerOptions
 from quest.pipeline import CompilerContext, default_pipeline
-from quest.runtime import QInt, QString
+from quest.values.model import QInt, QString
 
 
 class TestModuleFileImports(unittest.TestCase):

@@ -1,14 +1,13 @@
 """Quest Module and Interface File Loader.
 
-Implements file-based loading of interfaces and modules for the Quest compiler
-and interpreter:
+Implements file-based loading of interfaces and modules for the Quest compiler and the type checker (the interpreter
+evaluates the modules it loads, load_module_for_interpreter in quest.interpreter.treewalk):
 - Resolves interface files as <name.lower()>.int.quest or <name.lower()>.qi
 - Resolves module files as <name.lower()>.mod.quest
 - Search order: current file directory first, then include paths (-I)
 - Verifies single top-level interface/module declaration matching filename
 - Enforces interface conformance and case normalization
 - Prevents cyclic dependencies with cycle detection
-- Caches loaded modules for singleton evaluation
 """
 
 from __future__ import annotations
@@ -46,8 +45,6 @@ from quest.syntax.sources import SourceMap, display_file_name
 
 if TYPE_CHECKING:
     from quest.env import Environment, Scope
-    from quest.interpreter import RuntimeEnvironment
-    from quest.runtime import QValue
     from quest.typed_ast import TypedModule
 
 
@@ -354,47 +351,3 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             env.register_module(canon_name, typed_mod.scope)
         env.loaded_modules_ast[canon_name] = typed_mod
         return typed_mod
-
-
-def load_module_for_interpreter(
-    name: str,
-    expected_interface: str,
-    r_env: RuntimeEnvironment,
-) -> Optional[QValue]:
-    """Loads and evaluates module `name`, as imported from r_env.current_dir, for the interpreter.
-
-    Evaluated modules are shared by canonical name (docs/modules.md §2.3), so each is evaluated once.
-    """
-    file_path = resolve_module_file(name, r_env.current_dir, r_env.include_paths)
-    canon_name = canonicalize_module_path(file_path, r_env.include_paths, r_env.program_dir) if file_path else name
-    if canon_name in r_env.evaluated_modules:
-        return r_env.evaluated_modules[canon_name]
-
-    if canon_name in r_env.loaded_modules_ast:
-        typed_mod = r_env.loaded_modules_ast[canon_name]
-    else:
-        from quest.env import Environment
-        type_env = Environment()
-        type_env.include_paths = list(r_env.include_paths)
-        type_env.current_dir = r_env.current_dir
-        type_env.program_dir = r_env.program_dir
-        typed_mod = load_module(name, expected_interface, type_env)
-        r_env.loaded_modules_ast[canon_name] = typed_mod
-
-    from quest.interpreter import eval_binding
-    from quest.runtime import QRecord
-
-    # The module's own imports are resolved from its directory.
-    mod_env = r_env.push_scope()
-    if file_path is not None:
-        mod_env.current_dir = file_path.parent
-    for b in typed_mod.bindings:
-        eval_binding(b, mod_env)
-
-    exported_fields = {}
-    for val_name in typed_mod.scope.values:
-        exported_fields[val_name] = mod_env.lookup(val_name)
-
-    rec = QRecord(exported_fields)
-    r_env.evaluated_modules[canon_name] = rec
-    return rec

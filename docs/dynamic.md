@@ -3,8 +3,8 @@
 This document specifies the design, runtime representation, and JSON serialization format for Quest dynamic
 types (`Dynamic.T`, also named `Dynamic`). The `dynamic` module is an ordinary library module,
 `lib/dynamic.mod.quest`: `new` and `be` are written in Quest, and `copy`, `extern`, and `intern` are runtime
-operations declared `external` (implemented in `bootstrap/python/quest/dynamic_json.py` and
-`bootstrap/python/quest/builtins.py` for the interpreter, and `runtime/quest_serialization.c` for compiled code).
+operations declared `external` (implemented in `bootstrap/python/quest/values/dynamic_json.py` and
+`bootstrap/python/quest/interpreter/builtins.py` for the interpreter, and `runtime/quest_serialization.c` for compiled code).
 
 ---
 
@@ -51,7 +51,7 @@ component cannot be selected, which would leave an `inspect` binder no way to re
 
 ## 2. Wire Format, Version 1
 
-> **Status:** implemented in both backends (`bootstrap/python/quest/dynamic_json.py` and
+> **Status:** implemented in both backends (`bootstrap/python/quest/values/dynamic_json.py` and
 > `runtime/quest_serialization.c`). It replaced an
 > unversioned predecessor in which `@type` was a Quest type expression printed as a string: printing a recursive type
 > shares nothing (a single `syntax_ast` type printed as 5 MB), both readers needed a Quest type parser (the C runtime
@@ -259,7 +259,7 @@ that type's fields.
 Reading takes one pass over the value, after the type table is turned into types. An object with an `@id` is
 allocated and registered before its components are read, so `@ref`s inside it and after it resolve to it.
 
-- **Interpreter** (`bootstrap/python/quest/dynamic_json.py`): builds `QType`s from the graph. A node reached
+- **Interpreter** (`bootstrap/python/quest/values/dynamic_json.py`): builds `QType`s from the graph. A node reached
   again while it is still being built is a back edge, so the node becomes a recursive type `Rec(X) ...` and the
   back edge becomes `X`; any choice of binder places gives an equal type. No Quest parser is involved.
 - **C runtime** (`runtime/quest_serialization.c`): builds `QTypeDescriptor`s directly, since descriptors are

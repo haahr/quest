@@ -48,7 +48,6 @@ from quest.modules.paths import (
 from quest.modules.loader import (
     load_interface,
     load_module,
-    load_module_for_interpreter,
 )
 
 # 4. Interface Compiler

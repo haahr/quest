@@ -93,7 +93,7 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(res_expr.success)
         self.assertEqual(res_expr.final_phase, "interpret")
         from quest.typed_ast import TypedExpr
-        from quest.runtime import QInt
+        from quest.values.model import QInt
         self.assertIsInstance(res_expr.artifacts["typecheck"], TypedExpr)
         self.assertEqual(res_expr.artifacts["interpret"], QInt(3))
 

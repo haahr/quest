@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from quest.build.engine import BuildEngine, unit_module_refs
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.backend import IR_PASSES
 from quest.codegen.compiler_runner import compile_c_source, run_binary
 from quest.config import CompilerOptions
@@ -31,8 +31,7 @@ from quest.diagnostics import (
 from quest.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment, Scope
 from quest.syntax.grammar import parse_quest_program
-from quest.interpreter import (
-    QuestException,
+from quest.interpreter.treewalk import (
     QuestRuntimeError,
     RuntimeEnvironment,
     eval_binding,
@@ -41,8 +40,8 @@ from quest.interpreter import (
     eval_program_phrases,
     format_interactive_result,
 )
+from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str
 from quest.syntax.parser import ParserError
-from quest.runtime import OK_VALUE, QOk, QValue, qvalue_to_str
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
 from quest.syntax.tokens import Token, TokenKind
@@ -422,8 +421,8 @@ class IrPassPhase(Phase):
 
 
 class RunIrPhase(Phase):
-    """Runs the IR in the IR interpreter (quest/ir/interp.py), a test oracle for the lowering and the passes: its
-    output is compared with the source interpreter's. The IR prints the program's results itself."""
+    """Runs the IR in the IR interpreter (quest/interpreter/ir_interp.py), a test oracle for the lowering and the
+    passes: its output is compared with the source interpreter's. The IR prints the program's results itself."""
     artifact_name = "ir_run"
 
     def __init__(self, stage: str) -> None:
@@ -431,7 +430,7 @@ class RunIrPhase(Phase):
         self.description = f"Run the IR at its {stage} stage in the IR interpreter"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
-        from quest.ir.interp import run_unit
+        from quest.interpreter.ir_interp import run_unit
 
         if input_data is None:
             return None

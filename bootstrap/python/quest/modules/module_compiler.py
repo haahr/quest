@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 import quest.syntax.ast as ast
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.backend import module_file_to_c
 from quest.codegen.compiler_runner import compile_c_to_object
 from quest.config import CompilerOptions

@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.config import CompilerOptions
 from quest.ir.closure import closure_convert_unit
-from quest.ir.interp import run_unit
+from quest.interpreter.ir_interp import run_unit
 from quest.ir.lower import lower_program
 from quest.ir.printer import format_unit
 from quest.ir.specialize import specialize_unit

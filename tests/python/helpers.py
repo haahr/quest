@@ -6,17 +6,17 @@ from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
 from quest.elaborate_types import elaborate_kind, elaborate_type
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
 from quest.env import Environment
-from quest.interpreter import RuntimeEnvironment, eval_program
+from quest.interpreter.treewalk import RuntimeEnvironment, eval_program
 from quest.syntax.parser import SyntaxTarget
 from quest.pipeline import (
     CompilerContext,
     PipelineResult,
     default_pipeline,
 )
-from quest.runtime import OK_VALUE
+from quest.values.model import OK_VALUE
 from quest.typechecker.typecheck import check_expr, synth_expr
 from quest.typed_ast import TypedBinding, TypedExpr, TypedProgram
 from quest.types import QKind, QType, is_type_equal
@@ -144,10 +144,10 @@ def eval_test_source(
         case TypedProgram():
             return eval_program(artifact, r_env)
         case TypedExpr():
-            from quest.interpreter import eval_expr
+            from quest.interpreter.treewalk import eval_expr
             return eval_expr(artifact, r_env)
         case TypedBinding():
-            from quest.interpreter import eval_binding
+            from quest.interpreter.treewalk import eval_binding
             return eval_binding(artifact, r_env)
         case _:
             return OK_VALUE

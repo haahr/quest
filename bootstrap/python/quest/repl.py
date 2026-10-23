@@ -23,11 +23,11 @@ except ImportError:
 
 from quest.diagnostics import DiagnosticRenderer
 from quest.syntax.grammar import parse_quest_program
-from quest.interpreter import format_interactive_result
+from quest.interpreter.treewalk import format_interactive_result
 from quest.syntax.parser import ParserError
 from quest.config import CompilerOptions
 from quest.pipeline import CompilerContext, default_pipeline
-from quest.runtime import QOk, QValue
+from quest.values.model import QOk, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
 from quest.syntax.tokens import TokenKind

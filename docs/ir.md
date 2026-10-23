@@ -559,7 +559,7 @@ step 6.
 - Fix first: a nested function using a hoisted exception of its enclosing function failed verification, since
   closures do not capture mutable variables. *Done:* `declare` (§5) declares a variable whose value one later let
   binds, so the exception is a value that closures capture.
-- An IR interpreter (`ir/interp.py`), run by the test runner on the IR after each stage and compared with
+- An IR interpreter (`interpreter/ir_interp.py`), run by the test runner on the IR after each stage and compared with
   `tests/golden/run`, so that a pass that changes a program's meaning is caught at that pass. *Done for Core:* the
   `run_ir_core` phase runs every golden test program's Core IR, the generated ones included. It uses the source
   interpreter's values, and the modules a unit imports (the standard library included) are loaded and run by the

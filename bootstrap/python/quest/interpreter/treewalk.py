@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
-from quest.runtime import (
+from quest.values.model import (
+    DYNAMIC_ERROR_EXC,
+    QuestException,
     FALSE_VALUE,
     OK_VALUE,
     TRUE_VALUE,
@@ -150,38 +152,6 @@ class _LoopExit(Exception):
     pass
 
 
-class QuestException(QuestCompilerError):
-    """Language-level Quest exception (e.g. int.error or user-raised exception)."""
-
-    def __init__(
-        self,
-        exc_val: QExceptionVal,
-        payload: Optional[QValue] = None,
-        payload_type: Optional[QType] = None,
-        offset: Optional[int] = None,
-        length: int = 1,
-    ):
-        super().__init__(message=exc_val.to_str(), offset=offset, length=length)
-        self.exc_val = exc_val
-        self.payload = payload
-        self.payload_type = payload_type
-
-    def to_diagnostic(self, length: Optional[int] = None) -> Diagnostic:
-        len_val = length if length is not None else self.length
-        label = DiagnosticLabel(offset=self.offset, length=len_val) if self.offset is not None else None
-        if self.payload is not None and not isinstance(self.payload, QOk):
-            payload_str = qvalue_to_str(self.payload)
-            type_str = f":{self.payload_type}" if self.payload_type is not None else ""
-            msg = f"Exception: {self.exc_val.name} with {payload_str}{type_str}"
-        else:
-            msg = f"Exception: {self.exc_val.name}"
-        return Diagnostic(
-            severity=Severity.ERROR,
-            message=msg,
-            primary_label=label,
-        )
-
-
 class QuestRuntimeError(QuestCompilerError):
     """System-level runtime evaluation error (e.g. undefined symbol)."""
 
@@ -199,7 +169,6 @@ class QuestRuntimeError(QuestCompilerError):
 
 
 ARRAY_OP_ERROR_EXC = QExceptionVal("arrayOp.error")
-DYNAMIC_ERROR_EXC = QExceptionVal("dynamic.error")
 LIST_ERROR_EXC = QExceptionVal("list.error")
 WRITER_ERROR_EXC = QExceptionVal("writer.error")
 READER_ERROR_EXC = QExceptionVal("reader.error")
@@ -280,13 +249,12 @@ class RuntimeEnvironment:
             return self.bindings[name]
         if self.parent is not None:
             return self.parent.lookup(name, offset)
-        from quest.builtins import STANDARD_LIBRARY_MODULES
+        from quest.modules.stdlib import STANDARD_LIBRARY_MODULES
         norm_mod = name if name in STANDARD_LIBRARY_MODULES else next(
             (m for m in STANDARD_LIBRARY_MODULES if m.lower() == name.lower()),
             None,
         )
         if norm_mod is not None:
-            from quest.modules.loader import load_module_for_interpreter
             mod_val = load_module_for_interpreter(norm_mod, STANDARD_LIBRARY_MODULES[norm_mod], self)
             if mod_val is not None:
                 self.define(norm_mod, mod_val)
@@ -548,8 +516,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         case TypedOk():
             return OK_VALUE
         case TypedExternal(symbol=symbol):
-            from quest.builtins import BuiltinModuleRegistry
-            return BuiltinModuleRegistry.resolve_external_symbol(symbol)
+            from quest.interpreter.builtins import resolve_external_symbol
+            return resolve_external_symbol(symbol)
 
         # 2. Variables & Mutable References
         case TypedVar(name=name, offset=offset):
@@ -670,8 +638,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     for param_name, arg_val in zip(callee_params, arg_vals):
                         call_env.define(param_name, arg_val)
                     if isinstance(body, TypedExternal):
-                        from quest.builtins import BuiltinModuleRegistry
-                        ext_val = BuiltinModuleRegistry.resolve_external_symbol(body.symbol)
+                        from quest.interpreter.builtins import resolve_external_symbol
+                        ext_val = resolve_external_symbol(body.symbol)
                         if isinstance(ext_val, QBuiltinFun):
                             return ext_val.fn(*arg_vals)
                         if callable(ext_val):
@@ -1188,7 +1156,6 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                     if canon in env.evaluated_modules:
                         mod_val = env.evaluated_modules[canon]
                     else:
-                        from quest.modules.loader import load_module_for_interpreter
                         mod_val = load_module_for_interpreter(mod_path, item.effective_interface_path, env)
                         if mod_val is not None:
                             env.evaluated_modules[canon] = mod_val
@@ -1401,3 +1368,47 @@ def format_interactive_result(
 
         case _:
             return ""
+
+
+def load_module_for_interpreter(
+    name: str,
+    expected_interface: str,
+    r_env: RuntimeEnvironment,
+) -> Optional[QValue]:
+    """Loads and evaluates module `name`, as imported from r_env.current_dir, for the interpreter.
+
+    Evaluated modules are shared by canonical name (docs/modules.md §2.3), so each is evaluated once.
+    """
+    from quest.env import Environment
+    from quest.modules.loader import load_module
+    from quest.modules.paths import canonicalize_module_path, resolve_module_file
+
+    file_path = resolve_module_file(name, r_env.current_dir, r_env.include_paths)
+    canon_name = canonicalize_module_path(file_path, r_env.include_paths, r_env.program_dir) if file_path else name
+    if canon_name in r_env.evaluated_modules:
+        return r_env.evaluated_modules[canon_name]
+
+    if canon_name in r_env.loaded_modules_ast:
+        typed_mod = r_env.loaded_modules_ast[canon_name]
+    else:
+        type_env = Environment()
+        type_env.include_paths = list(r_env.include_paths)
+        type_env.current_dir = r_env.current_dir
+        type_env.program_dir = r_env.program_dir
+        typed_mod = load_module(name, expected_interface, type_env)
+        r_env.loaded_modules_ast[canon_name] = typed_mod
+
+    # The module's own imports are resolved from its directory.
+    mod_env = r_env.push_scope()
+    if file_path is not None:
+        mod_env.current_dir = file_path.parent
+    for b in typed_mod.bindings:
+        eval_binding(b, mod_env)
+
+    exported_fields = {}
+    for val_name in typed_mod.scope.values:
+        exported_fields[val_name] = mod_env.lookup(val_name)
+
+    rec = QRecord(exported_fields)
+    r_env.evaluated_modules[canon_name] = rec
+    return rec

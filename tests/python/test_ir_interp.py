@@ -1,4 +1,4 @@
-"""The IR interpreter (quest/ir/interp.py, docs/ir.md §12 step 4).
+"""The IR interpreter (quest/interpreter/ir_interp.py, docs/ir.md §12 step 4).
 
 Every golden test program runs through it in run_tests.py's run_ir phases, compared with the source interpreter's
 output; these tests check particular decisions of the interpreter on small programs."""
@@ -14,8 +14,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.config import CompilerOptions
-from quest.interpreter import QuestRuntimeError
-from quest.ir.interp import run_unit
+from quest.interpreter.treewalk import QuestRuntimeError
+from quest.interpreter.ir_interp import run_unit
 from quest.ir.lower import lower_program
 from quest.ir.verify import verify_unit
 from quest.pipeline import CompilerContext, default_pipeline

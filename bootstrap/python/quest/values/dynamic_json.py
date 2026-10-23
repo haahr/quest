@@ -18,8 +18,9 @@ import math
 from typing import Any, Optional, Union
 
 from quest.env import allocate_symbol_id
-from quest.interpreter import DYNAMIC_ERROR_EXC, QuestException
-from quest.runtime import (
+from quest.values.model import (
+    DYNAMIC_ERROR_EXC,
+    QuestException,
     FALSE_VALUE,
     OK_VALUE,
     TRUE_VALUE,

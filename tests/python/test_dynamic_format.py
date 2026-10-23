@@ -12,9 +12,10 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import tests.python.helpers  # noqa: F401
-from quest.dynamic_json import jsog_decode, jsog_encode, parse_type_string
-from quest.interpreter import DYNAMIC_ERROR_EXC, QuestException
-from quest.runtime import (
+from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_string
+from quest.values.model import (
+    DYNAMIC_ERROR_EXC,
+    QuestException,
     OK_VALUE,
     QArray,
     QAutoVal,
@@ -163,7 +164,7 @@ class TestDynamicFormat(unittest.TestCase):
                 jsog_encode(QAutoVal(QTuple((QInt(1),), labels=("a",)), t))
 
     def test_words(self) -> None:
-        from quest.runtime import QWord
+        from quest.values.model import QWord
 
         doc = {"quest": 1, "types": [{"external": "uint64_t"}], "type": 0, "value": 2**64 - 1}
         d = jsog_decode(json.dumps(doc))
@@ -176,11 +177,11 @@ class TestDynamicFormat(unittest.TestCase):
 
     def test_extern_and_intern_through_streams(self) -> None:
         """dynamic.extern writes the JSON format of docs/dynamic.md §2 and dynamic.intern reads it."""
-        from quest.builtins import BuiltinModuleRegistry
+        from quest.interpreter.builtins import resolve_external_symbol
 
         # The runtime operations of lib/dynamic.mod.quest, by the C symbols it declares them with
-        extern_fn = BuiltinModuleRegistry.resolve_external_symbol("quest_dynamic_extern").fn
-        intern_fn = BuiltinModuleRegistry.resolve_external_symbol("quest_dynamic_intern").fn
+        extern_fn = resolve_external_symbol("quest_dynamic_extern").fn
+        intern_fn = resolve_external_symbol("quest_dynamic_intern").fn
 
         def new_dynamic(value, type_str):
             """A dynamic value: an auto value whose one component a is the value."""

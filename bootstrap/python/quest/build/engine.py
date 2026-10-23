@@ -19,7 +19,7 @@ from quest.modules.manifest import (
     unit_staleness,
     write_qm,
 )
-from quest.builtins import BuiltinModuleRegistry
+from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen import compile_c_to_object, link_objects
 from quest.codegen.backend import implicit_imports, program_to_c
 from quest.env import Environment

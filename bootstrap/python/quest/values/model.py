@@ -1,7 +1,7 @@
-"""Quest Runtime Values, Memory Model, Identity, and Structural Equality.
+"""Quest values in Python: the interpreters' values (quest.interpreter), and the data of the dynamic format
+(quest.values.dynamic_json), which `.qi` interface files are written in too, so compilation uses them as well.
 
-Implements the runtime value hierarchy (QValue) and operational semantics for
-Step 3 (Tree-Walking Interpreter & REPL), including:
+The value hierarchy (QValue) and its operational semantics:
 - Primitive values (Ok, Bool, Int, Real, Char, String)
 - Compound aggregates (Record, Tuple, Array)
 - Sum types (Variant, Option)
@@ -19,7 +19,8 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from typing import Any, Optional
 
-from quest.types import is_type_equal
+from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
+from quest.types import QType, is_type_equal
 
 
 # ============================================================================
@@ -897,3 +898,43 @@ def qvalue_structural_eq(
 def qvalue_to_str(val: QValue) -> str:
     """Canonical string formatter for any Quest runtime value."""
     return val.to_str()
+
+
+# ============================================================================
+# Quest exceptions raised in Python
+# ============================================================================
+
+class QuestException(QuestCompilerError):
+    """Language-level Quest exception (e.g. int.error or user-raised exception)."""
+
+    def __init__(
+        self,
+        exc_val: QExceptionVal,
+        payload: Optional[QValue] = None,
+        payload_type: Optional[QType] = None,
+        offset: Optional[int] = None,
+        length: int = 1,
+    ):
+        super().__init__(message=exc_val.to_str(), offset=offset, length=length)
+        self.exc_val = exc_val
+        self.payload = payload
+        self.payload_type = payload_type
+
+    def to_diagnostic(self, length: Optional[int] = None) -> Diagnostic:
+        len_val = length if length is not None else self.length
+        label = DiagnosticLabel(offset=self.offset, length=len_val) if self.offset is not None else None
+        if self.payload is not None and not isinstance(self.payload, QOk):
+            payload_str = qvalue_to_str(self.payload)
+            type_str = f":{self.payload_type}" if self.payload_type is not None else ""
+            msg = f"Exception: {self.exc_val.name} with {payload_str}{type_str}"
+        else:
+            msg = f"Exception: {self.exc_val.name}"
+        return Diagnostic(
+            severity=Severity.ERROR,
+            message=msg,
+            primary_label=label,
+        )
+
+
+# Raised by the dynamic format's reader and writer (quest.values.dynamic_json), as by the dynamic module
+DYNAMIC_ERROR_EXC = QExceptionVal("dynamic.error")

@@ -16,10 +16,10 @@ from typing import Optional
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from quest.builtins import BuiltinModuleRegistry
+from quest.interpreter.builtins import set_system_args
 from quest.diagnostics import DiagnosticRenderer, QuestCompilerError, Severity, diagnostic_of
 from quest.config import CompilerOptions
-from quest.interpreter import format_interactive_result
+from quest.interpreter.treewalk import format_interactive_result
 from quest.pipeline import (
     CompilerContext,
     compile_pipeline,
@@ -37,7 +37,7 @@ from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import canonicalize_module_path
 from quest.repl import run_repl
-from quest.runtime import QOk, qvalue_to_str
+from quest.values.model import QOk, qvalue_to_str
 from quest import shadow
 from quest.syntax.sources import SourceMap
 
@@ -213,7 +213,7 @@ def run_driver(args: list[str]) -> int:
     elif source_file is None:
         if parsed_args.interactive or sys.stdin.isatty():
             sys.argv = ["<repl>"] + target_args
-            BuiltinModuleRegistry.set_system_args(sys.argv)
+            set_system_args(sys.argv)
             return run_repl()
         source_text = sys.stdin.read()
         file_name = "<stdin>"
@@ -342,7 +342,7 @@ def run_driver(args: list[str]) -> int:
     )
 
     sys.argv = [file_name] + target_args
-    BuiltinModuleRegistry.set_system_args(sys.argv)
+    set_system_args(sys.argv)
 
     # Execute pipeline
     try:

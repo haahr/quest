@@ -603,7 +603,7 @@ name):
 - **Dynamic Inspection:** `inspect d when T1 with v then e1 else e2 end` is an inspect on an auto value: `v` is the
   component tuple, so `v.a` is the packaged value.
 - **Runtime operations:** `copy`, `extern`, and `intern` are declared `external` in the module; the interpreter
-  implements them in Python (`builtins.py`, `dynamic_json.py`) and compiled code in the C runtime.
+  implements them in Python (`interpreter/builtins.py`, `values/dynamic_json.py`) and compiled code in the C runtime.
 - **Types at run time:** The run-time test uses the static subtyping rules, including function subtyping. Two kinds
   of type are restricted:
   - An abstract type of a package value (`t.A`) cannot be the type of a dynamic value (`dynamic.new`, `dynamic.be`,

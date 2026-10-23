@@ -124,7 +124,7 @@ The test runner executes each test source file across active compiler phases via
   pass (every program runs through every stage, verified, in the `run_ir_<stage>` phases). To add a program to a
   stage's subset, create its golden file empty and update goldens (`--phase ir_<stage> --update-golden`).
 - `run_ir_core`: Runs `quest_driver.py --stop-after run_ir_core <source_file>`, which runs the Core IR in the IR
-  interpreter (`quest/ir/interp.py`), compared against `tests/golden/run/`. Each later IR stage gets a phase of its
+  interpreter (`quest/interpreter/ir_interp.py`), compared against `tests/golden/run/`. Each later IR stage gets a phase of its
   own (`run_ir_<stage>`), so that a pass that changes a program's output fails in its stage's phase. The run error
   tests are not run through them.
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).

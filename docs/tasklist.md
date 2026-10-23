@@ -25,7 +25,7 @@ let x = 2;
 IR interpreter, `--stop-after run_ir_core`) prints.
 
 **Where to start.** The interpreter evaluates top-level phrases in one `RuntimeEnvironment` frame (`pipeline.py`
-and `eval_binding` in `interpreter.py`), and `define` overwrites a name in place; the `TypedBlock` case of
+and `eval_binding` in `interpreter/treewalk.py`), and `define` overwrites a name in place; the `TypedBlock` case of
 `eval_expr` instead binds a rebound name in a new frame. The echo of a rebound name and module initializers need
 the same care.
 
@@ -69,7 +69,7 @@ let s = tuple Let M = L let l: M = option nil of L end end;
 `--echo --stop-after interpret` prints `let t:Tuple Let A::TYPE = Int x: Int end = tuple Let A = Int x=1 end` (and
 `s` with `Let M = L`), while `--echo --stop-after run_c_compiled` prints `... = tuple x=1 end`.
 
-**Where to start.** The interpreter formats tuples in `_format_aggregate` (`bootstrap/python/quest/interpreter.py`),
+**Where to start.** The interpreter formats tuples in `_format_aggregate` (`bootstrap/python/quest/interpreter/treewalk.py`),
 writing `Let name = type` for each `QTupleTypeBinding` component. Compiled code prints non-existential values through
 their type descriptors (`echo` in `codegen/c_printer.py`, then `quest_put_tuple` and `quest_put_elements` in
 `runtime/quest_runtime.c`), and a tuple's descriptor (`QTupleTypeDescriptor`) lists only its value elements.
@@ -242,7 +242,7 @@ raises `dynamic.error` in every backend.
 
 **Where to start.** A type node for auto types in `docs/dynamic.md` §2.2 (the kind bound, and the components'
 names, var-ness, and types with the bound type variable), each value written with its witness type; then the
-encoders and decoders in `bootstrap/python/quest/dynamic_json.py` and `runtime/quest_serialization.c`
+encoders and decoders in `bootstrap/python/quest/values/dynamic_json.py` and `runtime/quest_serialization.c`
 (`QTYPE_KIND_AUTO` in the encodability check, writer, and reader), which already write and read `Dynamic.T`'s
 witness. Bump the format version if the change is not backward compatible.
 
