@@ -1,0 +1,71 @@
+module tally : Tally {
+  let start: Int = 100
+  var sum: Int = 0
+  funs {
+    fun add(n: Int): Int {
+      let %1: Int = prim +(sum, n)
+      sum := %1
+      return sum
+    }
+  }
+  funs {
+    fun total(): Int {
+      let %2: Int = prim +(start, sum)
+      return %2
+    }
+  }
+  export start = start, sum = sum, add = add, total = total
+}
+module counter : Counter {
+  funs {
+    fun make(n.1: Int): T {
+      return n.1
+    }
+  }
+  funs {
+    fun get(c: T): Int {
+      return c
+    }
+  }
+  funs {
+    fun next(c.1: T): T {
+      let %3: Int = prim +(c.1, 1)
+      return %3
+    }
+  }
+  export make = make, get = get, next = next
+}
+module absolute : Absolute {
+  funs {
+    fun value(n.2: Int): Int {
+      let %4: Int = call int.abs(n.2)
+      return %4
+    }
+  }
+  export value = value
+}
+main {
+  let %5: Int = member tally.start
+  let %6: Int = call tally.add(3)
+  let %7: Int = call tally.add(4)
+  let %8: Int = call tally.total()
+  funs {
+    fun addTwice(n.3: Int): Int {
+      let %9: Int = call tally.add(n.3)
+      let %10: Int = call tally.add(n.3)
+      return %10
+    }
+  }
+  let %11: Int = call addTwice(10)
+  let %12: Int = call tally.total()
+  let k: counter.T = call counter.make(4)
+  let %13: counter.T = call counter.next(k)
+  let %14: Int = call counter.get(%13)
+  let m: Module 'counter' = module counter
+  let %15: Fun(c: counter.T): Int = record_field(m, get)
+  let %16: Fun(n: Int): counter.T = record_field(m, make)
+  let %17: counter.T = call %16(9)
+  let %18: Int = call %15(%17)
+  let %19: Int = call absolute.value(-7)
+}
+

@@ -1,0 +1,41 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let a1: Array(Int) = array(10, 20, 30, 40, 50)
+  let %3: Int = index(a1, 0)
+  do call printInt(%3)
+  let %4: Int = index(a1, 4)
+  do call printInt(%4)
+  let a2: Array(Int) = array_rep(5, 77)
+  let %5: Int = call arrayOp.size [Int](a2)
+  do call printInt(%5)
+  let %6: Int = index(a2, 2)
+  do call printInt(%6)
+  store a1[2] := 999
+  let %7: Int = index(a1, 2)
+  do call printInt(%7)
+  var sum: Int = 0
+  var i: Int = 0
+  loop L1 {
+    let %8: Bool = prim <=(i, 4)
+    if %8 {
+      let i.1: Int = i
+      let %9: Int = index(a1, i.1)
+      let %10: Int = prim +(sum, %9)
+      sum := %10
+      let %11: Int = prim +(i, 1)
+      i := %11
+    } else {
+      break L1
+    }
+  }
+  do call printInt(sum)
+}
+

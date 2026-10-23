@@ -1,0 +1,41 @@
+main {
+  let DivByZero: Exception = exception DivByZero
+  funs {
+    fun safeDiv(a: Int, b: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %1: Bool = prim is(b, 0)
+        if %1 {
+          raise DivByZero
+        } else {
+          let %2: Int = prim /(a, b)
+          jump k1(%2)
+        }
+      }
+    }
+  }
+  funs {
+    fun compute(a.1: Int, b.1: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        try {
+          let %3: Int = call safeDiv(a.1, b.1)
+          jump k2(%3)
+        } handle (e: Exception) {
+          let %4: Bool = prim is(e, DivByZero)
+          if %4 {
+            jump k2(0)
+          } else {
+            let %5: Int = prim -(0, 1)
+            jump k2(%5)
+          }
+        }
+      }
+    }
+  }
+  let r1: Int = call compute(10, 2)
+  let r2: Int = call compute(10, 0)
+}
+

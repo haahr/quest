@@ -1,0 +1,142 @@
+main {
+  funs {
+    fun printStr(s: String): Ok {
+      let %1: writer.T = member writer.output
+      do call writer.putString(%1, s)
+      let %2: writer.T = member writer.output
+      let %3: Ok = call writer.putString(%2, "\n")
+      return %3
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %4: String = call conv.bool(b)
+      let %5: Ok = call printStr(%4)
+      return %5
+    }
+  }
+  funs {
+    fun printInt(n: Int): Ok {
+      let %6: String = call conv.int(n)
+      let %7: Ok = call printStr(%6)
+      return %7
+    }
+  }
+  let p: argParse.Parser = call argParse.new("questc", "Quest Compiler Driver")
+  do call argParse.addFlag(p, "echo", "-e --echo", "Echo compilation steps")
+  do call argParse.addString(p, "output", "-o --output", "a.out", "Output file path")
+  let phases: Array(String) = array("parse", "typecheck", "codegen")
+  do call argParse.addChoice(p, "phase", "-p --phase", phases, "codegen", "Stop after phase")
+  do call argParse.addInt(p, "optLevel", "-O", 2, "Optimization level")
+  do call argParse.addMulti(p, "include", "-I --include", "Search path directory")
+  do call argParse.addPositional(p, "source", "Source file to compile")
+  let helpText: String = call argParse.formatHelp(p)
+  let %8: Bool = call strutil.contains(helpText, "Usage: questc [options] source")
+  do call printBool(%8)
+  let %9: Bool = call strutil.contains(helpText, "Echo compilation steps")
+  do call printBool(%9)
+  let %10: Bool = call strutil.contains(helpText, "choices: parse, typecheck, codegen")
+  do call printBool(%10)
+  let args1: Array(String) = array("main.quest")
+  let r1: argParse.Results = call argParse.parse(p, args1)
+  let %11: Bool = call argParse.getBool(r1, "echo")
+  do call printBool(%11)
+  let %12: String = call argParse.getStringOr(r1, "output", "")
+  do call printStr(%12)
+  let %13: String = call argParse.getStringOr(r1, "phase", "")
+  do call printStr(%13)
+  let %14: Int = call argParse.getIntOr(r1, "optLevel", 0)
+  do call printInt(%14)
+  let %15: vector.T(String) = call argParse.getMulti(r1, "include")
+  let %16: Int = call vector.length [String](%15)
+  do call printInt(%16)
+  let pos1: vector.T(String) = call argParse.positionals(r1)
+  let %17: Int = call vector.length [String](pos1)
+  do call printInt(%17)
+  let %18: String = call vector.get [String](pos1, 0)
+  do call printStr(%18)
+  let args2: Array(String) = array("-e", "-o", "myprog", "--phase=typecheck", "-O", "3", "-I", "lib", "-Iextra/lib", "src1.quest", "src2.quest", "--", "target_arg1", "target_arg2")
+  let r2: argParse.Results = call argParse.parse(p, args2)
+  let %19: Bool = call argParse.getBool(r2, "echo")
+  do call printBool(%19)
+  let %20: String = call argParse.getStringOr(r2, "output", "")
+  do call printStr(%20)
+  let %21: String = call argParse.getStringOr(r2, "phase", "")
+  do call printStr(%21)
+  let %22: Int = call argParse.getIntOr(r2, "optLevel", 0)
+  do call printInt(%22)
+  let inc2: vector.T(String) = call argParse.getMulti(r2, "include")
+  let %23: Int = call vector.length [String](inc2)
+  do call printInt(%23)
+  let %24: String = call vector.get [String](inc2, 0)
+  do call printStr(%24)
+  let %25: String = call vector.get [String](inc2, 1)
+  do call printStr(%25)
+  let pos2: vector.T(String) = call argParse.positionals(r2)
+  let %26: Int = call vector.length [String](pos2)
+  do call printInt(%26)
+  let %27: String = call vector.get [String](pos2, 0)
+  do call printStr(%27)
+  let %28: String = call vector.get [String](pos2, 1)
+  do call printStr(%28)
+  let target2: vector.T(String) = call argParse.targetArgs(r2)
+  let %29: Int = call vector.length [String](target2)
+  do call printInt(%29)
+  let %30: String = call vector.get [String](target2, 0)
+  do call printStr(%30)
+  let %31: String = call vector.get [String](target2, 1)
+  do call printStr(%31)
+  try {
+    let bad1Args: Array(String) = array("--unknown")
+    let bad1: argParse.Results = call argParse.parse(p, bad1Args)
+    do call printStr("FAILED: should have raised on --unknown")
+  } handle (e: Exception) {
+    let %32: Exception = member argParse.error
+    let %33: Bool = prim is(e, %32)
+    if %33 {
+      do call printStr("CAUGHT: unrecognized option error")
+    } else {
+      raise e
+    }
+  }
+  try {
+    let bad2Args: Array(String) = array("--phase", "invalid_phase")
+    let bad2: argParse.Results = call argParse.parse(p, bad2Args)
+    do call printStr("FAILED: should have raised on invalid choice")
+  } handle (e.1: Exception) {
+    let %34: Exception = member argParse.error
+    let %35: Bool = prim is(e.1, %34)
+    if %35 {
+      do call printStr("CAUGHT: invalid choice error")
+    } else {
+      raise e.1
+    }
+  }
+  try {
+    let bad3Args: Array(String) = array("-o")
+    let bad3: argParse.Results = call argParse.parse(p, bad3Args)
+    do call printStr("FAILED: should have raised on missing arg")
+  } handle (e.2: Exception) {
+    let %36: Exception = member argParse.error
+    let %37: Bool = prim is(e.2, %36)
+    if %37 {
+      do call printStr("CAUGHT: missing argument error")
+    } else {
+      raise e.2
+    }
+  }
+  try {
+    let bad4Args: Array(String) = array("-O", "not_a_number")
+    let bad4: argParse.Results = call argParse.parse(p, bad4Args)
+    do call printStr("FAILED: should have raised on invalid int")
+  } handle (e.3: Exception) {
+    let %38: Exception = member argParse.error
+    let %39: Bool = prim is(e.3, %38)
+    if %39 {
+      do call printStr("CAUGHT: invalid integer error")
+    } else {
+      raise e.3
+    }
+  }
+}
+

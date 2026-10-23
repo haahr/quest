@@ -1,0 +1,152 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun print(s: String): Ok {
+      let %1: String = prim <>(s, "\n")
+      let %2: Ok = call writer.putString(wOut, %1)
+      return %2
+    }
+  }
+  funs {
+    fun keep [A::TYPE](x: A): A {
+      funs {
+        fun twice(y: Int): Int {
+          let %3: Int = prim *(y, 2)
+          return %3
+        }
+      }
+      let n: Int = call twice(1)
+      return x
+    }
+  }
+  let %4: Record a: Int end = record(a = 1)
+  let %5: P = call keep [P](%4)
+  let %6: Int = record_field(%5, a)
+  let %7: String = call conv.int(%6)
+  do call print(%7)
+  funs {
+    fun choose [A::TYPE](x.1: A, y.1: A, n.1: Int): A {
+      funs {
+        fun pick(z: A): A {
+          join k1(r: A) {
+            return r
+          } in {
+            let %8: Bool = prim >(n.1, 0)
+            if %8 {
+              jump k1(z)
+            } else {
+              jump k1(y.1)
+            }
+          }
+        }
+      }
+      let %9: A = call pick(x.1)
+      return %9
+    }
+  }
+  let %10: Record a: Int end = record(a = 2)
+  let %11: Record a: Int end = record(a = 20)
+  let %12: P = call choose [P](%10, %11, 1)
+  let %13: Int = record_field(%12, a)
+  let %14: String = call conv.int(%13)
+  do call print(%14)
+  join k2(r.1: Int) {
+    let %15: String = call conv.int(r.1)
+    do call print(%15)
+    funs {
+      fun measure [A::TYPE](x.2: A): Int {
+        funs {
+          fun f(y.2: A): Int {
+            return 4
+          }
+        }
+        let %16: Int = call f(x.2)
+        return %16
+      }
+    }
+    let %17: Record a: Int end = record(a = 0)
+    let %18: Int = call measure [P](%17)
+    let %19: V = variant(q, false)
+    let %20: Int = call measure [V](%19)
+    let %21: Int = prim +(%18, %20)
+    let %22: String = call conv.int(%21)
+    do call print(%22)
+    funs {
+      fun wrap [A::TYPE](x.3: A): A {
+        funs {
+          fun same [A::TYPE](y.3: A): A {
+            return y.3
+          }
+        }
+        let b: Bool = call same [Bool](true)
+        join k3(r.2: A) {
+          return r.2
+        } in {
+          if b {
+            let %23: A = call same [A](x.3)
+            jump k3(%23)
+          } else {
+            jump k3(x.3)
+          }
+        }
+      }
+    }
+    let %24: Record a: Int end = record(a = 5)
+    let %25: P = call wrap [P](%24)
+    let %26: Int = record_field(%25, a)
+    let %27: String = call conv.int(%26)
+    do call print(%27)
+    funs {
+      fun outer [A::TYPE](x.4: A): A {
+        funs {
+          fun id(y.4: A): A {
+            let %28: A = call keep [A](y.4)
+            return %28
+          }
+        }
+        let %29: A = call id(x.4)
+        return %29
+      }
+    }
+    let %30: Record a: Int end = record(a = 6)
+    let %31: P = call outer [P](%30)
+    let %32: Int = record_field(%31, a)
+    let %33: String = call conv.int(%32)
+    do call print(%33)
+    funs {
+      fun nest [A::TYPE](x.5: A): A {
+        funs {
+          fun f.1(y.5: A): A {
+            funs {
+              fun g(z.1: A): A {
+                return z.1
+              }
+            }
+            let %34: A = call g(y.5)
+            return %34
+          }
+        }
+        let %35: A = call f.1(x.5)
+        return %35
+      }
+    }
+    let %36: Record a: Int end = record(a = 7)
+    let %37: P = call nest [P](%36)
+    let %38: Int = record_field(%37, a)
+    let %39: String = call conv.int(%38)
+    do call print(%39)
+  } in {
+    let %40: V = variant(p, 3)
+    let %41: V = variant(q, true)
+    let %42: V = call choose [V](%40, %41, 0)
+    switch tag(%42) {
+      case p (k: Int): {
+        jump k2(k)
+      }
+      else: {
+        jump k2(30)
+      }
+    }
+  }
+}
+

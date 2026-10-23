@@ -1,0 +1,104 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let %3: Array(Node) = array()
+  let leaf: Node = record(v = 2, kids = %3)
+  let %4: Array(Node) = array(leaf, leaf)
+  let n1: Node = record(v = 1, kids = %4)
+  funs rec {
+    fun sum(n: Node): Int {
+      let %5: Int = record_field(n, v)
+      var s: Int = %5
+      let %6: Array(Node) = record_field(n, kids)
+      let %7: Int = call arrayOp.size [Node](%6)
+      let %8: Int = prim -(%7, 1)
+      var i: Int = 0
+      loop L1 {
+        let %9: Bool = prim <=(i, %8)
+        if %9 {
+          let i.1: Int = i
+          let %10: Array(Node) = record_field(n, kids)
+          let %11: Node = index(%10, i.1)
+          let %12: Int = call sum(%11)
+          let %13: Int = prim +(s, %12)
+          s := %13
+          let %14: Int = prim +(i, 1)
+          i := %14
+        } else {
+          break L1
+        }
+      }
+      return s
+    }
+  }
+  let %15: Int = call sum(n1)
+  do call printInt(%15)
+  funs {
+    fun id [A::TYPE](x.1: A): A {
+      return x.1
+    }
+  }
+  let %16: Node = call id [Node](leaf)
+  let %17: Int = record_field(%16, v)
+  do call printInt(%17)
+  let t: Node = n1
+  let n.1: Int = 7
+  let h: Holder = tuple(t, n.1)
+  let %18: Node = tuple_field(h, 0)
+  let %19: Int = call sum(%18)
+  let %20: Int = tuple_field(h, 1)
+  let %21: Int = prim +(%19, %20)
+  do call printInt(%21)
+  let %22: T = call dynamic.new [Node](n1)
+  let back: Node = call dynamic.be [Node](%22)
+  let %23: Int = call sum(back)
+  do call printInt(%23)
+  let %24: Array(Node) = record_field(back, kids)
+  let %25: Node = index(%24, 1)
+  let %26: Int = record_field(%25, v)
+  do call printInt(%26)
+  let %27: T = call dynamic.new [Node](n1)
+  let %28: Node2 = call dynamic.be [Node2](%27)
+  let %29: Array(Node2) = record_field(%28, kids)
+  let %30: Node2 = index(%29, 0)
+  let %31: Int = record_field(%30, v)
+  do call printInt(%31)
+  let %32: Array(RNode(Int)) = array()
+  let %33: Record v: Int kids: Array(Rec(N :: TYPE) Record v: Int kids: Array(N) end) end = record(v = 3, kids = %32)
+  let %34: Array(Rec(N :: TYPE) Record v: Int kids: Array(N) end) = array_rep(1, %33)
+  let rn: RNode(Int) = record(v = 9, kids = %34)
+  let %35: Array(Rec(N :: TYPE) Record v: Int kids: Array(N) end) = record_field(rn, kids)
+  let %36: Rec(N :: TYPE) Record v: Int kids: Array(N) end = index(%35, 0)
+  let %37: Int = record_field(%36, v)
+  do call printInt(%37)
+  let %38: T = call dynamic.new [RNode(Int)](rn)
+  let %39: Node = call dynamic.be [Node](%38)
+  let %40: Int = call sum(%39)
+  do call printInt(%40)
+  join k1(o: Int) {
+    do call printInt(o)
+  } in {
+    try {
+      let %41: T = call dynamic.new [Node](n1)
+      let %42: Other = call dynamic.be [Other](%41)
+      let %43: Int = record_field(%42, v)
+      jump k1(%43)
+    } handle (e: Exception) {
+      let %44: Exception = member dynamic.error
+      let %45: Bool = prim is(e, %44)
+      if %45 {
+        jump k1(-1)
+      } else {
+        raise e
+      }
+    }
+  }
+}
+

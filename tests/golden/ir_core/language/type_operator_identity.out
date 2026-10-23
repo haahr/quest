@@ -1,0 +1,205 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun check(name: String, passed: Bool): Ok {
+      do call writer.putString(wOut, name)
+      join k1(r: String) {
+        let %1: Ok = call writer.putString(wOut, r)
+        return %1
+      } in {
+        if passed {
+          jump k1(" ok\n")
+        } else {
+          jump k1(" FAILED\n")
+        }
+      }
+    }
+  }
+  let x: Id(Int) = 3
+  let y: Cond(True Int String) = 3
+  let s: Cond(False Int String) = "s"
+  let b: Id(Bool) = true
+  let c: Cond(True Char Int) = 'q'
+  let %2: Bool = prim is(x, 3)
+  do call check("var-id", %2)
+  let %3: Bool = prim is(y, x)
+  do call check("var-cond", %3)
+  let %4: Bool = prim isnot(4, x)
+  do call check("var-isnot", %4)
+  let %5: Bool = prim is(b, true)
+  do call check("var-bool", %5)
+  let %6: Bool = prim is(c, 'q')
+  do call check("var-char", %6)
+  let sum: Int = prim +(x, y)
+  let %7: Bool = prim is(sum, 6)
+  do call check("var-sum", %7)
+  funs {
+    fun inc(n: Id(Int)): Cond(True Int String) {
+      let %8: Int = prim +(n, 1)
+      return %8
+    }
+  }
+  funs {
+    fun twice(n.1: Cond(True Int String)): Id(Int) {
+      let %9: Int = prim *(n.1, 2)
+      return %9
+    }
+  }
+  funs {
+    fun pick [B::Sel](n.2: Cond(B Int Int)): Cond(B Int Int) {
+      return n.2
+    }
+  }
+  funs {
+    fun idf [T::TYPE](v: T): T {
+      return v
+    }
+  }
+  let %10: Cond(True Int String) = call inc(x)
+  let %11: Bool = prim is(%10, 4)
+  do call check("result", %11)
+  let %12: Id(Int) = call twice(y)
+  let %13: Bool = prim is(%12, 6)
+  do call check("param", %13)
+  let %14: Cond(True Int Int) = call pick [True](5)
+  let %15: Bool = prim is(%14, 5)
+  do call check("operator-param", %15)
+  let %16: Id(Int) = call idf [Id(Int)](x)
+  let %17: Bool = prim is(%16, 3)
+  do call check("poly", %17)
+  funs {
+    fun apply(g: Fun(n: Id(Int)): Id(Int), v.1: Cond(True Int Bool)): Id(Int) {
+      let %18: Id(Int) = call g(v.1)
+      return %18
+    }
+  }
+  let %19: Id(Int) = call apply(inc, 9)
+  let %20: Bool = prim is(%19, 10)
+  do call check("closure", %20)
+  let arr: Array(Id(Int)) = array(1, 2, 3)
+  let %21: Id(Int) = index(arr, 1)
+  let %22: Bool = prim is(%21, 2)
+  do call check("array-get", %22)
+  store arr[2] := 30
+  let %23: Id(Int) = index(arr, 2)
+  let %24: Bool = prim is(%23, 30)
+  do call check("array-set", %24)
+  let rep: IdArr(Cond(False String Int)) = array_rep(4, 7)
+  let %25: Id(Cond(False String Int)) = index(rep, 3)
+  let %26: Bool = prim is(%25, 7)
+  do call check("array-rep", %26)
+  let %27: Int = call arrayOp.size [Id(Int)](rep)
+  let %28: Bool = prim is(%27, 4)
+  do call check("array-size", %28)
+  let first: Int = 5
+  let second: Int = 6
+  let t: Tuple first: Id(Int) second: Cond(False String Int) end = tuple(first, second)
+  let %29: Cond(False String Int) = tuple_field(t, 1)
+  let %30: Bool = prim is(%29, 6)
+  do call check("tuple", %30)
+  let r.1: Record a: Id(Int) var v: Cond(True Int Bool) end = record(a = 8, var v = 9)
+  let %31: Id(Int) = record_field(r.1, a)
+  let %32: Bool = prim is(%31, 8)
+  do call check("record", %32)
+  let %33: Cond(True Int Bool) = record_field(r.1, v)
+  let %34: Int = prim +(%33, 1)
+  store r.1.v := %34
+  let %35: Cond(True Int Bool) = record_field(r.1, v)
+  let %36: Bool = prim is(%35, 10)
+  do call check("record-var", %36)
+  funs {
+    fun bump(var n.3: Id(Int)): Ok {
+      let %37: Int = prim +(n.3, 1)
+      n.3 := %37
+      return ok
+    }
+  }
+  var cell: Cond(True Int String) = 1
+  let %38: Var(Cond(True Int String)) = addr cell
+  do call bump(%38)
+  let %39: Bool = prim is(cell, 2)
+  do call check("ref-var", %39)
+  let %40: Var(Id(Int)) = addr arr[0]
+  do call bump(%40)
+  let %41: Id(Int) = index(arr, 0)
+  let %42: Bool = prim is(%41, 2)
+  do call check("ref-array", %42)
+  let half: Cond(False String Real) = 2.5
+  let %43: Bool = prim is(half, 2.5)
+  do call check("real", %43)
+  let str: Id(String) = "abc"
+  let str2: Id(String) = str
+  let %44: Bool = prim is(str, str2)
+  do call check("string", %44)
+  let whole: Id(Array(Int)) = array(4, 5)
+  let %45: Int = index(whole, 1)
+  let %46: Bool = prim is(%45, 5)
+  do call check("id-array", %46)
+  let m: Maybe(Id(Int)) = variant(some, 11)
+  let %47: Bool = is_tag(m, some)
+  do call check("variant-tag", %47)
+  let %48: Id(Int) = payload(m, some)
+  let %49: Bool = prim is(%48, 11)
+  do call check("variant-payload", %49)
+  funs {
+    fun unwrap(v.2: Maybe(Id(Int))): Id(Int) {
+      join k2(r.2: Id(Int)) {
+        return r.2
+      } in {
+        switch tag(v.2) {
+          case some (n.4: Id(Int)): {
+            jump k2(n.4)
+          }
+          else: {
+            jump k2(0)
+          }
+        }
+      }
+    }
+  }
+  let %50: Id(Int) = call unwrap(m)
+  let %51: Bool = prim is(%50, 11)
+  do call check("variant-case", %51)
+  let %52: Maybe(Int) = variant(none, ok)
+  var mv: Maybe(Cond(True Int Bool)) = %52
+  mv := m
+  let %53: Id(Int) = call unwrap(mv)
+  let %54: Bool = prim is(%53, 11)
+  do call check("variant-assign", %54)
+  let v.3: Int = 12
+  let %55: Tuple v: Id(Int) end = tuple(v.3)
+  let o: Opt(Id(Int)) = option(some, %55)
+  let %56: Bool = is_tag(o, some)
+  do call check("option-tag", %56)
+  let %57: Tuple Int v: Id(Int) end = payload(o, some)
+  let %58: Id(Int) = tuple_field(%57, 1)
+  let %59: Bool = prim is(%58, 12)
+  do call check("option-payload", %59)
+  funs {
+    fun optVal(p: Opt(Cond(True Int Bool))): Id(Int) {
+      join k3(r.3: Id(Int)) {
+        return r.3
+      } in {
+        switch tag(p) {
+          case some (t.1: Tuple v: Cond(True Int Bool) end): {
+            let %60: Cond(True Int Bool) = tuple_field(t.1, 0)
+            jump k3(%60)
+          }
+          else: {
+            jump k3(0)
+          }
+        }
+      }
+    }
+  }
+  let %61: Id(Int) = call optVal(o)
+  let %62: Bool = prim is(%61, 12)
+  do call check("option-case", %62)
+  do call writer.putString(wOut, s)
+  do call writer.putString(wOut, " ")
+  let %63: Int = prim +(x, y)
+  let %64: String = call conv.int(%63)
+  do call writer.putString(wOut, %64)
+  do call writer.putString(wOut, "\n")
+}
+

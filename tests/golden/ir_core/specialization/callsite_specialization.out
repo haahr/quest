@@ -1,0 +1,37 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun id [A::TYPE](a: A): A {
+      return a
+    }
+  }
+  let p: Record x: Int y: Int end = record(x = 42, y = 100)
+  let pRes: Point = call id [Point](p)
+  let %3: Int = record_field(pRes, x)
+  do call printInt(%3)
+  let %4: Int = record_field(pRes, y)
+  do call printInt(%4)
+  funs {
+    fun pair [A::TYPE B::TYPE](a.1: A, b: B): Tuple first: A second: B end {
+      let first: A = a.1
+      let second: B = b
+      let %5: Tuple first: A second: B end = tuple(first, second)
+      return %5
+    }
+  }
+  let pr: Tuple first: Int second: Point end = call pair [Int Point](10, p)
+  let %6: Int = tuple_field(pr, 0)
+  do call printInt(%6)
+  let %7: Point = tuple_field(pr, 1)
+  let %8: Int = record_field(%7, x)
+  do call printInt(%8)
+}
+

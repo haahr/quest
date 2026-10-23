@@ -1,0 +1,191 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun print(s: String): Ok {
+      let %1: String = prim <>(s, "\n")
+      let %2: Ok = call writer.putString(wOut, %1)
+      return %2
+    }
+  }
+  let Stop: Exception = exception Stop
+  let Carry: Exception(Int) = exception Carry: Int
+  funs {
+    fun bump(n: Int): Int {
+      var x: Int = n
+      try {
+        let %3: Int = prim +(x, 1)
+        x := %3
+        raise Stop
+      } handle (e: Exception) {
+        let %4: Bool = prim is(e, Stop)
+        if %4 {
+          let %5: Int = prim *(x, 10)
+          x := %5
+        } else {
+          raise e
+        }
+      }
+      return x
+    }
+  }
+  let %6: Int = call bump(4)
+  let %7: String = call conv.int(%6)
+  do call print(%7)
+  funs {
+    fun label(n.1: Int): String {
+      var s.1: String = "start"
+      let %8: Record a: Int end = record(a = 0)
+      var r: P = %8
+      try {
+        let %9: String = prim <>(s.1, "+body")
+        s.1 := %9
+        let %10: Record a: Int end = record(a = n.1)
+        r := %10
+        let %11: Bool = prim >(n.1, 0)
+        if %11 {
+          raise Stop
+        }
+      } handle (e.1: Exception) {
+        let %12: Bool = prim is(e.1, Stop)
+        if %12 {
+          let %13: String = prim <>(s.1, "+handler")
+          s.1 := %13
+        } else {
+          raise e.1
+        }
+      }
+      let %14: Int = record_field(r, a)
+      let %15: String = call conv.int(%14)
+      let %16: String = prim <>(" ", %15)
+      let %17: String = prim <>(s.1, %16)
+      return %17
+    }
+  }
+  let %18: String = call label(7)
+  do call print(%18)
+  funs {
+    fun count(n.2: Int): Int {
+      var total: Int = 0
+      try {
+        var i: Int = 1
+        loop L1 {
+          let %19: Bool = prim <=(i, n.2)
+          if %19 {
+            let i.1: Int = i
+            let %20: Int = prim +(total, i.1)
+            total := %20
+            let %21: Bool = prim is(i.1, 3)
+            if %21 {
+              raise Carry with total
+            }
+            let %22: Int = prim +(i, 1)
+            i := %22
+          } else {
+            break L1
+          }
+        }
+      } handle (e.2: Exception) {
+        let %23: Bool = prim is(e.2, Carry)
+        if %23 {
+          let t: Int = exception_payload(e.2)
+          let %24: Int = prim *(total, 100)
+          let %25: Int = prim +(%24, t)
+          total := %25
+        } else {
+          raise e.2
+        }
+      }
+      return total
+    }
+  }
+  let %26: Int = call count(5)
+  let %27: String = call conv.int(%26)
+  do call print(%27)
+  funs {
+    fun incr(var v: Int): Ok {
+      let %28: Int = prim +(v, 1)
+      v := %28
+      return ok
+    }
+  }
+  funs {
+    fun viaRef(n.3: Int): Int {
+      var x.1: Int = n.3
+      try {
+        let %29: Var(Int) = addr x.1
+        do call incr(%29)
+        let %30: Int = prim +(x.1, 1)
+        x.1 := %30
+        raise Stop
+      } handle (e.3: Exception) {
+        let %31: Bool = prim is(e.3, Stop)
+        if %31 {
+        } else {
+          raise e.3
+        }
+      }
+      return x.1
+    }
+  }
+  let %32: Int = call viaRef(1)
+  let %33: String = call conv.int(%32)
+  do call print(%33)
+  funs {
+    fun nested(n.4: Int): Int {
+      var x.2: Int = n.4
+      try {
+        try {
+          let %34: Int = prim +(x.2, 1)
+          x.2 := %34
+          raise Stop
+        } handle (e.4: Exception) {
+          let %35: Bool = prim is(e.4, Carry)
+          if %35 {
+            x.2 := 0
+          } else {
+            raise e.4
+          }
+        }
+      } handle (e.5: Exception) {
+        let %36: Bool = prim is(e.5, Stop)
+        if %36 {
+          let %37: Int = prim +(x.2, 1000)
+          x.2 := %37
+        } else {
+          raise e.5
+        }
+      }
+      return x.2
+    }
+  }
+  let %38: Int = call nested(1)
+  let %39: String = call conv.int(%38)
+  do call print(%39)
+  funs {
+    fun valued(n.5: Int): Int {
+      var x.3: Int = n.5
+      join k1(r.1: Int) {
+        let %40: Int = prim +(r.1, x.3)
+        return %40
+      } in {
+        try {
+          let %41: Int = prim *(x.3, 2)
+          x.3 := %41
+          raise Stop
+        } handle (e.6: Exception) {
+          let %42: Bool = prim is(e.6, Stop)
+          if %42 {
+            let %43: Int = prim +(x.3, 1)
+            jump k1(%43)
+          } else {
+            raise e.6
+          }
+        }
+      }
+    }
+  }
+  let %44: Int = call valued(3)
+  let %45: String = call conv.int(%44)
+  do call print(%45)
+}
+

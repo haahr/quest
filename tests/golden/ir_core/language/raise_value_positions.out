@@ -1,0 +1,251 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let Plain: Exception(Int) = exception Plain: Int
+  funs {
+    fun thrower(y: Int): Int {
+      raise Plain with y
+    }
+  }
+  join k1(r: Int) {
+    do call printInt(r)
+    funs {
+      fun lam(y.1: Int): Int {
+        let %3: Int = prim +(y.1, 1)
+        raise Plain with %3
+      }
+    }
+    join k2(r.1: Int) {
+      do call printInt(r.1)
+      funs {
+        fun realThrower(y.2: Int): Real {
+          raise Plain with y.2
+        }
+      }
+      join k3(r.2: Int) {
+        do call printInt(r.2)
+        funs {
+          fun stringThrower(y.3: Int): String {
+            raise Plain with y.3
+          }
+        }
+        join k4(r.3: Int) {
+          do call printInt(r.3)
+          funs {
+            fun tupleThrower(y.4: Int): Tuple a: Int b: Bool end {
+              raise Plain with y.4
+            }
+          }
+          join k5(r.4: Int) {
+            do call printInt(r.4)
+            funs {
+              fun funThrower(y.5: Int): Fun(x: Int): Int {
+                raise Plain with y.5
+              }
+            }
+            join k6(r.5: Int) {
+              do call printInt(r.5)
+              funs {
+                fun arrayThrower(y.6: Int): Array(Int) {
+                  raise Plain with y.6
+                }
+              }
+              join k7(r.6: Int) {
+                do call printInt(r.6)
+                funs {
+                  fun okThrower(y.7: Int): Ok {
+                    raise Plain with y.7
+                  }
+                }
+                join k8(r.7: Int) {
+                  do call printInt(r.7)
+                  join k9(r.8: Int) {
+                    do call printInt(r.8)
+                    funs {
+                      fun addOne(x.1: Int): Int {
+                        let %4: Int = prim +(x.1, 1)
+                        return %4
+                      }
+                    }
+                    join k10(r.9: Int) {
+                      do call printInt(r.9)
+                      join k11(r.10: Int) {
+                        do call printInt(r.10)
+                        join k12(r.11: Int) {
+                          do call printInt(r.11)
+                        } in {
+                          try {
+                            raise Plain with 15
+                          } handle (e: Exception) {
+                            let %5: Bool = prim is(e, Plain)
+                            if %5 {
+                              let n: Int = exception_payload(e)
+                              jump k12(n)
+                            } else {
+                              raise e
+                            }
+                          }
+                        }
+                      } in {
+                        try {
+                          raise Plain with 14
+                        } handle (e.1: Exception) {
+                          let %6: Bool = prim is(e.1, Plain)
+                          if %6 {
+                            let n.1: Int = exception_payload(e.1)
+                            jump k11(n.1)
+                          } else {
+                            raise e.1
+                          }
+                        }
+                      }
+                    } in {
+                      try {
+                        raise Plain with 13
+                      } handle (e.2: Exception) {
+                        let %7: Bool = prim is(e.2, Plain)
+                        if %7 {
+                          let n.2: Int = exception_payload(e.2)
+                          jump k10(n.2)
+                        } else {
+                          raise e.2
+                        }
+                      }
+                    }
+                  } in {
+                    try {
+                      raise Plain with 12
+                    } handle (e.3: Exception) {
+                      let %8: Bool = prim is(e.3, Plain)
+                      if %8 {
+                        let n.3: Int = exception_payload(e.3)
+                        jump k9(n.3)
+                      } else {
+                        raise e.3
+                      }
+                    }
+                  }
+                } in {
+                  try {
+                    do call okThrower(11)
+                    jump k8(0)
+                  } handle (e.4: Exception) {
+                    let %9: Bool = prim is(e.4, Plain)
+                    if %9 {
+                      let n.4: Int = exception_payload(e.4)
+                      jump k8(n.4)
+                    } else {
+                      raise e.4
+                    }
+                  }
+                }
+              } in {
+                try {
+                  let %10: Array(Int) = call arrayThrower(10)
+                  let %11: Int = index(%10, 0)
+                  jump k7(%11)
+                } handle (e.5: Exception) {
+                  let %12: Bool = prim is(e.5, Plain)
+                  if %12 {
+                    let n.5: Int = exception_payload(e.5)
+                    jump k7(n.5)
+                  } else {
+                    raise e.5
+                  }
+                }
+              }
+            } in {
+              try {
+                let %13: Fun(x: Int): Int = call funThrower(9)
+                let %14: Int = call %13(1)
+                jump k6(%14)
+              } handle (e.6: Exception) {
+                let %15: Bool = prim is(e.6, Plain)
+                if %15 {
+                  let n.6: Int = exception_payload(e.6)
+                  jump k6(n.6)
+                } else {
+                  raise e.6
+                }
+              }
+            }
+          } in {
+            try {
+              let %16: Tuple a: Int b: Bool end = call tupleThrower(8)
+              let %17: Int = tuple_field(%16, 0)
+              jump k5(%17)
+            } handle (e.7: Exception) {
+              let %18: Bool = prim is(e.7, Plain)
+              if %18 {
+                let n.7: Int = exception_payload(e.7)
+                jump k5(n.7)
+              } else {
+                raise e.7
+              }
+            }
+          }
+        } in {
+          try {
+            let %19: String = call stringThrower(7)
+            jump k4(0)
+          } handle (e.8: Exception) {
+            let %20: Bool = prim is(e.8, Plain)
+            if %20 {
+              let n.8: Int = exception_payload(e.8)
+              jump k4(n.8)
+            } else {
+              raise e.8
+            }
+          }
+        }
+      } in {
+        try {
+          let %21: Real = call realThrower(6)
+          jump k3(0)
+        } handle (e.9: Exception) {
+          let %22: Bool = prim is(e.9, Plain)
+          if %22 {
+            let n.9: Int = exception_payload(e.9)
+            jump k3(n.9)
+          } else {
+            raise e.9
+          }
+        }
+      }
+    } in {
+      try {
+        let %23: Int = call lam(4)
+        jump k2(%23)
+      } handle (e.10: Exception) {
+        let %24: Bool = prim is(e.10, Plain)
+        if %24 {
+          let n.10: Int = exception_payload(e.10)
+          jump k2(n.10)
+        } else {
+          raise e.10
+        }
+      }
+    }
+  } in {
+    try {
+      let %25: Int = call thrower(4)
+      jump k1(%25)
+    } handle (e.11: Exception) {
+      let %26: Bool = prim is(e.11, Plain)
+      if %26 {
+        let n.11: Int = exception_payload(e.11)
+        jump k1(n.11)
+      } else {
+        raise e.11
+      }
+    }
+  }
+}
+

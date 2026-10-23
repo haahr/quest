@@ -1,0 +1,126 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs rec {
+    fun sum(t: Tree): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(t) {
+          case leaf (n: Int): {
+            jump k1(n)
+          }
+          case node (f: Forest): {
+            var total: Int = 0
+            let %3: Array(Tree) = record_field(f, trees)
+            let %4: Int = call arrayOp.size [Tree](%3)
+            let %5: Int = prim -(%4, 1)
+            var i: Int = 0
+            loop L1 {
+              let %6: Bool = prim <=(i, %5)
+              if %6 {
+                let i.1: Int = i
+                let %7: Array(Tree) = record_field(f, trees)
+                let %8: Tree = index(%7, i.1)
+                let %9: Int = call sum(%8)
+                let %10: Int = prim +(total, %9)
+                total := %10
+                let %11: Int = prim +(i, 1)
+                i := %11
+              } else {
+                break L1
+              }
+            }
+            jump k1(total)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun leaf(n.1: Int): Tree {
+      let %12: Tree = variant(leaf, n.1)
+      return %12
+    }
+  }
+  funs {
+    fun node(f.1: Forest): Tree {
+      let %13: Tree = variant(node, f.1)
+      return %13
+    }
+  }
+  let %14: Tree = call leaf(2)
+  let %15: Tree = call leaf(3)
+  let %16: Array(Tree) = array(%14, %15)
+  let inner: Forest = record(trees = %16)
+  let %17: Tree = call leaf(1)
+  let %18: Tree = call node(inner)
+  let %19: Tree = call leaf(4)
+  let %20: Array(Tree) = array(%17, %18, %19)
+  let outer: Forest = record(trees = %20)
+  let %21: Tree = call node(outer)
+  let %22: Int = call sum(%21)
+  do call printInt(%22)
+  let %23: Array(Tree) = record_field(outer, trees)
+  let %24: Int = call arrayOp.size [Tree](%23)
+  do call printInt(%24)
+  let counts: Ints = array(5, 6)
+  let %25: Count = index(counts, 0)
+  let %26: Count = index(counts, 1)
+  let total.1: Count = prim +(%25, %26)
+  do call printInt(total.1)
+  let flag: Flag = 7
+  let size: Size = true
+  do call printInt(flag)
+  join k2(r.1: Int) {
+    do call printInt(r.1)
+    let fst: Int = 8
+    let snd: String = "eight"
+    let p: Pair(Int String) = tuple(fst, snd)
+    let v: Int = 9
+    let b: Box(Int) = tuple(v)
+    let %27: Int = tuple_field(p, 0)
+    let %28: Int = tuple_field(b, 0)
+    let %29: Int = prim +(%27, %28)
+    do call printInt(%29)
+    let y: Array(Int) = array(10)
+    let s: Sig = tuple(Let X = Int Let Y = Array(Int) y)
+    let %30: Y = tuple_field(s, 0)
+    let %31: Int = index(%30, 0)
+    do call printInt(%31)
+    let x.1: Int = 11
+    let y.1: Bool = true
+    let pkg: Tuple Let Size = Int Let Other = Size x: Int y: Bool end = tuple(Let Size = Int Let Other = Size x.1, y.1)
+    let %32: Int = tuple_field(pkg, 0)
+    do call printInt(%32)
+    join k3(r.2: Int) {
+      do call printInt(r.2)
+      let one: Single = 12
+      do call printInt(one)
+    } in {
+      let %33: Bool = tuple_field(pkg, 1)
+      if %33 {
+        jump k3(1)
+      } else {
+        jump k3(0)
+      }
+    }
+  } in {
+    if size {
+      jump k2(1)
+    } else {
+      jump k2(0)
+    }
+  }
+}
+

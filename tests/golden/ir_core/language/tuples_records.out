@@ -1,0 +1,57 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let x.1: Int = 10
+  let y: Int = 20
+  let t: T = tuple(x.1, y)
+  let %3: Int = tuple_field(t, 0)
+  let %4: Int = tuple_field(t, 1)
+  let %5: Int = prim +(%3, %4)
+  do call printInt(%5)
+  funs {
+    fun swap(pair: T): T {
+      let x.2: Int = tuple_field(pair, 1)
+      let y.1: Int = tuple_field(pair, 0)
+      let %6: Tuple x: Int y: Int end = tuple(x.2, y.1)
+      return %6
+    }
+  }
+  let x.3: Int = 1
+  let y.2: Int = 2
+  let %7: Tuple x: Int y: Int end = tuple(x.3, y.2)
+  let swapped: T = call swap(%7)
+  let %8: Int = tuple_field(swapped, 0)
+  let %9: Int = tuple_field(swapped, 1)
+  let %10: Int = prim +(10, %9)
+  let %11: Int = prim *(%8, %10)
+  do call printInt(%11)
+  let p: Record x: Int y: Int end = record(x = 30, y = 40)
+  let %12: Int = record_field(p, x)
+  let %13: Int = record_field(p, y)
+  let %14: Int = prim +(%12, %13)
+  do call printInt(%14)
+  let cr: Record var val: Int end = record(var val = 100)
+  let %15: Int = record_field(cr, val)
+  let %16: Int = prim +(%15, 23)
+  store cr.val := %16
+  let %17: Int = record_field(cr, val)
+  do call printInt(%17)
+  let %18: Record x: Int y: Int end = record(x = 5, y = 7)
+  let nested: Record pos: Record x: Int y: Int end var count: Int end = record(pos = %18, var count = 0)
+  let %19: Record x: Int y: Int end = record_field(nested, pos)
+  let %20: Int = record_field(%19, x)
+  let %21: Record x: Int y: Int end = record_field(nested, pos)
+  let %22: Int = record_field(%21, y)
+  let %23: Int = prim *(%20, %22)
+  store nested.count := %23
+  let %24: Int = record_field(nested, count)
+  do call printInt(%24)
+}
+

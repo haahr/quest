@@ -1,0 +1,39 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun getX [A::<: Point](p: A): Int {
+      let %3: Int = record_field(p, x)
+      return %3
+    }
+  }
+  funs {
+    fun getY [A::<: Point](p.1: A): Int {
+      let %4: Int = record_field(p.1, y)
+      return %4
+    }
+  }
+  let p.2: Record x: Int y: Int z: Int end = record(x = 42, y = 100, z = 999)
+  let %5: Int = call getX [Point3D](p.2)
+  do call printInt(%5)
+  let %6: Int = call getY [Point3D](p.2)
+  do call printInt(%6)
+  funs {
+    fun identity [A::<: Point](p.3: A): A {
+      return p.3
+    }
+  }
+  let p2: Point3D = call identity [Point3D](p.2)
+  let %7: Int = record_field(p2, x)
+  do call printInt(%7)
+  let %8: Int = record_field(p2, z)
+  do call printInt(%8)
+}
+

@@ -211,6 +211,8 @@ def run_single_golden_test(
     environment["QUEST_CHECK_CANONICAL"] = "1"
     # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
     environment["QUEST_CHECK_SCOPES"] = "1"
+    # Checks the IR's invariants after lowering (quest/ir/verify.py)
+    environment["QUEST_CHECK_IR"] = "1"
     if directives.env and phase_name in ("interpret", "run_c_compiled"):
         environment.update(directives.env)
 
@@ -325,6 +327,7 @@ def main() -> int:
         "tokenize",
         "parse",
         "typecheck",
+        "ir_core",
         "interpret",
         "run_c_compiled",
     ]

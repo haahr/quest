@@ -1,0 +1,204 @@
+main {
+  funs {
+    fun p(n: Int): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = call conv.int(n)
+      let %3: String = prim <>(%2, "\n")
+      let %4: Ok = call writer.putString(%1, %3)
+      return %4
+    }
+  }
+  funs {
+    fun s(text: String): Ok {
+      let %5: writer.T = member writer.output
+      let %6: String = prim <>(text, "\n")
+      let %7: Ok = call writer.putString(%5, %6)
+      return %7
+    }
+  }
+  funs {
+    fun whatIs(d: Dynamic): String {
+      join k1(r: String) {
+        return r
+      } in {
+        inspect d {
+          case Tuple end (t: Tuple a: Tuple end end): {
+            jump k1("a tuple")
+          }
+          else: {
+            jump k1("not a tuple")
+          }
+        }
+      }
+    }
+  }
+  let x: Int = 1
+  let %8: Tuple x: Int end = tuple(x)
+  let %9: T = call dynamic.new [Tuple x: Int end](%8)
+  let %10: String = call whatIs(%9)
+  do call s(%10)
+  let %11: T = call dynamic.new [Int](1)
+  let %12: String = call whatIs(%11)
+  do call s(%12)
+  let %13: Record x: Int end = record(x = 1)
+  let %14: T = call dynamic.new [Record x: Int end](%13)
+  let %15: String = call whatIs(%14)
+  do call s(%15)
+  let Boom: Exception(Int) = exception Boom: Int
+  let dBoom: T = call dynamic.new [Exception(Int)](Boom)
+  join k2(raised: Int) {
+    do call p(raised)
+    join k3(r.1: Int) {
+      do call p(r.1)
+      let head: Int = 1
+      let head.1: Int = 2
+      let tail: IntList = option(nil)
+      let %16: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+      let tail.1: IntList = option(cons, %16)
+      let %17: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+      let l: IntList = option(cons, %17)
+      let dl: T = call dynamic.new [IntList](l)
+      funs rec {
+        fun sum(xs: OtherList): Int {
+          join k4(r.2: Int) {
+            return r.2
+          } in {
+            switch tag(xs) {
+              case cons (c: Tuple head: Int tail: OtherList end): {
+                let %18: Int = tuple_field(c, 0)
+                let %19: OtherList = tuple_field(c, 1)
+                let %20: Int = call sum(%19)
+                let %21: Int = prim +(%18, %20)
+                jump k4(%21)
+              }
+              case nil: {
+                jump k4(0)
+              }
+            }
+          }
+        }
+      }
+      let %22: OtherList = call dynamic.be [OtherList](dl)
+      let %23: Int = call sum(%22)
+      do call p(%23)
+      join k5(r.3: Int) {
+        do call p(r.3)
+        let %24: list.T(Int) = type_app list.nil [Int]
+        let ints: list.T(Int) = call list.cons [Int](5, %24)
+        let dInts: T = call dynamic.new [list.T(Int)](ints)
+        join k6(r.4: Int) {
+          do call p(r.4)
+          funs {
+            fun f(n.1: Int): Int {
+              let %25: Int = prim *(n.1, 2)
+              return %25
+            }
+          }
+          let dFun: T = call dynamic.new [Fun(n: Int): Int](f)
+          join k7(r.5: Int) {
+            do call p(r.5)
+            let big: Big = record(a = 1, b = 2, c = 3)
+            funs {
+              fun mk [A::TYPE](x.1: A): Big {
+                return big
+              }
+            }
+            let mkSmall: All(B :: TYPE) Fun(y: B): Small = mk
+            let %26: Small = call mkSmall [Int](0)
+            let %27: Int = record_field(%26, c)
+            do call p(%27)
+            let dMk: T = call dynamic.new [All(A :: TYPE) Fun(x: A): Big](mk)
+            let fromDynamic: All(C :: TYPE) Fun(z: C): Small = call dynamic.be [All(C :: TYPE) Fun(z: C): Small](dMk)
+            let %28: Small = call fromDynamic [String]("z")
+            let %29: Int = record_field(%28, c)
+            do call p(%29)
+            let hasMk: HasMk = record(f = mk)
+            let hasMkSmall: HasMkSmall = hasMk
+            let %30: All(B :: TYPE) Fun(y: B): Small = record_field(hasMkSmall, f)
+            let %31: Small = call %30 [Bool](true)
+            let %32: Int = record_field(%31, c)
+            do call p(%32)
+            funs {
+              fun ident [A::TYPE](x.2: A): A {
+                return x.2
+              }
+            }
+            let dIdent: T = call dynamic.new [All(A :: TYPE) Fun(x: A): A](ident)
+            let %33: All(B :: TYPE) Fun(y: B): B = call dynamic.be [All(B :: TYPE) Fun(y: B): B](dIdent)
+            let %34: Int = call %33 [Int](4)
+            do call p(%34)
+          } in {
+            inspect dFun {
+              case Fun(t: String): Int (f.1: Tuple a: Fun(t: String): Int end): {
+                let %35: Fun(t: String): Int = tuple_field(f.1, 0)
+                let %36: Int = call %35("x")
+                jump k7(%36)
+              }
+              case Fun(m: Int): Int (f.2: Tuple a: Fun(m: Int): Int end): {
+                let %37: Fun(m: Int): Int = tuple_field(f.2, 0)
+                let %38: Int = call %37(21)
+                jump k7(%38)
+              }
+              else: {
+                jump k7(0)
+              }
+            }
+          }
+        } in {
+          inspect dInts {
+            case list.T(String) (x.3: Tuple a: list.T(String) end): {
+              jump k6(0)
+            }
+            case list.T(Int) (x.4: Tuple a: list.T(Int) end): {
+              let %39: list.T(Int) = tuple_field(x.4, 0)
+              let %40: Int = call list.head [Int](%39)
+              jump k6(%40)
+            }
+            else: {
+              let %41: Int = prim -(0, 1)
+              jump k6(%41)
+            }
+          }
+        }
+      } in {
+        inspect dl {
+          case Option nil end (o: Tuple a: Option nil end end): {
+            jump k5(1)
+          }
+          case IntList (xs.1: Tuple a: IntList end): {
+            jump k5(2)
+          }
+          else: {
+            jump k5(0)
+          }
+        }
+      }
+    } in {
+      inspect dBoom {
+        case Exception(String) (e: Tuple a: Exception(String) end): {
+          jump k3(1)
+        }
+        case Exception(Int) (e.1: Tuple a: Exception(Int) end): {
+          jump k3(2)
+        }
+        else: {
+          jump k3(0)
+        }
+      }
+    }
+  } in {
+    try {
+      let %42: Exception(Int) = call dynamic.be [Exception(Int)](dBoom)
+      raise %42 with 42
+    } handle (e.2: Exception) {
+      let %43: Bool = prim is(e.2, Boom)
+      if %43 {
+        let n.2: Int = exception_payload(e.2)
+        jump k2(n.2)
+      } else {
+        raise e.2
+      }
+    }
+  }
+}
+

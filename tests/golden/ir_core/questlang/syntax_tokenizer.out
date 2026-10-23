@@ -1,0 +1,97 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printStr(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %1: Ok = call writer.putString(wOut, "\n")
+      return %1
+    }
+  }
+  funs {
+    fun printInt(n: Int): Ok {
+      let %2: String = call conv.int(n)
+      let %3: Ok = call printStr(%2)
+      return %3
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %4: String = call conv.bool(b)
+      let %5: Ok = call printStr(%4)
+      return %5
+    }
+  }
+  let %6: String = prim <>("    else\n", "        { n * fact(n - 1) };\n")
+  let %7: String = prim <>("        1\n", %6)
+  let %8: String = prim <>("    if n <= 1 then\n", %7)
+  let %9: String = prim <>("let rec fact(n: Int): Int =\n", %8)
+  let code1: String = prim <>("(* Sample Quest program *)\n", %9)
+  let sm1: location.SourceMap = call location.newSourceMap("fact.quest", code1)
+  let bag1: diagbag.T = call diagbag.new()
+  let tk1: tokenizer.T = call tokenizer.new(sm1, bag1)
+  let allTokens: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tk1)
+  let dump1: String = call tokenizer.formatDump(allTokens, sm1, false)
+  do call printStr(dump1)
+  let %10: Bool = call diagbag.hasErrors(bag1)
+  do call printBool(%10)
+  let %11: Int = call diagbag.errorCount(bag1)
+  do call printInt(%11)
+  let code2: String = "let x = 42;"
+  let sm2: location.SourceMap = call location.newSourceMap("peek.quest", code2)
+  let bag2: diagbag.T = call diagbag.new()
+  let tk2: tokenizer.T = call tokenizer.new(sm2, bag2)
+  let p1: tokens.Token = call tokenizer.peekToken(tk2)
+  let %12: TokenKind = tuple_field(p1, 0)
+  let %13: String = call tokens.tokenKindName(%12)
+  do call printStr(%13)
+  let %14: String = tuple_field(p1, 1)
+  do call printStr(%14)
+  let t1: tokens.Token = call tokenizer.nextToken(tk2)
+  let %15: TokenKind = tuple_field(t1, 0)
+  let %16: String = call tokens.tokenKindName(%15)
+  do call printStr(%16)
+  let %17: String = tuple_field(t1, 1)
+  do call printStr(%17)
+  let p2: tokens.Token = call tokenizer.peekToken(tk2)
+  let %18: TokenKind = tuple_field(p2, 0)
+  let %19: String = call tokens.tokenKindName(%18)
+  do call printStr(%19)
+  let %20: String = tuple_field(p2, 1)
+  do call printStr(%20)
+  let t2: tokens.Token = call tokenizer.nextToken(tk2)
+  let %21: TokenKind = tuple_field(t2, 0)
+  let %22: String = call tokens.tokenKindName(%21)
+  do call printStr(%22)
+  let %23: String = tuple_field(t2, 1)
+  do call printStr(%23)
+  let %24: String = prim <>("(* outer (* nested level 2 (* nested 3 *) *) back *)\n", "ident_1 _validIdent == !=\n")
+  let %25: String = prim <>("\"hello\" \"with \\\"quotes\\\" and \\n newline\"\n", %24)
+  let %26: String = prim <>("'a' '\\n' '\\t' '\\'' '\\\\' '\\x41' '\\065'\n", %25)
+  let code3: String = prim <>("0 42 ~100 3.14 1.5e-3 ~2.0E+2\n", %26)
+  let sm3: location.SourceMap = call location.newSourceMap("literals.quest", code3)
+  let bag3: diagbag.T = call diagbag.new()
+  let tk3: tokenizer.T = call tokenizer.new(sm3, bag3)
+  let tokens3: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tk3)
+  let %27: String = call tokenizer.formatDump(tokens3, sm3, false)
+  do call printStr(%27)
+  let %28: Bool = call diagbag.hasErrors(bag3)
+  do call printBool(%28)
+  let %29: String = prim <>("'too long'\n", "let final = 3;\n")
+  let %30: String = prim <>("'\\z' (* invalid char escape *)\n", %29)
+  let %31: String = prim <>("let alsoValid = 2;\n", %30)
+  let %32: String = prim <>("\"unclosed string literal\n", %31)
+  let codeErr: String = prim <>("let valid = 1;\n", %32)
+  let smErr: location.SourceMap = call location.newSourceMap("error_recovery.quest", codeErr)
+  let bagErr: diagbag.T = call diagbag.new()
+  let tkErr: tokenizer.T = call tokenizer.new(smErr, bagErr)
+  let tokensErr: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tkErr)
+  let %33: String = call tokenizer.formatDump(tokensErr, smErr, false)
+  do call printStr(%33)
+  let %34: Bool = call diagbag.hasErrors(bagErr)
+  do call printBool(%34)
+  let %35: Int = call diagbag.errorCount(bagErr)
+  do call printInt(%35)
+  do call printStr("--- Diagnostics Rendered ---")
+  do call diagbag.renderAll(bagErr, smErr, wOut)
+}
+

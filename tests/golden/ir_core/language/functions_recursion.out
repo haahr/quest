@@ -1,0 +1,119 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun square(x.1: Int): Int {
+      let %3: Int = prim *(x.1, x.1)
+      return %3
+    }
+  }
+  let %4: Int = call square(7)
+  do call printInt(%4)
+  funs {
+    fun add3(a: Int, b: Int, c: Int): Int {
+      let %5: Int = prim +(b, c)
+      let %6: Int = prim +(a, %5)
+      return %6
+    }
+  }
+  let %7: Int = call add3(10, 20, 30)
+  do call printInt(%7)
+  funs {
+    fun sub(x.2: Int): Fun(y: Int): Int {
+      funs {
+        fun f(y: Int): Int {
+          let %8: Int = prim -(x.2, y)
+          return %8
+        }
+      }
+      return f
+    }
+  }
+  let %9: Fun(y: Int): Int = call sub(100)
+  let %10: Int = call %9(42)
+  do call printInt(%10)
+  funs rec {
+    fun fact(n: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %11: Bool = prim <=(n, 1)
+        if %11 {
+          jump k1(1)
+        } else {
+          let %12: Int = prim -(n, 1)
+          let %13: Int = call fact(%12)
+          let %14: Int = prim *(n, %13)
+          jump k1(%14)
+        }
+      }
+    }
+  }
+  let %15: Int = call fact(6)
+  do call printInt(%15)
+  funs rec {
+    fun fib(n.1: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %16: Bool = prim <=(n.1, 0)
+        if %16 {
+          jump k2(0)
+        } else {
+          join k3(r.2: Int) {
+            jump k2(r.2)
+          } in {
+            let %17: Bool = prim is(n.1, 1)
+            if %17 {
+              jump k3(1)
+            } else {
+              let %18: Int = prim -(n.1, 1)
+              let %19: Int = call fib(%18)
+              let %20: Int = prim -(n.1, 2)
+              let %21: Int = call fib(%20)
+              let %22: Int = prim +(%19, %21)
+              jump k3(%22)
+            }
+          }
+        }
+      }
+    }
+  }
+  let %23: Int = call fib(10)
+  do call printInt(%23)
+  var count: Int = 0
+  funs {
+    fun increment(step: Int): Ok {
+      let %24: Int = prim +(count, step)
+      count := %24
+      return ok
+    }
+  }
+  do call increment(5)
+  do call increment(10)
+  do call printInt(count)
+  funs {
+    fun doubleVal(x.3: Int): Int {
+      let %25: Int = prim +(x.3, x.3)
+      return %25
+    }
+  }
+  funs {
+    fun combine(a.1: Int, b.1: Int): Int {
+      let %26: Int = call square(a.1)
+      let %27: Int = call doubleVal(b.1)
+      let %28: Int = prim +(%26, %27)
+      return %28
+    }
+  }
+  let %29: Int = call combine(5, 3)
+  do call printInt(%29)
+}
+

@@ -1,0 +1,138 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs rec {
+    fun sum(x.1: IntList): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(x.1) {
+          case cons (c: Tuple head: Int tail: IntList end): {
+            let %3: Int = tuple_field(c, 0)
+            let %4: IntList = tuple_field(c, 1)
+            let %5: Int = call sum(%4)
+            let %6: Int = prim +(%3, %5)
+            jump k1(%6)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let head: Int = 1
+  let head.1: Int = 2
+  let tail: IntList = option(nil)
+  let %7: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+  let tail.1: IntList = option(cons, %7)
+  let %8: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+  let l: IntList = option(cons, %8)
+  let u: Unfolded = l
+  let u2: Unfolded2 = u
+  var back: IntList = u2
+  back := u
+  let %9: Int = call sum(back)
+  do call printInt(%9)
+  let %10: Int = call sum(u2)
+  do call printInt(%10)
+  let %11: Tuple Int head: Int tail: IntList end = payload(u, cons)
+  let %12: Int = tuple_field(%11, 1)
+  do call printInt(%12)
+  let %13: Tuple Int head: Int tail: IntList end = payload(u, cons)
+  let %14: IntList = tuple_field(%13, 2)
+  let %15: Tuple Int head: Int tail: IntList end = payload(%14, cons)
+  let %16: Int = tuple_field(%15, 1)
+  do call printInt(%16)
+  let %17: Tuple Int head: Int tail: Unfolded end = payload(u2, cons)
+  let %18: Unfolded = tuple_field(%17, 2)
+  let %19: Tuple Int head: Int tail: IntList end = payload(%18, cons)
+  let %20: Int = tuple_field(%19, 1)
+  do call printInt(%20)
+  join k2(r.1: Int) {
+    do call printInt(r.1)
+    let head.2: Int = 4
+    let tail.2: IntList = l
+    let %21: Tuple head: Int tail: IntList end = tuple(head.2, tail.2)
+    let built: Unfolded = option(cons, %21)
+    let %22: Int = call sum(built)
+    do call printInt(%22)
+    funs {
+      fun firstTail(x.2: Unfolded2): Unfolded {
+        let %23: Tuple Int head: Int tail: Unfolded end = payload(x.2, cons)
+        let %24: Unfolded = tuple_field(%23, 2)
+        return %24
+      }
+    }
+    let %25: Unfolded = call firstTail(l)
+    let %26: Int = call sum(%25)
+    do call printInt(%26)
+    let t: IntList = l
+    let n: Int = 7
+    let h: Holder = tuple(t, n)
+    let hl: Tuple t: IntList n: Int end = h
+    let %27: IntList = tuple_field(hl, 0)
+    let %28: Int = call sum(%27)
+    let %29: Int = tuple_field(h, 1)
+    let %30: Int = prim +(%28, %29)
+    do call printInt(%30)
+    let a: Array(Unfolded) = array(u2, l, built)
+    let %31: Unfolded = index(a, 1)
+    let %32: Int = call sum(%31)
+    let %33: Unfolded = index(a, 2)
+    let %34: Int = call sum(%33)
+    let %35: Int = prim +(%32, %34)
+    do call printInt(%35)
+    let pl: Option nil cons with Tuple head: Int tail: List(Int) end end = l
+    let pl2: List(Int) = pl
+    let %36: Int = call sum(pl2)
+    do call printInt(%36)
+    let v: Int = 2
+    let kids: Array(Tree) = array()
+    let leaf: Tree = tuple(v, kids)
+    let tu: TreeUnfolded = leaf
+    let v.1: Int = 1
+    let kids.1: Array(TreeUnfolded) = array(tu, leaf)
+    let tu2: Tuple v: Int kids: Array(TreeUnfolded) end = tuple(v.1, kids.1)
+    let t.1: Tree = tu2
+    let %37: Int = tuple_field(t.1, 0)
+    let %38: Array(Tree) = tuple_field(t.1, 1)
+    let %39: Tree = index(%38, 0)
+    let %40: Int = tuple_field(%39, 0)
+    let %41: Array(Tree) = tuple_field(t.1, 1)
+    let %42: Tree = index(%41, 1)
+    let %43: Int = tuple_field(%42, 0)
+    let %44: Int = prim +(%40, %43)
+    let %45: Int = prim +(%37, %44)
+    do call printInt(%45)
+    let %46: T = call dynamic.new [Unfolded2](u2)
+    let %47: IntList = call dynamic.be [IntList](%46)
+    let %48: Int = call sum(%47)
+    do call printInt(%48)
+    let %49: T = call dynamic.new [IntList](l)
+    let %50: Unfolded = call dynamic.be [Unfolded](%49)
+    let %51: Tuple Int head: Int tail: IntList end = payload(%50, cons)
+    let %52: Int = tuple_field(%51, 1)
+    do call printInt(%52)
+  } in {
+    switch tag(u2) {
+      case cons (c.1: Tuple head: Int tail: Unfolded end): {
+        let %53: Unfolded = tuple_field(c.1, 1)
+        let %54: Tuple Int head: Int tail: IntList end = payload(%53, cons)
+        let %55: Int = tuple_field(%54, 1)
+        jump k2(%55)
+      }
+      else: {
+        jump k2(0)
+      }
+    }
+  }
+}
+

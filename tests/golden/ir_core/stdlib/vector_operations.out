@@ -1,0 +1,241 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(n: Int): Ok {
+      let %1: String = call conv.int(n)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, " ")
+      return %2
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %3: String = call conv.bool(b)
+      do call writer.putString(wOut, %3)
+      let %4: Ok = call writer.putString(wOut, " ")
+      return %4
+    }
+  }
+  funs {
+    fun printString(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %5: Ok = call writer.putString(wOut, " ")
+      return %5
+    }
+  }
+  funs {
+    fun printNewline(dummy: Int): Ok {
+      let %6: Ok = call writer.putString(wOut, "\n")
+      return %6
+    }
+  }
+  let v: vector.T(Int) = type_app vector.new [Int]
+  let %7: Bool = call vector.empty [Int](v)
+  do call printBool(%7)
+  let %8: Int = call vector.length [Int](v)
+  do call printInt(%8)
+  do call printNewline(0)
+  var i: Int = 1
+  loop L1 {
+    let %9: Bool = prim <=(i, 10)
+    if %9 {
+      let i.1: Int = i
+      let %10: Int = prim *(i.1, 10)
+      do call vector.append [Int](v, %10)
+      let %11: Int = prim +(i, 1)
+      i := %11
+    } else {
+      break L1
+    }
+  }
+  let %12: Bool = call vector.empty [Int](v)
+  do call printBool(%12)
+  let %13: Int = call vector.length [Int](v)
+  do call printInt(%13)
+  let %14: Int = call vector.first [Int](v)
+  do call printInt(%14)
+  let %15: Int = call vector.last [Int](v)
+  do call printInt(%15)
+  let %16: Int = call vector.get [Int](v, 4)
+  do call printInt(%16)
+  do call printNewline(0)
+  do call vector.set [Int](v, 4, 999)
+  let %17: Int = call vector.get [Int](v, 4)
+  do call printInt(%17)
+  do call printNewline(0)
+  do call vector.delete [Int](v, 4)
+  let %18: Int = call vector.length [Int](v)
+  do call printInt(%18)
+  let %19: Int = call vector.get [Int](v, 4)
+  do call printInt(%19)
+  do call printNewline(0)
+  let p1: Int = call vector.pop [Int](v)
+  let p2: Int = call vector.pop [Int](v)
+  do call printInt(p1)
+  do call printInt(p2)
+  let %20: Int = call vector.length [Int](v)
+  do call printInt(%20)
+  do call printNewline(0)
+  let arr: Array(Int) = call vector.toArray [Int](v)
+  let vFromArr: vector.T(Int) = call vector.fromArray [Int](arr)
+  let %21: Int = prim extent(arr)
+  do call printInt(%21)
+  let %22: Int = call vector.length [Int](vFromArr)
+  do call printInt(%22)
+  let %23: Int = call vector.get [Int](vFromArr, 0)
+  do call printInt(%23)
+  let %24: Int = call vector.last [Int](vFromArr)
+  do call printInt(%24)
+  do call printNewline(0)
+  let vCopy: vector.T(Int) = call vector.copy [Int](v)
+  do call vector.set [Int](vCopy, 0, 7777)
+  let %25: Int = call vector.get [Int](v, 0)
+  do call printInt(%25)
+  let %26: Int = call vector.get [Int](vCopy, 0)
+  do call printInt(%26)
+  do call printNewline(0)
+  let vConcat: vector.T(Int) = call vector.concat [Int](v, vCopy)
+  let %27: Int = call vector.length [Int](vConcat)
+  do call printInt(%27)
+  let %28: Int = call vector.first [Int](vConcat)
+  do call printInt(%28)
+  let %29: Int = call vector.last [Int](vConcat)
+  do call printInt(%29)
+  do call printNewline(0)
+  do call vector.clear [Int](v)
+  let %30: Bool = call vector.empty [Int](v)
+  do call printBool(%30)
+  let %31: Int = call vector.length [Int](v)
+  do call printInt(%31)
+  do call printNewline(0)
+  join k1(caughtEmptyFirst: Bool) {
+    join k2(caughtEmptyPop: Bool) {
+      join k3(caughtOutOfBoundsGet: Bool) {
+        join k4(caughtNegativeDelete: Bool) {
+          do call printBool(caughtEmptyFirst)
+          do call printBool(caughtEmptyPop)
+          do call printBool(caughtOutOfBoundsGet)
+          do call printBool(caughtNegativeDelete)
+          do call printNewline(0)
+          let vPair: vector.T(Pair) = type_app vector.new [Pair]
+          let x: Int = 10
+          let y: Int = 20
+          let pair1: Pair = tuple(x, y)
+          let x.1: Int = 30
+          let y.1: Int = 40
+          let pair2: Pair = tuple(x.1, y.1)
+          do call vector.append [Pair](vPair, pair1)
+          do call vector.append [Pair](vPair, pair2)
+          let %32: Int = call vector.length [Pair](vPair)
+          do call printInt(%32)
+          let p0: Pair = call vector.get [Pair](vPair, 0)
+          let %33: Int = tuple_field(p0, 0)
+          do call printInt(%33)
+          let %34: Int = tuple_field(p0, 1)
+          do call printInt(%34)
+          let x.2: Int = 99
+          let y.2: Int = 88
+          let pairUpdated: Pair = tuple(x.2, y.2)
+          do call vector.set [Pair](vPair, 0, pairUpdated)
+          let pair0Updated: Pair = call vector.get [Pair](vPair, 0)
+          let %35: Int = tuple_field(pair0Updated, 0)
+          do call printInt(%35)
+          let %36: Int = tuple_field(pair0Updated, 1)
+          do call printInt(%36)
+          let pPopped: Pair = call vector.pop [Pair](vPair)
+          let %37: Int = tuple_field(pPopped, 0)
+          do call printInt(%37)
+          let %38: Int = tuple_field(pPopped, 1)
+          do call printInt(%38)
+          let %39: Int = call vector.length [Pair](vPair)
+          do call printInt(%39)
+          do call printNewline(0)
+          let vItem: vector.T(Item) = type_app vector.new [Item]
+          let it1: Item = record(id = 1, val = "one")
+          let it2: Item = record(id = 2, val = "two")
+          let it3: Item = record(id = 3, val = "three")
+          do call vector.append [Item](vItem, it1)
+          do call vector.append [Item](vItem, it2)
+          do call vector.append [Item](vItem, it3)
+          let %40: Int = call vector.length [Item](vItem)
+          do call printInt(%40)
+          let it0: Item = call vector.get [Item](vItem, 0)
+          let %41: Int = record_field(it0, id)
+          do call printInt(%41)
+          let %42: String = record_field(it0, val)
+          do call printString(%42)
+          do call printNewline(0)
+          let itLast: Item = call vector.last [Item](vItem)
+          let %43: Int = record_field(itLast, id)
+          do call printInt(%43)
+          let %44: String = record_field(itLast, val)
+          do call printString(%44)
+          do call printNewline(0)
+          let vItemCopy: vector.T(Item) = call vector.copy [Item](vItem)
+          let itPopped: Item = call vector.pop [Item](vItem)
+          let %45: Int = record_field(itPopped, id)
+          do call printInt(%45)
+          let %46: Int = call vector.length [Item](vItem)
+          do call printInt(%46)
+          let %47: Int = call vector.length [Item](vItemCopy)
+          do call printInt(%47)
+          do call printNewline(0)
+        } in {
+          try {
+            let %48: Int = prim -(0, 1)
+            do call vector.delete [Int](vConcat, %48)
+            jump k4(false)
+          } handle (e: Exception) {
+            let %49: Exception = member vector.error
+            let %50: Bool = prim is(e, %49)
+            if %50 {
+              jump k4(true)
+            } else {
+              raise e
+            }
+          }
+        }
+      } in {
+        try {
+          let %51: Int = call vector.get [Int](vConcat, 100)
+          jump k3(false)
+        } handle (e.1: Exception) {
+          let %52: Exception = member vector.error
+          let %53: Bool = prim is(e.1, %52)
+          if %53 {
+            jump k3(true)
+          } else {
+            raise e.1
+          }
+        }
+      }
+    } in {
+      try {
+        let %54: Int = call vector.pop [Int](v)
+        jump k2(false)
+      } handle (e.2: Exception) {
+        let %55: Exception = member vector.error
+        let %56: Bool = prim is(e.2, %55)
+        if %56 {
+          jump k2(true)
+        } else {
+          raise e.2
+        }
+      }
+    }
+  } in {
+    try {
+      let %57: Int = call vector.first [Int](v)
+      jump k1(false)
+    } handle (e.3: Exception) {
+      let %58: Exception = member vector.error
+      let %59: Bool = prim is(e.3, %58)
+      if %59 {
+        jump k1(true)
+      } else {
+        raise e.3
+      }
+    }
+  }
+}
+

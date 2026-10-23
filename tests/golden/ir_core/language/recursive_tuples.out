@@ -1,0 +1,119 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let v: Int = 2
+  let kids: Array(Tree) = array()
+  let leaf: Tree = tuple(v, kids)
+  let v.1: Int = 1
+  let kids.1: Array(Tree) = array(leaf, leaf)
+  let t1: Tree = tuple(v.1, kids.1)
+  funs rec {
+    fun sum(t: Tree): Int {
+      let %3: Int = tuple_field(t, 0)
+      var s: Int = %3
+      let %4: Array(Tree) = tuple_field(t, 1)
+      let %5: Int = call arrayOp.size [Tree](%4)
+      let %6: Int = prim -(%5, 1)
+      var i: Int = 0
+      loop L1 {
+        let %7: Bool = prim <=(i, %6)
+        if %7 {
+          let i.1: Int = i
+          let %8: Array(Tree) = tuple_field(t, 1)
+          let %9: Tree = index(%8, i.1)
+          let %10: Int = call sum(%9)
+          let %11: Int = prim +(s, %10)
+          s := %11
+          let %12: Int = prim +(i, 1)
+          i := %12
+        } else {
+          break L1
+        }
+      }
+      return s
+    }
+  }
+  let %13: Int = call sum(t1)
+  do call printInt(%13)
+  funs {
+    fun id [A::TYPE](x.1: A): A {
+      return x.1
+    }
+  }
+  let %14: Tree = call id [Tree](leaf)
+  let %15: Int = tuple_field(%14, 0)
+  do call printInt(%15)
+  let t.1: Tree = t1
+  let n: Int = 7
+  let h: Holder = tuple(t.1, n)
+  let %16: Tree = tuple_field(h, 0)
+  let %17: Int = call sum(%16)
+  let %18: Int = tuple_field(h, 1)
+  let %19: Int = prim +(%17, %18)
+  do call printInt(%19)
+  let v.2: Int = 1
+  let v.3: Int = 2
+  let kids.2: Array(Tree) = array()
+  let %20: Tuple v: Int kids: Array(Tree) end = tuple(v.3, kids.2)
+  let kids.3: Array(Tree) = array_rep(0, %20)
+  let %21: Tuple v: Int kids: Array(Tree) end = tuple(v.2, kids.3)
+  let d5: T = call dynamic.new [Tree](%21)
+  let back: Tree = call dynamic.be [Tree](d5)
+  let %22: Int = tuple_field(back, 0)
+  do call printInt(%22)
+  let %23: Array(Tree) = tuple_field(back, 1)
+  let %24: Int = call arrayOp.size [Tree](%23)
+  do call printInt(%24)
+  let %25: T = call dynamic.new [Tree](t1)
+  let %26: Tree = call dynamic.be [Tree](%25)
+  let %27: Int = call sum(%26)
+  do call printInt(%27)
+  let %28: T = call dynamic.new [Tree](t1)
+  let %29: Tree2 = call dynamic.be [Tree2](%28)
+  let %30: Array(Tree2) = tuple_field(%29, 1)
+  let %31: Tree2 = index(%30, 1)
+  let %32: Int = tuple_field(%31, 0)
+  do call printInt(%32)
+  let v.4: Int = 9
+  let v.5: Int = 3
+  let kids.4: Array(RTree(Int)) = array()
+  let %33: Tuple v: Int kids: Array(Rec(T :: TYPE) Tuple v: Int kids: Array(T) end) end = tuple(v.5, kids.4)
+  let kids.5: Array(Rec(T :: TYPE) Tuple v: Int kids: Array(T) end) = array_rep(1, %33)
+  let rt: RTree(Int) = tuple(v.4, kids.5)
+  let %34: Array(Rec(T :: TYPE) Tuple v: Int kids: Array(T) end) = tuple_field(rt, 1)
+  let %35: Rec(T :: TYPE) Tuple v: Int kids: Array(T) end = index(%34, 0)
+  let %36: Int = tuple_field(%35, 0)
+  do call printInt(%36)
+  let %37: T = call dynamic.new [RTree(Int)](rt)
+  let %38: Tree = call dynamic.be [Tree](%37)
+  let %39: Array(Tree) = tuple_field(%38, 1)
+  let %40: Tree = index(%39, 0)
+  let %41: Int = tuple_field(%40, 0)
+  do call printInt(%41)
+  join k1(o: Int) {
+    do call printInt(o)
+  } in {
+    try {
+      let %42: T = call dynamic.new [Tree](t1)
+      let %43: Other = call dynamic.be [Other](%42)
+      let %44: Int = tuple_field(%43, 0)
+      jump k1(%44)
+    } handle (e: Exception) {
+      let %45: Exception = member dynamic.error
+      let %46: Bool = prim is(e, %45)
+      if %46 {
+        jump k1(-1)
+      } else {
+        raise e
+      }
+    }
+  }
+}
+

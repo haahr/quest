@@ -1,0 +1,106 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let x.1: Int = 1
+  let x.2: Int = 2
+  let y: Int = x.1
+  let %3: Int = prim *(x.2, 10)
+  let %4: Int = prim +(%3, y)
+  do call printInt(%4)
+  let a: Int = 3
+  let b: Int = 4
+  let %5: Int = prim *(a, 10)
+  let %6: Int = prim +(%5, b)
+  do call printInt(%6)
+  let p: Int = 1
+  let q: Int = 2
+  let p.1: Int = q
+  let q.1: Int = p
+  let %7: Int = prim *(p.1, 10)
+  let swapped: Int = prim +(%7, q.1)
+  do call printInt(swapped)
+  funs {
+    fun shift(n: Int): Int {
+      let n.1: Int = prim +(n, 1)
+      let m: Int = n
+      let %8: Int = prim *(n.1, 100)
+      let %9: Int = prim +(%8, m)
+      return %9
+    }
+  }
+  let %10: Int = call shift(5)
+  do call printInt(%10)
+  funs {
+    fun captured(): Int {
+      let u: Int = 3
+      let u.1: Int = 4
+      funs {
+        fun f(): Int {
+          return u
+        }
+      }
+      let %11: Int = call f()
+      let %12: Int = prim *(%11, 10)
+      let %13: Int = prim +(%12, u.1)
+      return %13
+    }
+  }
+  let %14: Int = call captured()
+  do call printInt(%14)
+  funs {
+    fun counted(): Int {
+      var c: Int = 0
+      let %15: Int = prim +(c, 1)
+      c := %15
+      let first: Int = c
+      let done: Ok = call printInt(c)
+      let %16: Int = prim +(c, 10)
+      c := %16
+      let second: Int = c
+      let %17: Int = prim *(first, 100)
+      let %18: Int = prim +(%17, second)
+      return %18
+    }
+  }
+  let %19: Int = call counted()
+  do call printInt(%19)
+  funs {
+    fun mutable(): Int {
+      var v: Int = 1
+      var w: Int = 2
+      let %20: Int = prim +(v, w)
+      v := %20
+      w := 0
+      let %21: Int = prim *(v, 10)
+      let %22: Int = prim +(%21, w)
+      return %22
+    }
+  }
+  let %23: Int = call mutable()
+  do call printInt(%23)
+  funs {
+    fun later(): Int {
+      let k: Int = 1
+      funs {
+        fun get(): Int {
+          return k
+        }
+      }
+      let k.1: Int = 2
+      let %24: Int = call get()
+      let %25: Int = prim *(%24, 10)
+      let %26: Int = prim +(%25, k.1)
+      return %26
+    }
+  }
+  let %27: Int = call later()
+  do call printInt(%27)
+}
+

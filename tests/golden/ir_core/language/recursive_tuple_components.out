@@ -1,0 +1,285 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      join k1(r: Int) {
+        let %3: Ok = call printInt(r)
+        return %3
+      } in {
+        if b {
+          jump k1(1)
+        } else {
+          jump k1(0)
+        }
+      }
+    }
+  }
+  let x.1: Int = 1
+  let y: Int = prim +(x.1, 1)
+  funs {
+    fun addX(n: Int): Int {
+      let %4: Int = prim +(n, x.1)
+      return %4
+    }
+  }
+  let basics: Tuple x: Int y: Int addX: Fun(n: Int): Int end = tuple(x.1, y, addX)
+  let %5: Int = tuple_field(basics, 1)
+  let %6: Int = prim *(%5, 10)
+  let %7: Fun(n: Int): Int = tuple_field(basics, 2)
+  let %8: Int = call %7(5)
+  let %9: Int = prim +(%6, %8)
+  do call printInt(%9)
+  funs rec {
+    fun fact(n.1: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %10: Bool = prim <=(n.1, 1)
+        if %10 {
+          jump k2(1)
+        } else {
+          let %11: Int = prim -(n.1, 1)
+          let %12: Int = call fact(%11)
+          let %13: Int = prim *(n.1, %12)
+          jump k2(%13)
+        }
+      }
+    }
+  }
+  funs rec {
+    fun even(n.2: Int): Bool {
+      join k3(r.2: Bool) {
+        return r.2
+      } in {
+        let %14: Bool = prim is(n.2, 0)
+        if %14 {
+          jump k3(true)
+        } else {
+          let %15: Int = prim -(n.2, 1)
+          let %16: Bool = call odd(%15)
+          jump k3(%16)
+        }
+      }
+    }
+    fun odd(n.3: Int): Bool {
+      join k4(r.3: Bool) {
+        return r.3
+      } in {
+        let %17: Bool = prim is(n.3, 0)
+        if %17 {
+          jump k4(false)
+        } else {
+          let %18: Int = prim -(n.3, 1)
+          let %19: Bool = call even(%18)
+          jump k4(%19)
+        }
+      }
+    }
+  }
+  let numbers: Tuple fact: Fun(n: Int): Int even: Fun(n: Int): Bool odd: Fun(n: Int): Bool end = tuple(fact, even, odd)
+  let %20: Fun(n: Int): Int = tuple_field(numbers, 0)
+  let %21: Int = call %20(5)
+  do call printInt(%21)
+  let %22: Fun(n: Int): Bool = tuple_field(numbers, 1)
+  let %23: Bool = call %22(10)
+  do call printBool(%23)
+  let %24: Fun(n: Int): Bool = tuple_field(numbers, 2)
+  let %25: Bool = call %24(10)
+  do call printBool(%25)
+  funs {
+    fun countDown(k: Int): Int {
+      funs rec {
+        fun down(n.4: Int): Int {
+          join k5(r.4: Int) {
+            return r.4
+          } in {
+            let %26: Bool = prim <=(n.4, 0)
+            if %26 {
+              jump k5(k)
+            } else {
+              let %27: Int = prim -(n.4, 1)
+              let %28: Int = call up(%27)
+              let %29: Int = prim +(%28, 1)
+              jump k5(%29)
+            }
+          }
+        }
+        fun up(n.5: Int): Int {
+          join k6(r.5: Int) {
+            return r.5
+          } in {
+            let %30: Bool = prim <=(n.5, 0)
+            if %30 {
+              jump k6(k)
+            } else {
+              let %31: Int = prim -(n.5, 1)
+              let %32: Int = call down(%31)
+              let %33: Int = prim +(%32, 10)
+              jump k6(%33)
+            }
+          }
+        }
+      }
+      let t: Tuple down: Fun(n: Int): Int up: Fun(n: Int): Int end = tuple(down, up)
+      let %34: Fun(n: Int): Int = tuple_field(t, 0)
+      let %35: Int = call %34(4)
+      return %35
+    }
+  }
+  let %36: Int = call countDown(100)
+  do call printInt(%36)
+  let x.2: Int = 7
+  let x.3: Int = 2
+  let y.1: Int = x.2
+  funs {
+    fun getX(): Int {
+      return x.2
+    }
+  }
+  let shadowing: Tuple x: Int y: Int getX: Fun(): Int end = tuple(x.3, y.1, getX)
+  let %37: Int = tuple_field(shadowing, 0)
+  let %38: Int = prim *(%37, 100)
+  let %39: Int = tuple_field(shadowing, 1)
+  let %40: Int = prim *(%39, 10)
+  let %41: Fun(): Int = tuple_field(shadowing, 2)
+  let %42: Int = call %41()
+  let %43: Int = prim +(%40, %42)
+  let %44: Int = prim +(%38, %43)
+  do call printInt(%44)
+  let head: Int = 3
+  let head.1: Int = 4
+  let tail: L = option(nil)
+  let %45: Tuple head: Int tail: L end = tuple(head.1, tail)
+  let tail.1: L = option(cons, %45)
+  let %46: Tuple head: Int tail: L end = tuple(head, tail.1)
+  let l: L = option(cons, %46)
+  funs rec {
+    fun sum(xs: L): Int {
+      join k7(r.6: Int) {
+        return r.6
+      } in {
+        switch tag(xs) {
+          case cons (c: Tuple head: Int tail: L end): {
+            let %47: Int = tuple_field(c, 0)
+            let %48: L = tuple_field(c, 1)
+            let %49: Int = call sum(%48)
+            let %50: Int = prim +(%47, %49)
+            jump k7(%50)
+          }
+          else: {
+            jump k7(0)
+          }
+        }
+      }
+    }
+  }
+  let lists: Tuple Let L = Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end l: L sum: Fun(xs: L): Int end = tuple(Let L = Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end l, sum)
+  let %51: Fun(xs: L): Int = tuple_field(lists, 1)
+  let %52: L = tuple_field(lists, 0)
+  let %53: Int = call %51(%52)
+  do call printInt(%53)
+  funs rec {
+    fun size(t.1: Tree): Int {
+      join k8(r.7: Int) {
+        return r.7
+      } in {
+        switch tag(t.1) {
+          case leaf (n.6: Int): {
+            jump k8(n.6)
+          }
+          case node (f: Forest): {
+            let %54: Int = call sizeForest(f)
+            jump k8(%54)
+          }
+          else: {
+            jump k8(0)
+          }
+        }
+      }
+    }
+    fun sizeForest(f.1: Forest): Int {
+      var s: Int = 0
+      let %55: Array(Tree) = record_field(f.1, trees)
+      let %56: Int = call arrayOp.size [Tree](%55)
+      let %57: Int = prim -(%56, 1)
+      var i: Int = 0
+      loop L1 {
+        let %58: Bool = prim <=(i, %57)
+        if %58 {
+          let i.1: Int = i
+          let %59: Array(Tree) = record_field(f.1, trees)
+          let %60: Tree = index(%59, i.1)
+          let %61: Int = call size(%60)
+          let %62: Int = prim +(s, %61)
+          s := %62
+          let %63: Int = prim +(i, 1)
+          i := %63
+        } else {
+          break L1
+        }
+      }
+      return s
+    }
+  }
+  let trees: Tuple Let Forest = Rec(Forest :: TYPE) Record trees: Array(Tree) end Let Tree = Rec(Tree :: TYPE) Variant leaf: Int node: Forest end size: Fun(t: Tree): Int sizeForest: Fun(f: Forest): Int end = tuple(Let Forest = Rec(Forest :: TYPE) Record trees: Array(Tree) end Let Tree = Rec(Tree :: TYPE) Variant leaf: Int node: Forest end size, sizeForest)
+  funs {
+    fun leaf(n.7: Int): Rec(Tree :: TYPE) Variant leaf: Int node: Forest end {
+      let %64: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = variant(leaf, n.7)
+      return %64
+    }
+  }
+  let %65: Fun(f: Forest): Int = tuple_field(trees, 1)
+  let %66: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = call leaf(5)
+  let %67: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = call leaf(6)
+  let %68: Array(Tree) = array(%66, %67)
+  let %69: Record trees: Array(Tree) end = record(trees = %68)
+  let %70: Int = call %65(%69)
+  do call printInt(%70)
+  funs rec {
+    fun toInt(n.8: Nat): Int {
+      join k9(r.8: Int) {
+        return r.8
+      } in {
+        switch tag(n.8) {
+          case succ (p: Tuple n: Nat end): {
+            let %71: Nat = tuple_field(p, 0)
+            let %72: Int = call toInt(%71)
+            let %73: Int = prim +(1, %72)
+            jump k9(%73)
+          }
+          else: {
+            jump k9(0)
+          }
+        }
+      }
+    }
+  }
+  let n.9: Nat = option(zero)
+  let %74: Tuple n: Nat end = tuple(n.9)
+  let n.10: Nat = option(succ, %74)
+  let %75: Tuple n: Nat end = tuple(n.10)
+  let two: Nat = option(succ, %75)
+  let impl: Sig = tuple(Let Nat = Rec(Nat :: TYPE) Option zero succ with Tuple n: Nat end end toInt, two)
+  let %76: Fun(n: Nat): Int = tuple_field(impl, 0)
+  let %77: Nat = tuple_field(impl, 1)
+  let %78: Int = call %76(%77)
+  do call printInt(%78)
+  let a: Int = 30
+  let a.1: Int = 1
+  let b.1: Int = a
+  let pair: Pair = tuple(a.1, b.1)
+  let %79: Int = tuple_field(pair, 0)
+  let %80: Int = prim *(%79, 100)
+  let %81: Int = tuple_field(pair, 1)
+  let %82: Int = prim +(%80, %81)
+  do call printInt(%82)
+}
+

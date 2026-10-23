@@ -1,0 +1,111 @@
+main {
+  funs {
+    fun nl(): Ok {
+      let %1: writer.T = member writer.output
+      let %2: Ok = call writer.putString(%1, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun p(n: Int): Ok {
+      let %3: writer.T = member writer.output
+      let %4: String = call conv.int(n)
+      do call writer.putString(%3, %4)
+      let %5: Ok = call nl()
+      return %5
+    }
+  }
+  let head: Int = 1
+  let head.1: Int = 2
+  let tail: IntList = option(nil)
+  let %6: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+  let tail.1: IntList = option(cons, %6)
+  let %7: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+  let l: IntList = option(cons, %7)
+  let %8: writer.T = member writer.output
+  let %9: T = call dynamic.new [IntList](l)
+  do call dynamic.extern(%8, %9)
+  do call nl()
+  let u: Unfolded = l
+  let %10: writer.T = member writer.output
+  let %11: T = call dynamic.new [Unfolded](u)
+  do call dynamic.extern(%10, %11)
+  do call nl()
+  let %12: T = call dynamic.new [IntList](l)
+  let %13: Record label: String payload: Dynamic.T end = record(label = "inner", payload = %12)
+  let inner: T = call dynamic.new [Labeled](%13)
+  let outer: Labeled = record(label = "outer", payload = inner)
+  let %14: writer.T = member writer.output
+  let %15: T = call dynamic.new [Labeled](outer)
+  do call dynamic.extern(%14, %15)
+  do call nl()
+  let shared: Array(Int) = call arrayOp.new [Int](2, 9)
+  let %16: writer.T = member writer.output
+  let %17: Tuple Array(Int) Array(Int) end = tuple(shared, shared)
+  let %18: T = call dynamic.new [Twice](%17)
+  do call dynamic.extern(%16, %18)
+  do call nl()
+  let %19: Real = call real.plus(0.1, 0.2)
+  let %20: Real = call real.mul(1000000.0, 10000000000.0)
+  let %21: Real = call real.div(1.0, 3.0)
+  let rs: Reals = record(a = %19, b = %20, c = 100.0, d = 0.0001, e = 1e-05, f = %21)
+  let %22: writer.T = member writer.output
+  let %23: T = call dynamic.new [Reals](rs)
+  do call dynamic.extern(%22, %23)
+  do call nl()
+  let %24: writer.T = member writer.output
+  let %25: MaybeFun = variant(none, ok)
+  let %26: T = call dynamic.new [MaybeFun](%25)
+  do call dynamic.extern(%24, %26)
+  do call nl()
+  funs rec {
+    fun sum(xs: IntList): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(xs) {
+          case cons (c: Tuple head: Int tail: IntList end): {
+            let %27: Int = tuple_field(c, 0)
+            let %28: IntList = tuple_field(c, 1)
+            let %29: Int = call sum(%28)
+            let %30: Int = prim +(%27, %29)
+            jump k1(%30)
+          }
+          case nil: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let %31: reader.T = member reader.input
+  let %32: T = call dynamic.intern(%31)
+  let %33: IntList = call dynamic.be [IntList](%32)
+  let %34: Int = call sum(%33)
+  do call p(%34)
+  let %35: reader.T = member reader.input
+  let %36: T = call dynamic.intern(%35)
+  let rd: Labeled = call dynamic.be [Labeled](%36)
+  let %37: writer.T = member writer.output
+  let %38: String = record_field(rd, label)
+  do call writer.putString(%37, %38)
+  do call nl()
+  let %39: Dynamic.T = record_field(rd, payload)
+  let reals: Array(Real) = call dynamic.be [Array(Real)](%39)
+  let %40: writer.T = member writer.output
+  let %41: Real = call arrayOp.get [Real](reals, 0)
+  let %42: String = call conv.real(%41)
+  do call writer.putString(%40, %42)
+  do call nl()
+  let %43: Int = call arrayOp.size [Real](reals)
+  do call p(%43)
+  let %44: reader.T = member reader.input
+  let %45: T = call dynamic.intern(%44)
+  let st: Shared = call dynamic.be [Shared](%45)
+  let %46: Array(Int) = tuple_field(st, 1)
+  do call arrayOp.set [Int](%46, 0, 40)
+  let %47: Array(Int) = tuple_field(st, 2)
+  let %48: Int = call arrayOp.get [Int](%47, 0)
+  do call p(%48)
+}
+

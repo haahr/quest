@@ -1,0 +1,104 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let br: BigRec = record(x = 10, y = 20, z = 30)
+  let dRec: T = call dynamic.new [BigRec](br)
+  let sr: SmallRec = call dynamic.be [SmallRec](dRec)
+  let %3: Int = record_field(sr, x)
+  let %4: Int = record_field(sr, y)
+  let %5: Int = prim +(%3, %4)
+  do call printInt(%5)
+  let pr: PermRec = record(b = 2, a = 1)
+  let dPerm: T = call dynamic.new [PermRec](pr)
+  let ord: OrderedRec = call dynamic.be [OrderedRec](dPerm)
+  let %6: Int = record_field(ord, a)
+  let %7: Int = record_field(ord, b)
+  let %8: Int = prim +(10, %7)
+  let %9: Int = prim *(%6, %8)
+  do call printInt(%9)
+  let %10: Record x: Int y: Int end = record(x = 42, y = 99)
+  let ob: OuterBig = record(inner = %10, tag = "nested")
+  let dNest: T = call dynamic.new [OuterBig](ob)
+  let os: OuterSmall = call dynamic.be [OuterSmall](dNest)
+  let %11: InnerSmall = record_field(os, inner)
+  let %12: Int = record_field(%11, x)
+  do call printInt(%12)
+  let %13: String = record_field(os, tag)
+  do call writer.putString(wOut, %13)
+  do call writer.putString(wOut, "\n")
+  let va: VarSmall = variant(a, 55)
+  let dVar: T = call dynamic.new [VarSmall](va)
+  let vb: VarBig = call dynamic.be [VarBig](dVar)
+  switch tag(vb) {
+    case a (n: Int): {
+      do call printInt(n)
+    }
+    else: {
+      do call printInt(0)
+    }
+  }
+  funs {
+    fun classify(d: Dynamic): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        inspect d {
+          case Int (n.1: Tuple a: Int end): {
+            let %14: Int = tuple_field(n.1, 0)
+            jump k1(%14)
+          }
+          case SmallRec (r.1: Tuple a: SmallRec end): {
+            let %15: SmallRec = tuple_field(r.1, 0)
+            let %16: Int = record_field(%15, x)
+            let %17: SmallRec = tuple_field(r.1, 0)
+            let %18: Int = record_field(%17, y)
+            let %19: Int = prim +(%16, %18)
+            jump k1(%19)
+          }
+          else: {
+            jump k1(999)
+          }
+        }
+      }
+    }
+  }
+  let %20: T = call dynamic.new [Int](7)
+  let %21: Int = call classify(%20)
+  do call printInt(%21)
+  let %22: Int = call classify(dRec)
+  do call printInt(%22)
+  let %23: T = call dynamic.new [String]("hello")
+  let %24: Int = call classify(%23)
+  do call printInt(%24)
+  funs {
+    fun testMismatch(d.1: Dynamic): Int {
+      join k2(r.2: Int) {
+        return r.2
+      } in {
+        try {
+          let ignored: Int = call dynamic.be [Int](d.1)
+          jump k2(1)
+        } handle (e: Exception) {
+          let %25: Exception = member dynamic.error
+          let %26: Bool = prim is(e, %25)
+          if %26 {
+            jump k2(2)
+          } else {
+            jump k2(3)
+          }
+        }
+      }
+    }
+  }
+  let %27: T = call dynamic.new [String]("wrong")
+  let %28: Int = call testMismatch(%27)
+  do call printInt(%28)
+}
+

@@ -1,0 +1,197 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printStr(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %1: Ok = call writer.putString(wOut, "\n")
+      return %1
+    }
+  }
+  funs {
+    fun printInt(n: Int): Ok {
+      let %2: String = call conv.int(n)
+      let %3: Ok = call printStr(%2)
+      return %3
+    }
+  }
+  funs {
+    fun printReal(r: Real): Ok {
+      let %4: String = call conv.real(r)
+      let %5: Ok = call printStr(%4)
+      return %5
+    }
+  }
+  funs {
+    fun printChar(c: Char): Ok {
+      let %6: String = call conv.char(c)
+      let %7: Ok = call printStr(%6)
+      return %7
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %8: String = call conv.bool(b)
+      let %9: Ok = call printStr(%8)
+      return %9
+    }
+  }
+  let sp1: Span = call location.span("test.quest", 0, 3)
+  let %10: tokens.TokenKind = option(kwLet)
+  let %11: TokenValue = call tokens.valNone()
+  let tokLet: Token = call tokens.make(%10, "let", %11, sp1)
+  let %12: TokenKind = tuple_field(tokLet, 0)
+  let %13: String = call tokens.tokenKindName(%12)
+  do call printStr(%13)
+  let %14: String = tuple_field(tokLet, 1)
+  do call printStr(%14)
+  let %15: location.Span = tuple_field(tokLet, 3)
+  let %16: Int = tuple_field(%15, 1)
+  do call printInt(%16)
+  let %17: location.Span = tuple_field(tokLet, 3)
+  let %18: Int = tuple_field(%17, 2)
+  do call printInt(%18)
+  let %19: TokenKind = tuple_field(tokLet, 0)
+  let %20: Bool = call tokens.isKeyword(%19)
+  do call printBool(%20)
+  let %21: TokenKind = tuple_field(tokLet, 0)
+  let %22: Bool = call tokens.isLiteral(%21)
+  do call printBool(%22)
+  let sp2: Span = call location.span("test.quest", 4, 7)
+  let %23: tokens.TokenKind = option(ident)
+  let %24: TokenValue = call tokens.valNone()
+  let tokIdent: Token = call tokens.make(%23, "foo", %24, sp2)
+  let %25: TokenKind = tuple_field(tokIdent, 0)
+  let %26: String = call tokens.tokenKindName(%25)
+  do call printStr(%26)
+  let %27: String = tuple_field(tokIdent, 1)
+  do call printStr(%27)
+  let %28: TokenKind = tuple_field(tokIdent, 0)
+  let %29: Bool = call tokens.isKeyword(%28)
+  do call printBool(%29)
+  let sp3: Span = call location.span("test.quest", 8, 10)
+  let %30: tokens.TokenKind = option(intLit)
+  let %31: TokenValue = call tokens.valInt(42)
+  let tokInt: Token = call tokens.make(%30, "42", %31, sp3)
+  let %32: TokenKind = tuple_field(tokInt, 0)
+  let %33: String = call tokens.tokenKindName(%32)
+  do call printStr(%33)
+  let %34: String = tuple_field(tokInt, 1)
+  do call printStr(%34)
+  let %35: TokenKind = tuple_field(tokInt, 0)
+  let %36: Bool = call tokens.isLiteral(%35)
+  do call printBool(%36)
+  let vInt: TokenValue = tuple_field(tokInt, 2)
+  let %37: Bool = is_tag(vInt, intVal)
+  if %37 {
+    let %38: Tuple Int val: Int end = payload(vInt, intVal)
+    let %39: Int = tuple_field(%38, 1)
+    do call printInt(%39)
+  } else {
+    do call printStr("not int")
+  }
+  let sp4: Span = call location.span("test.quest", 11, 15)
+  let %40: tokens.TokenKind = option(realLit)
+  let %41: TokenValue = call tokens.valReal(3.14)
+  let tokReal: Token = call tokens.make(%40, "3.14", %41, sp4)
+  let %42: TokenKind = tuple_field(tokReal, 0)
+  let %43: String = call tokens.tokenKindName(%42)
+  do call printStr(%43)
+  let %44: String = tuple_field(tokReal, 1)
+  do call printStr(%44)
+  let %45: TokenKind = tuple_field(tokReal, 0)
+  let %46: Bool = call tokens.isLiteral(%45)
+  do call printBool(%46)
+  let vReal: TokenValue = tuple_field(tokReal, 2)
+  let %47: Bool = is_tag(vReal, realVal)
+  if %47 {
+    let %48: Tuple Int val: Real end = payload(vReal, realVal)
+    let %49: Real = tuple_field(%48, 1)
+    do call printReal(%49)
+  } else {
+    do call printStr("not real")
+  }
+  let sp5: Span = call location.span("test.quest", 16, 19)
+  let %50: tokens.TokenKind = option(charLit)
+  let %51: TokenValue = call tokens.valChar('Z')
+  let tokChar: Token = call tokens.make(%50, "'Z'", %51, sp5)
+  let %52: TokenKind = tuple_field(tokChar, 0)
+  let %53: String = call tokens.tokenKindName(%52)
+  do call printStr(%53)
+  let %54: String = tuple_field(tokChar, 1)
+  do call printStr(%54)
+  let %55: TokenKind = tuple_field(tokChar, 0)
+  let %56: Bool = call tokens.isLiteral(%55)
+  do call printBool(%56)
+  let vChar: TokenValue = tuple_field(tokChar, 2)
+  let %57: Bool = is_tag(vChar, charVal)
+  if %57 {
+    let %58: Tuple Int val: Char end = payload(vChar, charVal)
+    let %59: Char = tuple_field(%58, 1)
+    do call printChar(%59)
+  } else {
+    do call printStr("not char")
+  }
+  let sp6: Span = call location.span("test.quest", 20, 27)
+  let %60: tokens.TokenKind = option(stringLit)
+  let %61: TokenValue = call tokens.valString("hello")
+  let tokStr: Token = call tokens.make(%60, "\"hello\"", %61, sp6)
+  let %62: TokenKind = tuple_field(tokStr, 0)
+  let %63: String = call tokens.tokenKindName(%62)
+  do call printStr(%63)
+  let %64: String = tuple_field(tokStr, 1)
+  do call printStr(%64)
+  let %65: TokenKind = tuple_field(tokStr, 0)
+  let %66: Bool = call tokens.isLiteral(%65)
+  do call printBool(%66)
+  let vStr: TokenValue = tuple_field(tokStr, 2)
+  let %67: Bool = is_tag(vStr, stringVal)
+  if %67 {
+    let %68: Tuple Int val: String end = payload(vStr, stringVal)
+    let %69: String = tuple_field(%68, 1)
+    do call printStr(%69)
+  } else {
+    do call printStr("not str")
+  }
+  let sp7: Span = call location.span("test.quest", 28, 30)
+  let %70: tokens.TokenKind = option(symbolicInfix)
+  let %71: TokenValue = call tokens.valNone()
+  let tokOp: Token = call tokens.make(%70, ":=", %71, sp7)
+  let %72: TokenKind = tuple_field(tokOp, 0)
+  let %73: String = call tokens.tokenKindName(%72)
+  do call printStr(%73)
+  let %74: String = tuple_field(tokOp, 1)
+  do call printStr(%74)
+  let %75: TokenKind = tuple_field(tokOp, 0)
+  let %76: Bool = call tokens.isDelimiter(%75)
+  do call printBool(%76)
+  let %77: TokenKind = tuple_field(tokOp, 0)
+  let %78: Bool = call tokens.isPunctuation(%77)
+  do call printBool(%78)
+  let tokEof: Token = call tokens.eofToken("test.quest", 31)
+  let %79: TokenKind = tuple_field(tokEof, 0)
+  let %80: String = call tokens.tokenKindName(%79)
+  do call printStr(%80)
+  let %81: String = tuple_field(tokEof, 1)
+  do call printStr(%81)
+  let %82: location.Span = tuple_field(tokEof, 3)
+  let %83: Int = tuple_field(%82, 1)
+  do call printInt(%83)
+  let %84: location.Span = tuple_field(tokEof, 3)
+  let %85: Int = tuple_field(%84, 2)
+  do call printInt(%85)
+  let kLparen: tokens.TokenKind = option(lparen)
+  let kColon: tokens.TokenKind = option(colon)
+  let %86: String = call tokens.tokenKindName(kLparen)
+  do call printStr(%86)
+  let %87: Bool = call tokens.isDelimiter(kLparen)
+  do call printBool(%87)
+  let %88: Bool = call tokens.isPunctuation(kLparen)
+  do call printBool(%88)
+  let %89: String = call tokens.tokenKindName(kColon)
+  do call printStr(%89)
+  let %90: Bool = call tokens.isDelimiter(kColon)
+  do call printBool(%90)
+  let %91: Bool = call tokens.isPunctuation(kColon)
+  do call printBool(%91)
+}
+

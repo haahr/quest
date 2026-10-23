@@ -334,12 +334,15 @@ class TypedTuple(TypedExpr):
 
     Components declared together are listed as groups of indices into elements: mutually recursive ones (let rec,
     alone or joined by and), whose closures may refer to one another, and simultaneous ones (let ... and ...), whose
-    values are all computed before any of their labels is bound.
+    values are all computed before any of their labels is bound. A labeled component's label is a variable of the
+    components after it (and, in a recursive group, of the group's members), bound by its symbol in labels.
     """
     elements: tuple[TypedExpr, ...]
     type_val: QTupleType
     rec_groups: tuple[tuple[int, ...], ...] = ()
     simultaneous_groups: tuple[tuple[int, ...], ...] = ()
+    # The symbol each element's label binds for the later elements (None for an unlabeled one, or a type component)
+    labels: tuple[Optional[ValueSymbol], ...] = ()
 
     def dump_header(self, env: Optional[Any] = None) -> str:
         parts = [f":rec {list(group)}" for group in self.rec_groups]
@@ -734,10 +737,12 @@ class TypedExit(TypedExpr):
 
 @dataclass(frozen=True)
 class TypedException(TypedExpr):
-    """Exception value constructor: exception name [: Type] end."""
+    """Exception value constructor: exception name [: Type] end. It also binds the name (symbol) to the exception, in
+    the scope where it appears."""
     name: str
     payload_type: Optional[QType] = None
     type_val: QType = EXCEPTION_TYPE
+    symbol: Optional[ValueSymbol] = None
 
     def dump_header(self) -> str:
         return f"'{self.name}'"

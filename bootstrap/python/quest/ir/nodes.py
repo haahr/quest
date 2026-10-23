@@ -91,9 +91,16 @@ class TypeApp:
 
 @dataclass(eq=False)
 class ModuleMember:
-    """A member of a module, as a value (`conv.int` passed as an argument)."""
+    """A member of a module, as a value (`conv.int` passed as an argument), or the module itself when `member` is
+    None (a module used as a value)."""
     module: str
-    member: str
+    member: Optional[str] = None
+
+
+@dataclass(eq=False)
+class Builtin:
+    """A built-in function as a value: an infix operator (`+`), `not`, `extent`, or `ordinal`."""
+    name: str
 
 
 @dataclass(eq=False)
@@ -137,10 +144,10 @@ class MakeVariant:
 
 @dataclass(eq=False)
 class MakeOption:
-    """An option of the given case, by tag or, when `ordinal` is an atom, by computed ordinal, with its payload's
-    components."""
+    """An option of the given case, by tag or, when `ordinal` is an atom, by computed ordinal, with its payload (a
+    tuple of the case's components), if it has one."""
     tag: Optional[str]
-    args: tuple[Atom, ...]
+    payload: Optional[Atom] = None
     ordinal: Optional[Atom] = None
 
 
@@ -223,7 +230,7 @@ class Load:
 
 
 Operation = Union[
-    Prim, Call, TypeApp, ModuleMember, External, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
+    Prim, Call, TypeApp, ModuleMember, Builtin, External, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
     MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index, MakeAuto, MakeException, ExceptionPayload, Addr,
     Load,
 ]
@@ -272,12 +279,14 @@ class Do:
 
 @dataclass(eq=False)
 class Function:
-    """A function: `var` names it; its type parameters, parameters (with modes), result shape, and body."""
+    """A function: `var` names it; its type parameters, parameters (with modes), result shape (and Quest type, for
+    printing), and body."""
     var: Var
     type_params: tuple[TypeParam, ...]
     params: tuple[tuple[Var, str], ...]
     result: Shape
     body: Body
+    result_type: Optional[QType] = None
 
 
 @dataclass(eq=False)
@@ -286,6 +295,15 @@ class Funs:
     otherwise."""
     functions: tuple[Function, ...]
     recursive: bool = False
+
+
+@dataclass(eq=False)
+class LetRec:
+    """Recursive values (`let rec self: T = tuple let me(): T = self ... end`): `body` computes each variable's value
+    (a constructor, or a function), and closures made in `body` may refer to any of the variables, which are bound
+    when `body` finishes. (Quest requires such values to be constructors or abstractions.)"""
+    vars: tuple[Var, ...]
+    body: Body
 
 
 @dataclass(eq=False)
@@ -357,11 +375,18 @@ class Join:
 
 @dataclass(eq=False)
 class Echo:
-    """Prints a value with its Quest type: a top-level phrase's value (echo), or the program's result."""
+    """Prints a top-level phrase's value as the interpreter does: `prefix` (`let x:T = ` for a binding), the value,
+    and, for an expression, ` : T`."""
     value: Atom
     type: QType
-    name: Optional[str] = None
-    is_result: bool = False
+    prefix: str = ""
+
+
+@dataclass(eq=False)
+class EchoText:
+    """Prints a line of text for a top-level phrase without a value to print (a function, a type or kind
+    declaration, an exception)."""
+    text: str
 
 
 # Terminators
@@ -400,7 +425,7 @@ class Unreachable:
 
 Terminator = Union[Return, Jump, Break, Continue, Raise, Unreachable]
 Statement = Union[
-    Let, VarDecl, Assign, Store, Do, Funs, If, Switch, Inspect, Loop, Try, Join, Echo, Return, Jump, Break, Continue,
+    Let, VarDecl, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return, Jump, Break, Continue,
     Raise, Unreachable,
 ]
 TERMINATORS = (Return, Jump, Break, Continue, Raise, Unreachable)

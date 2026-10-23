@@ -1,0 +1,62 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %3: String = call conv.bool(b)
+      do call writer.putString(wOut, %3)
+      let %4: Ok = call writer.putString(wOut, "\n")
+      return %4
+    }
+  }
+  funs {
+    fun isMon(d: Day): Bool {
+      let %5: Bool = is_tag(d, mon)
+      return %5
+    }
+  }
+  let w: WeekDay = variant(mon, 1)
+  let %6: Bool = call isMon(w)
+  do call printBool(%6)
+  funs {
+    fun getDayCode(d.1: Day): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(d.1) {
+          case mon (c: Int): {
+            jump k1(c)
+          }
+          case tue (c.1: Int): {
+            jump k1(c.1)
+          }
+          case wed (c.2: Int): {
+            jump k1(c.2)
+          }
+          case thu (c.3: Int): {
+            jump k1(c.3)
+          }
+          case fri (c.4: Int): {
+            jump k1(c.4)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let %7: Int = call getDayCode(w)
+  do call printInt(%7)
+  let friDay: WeekDay = variant(fri, 5)
+  let %8: Int = call getDayCode(friDay)
+  do call printInt(%8)
+}
+

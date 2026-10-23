@@ -1,0 +1,312 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printStr(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %1: Ok = call writer.putString(wOut, "\n")
+      return %1
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      join k1(r: String) {
+        let %2: Ok = call printStr(r)
+        return %2
+      } in {
+        if b {
+          jump k1("true")
+        } else {
+          jump k1("false")
+        }
+      }
+    }
+  }
+  let fst: Bool = false
+  let snd: Bool = true
+  let %3: Tuple fst: Bool snd: Bool end = tuple(fst, snd)
+  let p: UniformPair = auto[Bool](%3)
+  let fst.1: Int = 6
+  let snd.1: Int = 7
+  let %4: Tuple fst: Int snd: Int end = tuple(fst.1, snd.1)
+  let q: UniformPair = auto[Int](%4)
+  let fst.2: String = "a"
+  let snd.2: String = "b"
+  let %5: Tuple fst: String snd: String end = tuple(fst.2, snd.2)
+  let r.1: UniformPair = auto[String](%5)
+  funs {
+    fun truthy(b.1: UniformPair): Bool {
+      join k2(r.2: Bool) {
+        return r.2
+      } in {
+        inspect b.1 {
+          case Bool (arm: Tuple fst: Bool snd: Bool end): {
+            let %6: Bool = tuple_field(arm, 0)
+            let %7: Bool = tuple_field(arm, 1)
+            let %8: Bool = prim \/(%6, %7)
+            jump k2(%8)
+          }
+          case Int (arm.1: Tuple fst: Int snd: Int end): {
+            let %9: Int = tuple_field(arm.1, 0)
+            let %10: Int = tuple_field(arm.1, 1)
+            let %11: Int = prim *(%9, %10)
+            let %12: Bool = prim isnot(%11, 0)
+            jump k2(%12)
+          }
+        }
+      }
+    }
+  }
+  let %13: Bool = call truthy(p)
+  do call printBool(%13)
+  let %14: Bool = call truthy(q)
+  do call printBool(%14)
+  funs {
+    fun describe(b.2: UniformPair): String {
+      join k3(r.3: String) {
+        return r.3
+      } in {
+        inspect b.2 {
+          case Int (arm.2: Tuple fst: Int snd: Int end): {
+            let %15: Int = tuple_field(arm.2, 0)
+            let %16: Int = tuple_field(arm.2, 1)
+            let %17: Int = prim +(%15, %16)
+            let %18: String = call conv.int(%17)
+            jump k3(%18)
+          }
+          case String (arm.3: Tuple fst: String snd: String end): {
+            let %19: String = tuple_field(arm.3, 0)
+            let %20: String = tuple_field(arm.3, 1)
+            let %21: String = prim <>(%19, %20)
+            jump k3(%21)
+          }
+          else: {
+            jump k3("other")
+          }
+        }
+      }
+    }
+  }
+  let %22: String = call describe(q)
+  do call printStr(%22)
+  let %23: String = call describe(r.1)
+  do call printStr(%23)
+  let %24: String = call describe(p)
+  do call printStr(%24)
+  funs {
+    fun safeTruthy(b.3: UniformPair): String {
+      join k4(r.4: String) {
+        return r.4
+      } in {
+        try {
+          join k5(r.5: String) {
+            jump k4(r.5)
+          } in {
+            let %25: Bool = call truthy(b.3)
+            if %25 {
+              jump k5("true")
+            } else {
+              jump k5("false")
+            }
+          }
+        } handle (e: Exception) {
+          let %26: Exception = member dynamic.error
+          let %27: Bool = prim is(e, %26)
+          if %27 {
+            jump k4("no branch")
+          } else {
+            raise e
+          }
+        }
+      }
+    }
+  }
+  let %28: String = call safeTruthy(r.1)
+  do call printStr(%28)
+  let myCar: Car = record(age = 3, speed = 120, fuel = "diesel")
+  let a: Car = myCar
+  let %29: Tuple a: Car end = tuple(a)
+  let aCar: AnyObject = auto[Car](%29)
+  let a.1: Record age: Int speed: Int end = record(age = 1, speed = 50)
+  let %30: Tuple a: Vehicle end = tuple(a.1)
+  let aVehicle: AnyObject = auto[Vehicle](%30)
+  let a.2: Record age: Int end = record(age = 9)
+  let %31: Tuple a: Object end = tuple(a.2)
+  let anObject: AnyObject = auto[Object](%31)
+  funs {
+    fun classify(x: AnyObject): String {
+      join k6(r.6: String) {
+        return r.6
+      } in {
+        inspect x {
+          case Car (c: Tuple a: Car end): {
+            let %32: Car = tuple_field(c, 0)
+            let %33: String = record_field(%32, fuel)
+            let %34: String = prim <>("car using ", %33)
+            jump k6(%34)
+          }
+          case Vehicle (v: Tuple a: Vehicle end): {
+            let %35: Vehicle = tuple_field(v, 0)
+            let %36: Int = record_field(%35, speed)
+            let %37: String = call conv.int(%36)
+            let %38: String = prim <>("vehicle at ", %37)
+            jump k6(%38)
+          }
+          else: {
+            join k7(r.7: Int) {
+              let %39: String = call conv.int(r.7)
+              let %40: String = prim <>("object aged ", %39)
+              jump k6(%40)
+            } in {
+              inspect x {
+                case Object (o: Tuple a: Object end): {
+                  let %41: Object = tuple_field(o, 0)
+                  let %42: Int = record_field(%41, age)
+                  jump k7(%42)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  let %43: String = call classify(aCar)
+  do call printStr(%43)
+  let %44: String = call classify(aVehicle)
+  do call printStr(%44)
+  let %45: String = call classify(anObject)
+  do call printStr(%45)
+  let x.1: Int = 42
+  funs {
+    fun show(n: Int): String {
+      let %46: String = call conv.int(n)
+      return %46
+    }
+  }
+  let %47: Tuple x: Int show: Fun(_: Int): String end = tuple(x.1, show)
+  let s1: Showable = auto[Int](%47)
+  let x.2: String = "hi"
+  funs {
+    fun show.1(s.1: T): String {
+      let %48: String = prim <>(s.1, "!")
+      return %48
+    }
+  }
+  let %49: Tuple x: String show: Fun(_: String): String end = tuple(x.2, show.1)
+  let s2: Showable = auto[String](%49)
+  funs {
+    fun showIt(s.2: Showable): String {
+      join k8(r.8: String) {
+        return r.8
+      } in {
+        inspect s.2 {
+          case Int exact (i: Tuple x: Int show: Fun(_: Int): String end): {
+            let %50: Fun(_: Int): String = tuple_field(i, 1)
+            let %51: Int = tuple_field(i, 0)
+            let %52: Int = prim +(%51, 1)
+            let %53: String = call %50(%52)
+            let %54: String = prim <>("int ", %53)
+            jump k8(%54)
+          }
+          case String exact (t: Tuple x: String show: Fun(_: String): String end): {
+            let %55: Fun(_: String): String = tuple_field(t, 1)
+            let %56: String = tuple_field(t, 0)
+            let %57: String = call %55(%56)
+            let %58: String = prim <>("string ", %57)
+            jump k8(%58)
+          }
+          else: {
+            jump k8("?")
+          }
+        }
+      }
+    }
+  }
+  let %59: String = call showIt(s1)
+  do call printStr(%59)
+  let %60: String = call showIt(s2)
+  do call printStr(%60)
+  let a.3: Car = myCar
+  let spare: Car = myCar
+  let %61: Tuple a: Car spare: Car end = tuple(a.3, spare)
+  let carWithSpare: AnyCar = auto[Car](%61)
+  let objectWithSpare: AnyObjectWithSpare = carWithSpare
+  join k9(r.9: String) {
+    do call printStr(r.9)
+    let x.3: Int = 1
+    let y: Int = 2
+    let a.4: Tuple x: Int y: Int end = tuple(x.3, y)
+    let %62: Tuple a: Tuple x: Int y: Int end end = tuple(a.4)
+    let pairBox: Boxed = auto[Tuple x: Int y: Int end](%62)
+    join k10(r.10: String) {
+      do call printStr(r.10)
+      let a.5: Car = myCar
+      let count: Int = 0
+      let %63: Tuple a: Car var count: Int end = tuple(a.5, count)
+      let counter: Counter = auto[Car](%63)
+      funs {
+        fun bump(c.1: Counter): Ok {
+          inspect c.1 {
+            case Car exact (x.4: Tuple a: Car var count: Int end): {
+              let %64: Int = tuple_field(x.4, 1)
+              let %65: Car = tuple_field(x.4, 0)
+              let %66: Int = record_field(%65, age)
+              let %67: Int = prim +(%64, %66)
+              store x.4.#1 := %67
+            }
+            case Object exact (x.5: Tuple a: Object var count: Int end): {
+              let %68: Int = tuple_field(x.5, 1)
+              let %69: Int = prim +(%68, 1)
+              store x.5.#1 := %69
+            }
+          }
+          return ok
+        }
+      }
+      do call bump(counter)
+      do call bump(counter)
+      join k11(r.11: String) {
+        do call printStr(r.11)
+      } in {
+        inspect counter {
+          case Car exact (x.6: Tuple a: Car var count: Int end): {
+            let %70: Int = tuple_field(x.6, 1)
+            let %71: String = call conv.int(%70)
+            jump k11(%71)
+          }
+          else: {
+            jump k11("?")
+          }
+        }
+      }
+    } in {
+      inspect pairBox {
+        case Tuple x: Int y: Int end (b.4: Tuple a: Tuple x: Int end end): {
+          let %72: Tuple x: Int end = tuple_field(b.4, 0)
+          let %73: Int = tuple_field(%72, 0)
+          let %74: String = call conv.int(%73)
+          jump k10(%74)
+        }
+        else: {
+          jump k10("?")
+        }
+      }
+    }
+  } in {
+    inspect objectWithSpare {
+      case Vehicle (v.1: Tuple a: Vehicle spare: Object end): {
+        let %75: Vehicle = tuple_field(v.1, 0)
+        let %76: Int = record_field(%75, speed)
+        let %77: Object = tuple_field(v.1, 1)
+        let %78: Int = record_field(%77, age)
+        let %79: Int = prim +(%76, %78)
+        let %80: String = call conv.int(%79)
+        jump k9(%80)
+      }
+      else: {
+        jump k9("no vehicle")
+      }
+    }
+  }
+}
+

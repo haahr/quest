@@ -1,0 +1,65 @@
+main {
+  var a: Int = 0
+  funs {
+    fun assign(out x: Int, y: Int): Ok {
+      x := y
+      return ok
+    }
+  }
+  let %1: Var(Int) = addr a
+  do call assign(%1, 42)
+  funs {
+    fun inc(var x.1: Int): Ok {
+      let %2: Int = prim +(x.1, 1)
+      x.1 := %2
+      return ok
+    }
+  }
+  let %3: Var(Int) = addr a
+  do call inc(%3)
+  let r: Record var f: Int end = record(var f = 10)
+  let %4: Var(Int) = addr r.f
+  do call inc(%4)
+  let arr: Array(Int) = array(10, 20, 30)
+  let %5: Var(Int) = addr arr[1]
+  do call inc(%5)
+  funs {
+    fun addFive(var x.2: Int): Int {
+      let %6: Int = prim +(x.2, 5)
+      x.2 := %6
+      return x.2
+    }
+  }
+  let %7: Var(Int) = cell(10)
+  let resVarCell: Int = call addFive(%7)
+  funs {
+    fun incTwice(var y.1: Int): Ok {
+      let %8: Var(Int) = addr y.1
+      do call inc(%8)
+      let %9: Var(Int) = addr y.1
+      do call inc(%9)
+      return ok
+    }
+  }
+  let %10: Var(Int) = addr a
+  do call incTwice(%10)
+  let inner: Record var val: Int end = record(var val = 1)
+  let outer: Record var mid: Record var val: Int end end = record(var mid = inner)
+  let %11: Record var val: Int end = record_field(outer, mid)
+  let %12: Var(Int) = addr %11.val
+  do call inc(%12)
+  var g: Int = 10
+  funs {
+    fun readG(dummy: Int): Int {
+      funs {
+        fun get(d: Int): Int {
+          return g
+        }
+      }
+      let %13: Int = call get(dummy)
+      return %13
+    }
+  }
+  let resG: Int = call readG(0)
+}
+

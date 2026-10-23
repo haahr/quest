@@ -1,0 +1,203 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(n: Int): Ok {
+      let %1: String = call conv.int(n)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, " ")
+      return %2
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %3: String = call conv.bool(b)
+      do call writer.putString(wOut, %3)
+      let %4: Ok = call writer.putString(wOut, " ")
+      return %4
+    }
+  }
+  funs {
+    fun printString(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %5: Ok = call writer.putString(wOut, " ")
+      return %5
+    }
+  }
+  funs {
+    fun printNewline(dummy: Int): Ok {
+      let %6: Ok = call writer.putString(wOut, "\n")
+      return %6
+    }
+  }
+  funs {
+    fun intEqual(a: Int, b.1: Int): Bool {
+      let %7: Bool = prim is(a, b.1)
+      return %7
+    }
+  }
+  funs {
+    fun intHash(a.1: Int): word.T {
+      let %8: word.T = call word.fromInt(a.1)
+      let %9: word.T = call word.fromInt(2654435761)
+      let %10: word.T = call word.mul(%8, %9)
+      return %10
+    }
+  }
+  let m: hashMap.T(Int String) = call hashMap.new [Int String](intEqual, intHash)
+  let %11: Bool = call hashMap.empty [Int String](m)
+  do call printBool(%11)
+  let %12: Int = call hashMap.size [Int String](m)
+  do call printInt(%12)
+  do call printNewline(0)
+  let %13: Bool = call hashMap.insert [Int String](m, 1, "one")
+  do call printBool(%13)
+  let %14: Bool = call hashMap.insert [Int String](m, 2, "two")
+  do call printBool(%14)
+  let %15: Bool = call hashMap.insert [Int String](m, 3, "three")
+  do call printBool(%15)
+  let %16: Bool = call hashMap.insert [Int String](m, 1, "ONE")
+  do call printBool(%16)
+  let %17: Int = call hashMap.size [Int String](m)
+  do call printInt(%17)
+  let %18: Bool = call hashMap.empty [Int String](m)
+  do call printBool(%18)
+  do call printNewline(0)
+  let %19: Bool = call hashMap.contains [Int String](m, 1)
+  do call printBool(%19)
+  let %20: Bool = call hashMap.contains [Int String](m, 2)
+  do call printBool(%20)
+  let %21: Bool = call hashMap.contains [Int String](m, 4)
+  do call printBool(%21)
+  let %22: String = call hashMap.find [Int String](m, 1)
+  do call printString(%22)
+  let %23: String = call hashMap.find [Int String](m, 2)
+  do call printString(%23)
+  let g1: maybe.T(String) = call hashMap.get [Int String](m, 3)
+  let %24: Bool = call maybe.isSome [String](g1)
+  do call printBool(%24)
+  let %25: String = call maybe.unwrap [String](g1)
+  do call printString(%25)
+  let g4: maybe.T(String) = call hashMap.get [Int String](m, 4)
+  let %26: Bool = call maybe.isNone [String](g4)
+  do call printBool(%26)
+  do call printNewline(0)
+  let ks: vector.T(Int) = call hashMap.keys [Int String](m)
+  let %27: Int = call vector.length [Int](ks)
+  do call printInt(%27)
+  funs {
+    fun f(k: Int): Ok {
+      let %28: Ok = call printInt(k)
+      return %28
+    }
+  }
+  do call vector.forEach [Int](ks, f)
+  do call printNewline(0)
+  let vs: vector.T(String) = call hashMap.values [Int String](m)
+  let %29: Int = call vector.length [String](vs)
+  do call printInt(%29)
+  funs {
+    fun f.1(v: String): Ok {
+      let %30: Ok = call printString(v)
+      return %30
+    }
+  }
+  do call vector.forEach [String](vs, f.1)
+  do call printNewline(0)
+  funs {
+    fun f.2(k.1: Int, v.1: String): Ok {
+      do call printInt(k.1)
+      let %31: Ok = call printString(v.1)
+      return %31
+    }
+  }
+  do call hashMap.forEach [Int String](m, f.2)
+  do call printNewline(0)
+  let d2: maybe.T(String) = call hashMap.delete [Int String](m, 2)
+  let %32: Bool = call maybe.isSome [String](d2)
+  do call printBool(%32)
+  let %33: String = call maybe.unwrap [String](d2)
+  do call printString(%33)
+  let %34: Int = call hashMap.size [Int String](m)
+  do call printInt(%34)
+  let %35: Bool = call hashMap.contains [Int String](m, 2)
+  do call printBool(%35)
+  let d4: maybe.T(String) = call hashMap.delete [Int String](m, 4)
+  let %36: Bool = call maybe.isNone [String](d4)
+  do call printBool(%36)
+  do call printNewline(0)
+  let ksAfter: vector.T(Int) = call hashMap.keys [Int String](m)
+  let %37: Int = call vector.length [Int](ksAfter)
+  do call printInt(%37)
+  funs {
+    fun f.3(k.2: Int): Ok {
+      let %38: Ok = call printInt(k.2)
+      return %38
+    }
+  }
+  do call vector.forEach [Int](ksAfter, f.3)
+  do call printNewline(0)
+  let %39: Bool = call hashMap.insert [Int String](m, 2, "two_reinserted")
+  do call printBool(%39)
+  let ksReinserted: vector.T(Int) = call hashMap.keys [Int String](m)
+  funs {
+    fun f.4(k.3: Int): Ok {
+      let %40: Ok = call printInt(k.3)
+      return %40
+    }
+  }
+  do call vector.forEach [Int](ksReinserted, f.4)
+  do call printNewline(0)
+  let m2: hashMap.T(Int Int) = call hashMap.newWithCapacity [Int Int](8, intEqual, intHash)
+  var i: Int = 1
+  loop L1 {
+    let %41: Bool = prim <=(i, 50)
+    if %41 {
+      let i.1: Int = i
+      let %42: Int = prim *(i.1, 10)
+      let %43: Bool = call hashMap.insert [Int Int](m2, i.1, %42)
+      let %44: Int = prim +(i, 1)
+      i := %44
+    } else {
+      break L1
+    }
+  }
+  let %45: Int = call hashMap.size [Int Int](m2)
+  do call printInt(%45)
+  let %46: Int = call hashMap.find [Int Int](m2, 25)
+  do call printInt(%46)
+  let %47: Int = call hashMap.find [Int Int](m2, 50)
+  do call printInt(%47)
+  do call printNewline(0)
+  var i.2: Int = 1
+  loop L2 {
+    let %48: Bool = prim <=(i.2, 50)
+    if %48 {
+      let i.3: Int = i.2
+      let %49: Int = prim %(i.3, 2)
+      let %50: Bool = prim is(%49, 0)
+      if %50 {
+        let %51: maybe.T(Int) = call hashMap.delete [Int Int](m2, i.3)
+      }
+      let %52: Int = prim +(i.2, 1)
+      i.2 := %52
+    } else {
+      break L2
+    }
+  }
+  let %53: Int = call hashMap.size [Int Int](m2)
+  do call printInt(%53)
+  let %54: Bool = call hashMap.contains [Int Int](m2, 2)
+  do call printBool(%54)
+  let %55: Bool = call hashMap.contains [Int Int](m2, 3)
+  do call printBool(%55)
+  let %56: Int = call hashMap.find [Int Int](m2, 3)
+  do call printInt(%56)
+  do call printNewline(0)
+  do call hashMap.clear [Int Int](m2)
+  let %57: Int = call hashMap.size [Int Int](m2)
+  do call printInt(%57)
+  let %58: Bool = call hashMap.empty [Int Int](m2)
+  do call printBool(%58)
+  do call printNewline(0)
+}
+

@@ -1,0 +1,169 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs rec {
+    fun sum(x.1: IntList): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(x.1) {
+          case cons (c: Tuple head: Int tail: IntList end): {
+            let %3: Int = tuple_field(c, 0)
+            let %4: IntList = tuple_field(c, 1)
+            let %5: Int = call sum(%4)
+            let %6: Int = prim +(%3, %5)
+            jump k1(%6)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let head: Int = 1
+  let head.1: Int = 2
+  let tail: IntList = option(nil)
+  let %7: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+  let tail.1: IntList = option(cons, %7)
+  let %8: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+  let l: IntList = option(cons, %8)
+  let m: L2 = l
+  let %9: Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = payload(m, cons)
+  let %10: Int = tuple_field(%9, 1)
+  do call printInt(%10)
+  let %11: Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = payload(m, cons)
+  let %12: Option nil cons with Tuple head: Int tail: L2 end end = tuple_field(%11, 2)
+  let %13: Tuple Int head: Int tail: L2 end = payload(%12, cons)
+  let %14: Int = tuple_field(%13, 1)
+  do call printInt(%14)
+  let m3: L3 = m
+  var back: IntList = m3
+  let %15: Int = call sum(back)
+  do call printInt(%15)
+  back := m
+  let %16: Int = call sum(back)
+  do call printInt(%16)
+  let head.2: Int = 4
+  let head.3: Int = 5
+  let tail.2: L2 = option(nil)
+  let %17: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = tuple(head.3, tail.2)
+  let tail.3: L2 = option(cons, %17)
+  let %18: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = tuple(head.2, tail.3)
+  let built: L2 = option(cons, %18)
+  let %19: Int = call sum(built)
+  do call printInt(%19)
+  funs rec {
+    fun sum2(x.2: L2): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        switch tag(x.2) {
+          case cons (c.1: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end): {
+            let %20: Int = tuple_field(c.1, 0)
+            let %21: Option nil cons with Tuple head: Int tail: L2 end end = tuple_field(c.1, 1)
+            let %22: Int = call sum2(%21)
+            let %23: Int = prim +(%20, %22)
+            jump k2(%23)
+          }
+          else: {
+            jump k2(0)
+          }
+        }
+      }
+    }
+  }
+  let %24: Int = call sum2(l)
+  do call printInt(%24)
+  let a: IntList = l
+  let b: IntList = l
+  let pair: Tuple a: L2 b: L3 end = tuple(a, b)
+  let pair2: Tuple a: IntList b: IntList end = pair
+  let %25: IntList = tuple_field(pair2, 0)
+  let %26: Int = call sum(%25)
+  let %27: IntList = tuple_field(pair2, 1)
+  let %28: Int = call sum(%27)
+  let %29: Int = prim +(%26, %28)
+  do call printInt(%29)
+  let lists: Array(L3) = array(l, m, built)
+  let %30: L3 = index(lists, 0)
+  let %31: Int = call sum(%30)
+  let %32: L3 = index(lists, 2)
+  let %33: Int = call sum(%32)
+  let %34: Int = prim +(%31, %33)
+  do call printInt(%34)
+  funs {
+    fun f(x.3: L3): Int {
+      let %35: Int = call sum(x.3)
+      return %35
+    }
+  }
+  let g: Fun(x: L2): Int = f
+  let %36: Int = call g(l)
+  do call printInt(%36)
+  funs rec {
+    fun count(n: Int): Stream {
+      join k3(r.2: Stream) {
+        return r.2
+      } in {
+        let %37: Bool = prim is(n, 0)
+        if %37 {
+          let %38: Stream = option(done)
+          jump k3(%38)
+        } else {
+          let value: Int = n
+          funs {
+            fun next(): Stream {
+              let %39: Int = prim -(n, 1)
+              let %40: Stream = call count(%39)
+              return %40
+            }
+          }
+          let %41: Tuple value: Int next: Fun(): Stream end = tuple(value, next)
+          let %42: Stream = option(more, %41)
+          jump k3(%42)
+        }
+      }
+    }
+  }
+  let s2: Stream2 = call count(3)
+  funs rec {
+    fun total(s: Stream2): Int {
+      join k4(r.3: Int) {
+        return r.3
+      } in {
+        switch tag(s) {
+          case more (c.2: Tuple value: Int next: Fun(): Option done more with Tuple value: Int next: Fun(...) end end end): {
+            let %43: Int = tuple_field(c.2, 0)
+            let %44: Fun(): Option done more with Tuple value: Int next: Fun(): Stream2 end end = tuple_field(c.2, 1)
+            let %45: Option done more with Tuple value: Int next: Fun(): Stream2 end end = call %44()
+            let %46: Int = call total(%45)
+            let %47: Int = prim +(%43, %46)
+            jump k4(%47)
+          }
+          else: {
+            jump k4(0)
+          }
+        }
+      }
+    }
+  }
+  let %48: Int = call total(s2)
+  do call printInt(%48)
+  let %49: T = call dynamic.new [L3](l)
+  let %50: IntList = call dynamic.be [IntList](%49)
+  let %51: Int = call sum(%50)
+  do call printInt(%51)
+  let %52: T = call dynamic.new [IntList](built)
+  let %53: L2 = call dynamic.be [L2](%52)
+  let %54: Int = call sum2(%53)
+  do call printInt(%54)
+}
+

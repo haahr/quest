@@ -1,0 +1,142 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printStr(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %1: Ok = call writer.putString(wOut, "\n")
+      return %1
+    }
+  }
+  funs {
+    fun printInt(n: Int): Ok {
+      let %2: String = call conv.int(n)
+      let %3: Ok = call printStr(%2)
+      return %3
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %4: String = call conv.bool(b)
+      let %5: Ok = call printStr(%4)
+      return %5
+    }
+  }
+  let sampleCode: String = "let x = 10;\nlet y = 20;\nlet sum = x + y;\n"
+  let sm: location.SourceMap = call location.newSourceMap("test.quest", sampleCode)
+  let %6: String = call location.file(sm)
+  do call printStr(%6)
+  let %7: Int = call location.lineCount(sm)
+  do call printInt(%7)
+  let p1: Pos = call location.locate(sm, 0)
+  let %8: Int = tuple_field(p1, 1)
+  do call printInt(%8)
+  let %9: Int = tuple_field(p1, 2)
+  do call printInt(%9)
+  let p2: Pos = call location.locate(sm, 4)
+  let %10: Int = tuple_field(p2, 1)
+  do call printInt(%10)
+  let %11: Int = tuple_field(p2, 2)
+  do call printInt(%11)
+  let p3: Pos = call location.locate(sm, 12)
+  let %12: Int = tuple_field(p3, 1)
+  do call printInt(%12)
+  let %13: Int = tuple_field(p3, 2)
+  do call printInt(%13)
+  let p4: Pos = call location.locate(sm, 24)
+  let %14: Int = tuple_field(p4, 1)
+  do call printInt(%14)
+  let %15: Int = tuple_field(p4, 2)
+  do call printInt(%15)
+  let %16: String = call location.getLine(sm, 1)
+  do call printStr(%16)
+  let %17: String = call location.getLine(sm, 2)
+  do call printStr(%17)
+  let %18: String = call location.getLine(sm, 3)
+  do call printStr(%18)
+  let %19: String = call location.getLine(sm, 99)
+  do call printStr(%19)
+  let sp1: Span = call location.span("test.quest", 4, 5)
+  let %20: String = call location.extractSnippet(sm, sp1)
+  do call printStr(%20)
+  let sp2: Span = call location.span("test.quest", 12, 17)
+  let %21: String = call location.extractSnippet(sm, sp2)
+  do call printStr(%21)
+  let spSpan: Tuple start: Pos endPos: Pos end = call location.locateSpan(sm, sp2)
+  let %22: Pos = tuple_field(spSpan, 0)
+  let %23: Int = tuple_field(%22, 1)
+  do call printInt(%23)
+  let %24: Pos = tuple_field(spSpan, 0)
+  let %25: Int = tuple_field(%24, 2)
+  do call printInt(%25)
+  let %26: Pos = tuple_field(spSpan, 1)
+  let %27: Int = tuple_field(%26, 1)
+  do call printInt(%27)
+  let %28: Pos = tuple_field(spSpan, 1)
+  let %29: Int = tuple_field(%28, 2)
+  do call printInt(%29)
+  let %30: Span = call location.span("test.quest", 16, 17)
+  let dWarn: diagnostics.Diagnostic = call diagnostics.warning("unused variable 'y'", %30)
+  do call diagnostics.addNote(dWarn, "variable defined here but never read")
+  do call diagnostics.setHelp(dWarn, "prefix with underscore if intentionally unused")
+  let %31: Severity = call diagnostics.severity(dWarn)
+  let %32: String = call diagnostics.severityString(%31)
+  do call printStr(%32)
+  let %33: String = call diagnostics.format(dWarn, sm)
+  do call printStr(%33)
+  let %34: Span = call location.span("test.quest", 34, 39)
+  let dErr: diagnostics.Diagnostic = call diagnostics.error("type mismatch", %34)
+  let %35: String = call diagnostics.format(dErr, sm)
+  do call printStr(%35)
+  let bag: diagbag.T = call diagbag.new()
+  let %36: Bool = call diagbag.hasErrors(bag)
+  do call printBool(%36)
+  let %37: Int = call diagbag.count(bag)
+  do call printInt(%37)
+  let %38: Span = call location.span("test.quest", 0, 3)
+  do call diagbag.addWarning(bag, %38, "consider explicit type")
+  let %39: Bool = call diagbag.hasErrors(bag)
+  do call printBool(%39)
+  let %40: Int = call diagbag.warningCount(bag)
+  do call printInt(%40)
+  let %41: Int = call diagbag.errorCount(bag)
+  do call printInt(%41)
+  let %42: Int = call diagbag.count(bag)
+  do call printInt(%42)
+  let %43: Span = call location.span("test.quest", 8, 10)
+  do call diagbag.addError(bag, %43, "invalid literal")
+  let %44: Bool = call diagbag.hasErrors(bag)
+  do call printBool(%44)
+  let %45: Int = call diagbag.warningCount(bag)
+  do call printInt(%45)
+  let %46: Int = call diagbag.errorCount(bag)
+  do call printInt(%46)
+  let %47: Int = call diagbag.count(bag)
+  do call printInt(%47)
+  join k1(caughtFatal: Bool) {
+    do call printBool(caughtFatal)
+    let %48: Int = call diagbag.errorCount(bag)
+    do call printInt(%48)
+    let %49: Int = call diagbag.count(bag)
+    do call printInt(%49)
+    do call printStr("--- Render All Diagnostics ---")
+    do call diagbag.renderAll(bag, sm, wOut)
+  } in {
+    try {
+      let %50: Span = call location.span("test.quest", 24, 39)
+      do call diagbag.addFatal(bag, %50, "unrecoverable syntax failure")
+      jump k1(false)
+    } handle (e: Exception) {
+      let %51: Exception(diagnostics.Diagnostic) = member diagbag.fatalError
+      let %52: Bool = prim is(e, %51)
+      if %52 {
+        let fatalDiag: diagnostics.Diagnostic = exception_payload(e)
+        let %53: String = call diagnostics.message(fatalDiag)
+        do call printStr(%53)
+        jump k1(true)
+      } else {
+        raise e
+      }
+    }
+  }
+}
+

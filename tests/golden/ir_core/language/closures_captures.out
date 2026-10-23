@@ -1,0 +1,80 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun apply(fn: Fun(x: Int): Int, x.1: Int): Int {
+      let %3: Int = call fn(x.1)
+      return %3
+    }
+  }
+  funs {
+    fun inc(x.2: Int): Int {
+      let %4: Int = prim +(x.2, 1)
+      return %4
+    }
+  }
+  let %5: Int = call apply(inc, 41)
+  do call printInt(%5)
+  funs {
+    fun f(x.3: Int): Int {
+      let %6: Int = prim *(x.3, 3)
+      return %6
+    }
+  }
+  let %7: Int = call apply(f, 14)
+  do call printInt(%7)
+  funs {
+    fun makeAdder(base: Int): Fun(x: Int): Int {
+      funs {
+        fun f.1(x.4: Int): Int {
+          let %8: Int = prim +(base, x.4)
+          return %8
+        }
+      }
+      return f.1
+    }
+  }
+  let add100: Fun(x: Int): Int = call makeAdder(100)
+  let %9: Int = call add100(42)
+  do call printInt(%9)
+  funs {
+    fun f.2(a: Int): Fun(b: Int): Fun(c: Int): Int {
+      funs {
+        fun f.3(b: Int): Fun(c: Int): Int {
+          funs {
+            fun f.4(c: Int): Int {
+              let %10: Int = prim +(b, c)
+              let %11: Int = prim +(a, %10)
+              return %11
+            }
+          }
+          return f.4
+        }
+      }
+      return f.3
+    }
+  }
+  let %12: Fun(b: Int): Fun(c: Int): Int = call f.2(10)
+  let %13: Fun(c: Int): Int = call %12(20)
+  let %14: Int = call %13(12)
+  do call printInt(%14)
+  var count: Int = 10
+  funs {
+    fun bump(delta: Int): Ok {
+      let %15: Int = prim +(count, delta)
+      count := %15
+      return ok
+    }
+  }
+  do call bump(5)
+  do call bump(27)
+  do call printInt(count)
+}
+

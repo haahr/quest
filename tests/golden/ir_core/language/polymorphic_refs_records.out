@@ -1,0 +1,84 @@
+main {
+  funs {
+    fun updatePoint [A::TYPE](out dest: A, src: A): Ok {
+      dest := src
+      return ok
+    }
+  }
+  let %1: Record x: Int y: Int end = record(x = 10, y = 20)
+  var p1: Record x: Int y: Int end = %1
+  let p2: Record x: Int y: Int end = record(x = 30, y = 40)
+  let %2: Var(Record x: Int y: Int end) = addr p1
+  do call updatePoint [Point](%2, p2)
+  let p1x: Int = record_field(p1, x)
+  let p1y: Int = record_field(p1, y)
+  funs {
+    fun swapPoly [A::TYPE](var a: A, var b: A): Ok {
+      let tmp: A = a
+      a := b
+      b := tmp
+      return ok
+    }
+  }
+  let %3: Record x: Int y: Int end = record(x = 1, y = 2)
+  var r1: Record x: Int y: Int end = %3
+  let %4: Record x: Int y: Int end = record(x = 8, y = 9)
+  var r2: Record x: Int y: Int end = %4
+  let %5: Var(Record x: Int y: Int end) = addr r1
+  let %6: Var(Record x: Int y: Int end) = addr r2
+  do call swapPoly [Point](%5, %6)
+  let r1x: Int = record_field(r1, x)
+  let r2x: Int = record_field(r2, x)
+  let assignClosure: All(A :: TYPE) Fun(out dest: A src: A): Ok = updatePoint
+  let %7: Record x: Int y: Int end = record(x = 100, y = 200)
+  var p3: Record x: Int y: Int end = %7
+  let p4: Record x: Int y: Int end = record(x = 500, y = 600)
+  let %8: Var(Record x: Int y: Int end) = addr p3
+  do call assignClosure [Point](%8, p4)
+  let p3x: Int = record_field(p3, x)
+  let p3y: Int = record_field(p3, y)
+  let swapClosure: All(A :: TYPE) Fun(var a: A var b: A): Ok = swapPoly
+  let %9: Record x: Int y: Int end = record(x = 111, y = 222)
+  var s1: Record x: Int y: Int end = %9
+  let %10: Record x: Int y: Int end = record(x = 333, y = 444)
+  var s2: Record x: Int y: Int end = %10
+  let %11: Var(Record x: Int y: Int end) = addr s1
+  let %12: Var(Record x: Int y: Int end) = addr s2
+  do call swapClosure [Point](%11, %12)
+  let s1x: Int = record_field(s1, x)
+  let s2x: Int = record_field(s2, x)
+  funs {
+    fun makePair [A::TYPE B::TYPE](a.1: A, b.1: B): Tuple first: A second: B end {
+      let first: A = a.1
+      let second: B = b.1
+      let %13: Tuple first: A second: B end = tuple(first, second)
+      return %13
+    }
+  }
+  let pt1: Record x: Int y: Int end = record(x = 77, y = 88)
+  let directPair: Tuple first: Point second: String end = call makePair [Point String](pt1, "hello")
+  let %14: Point = tuple_field(directPair, 0)
+  let dpx: Int = record_field(%14, x)
+  let %15: Point = tuple_field(directPair, 0)
+  let dpy: Int = record_field(%15, y)
+  let dps: String = tuple_field(directPair, 1)
+  let pairClosure: All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple first: A second: B end = makePair
+  let pt2: Record x: Int y: Int end = record(x = 99, y = 101)
+  let closPair: Tuple first: Point second: Int end = call pairClosure [Point Int](pt2, 42)
+  let %16: Point = tuple_field(closPair, 0)
+  let cpx: Int = record_field(%16, x)
+  let %17: Point = tuple_field(closPair, 0)
+  let cpy: Int = record_field(%17, y)
+  let cpi: Int = tuple_field(closPair, 1)
+  let p3d: Record x: Int y: Int z: Int end = record(x = 1, y = 2, z = 3)
+  let pt: Record x: Int y: Int z: Int end = p3d
+  let tag: String = "3D"
+  let t3d: Tuple pt: Point3D tag: String end = tuple(pt, tag)
+  let t2d: Tuple pt: Point tag: String end = t3d
+  let %18: Point = tuple_field(t2d, 0)
+  let t2dx: Int = record_field(%18, x)
+  let %19: Point = tuple_field(t2d, 0)
+  let t2dy: Int = record_field(%19, y)
+  let t2dtag: String = tuple_field(t2d, 1)
+}
+

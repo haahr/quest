@@ -1,0 +1,237 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun mk(x.1: Int): Exception(Int) {
+      let Made: Exception(Int) = exception Made: Int
+      return Made
+    }
+  }
+  let m1: Exception(Int) = call mk(1)
+  let m2: Exception(Int) = call mk(2)
+  join k1(r: Int) {
+    do call printInt(r)
+    join k2(r.1: Int) {
+      do call printInt(r.1)
+      funs {
+        fun g(x.2: Int): Int {
+          var Inline: Exception(Int) = null
+          join k4(r.2: Int) {
+            return r.2
+          } in {
+            try {
+              let %3: Exception(Int) = exception Inline: Int
+              Inline := %3
+              raise Inline with x.2
+            } handle (e: Exception) {
+              let %4: Bool = prim is(e, Inline)
+              if %4 {
+                let n: Int = exception_payload(e)
+                let %5: Int = prim +(n, 1)
+                jump k4(%5)
+              } else {
+                raise e
+              }
+            }
+          }
+        }
+      }
+      let %6: Int = call g(4)
+      do call printInt(%6)
+      funs {
+        fun h(x.3: Int): Int {
+          var Pos: Exception(Int) = null
+          join k5(r.3: Int) {
+            return r.3
+          } in {
+            let %7: Bool = prim >(x.3, 0)
+            if %7 {
+              join k6(r.4: Int) {
+                jump k5(r.4)
+              } in {
+                try {
+                  let %8: Exception(Int) = exception Pos: Int
+                  Pos := %8
+                  raise Pos with x.3
+                } handle (e.1: Exception) {
+                  let %9: Bool = prim is(e.1, Pos)
+                  if %9 {
+                    let n.1: Int = exception_payload(e.1)
+                    let %10: Int = prim *(n.1, 2)
+                    jump k6(%10)
+                  } else {
+                    raise e.1
+                  }
+                }
+              }
+            } else {
+              jump k5(0)
+            }
+          }
+        }
+      }
+      let %11: Int = call h(8)
+      do call printInt(%11)
+      let %12: Int = call h(-8)
+      do call printInt(%12)
+      funs {
+        fun k(x.4: Int): Int {
+          funs {
+            fun catcher(y: Int): Int {
+              var Cap: Exception(Int) = null
+              join k7(r.5: Int) {
+                return r.5
+              } in {
+                try {
+                  let %13: Exception(Int) = exception Cap: Int
+                  Cap := %13
+                  raise Cap with y
+                } handle (e.2: Exception) {
+                  let %14: Bool = prim is(e.2, Cap)
+                  if %14 {
+                    let n.2: Int = exception_payload(e.2)
+                    let %15: Int = prim +(n.2, x.4)
+                    jump k7(%15)
+                  } else {
+                    raise e.2
+                  }
+                }
+              }
+            }
+          }
+          let %16: Int = call catcher(10)
+          return %16
+        }
+      }
+      let %17: Int = call k(1)
+      do call printInt(%17)
+      funs {
+        fun lam(x.5: Int): Int {
+          let Outer: Exception(Int) = exception Outer: Int
+          let e.3: Exception(Int) = Outer
+          funs {
+            fun thrower(y.1: Int): Int {
+              join k8(r.6: Int) {
+                return r.6
+              } in {
+                let %18: Bool = prim >(y.1, 0)
+                if %18 {
+                  raise Outer with y.1
+                } else {
+                  jump k8(y.1)
+                }
+              }
+            }
+          }
+          join k9(r.7: Int) {
+            return r.7
+          } in {
+            try {
+              let %19: Int = call thrower(x.5)
+              jump k9(%19)
+            } handle (e.4: Exception) {
+              let %20: Bool = prim is(e.4, e.3)
+              if %20 {
+                let n.3: Int = exception_payload(e.4)
+                let %21: Int = prim *(n.3, 2)
+                jump k9(%21)
+              } else {
+                raise e.4
+              }
+            }
+          }
+        }
+      }
+      let %22: Int = call lam(21)
+      do call printInt(%22)
+      let Shadow: Exception(Int) = exception Shadow: Int
+      funs {
+        fun sh(x.6: Int): Int {
+          var Shadow.1: Exception(Int) = null
+          join k10(r.8: Int) {
+            return r.8
+          } in {
+            try {
+              let %23: Exception(Int) = exception Shadow: Int
+              Shadow.1 := %23
+              raise Shadow.1 with x.6
+            } handle (e.5: Exception) {
+              let %24: Bool = prim is(e.5, Shadow.1)
+              if %24 {
+                let n.4: Int = exception_payload(e.5)
+                jump k10(n.4)
+              } else {
+                raise e.5
+              }
+            }
+          }
+        }
+      }
+      let %25: Int = call sh(9)
+      do call printInt(%25)
+      join k11(r.9: Int) {
+        do call printInt(r.9)
+      } in {
+        try {
+          raise Shadow with 3
+        } handle (e.6: Exception) {
+          let %26: Bool = prim is(e.6, Shadow)
+          if %26 {
+            let n.5: Int = exception_payload(e.6)
+            let %27: Int = prim +(n.5, 30)
+            jump k11(%27)
+          } else {
+            raise e.6
+          }
+        }
+      }
+    } in {
+      try {
+        join k3(r.10: Int) {
+          jump k2(r.10)
+        } in {
+          try {
+            raise m1 with 6
+          } handle (e.7: Exception) {
+            let %28: Bool = prim is(e.7, m2)
+            if %28 {
+              let n.6: Int = exception_payload(e.7)
+              let %29: Int = prim -(0, n.6)
+              jump k3(%29)
+            } else {
+              raise e.7
+            }
+          }
+        }
+      } handle (e.8: Exception) {
+        let %30: Bool = prim is(e.8, m1)
+        if %30 {
+          let n.7: Int = exception_payload(e.8)
+          jump k2(n.7)
+        } else {
+          raise e.8
+        }
+      }
+    }
+  } in {
+    try {
+      raise m1 with 5
+    } handle (e.9: Exception) {
+      let %31: Bool = prim is(e.9, m1)
+      if %31 {
+        let n.8: Int = exception_payload(e.9)
+        jump k1(n.8)
+      } else {
+        raise e.9
+      }
+    }
+  }
+}
+

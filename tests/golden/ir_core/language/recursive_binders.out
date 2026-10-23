@@ -1,0 +1,127 @@
+main {
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = call conv.int(x)
+      do call writer.putString(%1, %2)
+      let %3: writer.T = member writer.output
+      let %4: Ok = call writer.putString(%3, "\n")
+      return %4
+    }
+  }
+  funs rec {
+    fun sum(x.1: IntList): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(x.1) {
+          case cons (c: Tuple head: Int tail: IntList end): {
+            let %5: Int = tuple_field(c, 0)
+            let %6: IntList = tuple_field(c, 1)
+            let %7: Int = call sum(%6)
+            let %8: Int = prim +(%5, %7)
+            jump k1(%8)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let head: Int = 1
+  let head.1: Int = 2
+  let tail: IntList = option(nil)
+  let %9: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+  let tail.1: IntList = option(cons, %9)
+  let %10: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+  let l: IntList = option(cons, %10)
+  funs {
+    fun firstOr [A::TYPE](x.2: A, l.1: IntList): A {
+      return x.2
+    }
+  }
+  let n: Int = 3
+  let f: All(A :: TYPE) Fun(x: A l: IntList): A = firstOr
+  let h: Holder = tuple(n, f)
+  let h2: Holder2 = h
+  let %11: All(B :: TYPE) Fun(y: B m: L2): B = tuple_field(h2, 1)
+  let %12: Int = tuple_field(h2, 0)
+  let %13: Int = call %11 [Int](%12, l)
+  do call printInt(%13)
+  let back: Holder = h2
+  let %14: All(A :: TYPE) Fun(x: A l: IntList): A = tuple_field(back, 1)
+  let %15: Int = call sum(l)
+  let %16: Int = call %14 [Int](%15, l)
+  do call printInt(%16)
+  funs {
+    fun pass [A::<: IntList](x.3: A): A {
+      return x.3
+    }
+  }
+  let f.1: All(A <: IntList) Fun(x: A): A = pass
+  let bounded: Tuple f: All(A <: L2) Fun(x: A): A end = tuple(f.1)
+  let %17: All(A <: L2) Fun(x: A): A = tuple_field(bounded, 0)
+  let %18: IntList = call %17 [IntList](l)
+  let %19: Int = call sum(%18)
+  do call printInt(%19)
+  let x.4: Int = 4
+  let l.2: IntList = l
+  let %20: Tuple x: Int l: IntList end = tuple(x.4, l.2)
+  let pk: Pack = auto[Int](%20)
+  let pk2: Pack2 = pk
+  let a: Pack = pk
+  let b: Pack2 = pk2
+  let packs: Tuple a: Pack b: Pack2 end = tuple(a, b)
+  let packs2: Tuple a: Pack2 b: Pack end = packs
+  join k2(r.1: Int) {
+    do call printInt(r.1)
+    funs rec {
+      fun keep [A::TYPE](x.5: A, next: Poly): A {
+        return x.5
+      }
+    }
+    let p: All(A :: TYPE) Fun(x: A next: Poly): A = keep
+    let n.1: Int = 5
+    let polys: Tuple p: Poly n: Int end = tuple(p, n.1)
+    let polys2: Tuple p: Poly2 n: Int end = polys
+    let %21: Poly2 = tuple_field(polys2, 0)
+    let %22: Int = tuple_field(polys2, 1)
+    let %23: Int = call %21 [Int](%22, keep)
+    do call printInt(%23)
+    let %24: T = call dynamic.new [Holder](h)
+    let %25: Holder2 = call dynamic.be [Holder2](%24)
+    let %26: Int = tuple_field(%25, 0)
+    do call printInt(%26)
+    join k3(r.2: Int) {
+      do call printInt(r.2)
+    } in {
+      let %27: T = call dynamic.new [Pack2](pk2)
+      let %28: Pack = call dynamic.be [Pack](%27)
+      inspect %28 {
+        case Int (i: Tuple x: Int l: IntList end): {
+          let %29: Int = tuple_field(i, 0)
+          jump k3(%29)
+        }
+        else: {
+          jump k3(0)
+        }
+      }
+    }
+  } in {
+    let %30: Pack = tuple_field(packs2, 1)
+    inspect %30 {
+      case Int (i.1: Tuple x: Int l: IntList end): {
+        let %31: Int = tuple_field(i.1, 0)
+        let %32: IntList = tuple_field(i.1, 1)
+        let %33: Int = call sum(%32)
+        let %34: Int = prim +(%31, %33)
+        jump k2(%34)
+      }
+      else: {
+        jump k2(0)
+      }
+    }
+  }
+}
+

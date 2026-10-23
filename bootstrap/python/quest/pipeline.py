@@ -397,6 +397,35 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
     return engine.build_modules(ctx.imported_modules, importer=importer, program_dir=ctx.env.program_dir)
 
 
+class IrCorePhase(Phase):
+    """Lowering to the IR's Core stage (docs/ir.md): not yet part of C compilation, which still translates the typed
+    AST directly; reached with --stop-after ir_core or --dump-after ir_core."""
+    name = "ir_core"
+    description = "Lower the typed AST to Core IR"
+    artifact_name = "ir_unit"
+
+    def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
+        from quest.ir.lower import lower_program
+        from quest.ir.verify import check_unit, ir_checks_enabled
+
+        try:
+            prog = input_data if isinstance(input_data, TypedProgram) else TypedProgram(phrases=(input_data,))
+            unit = lower_program(
+                prog, ctx.env, echo=ctx.options.echo, print_result=getattr(ctx.options, "print_result", False)
+            )
+            if ir_checks_enabled():
+                check_unit(unit)
+            return unit
+        except Exception as error:
+            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
+            return None
+
+    def dump(self, output_data: Any, ctx: CompilerContext) -> str:
+        from quest.ir.printer import format_unit
+
+        return format_unit(output_data) if output_data is not None else ""
+
+
 class RunCCompiledPhase(Phase):
     """Native binary execution phase: compiles C code and runs the resulting binary."""
     name = "run_c_compiled"
@@ -574,6 +603,16 @@ def compile_pipeline() -> PhasePipeline:
     pipeline.register(ParsePhase())
     pipeline.register(TypecheckPhase())
     pipeline.register(CodegenCPhase())
+    return pipeline
+
+
+def ir_pipeline() -> PhasePipeline:
+    """Returns the pipeline lowering to Core IR (Tokenize -> Parse -> Typecheck -> IrCore)."""
+    pipeline = PhasePipeline()
+    pipeline.register(TokenizePhase())
+    pipeline.register(ParsePhase())
+    pipeline.register(TypecheckPhase())
+    pipeline.register(IrCorePhase())
     return pipeline
 
 

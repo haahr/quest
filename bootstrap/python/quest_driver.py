@@ -23,6 +23,7 @@ from quest.pipeline import (
     CompilerContext,
     compile_pipeline,
     default_pipeline,
+    ir_pipeline,
     full_pipeline,
     link_dependencies,
 )
@@ -42,7 +43,7 @@ def run_driver(args: list[str]) -> int:
     if args and args[0] == "compile":
         return run_compile(args[1:])
 
-    all_phases = ["tokenize", "parse", "typecheck", "interpret", "codegen_c", "run_c_compiled"]
+    all_phases = ["tokenize", "parse", "typecheck", "ir_core", "interpret", "codegen_c", "run_c_compiled"]
 
     if "--" in args:
         dash_idx = args.index("--")
@@ -280,6 +281,8 @@ def run_driver(args: list[str]) -> int:
         pipeline = compile_pipeline()
     elif needs_c_pipeline:
         pipeline = full_pipeline()
+    elif parsed_args.stop_after == "ir_core" or "ir_core" in parsed_args.dump_after:
+        pipeline = ir_pipeline()
     else:
         pipeline = default_pipeline()
 

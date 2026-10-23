@@ -1,0 +1,28 @@
+main {
+  let %1: Tree = call forests.leaf(1)
+  let %2: Tree = call forests.leaf(2)
+  let %3: Array(Tree) = array(%1, %2)
+  let t: Tree = call forests.node(%3)
+  let %4: Tree = call forests.leaf(3)
+  let %5: Array(forests.Tree) = array(t, %4)
+  let %6: Record trees: Array(forests.Tree) end = record(trees = %5)
+  let direct: forests.Tree = variant(node, %6)
+  join k1(wood: forests.Wood) {
+    let %7: Int = call forests.sum(direct)
+    let %8: Int = call forests.sumWood(wood)
+    let %9: Int = prim *(%8, 10)
+    let %10: Int = prim +(%7, %9)
+  } in {
+    switch tag(direct) {
+      case node (w: forests.Wood): {
+        jump k1(w)
+      }
+      else: {
+        let %11: Array(forests.Tree) = array()
+        let %12: Record trees: Array(forests.Tree) end = record(trees = %11)
+        jump k1(%12)
+      }
+    }
+  }
+}
+

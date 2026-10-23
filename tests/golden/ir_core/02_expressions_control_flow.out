@@ -1,0 +1,105 @@
+main {
+  let x: Int = 10
+  let y: Int = 20
+  let %1: Int = prim *(y, 2)
+  let sum: Int = prim +(x, %1)
+  join k1(boolVal: Bool) {
+    funs {
+      fun testIf(n: Int): Int {
+        join k3(r: Int) {
+          return r
+        } in {
+          let %2: Bool = prim <(n, 0)
+          if %2 {
+            let %3: Int = prim -(0, n)
+            jump k3(%3)
+          } else {
+            join k4(r.1: Int) {
+              jump k3(r.1)
+            } in {
+              let %4: Bool = prim is(n, 0)
+              if %4 {
+                jump k4(0)
+              } else {
+                jump k4(n)
+              }
+            }
+          }
+        }
+      }
+    }
+    funs {
+      fun testLoop(): Ok {
+        var i: Int = 0
+        loop L1 {
+          let %5: Bool = prim <(i, 10)
+          if %5 {
+            let %6: Int = prim +(i, 1)
+            i := %6
+          } else {
+            break L1
+          }
+        }
+        loop L2 {
+          let %7: Bool = prim is(i, 20)
+          if %7 {
+            break L2
+          } else {
+            let %8: Int = prim +(i, 1)
+            i := %8
+          }
+        }
+        var k: Int = 1
+        loop L3 {
+          let %9: Bool = prim <=(k, 5)
+          if %9 {
+            let k.1: Int = k
+            let %10: Int = prim +(i, k.1)
+            i := %10
+            let %11: Int = prim +(k, 1)
+            k := %11
+          } else {
+            break L3
+          }
+        }
+        var k.2: Int = 5
+        loop L4 {
+          let %12: Bool = prim >=(k.2, 1)
+          if %12 {
+            let k.3: Int = k.2
+            let %13: Int = prim -(i, k.3)
+            i := %13
+            let %14: Int = prim -(k.2, 1)
+            k.2 := %14
+          } else {
+            break L4
+          }
+        }
+        return ok
+      }
+    }
+    let %15: Int = prim -(0, 5)
+    let r1: Int = call testIf(%15)
+    let r2: Int = call testIf(0)
+    let r3: Int = call testIf(42)
+    let r4: Ok = call testLoop()
+  } in {
+    let %16: Bool = prim <(x, y)
+    if %16 {
+      join k2(r.2: Bool) {
+        jump k1(r.2)
+      } in {
+        let %17: Bool = prim isnot(x, 0)
+        if %17 {
+          jump k2(true)
+        } else {
+          let %18: Bool = prim is(y, 20)
+          jump k2(%18)
+        }
+      }
+    } else {
+      jump k1(false)
+    }
+  }
+}
+

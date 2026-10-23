@@ -148,6 +148,12 @@ class _Verifier:
                 for f in functions:
                     self.function(f, inner)
                 return scope.with_vars(*(f.var for f in functions))
+            case ir.LetRec(vars=vars_, body=body):
+                # The body computes the variables' values (binding them with lets), and closures it makes may refer
+                # to them; they are in scope after it
+                inner = scope.with_vars(*vars_)
+                self.body(body, inner, where)
+                return scope.with_vars(*vars_)
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
                 self.use(cond, scope, where)
                 self.body(then_body, scope, where)
@@ -191,6 +197,8 @@ class _Verifier:
                 self.body(body, inner, where)
             case ir.Echo(value=value):
                 self.use(value, scope, where)
+            case ir.EchoText():
+                pass
             case ir.Return(value=value):
                 self.use(value, scope, where)
                 if not scope.in_function:

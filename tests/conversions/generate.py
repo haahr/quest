@@ -357,9 +357,9 @@ def _program(context: Context, cells: list[tuple[Shape, Arg]], known: bool) -> s
         lines.append(
             "(* Cells that compiled code gets wrong, each for the reason given, so the compiled phase is skipped *)"
         )
-        lines.append("(* @skip-phase: tokenize, parse, typecheck, run_c_compiled *)")
+        lines.append("(* @skip-phase: tokenize, parse, typecheck, ir_core, run_c_compiled *)")
     else:
-        lines.append("(* @skip-phase: tokenize, parse, typecheck *)")
+        lines.append("(* @skip-phase: tokenize, parse, typecheck, ir_core *)")
     lines.append("")
     lines.append("import writer: Writer;")
     lines.append("import conv: Conv;")

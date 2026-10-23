@@ -1,0 +1,83 @@
+main {
+  funs {
+    fun succ(x: Int): Int {
+      let %1: Int = prim +(x, 1)
+      return %1
+    }
+  }
+  funs {
+    fun succInferred(x.1: Int): Int {
+      let %2: Int = prim +(x.1, 1)
+      return %2
+    }
+  }
+  let %3: Int = call succ(41)
+  let %4: Int = call succInferred(41)
+  funs {
+    fun scale(a: Int, b: Real): Real {
+      let %5: Real = prim **(b, 2.0)
+      return %5
+    }
+  }
+  let %6: Real = call scale(10, 2.5)
+  funs {
+    fun inc(var count: Int): Ok {
+      let %7: Int = prim +(count, 1)
+      count := %7
+      return ok
+    }
+  }
+  var c: Int = 5
+  let %8: Var(Int) = addr c
+  do call inc(%8)
+  funs {
+    fun getDog(out d: Dog): Ok {
+      let %9: Record name: String breed: String end = record(name = "Rex", breed = "collie")
+      d := %9
+      return ok
+    }
+  }
+  let %10: Record name: String end = record(name = "cat")
+  var pet: Animal = %10
+  let %11: Var(Animal) = addr pet
+  do call getDog(%11)
+  let %12: String = record_field(pet, name)
+  funs {
+    fun viaClosure(): String {
+      let getter: Fun(out d: Dog): Ok = getDog
+      let %13: Record name: String end = record(name = "cat")
+      var local: Animal = %13
+      let %14: Var(Animal) = addr local
+      do call getter(%14)
+      let %15: String = record_field(local, name)
+      return %15
+    }
+  }
+  let %16: String = call viaClosure()
+  funs {
+    fun id [X::TYPE](x.2: X): X {
+      return x.2
+    }
+  }
+  let %17: Int = call id [Int](42)
+  let %18: String = call id [String]("hello")
+  funs rec {
+    fun factorial(n: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %19: Bool = prim is(n, 0)
+        if %19 {
+          jump k1(1)
+        } else {
+          let %20: Int = prim -(n, 1)
+          let %21: Int = call factorial(%20)
+          let %22: Int = prim *(n, %21)
+          jump k1(%22)
+        }
+      }
+    }
+  }
+  let %23: Int = call factorial(5)
+}
+

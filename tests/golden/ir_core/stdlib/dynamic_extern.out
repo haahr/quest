@@ -1,0 +1,112 @@
+main {
+  let %1: writer.T = member writer.output
+  let %2: T = call dynamic.new [Int](42)
+  do call dynamic.extern(%1, %2)
+  let %3: writer.T = member writer.output
+  do call writer.putString(%3, "\n")
+  let %4: writer.T = member writer.output
+  let %5: T = call dynamic.new [Real](3.14)
+  do call dynamic.extern(%4, %5)
+  let %6: writer.T = member writer.output
+  do call writer.putString(%6, "\n")
+  let %7: writer.T = member writer.output
+  let %8: T = call dynamic.new [Bool](true)
+  do call dynamic.extern(%7, %8)
+  let %9: writer.T = member writer.output
+  do call writer.putString(%9, "\n")
+  let %10: writer.T = member writer.output
+  let %11: T = call dynamic.new [Char]('z')
+  do call dynamic.extern(%10, %11)
+  let %12: writer.T = member writer.output
+  do call writer.putString(%12, "\n")
+  let %13: writer.T = member writer.output
+  let %14: T = call dynamic.new [String]("Hello, \"World\"!\n\t\\test")
+  do call dynamic.extern(%13, %14)
+  let %15: writer.T = member writer.output
+  do call writer.putString(%15, "\n")
+  let %16: writer.T = member writer.output
+  let %17: T = call dynamic.new [Ok](ok)
+  do call dynamic.extern(%16, %17)
+  let %18: writer.T = member writer.output
+  do call writer.putString(%18, "\n")
+  let p1: Record x: Int y: Int end = record(x = 10, y = 20)
+  let %19: writer.T = member writer.output
+  let %20: T = call dynamic.new [Point](p1)
+  do call dynamic.extern(%19, %20)
+  let %21: writer.T = member writer.output
+  do call writer.putString(%21, "\n")
+  let %22: Record x: Int y: Int end = record(x = 30, y = 40)
+  let line1: Record start: Record x: Int y: Int end finish: Record x: Int y: Int end end = record(start = p1, finish = %22)
+  let %23: writer.T = member writer.output
+  let %24: T = call dynamic.new [Line](line1)
+  do call dynamic.extern(%23, %24)
+  let %25: writer.T = member writer.output
+  do call writer.putString(%25, "\n")
+  let %26: Status = variant(success, ok)
+  let s1: T = call dynamic.new [Status](%26)
+  let %27: Status = variant(error, 404)
+  let s2: T = call dynamic.new [Status](%27)
+  let %28: writer.T = member writer.output
+  do call dynamic.extern(%28, s1)
+  let %29: writer.T = member writer.output
+  do call writer.putString(%29, "\n")
+  let %30: writer.T = member writer.output
+  do call dynamic.extern(%30, s2)
+  let %31: writer.T = member writer.output
+  do call writer.putString(%31, "\n")
+  let arr: Array(Int) = call arrayOp.new [Int](3, 0)
+  do call arrayOp.set [Int](arr, 0, 100)
+  do call arrayOp.set [Int](arr, 1, 200)
+  do call arrayOp.set [Int](arr, 2, 300)
+  let %32: writer.T = member writer.output
+  let %33: T = call dynamic.new [Array(Int)](arr)
+  do call dynamic.extern(%32, %33)
+  let %34: writer.T = member writer.output
+  do call writer.putString(%34, "\n")
+  let tup: Tuple Int String end = tuple(7, "seven")
+  let %35: writer.T = member writer.output
+  let %36: T = call dynamic.new [Pair](tup)
+  do call dynamic.extern(%35, %36)
+  let %37: writer.T = member writer.output
+  do call writer.putString(%37, "\n")
+  let %38: T = call dynamic.new [Ok](ok)
+  let n1: Record id: Int var next: T end = record(id = 1, var next = %38)
+  let %39: T = call dynamic.new [RefNode](n1)
+  let n2: Record id: Int var next: T end = record(id = 2, var next = %39)
+  let %40: T = call dynamic.new [RefNode](n2)
+  store n1.next := %40
+  let dNode: T = call dynamic.new [RefNode](n1)
+  let %41: writer.T = member writer.output
+  do call dynamic.extern(%41, dNode)
+  let %42: writer.T = member writer.output
+  do call writer.putString(%42, "\n")
+  let dCopy: T = call dynamic.copy(dNode)
+  let %43: writer.T = member writer.output
+  do call dynamic.extern(%43, dCopy)
+  let %44: writer.T = member writer.output
+  do call writer.putString(%44, "\n")
+  funs {
+    fun fnVal(x: Int): Int {
+      let %45: Int = prim +(x, 1)
+      return %45
+    }
+  }
+  try {
+    let %46: writer.T = member writer.output
+    let %47: T = call dynamic.new [Fun(x: Int): Int](fnVal)
+    let ignored: Ok = call dynamic.extern(%46, %47)
+    let %48: writer.T = member writer.output
+    do call writer.putString(%48, "FAILURE: closure did not raise dynamic.error\n")
+  } handle (e: Exception) {
+    let %49: Exception = member dynamic.error
+    let %50: Bool = prim is(e, %49)
+    if %50 {
+      let %51: writer.T = member writer.output
+      do call writer.putString(%51, "SUCCESS: closure raised dynamic.error\n")
+    } else {
+      let %52: writer.T = member writer.output
+      do call writer.putString(%52, "FAILURE: other exception\n")
+    }
+  }
+}
+

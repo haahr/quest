@@ -1,0 +1,182 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printStr(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %1: Ok = call writer.putString(wOut, "\n")
+      return %1
+    }
+  }
+  let sp: Span = call location.span("test.quest", 0, 0)
+  funs {
+    fun makeId(name: String): ast.Expr {
+      let %2: Expr = call ast.exprId(sp, name)
+      return %2
+    }
+  }
+  funs {
+    fun makeInt(val: Int, lexeme: String): ast.Expr {
+      let %3: Expr = call ast.exprInt(sp, val, lexeme)
+      return %3
+    }
+  }
+  funs {
+    fun makeTypePath(name.1: String): ast.TypeExpr {
+      let %4: TypeExpr = call ast.typePathSimple(sp, name.1)
+      return %4
+    }
+  }
+  funs {
+    fun makeInfix(left: ast.Expr, op: String, right: ast.Expr): ast.Expr {
+      let %5: Expr = call ast.exprInfix(sp, left, op, right)
+      return %5
+    }
+  }
+  funs {
+    fun makeApp(fn: ast.Expr, arg: ast.Expr): ast.Expr {
+      let args: vector.T(ast.Expr) = type_app vector.new [ast.Expr]
+      do call vector.append [ast.Expr](args, arg)
+      let %6: Expr = call ast.exprApp(sp, fn, args)
+      return %6
+    }
+  }
+  funs {
+    fun makeFormalParam(name.2: String, typeName: String): ast.FormalParam {
+      let %7: ast.TypeExpr = call makeTypePath(typeName)
+      let %8: maybe.T(ast.TypeExpr) = call maybe.some [ast.TypeExpr](%7)
+      let %9: ast.ParamMode = option(modeValue)
+      let %10: FormalParam = call ast.formalParam(name.2, %8, %9)
+      return %10
+    }
+  }
+  let valX: ast.Expr = call makeInt(42, "42")
+  let typeInt: ast.TypeExpr = call makeTypePath("Int")
+  let name.3: String = "x"
+  let value: ast.Expr = valX
+  let params: vector.T(ast.FormalParam) = type_app vector.new [ast.FormalParam]
+  let typeAnnot: maybe.T(ast.TypeExpr) = call maybe.some [ast.TypeExpr](typeInt)
+  let isRec: Bool = false
+  let isVar: Bool = false
+  let %11: Tuple name: String value: Node(ast.ExprForm) params: vector.T(FormalParam) typeAnnot: maybe.T(TypeExpr) isRec: Bool isVar: Bool end = tuple(name.3, value, params, typeAnnot, isRec, isVar)
+  let %12: ast.ExprForm = option(declLetVal, %11)
+  let declX: ast.Decl = call ast.makeDecl(sp, %12)
+  let decl: ast.Decl = declX
+  let %13: Tuple decl: Decl end = tuple(decl)
+  let %14: ast.PhraseForm = option(phraseDecl, %13)
+  let phraseX: ast.Phrase = call ast.makePhrase(sp, %14)
+  let phrases1: vector.T(ast.Phrase) = type_app vector.new [ast.Phrase]
+  do call vector.append [ast.Phrase](phrases1, phraseX)
+  let prog1: ast.Program = call ast.makeProgram(sp, phrases1)
+  do call printStr("=== Test 1: Simple Let Binding ===")
+  let %15: String = call astprint.dump(prog1)
+  do call printStr(%15)
+  let %16: ast.Expr = call makeId("n")
+  let %17: ast.Expr = call makeInt(0, "0")
+  let condExpr: ast.Expr = call makeInfix(%16, "is", %17)
+  let thenExpr: ast.Expr = call makeInt(1, "1")
+  let %18: ast.Expr = call makeId("n")
+  let %19: ast.Expr = call makeInt(1, "1")
+  let recArg: ast.Expr = call makeInfix(%18, "-", %19)
+  let %20: ast.Expr = call makeId("fact")
+  let recCall: ast.Expr = call makeApp(%20, recArg)
+  let %21: ast.Expr = call makeId("n")
+  let multExpr: ast.Expr = call makeInfix(%21, "*", recCall)
+  let elseExpr: ast.Expr = multExpr
+  let cond: ast.Expr = condExpr
+  let thenBranch: ast.Expr = thenExpr
+  let elsifs: vector.T(ast.ElsifBranch) = type_app vector.new [ast.ElsifBranch]
+  let elseBranch: maybe.T(ast.Expr) = call maybe.some [ast.Expr](elseExpr)
+  let %22: Tuple cond: Node(ast.ExprForm) thenBranch: Node(ast.ExprForm) elsifs: vector.T(ElsifBranchOf(Node(ast.ExprForm))) elseBranch: maybe.T(Node(ast.ExprForm)) end = tuple(cond, thenBranch, elsifs, elseBranch)
+  let %23: ast.ExprForm = option(exprIf, %22)
+  let ifExpr: Expr = call ast.makeExpr(sp, %23)
+  let factParams: vector.T(ast.FormalParam) = type_app vector.new [ast.FormalParam]
+  let %24: ast.FormalParam = call makeFormalParam("n", "Int")
+  do call vector.append [ast.FormalParam](factParams, %24)
+  let name.4: String = "fact"
+  let value.1: Expr = ifExpr
+  let params.1: vector.T(ast.FormalParam) = factParams
+  let %25: ast.TypeExpr = call makeTypePath("Int")
+  let typeAnnot.1: maybe.T(ast.TypeExpr) = call maybe.some [ast.TypeExpr](%25)
+  let isRec.1: Bool = true
+  let isVar.1: Bool = false
+  let %26: Tuple name: String value: Node(ast.ExprForm) params: vector.T(FormalParam) typeAnnot: maybe.T(TypeExpr) isRec: Bool isVar: Bool end = tuple(name.4, value.1, params.1, typeAnnot.1, isRec.1, isVar.1)
+  let %27: ast.ExprForm = option(declLetVal, %26)
+  let declFact: ast.Decl = call ast.makeDecl(sp, %27)
+  let decl.1: ast.Decl = declFact
+  let %28: Tuple decl: Decl end = tuple(decl.1)
+  let %29: ast.PhraseForm = option(phraseDecl, %28)
+  let phraseFact: ast.Phrase = call ast.makePhrase(sp, %29)
+  let phrases2: vector.T(ast.Phrase) = type_app vector.new [ast.Phrase]
+  do call vector.append [ast.Phrase](phrases2, phraseFact)
+  let prog2: ast.Program = call ast.makeProgram(sp, phrases2)
+  do call printStr("=== Test 2: Recursive Fact Function ===")
+  let %30: String = call astprint.dump(prog2)
+  do call printStr(%30)
+  funs {
+    fun programOf(decl.2: ast.Decl): ast.Program {
+      let phrases: vector.T(ast.Phrase) = type_app vector.new [ast.Phrase]
+      let decl.3: ast.Decl = decl.2
+      let %31: Tuple decl: Decl end = tuple(decl.3)
+      let %32: ast.PhraseForm = option(phraseDecl, %31)
+      let %33: Phrase = call ast.makePhrase(sp, %32)
+      do call vector.append [ast.Phrase](phrases, %33)
+      let %34: Program = call ast.makeProgram(sp, phrases)
+      return %34
+    }
+  }
+  let formalsT: vector.T(ast.TypeFormal) = type_app vector.new [ast.TypeFormal]
+  let name.5: String = "X"
+  let %35: ast.TypeForm = option(kindType)
+  let bound: KindExpr = call ast.makeKind(sp, %35)
+  let %36: Tuple name: String bound: KindExpr end = tuple(name.5, bound)
+  do call vector.append [ast.TypeFormal](formalsT, %36)
+  let name.6: String = "T"
+  let params.2: vector.T(ast.TypeFormal) = formalsT
+  let bound.1: ast.TypeExpr = call makeTypePath("Int")
+  let %37: Tuple bound: Node(ast.TypeForm) end = tuple(bound.1)
+  let %38: ast.TypeForm = option(kindPower, %37)
+  let %39: KindExpr = call ast.makeKind(sp, %38)
+  let resultKind: maybe.T(ast.KindExpr) = call maybe.some [ast.KindExpr](%39)
+  let body: ast.TypeExpr = call makeTypePath("X")
+  let %40: Tuple params: vector.T(TypeFormalOf(Node(ast.TypeForm))) resultKind: maybe.T(Node(ast.TypeForm)) body: Node(ast.TypeForm) end = tuple(params.2, resultKind, body)
+  let %41: ast.TypeForm = option(typeFun, %40)
+  let typeVal: TypeExpr = call ast.makeType(sp, %41)
+  let params.3: vector.T(ast.TypeFormal) = type_app vector.new [ast.TypeFormal]
+  let bound.2: maybe.T(ast.KindExpr) = type_app maybe.none [ast.KindExpr]
+  let isRec.2: Bool = true
+  let isDef: Bool = true
+  let %42: Tuple name: String typeVal: TypeExpr params: vector.T(TypeFormal) bound: maybe.T(KindExpr) isRec: Bool isDef: Bool end = tuple(name.6, typeVal, params.3, bound.2, isRec.2, isDef)
+  let %43: ast.ExprForm = option(declTypeBinding, %42)
+  let declT: ast.Decl = call ast.makeDecl(sp, %43)
+  do call printStr("=== Test 3: Recursive Type Definition ===")
+  let %44: ast.Program = call programOf(declT)
+  let %45: String = call astprint.dump(%44)
+  do call printStr(%45)
+  let autoFields: vector.T(ast.TupleField) = type_app vector.new [ast.TupleField]
+  let %46: maybe.T(String) = type_app maybe.none [String]
+  let %47: ast.Expr = call makeInt(3, "3")
+  let %48: maybe.T(ast.TypeExpr) = type_app maybe.none [ast.TypeExpr]
+  let val.1: TupleFieldBinding = call ast.tupleBinding(%46, %47, %48, false)
+  let %49: Tuple val: TupleFieldBindingOf(Expr) end = tuple(val.1)
+  let %50: ast.TupleField = option(fieldVal, %49)
+  do call vector.append [ast.TupleField](autoFields, %50)
+  let witnessType: ast.TypeExpr = call makeTypePath("Int")
+  let fields: vector.T(ast.TupleField) = autoFields
+  let %51: Tuple fields: vector.T(TupleFieldOf(Node(ast.ExprForm))) end = tuple(fields)
+  let %52: ast.ExprForm = option(exprTuple, %51)
+  let payload: Expr = call ast.makeExpr(sp, %52)
+  let witnessName: maybe.T(String) = call maybe.some [String]("A")
+  let %53: ast.TypeForm = option(kindType)
+  let %54: KindExpr = call ast.makeKind(sp, %53)
+  let witnessBound: maybe.T(ast.KindExpr) = call maybe.some [ast.KindExpr](%54)
+  let %55: Tuple witnessType: TypeExpr payload: Node(ast.ExprForm) witnessName: maybe.T(String) witnessBound: maybe.T(KindExpr) end = tuple(witnessType, payload, witnessName, witnessBound)
+  let %56: ast.ExprForm = option(exprAuto, %55)
+  let autoExpr: Expr = call ast.makeExpr(sp, %56)
+  do call printStr("=== Test 4: Auto Value ===")
+  let %57: maybe.T(ast.TypeExpr) = type_app maybe.none [ast.TypeExpr]
+  let %58: Decl = call ast.declLetVal(sp, "p", autoExpr, %57)
+  let %59: ast.Program = call programOf(%58)
+  let %60: String = call astprint.dump(%59)
+  do call printStr(%60)
+}
+

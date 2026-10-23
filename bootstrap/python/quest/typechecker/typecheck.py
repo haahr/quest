@@ -1350,12 +1350,15 @@ class TypeElaborator:
             return self.check_expr(b.value, elaborate_type(b.type_annot, env), env, loop_depth)
         return self.synth_expr(b.value, env, loop_depth)
 
-    def _declare_tuple_label(self, name: Optional[str], type_val: QType, is_var: bool, env: Environment) -> None:
-        """Declares the label of a tuple's value component, for the components after it."""
-        if name is not None:
-            env.current_scope.declare_value(
-                ValueSymbol(name=name, type_val=type_val, is_var=is_var, function_depth=self.function_depth)
-            )
+    def _declare_tuple_label(
+        self, name: Optional[str], type_val: QType, is_var: bool, env: Environment
+    ) -> Optional[ValueSymbol]:
+        """Declares the label of a tuple's value component, for the components after it, returning its symbol."""
+        if name is None:
+            return None
+        return env.current_scope.declare_value(
+            ValueSymbol(name=name, type_val=type_val, is_var=is_var, function_depth=self.function_depth)
+        )
 
     def _synth_tuple_expr(self, expr: ast.ExprTuple, env: Environment, loop_depth: int) -> TypedTuple:
         """Synthesizes a tuple constructor: tuple ... end."""
@@ -1364,6 +1367,7 @@ class TypeElaborator:
             q_fields: list[QTupleComponent] = []
             rec_groups: list[tuple[int, ...]] = []
             simultaneous_groups: list[tuple[int, ...]] = []
+            labels: dict[int, ValueSymbol] = {}
 
             for b in expr.fields:
                 if isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
@@ -1384,23 +1388,27 @@ class TypeElaborator:
                     val_typed = self._synth_tuple_component(b, env, loop_depth)
                     elem_typeds.append(val_typed)
                     q_fields.append(QTupleField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))
-                    self._declare_tuple_label(b.name, val_typed.type_val, b.is_var, env)
+                    if (label := self._declare_tuple_label(b.name, val_typed.type_val, b.is_var, env)) is not None:
+                        labels[len(elem_typeds) - 1] = label
                 elif isinstance(b, ast.TupleBindingGroup):
                     # Simultaneous: every member's value is elaborated before any label is declared
                     check_distinct_names(b.bindings)
                     members = [(m, self._synth_tuple_component(m, env, loop_depth)) for m in b.bindings]
-                    simultaneous_groups.append(tuple(range(len(elem_typeds), len(elem_typeds) + len(members))))
+                    first = len(elem_typeds)
+                    simultaneous_groups.append(tuple(range(first, first + len(members))))
                     for m, val_typed in members:
                         elem_typeds.append(val_typed)
                         q_fields.append(QTupleField(name=m.name, type_val=val_typed.type_val, is_var=m.is_var))
-                    for m, val_typed in members:
-                        self._declare_tuple_label(m.name, val_typed.type_val, m.is_var, env)
+                    for k, (m, val_typed) in enumerate(members):
+                        if (label := self._declare_tuple_label(m.name, val_typed.type_val, m.is_var, env)) is not None:
+                            labels[first + k] = label
                 elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
                     # Recursive: let rec, alone or joined by and, declares its members before checking their values
                     typed_binding = self._elaborate_binding(b, env, loop_depth)
                     members = binding_members(typed_binding)
                     rec_groups.append(tuple(range(len(elem_typeds), len(elem_typeds) + len(members))))
                     for member in members:
+                        labels[len(elem_typeds)] = member.symbol
                         elem_typeds.append(member.value)
                         q_fields.append(
                             QTupleField(name=member.name, type_val=member.symbol.type_val, is_var=member.symbol.is_var)
@@ -1420,6 +1428,7 @@ class TypeElaborator:
                 type_val=tuple_type,
                 rec_groups=tuple(rec_groups),
                 simultaneous_groups=tuple(simultaneous_groups),
+                labels=tuple(labels.get(i) for i in range(len(elem_typeds))),
                 offset=expr.offset,
             )
 
@@ -1479,6 +1488,8 @@ class TypeElaborator:
             simultaneous_groups: list[tuple[int, ...]] = []
             # The labels of a simultaneous declaration's members, declared once its last member has been checked
             pending_labels: list[ValueSymbol] = []
+            # The symbol of each labeled element's label, by element index
+            check_labels: dict[int, ValueSymbol] = {}
             group_indices: list[int] = []
 
             def witness_of(binding: ast.TypeBinding) -> QType:
@@ -1593,6 +1604,7 @@ class TypeElaborator:
                             if b is group[0]:
                                 group_indices = []
                             group_indices.append(len(elem_typeds))
+                            check_labels[len(elem_typeds)] = rec_sym
                             elem_typeds.append(self._check_rec_value(b, rec_sym, env, loop_depth).value)
                             if b is group[-1]:
                                 rec_groups.append(tuple(group_indices))
@@ -1635,18 +1647,20 @@ class TypeElaborator:
                             if b is group[0]:
                                 group_indices = []
                             group_indices.append(len(elem_typeds))
-                            elem_typeds.append(val_typed)
                             if label is not None:
+                                check_labels[len(elem_typeds)] = label
                                 pending_labels.append(label)
+                            elem_typeds.append(val_typed)
                             if b is group[-1]:
                                 simultaneous_groups.append(tuple(group_indices))
                                 for pending in pending_labels:
                                     env.current_scope.declare_value(pending)
                                 pending_labels = []
                             continue
-                        elem_typeds.append(val_typed)
                         if label is not None:
+                            check_labels[len(elem_typeds)] = label
                             env.current_scope.declare_value(label)
+                        elem_typeds.append(val_typed)
 
             # Trailing manifest kinds name nothing, but are still checked
             for kind_binding in kinds_before.get(len(fields), ()):
@@ -1657,6 +1671,7 @@ class TypeElaborator:
                 type_val=expected_lazy,
                 rec_groups=tuple(rec_groups),
                 simultaneous_groups=tuple(simultaneous_groups),
+                labels=tuple(check_labels.get(i) for i in range(len(elem_typeds))),
                 offset=expr.offset,
             )
 
@@ -2258,6 +2273,7 @@ class TypeElaborator:
             name=expr.name,
             payload_type=payload_type,
             type_val=exc_type,
+            symbol=sym,
             offset=expr.offset,
         )
 

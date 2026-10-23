@@ -1,0 +1,270 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(n: Int): Ok {
+      let %1: String = call conv.int(n)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, " ")
+      return %2
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %3: String = call conv.bool(b)
+      do call writer.putString(wOut, %3)
+      let %4: Ok = call writer.putString(wOut, " ")
+      return %4
+    }
+  }
+  funs {
+    fun printString(s: String): Ok {
+      do call writer.putString(wOut, s)
+      let %5: Ok = call writer.putString(wOut, " ")
+      return %5
+    }
+  }
+  funs {
+    fun printNewline(dummy: Int): Ok {
+      let %6: Ok = call writer.putString(wOut, "\n")
+      return %6
+    }
+  }
+  funs {
+    fun intEqual(a: Int, b.1: Int): Bool {
+      let %7: Bool = prim is(a, b.1)
+      return %7
+    }
+  }
+  funs {
+    fun intHash(a.1: Int): word.T {
+      let %8: word.T = call word.fromInt(a.1)
+      let %9: word.T = call word.fromInt(2654435761)
+      let %10: word.T = call word.mul(%8, %9)
+      return %10
+    }
+  }
+  let v: vector.T(Int) = type_app vector.new [Int]
+  do call vector.append [Int](v, 1)
+  do call vector.append [Int](v, 2)
+  do call vector.append [Int](v, 3)
+  do call vector.append [Int](v, 4)
+  do call vector.append [Int](v, 5)
+  funs {
+    fun f(x: Int): Int {
+      let %11: Int = prim *(x, 2)
+      return %11
+    }
+  }
+  let vDoubled: vector.T(Int) = call vector.map [Int Int](v, f)
+  funs {
+    fun f.1(x.1: Int): Ok {
+      let %12: Ok = call printInt(x.1)
+      return %12
+    }
+  }
+  do call vector.forEach [Int](vDoubled, f.1)
+  do call printNewline(0)
+  funs {
+    fun f.2(x.2: Int): Bool {
+      let %13: Int = prim %(x.2, 2)
+      let %14: Bool = prim is(%13, 0)
+      return %14
+    }
+  }
+  let vEvens: vector.T(Int) = call vector.filter [Int](v, f.2)
+  funs {
+    fun f.3(x.3: Int): Ok {
+      let %15: Ok = call printInt(x.3)
+      return %15
+    }
+  }
+  do call vector.forEach [Int](vEvens, f.3)
+  do call printNewline(0)
+  funs {
+    fun f.4(acc: Int, x.4: Int): Int {
+      let %16: Int = prim +(acc, x.4)
+      return %16
+    }
+  }
+  let vSum: Int = call vector.fold [Int Int](v, 0, f.4)
+  do call printInt(vSum)
+  do call printNewline(0)
+  funs {
+    fun f.5(x.5: Int): maybe.T(String) {
+      join k1(r: maybe.T(String)) {
+        return r
+      } in {
+        let %17: Int = prim %(x.5, 2)
+        let %18: Bool = prim is(%17, 1)
+        if %18 {
+          let %19: Int = prim *(x.5, 10)
+          let %20: String = call conv.int(%19)
+          let %21: maybe.T(String) = call maybe.some [String](%20)
+          jump k1(%21)
+        } else {
+          let %22: maybe.T(String) = type_app maybe.none [String]
+          jump k1(%22)
+        }
+      }
+    }
+  }
+  let vFilteredMapped: vector.T(String) = call vector.filterMap [Int String](v, f.5)
+  funs {
+    fun f.6(s.1: String): Ok {
+      let %23: Ok = call printString(s.1)
+      return %23
+    }
+  }
+  do call vector.forEach [String](vFilteredMapped, f.6)
+  do call printNewline(0)
+  let %24: Fun(s1: String s2: String): Bool = member stringOp.equal
+  let %25: Fun(s: String): word.T = member hash.string
+  let m: hashMap.T(String Int) = call hashMap.new [String Int](%24, %25)
+  let %26: Bool = call hashMap.insert [String Int](m, "one", 1)
+  let %27: Bool = call hashMap.insert [String Int](m, "two", 2)
+  let %28: Bool = call hashMap.insert [String Int](m, "three", 3)
+  let %29: Bool = call hashMap.insert [String Int](m, "four", 4)
+  funs {
+    fun f.7(k: String, v.1: Int): Int {
+      let %30: Int = prim *(v.1, 10)
+      return %30
+    }
+  }
+  let mMapped: hashMap.T(String Int) = call hashMap.map [String Int Int](m, f.7)
+  let %31: Int = call hashMap.size [String Int](mMapped)
+  do call printInt(%31)
+  let %32: maybe.T(Int) = call hashMap.get [String Int](mMapped, "one")
+  let %33: Int = call maybe.unwrapOr [Int](%32, 0)
+  do call printInt(%33)
+  let %34: maybe.T(Int) = call hashMap.get [String Int](mMapped, "three")
+  let %35: Int = call maybe.unwrapOr [Int](%34, 0)
+  do call printInt(%35)
+  do call printNewline(0)
+  funs {
+    fun f.8(k.1: String, v.2: Int): Bool {
+      let %36: Int = prim %(v.2, 2)
+      let %37: Bool = prim is(%36, 0)
+      return %37
+    }
+  }
+  let mFiltered: hashMap.T(String Int) = call hashMap.filter [String Int](m, f.8)
+  let %38: Int = call hashMap.size [String Int](mFiltered)
+  do call printInt(%38)
+  let %39: Bool = call hashMap.contains [String Int](mFiltered, "two")
+  do call printBool(%39)
+  let %40: Bool = call hashMap.contains [String Int](mFiltered, "four")
+  do call printBool(%40)
+  let %41: Bool = call hashMap.contains [String Int](mFiltered, "one")
+  do call printBool(%41)
+  do call printNewline(0)
+  funs {
+    fun f.9(acc.1: Int, k.2: String, v.3: Int): Int {
+      let %42: Int = prim +(acc.1, v.3)
+      return %42
+    }
+  }
+  let mSum: Int = call hashMap.fold [String Int Int](m, 0, f.9)
+  do call printInt(mSum)
+  do call printNewline(0)
+  funs {
+    fun f.10(k.3: String, v.4: Int): maybe.T(String) {
+      join k2(r.1: maybe.T(String)) {
+        return r.1
+      } in {
+        let %43: Bool = prim >(v.4, 2)
+        if %43 {
+          let %44: String = prim <>(k.3, "!")
+          let %45: maybe.T(String) = call maybe.some [String](%44)
+          jump k2(%45)
+        } else {
+          let %46: maybe.T(String) = type_app maybe.none [String]
+          jump k2(%46)
+        }
+      }
+    }
+  }
+  let mFilterMapped: hashMap.T(String String) = call hashMap.filterMap [String Int String](m, f.10)
+  let %47: Int = call hashMap.size [String String](mFilterMapped)
+  do call printInt(%47)
+  let %48: maybe.T(String) = call hashMap.get [String String](mFilterMapped, "three")
+  let %49: String = call maybe.unwrapOr [String](%48, "none")
+  do call printString(%49)
+  let %50: maybe.T(String) = call hashMap.get [String String](mFilterMapped, "four")
+  let %51: String = call maybe.unwrapOr [String](%50, "none")
+  do call printString(%51)
+  do call printNewline(0)
+  let s.2: hashSet.T(Int) = call hashSet.new [Int](intEqual, intHash)
+  let %52: Bool = call hashSet.insert [Int](s.2, 10)
+  let %53: Bool = call hashSet.insert [Int](s.2, 20)
+  let %54: Bool = call hashSet.insert [Int](s.2, 30)
+  let %55: Bool = call hashSet.insert [Int](s.2, 40)
+  funs {
+    fun f.11(x.6: Int): Bool {
+      let %56: Bool = prim >(x.6, 20)
+      return %56
+    }
+  }
+  let sFiltered: hashSet.T(Int) = call hashSet.filter [Int](s.2, f.11)
+  let %57: Int = call hashSet.size [Int](sFiltered)
+  do call printInt(%57)
+  let %58: Bool = call hashSet.contains [Int](sFiltered, 30)
+  do call printBool(%58)
+  let %59: Bool = call hashSet.contains [Int](sFiltered, 40)
+  do call printBool(%59)
+  let %60: Bool = call hashSet.contains [Int](sFiltered, 10)
+  do call printBool(%60)
+  do call printNewline(0)
+  funs {
+    fun f.12(acc.2: Int, x.7: Int): Int {
+      let %61: Int = prim +(acc.2, x.7)
+      return %61
+    }
+  }
+  let sSum: Int = call hashSet.fold [Int Int](s.2, 0, f.12)
+  do call printInt(sSum)
+  do call printNewline(0)
+  let %62: Fun(s1: String s2: String): Bool = member stringOp.equal
+  let %63: Fun(s: String): word.T = member hash.string
+  funs {
+    fun f.13(x.8: Int): String {
+      let %64: String = call conv.int(x.8)
+      return %64
+    }
+  }
+  let sMapped: hashSet.T(String) = call hashSet.map [Int String](s.2, %62, %63, f.13)
+  let %65: Int = call hashSet.size [String](sMapped)
+  do call printInt(%65)
+  let %66: Bool = call hashSet.contains [String](sMapped, "10")
+  do call printBool(%66)
+  let %67: Bool = call hashSet.contains [String](sMapped, "30")
+  do call printBool(%67)
+  do call printNewline(0)
+  funs {
+    fun f.14(x.9: Int): maybe.T(Int) {
+      join k3(r.2: maybe.T(Int)) {
+        return r.2
+      } in {
+        let %68: Bool = prim <=(x.9, 20)
+        if %68 {
+          let %69: Int = prim +(x.9, 5)
+          let %70: maybe.T(Int) = call maybe.some [Int](%69)
+          jump k3(%70)
+        } else {
+          let %71: maybe.T(Int) = type_app maybe.none [Int]
+          jump k3(%71)
+        }
+      }
+    }
+  }
+  let sFilterMapped: hashSet.T(Int) = call hashSet.filterMap [Int Int](s.2, intEqual, intHash, f.14)
+  let %72: Int = call hashSet.size [Int](sFilterMapped)
+  do call printInt(%72)
+  let %73: Bool = call hashSet.contains [Int](sFilterMapped, 15)
+  do call printBool(%73)
+  let %74: Bool = call hashSet.contains [Int](sFilterMapped, 25)
+  do call printBool(%74)
+  let %75: Bool = call hashSet.contains [Int](sFilterMapped, 35)
+  do call printBool(%75)
+  do call printNewline(0)
+}
+

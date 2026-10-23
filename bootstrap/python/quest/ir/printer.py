@@ -1,7 +1,7 @@
 """The IR's textual form (docs/ir.md §10), for dumps, goldens, and debugging.
 
 Variables print as their hints, made distinct within a unit by a numeric suffix (x, x.1, ...) in the order they are
-bound; types print as Quest types, with alias names.
+bound, and temporaries (no hint) as %1, %2, ...; types print as Quest types, with alias names.
 """
 
 from __future__ import annotations
@@ -24,10 +24,14 @@ class _Printer:
     def bind(self, var: ir.Var) -> str:
         if id(var) in self.names:
             return self.names[id(var)]
-        hint = var.hint or "t"
+        hint = var.hint
         n = self.used.get(hint, 0)
         self.used[hint] = n + 1
-        name = hint if n == 0 else f"{hint}.{n}"
+        if not hint:
+            # A temporary: numbered, apart from the program's own names
+            name = f"%{n + 1}"
+        else:
+            name = hint if n == 0 else f"{hint}.{n}"
         self.names[id(var)] = name
         return name
 
@@ -40,7 +44,8 @@ class _Printer:
             return self.name(a)
         v = a.value
         if v is None:
-            return "ok"
+            # ok, or no value yet (the initial value of a variable assigned before it is read, such as an exception)
+            return "ok" if a.shape.kind == "ok" else "null"
         if isinstance(v, bool):
             return "true" if v else "false"
         if isinstance(v, str):
@@ -78,7 +83,9 @@ class _Printer:
             case ir.TypeApp(callee=callee, type_args=type_args, module=module, member=member):
                 return f"type_app {self.callee(callee, module, member)}{self.type_args(type_args)}"
             case ir.ModuleMember(module=module, member=member):
-                return f"member {module}.{member}"
+                return f"member {module}.{member}" if member is not None else f"module {module}"
+            case ir.Builtin(name=name):
+                return f"builtin {name}"
             case ir.External(symbol=symbol):
                 return f"external {json.dumps(symbol)}"
             case ir.MakeTuple(args=args, type_components=type_components):
@@ -94,9 +101,9 @@ class _Printer:
                 return f"record_field({self.atom(r)}, {name})"
             case ir.MakeVariant(tag=tag, payload=payload):
                 return f"variant({tag}{', ' + self.atom(payload) if payload is not None else ''})"
-            case ir.MakeOption(tag=tag, args=args, ordinal=ordinal):
+            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal):
                 head = tag if ordinal is None else f"#{self.atom(ordinal)}"
-                return f"option({head}{', ' + self.atoms(args) if args else ''})"
+                return f"option({head}{', ' + self.atom(payload) if payload is not None else ''})"
             case ir.IsTag(value=v, tag=tag):
                 return f"is_tag({self.atom(v)}, {tag})"
             case ir.Payload(value=v, tag=tag):
@@ -112,7 +119,8 @@ class _Printer:
             case ir.MakeAuto(witness=w, payload=p):
                 return f"auto[{self.type(w)}]({self.atom(p)})"
             case ir.MakeException(name=name, payload_type=pt):
-                return f"exception {name}{': ' + self.type(pt) if pt is not None else ''}"
+                payload = pt is not None and self.type(pt) != "Ok"
+                return f"exception {name}{': ' + self.type(pt) if payload else ''}"
             case ir.ExceptionPayload(exception=e):
                 return f"exception_payload({self.atom(e)})"
             case ir.Addr(var=var, base=base, name=name, index=index, cell=cell):
@@ -147,7 +155,8 @@ class _Printer:
     def function(self, f: ir.Function, depth: int) -> None:
         tps = (" [" + " ".join(f"{tp.name}::{tp.kind}" for tp in f.type_params) + "]") if f.type_params else ""
         params = ", ".join(f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params)
-        self.block(f"fun {self.name(f.var)}{tps}({params}): {self.type(f.result.type)}", f.body, depth)
+        result = f.result_type if f.result_type is not None else f.result.type
+        self.block(f"fun {self.name(f.var)}{tps}({params}): {self.type(result)}", f.body, depth)
 
     def statement(self, s, depth: int) -> None:
         match s:
@@ -182,6 +191,9 @@ class _Printer:
                         self.bind(f.var)
                     self.function(f, depth + 1)
                 self.emit(depth, "}")
+            case ir.LetRec(vars=vars_, body=body):
+                decls = ", ".join(self.decl(v) for v in vars_)
+                self.block(f"let rec ({decls})", body, depth)
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
                 self.emit(depth, f"if {self.atom(cond)} {{")
                 self.body(then_body, depth + 1)
@@ -221,9 +233,10 @@ class _Printer:
                 self.emit(depth, "} in {")
                 self.body(body, depth + 1)
                 self.emit(depth, "}")
-            case ir.Echo(value=value, type=t, name=name, is_result=is_result):
-                what = "result" if is_result else "echo"
-                self.emit(depth, f"{what}{' ' + name if name else ''} {self.atom(value)} : {self.type(t)}")
+            case ir.Echo(value=value, type=t, prefix=prefix):
+                self.emit(depth, f"echo {json.dumps(prefix)} {self.atom(value)} : {self.type(t)}")
+            case ir.EchoText(text=text):
+                self.emit(depth, f"echo {json.dumps(text)}")
             case ir.Return(value=value):
                 self.emit(depth, f"return {self.atom(value)}")
             case ir.Jump(label=label, args=args):

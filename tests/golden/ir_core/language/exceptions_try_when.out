@@ -1,0 +1,150 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let MyExc: Exception = exception MyExc
+  funs {
+    fun compute(x.1: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        try {
+          join k2(r.1: Int) {
+            jump k1(r.1)
+          } in {
+            let %3: Bool = prim <(x.1, 0)
+            if %3 {
+              raise MyExc
+            } else {
+              let %4: Int = prim *(x.1, 2)
+              jump k2(%4)
+            }
+          }
+        } handle (e: Exception) {
+          let %5: Bool = prim is(e, MyExc)
+          if %5 {
+            jump k1(-1)
+          } else {
+            raise e
+          }
+        }
+      }
+    }
+  }
+  let %6: Int = call compute(5)
+  do call printInt(%6)
+  let %7: Int = call compute(-3)
+  do call printInt(%7)
+  let Fail: Exception(Int) = exception Fail: Int
+  funs {
+    fun tryWork(code: Int): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        try {
+          join k4(r.3: Int) {
+            jump k3(r.3)
+          } in {
+            let %8: Bool = prim <(code, 0)
+            if %8 {
+              raise Fail with code
+            } else {
+              let %9: Int = prim *(code, 10)
+              jump k4(%9)
+            }
+          }
+        } handle (e.1: Exception) {
+          let %10: Bool = prim is(e.1, Fail)
+          if %10 {
+            let errCode: Int = exception_payload(e.1)
+            let %11: Int = prim -(0, errCode)
+            jump k3(%11)
+          } else {
+            raise e.1
+          }
+        }
+      }
+    }
+  }
+  let %12: Int = call tryWork(7)
+  do call printInt(%12)
+  let %13: Int = call tryWork(-42)
+  do call printInt(%13)
+  join k5(r3: Int) {
+    do call printInt(r3)
+    funs {
+      fun mk(x.2: Int): Exception(Int) {
+        let Made: Exception(Int) = exception Made: Int
+        return Made
+      }
+    }
+    let m1: Exception(Int) = call mk(1)
+    let m2: Exception(Int) = call mk(2)
+    join k6(r4: Int) {
+      do call printInt(r4)
+      join k8(r5: Int) {
+        do call printInt(r5)
+      } in {
+        try {
+          let %14: Real = prim //(1.0, 0.0)
+          jump k8(0)
+        } handle (e.2: Exception) {
+          let %15: Exception = member real.error
+          let %16: Bool = prim is(e.2, %15)
+          if %16 {
+            jump k8(555)
+          } else {
+            raise e.2
+          }
+        }
+      }
+    } in {
+      try {
+        join k7(r.4: Int) {
+          jump k6(r.4)
+        } in {
+          try {
+            raise m1 with 6
+          } handle (e.3: Exception) {
+            let %17: Bool = prim is(e.3, m2)
+            if %17 {
+              let n: Int = exception_payload(e.3)
+              let %18: Int = prim -(0, n)
+              jump k7(%18)
+            } else {
+              raise e.3
+            }
+          }
+        }
+      } handle (e.4: Exception) {
+        let %19: Bool = prim is(e.4, m1)
+        if %19 {
+          let n.1: Int = exception_payload(e.4)
+          jump k6(n.1)
+        } else {
+          raise e.4
+        }
+      }
+    }
+  } in {
+    try {
+      let %20: Int = prim /(42, 0)
+      jump k5(%20)
+    } handle (e.5: Exception) {
+      let %21: Exception = member int.error
+      let %22: Bool = prim is(e.5, %21)
+      if %22 {
+        jump k5(777)
+      } else {
+        raise e.5
+      }
+    }
+  }
+}
+

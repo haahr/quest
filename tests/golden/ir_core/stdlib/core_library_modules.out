@@ -1,0 +1,81 @@
+main {
+  let %1: String = call conv.int(42)
+  let %2: String = call conv.int(-42)
+  let %3: String = call conv.real(3.14)
+  let %4: String = call conv.real(-2.5)
+  let %5: String = call conv.bool(true)
+  let %6: String = call conv.okay()
+  let c: Char = call ascii.char(65)
+  let %7: Int = call ascii.val(c)
+  join k1(r: Char) {
+    let %8: Int = prim -(0, 100)
+    let %9: Int = call int.abs(%8)
+    let %10: Int = call int.min(5, 10)
+    let %11: Int = call int.max(5, 10)
+    let %12: Int = call ascii.val('Z')
+    let %13: Int = call int.max(%12, 100)
+    let %14: Int = call real.floor(3.9)
+    let %15: Int = call real.round(3.2)
+    let %16: Real = prim --(0.0, 5.5)
+    let %17: Real = call real.abs(%16)
+    let %18: Real = call real.min(1.5, 2.5)
+    let %19: Real = call real.max(1.5, 2.5)
+    let %20: Real = call real.plus(10.0, 2.5)
+    let %21: Real = call real.diff(10.0, 2.5)
+    let %22: Real = call real.mul(3.0, 4.0)
+    let %23: Bool = call real.smaller(1.0, 2.0)
+    let %24: Bool = call real.greater(2.0, 1.0)
+    let %25: Bool = call real.smallerEq(1.0, 1.0)
+    let %26: Bool = call real.greaterEq(1.0, 1.0)
+    let s: String = call string.new(5, 'x')
+    do call string.setSub(s, 0, "hello", 0, 5)
+    let %27: Int = call string.length(s)
+    let %28: Char = call string.getChar(s, 1)
+    do call string.setChar(s, 0, 'H')
+    let %29: String = call string.getSub(s, 0, 2)
+    let %30: String = call string.cat(s, " world")
+    let a: Array(Int) = call arrayOp.new [Int](4, 10)
+    let %31: Int = call arrayOp.size [Int](a)
+    do call arrayOp.set [Int](a, 2, 99)
+    let %32: Int = call arrayOp.get [Int](a, 2)
+    join k2(r.1: Int) {
+      let d: T = call dynamic.new [Int](123)
+      let copied: T = call dynamic.copy(d)
+      let %33: Int = call dynamic.be [Int](copied)
+      let w: writer.T = call writer.file("io.txt")
+      do call writer.putString(w, "Quest I/O\n")
+      do call writer.close(w)
+      let r.2: reader.T = call reader.file("io.txt")
+      let %34: String = call reader.getString(r.2, 9)
+      do call reader.close(r.2)
+    } in {
+      try {
+        let %35: Int = call arrayOp.get [Int](a, 10)
+        jump k2(%35)
+      } handle (e: Exception) {
+        let %36: Exception = member arrayOp.error
+        let %37: Bool = prim is(e, %36)
+        if %37 {
+          let %38: Int = prim -(0, 1)
+          jump k2(%38)
+        } else {
+          raise e
+        }
+      }
+    }
+  } in {
+    try {
+      let %39: Char = call ascii.char(999)
+      jump k1(%39)
+    } handle (e.1: Exception) {
+      let %40: Exception = member ascii.error
+      let %41: Bool = prim is(e.1, %40)
+      if %41 {
+        jump k1('?')
+      } else {
+        raise e.1
+      }
+    }
+  }
+}
+

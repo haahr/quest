@@ -1,0 +1,103 @@
+main {
+  let p: Record x: Int y: Int end = record(x = 10, y = 20)
+  let %1: Int = record_field(p, x)
+  let %2: Int = record_field(p, y)
+  let %3: Int = prim +(%1, %2)
+  let %4: Record x: Int y: Int end = record(x = 10, y = 20)
+  let %5: Int = record_field(%4, x)
+  let r: Record var count: Int end = record(var count = 0)
+  let %6: Int = record_field(r, count)
+  let %7: Int = prim +(%6, 5)
+  store r.count := %7
+  let %8: Int = record_field(r, count)
+  let %9: Int = prim *(%8, 3)
+  store r.count := %9
+  let %10: Int = record_field(r, count)
+  let count: Int = 10
+  let name: String = "quest"
+  let t: Tuple count: Int name: String end = tuple(count, name)
+  let %11: Int = tuple_field(t, 0)
+  let count.1: Int = 10
+  let name.1: String = "quest"
+  let mt: Tuple var count: Int name: String end = tuple(count.1, name.1)
+  let %12: Int = tuple_field(mt, 0)
+  let %13: Int = prim +(%12, 5)
+  store mt.#0 := %13
+  let %14: Int = tuple_field(mt, 0)
+  let intensity: Int = 100
+  let %15: Tuple intensity: Int end = tuple(intensity)
+  let %16: Int = tuple_field(%15, 0)
+  let x: Int = 0
+  let mx: Tuple var x: Int end = tuple(x)
+  store mx.#0 := 7
+  let ix: Tuple x: Int end = mx
+  let %17: Int = tuple_field(ix, 0)
+  let a: Array(Int) = array(10, 20, 30)
+  let v1: Int = index(a, 1)
+  store a[1] := 99
+  let %18: Int = index(a, 1)
+  let %19: Int = prim +(v1, %18)
+  let rep: Array(Int) = array_rep(5, 42)
+  let %20: Int = index(rep, 0)
+  let %21: Int = index(rep, 4)
+  let %22: Int = prim +(%20, %21)
+  let none: Array(Int) = array()
+  let %23: Int = prim extent(none)
+  funs {
+    fun code(c: Color): Int {
+      join k1(r.1: Int) {
+        return r.1
+      } in {
+        switch tag(c) {
+          case red: {
+            jump k1(1)
+          }
+          case green: {
+            jump k1(2)
+          }
+          case blue (b: Tuple intensity: Int end): {
+            let %24: Int = tuple_field(b, 0)
+            jump k1(%24)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let c1: Color = option(red)
+  let intensity.1: Int = 100
+  let %25: Tuple intensity: Int end = tuple(intensity.1)
+  let c2: Color = option(blue, %25)
+  let %26: Int = call code(c1)
+  let %27: Int = call code(c2)
+  let %28: Int = call code(c1)
+  let %29: Int = call code(c2)
+  let %30: Int = prim +(%28, %29)
+  funs {
+    fun shade(c.1: Color): Int {
+      join k2(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(c.1) {
+          case red: {
+            jump k2(1)
+          }
+          case green: {
+            jump k2(2)
+          }
+          case blue (b.1: Tuple intensity: Int end): {
+            let %31: Int = tuple_field(b.1, 0)
+            jump k2(%31)
+          }
+        }
+      }
+    }
+  }
+  let %32: Color = option(green)
+  let %33: Int = call shade(%32)
+  let %34: Int = call shade(c2)
+  let %35: Int = prim +(%33, %34)
+}
+

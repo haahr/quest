@@ -1,0 +1,57 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun getFirstTwo(t: SmallTuple): Int {
+      let %3: Int = tuple_field(t, 0)
+      let %4: Int = tuple_field(t, 1)
+      let %5: Int = prim +(%3, %4)
+      return %5
+    }
+  }
+  let x.1: Int = 10
+  let y: Int = 20
+  let z: Int = 30
+  let bt: BigTuple = tuple(x.1, y, z)
+  let %6: Int = call getFirstTwo(bt)
+  do call printInt(%6)
+  funs {
+    fun sumXY(r: SmallRec): Int {
+      let %7: Int = record_field(r, x)
+      let %8: Int = record_field(r, y)
+      let %9: Int = prim +(%7, %8)
+      return %9
+    }
+  }
+  let br: BigRec = record(x = 100, y = 200, z = 300)
+  let %10: Int = call sumXY(br)
+  do call printInt(%10)
+  funs {
+    fun getA(r.1: OrderedRec): Int {
+      let %11: Int = record_field(r.1, a)
+      let %12: Int = record_field(r.1, b)
+      let %13: Int = prim +(10, %12)
+      let %14: Int = prim *(%11, %13)
+      return %14
+    }
+  }
+  let permuted: Record b: Int a: Int end = record(b = 4, a = 7)
+  let %15: Int = call getA(permuted)
+  do call printInt(%15)
+  funs {
+    fun applyRec(f: Fun(r: SmallRec): Int, r.2: BigRec): Int {
+      let %16: Int = call f(r.2)
+      return %16
+    }
+  }
+  let %17: Int = call applyRec(sumXY, br)
+  do call printInt(%17)
+}
+

@@ -1,0 +1,23 @@
+main {
+  let w: writer.T = call writer.file("carriage_returns.txt")
+  do call writer.putString(w, "a\r\nb\rc\n")
+  do call writer.close(w)
+  let r: reader.T = call reader.file("carriage_returns.txt")
+  loop L1 {
+    let %1: Bool = call reader.more(r)
+    if %1 {
+      let %2: writer.T = member writer.output
+      let %3: Char = call reader.getChar(r)
+      let %4: Int = call ascii.val(%3)
+      let %5: String = call conv.int(%4)
+      let %6: String = prim <>(%5, " ")
+      do call writer.putString(%2, %6)
+    } else {
+      break L1
+    }
+  }
+  do call reader.close(r)
+  let %7: writer.T = member writer.output
+  do call writer.putString(%7, "\n")
+}
+

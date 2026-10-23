@@ -1,0 +1,157 @@
+main {
+  funs {
+    fun nl(): Ok {
+      let %1: writer.T = member writer.output
+      let %2: Ok = call writer.putString(%1, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun say(s: String): Ok {
+      let %3: writer.T = member writer.output
+      do call writer.putString(%3, s)
+      let %4: Ok = call nl()
+      return %4
+    }
+  }
+  funs {
+    fun emit(d: Dynamic.T): Ok {
+      let %5: writer.T = member writer.output
+      do call dynamic.extern(%5, d)
+      let %6: Ok = call nl()
+      return %6
+    }
+  }
+  let %7: Array(Int) = call arrayOp.new [Int](2, 3)
+  let r: ring.T = call ring.make("written", %7)
+  let %8: T = call dynamic.new [ring.T](r)
+  do call emit(%8)
+  let %9: box.T(Bool) = call box.box [Bool](true)
+  let %10: T = call dynamic.new [box.T(Bool)](%9)
+  do call emit(%10)
+  let %11: box.T(Int) = member box.seven
+  let %12: T = call dynamic.new [box.T(Int)](%11)
+  do call emit(%12)
+  let %13: list.T(Int) = type_app list.nil [Int]
+  let %14: list.T(Int) = call list.cons [Int](1, %13)
+  let %15: T = call dynamic.new [list.T(Int)](%14)
+  let %16: Record label: String payload: Dynamic.T end = record(label = "nested", payload = %15)
+  let %17: T = call dynamic.new [Labeled](%16)
+  do call emit(%17)
+  let %18: word.T = call word.fromInt(5)
+  let %19: T = call dynamic.new [word.T](%18)
+  do call emit(%19)
+  let %20: reader.T = member reader.input
+  let %21: T = call dynamic.intern(%20)
+  let rd: ring.T = call dynamic.be [ring.T](%21)
+  let %22: String = call ring.label(rd)
+  do call say(%22)
+  let %23: Int = call ring.total(rd)
+  let %24: String = call conv.int(%23)
+  do call say(%24)
+  let %25: reader.T = member reader.input
+  let %26: T = call dynamic.intern(%25)
+  let %27: box.T(String) = call dynamic.be [box.T(String)](%26)
+  let %28: String = call box.unbox [String](%27)
+  do call say(%28)
+  join k1(r.1: String) {
+    do call say(r.1)
+    let %29: reader.T = member reader.input
+    let unlinked: T = call dynamic.intern(%29)
+    join k2(r.2: String) {
+      do call say(r.2)
+      do call emit(unlinked)
+      let %30: reader.T = member reader.input
+      let %31: T = call dynamic.intern(%30)
+      let %32: word.T = call dynamic.be [word.T](%31)
+      let %33: Int = prim -(0, 60)
+      let %34: word.T = call word.shift(%32, %33)
+      let %35: Int = call word.toInt(%34)
+      let %36: String = call conv.int(%35)
+      do call say(%36)
+      let %37: small.Q = call small.q(5)
+      let %38: T = call dynamic.new [small.Q](%37)
+      do call emit(%38)
+      let %39: small.N = call small.n(3)
+      let %40: T = call dynamic.new [small.N](%39)
+      do call emit(%40)
+      let %41: small.V = member small.yes
+      let %42: T = call dynamic.new [small.V](%41)
+      do call emit(%42)
+      let %43: small.Q = call small.q(6)
+      let %44: T = call dynamic.new [small.Q](%43)
+      let q: small.Q = call dynamic.be [small.Q](%44)
+      let %45: Int = record_field(q, y)
+      let %46: String = call conv.int(%45)
+      do call say(%46)
+      let %47: Int = call small.qx(q)
+      let %48: String = call conv.int(%47)
+      do call say(%48)
+      let %49: reader.T = member reader.input
+      let %50: T = call dynamic.intern(%49)
+      let rq: small.Q = call dynamic.be [small.Q](%50)
+      let %51: Int = record_field(rq, y)
+      let %52: String = call conv.int(%51)
+      do call say(%52)
+      let %53: Int = call small.qx(rq)
+      let %54: String = call conv.int(%53)
+      do call say(%54)
+      let %55: reader.T = member reader.input
+      let %56: T = call dynamic.intern(%55)
+      let rv: small.V = call dynamic.be [small.V](%56)
+      join k3(r.3: String) {
+        do call say(r.3)
+        join k4(r.4: String) {
+          do call say(r.4)
+        } in {
+          switch tag(rv) {
+            case a (i: Int): {
+              jump k4("a")
+            }
+            case b (t: Bool): {
+              jump k4("b")
+            }
+          }
+        }
+      } in {
+        let %57: Bool = call small.isTrue(rv)
+        if %57 {
+          jump k3("true")
+        } else {
+          jump k3("false")
+        }
+      }
+    } in {
+      try {
+        let %58: Int = call dynamic.be [Int](unlinked)
+        let %59: String = call conv.int(%58)
+        jump k2(%59)
+      } handle (e: Exception) {
+        let %60: Exception = member dynamic.error
+        let %61: Bool = prim is(e, %60)
+        if %61 {
+          jump k2("opaque")
+        } else {
+          raise e
+        }
+      }
+    }
+  } in {
+    try {
+      let %62: reader.T = member reader.input
+      let %63: T = call dynamic.intern(%62)
+      let %64: ring.T = call dynamic.be [ring.T](%63)
+      let %65: String = call ring.label(%64)
+      jump k1(%65)
+    } handle (e.1: Exception) {
+      let %66: Exception = member dynamic.error
+      let %67: Bool = prim is(e.1, %66)
+      if %67 {
+        jump k1("mismatch")
+      } else {
+        raise e.1
+      }
+    }
+  }
+}
+

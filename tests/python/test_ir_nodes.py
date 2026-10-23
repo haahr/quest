@@ -34,9 +34,9 @@ def abs_function() -> ir.Funs:
     """fun abs(n: Int): Int = if n < 0 then 0 - n else n"""
     fun_t = QFunType(params=(QParam("n", INT_TYPE),), result_type=INT_TYPE)
     n = var("n")
-    neg = var("t", BOOL_TYPE)
+    neg = var("", BOOL_TYPE)
     r = var("r")
-    m = var("t")
+    m = var("")
     f = var("abs", fun_t)
     join_body = body(
         ir.Let(neg, ir.Prim("<", (n, const(0)))),
@@ -51,7 +51,7 @@ class TestIrNodes(unittest.TestCase):
         funs = abs_function()
         x = var("x")
         call = ir.Let(x, ir.Call(funs.functions[0].var, (), (const(-3),)))
-        unit = ir.Unit(main=body(funs, call, ir.Echo(x, INT_TYPE, is_result=True)))
+        unit = ir.Unit(main=body(funs, call, ir.Echo(x, INT_TYPE)))
         self.assertEqual(verify_unit(unit), [])
         self.assertEqual(
             format_unit(unit),
@@ -61,10 +61,10 @@ class TestIrNodes(unittest.TestCase):
             "      join k(r: Int) {\n"
             "        return r\n"
             "      } in {\n"
-            "        let t: Bool = prim <(n, 0)\n"
-            "        if t {\n"
-            "          let t.1: Int = prim -(0, n)\n"
-            "          jump k(t.1)\n"
+            "        let %1: Bool = prim <(n, 0)\n"
+            "        if %1 {\n"
+            "          let %2: Int = prim -(0, n)\n"
+            "          jump k(%2)\n"
             "        } else {\n"
             "          jump k(n)\n"
             "        }\n"
@@ -72,7 +72,7 @@ class TestIrNodes(unittest.TestCase):
             "    }\n"
             "  }\n"
             "  let x: Int = call abs(-3)\n"
-            "  result x : Int\n"
+            "  echo \"\" x : Int\n"
             "}\n",
         )
 

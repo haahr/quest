@@ -1,0 +1,113 @@
+main {
+  funs {
+    fun say(n: Int): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = call conv.int(n)
+      let %3: String = prim <>(%2, "\n")
+      let %4: Ok = call writer.putString(%1, %3)
+      return %4
+    }
+  }
+  funs {
+    fun step(n.1: Int, limit: Int): Step {
+      join k1(r: Step) {
+        return r
+      } in {
+        let %5: Bool = prim >=(n.1, limit)
+        if %5 {
+          let %6: Step = option(stop)
+          jump k1(%6)
+        } else {
+          let %7: Step = option(go)
+          jump k1(%7)
+        }
+      }
+    }
+  }
+  var n.2: Int = 0
+  loop L1 {
+    let %8: Int = prim +(n.2, 1)
+    n.2 := %8
+    let %9: Step = call step(n.2, 3)
+    switch tag(%9) {
+      case stop: {
+        break L1
+      }
+      else: {
+      }
+    }
+  }
+  do call say(n.2)
+  var w: Int = 0
+  loop L2 {
+    let %10: Bool = prim <(w, 100)
+    if %10 {
+      let %11: Int = prim +(w, 1)
+      w := %11
+      let %12: Step = call step(w, 5)
+      switch tag(%12) {
+        case go: {
+        }
+        case stop: {
+          break L2
+        }
+      }
+    } else {
+      break L2
+    }
+  }
+  do call say(w)
+  var last: Int = 0
+  var i: Int = 1
+  loop L3 {
+    let %13: Bool = prim <=(i, 100)
+    if %13 {
+      let i.1: Int = i
+      last := i.1
+      let %14: Step = call step(i.1, 7)
+      switch tag(%14) {
+        case stop: {
+          break L3
+        }
+        else: {
+        }
+      }
+      let %15: Int = prim +(i, 1)
+      i := %15
+    } else {
+      break L3
+    }
+  }
+  do call say(last)
+  var outer: Int = 0
+  var inner: Int = 0
+  var i.2: Int = 1
+  loop L4 {
+    let %16: Bool = prim <=(i.2, 4)
+    if %16 {
+      let i.3: Int = i.2
+      let %17: Int = prim +(outer, 1)
+      outer := %17
+      loop L5 {
+        let %18: Int = prim +(inner, 1)
+        inner := %18
+        let %19: Int = prim *(2, i.3)
+        let %20: Step = call step(inner, %19)
+        switch tag(%20) {
+          case stop: {
+            break L5
+          }
+          else: {
+          }
+        }
+      }
+      let %21: Int = prim +(i.2, 1)
+      i.2 := %21
+    } else {
+      break L4
+    }
+  }
+  do call say(outer)
+  do call say(inner)
+}
+

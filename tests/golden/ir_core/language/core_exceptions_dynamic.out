@@ -1,0 +1,207 @@
+main {
+  let E: Exception = exception E
+  var x: Int = 0
+  try {
+    raise E
+  } handle (e: Exception) {
+    let %1: Bool = prim is(e, E)
+    if %1 {
+      x := 42
+    } else {
+      raise e
+    }
+  }
+  let ValExc: Exception(Int) = exception ValExc: Int
+  funs {
+    fun f(dummy: Int): Int {
+      raise ValExc with 50
+    }
+  }
+  join k1(r: Int) {
+    let E1: Exception = exception E1
+    let E2: Exception = exception E2
+    funs {
+      fun g(dummy.1: Int): Int {
+        raise E1
+      }
+    }
+    join k2(r.1: Int) {
+      let Fail: Exception(String) = exception Fail: String
+      join k3(checked: Int) {
+        join k5(asReal: Real) {
+          try {
+            raise E
+          } handle (e.1: Exception) {
+            let %2: Bool = prim is(e.1, E)
+            if %2 {
+            } else {
+              raise e.1
+            }
+          }
+          funs {
+            fun classify(n: Int): Int {
+              join k6(r.2: Int) {
+                return r.2
+              } in {
+                try {
+                  join k7(r.3: Int) {
+                    jump k6(r.3)
+                  } in {
+                    let %3: Bool = prim is(n, 0)
+                    if %3 {
+                      raise E
+                    } else {
+                      join k8(r.4: Int) {
+                        jump k7(r.4)
+                      } in {
+                        let %4: Bool = prim is(n, 1)
+                        if %4 {
+                          raise Fail with "one"
+                        } else {
+                          jump k8(100)
+                        }
+                      }
+                    }
+                  }
+                } handle (e.2: Exception) {
+                  let %5: Bool = prim is(e.2, E)
+                  if %5 {
+                    jump k6(0)
+                  } else {
+                    let %6: Bool = prim is(e.2, Fail)
+                    if %6 {
+                      let msg: String = exception_payload(e.2)
+                      jump k6(1)
+                    } else {
+                      jump k6(2)
+                    }
+                  }
+                }
+              }
+            }
+          }
+          let %7: Int = call classify(0)
+          let %8: Int = call classify(1)
+          let %9: Int = call classify(2)
+          let %10: Int = prim +(%8, %9)
+          let %11: Int = prim +(%7, %10)
+          let zero: Int = 0
+          join k9(r.5: Int) {
+            let d: T = call dynamic.new [Int](42)
+            join k10(r.6: Int) {
+              let s: T = call dynamic.new [String]("hello")
+              join k11(r.7: Int) {
+                let explicit: T = call dynamic.new [Int](42)
+                join k12(r.8: Int) {
+                } in {
+                  inspect explicit {
+                    case Int (n.1: Tuple a: Int end): {
+                      let %12: Int = tuple_field(n.1, 0)
+                      jump k12(%12)
+                    }
+                    case String (str: Tuple a: String end): {
+                      jump k12(0)
+                    }
+                  }
+                }
+              } in {
+                inspect s {
+                  case Int (n.2: Tuple a: Int end): {
+                    jump k11(1)
+                  }
+                  case String (str.1: Tuple a: String end): {
+                    jump k11(2)
+                  }
+                  else: {
+                    jump k11(3)
+                  }
+                }
+              }
+            } in {
+              inspect d {
+                case Int (n.3: Tuple a: Int end): {
+                  let %13: Int = tuple_field(n.3, 0)
+                  let %14: Int = prim +(%13, 1)
+                  jump k10(%14)
+                }
+                else: {
+                  jump k10(0)
+                }
+              }
+            }
+          } in {
+            try {
+              let %15: Int = prim /(10, zero)
+              jump k9(%15)
+            } handle (e.3: Exception) {
+              let %16: Exception = member int.error
+              let %17: Bool = prim is(e.3, %16)
+              if %17 {
+                jump k9(999)
+              } else {
+                jump k9(0)
+              }
+            }
+          }
+        } in {
+          try {
+            raise E
+          } handle (e.4: Exception) {
+            let %18: Bool = prim is(e.4, E)
+            if %18 {
+              jump k5(2.5)
+            } else {
+              raise e.4
+            }
+          }
+        }
+      } in {
+        try {
+          join k4(r.9: Int) {
+            jump k3(r.9)
+          } in {
+            if true {
+              raise E
+            } else {
+              jump k4(42)
+            }
+          }
+        } handle (e.5: Exception) {
+          let %19: Bool = prim is(e.5, E)
+          if %19 {
+            jump k3(7)
+          } else {
+            raise e.5
+          }
+        }
+      }
+    } in {
+      try {
+        let %20: Int = call g(0)
+        jump k2(%20)
+      } handle (e.6: Exception) {
+        let %21: Bool = prim is(e.6, E2)
+        if %21 {
+          jump k2(10)
+        } else {
+          jump k2(20)
+        }
+      }
+    }
+  } in {
+    try {
+      let %22: Int = call f(0)
+      jump k1(%22)
+    } handle (e.7: Exception) {
+      let %23: Bool = prim is(e.7, ValExc)
+      if %23 {
+        let p: Int = exception_payload(e.7)
+        let %24: Int = prim +(p, 25)
+        jump k1(%24)
+      } else {
+        jump k1(0)
+      }
+    }
+  }
+}
+

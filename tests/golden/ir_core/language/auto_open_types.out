@@ -1,0 +1,541 @@
+main {
+  funs {
+    fun s(text: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(text, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  let myCar: Car = record(age = 3, fuel = "diesel")
+  funs {
+    fun pairUp0 [A::TYPE](x: A): Boxed {
+      let fst: A = x
+      let snd: Int = 5
+      let a: Tuple fst: A snd: Int end = tuple(fst, snd)
+      let %4: Tuple a: Tuple fst: A snd: Int end end = tuple(a)
+      let %5: Boxed = auto[Tuple fst: A snd: Int end](%4)
+      return %5
+    }
+  }
+  let pairUp: All(A :: TYPE) Fun(x: A): Boxed = pairUp0
+  join k1(r: String) {
+    do call s(r)
+    join k2(r.1: String) {
+      do call s(r.1)
+      join k3(r.2: String) {
+        do call s(r.2)
+        join k4(r.3: String) {
+          do call s(r.3)
+          join k5(r.4: String) {
+            do call s(r.4)
+            join k6(r.5: String) {
+              do call s(r.5)
+              funs {
+                fun unpair0 [A::TYPE](b: Boxed, default: A): A {
+                  join k7(r.6: A) {
+                    return r.6
+                  } in {
+                    inspect b {
+                      case Tuple fst: A snd: Int end (t: Tuple a: Tuple fst: A snd: Int end end): {
+                        let %6: Tuple fst: A snd: Int end = tuple_field(t, 0)
+                        let %7: A = tuple_field(%6, 0)
+                        jump k7(%7)
+                      }
+                      else: {
+                        jump k7(default)
+                      }
+                    }
+                  }
+                }
+              }
+              let unpair: All(A :: TYPE) Fun(b: Boxed default: A): A = unpair0
+              let fst.1: Car = myCar
+              let snd.1: Int = 2
+              let a.1: Tuple fst: Car snd: Int end = tuple(fst.1, snd.1)
+              let %8: Tuple a: Tuple fst: Car snd: Int end end = tuple(a.1)
+              let concrete: Boxed = auto[Tuple fst: Car snd: Int end](%8)
+              let %9: Record age: Int fuel: String end = record(age = 0, fuel = "none")
+              let %10: Car = call unpair [Car](concrete, %9)
+              let %11: String = record_field(%10, fuel)
+              do call s(%11)
+              let %12: Boxed = call pairUp [Car](myCar)
+              let %13: Record age: Int fuel: String end = record(age = 0, fuel = "none")
+              let %14: Car = call unpair [Car](%12, %13)
+              let %15: String = record_field(%14, fuel)
+              do call s(%15)
+              let %16: Record age: Int end = record(age = 0)
+              let %17: Object = call unpair [Object](concrete, %16)
+              let %18: Int = record_field(%17, age)
+              let %19: String = call conv.int(%18)
+              do call s(%19)
+              let %20: Boxed = call pairUp [Int](7)
+              let %21: Real = call unpair [Real](%20, 0.5)
+              let %22: String = call conv.real(%21)
+              do call s(%22)
+              funs {
+                fun shower0 [A::TYPE](x.1: A, f: Fun(_: A): String): Dynamic {
+                  let v: A = x.1
+                  let f.1: Fun(_: A): String = f
+                  let %23: Tuple v: A f: Fun(_: A): String end = tuple(v, f.1)
+                  let %24: T = call dynamic.new [Tuple v: A f: Fun(_: A): String end](%23)
+                  return %24
+                }
+              }
+              let shower: All(A :: TYPE) Fun(x: A f: Fun(_: A): String): Dynamic = shower0
+              funs {
+                fun f.2(c: Car): String {
+                  let %25: String = record_field(c, fuel)
+                  return %25
+                }
+              }
+              let shc: Dynamic = call shower [Car](myCar, f.2)
+              join k8(r.7: String) {
+                do call s(r.7)
+                funs {
+                  fun f.3(r.8: Real): String {
+                    let %26: String = call conv.real(r.8)
+                    return %26
+                  }
+                }
+                let shr: Dynamic = call shower [Real](2.5, f.3)
+                join k9(r.9: String) {
+                  do call s(r.9)
+                  funs {
+                    fun show20 [A::TYPE](d: Dynamic, x.2: A): String {
+                      join k10(r.10: String) {
+                        return r.10
+                      } in {
+                        inspect d {
+                          case Tuple v: A f: Fun(_: A): String end (t.1: Tuple a: Tuple v: A f: Fun(_: A): String end end): {
+                            let %27: Tuple v: A f: Fun(_: A): String end = tuple_field(t.1, 0)
+                            let %28: Fun(_: A): String = tuple_field(%27, 1)
+                            let %29: String = call %28(x.2)
+                            jump k10(%29)
+                          }
+                          else: {
+                            jump k10("no")
+                          }
+                        }
+                      }
+                    }
+                  }
+                  let show2: All(A :: TYPE) Fun(d: Dynamic x: A): String = show20
+                  let %30: Record age: Int fuel: String end = record(age = 1, fuel = "petrol")
+                  let %31: String = call show2 [Car](shc, %30)
+                  do call s(%31)
+                  let v.1: Real = 1.0
+                  funs {
+                    fun f.4(r.11: Real): String {
+                      let %32: Real = prim ++(r.11, r.11)
+                      let %33: String = call conv.real(%32)
+                      return %33
+                    }
+                  }
+                  let %34: Tuple v: Real f: Fun(_: Real): String end = tuple(v.1, f.4)
+                  let concreteShow: T = call dynamic.new [Tuple v: Real f: Fun(_: Real): String end](%34)
+                  let %35: String = call show2 [Real](concreteShow, 8.0)
+                  do call s(%35)
+                  funs {
+                    fun maker0 [A::TYPE](x.3: A): Dynamic {
+                      funs {
+                        fun make(n: Int): A {
+                          return x.3
+                        }
+                      }
+                      let %36: Tuple make: Fun(_: Int): A end = tuple(make)
+                      let %37: T = call dynamic.new [Tuple make: Fun(_: Int): A end](%36)
+                      return %37
+                    }
+                  }
+                  let maker: All(A :: TYPE) Fun(x: A): Dynamic = maker0
+                  join k11(r.12: String) {
+                    do call s(r.12)
+                    join k12(r.13: String) {
+                      do call s(r.13)
+                      funs {
+                        fun showPair0 [B::TYPE](y: B, f.5: Fun(_: B): String): Showable {
+                          let first: B = y
+                          let x.4: Tuple first: B end = tuple(first)
+                          funs {
+                            fun show(p: Tuple first: B end): String {
+                              let %38: B = tuple_field(p, 0)
+                              let %39: String = call f.5(%38)
+                              return %39
+                            }
+                          }
+                          let %40: Tuple x: Tuple first: B end show: Fun(_: Tuple first: B end): String end = tuple(x.4, show)
+                          let %41: Showable = auto[Tuple first: B end](%40)
+                          return %41
+                        }
+                      }
+                      let showPair: All(B :: TYPE) Fun(y: B f: Fun(_: B): String): Showable = showPair0
+                      funs {
+                        fun f.6(c.1: Car): String {
+                          let %42: String = record_field(c.1, fuel)
+                          return %42
+                        }
+                      }
+                      let sp: Showable = call showPair [Car](myCar, f.6)
+                      join k13(r.14: String) {
+                        do call s(r.14)
+                        join k14(r.15: String) {
+                          do call s(r.15)
+                          funs {
+                            fun recd0 [A::TYPE](x.5: A): Dynamic {
+                              let %43: Record item: A count: Int end = record(item = x.5, count = 2)
+                              let %44: T = call dynamic.new [Record item: A count: Int end](%43)
+                              return %44
+                            }
+                          }
+                          let recd: All(A :: TYPE) Fun(x: A): Dynamic = recd0
+                          join k15(r.16: String) {
+                            do call s(r.16)
+                            join k16(r.17: String) {
+                              do call s(r.17)
+                              funs {
+                                fun vv0 [A::TYPE](x.6: A): Dynamic {
+                                  let %45: Variant some: A none end = variant(some, x.6)
+                                  let %46: T = call dynamic.new [Variant some: A none end](%45)
+                                  return %46
+                                }
+                              }
+                              let vv: All(A :: TYPE) Fun(x: A): Dynamic = vv0
+                              join k17(r.18: String) {
+                                do call s(r.18)
+                                funs {
+                                  fun some0 [A::TYPE](x.7: A): Dynamic {
+                                    let v.2: A = x.7
+                                    let %47: Tuple v: A end = tuple(v.2)
+                                    let %48: Option none some with Tuple v: A end end = option(some, %47)
+                                    let %49: T = call dynamic.new [Option none some with Tuple v: A end end](%48)
+                                    return %49
+                                  }
+                                }
+                                let some: All(A :: TYPE) Fun(x: A): Dynamic = some0
+                                join k19(r.19: String) {
+                                  do call s(r.19)
+                                  funs {
+                                    fun wrap0 [B::TYPE](y.1: B): Boxed {
+                                      let inner: B = y.1
+                                      let tag: Bool = true
+                                      let %50: Tuple inner: B tag: Bool end = tuple(inner, tag)
+                                      let %51: Boxed = call pairUp [Tuple inner: B tag: Bool end](%50)
+                                      return %51
+                                    }
+                                  }
+                                  let wrap: All(B :: TYPE) Fun(y: B): Boxed = wrap0
+                                  join k21(r.20: String) {
+                                    do call s(r.20)
+                                    let fst.2: Int = 11
+                                    let %52: Tuple fst: Int end = tuple(fst.2)
+                                    let %53: T = call dynamic.new [Tuple fst: Int end](%52)
+                                    let %54: Tuple fst: Int end = call dynamic.be [Tuple fst: Int end](%53)
+                                    let %55: Int = tuple_field(%54, 0)
+                                    let %56: String = call conv.int(%55)
+                                    do call s(%56)
+                                    funs {
+                                      fun bounded0 [A::<: Object](x.8: A): Dynamic {
+                                        let obj: A = x.8
+                                        let %57: Tuple obj: A end = tuple(obj)
+                                        let %58: T = call dynamic.new [Tuple obj: A end](%57)
+                                        return %58
+                                      }
+                                    }
+                                    let bounded: All(A <: Object) Fun(x: A): Dynamic = bounded0
+                                    join k22(r.21: String) {
+                                      do call s(r.21)
+                                      join k23(r.22: String) {
+                                        do call s(r.22)
+                                      } in {
+                                        let %59: Dynamic = call bounded [Car](myCar)
+                                        inspect %59 {
+                                          case Tuple obj: Object end (t.2: Tuple a: Tuple obj: Object end end): {
+                                            let %60: Tuple obj: Object end = tuple_field(t.2, 0)
+                                            let %61: Object = tuple_field(%60, 0)
+                                            let %62: Int = record_field(%61, age)
+                                            let %63: String = call conv.int(%62)
+                                            jump k23(%63)
+                                          }
+                                          else: {
+                                            jump k23("no")
+                                          }
+                                        }
+                                      }
+                                    } in {
+                                      let %64: Dynamic = call bounded [Car](myCar)
+                                      inspect %64 {
+                                        case Tuple obj: Car end (t.3: Tuple a: Tuple obj: Car end end): {
+                                          let %65: Tuple obj: Car end = tuple_field(t.3, 0)
+                                          let %66: Car = tuple_field(%65, 0)
+                                          let %67: String = record_field(%66, fuel)
+                                          jump k22(%67)
+                                        }
+                                        else: {
+                                          jump k22("no")
+                                        }
+                                      }
+                                    }
+                                  } in {
+                                    let %68: Boxed = call wrap [Car](myCar)
+                                    inspect %68 {
+                                      case Tuple fst: Tuple inner: Car tag: Bool end snd: Int end (t.4: Tuple a: Tuple fst: Tuple inner: Car tag: Bool end snd: Int end end): {
+                                        let %69: Tuple fst: Tuple inner: Car tag: Bool end snd: Int end = tuple_field(t.4, 0)
+                                        let %70: Tuple inner: Car tag: Bool end = tuple_field(%69, 0)
+                                        let %71: Car = tuple_field(%70, 0)
+                                        let %72: String = record_field(%71, fuel)
+                                        jump k21(%72)
+                                      }
+                                      else: {
+                                        jump k21("no")
+                                      }
+                                    }
+                                  }
+                                } in {
+                                  let %73: Dynamic = call some [Car](myCar)
+                                  inspect %73 {
+                                    case Option none some with Tuple v: Car end end (o: Tuple a: Option none some with Tuple v: Car end end end): {
+                                      join k20(r.23: String) {
+                                        jump k19(r.23)
+                                      } in {
+                                        let %74: Option none some with Tuple v: Car end end = tuple_field(o, 0)
+                                        switch tag(%74) {
+                                          case some (p.1: Tuple v: Car end): {
+                                            let %75: Car = tuple_field(p.1, 0)
+                                            let %76: String = record_field(%75, fuel)
+                                            jump k20(%76)
+                                          }
+                                          case none: {
+                                            jump k20("none")
+                                          }
+                                        }
+                                      }
+                                    }
+                                    else: {
+                                      jump k19("no")
+                                    }
+                                  }
+                                }
+                              } in {
+                                let %77: Dynamic = call vv [Car](myCar)
+                                inspect %77 {
+                                  case Variant some: Car none end (v.3: Tuple a: Variant some: Car none end end): {
+                                    join k18(r.24: String) {
+                                      jump k17(r.24)
+                                    } in {
+                                      let %78: Variant some: Car none end = tuple_field(v.3, 0)
+                                      switch tag(%78) {
+                                        case some (c.2: Car): {
+                                          let %79: String = record_field(c.2, fuel)
+                                          jump k18(%79)
+                                        }
+                                        else: {
+                                          jump k18("none")
+                                        }
+                                      }
+                                    }
+                                  }
+                                  else: {
+                                    jump k17("no")
+                                  }
+                                }
+                              }
+                            } in {
+                              let %80: Dynamic = call recd [Real](9.5)
+                              inspect %80 {
+                                case Record item: Real count: Int end (r.25: Tuple a: Record item: Real count: Int end end): {
+                                  let %81: Record item: Real count: Int end = tuple_field(r.25, 0)
+                                  let %82: Real = record_field(%81, item)
+                                  let %83: String = call conv.real(%82)
+                                  jump k16(%83)
+                                }
+                                else: {
+                                  jump k16("no")
+                                }
+                              }
+                            }
+                          } in {
+                            let %84: Dynamic = call recd [Car](myCar)
+                            inspect %84 {
+                              case Record item: Car end (r.26: Tuple a: Record item: Car end end): {
+                                let %85: Record item: Car end = tuple_field(r.26, 0)
+                                let %86: Car = record_field(%85, item)
+                                let %87: String = record_field(%86, fuel)
+                                jump k15(%87)
+                              }
+                              else: {
+                                jump k15("no")
+                              }
+                            }
+                          }
+                        } in {
+                          inspect sp {
+                            case Tuple first: Car end exact (i: Tuple x: Tuple first: Car end show: Fun(_: Tuple first: Car end): String end): {
+                              let %88: Fun(_: Tuple first: Car end): String = tuple_field(i, 1)
+                              let first.1: Record age: Int fuel: String end = record(age = 9, fuel = "gas")
+                              let %89: Tuple first: Car end = tuple(first.1)
+                              let %90: String = call %88(%89)
+                              jump k14(%90)
+                            }
+                            else: {
+                              jump k14("no")
+                            }
+                          }
+                        }
+                      } in {
+                        inspect sp {
+                          case Tuple first: Car end exact (i.1: Tuple x: Tuple first: Car end show: Fun(_: Tuple first: Car end): String end): {
+                            let %91: Fun(_: Tuple first: Car end): String = tuple_field(i.1, 1)
+                            let %92: Tuple first: Car end = tuple_field(i.1, 0)
+                            let %93: String = call %91(%92)
+                            jump k13(%93)
+                          }
+                          else: {
+                            jump k13("no")
+                          }
+                        }
+                      }
+                    } in {
+                      let %94: Dynamic = call maker [Car](myCar)
+                      inspect %94 {
+                        case Tuple make: Fun(_: Int): Car end (t.5: Tuple a: Tuple make: Fun(_: Int): Car end end): {
+                          let %95: Tuple make: Fun(_: Int): Car end = tuple_field(t.5, 0)
+                          let %96: Fun(_: Int): Car = tuple_field(%95, 0)
+                          let %97: Car = call %96(1)
+                          let %98: String = record_field(%97, fuel)
+                          jump k12(%98)
+                        }
+                        else: {
+                          jump k12("no")
+                        }
+                      }
+                    }
+                  } in {
+                    let %99: Dynamic = call maker [Real](6.5)
+                    inspect %99 {
+                      case Tuple make: Fun(_: Int): Real end (t.6: Tuple a: Tuple make: Fun(_: Int): Real end end): {
+                        let %100: Tuple make: Fun(_: Int): Real end = tuple_field(t.6, 0)
+                        let %101: Fun(_: Int): Real = tuple_field(%100, 0)
+                        let %102: Real = call %101(1)
+                        let %103: String = call conv.real(%102)
+                        jump k11(%103)
+                      }
+                      else: {
+                        jump k11("no")
+                      }
+                    }
+                  }
+                } in {
+                  inspect shr {
+                    case Tuple v: Real f: Fun(_: Real): String end (t.7: Tuple a: Tuple v: Real f: Fun(_: Real): String end end): {
+                      let %104: Tuple v: Real f: Fun(_: Real): String end = tuple_field(t.7, 0)
+                      let %105: Fun(_: Real): String = tuple_field(%104, 1)
+                      let %106: Tuple v: Real f: Fun(_: Real): String end = tuple_field(t.7, 0)
+                      let %107: Real = tuple_field(%106, 0)
+                      let %108: String = call %105(%107)
+                      jump k9(%108)
+                    }
+                    else: {
+                      jump k9("no")
+                    }
+                  }
+                }
+              } in {
+                inspect shc {
+                  case Tuple v: Car f: Fun(_: Car): String end (t.8: Tuple a: Tuple v: Car f: Fun(_: Car): String end end): {
+                    let %109: Tuple v: Car f: Fun(_: Car): String end = tuple_field(t.8, 0)
+                    let %110: Fun(_: Car): String = tuple_field(%109, 1)
+                    let %111: Tuple v: Car f: Fun(_: Car): String end = tuple_field(t.8, 0)
+                    let %112: Car = tuple_field(%111, 0)
+                    let %113: String = call %110(%112)
+                    jump k8(%113)
+                  }
+                  else: {
+                    jump k8("no")
+                  }
+                }
+              }
+            } in {
+              let %114: Boxed = call pairUp0 [Car](myCar)
+              inspect %114 {
+                case Tuple fst: Car snd: Int end (t.9: Tuple a: Tuple fst: Car snd: Int end end): {
+                  let %115: Tuple fst: Car snd: Int end = tuple_field(t.9, 0)
+                  let %116: Car = tuple_field(%115, 0)
+                  let %117: String = record_field(%116, fuel)
+                  jump k6(%117)
+                }
+                else: {
+                  jump k6("no")
+                }
+              }
+            }
+          } in {
+            let %118: Boxed = call pairUp [Car](myCar)
+            inspect %118 {
+              case Tuple fst: Real snd: Int end (t.10: Tuple a: Tuple fst: Real snd: Int end end): {
+                jump k5("wrong")
+              }
+              else: {
+                jump k5("no match")
+              }
+            }
+          }
+        } in {
+          let %119: Boxed = call pairUp [Bool](true)
+          inspect %119 {
+            case Tuple fst: Bool snd: Int end (t.11: Tuple a: Tuple fst: Bool snd: Int end end): {
+              let %120: Tuple fst: Bool snd: Int end = tuple_field(t.11, 0)
+              let %121: Bool = tuple_field(%120, 0)
+              let %122: String = call conv.bool(%121)
+              jump k4(%122)
+            }
+            else: {
+              jump k4("no")
+            }
+          }
+        }
+      } in {
+        let %123: Boxed = call pairUp [Real](2.5)
+        inspect %123 {
+          case Tuple fst: Real snd: Int end (t.12: Tuple a: Tuple fst: Real snd: Int end end): {
+            let %124: Tuple fst: Real snd: Int end = tuple_field(t.12, 0)
+            let %125: Real = tuple_field(%124, 0)
+            let %126: String = call conv.real(%125)
+            jump k3(%126)
+          }
+          else: {
+            jump k3("no")
+          }
+        }
+      }
+    } in {
+      let %127: Boxed = call pairUp [Car](myCar)
+      inspect %127 {
+        case Tuple fst: Object snd: Int end (t.13: Tuple a: Tuple fst: Object snd: Int end end): {
+          let %128: Tuple fst: Object snd: Int end = tuple_field(t.13, 0)
+          let %129: Object = tuple_field(%128, 0)
+          let %130: Int = record_field(%129, age)
+          let %131: String = call conv.int(%130)
+          jump k2(%131)
+        }
+        else: {
+          jump k2("no")
+        }
+      }
+    }
+  } in {
+    let %132: Boxed = call pairUp [Car](myCar)
+    inspect %132 {
+      case Tuple fst: Car snd: Int end (t.14: Tuple a: Tuple fst: Car snd: Int end end): {
+        let %133: Tuple fst: Car snd: Int end = tuple_field(t.14, 0)
+        let %134: Car = tuple_field(%133, 0)
+        let %135: String = record_field(%134, fuel)
+        jump k1(%135)
+      }
+      else: {
+        jump k1("no")
+      }
+    }
+  }
+}
+

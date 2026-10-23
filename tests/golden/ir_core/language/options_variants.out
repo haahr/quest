@@ -1,0 +1,62 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun printBool(b: Bool): Ok {
+      let %3: String = call conv.bool(b)
+      do call writer.putString(wOut, %3)
+      let %4: Ok = call writer.putString(wOut, "\n")
+      return %4
+    }
+  }
+  let c: Traffic = option(yellow)
+  let %5: Bool = is_tag(c, yellow)
+  do call printBool(%5)
+  let %6: Bool = is_tag(c, red)
+  do call printBool(%6)
+  funs {
+    fun evalTraffic(t: Traffic): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(t) {
+          case red: {
+            jump k1(10)
+          }
+          case yellow: {
+            jump k1(20)
+          }
+          case green: {
+            jump k1(30)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let %7: Int = call evalTraffic(c)
+  do call printInt(%7)
+  let intensity: Int = 42
+  let %8: Tuple intensity: Int end = tuple(intensity)
+  let c2: Color = option(blue, %8)
+  let unp: Tuple Int intensity: Int end = payload(c2, blue)
+  let %9: Int = tuple_field(unp, 1)
+  do call printInt(%9)
+  let v: Num = variant(int, 123)
+  let %10: Bool = is_tag(v, int)
+  do call printBool(%10)
+  let %11: Bool = is_tag(v, real)
+  do call printBool(%11)
+  let %12: Int = payload(v, int)
+  do call printInt(%12)
+}
+

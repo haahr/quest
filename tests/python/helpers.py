@@ -44,6 +44,8 @@ unittest.TestCase.assertEqual = _qtype_aware_assertEqual
 os.environ["QUEST_CHECK_CANONICAL"] = "1"
 # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
 os.environ["QUEST_CHECK_SCOPES"] = "1"
+# Checks the IR's invariants after lowering (quest/ir/verify.py)
+os.environ["QUEST_CHECK_IR"] = "1"
 
 _parser_pipeline = default_pipeline()
 

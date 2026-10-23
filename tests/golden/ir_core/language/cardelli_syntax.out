@@ -1,0 +1,95 @@
+main {
+  funs {
+    fun id [A::TYPE](a: A): A {
+      return a
+    }
+  }
+  let v1: Int = call id [Int](42)
+  let v2: Int = call id [Int](43)
+  funs {
+    fun pair [A::TYPE B::TYPE](a.1: A, b: B): Tuple A B end {
+      let %1: Tuple A B end = tuple(a.1, b)
+      return %1
+    }
+  }
+  let p: Tuple Int String end = call pair [Int String](100, "test")
+  var a.2: Int = 0
+  funs {
+    fun assign(out x: Int, y: Int): Ok {
+      x := y
+      return ok
+    }
+  }
+  let %2: Var(Int) = addr a.2
+  do call assign(%2, 7)
+  let t: Record var a: Int end = record(var a = 10)
+  funs {
+    fun inc(var x.1: Int): Ok {
+      let %3: Int = prim +(x.1, 1)
+      x.1 := %3
+      return ok
+    }
+  }
+  let %4: Var(Int) = addr t.a
+  do call inc(%4)
+  funs {
+    fun addFive(var x.2: Int): Int {
+      let %5: Int = prim +(x.2, 5)
+      x.2 := %5
+      return x.2
+    }
+  }
+  let %6: Var(Int) = cell(10)
+  let r: Int = call addFive(%6)
+  funs {
+    fun assignPoly [A::TYPE](out x.3: A, y.1: A): Ok {
+      x.3 := y.1
+      return ok
+    }
+  }
+  let %7: Var(Int) = addr a.2
+  do call assignPoly [Int](%7, 99)
+  let notA: Bool = prim not(true)
+  let notB: Bool = prim not(false)
+  let notC: Bool = prim not(true)
+  let %8: Bool = prim not(true)
+  let notD: Bool = prim not(%8)
+  let arr: Array(Int) = array(10, 20, 30, 40)
+  let len1: Int = prim extent(arr)
+  let len2: Int = prim extent(arr)
+  let c0: Color = option(red)
+  let c1: Color = option(green)
+  let c2: Color = option(blue)
+  let ord0: Int = ordinal(c0)
+  let ord1: Int = ordinal(c1)
+  let ord2: Int = ordinal(c2)
+  funs {
+    fun sum(arrVal: Array(Int)): Int {
+      var total: Int = 0
+      let %9: Int = prim extent(arrVal)
+      let %10: Int = prim -(%9, 1)
+      var i: Int = 0
+      loop L1 {
+        let %11: Bool = prim <=(i, %10)
+        if %11 {
+          let i.1: Int = i
+          let %12: Int = index(arrVal, i.1)
+          let %13: Int = prim +(total, %12)
+          total := %13
+          let %14: Int = prim +(i, 1)
+          i := %14
+        } else {
+          break L1
+        }
+      }
+      return total
+    }
+  }
+  let %15: Array(Int) = array(0, 1, 2, 3, 4)
+  let s1: Int = call sum(%15)
+  let %16: Array(Int) = array_rep(5, 1)
+  let s2: Int = call sum(%16)
+  let %17: Array(Int) = array(10, 20, 30)
+  let s3: Int = call sum(%17)
+}
+

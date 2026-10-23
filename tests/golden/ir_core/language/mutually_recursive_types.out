@@ -1,0 +1,259 @@
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs rec {
+    fun eval(e: Expr): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(e) {
+          case num (n: Int): {
+            jump k1(n)
+          }
+          case neg (x.1: Expr): {
+            let %3: Int = call eval(x.1)
+            let %4: Int = prim -(0, %3)
+            jump k1(%4)
+          }
+          case bind (b: Bind): {
+            let %5: Int = call evalBind(b)
+            jump k1(%5)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+    fun evalBind(b.1: Bind): Int {
+      let %6: Expr = tuple_field(b.1, 0)
+      let %7: Int = call eval(%6)
+      var s: Int = %7
+      let %8: Array(Expr) = tuple_field(b.1, 1)
+      let %9: Int = call arrayOp.size [Expr](%8)
+      let %10: Int = prim -(%9, 1)
+      var i: Int = 0
+      loop L1 {
+        let %11: Bool = prim <=(i, %10)
+        if %11 {
+          let i.1: Int = i
+          let %12: Array(Expr) = tuple_field(b.1, 1)
+          let %13: Expr = index(%12, i.1)
+          let %14: Int = call eval(%13)
+          let %15: Int = prim +(s, %14)
+          s := %15
+          let %16: Int = prim +(i, 1)
+          i := %16
+        } else {
+          break L1
+        }
+      }
+      return s
+    }
+  }
+  funs {
+    fun num(n.1: Int): Expr {
+      let %17: Expr = variant(num, n.1)
+      return %17
+    }
+  }
+  let value: Expr = call num(10)
+  let %18: Expr = call num(1)
+  let %19: Expr = call num(2)
+  let %20: Expr = variant(neg, %19)
+  let body: Array(Expr) = array(%18, %20)
+  let %21: Tuple value: Expr body: Array(Expr) end = tuple(value, body)
+  let e.1: Expr = variant(bind, %21)
+  let %22: Int = call eval(e.1)
+  do call printInt(%22)
+  let zero: Even = option(zero)
+  let n.2: Even = zero
+  let %23: Tuple n: Even end = tuple(n.2)
+  let one: Odd = option(succ, %23)
+  let n.3: Odd = one
+  let %24: Tuple n: Odd end = tuple(n.3)
+  let two: Even = option(succ, %24)
+  let n.4: Even = two
+  let %25: Tuple n: Even end = tuple(n.4)
+  let three: Odd = option(succ, %25)
+  funs rec {
+    fun evenValue(x.2: Even): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        switch tag(x.2) {
+          case succ (p: Tuple n: Odd end): {
+            let %26: Odd = tuple_field(p, 0)
+            let %27: Int = call oddValue(%26)
+            let %28: Int = prim +(%27, 1)
+            jump k2(%28)
+          }
+          else: {
+            jump k2(0)
+          }
+        }
+      }
+    }
+    fun oddValue(x.3: Odd): Int {
+      let %29: Tuple Int n: Even end = payload(x.3, succ)
+      let %30: Even = tuple_field(%29, 1)
+      let %31: Int = call evenValue(%30)
+      let %32: Int = prim +(%31, 1)
+      return %32
+    }
+  }
+  let %33: Int = call oddValue(three)
+  do call printInt(%33)
+  join k3(r.2: Int) {
+    do call printInt(r.2)
+    let %34: Pets = option(none)
+    let alice: Person = record(name = "alice", var pet = %34)
+    let rex: Pet = record(name = "rex", owner = alice)
+    let p.1: Pet = rex
+    let %35: Tuple p: Pet end = tuple(p.1)
+    let %36: Pets = option(some, %35)
+    store alice.pet := %36
+    join k4(r.3: Int) {
+      do call printInt(r.3)
+      funs rec {
+        fun size(t: Tree2): Int {
+          join k5(r.4: Int) {
+            return r.4
+          } in {
+            switch tag(t) {
+              case leaf (n.5: Int): {
+                jump k5(n.5)
+              }
+              case node (f: Record trees: Array(Tree2) end): {
+                var s.1: Int = 0
+                let %37: Array(Tree2) = record_field(f, trees)
+                let %38: Int = call arrayOp.size [Tree2](%37)
+                let %39: Int = prim -(%38, 1)
+                var i.2: Int = 0
+                loop L2 {
+                  let %40: Bool = prim <=(i.2, %39)
+                  if %40 {
+                    let i.3: Int = i.2
+                    let %41: Array(Tree2) = record_field(f, trees)
+                    let %42: Tree2 = index(%41, i.3)
+                    let %43: Int = call size(%42)
+                    let %44: Int = prim +(s.1, %43)
+                    s.1 := %44
+                    let %45: Int = prim +(i.2, 1)
+                    i.2 := %45
+                  } else {
+                    break L2
+                  }
+                }
+                jump k5(s.1)
+              }
+              else: {
+                jump k5(0)
+              }
+            }
+          }
+        }
+      }
+      funs {
+        fun leaf(n.6: Int): Tree {
+          let %46: Tree = variant(leaf, n.6)
+          return %46
+        }
+      }
+      let %47: Tree = call leaf(4)
+      let %48: Tree = call leaf(5)
+      let %49: Array(Tree) = array(%47, %48)
+      let %50: Record trees: Array(Tree) end = record(trees = %49)
+      let t.1: Tree = variant(node, %50)
+      let t2: Tree2 = t.1
+      let %51: Int = call size(t2)
+      do call printInt(%51)
+      let %52: Tree = call leaf(6)
+      let trees: Array(Tree2) = array(t.1, %52)
+      let %53: Tree2 = index(trees, 0)
+      let %54: Int = call size(%53)
+      let %55: Tree2 = index(trees, 1)
+      let %56: Int = call size(%55)
+      let %57: Int = prim +(%54, %56)
+      do call printInt(%57)
+      funs {
+        fun id [A::TYPE](x.4: A): A {
+          return x.4
+        }
+      }
+      let %58: Tree = call id [Tree](t.1)
+      let %59: Int = call size(%58)
+      do call printInt(%59)
+      let %60: Odd = call id [Odd](three)
+      let %61: Int = call oddValue(%60)
+      do call printInt(%61)
+      let %62: T = call dynamic.new [Expr](e.1)
+      let %63: Expr = call dynamic.be [Expr](%62)
+      let %64: Int = call eval(%63)
+      do call printInt(%64)
+      let %65: T = call dynamic.new [Odd](three)
+      let %66: Odd = call dynamic.be [Odd](%65)
+      let %67: Int = call oddValue(%66)
+      do call printInt(%67)
+      let %68: T = call dynamic.new [Tree](t.1)
+      let %69: Tree2 = call dynamic.be [Tree2](%68)
+      let %70: Int = call size(%69)
+      do call printInt(%70)
+      let %71: T = call dynamic.new [Tree2](t2)
+      let %72: Tree = call dynamic.be [Tree](%71)
+      let %73: Int = call size(%72)
+      do call printInt(%73)
+      join k6(mismatch: Int) {
+        do call printInt(mismatch)
+      } in {
+        try {
+          let %74: T = call dynamic.new [Odd](three)
+          let %75: Even = call dynamic.be [Even](%74)
+          let %76: Int = call evenValue(%75)
+          jump k6(%76)
+        } handle (e.2: Exception) {
+          let %77: Exception = member dynamic.error
+          let %78: Bool = prim is(e.2, %77)
+          if %78 {
+            jump k6(-1)
+          } else {
+            raise e.2
+          }
+        }
+      }
+    } in {
+      let %79: Pets = record_field(alice, pet)
+      let %80: Tuple Int p: Pet end = payload(%79, some)
+      let %81: Pet = tuple_field(%80, 1)
+      let %82: Person = record_field(%81, owner)
+      let %83: Pets = record_field(%82, pet)
+      let %84: Bool = is_tag(%83, some)
+      if %84 {
+        jump k4(1)
+      } else {
+        jump k4(0)
+      }
+    }
+  } in {
+    let %85: Tuple Int n: Even end = payload(three, succ)
+    let %86: Even = tuple_field(%85, 1)
+    let %87: Tuple Int n: Odd end = payload(%86, succ)
+    let %88: Odd = tuple_field(%87, 1)
+    let %89: Tuple Int n: Even end = payload(%88, succ)
+    let %90: Even = tuple_field(%89, 1)
+    let %91: Bool = is_tag(%90, zero)
+    if %91 {
+      jump k3(1)
+    } else {
+      jump k3(0)
+    }
+  }
+}
+
