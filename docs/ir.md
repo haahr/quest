@@ -492,12 +492,19 @@ step 6.
   start of the function body) that contains it, and assigned where the exception is made.
 
 **Step 4: Passes.**
-- Specialize (§8.1), with calls matched by symbol.
+- Fix first: a nested function using a hoisted exception of its enclosing function fails verification, since
+  closures do not capture mutable variables. Replace hoisting's mutable variable with an IR binder that declares a
+  variable whose value is bound later, once, so the exception is a value that closures capture.
+- An IR interpreter (`ir/interp.py`), run by the test runner on the IR after each stage and compared with
+  `tests/golden/run`, so that a pass that changes a program's meaning is caught at that pass.
+- Specialize (§8.1), with calls matched by symbol, including calls of local polymorphic functions (lifting the
+  restriction in [tasklist.md](tasklist.md)); the trigger stays selective (record or variant type arguments).
 - Closure-convert (§8.2).
 - Represent (§8.3): representations, plans, and `convert` insertion, including variant tag maps decided from cases
   (closing the variant tag-map task).
 - Materialize descriptors (§7), with type parameters keyed by symbol.
-- Each pass with dump goldens and its stage's verifier.
+- Each pass with its stage's verifier on every test, and dump goldens for a subset of 15 to 20 programs chosen to
+  exercise it (Core IR keeps goldens for every program).
 
 **Step 5: C printer, as an alternative backend.**
 - `codegen/c_printer.py` printing the descriptor stage (§8.5), reusing `c_declarations.py` for struct declarations,
