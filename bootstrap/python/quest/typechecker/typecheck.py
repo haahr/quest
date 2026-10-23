@@ -180,6 +180,7 @@ from quest.typechecker.escape import (
 )
 from quest.typechecker.lvalues import check_lvalue_mode_type
 from quest.typechecker.metas import resolve_typed_metas
+from quest.typechecker.scoping import check_well_scoped, scope_checks_enabled
 
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
@@ -2661,7 +2662,14 @@ class TypeElaborator:
             env = self.env
 
         typed_phrases = tuple(self.elaborate_phrase(phrase, env) for phrase in program.phrases)
-        return TypedProgram(phrases=typed_phrases, offset=program.offset)
+        typed = TypedProgram(phrases=typed_phrases, offset=program.offset)
+        if scope_checks_enabled():
+            problems = check_well_scoped(typed)
+            if problems:
+                raise QuestCompilerError(
+                    "internal: the typed program is not well scoped:\n  " + "\n  ".join(problems[:20])
+                )
+        return typed
 
 
     # ============================================================================

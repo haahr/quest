@@ -442,11 +442,15 @@ step 6.
   through an unspecialized function, closures adapted by thunks; 0.31–0.44s each). `python tests/perf/measure.py`
   compares a later state with it, on the same machine.
 
-**Step 1: Identity in the typechecker.**
-- A well-scopedness check over the typed AST, run in tests: every type variable is bound by an enclosing quantifier
-  or declared symbol, every variable by an enclosing binder.
-- Fix any place it finds that re-elaborates a declaration with fresh symbols (as functions' parameter annotations
-  did).
+**Step 1: Identity in the typechecker.** *Done.*
+- A well-scopedness check over the typed AST (`quest/typechecker/scoping.py`), run after type checking when
+  `QUEST_CHECK_SCOPES=1`, which the test runners set: a locally bound variable is used only within its binder's
+  scope, a polymorphic function's `type_param_ids` are its own type's quantifiers, and a type mentioning a
+  function's type parameter occurs only inside that function. All 159 golden test programs, and the library modules
+  they compile, pass it.
+- It found no more re-elaborations with fresh symbols. It did find that `QAllType` treated quantifier bounds as
+  outside its binder (`All(A B <: A) T` had `A` free, and substitution reached the bound's `A`); quantifiers are now a
+  telescope, each bound seeing the quantifiers before it as bound.
 
 **Step 2: Shapes.**
 - `codegen/shapes.py` (or `ir/shapes.py`): `shape(t)` and the shape kinds of §4.1, built on the canonical forms of

@@ -244,6 +244,8 @@ def execute_phase(
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root_dir / "bootstrap" / "python")
+    # Checks that typed programs are well scoped (quest/typechecker/scoping.py), as golden tests do
+    env["QUEST_CHECK_SCOPES"] = "1"
     if env_vars:
         env.update(env_vars)
 

@@ -176,6 +176,11 @@ and then `python run_tests.py -k conversions/ --update-golden`.
 C it produces over the compiled test programs, and the run times of the benchmarks in `tests/perf`, comparing them
 with `tests/perf/baseline.json` (`--save` rewrites it). It is not part of the test suite.
 
+**Scope checks:** with `QUEST_CHECK_SCOPES=1`, which `run_tests.py`, the error tests, and the unit tests' helpers set,
+the type checker checks that every typed program is well scoped (`quest/typechecker/scoping.py`): variables are used
+within their binders' scopes, and functions' type parameters within their functions. A failure is an internal
+error. Production builds skip the check.
+
 **Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
 type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables
 every check. See `bootstrap/python/quest/shadow.py`.

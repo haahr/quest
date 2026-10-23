@@ -924,17 +924,26 @@ class QAllType(QType):
     body: QType
 
     def __post_init__(self) -> None:
-        # Quantifier bounds see the whole substitution; the body does not see the quantified ids.
-        free, has_meta = _free_vars_of(self.quantifiers)
-        body_free = set(self.body._fv)
-        body_free.difference_update(q.symbol_id for q in self.quantifiers)
-        _set_free_vars(self, free | body_free, has_meta or self.body._has_meta)
+        # The quantifiers are a telescope: each bound may refer to the quantifiers before it (All(A B <: A) T), which
+        # bind it there, and the body sees them all.
+        free: set[int] = set()
+        has_meta = self.body._has_meta
+        earlier: set[int] = set()
+        for q in self.quantifiers:
+            free |= q._fv - earlier
+            has_meta = has_meta or q._has_meta
+            earlier.add(q.symbol_id)
+        _set_free_vars(self, free | (set(self.body._fv) - earlier), has_meta)
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
-        # Avoid capturing bound quantifiers
-        bound_ids = {q.symbol_id for q in self.quantifiers}
-        active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
-        quantifiers = tuple(q.substitute(subst) for q in self.quantifiers)
+        # Avoid capturing bound quantifiers: a bound does not see the quantifiers before it substituted, nor does
+        # the body any quantifier
+        quantifiers_list: list[QQuantifier] = []
+        active_subst = dict(subst)
+        for q in self.quantifiers:
+            quantifiers_list.append(q.substitute(active_subst))
+            active_subst.pop(q.symbol_id, None)
+        quantifiers = tuple(quantifiers_list)
         body = self.body.substitute(active_subst)
         if body is self.body and _all_same(quantifiers, self.quantifiers):
             return self

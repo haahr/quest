@@ -209,6 +209,8 @@ def run_single_golden_test(
     # Checks the C back end's canonical forms of types, which outside the tests only warn
     # (docs/c-representation.md §5.7)
     environment["QUEST_CHECK_CANONICAL"] = "1"
+    # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
+    environment["QUEST_CHECK_SCOPES"] = "1"
     if directives.env and phase_name in ("interpret", "run_c_compiled"):
         environment.update(directives.env)
 
