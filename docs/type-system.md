@@ -87,10 +87,9 @@ place during inference. Several parts of the type checker depend on how type obj
   to an alias, without coming from a reference to it, prints structurally. References to the builtin primitive names
   (`Int`, `Ok`, ...) elaborate to the primitives themselves (`alias_reference`). A substitution that changes an
   alias's target drops the alias node.
-- **Alias nodes never reach C code generation.** `CEmitter.emit_program` and `emit_module` rebuild the typed AST,
-  and the value symbols it references, without alias nodes (`strip_aliases`); the codegen type functions also strip
-  defensively. The stripped copies remember their original types, so printed results (`let x:T = ...`) show alias
-  names exactly as the interpreter does. Types serialized by `dynamic.extern` are written without alias names, so
+- **Alias nodes never reach C code generation.** The IR's shapes are of canonical types (`ir/shapes.py`), and the C
+  printer and the codegen type functions strip aliases (`strip_aliases`). The lowering prints results from the typed
+  AST's types (`let x:T = ...`), so they show alias names exactly as the interpreter does. Types serialized by `dynamic.extern` are written without alias names, so
   that they read back on their own.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at
   construction (`__post_init__`) its free variables, `_fv`: the symbol ids a substitution could replace inside it,

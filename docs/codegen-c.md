@@ -1,39 +1,48 @@
 # C Code Generator and Host Compilation Architecture (`codegen_c`)
 
-This document specifies the architecture, code generation rules, statement-expression lowerings, and host compiler
-driver for **Step 4: Bootstrap C Transpiler** (`bootstrap/python/quest/codegen/`).
+This document specifies the C the compiler generates and the host compiler driver (`bootstrap/python/quest/codegen/`).
+How a program gets there, the IR and its passes, is [ir.md](ir.md); the representations of values in C are
+[c-representation.md](c-representation.md).
 
 ---
 
 ## 1. Overview and Architecture
 
-The C code generation phase (`CodegenCPhase`, canonical name `codegen_c`) translates a type-checked Quest AST
-(`TypedProgram`) into portable C99 source code, which is then compiled into a native binary executable by invoking
-the host C toolchain (`clang` or `gcc`).
+C compilation lowers a type-checked program (`TypedProgram`), or a module file, to the IR, runs the IR's passes, and
+prints the result as portable C99, which the host C toolchain (`clang` or `gcc`) compiles and links with the runtime
+and the objects of the modules the unit imports.
 
 ```
-Typed AST (TypedProgram)
+Typed AST (TypedProgram, or a module file's TypedModule)
            |
-           v
-+-----------------------+      c_types.py: Maps QType -> C scalar types, mangles identifiers
-|      CEmitter         | <---
-| (c_emitter.py)        |      AST Visitor: Lowers literals, bindings, operators, control flow
+           v  ir/lower.py: Core IR (ANF with join points)
+           v  ir/specialize.py, ir/closure.py, ir/represent.py: the passes (ir.md §8)
+           |
++-----------------------+      c_types.py: QType -> C types, layouts, descriptors, mangling
+|   c_printer.py        | <--- c_declarations.py: structs, offset tables, descriptors, adapters
+|   (CPrinter)          |      Prints what the passes decided: no representation decisions of its own
 +-----------------------+
            |
-           v  (C99 Source String)
+           v  (C99 source)
 +-----------------------+
 |   compiler_runner.py  | <--- Locates clang/gcc, auto-detects Boehm GC, adds -I runtime/
 +-----------------------+
            |
            v
-    Native Binary (Executable)
+    Native Binary (Executable), or a module's object (.o)
 ```
 
 ### Module Structure (`bootstrap/python/quest/codegen/`)
-- **`c_types.py`:** C scalar type mappings, identifier mangling (`qv_<name>`), operator name mangling, and type names.
-- **`c_emitter.py`:** Core AST visitor class `CEmitter` generating C99 code for phrases, bindings, and expressions.
+- **`backend.py`:** The C backend's entry points: `program_to_c` and `module_file_to_c` (lowering, passes, printing),
+  used by `module_compiler.py` and `BuildEngine`; the pipeline runs the same steps as phases (`ir_core` ...
+  `ir_represented`, then `codegen_c`).
+- **`c_printer.py`:** `CPrinter`, printing a represented IR unit as C.
+- **`c_declarations.py`:** The declarations of the types a unit uses (structs, offset and coercion tables, type
+  descriptors, function type adapters), the extern declarations of imported modules' functions, and the signature of
+  the functions a module file exports (`module_function_signature`). Interfaces' C headers use it too.
+- **`c_types.py`:** C type mappings, struct and descriptor names, layouts (`generic_layout_agrees`), descriptor forms,
+  and identifier mangling.
 - **`compiler_runner.py`:** Discovers host compiler, auto-detects Boehm GC, compiles C source, and runs binaries.
-- **`__init__.py`:** Package exports (`CEmitter`, `compile_c_source`, `run_binary`).
 
 ---
 
@@ -55,12 +64,13 @@ Quest scalar types map to native C99 types defined in `runtime/quest_runtime.h`:
 ### 2.2. Identifier Namespacing and Name Mangling
 To prevent collisions with C99 keywords (`int`, `return`, `default`, `static`, etc.), standard library symbols,
 and C struct member keywords, Quest applies a comprehensive, deterministic name mangling scheme:
-- **Value and variable names** are prefixed with `qv_` (e.g. `qv_x`, `qv_default`).
+- **Value and variable names:** a unit's variables are `g_<name>` (globals) and `l_<name>` (locals), its functions
+  `qf_<name>`; what other units link against, a module's exported functions, is `qv_<module>_<member>`.
 - **Record field names** inside C structs are prefixed with `qf_` (e.g. `qf_default`, `qf_x`).
 - **Hierarchical module paths** are flattened using `__` (e.g. `util/path` $\rightarrow$ `util__path`).
 - **Symbolic operators** are mapped via `SYMBOL_MANGLE_MAP` with prefix `qv_sym_`
   (e.g. `:=` $\rightarrow$ `qv_sym_colon_equals`).
-- **Temporary variable names** are generated uniquely with fresh counters (e.g. `_res_1`, `_tuple_2`).
+- **Temporary variable names** are generated uniquely with fresh counters (e.g. `_t1`, `_t2`).
 
 > [!NOTE]
 > For the complete, definitive specification of all generated C identifiers—including external ABI symbols,
@@ -69,52 +79,48 @@ and C struct member keywords, Quest applies a comprehensive, deterministic name 
 
 ---
 
-## 3. Program Structure and Code Emission (`c_emitter.py`)
+## 3. Program Structure
 
-### 3.1. Program Boilerplate
-`CEmitter.emit_program()` emits a standalone C99 compilation unit containing:
-1. Preamble include: `#include "quest_runtime.h"`
-2. Entry point: `int main(int argc, char **argv)`
-3. Runtime initialization: `quest_gc_init()` (initializes Boehm GC or no-op if `-DQUEST_NOGC`)
-4. Sequential emission of all top-level phrases.
-5. Exit: `return 0;`
+### 3.1. A Unit's C
+The printer writes a unit's C in this order (`CPrinter.print_unit`):
+1. `#include "quest_runtime.h"`, and a module file's interface header (`<interface>.int.h`) if it has one.
+2. The declarations of the types the unit uses (`c_declarations.py`), and extern declarations of the modules it
+   imports: their records (`qm_<module>`), initializers (`qv_mod_<module>_init`), and exported functions.
+3. The environment struct of each closure that captures values (`struct QEnv_<function>`).
+4. A prototype of each of the unit's functions (every function, lifted by closure conversion), with a static closure
+   of it for when it captures nothing (`static QClosure qf_<name>_closure = { (void *)qf_<name>, NULL };`).
+5. Globals: the variables the top levels bind outside loops, at file scope (`static QInt g_x;`), and the records of
+   the unit's modules.
+6. Thunks (adapters, type applications, external C functions as closures), and `qr_register_dicts`, which registers
+   the offset tables of the records the unit views at supertypes, for dynamic values.
+7. The functions, the thunks, and the modules' initializers.
+8. For a program, `main`: it initializes the runtime and the imported modules and the unit's own, then runs the
+   program's top-level phrases. A module file has no `main`.
 
 ```c
-/* Emitted by Quest Bootstrap C Transpiler */
-#include "quest_runtime.h"
-
 int main(int argc, char **argv) {
-    (void)argc; (void)argv;
     quest_gc_init();
-
+    quest_builtins_init(argc, argv);
+    qr_register_dicts();
+    qv_mod_writer_init();
     /* Top-level phrases */
     ...
-
     return 0;
 }
 ```
 
-### 3.2. Let Bindings and Variables
-- **Immutable Bindings (`TypedLetValue` with `is_var=False`):**
-  Emitted directly as a typed C local variable:
-  ```c
-  /* let x = 42; */
-  QInt qv_x = (42LL);
-  ```
-- **Mutable Bindings (`TypedLetValue` with `is_var=True`):**
-  Emitted as a standard C variable:
-  ```c
-  /* let var count = 0; */
-  QInt qv_count = (0LL);
-  ```
-- **Assignment Mutation (`TypedAssign`):**
-  ```c
-  /* count := count + 1; */
-  qv_count = ((qv_count) + (1LL));
-  ```
+A program prints its phrases' results only with `--echo` (every phrase) or `--print-result` (the last one, as the
+interpreter prints it, which `--stop-after run_c_compiled` turns on); the IR prints them (`echo`, `result`, ir.md
+§6.6).
+
+### 3.2. Variables
+Each IR variable is a C variable of its type's representation: a global (`g_<name>`) if the top level binds it
+outside a loop, and otherwise a local of its function (`l_<name>`), declared at the function's start. A name used
+twice in one unit gets a suffix (`l_x_2`). Mutable variables are C variables too, assigned in place
+(`count := count + 1` assigns `l_count`); those a `try` body assigns are `volatile` (c-representation.md §6.4).
 
 ### 3.3. Cardelli Non-Overloaded Operators
-In Quest, operators are strictly non-overloaded (§4.2). The transpiler emits direct C99 expressions:
+In Quest, operators are strictly non-overloaded (§4.2). The printer writes direct C99 expressions:
 
 - **Integer Arithmetic:** `+`, `-`, `*` map to C `+`, `-`, `*`.
 - **Integer Division & Modulo:** `/` and `%` call inline runtime functions with zero-divisor checks:
@@ -146,115 +152,41 @@ In Quest, operators are strictly non-overloaded (§4.2). The transpiler emits di
 
 ---
 
-## 4. Control Flow and Standard C99 Lowering
+## 4. Control Flow
 
-Because Quest is an expression-oriented language, constructs like `if`, `begin ... end`, and loops can appear in
-arbitrary expression positions (e.g. `let x = if c then 1 else 2 end;`).
-
-To lower these into strict, portable **standard ISO C99** without relying on non-standard GCC/Clang statement
-expressions (`({ ... })`), the transpiler employs destination-passing statement lowering:
-- Expressions evaluating in statement context (e.g. bindings, returns, or phrase sequences) emit directly into their
-  destination.
-- Control constructs (`if`, loops, blocks) decompose into standard C99 statements and blocks (`{ ... }`).
-- When a complex expression appears as a sub-expression (e.g. inside an arithmetic operation), temporary variables
-  are hoisted and emitted as preparation statements immediately preceding the consumer.
-
-### 4.1. Conditionals (`TypedIf`)
-- **Value-Producing If Expression:**
-  ```c
-  /* let x = if a > 0 then 10 else 20 end; */
-  if ((qv_a) > (0LL)) {
-      qv_x = 10LL;
-  } else {
-      qv_x = 20LL;
-  }
-  ```
-- **Statement / Ok-typed If:**
-  ```c
-  if (cond) {
-      then_body;
-  } else {
-      else_body;
-  }
-  ```
-
-### 4.2. Sequential Blocks (`TypedBlock`)
-A block scopes local variable declarations and evaluates to its destination inside standard C braces:
-```c
-/* begin let a = 5; let b = 6; a * b end */
-{
-    QInt qv_a;
-    qv_a = 5LL;
-    QInt qv_b;
-    qv_b = 6LL;
-    dest = ((qv_a) * (qv_b));
-}
-```
-
-### 4.3. While and Infinite Loops (`TypedWhile`, `TypedLoop`, `TypedExit`)
-- **`while <cond> do <body> end`:**
-  Emitted as standard C `while (1)` with condition checking and early break:
-  ```c
-  while (1) {
-      if (!(cond)) break;
-      body;
-  }
-  ```
-- **`loop <body> end`:**
-  ```c
-  while (1) {
-      body;
-  }
-  ```
-- **`exit`:**
-  Emitted directly as `break;`.
-
-### 4.4. For Loops (`TypedFor`)
-Quest provides both ascending (`upto`) and descending (`downto`) loops, emitted as standard C99 `for` loops:
-- **`for i = 1 upto 5 do <body> end`:**
-  ```c
-  QInt _stop_1 = 5LL;
-  for (QInt qv_i = 1LL; qv_i <= _stop_1; qv_i++) {
-      body;
-  }
-  ```
-- **`for i = 5 downto 1 do <body> end`:**
-  ```c
-  QInt _stop_1 = 1LL;
-  for (QInt qv_i = 5LL; qv_i >= _stop_1; qv_i--) {
-      body;
-  }
-  ```
+The IR is in A-normal form, with structured control and join points (ir.md §6), so each statement is a C statement,
+in strict ISO C99 without statement expressions:
+- **Conditionals:** `if (c) { ... } else { ... }`; a `case` over tags is a `switch`.
+- **Join points:** a value-producing construct (`let x = if ... end`) jumps to a join point with its value: the join
+  point's parameters are C variables, the jump assigns them and `goto`s the join point's label, which precedes its
+  continuation.
+- **Loops:** `for (;;) { ... }`, with `goto <label>_break` and `goto <label>_continue` for `exit` and the loops'
+  conditions (a `for` loop's counter and limit are IR variables).
+- **Exceptions:** a `try` region is a `setjmp` handler pushed onto `quest_current_exception_handler`, popped on every
+  way out: falling off the end, a jump or loop exit out of it, a `return`, and the handler itself.
 
 ---
 
-## 5. Functions & Direct Calling Conventions (Phase 4.2a)
+## 5. Functions and Calls
 
-### 5.1. Function Declaration Hoisting & Static Scope
-Top-level function definitions (`let f(...) = ...`, `let rec f(...) = ...`) are hoisted out of `main()` to C file scope:
-- **Top-Level Variable Hoisting:** Non-function top-level variables (`let x = 10;`) are declared as file-scope static C
-  variables (`static QInt qv_x;`) and initialized inside `main()` in program order, ensuring top-level functions can
-  read and mutate them.
-- **Prototypes & Forward Declarations:** Before emitting function definitions, the transpiler generates static forward
-  declarations for all top-level functions:
-  ```c
-  static QInt qv_factorial(QInt qv_n);
-  ```
-  This allows recursive and mutually referenced functions to compile without order dependency.
-
-### 5.2. Direct Calling Convention & Currying Flattening
-- **Uncurried Signatures:** Functions defined with multi-parameter or curried syntax are flattened into direct,
-  zero-overhead uncurried C function signatures:
-  ```c
-  /* let add(x: Int y: Int): Int = x + y; */
-  static QInt qv_add(QInt qv_x, QInt qv_y) {
-      return ((qv_x) + (qv_y));
-  }
-  ```
-- **Application Flattening:** Fully applied call sites (`add(10 20)` or `add(10)(20)`) are flattened into direct
-  C invocations `qv_add(10LL, 20LL)`.
-- **`Ok` Return Types:** Functions returning `Ok` emit `void` return types and clean `return;` statements. At statement
-  call sites, calls returning `Ok` are emitted directly as statement calls: `qv_proc(...);`.
+Closure conversion lifts every function to file scope (ir.md §8.2). Each is a static C function taking its closure's
+environment first, then its type parameters' descriptors, then its parameters (pointers for `var` and `out`):
+```c
+/* let add(x: Int y: Int): Int = x + y; */
+static QInt qf_add(void *_raw_env, QInt l_x, QInt l_y) {
+    (void)_raw_env;
+    ...
+    return l_t;
+}
+```
+- **Calls:** a call of a closure the unit makes (a variable bound to it) calls its function directly, passing its
+  environment (`qf_add(NULL, 10LL, 20LL)`), and any other call goes through the closure (§7.4). `Ok`-returning
+  functions return `void`.
+- **Imported modules:** a call of an imported module's function calls the function the module exports,
+  `qv_<module>_<member>` (§10.7), and its other members are fields of its record.
+- **Externals:** a function defined as `external "symbol"` calls the C function with its type parameters'
+  descriptors and its parameters (`call external`); an external C function used as a value is a static closure over
+  a thunk calling it, and a call of a variable bound to one calls the C function directly.
 
 ---
 
@@ -287,7 +219,7 @@ slot layout, and direct pointer-based field access.
       QReal qf_y;
   };
   ```
-- **Forward Typedef Hoisting:** The transpiler recursively discovers all `QTupleType` and `QRecordType` instances
+- **Forward Typedef Hoisting:** The printer discovers all `QTupleType` and `QRecordType` instances
   across the AST and emits forward declarations (`typedef struct Tag Tag;`) before any struct bodies, static variables,
   or function prototypes. This guarantees that mutually referencing or nested aggregate types compile cleanly without
   ordering dependencies.
@@ -336,48 +268,23 @@ static_assert(sizeof(QClosure) == 16, qclosure_must_be_16_bytes);
 static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 ```
 
-### 7.2. Direct Top-Level Calls vs. Trampoline Adapters
-1. **Direct Top-Level Calls:** Direct calls to statically known top-level functions remain zero-overhead standard C
-   function calls (`qv_f(args...)`) without passing an unused `env` pointer.
-2. **First-Class Value Passing:** When a top-level function is referenced as a value (e.g., passed to an argument
-   expecting `QFunType`), the transpiler synthesizes a static trampoline adapter and a file-scope static `QClosure`:
-   ```c
-   static QInt qv_add1_trampoline(void *env, QInt qv_x) {
-       (void)env;
-       return qv_add1(qv_x);
-   }
-   static QClosure qv_add1_closure = { (void *)qv_add1_trampoline, NULL };
-   ```
-   Passing `add1` in expression context emits `(&qv_add1_closure)` directly without heap allocation.
-
-### 7.3. Lambda Lifting & Flat Environment Frames
-Inner `TypedFun` expressions undergo free variable analysis (`_find_free_vars`):
-1. **Capturing Lambdas:**
-   - A dedicated flat environment struct `struct QEnv_<lid> { ... }` is generated containing the captured types.
-   - The lambda body is lifted to file scope as `static RetType qv_<lid>(void *_raw_env, Params...)`.
-   - At the instantiation site, the environment and a `QClosure` are allocated on the heap via `quest_alloc`:
-     ```c
-     struct QEnv_lambda_1 *_env = (struct QEnv_lambda_1 *)quest_alloc(sizeof(struct QEnv_lambda_1));
-     _env->qv_x = qv_x;
-     QClosure *_clos = (QClosure *)quest_alloc(sizeof(QClosure));
-     _clos->fn = (void *)qv_lambda_1;
-     _clos->env = (void *)_env;
-     ```
-   - A local recursive function (`let rec f ...`, or the members of `let rec f ... and g ...`) captures its own
-     variable and those of the other members, which hold no value yet when its closure is built. Every member's
-     variable is declared first, and those captures are copied into the environments only after every member has
-     been assigned (`_emit_rec_bindings`).
-   - A local binding is emitted with its value computed before its variable is declared. Its variable is the
-     binding's mangled name, or a fresh identifier (which the name then stands for in the rest of the block) when
-     the block already declares the name, which C cannot redeclare, or when the value refers to the binding it
-     shadows (`let n = n + 1`), since a C variable is in scope in its own initialization (`_declare_local`). The
-     members of a simultaneous declaration (`let x = ... and y = ...`) compute every value into a temporary before
-     any member's variable is declared (`_emit_simultaneous_bindings`), and likewise at the top level and in module
-     initializers, before any member's global is assigned.
-2. **Non-Capturing Lambdas:**
-   - Lifted to file scope with `(void)_raw_env;`.
-   - Emits a static singleton closure `static QClosure qv_<lid>_closure = { (void *)qv_<lid>, NULL };` and passes
-     `&qv_<lid>_closure`, avoiding heap allocations entirely.
+### 7.2. Closures
+Closure conversion (ir.md §8.2) decides what each closure captures: the values it uses from enclosing functions (the
+top levels' variables are globals, which it uses instead), and the descriptors of the enclosing functions' type
+parameters its types mention.
+- **Capturing closures** get an environment struct, allocated with the closure where the closure is made:
+  ```c
+  _t1 = (struct QEnv_qf_h *)quest_alloc(sizeof(struct QEnv_qf_h));
+  _t1->c0 = l_x;
+  _t2 = (QClosure *)quest_alloc(sizeof(QClosure));
+  _t2->fn = (void *)qf_h;
+  _t2->env = (void *)_t1;
+  ```
+  The function reads its captures from the environment (`env_field`).
+- **Closures capturing nothing** are the function's static closure, `(&qf_<name>_closure)`, with no allocation.
+- **Recursive groups:** a closure capturing a member of its own recursive group (`let rec f ... and g ...`) is made in
+  a `let rec`, and the captures of the group's members are stored in the environments once every member has been
+  made.
 
 ### 7.4. Indirect Closure Invocations
 When calling an indirect target (such as a closure parameter or returned function), the call site casts `fn` to the
@@ -535,9 +442,9 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
 ### 10.5. Call-Site Specialization for Unbounded Quantifiers (Phase 4.9c)
 When unbounded polymorphic functions (`All(A::TYPE)`) are invoked at call sites with concrete `Record` or `Variant`
 arguments:
-- **Specialization Analysis Pass (`c_analysis.py`):** Scans the AST worklist for call sites where type arguments
-  require specialization (`is_specialization_needed`). Clones the `TypedFun` node with substituted types, synthesizes
-  specialized identifier `qv_<name>_spec_<type_tags>`, and populates aggregate types from cloned bodies.
+- **Specialization Pass (`ir/specialize.py`, ir.md §8.1):** Clones a function called with type arguments that hold
+  records or variants (decided on their shapes), local functions included, substituting the types (a module's clones
+  are its members `<name>_spec<n>`), to a bounded depth.
 - **Direct Calling Convention & Zero-Boxing:** Specialized function clones take unboxed `QRecordVal` and `QVariantVal`
   parameters directly without descriptor parameters (unless uninstantiated quantifiers remain) and pass them in
   register pairs `(x0, x1)` without heap boxing.
@@ -560,23 +467,21 @@ structures (`QArrayWideRecord` and `QArrayWideVariant`):
 ### 10.7. Unified Native Module Mechanism & Hybrid Modules (Phase 4.11)
 All modules—whether pure Quest, standard library built-ins (`writer`, `reader`, `conv`, `ascii`, `int`, `real`,
 `string`, `system`, `arrayOp`, `dynamic`), or user-defined hybrid modules—are compiled uniformly:
-- **Unified Pipeline (Section 8b Emission):** Legacy Section 8c and ad-hoc string matching
-  (`_builtin_call_c_expr` / `_builtin_val_c_expr`) are eliminated. All modules emit uniform declarations in
-  `c_declarations.py` and module initializers/trampolines in Section 8b of `c_emitter.py`.
+- **Module files through the IR:** a module file is a unit of its own (`module_file_to_c`), whose module has
+  exports: its interface's members at the interface's types, converted from its own members by the represent pass
+  (ir.md §3). Its record holds them, and it exports a C function `qv_<module>_<member>` for each that is a function or
+  a polymorphic value, which calls the export's closure (the ABI importers call, `module_function_signature`).
 - **Topological Lazy Initializers (`qv_mod_<name>_init`):**
   - Each module emits an initialization function guarded by `qv_mod_<name>_initialized` for idempotent execution.
   - Recursively triggers initializers of dependency modules in topological order before executing local bindings.
   - Allocates the module payload struct (`QT_<Interface>`) and populates all exported fields with **concrete values**:
-    - Native bindings (`TypedNativeBinding`) and pure Quest functions emit static trampolines
-      (`qv_<mod>_<fn>_trampoline`) with `(void)arg_{i}` unused parameter suppression, wrapped in `QClosure *` objects.
-    - Native constants (`TypedExternal`) and evaluated `let` bindings populate fields directly, wrapping in `QVal`
-      (`_qval_wrap`) if the interface field is abstract.
-- **Direct Native Call Lowering & Polymorphic Native Bindings:** When selecting a function on a known module
-  (e.g. `writer.putString(w s)`), the compiler resolves the native binding and directly emits
-  `quest_writer_put_string(...)` or expands the inline template, bypassing closure allocation and indirect calls.
-  Polymorphic native functions that inspect runtime types (e.g. `dynamic.new`, `dynamic.be`) set
-  `pass_type_descriptors=True` on their `TypedNativeBinding`, receiving caller-synthesized `QTypeDescriptor *`
-  arguments automatically. All `dynamic` operations (`dynamic.new`, `dynamic.be`, `dynamic.copy`, `dynamic.extern`,
+    - Functions are closures; external C functions are closures over thunks calling them.
+    - External C values and evaluated `let` bindings populate fields directly, boxed (`QVal`) where the interface's
+      type is abstract.
+- **Calls of Library Functions:** A call of an imported module's function (e.g. `writer.putString(w s)`) calls the
+  function the module exports (`qv_writer_putString`), which calls the C function (`quest_writer_put_string`).
+  Polymorphic functions that inspect runtime types (e.g. `dynamic.new`, `dynamic.be`) are defined as externals
+  taking their type parameters' descriptors. All `dynamic` operations (`dynamic.new`, `dynamic.be`, `dynamic.copy`, `dynamic.extern`,
   `dynamic.intern`) are standard `TypedNativeBinding`s with zero compiler special-casing.
 - **External C Types and Values:** `external "C_TYPE"` and `external "C_SYMBOL"` seamlessly bridge C runtime
   structures (e.g. `QWriter *`, `QReader *`) into Quest's type system without compiler special-casing.
@@ -595,12 +500,11 @@ Phase 4.12 implements native pointer lowering for Cardelli's mutable reference p
   - Tuple element references `@t.1` emit pointers to tuple components (`&tup->_1`).
   - Temporary cells `var(e)` evaluate `e` into a stack local and pass its address (`&_var_cell`).
 - **Polymorphic Reference Invocations (Two-Tier Model):**
-  - **Tier 1 (Specialization):** Direct calls in the compilation unit trigger AST specialization in `c_analysis.py`.
-    The specialized function takes native `T *qv_p` parameters, passing lvalue pointers directly without overhead.
-  - **Tier 2 (Shadow Cell Fallback):** When calling unspecialized polymorphic functions (`var p: A` where `qv_p` is
-    `QVal *`), the caller generates a stack shadow cell `QVal _shadow_cell`. For `var` parameters, it performs copy-in
-    via `_qval_wrap(*_loc_ptr, T)` (boxing 16-byte `QRecordVal` fat pointers and `QVariantVal`), passes `&_shadow_cell`
-    to the callee, and performs copy-out writeback `*_loc_ptr = _qval_unwrap(_shadow_cell, T)` after return.
+  - **Tier 1 (Specialization):** Direct calls in the unit are specialized (`ir/specialize.py`); the clone takes
+    native `T *` parameters, passing lvalue pointers directly without overhead.
+  - **Tier 2 (Shadow Cell Fallback):** For an unspecialized polymorphic callee (`var p: A`, a `QVal *`), the represent
+    pass passes the address of a shadow cell of the parameter's representation, copied in from the location (boxing
+    `QRecordVal` and `QVariantVal`) for `var` and copied out to it after the call (`ref_argument`, ir.md §8.3).
 - **Closure Capture Restrictions:** Closure capture of `out`/`var` parameters or local stack mutable variables
   is prohibited at compile time, guaranteeing that pointers never outlive their stack frames.
 
@@ -615,10 +519,10 @@ and member projection (`p.v`):
     via `qval_wrap` and unboxed via `qval_unwrap`.
   - Bounded type variables and path-types (`A::POWER(T)`, `p.T <: T`) unbox directly to the bound's native C type
     (e.g., `QInt`, `QReal`), eliminating dynamic boxing and preserving full native performance.
-- **Closure Adaptation Thunks (`_emit_closure_adaptation`):** When packaging or coercing a tuple containing closures
+- **Closure Adaptation Thunks (`adapt` plans, ir.md §8.3):** When packaging or coercing a tuple containing closures
   whose concrete signatures differ from the abstract interface signature (e.g., `create(init: Int): Counter` where
-  `Counter = Int` coerced to `create(init: Int): A`), the transpiler synthesizes static adaptation thunks
-  (`qv_adapt_<id>`). The thunk unpacks/forwards the original closure's environment, unwraps any `QVal` arguments with
+  `Counter = Int` coerced to `create(init: Int): A`), the printer makes static adaptation thunks
+  (`qa_adapt`). The thunk unpacks/forwards the original closure's environment, unwraps any `QVal` arguments with
   `qval_unwrap`, invokes the underlying native function, and wraps any abstract return value with `qval_wrap`. A thunk
   is also made when a closure is used at a function supertype whose arguments or result need converting (records,
   variants, options, tuples, functions): it coerces each argument from the target parameter type to the closure's
@@ -627,10 +531,10 @@ and member projection (`p.v`):
   function type with a runtime descriptor gets an adapter and an invoker, referenced by the descriptor, for
   conversions known only at run time; see [c-representation.md](c-representation.md) §6.4 (Compound Descriptor
   Payloads, Functions).
-- **Descriptor Templates (`_emit_template_descriptors`):** A type that mentions type parameters in scope is
+- **Descriptor Templates:** A type that mentions type parameters in scope is
   described by a template instantiated at run time with their descriptors; the templates the generated code uses are
   emitted after it, ahead of the function definitions; see [c-representation.md](c-representation.md) §6.4.5.
-- **Tuple Structural Coercion & Generic Returns (`_coerce_tuple_val`):** Coercions between tuples whose field C types
+- **Tuple Structural Coercion & Generic Returns (`copy` plans):** Coercions between tuples whose field C types
   differ (e.g., concrete scalar to `QVal`, closure adaptation, nested tuple structural conversions, or generic tuple
   returns where `QVal` fields are unwrapped into concrete types) allocate a new target tuple and map each field.
   - **Fat Pointer & Variant Support:** Unwrapping `QVal` fields into concrete record fat pointers (`QRecordVal`) or
@@ -676,52 +580,13 @@ The compiler runner manages external C compiler toolchain discovery, Boehm GC fl
 
 ## 12. Verification & Test Suite
 
-The C code generator is verified through comprehensive unit, integration, and end-to-end tests:
-- `tests/python/test_phase4_1_runtime.py`: Runtime macros, tag operations, error exits, and `--nogc` execution.
-- `tests/python/test_phase4_2a_functions.py`: Direct function calls, uncurrying, mutual recursion,
-  curried application flattening, mutable top-level variables, and `--nogc` execution.
-- `tests/python/test_phase4_2b_aggregates.py`: Tuples, concrete records, heap allocation via `quest_alloc`,
-  named/indexed field selection, mutable field assignment, and nested aggregates.
-- `tests/python/test_phase4_2c_closures.py`: First-class function values, trampolines, capturing closures,
-  multi-level nested closures, and `--nogc` execution.
-- `tests/python/test_phase4_3_arrays.py`: Mutable arrays, repetition, indexing, element mutation, Real/String elements,
-  out-of-bounds error handling, and `--nogc` execution.
-- `tests/python/test_phase4_4_options_variants.py`: Ordered options, tagged variants, tag checks (`?`),
-  tag extractions (`!`), case discrimination, and `--nogc` execution.
-- `tests/python/test_phase4_5_subtyping.py`: Prefix tuple subtyping with static assertions,
-  record width/permutation subtyping, evidence dictionary passing through closures, uniform `QRecordVal` returns,
-  and static variant tag remapping.
-- `tests/python/test_phase4_6_exceptions.py`: Exception values, try-when exception handling, and stack unwinding.
-- `tests/source/modules/` (golden tests): Multi-file compilation, interface checking, and linking.
-- `tests/python/test_phase4_8_quantifier_descriptors.py`: Quantifier calling convention and type descriptors.
-- `tests/python/test_phase4_8_dynamic.py`: Dynamic module lowering, dynamic values, and generic wrappers.
-- `tests/python/test_phase4_9a_aggregate_subtyping.py`: Arrays of subtyped records, array repetition, element mutation,
-  tuples with subtyped records, and passing aggregate record elements to functions.
-- `tests/python/test_phase4_9b_bounded_specialization.py`: Bounded specialization for records and variants,
-  dynamic offset evaluation via evidence dictionaries, caller dictionary restoration, and call-site tag alignment.
-- `tests/python/test_phase4_9c_callsite_specialization.py`: Call-site specialization for unbounded quantifiers,
-  unboxed QRecordVal/QVariantVal parameters and returns, generic tuple layout alignment, and scalar coexistence.
-- `tests/python/test_phase4_9d_flat_stride_arrays.py`: Flat stride arrays for Array(Record) and Array(Variant),
-  in-place mutation, flat dictionary coercion, specialized generic functions, and wide array bounds checks.
-- `tests/python/test_phase4_10_stdlib_c.py`: Cardelli standard library interfaces in C (Writer, Reader, Conv, Ascii,
-  IntOp, RealOp, StringOp) and System OS extensions.
-- `tests/python/test_phase4_11_native_modules.py`: Unified native module mechanism, external types and values, and
-  hybrid Quest/C modules.
-- `tests/python/test_stage2_cardelli.py` & `tests/source/language/lvalues_references.quest`: Mutable reference
-  parameters (`out`, `var`), lvalue address-of generation, pointer forwarding, and compile-time error checks.
-- `tests/python/test_existential_tuples.py` & `tests/source/language/existential_{packages,adt}.quest`: Existential
-  tuples, package packing, signature adaptation thunks, bounded path-type unboxing, and dot-projections across
-  interpreter and native C execution.
-- `tests/source/01_lexer_basics.quest`: Verified end-to-end native compilation and execution of tuple operations.
-- `tests/source/02_expressions_control_flow.quest`: Verified end-to-end native compilation and execution.
-- `tests/source/03_functions_closures.quest`: Verified end-to-end native compilation and execution of closures.
-- `tests/source/04_records_variants_options.quest`: Verified end-to-end native compilation and execution.
-- `tests/python/test_runtime_descriptors.py` & `tests/source/language/dynamic_subtyping.quest`: Dynamic
-  subtyping, compound descriptors (records, tuples, variants, options, arrays, functions, opaques), dynamic
-  record width/permutation/depth adaptation, dynamic variant tag remapping, and inspect branch code generation.
-- `tests/source/stdlib/dynamic_extern.quest`: Dynamic graph serialization (`dynamic.extern`), JSOG cycle detection,
-  natural C ABI packing, static descriptor auto-registration, and deterministic field ordering matching Python
-  interpreter.
+Every golden test program is compiled to C and run (`run_c_compiled`), and its output compared with the
+interpreter's; the run error tests are compiled too ([testing.md](testing.md)). The IR's passes are checked on their
+own (`run_ir_<stage>`, and unit tests in `tests/python/test_ir_*.py`). Unit tests cover what goldens cannot express:
+the pipeline's phases, `--nogc`, and `quest compile` (`test_phase4_1_c_codegen.py`); layouts and conversions
+(`test_generic_layouts.py`, `test_layout_differential.py`, `test_conversion_rejections.py`); module files and
+separate compilation (`test_module_compiler.py`, `test_separate_compilation_types.py`, and others); existential
+tuples (`test_existential_tuples.py`); and runtime descriptors (`test_runtime_descriptors.py`).
 
 ---
 

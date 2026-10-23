@@ -22,8 +22,7 @@ from quest.config.abi import (
     incompatible_artifact_message,
 )
 from quest.builtins import BuiltinModuleRegistry
-from quest.codegen.c_analysis import collect_aggregate_types
-from quest.codegen.c_declarations import CDeclarationEmitter
+from quest.codegen.c_declarations import CDeclarationEmitter, collect_aggregate_types
 from quest.codegen.c_types import RecordNamingContext, qtype_to_c_type
 from quest.config import CompilerOptions
 from quest.modules.paths import (
@@ -510,7 +509,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
                     agg_types.append(item)
 
     if agg_types:
-        emitter = CDeclarationEmitter(record_ctx, qtype_to_c_type, lambda *_: ([], []))
+        emitter = CDeclarationEmitter(record_ctx, qtype_to_c_type)
         lines.extend(emitter.emit_forward_typedefs(agg_types))
         lines.extend(emitter.emit_aggregate_structs(agg_types))
 

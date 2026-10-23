@@ -17,12 +17,9 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from types import SimpleNamespace
 from typing import Any, Optional
 
-from quest.codegen.c_analysis import collect_aggregate_types
-from quest.codegen.c_declarations import CDeclarationEmitter, module_function_signature
-from quest.codegen.c_emitter import CEmitter, _value_kind
+from quest.codegen.c_declarations import CDeclarationEmitter, collect_aggregate_types, module_function_signature
 from quest.codegen.c_types import (
     MissingDescriptorError,
     RecordNamingContext,
@@ -35,6 +32,7 @@ from quest.codegen.c_types import (
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
+    is_word_type,
     mangle_ident,
     mangle_module_ident,
     mangle_module_name,
@@ -66,6 +64,11 @@ from quest.ir.walk import global_variables, statement_binders, statement_bodies,
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.typed_ast import TypedModule
 from quest.types import (
+    STRING_TYPE,
+    QPathType,
+    QTupleField,
+    QTupleTypeBinding,
+    QTupleTypeFormal,
     BOOL_TYPE,
     CHAR_TYPE,
     INT_TYPE,
@@ -94,6 +97,44 @@ from quest.types import (
 _INT_OPS = {"+": "+", "-": "-", "*": "*", "<": "<", "<=": "<=", ">": ">", ">=": ">="}
 _REAL_OPS = {"++": "quest_real_add", "--": "quest_real_sub", "**": "quest_real_mul", "//": "quest_real_divide"}
 _REAL_RELATIONS = {"<<": "<", "<<=": "<=", ">>": ">", ">>=": ">="}
+
+
+_BASE_VALUE_KINDS = (
+    (INT_TYPE, "Int"), (REAL_TYPE, "Real"), (BOOL_TYPE, "Bool"), (CHAR_TYPE, "Char"), (STRING_TYPE, "String"),
+    (OK_TYPE, "Ok"),
+)
+
+
+def _value_kind(t: QType) -> str:
+    """How quest_print_value writes a value of type t, as the interpreter does (format_value_with_type), or "" if
+    quest_print_typed writes it from its type descriptor."""
+    t = normalize_type(t)
+    if is_word_type(t):
+        return "Word"
+    if isinstance(t, (QFunType, QAllType)):
+        return "fun"
+    if isinstance(t, (QPathType, QTypeVar, QAbstractType)):
+        return "hidden"
+    return next((kind for base, kind in _BASE_VALUE_KINDS if t is base), "")
+
+
+def _existential_tuple_display(t: QTupleType) -> str:
+    """An existential tuple (a package) as the interpreter prints it: its components hidden."""
+    parts: list[str] = []
+    for comp in t.components:
+        if isinstance(comp, QTupleTypeFormal):
+            parts.append(f"<Hidden>::{comp.bound}")
+        elif isinstance(comp, QTupleTypeBinding):
+            parts.append(f"Let {comp.name} = {comp.type_val}")
+        elif isinstance(comp, QTupleField):
+            if isinstance(comp.type_val, (QPathType, QTypeVar)):
+                elem = "<hidden>"
+            elif isinstance(comp.type_val, (QFunType, QAllType)):
+                elem = "<fun>"
+            else:
+                elem = "<val>"
+            parts.append(f"{comp.name}={elem}" if comp.name else elem)
+    return f"tuple {' '.join(parts)} end" if parts else "tuple end"
 
 
 def _signature(t: QType) -> tuple[tuple, tuple[QParam, ...], QType]:
@@ -1269,7 +1310,7 @@ class CPrinter:
         bare = strip_aliases(t)
         if prefix and isinstance(bare, QTupleType) and bare.is_existential:
             # A package's components are hidden, so the line is known statically (as the interpreter prints it)
-            self.emit(f"puts({c_string_literal(prefix + CEmitter()._format_existential_tuple_val(bare))});")
+            self.emit(f"puts({c_string_literal(prefix + _existential_tuple_display(bare))});")
             return
         wrapped = qval_wrap(value, t)
         if kind := _value_kind(t):
@@ -1578,20 +1619,14 @@ class CPrinter:
             clean = mangle_module_name(stub.name)
             lines.append(f"extern QRecordVal {module_record_ident(clean)};")
             lines.append(f"extern void qv_mod_{clean}_init(void);")
-        lines.extend(self.decl_emitter.emit_precompiled_module_declarations(SimpleNamespace(sorted_modules=stubs)))
+        lines.extend(self.decl_emitter.emit_precompiled_module_declarations(stubs))
         return lines
 
     def declarations(self) -> list[str]:
         """The declarations of the types the unit uses: structs, offset tables, descriptors, and adapters."""
         for scope in self.module_scopes.values():
             self.types.append(build_record_type_from_scope(scope))
-        emitter = CEmitter()
-        emitter.record_ctx = self.ctx
-        decl = CDeclarationEmitter(
-            record_ctx=self.ctx,
-            c_type_fn=lambda t: qtype_to_c_type(t, self.ctx),
-            param_sigs_fn=emitter._param_signatures,
-        )
+        decl = CDeclarationEmitter(self.ctx, lambda t: qtype_to_c_type(t, self.ctx))
         self.decl_emitter = decl
         agg_types, variant_types, all_types = collect_aggregate_types(list(self.types), self.ctx)
         records = [t for _, t in agg_types if isinstance(t, QRecordType)]
@@ -1617,7 +1652,7 @@ class CPrinter:
         lines.extend(decl.emit_evidence_dictionaries(agg_types, self.needed_dicts))
         lines.extend(decl.emit_coercion_tables(list(tuple_coercions.values()), list(variant_coercions.values())))
         lines.extend(decl.emit_type_descriptors(agg_types, variant_types, self.descriptor, all_types))
-        lines.extend(emitter._emit_fun_type_adapters(decl.emitted_fun_types))
+        lines.extend(decl.emit_fun_type_adapters(decl.emitted_fun_types))
         return lines
 
 

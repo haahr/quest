@@ -263,16 +263,16 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   - Bounded type variables and path-types (`A::POWER(T)`, `p.T` where `p.T <: T`) resolve directly to the bound's
     native C type (e.g. `A <: Int` resolves to `QInt`, `A <: Real` to `QReal`), enabling unboxed, zero-overhead access.
     Code holds a value of a type parameter bounded by a record, variant, or option type viewed at the bound (a record
-    with the bound's offset table, a variant with the bound's tags; `_held_view`). A call converts each argument to
+    with the bound's offset table, a variant with the bound's tags; `_bounded_view` in `ir/represent.py`). A call converts each argument to
     the view the callee holds its parameter at, and converts a result of such a type parameter from the bound's view
-    to the view the caller holds the type at (`_process_call_return`), with `quest_convert` when the views are known
+    to the view the caller holds the type at (the represent pass's conversions of a call's result), with `quest_convert` when the views are known
     only at run time.
 
 - **Closure Adaptation Thunks:**
   When a tuple with concrete function signatures (e.g. `create: Int -> Counter` where `Counter = Int`) is coerced or
   packed into an existential tuple with abstract signatures (e.g. `create: Int -> A`), the underlying C function
-  pointer types differ (`QInt (*)(void *, QInt)` vs `QVal (*)(void *, QInt)`). The transpiler synthesizes a static
-  adaptation thunk (`qv_adapt_<id>`) that forwards the environment, unwraps any `QVal` arguments, calls the concrete
+  pointer types differ (`QInt (*)(void *, QInt)` vs `QVal (*)(void *, QInt)`). The represent pass converts it with
+  an `adapt` plan, which the printer prints as a static adaptation thunk (`qa_adapt`) that forwards the environment, unwraps any `QVal` arguments, calls the concrete
   function, and wraps abstract return values with `qval_wrap`. The same thunks implement function subtyping: a closure
   of type `Fun(x: Small): Big` used at `Fun(x: Big): Small` gets a thunk that coerces each argument from the target's
   parameter type to the closure's (giving the `Big` record a `Small` view) and the result from the closure's result
@@ -280,24 +280,24 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   A closure passed to a polymorphic function, or returned from one, at a type that mentions its type parameters
   (`All(b: Box(A)) A` at `A = Bool`) gets a thunk that converts its arguments from the callee's generic layouts to
   native ones and its result back, as calls do (Polymorphic Calls, below). So does the closure that applies a
-  polymorphic function to types only (`getBox(:Bool)` used as a value, `_emit_type_app_closure`), which converts
+  polymorphic function to types only (`getBox(:Bool)` used as a value, `type_app` in `codegen/c_printer.py`), which converts
   native arguments to the function's generic layouts and its result back.
 
 - **Tuple Structural Coercion & Generic Returns:**
   When field types between source and target tuples differ in C representation (due to scalar-to-QVal boxing, closure
-  signature adaptation, generic function returns, or nested tuple coercion), the transpiler allocates a new target
-  tuple struct and maps each field via `_coerce_tuple_val`:
+  signature adaptation, generic function returns, or nested tuple coercion), the conversion is a `copy` plan, which
+  allocates a new target tuple struct and converts each field by its own plan:
   - **Polymorphic Calls (Generic and Native Layouts):** A polymorphic function lays out a tuple or option over its
     type parameters generically, each component of a parameter a `QVal` (`let pair(A::TYPE B::TYPE a: A b: B): Tuple
     :A :B end` builds a `QTuple_QVal_QVal`), whether the type is written out or reached through a type operator
     (`Box(A)`) or a recursive type (`List(A)`, whose nodes hold `QVal` heads). A call converts each such argument from
     the native layout of its type at the call's type arguments to the callee's layout, and each such result back
-    (`_convert_generic_layout`). When the layouts agree in memory (`generic_layout_agrees`: a `QVal` holds a scalar or
+    (plans with a layout context: the instantiation, and the direction; `layout_plan` in `ir/represent.py`). When the layouts agree in memory (`generic_layout_agrees`: a `QVal` holds a scalar or
     pointer in the same bits; §6.4.5) the value is used as it is, through a pointer cast, so it keeps its identity and
     a recursive value is not copied. When they do not, because a parameter stands for a record or a variant (16 bytes
     natively, a pointer to a boxed copy as a `QVal`), the value is copied by `quest_convert`, from and to the
     descriptor of the type laid out each way: for the callee's layout, the type's template with a hole for each of
-    the callee's type parameters, instantiated with the type arguments (`_generic_layout_descriptor`). Calls with
+    the callee's type parameters, instantiated with the type arguments (`generic_layout_descriptor` in `codegen/c_printer.py`). Calls with
     records or variants as type arguments are mostly specialized (§6.4.3), which avoids the conversion; it remains for
     first-class polymorphic values and polymorphic functions of other modules. Converted records are unboxed from the
     heap cell (`quest_record_unbox`), and variants likewise.
@@ -745,15 +745,15 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
 - **Selective Trigger**: Specialization is only synthesized when at least one concrete type argument involves a
   `Record`, `Variant`, or aggregate containing them. Calls with standard 8-byte types (`Int`, `Bool`, `String`)
   continue executing via the canonical uniform `QVal` implementation without code bloat.
-- **Typed AST Cloning & Type Substitution**: When `c_analysis.py` encounters a call site `f(:Point, p)`, the compiler
-  clones the `TypedFun` AST node with the type parameter `A` (the quantifier of the function's own type, which its
-  parameters and body refer to) substituted by `Point`. The specialized clone is emitted as
-  `static Q_UNUSED ret_t qv_<name>_spec_<type_tags>(param_types...)`. The clone's local functions are clones too,
-  lifted like the originals and named after the clone (`qv_<name>_spec_<type_tags>_lambda_<n>`).
-- **Specialized Callees**: Only calls of top-level and module functions are specialized, found and looked up by name
-  after checking that the callee is that binding itself (`specializable_callee`): a local function, parameter, or
-  tuple of the same name is a different function, called as a generic closure. Calls of local polymorphic functions
-  are not specialized at all (a restriction recorded in `docs/tasklist.md`).
+- **IR Cloning & Type Substitution**: When the specialize pass (`ir/specialize.py`, [ir.md](ir.md) §8.1) meets a call
+  `f(:Point p)` of a function the unit defines, it clones the function with the type parameter `A` (the quantifier
+  of the function's own type, which its parameters and body refer to) substituted by `Point`, in the same `funs`
+  statement as the original (a module's clone is also its member `<name>_spec<n>`). The clone's local functions are
+  clones too, closure-converted like the originals.
+- **Specialized Callees**: Calls are matched to their callees by the callee's variable (never by name), so a local
+  function, parameter, or tuple of the same name is a different function. Local polymorphic functions are
+  specialized like top-level and module ones; a call through a first-class value is not specialized, and runs the
+  generic function.
 - **Layout Alignment & Zero-Boxing**: Inside the specialized clone, any generic tuple (e.g. `Tuple item: A end`)
   allocates a concrete specialized struct (`struct QTuple_QRecord_x_Int_end` with a 16-byte `QRecordVal` slot) matching the
   exact struct and layout expected by the caller. Arguments and return values are passed unboxed in register pairs
@@ -898,12 +898,11 @@ component, a closure taking a 16-byte `QRecordVal`). Such types reach run time a
 in `inspect` `when` clauses, as type arguments of `dynamic.new` and `dynamic.be`, and as any type argument a generic
 function passes on ([type-system.md](type-system.md) §6.11).
 
-- **Templates:** `c_type_descriptor` describes such a type by a template: the type with each type parameter in scope
+- **Templates:** the printer's `descriptor` describes such a type by a template: the type with each type parameter in scope
   replaced by a hole (`hole_var`, a reserved type variable `?i` keeping the parameter's bound), emitted as a static
   descriptor whose holes are `QTYPE_KIND_HOLE` descriptors (`QHoleDescriptor`: the hole's index and, for a bounded
-  parameter, the bound's descriptor as `storage`). Templates are collected while the code is generated and emitted
-  after it, ahead of the function definitions (`_emit_template_descriptors`), with the structs and function type
-  adapters they need. The code passes the template and the parameters' descriptors to
+  parameter, the bound's descriptor as `storage`). Templates are collected while the code is printed and declared
+  ahead of the function definitions (`template_descriptor`), with the structs and function type adapters they need. The code passes the template and the parameters' descriptors to
   `quest_instantiate_descriptor(template, n, args)`, which copies the template's nodes that reach a hole (templates
   may be cyclic) and memoizes the result by template and arguments.
 - **Stored types:** In an instance, each hole becomes a `QTYPE_KIND_STORED` descriptor (`QStoredDescriptor`) of its
@@ -953,19 +952,20 @@ Following Cardelli's *Typeful Programming* (§4.8), Quest supports passing mutab
 #### 2. Polymorphic `out` and `var` Parameters: Two-Tier Invocation Model
 When calling a generic function with polymorphic reference parameters (e.g. `assignPoly(:A @x val)` where `x: T`):
 - **Tier 1 (Direct Call Specialization):** Within the same compilation unit, calls with concrete type arguments
-  specialize the function. The specialized function receives a direct native pointer `T *qv_p`, passing the address of
+  specialize the function (`ir/specialize.py`). The specialized function receives a direct native pointer `T *`, passing the address of
   the native memory location without any boxing or intermediate allocation.
 - **Tier 2 (Shadow Cell Fallback Mode):** When calling an unspecialized polymorphic function (such as across separate
   compilation boundaries or through first-class generic closures):
-  - The caller allocates a stack-allocated shadow cell: `QVal _shadow_cell;`.
-  - **Copy-in (`var` only):** For `var` parameters, the caller wraps the current native value into the shadow cell:
-    `_shadow_cell = _qval_wrap(*_loc_ptr, T);`. If `T` is a 16-byte record fat pointer (`QRecordVal`), it is heap-boxed
+  - The caller declares a shadow cell of the parameter's representation, a `QVal` (`ref_argument` in
+    `ir/represent.py`).
+  - **Copy-in (`var` only):** For `var` parameters, the caller converts the current native value into the shadow cell
+    (a `box` plan). If `T` is a 16-byte record fat pointer (`QRecordVal`), it is heap-boxed
     via `quest_record_box`; if `T` is a 16-byte `QVariantVal`, it is boxed via `quest_variant_box`. For `out`
     parameters, copy-in is skipped because the callee cannot read the parameter.
-  - **Callee Invocation:** Callee receives `&_shadow_cell` (`QVal *`).
-  - **Copy-out Writeback (`var` and `out`):** Immediately after the callee returns, the caller executes the writeback:
-    `*_loc_ptr = _qval_unwrap(_shadow_cell, T);`. If `T` is a record, `_qval_unwrap` unboxes the `QRecordVal` fat
-    pointer; if a variant, it unboxes the `QVariantVal`.
+  - **Callee Invocation:** Callee receives the shadow cell's address (`QVal *`).
+  - **Copy-out Writeback (`var` and `out`):** Immediately after the callee returns, the caller converts the shadow
+    cell's value back (an `unbox` plan) and stores it into the location. If `T` is a record, that unboxes the
+    `QRecordVal` fat pointer; if a variant, the `QVariantVal`.
   - **Writeback Semantics:** In fallback mode, writes made by the callee are buffered in the shadow cell and committed
     to the target location only upon function return. If the target location is aliased by another reference or accessed
     by another thread during callee execution, in-flight mutations are not visible until the writeback executes.
@@ -1080,7 +1080,7 @@ if (setjmp(q_handler.env_jmp) == 0) {
 A local that is modified between `setjmp` and `longjmp` and is not `volatile` has an indeterminate value after the
 `longjmp` (C99 §7.13.2.1), and at `-O2` clang keeps such locals in registers, so an assignment made in the protected
 body before a raise was lost. Mutable locals (`let var`) assigned in the protected body of a `try` are therefore
-declared `volatile` (`symbols_assigned_in_try_bodies` in `codegen/c_analysis.py`), and the address of one passed for a
+declared `volatile` (`volatile_vars` in `codegen/c_printer.py`), and the address of one passed for a
 `var` or `out` argument is cast to a plain pointer. Named exceptions constructed locally are `volatile` for the same
 reason.
 
@@ -1120,7 +1120,7 @@ follows §6.7: a subtype bound and, as for tuples, a prefix of the components wi
 supports auto values with one component.
 
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
-  with the static tuple coercion (`_coerce_tuple_val`: boxing to `QVal`, closure adapters), and calls
+  with the payload's own plan (`auto_payload_plan` in `ir/represent.py`: boxing to `QVal`, closure adapters), and calls
   `quest_auto_new(descriptor_T, payload)`. Components holding values of the type component are stored at `T`'s own
   view: when `T` is a bounded type parameter of generic code, which holds its values viewed at the bound, they are
   converted from the bound's view to `T`'s first. Conversely, a branch at a bounded type parameter converts them to
@@ -1135,7 +1135,7 @@ supports auto values with one component.
   statically converted copy, which is rejected with an error for signatures with `var` components, whose updates would
   be lost (for example `Auto A::TYPE with a:A var n:Int end` inspected at a record type: give the auto type a bound,
   `A<:Object`, so that records are stored unboxed). When the layouts differ, the binder is a copy converted by
-  descriptor (`_emit_auto_arm_converted`): each component that mentions `A` is converted from its stored type,
+  descriptor (`auto_arm_converted` in `codegen/c_printer.py`): each component that mentions `A` is converted from its stored type,
   described with `A` standing for the type component (a template's instance), to its type in `S[T/A]`. For a
   signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
   types it sees.
@@ -1145,7 +1145,7 @@ supports auto values with one component.
   function adapters, and layout conversions) and whose other components are copied.
 - **No match:** without an `else` branch, `quest_raise_dynamic_error()`.
 - **Auto subtyping:** converting `Auto A::K1 with S1 end` to `Auto B::K2 with S2 end` re-stores the payload with
-  `_coerce_tuple_val` from the `S1` layout to the `S2` layout, keeping the type descriptor, when the two stored
+  a `copy` from the `S1` layout to the `S2` layout, keeping the type descriptor, when the two stored
   layouts differ; otherwise the pointer is reused.
 
 ---

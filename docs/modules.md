@@ -273,7 +273,7 @@ translation unit (`.c` file) that compiles directly with standard C99:
 3. **Abstract Type Erasure to `QVal`:**
    - In interface records, abstract types (`T::TYPE`) cannot have known concrete scalar representations across
      compilation boundaries. Field signatures in the interface record use uniform 64-bit words (`QVal` / `void *`),
-     and concrete implementations wrap values into `QVal` (`_qval_wrap`) during module record initialization.
+     and a module file's exports convert its values to them (boxing into `QVal`, ir.md §3) before its record is made.
 4. **Manifest Type Erasure:**
    - Interface records (`QT_<Interface>`) only store value components (`FieldSig`); manifest types (`Def T = ...`)
      and kinds are erased at runtime and do not generate struct fields.

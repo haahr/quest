@@ -18,9 +18,9 @@ source → tokens → AST → typed AST ─┬─→ interpreter
                                                                          └→ (future) CFG/SSA → AArch64
 ```
 
-Today the C emitter (`codegen/c_emitter.py`, `c_analysis.py`) translates the typed AST directly, and on the way
-reduces types, chooses representations, converts values between them, lifts closures, specializes functions, and
-prints C. Each of these becomes a pass over the IR, so that:
+The C emitter the IR replaced (`codegen/c_emitter.py` and `c_analysis.py`, deleted in step 6, §12) translated the
+typed AST directly, and on the way reduced types, chose representations, converted values between them, lifted
+closures, specialized functions, and printed C. Each of these is a pass over the IR, so that:
 
 - representation decisions and the conversions between representations are made once, by one pass, and are visible
   in the IR as explicit nodes (the C printer only prints);
@@ -634,7 +634,12 @@ step 6.
   regression does not block the switch; one over about 20% becomes a task in the task list.
 - Delete the emitter in the step's last commit, once both suites pass through the IR alone (no period behind a
   flag).
-- Delete `c_emitter.py`, most of `c_analysis.py`, and the parts of `c_types.py` that only the emitter used.
+- Delete `c_emitter.py`, most of `c_analysis.py`, and the parts of `c_types.py` that only the emitter used. *Done:*
+  `c_emitter.py`, `c_analysis.py` (all but `collect_aggregate_types`, now in `c_declarations.py`), and
+  `quest/analysis/` (the emitter's closure analysis) are deleted, along with what only they used of
+  `c_declarations.py` (lambda environments and trampolines, the emitter's module declarations); everything left in
+  `c_types.py` is still used. The printer's own helpers from the emitter moved into it (`_value_kind`, the existential
+  echo) and into `c_declarations.py` (`emit_fun_type_adapters`).
 - *Module files: done.* `module_compiler.py` and `BuildEngine` compile through the IR (`codegen/backend.py`), so the
   standard library is IR-compiled, and both suites pass with the emitter's programs linking against it (its ABI is
   the emitter's). Module files needed exports (§3) and externals: a function defined as `external` calls its C

@@ -1,6 +1,5 @@
-"""Quest C Code Generation and Compilation Subpackage (Step 4)."""
+"""C code generation (the IR's C printer, codegen/backend.py) and host C compilation."""
 
-from quest.codegen.c_emitter import CEmitter
 from quest.codegen.compiler_runner import (
     compile_c_source,
     compile_c_to_object,
@@ -9,7 +8,6 @@ from quest.codegen.compiler_runner import (
 )
 
 __all__ = [
-    "CEmitter",
     "compile_c_source",
     "compile_c_to_object",
     "link_objects",

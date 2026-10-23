@@ -1,0 +1,240 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'wOut' :type writer.T
+      :value (TypedSelect 'output' :type writer.T
+        :target (TypedVar 'writer' :type Module 'writer')))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedVar 'wOut' :type writer.T)
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'V' :kind TYPE)
+    (TypedLetValue 'first' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'pick' :type All(A :: TYPE) Fun(x: A y: A): A
+              :value (TypedFun :params (('x' : A) ('y' : A)) :type All(A :: TYPE) Fun(x: A y: A): A
+                :body (TypedVar 'y' :type A)))
+          )
+          :result (TypedSelect 'a' :type Int
+            :target (TypedApp :type P
+              :func (TypedTypeApp [P] :type Fun(x: P y: P): P
+                :func (TypedVar 'pick' :type All(A :: TYPE) Fun(x: A y: A): A))
+              :args (
+                (TypedRecord :type Record a: Int end
+                  :fields (
+                    (TypedRecordField 'a'
+                      :value (TypedVar 'n' :type Int))
+                  ))
+                (TypedRecord :type Record a: Int end
+                  :fields (
+                    (TypedRecordField 'a'
+                      :value (TypedInfix '+' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 1 :type Int)))
+                  ))
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'first' :type Fun(n: Int): Int)
+                :args (
+                  (TypedInt 1 :type Int)
+                ))
+            ))
+        )))
+    (TypedLetValue 'second' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'pick' :type All(A :: TYPE) Fun(x: A y: A): A
+              :value (TypedFun :params (('x' : A) ('y' : A)) :type All(A :: TYPE) Fun(x: A y: A): A
+                :body (TypedIf :type A
+                  :cond (TypedInfix '>' :type Bool
+                    :left (TypedVar 'n' :type Int)
+                    :right (TypedInt 0 :type Int))
+                  :then (TypedVar 'x' :type A)
+                  :else (TypedVar 'y' :type A))))
+          )
+          :result (TypedInfix '+' :type Int
+            :left (TypedSelect 'a' :type Int
+              :target (TypedApp :type P
+                :func (TypedTypeApp [P] :type Fun(x: P y: P): P
+                  :func (TypedVar 'pick' :type All(A :: TYPE) Fun(x: A y: A): A))
+                :args (
+                  (TypedRecord :type Record a: Int end
+                    :fields (
+                      (TypedRecordField 'a'
+                        :value (TypedInt 10 :type Int))
+                    ))
+                  (TypedRecord :type Record a: Int end
+                    :fields (
+                      (TypedRecordField 'a'
+                        :value (TypedInt 20 :type Int))
+                    ))
+                )))
+            :right (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(x: Int y: Int): Int
+                :func (TypedVar 'pick' :type All(A :: TYPE) Fun(x: A y: A): A))
+              :args (
+                (TypedInt 1 :type Int)
+                (TypedInt 2 :type Int)
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'second' :type Fun(n: Int): Int)
+                :args (
+                  (TypedInt 1 :type Int)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'second' :type Fun(n: Int): Int)
+                :args (
+                  (TypedInt 0 :type Int)
+                ))
+            ))
+        )))
+    (TypedLetValue 'third' :type Fun(): Int
+      :value (TypedFun :params () :type Fun(): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'total' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedLetValue 'tag' :type All(A :: TYPE) Fun(v: A): A
+              :value (TypedFun :params (('v' : A)) :type All(A :: TYPE) Fun(v: A): A
+                :body (TypedVar 'v' :type A)))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedInt 3 :type Int)
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'v' :type V
+                      :value (TypedApp :type V
+                        :func (TypedTypeApp [V] :type Fun(v: V): V
+                          :func (TypedVar 'tag' :type All(A :: TYPE) Fun(v: A): A))
+                        :args (
+                          (TypedVariant 'p' :type V
+                            :payload (TypedVar 'i' :type Int))
+                        )))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 'total' :type Var(Int))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedDerefCell :type Int
+                        :target (TypedVar 'total' :type Var(Int)))
+                      :right (TypedIf :type Int
+                        :cond (TypedVariantCheck 'p' :type Bool
+                          :target (TypedVar 'v' :type V))
+                        :then (TypedVariantAssert 'p' :type Int
+                          :target (TypedVar 'v' :type V))
+                        :else (TypedInt 0 :type Int)))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 'total' :type Var(Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'third' :type Fun(): Int)
+                :args ())
+            ))
+        )))
+    (TypedLetValue 'fourth' :type Fun(k: Int): Int
+      :value (TypedFun :params (('k' : Int)) :type Fun(k: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'last' :rec :type All(A :: TYPE) Fun(x: A y: A m: Int): A
+              :value (TypedFun :params (('x' : A) ('y' : A) ('m' : Int)) :type All(A :: TYPE) Fun(x: A y: A m: Int): A
+                :body (TypedIf :type A
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedVar 'm' :type Int)
+                    :right (TypedInt 0 :type Int))
+                  :then (TypedVar 'x' :type A)
+                  :else (TypedApp :type A
+                    :func (TypedTypeApp [A] :type Fun(x: A y: A m: Int): A
+                      :func (TypedVar 'last' :type All(A :: TYPE) Fun(x: A y: A m: Int): A))
+                    :args (
+                      (TypedVar 'y' :type A)
+                      (TypedVar 'x' :type A)
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'm' :type Int)
+                        :right (TypedInt 1 :type Int))
+                    )))))
+          )
+          :result (TypedSelect 'a' :type Int
+            :target (TypedApp :type P
+              :func (TypedTypeApp [P] :type Fun(x: P y: P m: Int): P
+                :func (TypedVar 'last' :type All(A :: TYPE) Fun(x: A y: A m: Int): A))
+              :args (
+                (TypedRecord :type Record a: Int end
+                  :fields (
+                    (TypedRecordField 'a'
+                      :value (TypedInt 1 :type Int))
+                  ))
+                (TypedRecord :type Record a: Int end
+                  :fields (
+                    (TypedRecordField 'a'
+                      :value (TypedVar 'k' :type Int))
+                  ))
+                (TypedInt 3 :type Int)
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'fourth' :type Fun(k: Int): Int)
+                :args (
+                  (TypedInt 7 :type Int)
+                ))
+            ))
+        )))
+  ))

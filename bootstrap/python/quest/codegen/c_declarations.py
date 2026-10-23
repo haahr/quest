@@ -1,12 +1,16 @@
-"""Declaration and header generation for Quest C Transpiler."""
+"""The declarations of the C the IR's printer writes (codegen/c_printer.py) and of interfaces' C headers: aggregate
+structs, offset tables, coercion tables, type descriptors, function type adapters, and modules' exported functions."""
 
 from __future__ import annotations
 
 from typing import Any, Callable, Optional, Sequence
 
-from quest.typed_ast import TypedExpr, TypedFun, TypedRecord
-from quest.codegen.c_analysis import CLambdaInfo, CProgramAnalysis
+from quest.typed_ast import TypedLetType, TypedRecord
+from quest.ir.represent import _may_be_stored_as_subtype
 from quest.codegen.c_types import (
+    closure_fn_ptr_type,
+    qval_unwrap,
+    qval_wrap,
     DescriptorForm,
     MissingDescriptorError,
     descriptor_form,
@@ -25,6 +29,10 @@ from quest.codegen.c_types import (
 )
 from quest.types import (
     auto_payload_type,
+    is_type_equal,
+    QRecordField,
+    QRecGroupType,
+    QRecType,
     short_type_name,
     QPowerKind,
     QTypeApp,
@@ -53,35 +61,6 @@ from quest.types import (
 )
 
 
-def emit_trampoline(
-    tramp_name: str,
-    ret_c: str,
-    param_decls: Sequence[str],
-    call_expr: str,
-    is_void: bool,
-    unused: bool = False,
-    unused_vars: Sequence[str] = (),
-) -> list[str]:
-    """Generates C definition for a trampoline function forwarding to a target implementation."""
-    attr = "Q_UNUSED " if unused else ""
-    param_sigs = ["void *env"] + list(param_decls)
-    sig = ", ".join(param_sigs)
-    lines = [
-        f"static {attr}{ret_c} {tramp_name}({sig}) {{",
-        "    (void)env;",
-    ]
-    for uv in unused_vars:
-        lines.append(f"    (void){uv};")
-    if is_void:
-        lines.append(f"    {call_expr};")
-        if unused:
-            lines.append("    return;")
-    else:
-        lines.append(f"    return {call_expr};")
-    lines.append("}")
-    return lines
-
-
 def module_function_signature(
     clean_mod: str, name: str, type_val: QType, c_type: Callable[[QType], str]
 ) -> Optional[tuple[str, str, list[str]]]:
@@ -104,26 +83,139 @@ def module_function_signature(
     return ret_c, mangle_module_ident(clean_mod, name), param_decls
 
 
+def collect_aggregate_types(
+    node: Any,
+    ctx: RecordNamingContext,
+    visited_names: Optional[set[str]] = None,
+    visited_type_ids: Optional[set[int]] = None,
+    visited_node_ids: Optional[set[int]] = None,
+) -> tuple[list[tuple[str, QType]], list[QVariantType], list[QType]]:
+    """Traverses an AST to find all unique aggregate types (tuples, records, options, variants)."""
+    if visited_names is None:
+        visited_names = set()
+    if visited_type_ids is None:
+        visited_type_ids = set()
+    if visited_node_ids is None:
+        visited_node_ids = set()
+    result: list[tuple[str, QType]] = []
+    variant_types: list[QVariantType] = []
+    all_types: list[QType] = []
+
+    def visit_type(t: Optional[QType]) -> None:
+        if t is None:
+            return
+        t_id = id(t)
+        if t_id in visited_type_ids:
+            return
+        visited_type_ids.add(t_id)
+        t = normalize_type(t)
+        all_types.append(t)
+        if isinstance(t, QTupleType):
+            for f in t.value_fields:
+                visit_type(f.type_val)
+            name = tuple_struct_name(t)
+            if name not in visited_names:
+                visited_names.add(name)
+                result.append((name, t))
+        elif isinstance(t, QRecordType):
+            for f in t.fields:
+                visit_type(f.type_val)
+            name = record_struct_name(t, ctx)
+            if name not in visited_names:
+                visited_names.add(name)
+                result.append((name, t))
+        elif isinstance(t, QOptionType) or (opt_bound := resolve_option_bound(t)) is not None:
+            opt_t = t if isinstance(t, QOptionType) else opt_bound
+            for o in opt_t.options:
+                if o.payload_type:
+                    visit_type(o.payload_type)
+            name = option_struct_name(opt_t)
+            if name not in visited_names:
+                visited_names.add(name)
+                result.append((name, opt_t))
+        elif isinstance(t, QAutoType):
+            # Auto payloads are stored in the witness-independent layout
+            visit_type(auto_payload_type(t))
+        elif isinstance(t, QVariantType):
+            if not any(v is t or is_type_equal(v, t) for v in variant_types):
+                variant_types.append(t)
+            for v in t.variants:
+                if getattr(v, "type_val", None):
+                    visit_type(v.type_val)
+        elif hasattr(t, "params") and hasattr(t, "result_type"):
+            for p in getattr(t, "params", ()):
+                visit_type(getattr(p, "type_val", None))
+            visit_type(getattr(t, "result_type", None))
+        elif hasattr(t, "element_type"):
+            visit_type(getattr(t, "element_type", None))
+        elif hasattr(t, "inner_type"):
+            visit_type(getattr(t, "inner_type", None))
+        if hasattr(t, "bound"):
+            bound = getattr(t, "bound")
+            if hasattr(bound, "bound"):
+                visit_type(getattr(bound, "bound"))
+        if hasattr(t, "quantifiers") and hasattr(t, "body"):
+            for q in getattr(t, "quantifiers", ()):
+                if hasattr(q, "bound") and hasattr(q.bound, "bound"):
+                    visit_type(getattr(q.bound, "bound"))
+            visit_type(getattr(t, "body", None))
+
+    def visit_node(n: Any) -> None:
+        if n is None:
+            return
+        n_id = id(n)
+        if n_id in visited_node_ids:
+            return
+        visited_node_ids.add(n_id)
+        if isinstance(n, QType):
+            visit_type(n)
+        if isinstance(n, TypedLetType) and n.symbol.definition is not None:
+            if isinstance(n.symbol.definition, QRecordType):
+                ctx.register_alias(n.name, n.symbol.definition)
+        if isinstance(n, TypedRecord):
+            concrete_t = QRecordType(
+                fields=tuple(
+                    QRecordField(name=fld.name, type_val=fld.value.type_val, is_var=fld.is_var)
+                    for fld in n.fields
+                )
+            )
+            visit_type(concrete_t)
+        if hasattr(n, "type_val") and isinstance(getattr(n, "type_val"), QType):
+            visit_type(getattr(n, "type_val"))
+        if hasattr(n, "symbol"):
+            sym = getattr(n, "symbol")
+            if hasattr(sym, "type_val") and isinstance(getattr(sym, "type_val"), QType):
+                visit_type(getattr(sym, "type_val"))
+            if hasattr(sym, "definition") and isinstance(getattr(sym, "definition"), QType):
+                visit_type(getattr(sym, "definition"))
+        if hasattr(n, "definition") and isinstance(getattr(n, "definition"), QType):
+            visit_type(getattr(n, "definition"))
+
+        if isinstance(n, (list, tuple)):
+            for item in n:
+                visit_node(item)
+            return
+
+        # A recursive type's bodies mention its variables free; visit_type has visited its unfolding
+        if isinstance(n, (QRecType, QRecGroupType)):
+            return
+
+        if hasattr(n, "__dataclass_fields__"):
+            for field_name in n.__dataclass_fields__:
+                visit_node(getattr(n, field_name))
+
+    visit_node(node)
+    return result, variant_types, all_types
+
+
 class CDeclarationEmitter:
     """Emits forward declarations, structs, typedefs, evidence dictionaries, and trampolines."""
 
-    def __init__(
-        self,
-        record_ctx: RecordNamingContext,
-        c_type_fn: Callable[[QType], str],
-        param_sigs_fn: Callable[[list[Any], tuple[QQuantifier, ...]], tuple[list[str], list[str]]],
-        collect_quants_fn: Optional[
-            Callable[[QType], tuple[tuple[QQuantifier, ...], QType]]
-        ] = None,
-        is_exact_record_literal_fn: Optional[Callable[[QType, TypedExpr], bool]] = None,
-    ):
+    def __init__(self, record_ctx: RecordNamingContext, c_type_fn: Callable[[QType], str]):
         self.record_ctx = record_ctx
         self.c_type = c_type_fn
-        self.param_signatures = param_sigs_fn
-        self.collect_fun_quantifiers = collect_quants_fn or collect_fun_quantifiers
-        self.is_exact_record_literal = is_exact_record_literal_fn or (lambda _t, _e: False)
         self.emitted_descriptor_tags: list[str] = []
-        # Function types with descriptors, whose adapters (quest_adapt_<tag>) the emitter must define
+        # Function types with descriptors, whose adapters (quest_adapt_<tag>) emit_fun_type_adapters defines
         self.emitted_fun_types: list[tuple[str, QFunType]] = []
 
     def emit_forward_typedefs(self, agg_types: list[tuple[str, QType]]) -> list[str]:
@@ -141,30 +233,11 @@ class CDeclarationEmitter:
             lines.append("")
         return lines
 
-    def emit_module_declarations(self, analysis: CProgramAnalysis) -> list[str]:
+    def emit_precompiled_module_declarations(self, modules: list) -> list[str]:
+        """The extern declarations of the functions modules compiled on their own export (each a TypedModule whose
+        scope is its interface's)."""
         lines: list[str] = []
-        if analysis.sorted_modules:
-            has_precompiled = any(getattr(m, "is_precompiled", False) for m in analysis.sorted_modules)
-            lines.append("/* Forward declarations and state for compiled modules */")
-            for mod in analysis.sorted_modules:
-                clean_mod = mangle_module_name(mod.name)
-                if getattr(mod, "is_precompiled", False):
-                    lines.append(f"extern QRecordVal {module_record_ident(clean_mod)};")
-                    lines.append(f"extern void qv_mod_{clean_mod}_init(void);")
-                elif has_precompiled:
-                    lines.append(f"QRecordVal {module_record_ident(clean_mod)};")
-                    lines.append(f"static bool qv_mod_{clean_mod}_initialized = false;")
-                    lines.append(f"void qv_mod_{clean_mod}_init(void);")
-                else:
-                    lines.append(f"static QRecordVal {module_record_ident(clean_mod)};")
-                    lines.append(f"static bool qv_mod_{clean_mod}_initialized = false;")
-                    lines.append(f"static void qv_mod_{clean_mod}_init(void);")
-            lines.append("")
-        return lines
-
-    def emit_precompiled_module_declarations(self, analysis: CProgramAnalysis) -> list[str]:
-        lines: list[str] = []
-        precompiled_mods = [m for m in analysis.sorted_modules if getattr(m, "is_precompiled", False)]
+        precompiled_mods = [m for m in modules if getattr(m, "is_precompiled", False)]
         if precompiled_mods:
             lines.append("/* External declarations for precompiled module functions */")
             for mod in precompiled_mods:
@@ -690,113 +763,118 @@ class CDeclarationEmitter:
             lines.append("")
         return lines
 
-    def emit_environment_structs(self, lifted_lambdas: list[CLambdaInfo]) -> list[str]:
+    def emit_fun_type_adapters(self, fun_types: Sequence[tuple[str, QFunType]]) -> list[str]:
+        """Defines the adapter and the invoker of each function type that has a runtime descriptor (QFunAdapter,
+        quest_adapt_<tag>, and QFunInvoker, quest_invoke_<tag>).
+
+        Run-time conversions of a closure to a function type T, by dynamic.be, inspect, or the read of a record field
+        stored at a subtype, are known only to be from some subtype of T. The adapter for T wraps the closure in a
+        thunk with T's C signature, which converts arguments and result as described by the two descriptors. The
+        closure is called through T's signature when it has the same C signature (as types related by subtyping
+        do), and otherwise, when one of the two types is laid out generically (a template's instance), through the
+        invoker of the closure's own type, which takes and returns QVal forms.
+        """
         lines: list[str] = []
-        capturing_lambdas = [l for l in lifted_lambdas if l.free_vars]
-        if capturing_lambdas:
-            lines.append("/* Environment structs for capturing closures */")
-            for l in capturing_lambdas:
-                lines.append(f"{l.env_struct_name} {{")
-                for vname, vtype in l.free_vars:
-                    c_type = self.c_type(vtype)
-                    lines.append(f"    {c_type} {mangle_ident(vname)};")
-                lines.append("};")
-                lines.append("")
-        return lines
-
-    def emit_top_vars_declarations(
-        self,
-        top_vars: list[tuple[str, TypedExpr, Any]],
-        var_dict_names: Optional[dict[str, str]] = None,
-    ) -> list[str]:
-        lines: list[str] = []
-        if top_vars:
-            for name, val, symbol in top_vars:
-                if symbol.type_val is not OK_TYPE:
-                    c_ident = mangle_ident(name)
-                    if isinstance(symbol.type_val, QRecordType):
-                        lines.append(f"static QRecordVal {c_ident};")
-                    else:
-                        c_type = self.c_type(symbol.type_val)
-                        lines.append(f"static {c_type} {c_ident};")
-            lines.append("")
-        return lines
-
-    def emit_forward_declarations_and_trampolines(
-        self,
-        top_funs: list[tuple[str, TypedFun, Any]],
-        lifted_lambdas: list[CLambdaInfo],
-        val_referenced_top_funs: set[str],
-        top_funs_dict: dict[str, tuple[TypedFun, Any]],
-    ) -> list[str]:
-        lines: list[str] = []
-
-        if top_funs:
-            lines.append("/* Forward declarations for top-level functions */")
-            for name, fun, _sym in top_funs:
-                quants, inner = self.collect_fun_quantifiers(fun.type_val)
-                ret_type = inner.result_type if isinstance(inner, QFunType) else inner
-                c_name = mangle_ident(name)
-                ret_c = "void" if ret_type is OK_TYPE else (
-                    "QRecordVal"
-                    if isinstance(ret_type, QRecordType)
-                    else self.c_type(ret_type)
-                )
-                decls, _ = self.param_signatures(fun.params, quants)
-                param_sig = "void" if not decls else ", ".join(decls)
-                lines.append(f"static Q_UNUSED {ret_c} {c_name}({param_sig});")
-            lines.append("")
-
-        if lifted_lambdas:
-            lines.append("/* Forward declarations for lifted lambdas */")
-            for l in lifted_lambdas:
-                quants, _ = self.collect_fun_quantifiers(l.fun.type_val)
-                ret_type = l.fun.type_val.result_type if isinstance(l.fun.type_val, QFunType) else l.fun.type_val
-                if isinstance(ret_type, QAllType):
-                    _, inner = self.collect_fun_quantifiers(ret_type)
-                    ret_type = inner.result_type if isinstance(inner, QFunType) else inner
-                ret_c = "void" if ret_type is OK_TYPE else (
-                    "QRecordVal"
-                    if isinstance(ret_type, QRecordType)
-                    else self.c_type(ret_type)
-                )
-                decls, _ = self.param_signatures(l.fun.params, quants)
-                param_sigs = ["void *_raw_env"] + decls
-                sig = ", ".join(param_sigs)
-                lines.append(f"static Q_UNUSED {ret_c} {l.c_fn_name}({sig});")
-            lines.append("")
-
-        non_capturing = [l for l in lifted_lambdas if not l.free_vars]
-        if non_capturing:
-            lines.append("/* Static closures for non-capturing lambdas */")
-            for l in non_capturing:
-                lines.append(f"static Q_UNUSED QClosure {l.closure_var_name} = {{ (void *){l.c_fn_name}, NULL }};")
-            lines.append("")
-
-        if val_referenced_top_funs:
-            lines.append("/* Trampoline functions and static closures for first-class top-level functions */")
-            for name in sorted(val_referenced_top_funs):
-                fun, _ = top_funs_dict[name]
-                c_name = mangle_ident(name)
-                tramp_name = f"{c_name}_trampoline"
-                quants, inner = self.collect_fun_quantifiers(fun.type_val)
-                ret_type = inner.result_type if isinstance(inner, QFunType) else inner
-                ret_c = "void" if ret_type is OK_TYPE else (
-                    "QRecordVal"
-                    if isinstance(ret_type, QRecordType)
-                    else self.c_type(ret_type)
-                )
-                decls, forward_args = self.param_signatures(fun.params, quants)
-                lines.extend(
-                    emit_trampoline(
-                        tramp_name,
-                        ret_c,
-                        decls,
-                        f"{c_name}({', '.join(forward_args)})",
-                        ret_type is OK_TYPE,
-                        unused=True,
+        if not fun_types:
+            return lines
+        lines.append("/* Adapters for function types: thunks converting arguments and results by descriptor */")
+        for tag, fun_t in fun_types:
+            # A polymorphic function type takes its type parameters' descriptors first; they are passed through
+            quants, inner = collect_fun_quantifiers(fun_t)
+            params = inner.params if isinstance(inner, QFunType) else ()
+            ret_t = inner.result_type if isinstance(inner, QFunType) else inner
+            ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
+            fn_ptr = closure_fn_ptr_type(fun_t, self.record_ctx)
+            nq = len(quants)
+            param_decls = ["void *_raw_env"]
+            param_decls.extend(f"const QTypeDescriptor *qv_desc_{k}" for k in range(nq))
+            direct: list[str] = []
+            uniform: list[str] = [f"QVal qv_args[{max(1, nq + len(params))}];"]
+            uniform.extend(f"qv_args[{k}].p = (void *)qv_desc_{k};" for k in range(nq))
+            call_args = ["e->orig->env"] + [f"qv_desc_{k}" for k in range(nq)]
+            for i, p in enumerate(params):
+                name = f"qv_arg_{i}"
+                slot = f"qv_args[{nq + i}]"
+                if p.is_var or p.is_out:
+                    param_decls.append(f"{self.c_type(p.type_val)} *{name}")
+                    uniform.append(f"{slot}.p = (void *){name};")
+                elif p.type_val is OK_TYPE:
+                    param_decls.append(f"QVal {name}")
+                    uniform.append(f"{slot} = {name};")
+                else:
+                    param_decls.append(f"{self.c_type(p.type_val)} {name}")
+                    to_from = f"to->params[{i}].type, from->params[{i}].type"
+                    uniform.append(f"{slot} = quest_convert({qval_wrap(name, p.type_val)}, {to_from});")
+                    if _may_be_stored_as_subtype(p.type_val):
+                        converted = qval_unwrap(
+                            f"quest_convert({qval_wrap(name, p.type_val)}, {to_from})", p.type_val, self
+                        )
+                        direct.append(f"{name} = {converted};")
+                call_args.append(name)
+            call_expr = f"(({fn_ptr})(e->orig->fn))({', '.join(call_args)})"
+            invoke_expr = "from->invoke(e->orig, qv_args)"
+            if ret_t is OK_TYPE:
+                direct.append(f"{call_expr};")
+                direct.append("return;")
+                uniform.append(f"(void){invoke_expr};")
+            else:
+                if _may_be_stored_as_subtype(ret_t):
+                    direct.append(f"{ret_c} qv_result = {call_expr};")
+                    converted = qval_unwrap(
+                        f"quest_convert({qval_wrap('qv_result', ret_t)}, from->result_type, to->result_type)",
+                        ret_t,
+                        self.record_ctx,
                     )
+                    direct.append(f"return {converted};")
+                else:
+                    direct.append(f"return {call_expr};")
+                uniform.append(
+                    "return "
+                    + qval_unwrap(f"quest_convert({invoke_expr}, from->result_type, to->result_type)", ret_t, self.record_ctx)
+                    + ";"
                 )
-                lines.append(f"static Q_UNUSED QClosure {c_name}_closure = {{ (void *){tramp_name}, NULL }};")
-                lines.append("")
+            thunk = f"quest_thunk_{tag}"
+            lines.append(f"static {ret_c} {thunk}({', '.join(param_decls)}) {{")
+            lines.append("    const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;")
+            lines.append("    const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;")
+            lines.append("    const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;")
+            lines.append("    if (e->direct) {")
+            lines.extend(f"        {line}" for line in direct)
+            lines.append("    }")
+            lines.extend(f"    {line}" for line in uniform)
+            lines.append("}")
+            lines.append(
+                f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
+                f"const QTypeDescriptor *to) {{"
+            )
+            lines.append("    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv));")
+            lines.append("    e->orig = orig;")
+            lines.append("    e->from = from;")
+            lines.append("    e->to = to;")
+            lines.append("    e->direct = quest_fun_signature_equivalent(from, to);")
+            lines.append("    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure));")
+            lines.append(f"    adapted->fn = (void *){thunk};")
+            lines.append("    adapted->env = e;")
+            lines.append("    return adapted;")
+            lines.append("}")
+            # The invoker: a call with QVal forms, for adapters whose closure has this type's C signature
+            inv_args = ["c->env"] + [f"(const QTypeDescriptor *)args[{k}].p" for k in range(nq)]
+            for i, p in enumerate(params):
+                arg = f"args[{nq + i}]"
+                if p.is_var or p.is_out:
+                    inv_args.append(f"({self.c_type(p.type_val)} *){arg}.p")
+                elif p.type_val is OK_TYPE:
+                    inv_args.append(arg)
+                else:
+                    inv_args.append(qval_unwrap(arg, p.type_val, self.record_ctx))
+            inv_call = f"(({fn_ptr})(c->fn))({', '.join(inv_args)})"
+            lines.append(f"static QVal quest_invoke_{tag}(const QClosure *c, const QVal *args) {{")
+            lines.append("    (void)args;")
+            if ret_t is OK_TYPE:
+                lines.append(f"    {inv_call};")
+                lines.append("    return Q_OK_VAL;")
+            else:
+                lines.append(f"    return {qval_wrap(inv_call, ret_t)};")
+            lines.append("}")
+            lines.append("")
         return lines
