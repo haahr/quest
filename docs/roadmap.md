@@ -156,6 +156,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
     adaptation) are complete. — *Complete*
 - C transpiler architecture in [codegen-c.md](codegen-c.md);
   C ABI specification in [c-representation.md](c-representation.md);
+  planned intermediate representation in [ir.md](ir.md), whose passes the native backend (step 6) would share;
   language extensions specification in [extensions.md](extensions.md).
 
 ### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest)

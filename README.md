@@ -157,6 +157,8 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
   compiler runner.
 - [docs/c-representation.md](docs/c-representation.md): C representation, uniform 64-bit `QVal` ABI, static assertions,
   and runtime library design.
+- [docs/ir.md](docs/ir.md): Planned intermediate representation between the typed AST and the C backend (ANF with
+  join points, refined by passes), and the plan for introducing it.
 - [docs/syntax.md](docs/syntax.md): Lexical scanning, character offset tracking, PEG parser combinators, and untyped
   AST structure.
 - [docs/type-system.md](docs/type-system.md): Higher-order type system, subkinding, equi-recursive coinductive
