@@ -18,6 +18,7 @@ from typing import Any, Optional
 from quest.codegen.c_types import type_identity_key
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
+from quest.ir.walk import statement_bodies
 from quest.types import QAllType, QTupleType, QType, QTypeFun, strip_aliases
 
 # The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion (a function of
@@ -99,7 +100,7 @@ class _Specializer:
                     self.definitions[id(f.var)] = _Definition(f, s, module, enclosing)
                     self.collect(f.body, None, enclosing | {tp.symbol_id for tp in f.type_params})
             else:
-                for b in _bodies(s):
+                for b in statement_bodies(s):
                     self.collect(b, module, enclosing)
 
     # Specializing calls
@@ -113,7 +114,7 @@ class _Specializer:
                     for f in functions:
                         self.body(f.body, enclosing | {tp.symbol_id for tp in f.type_params})
                 case _:
-                    for b in _bodies(s):
+                    for b in statement_bodies(s):
                         self.body(b, enclosing)
 
     def call(self, call: ir.Call, enclosing: frozenset[int]) -> None:
@@ -180,22 +181,6 @@ def _member_name(module: ir.Module, var: ir.Var) -> str:
     return next(name for name, v in module.members.items() if v is var)
 
 
-def _bodies(s) -> list[ir.Body]:
-    """The bodies a statement contains (not those of the functions a funs statement binds)."""
-    match s:
-        case ir.If(then_body=t, else_body=e):
-            return [t, e]
-        case ir.Switch(cases=cases, else_body=e) | ir.Inspect(cases=cases, else_body=e):
-            return [c.body for c in cases] + ([e] if e is not None else [])
-        case ir.Loop(body=b) | ir.LetRec(body=b):
-            return [b]
-        case ir.Try(body=b, handler=h):
-            return [b, h]
-        case ir.Join(continuation=c, body=b):
-            return [c, b]
-    return []
-
-
 class _Cloner:
     """Copies a function with types substituted: every variable it binds is a fresh one, and every other node is
     copied, except module references (which keep their identity) and the free variables it uses."""
@@ -250,7 +235,7 @@ class _Cloner:
                 case ir.Join(params=params):
                     for p in params:
                         self.fresh(p)
-            for b in _bodies(s):
+            for b in statement_bodies(s):
                 self.bind_all(b)
 
     def copy(self, node: Any) -> Any:
@@ -279,4 +264,5 @@ class _Cloner:
 def specialize_unit(unit: ir.Unit) -> ir.Unit:
     """Specializes the unit's calls in place, returning it."""
     _Specializer().run(unit)
+    unit.stage = "specialized"
     return unit

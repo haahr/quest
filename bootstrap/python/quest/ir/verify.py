@@ -14,6 +14,10 @@ Core invariants, checked here:
 - a return occurs only in a function's body;
 - a terminator is the last statement of its body.
 
+After closure conversion (the closed stage), also: no funs statement remains; every closure is of one of the unit's
+functions; and those functions use only their parameters, their environment, and the unit's globals (the variables
+its top levels bind outside loops).
+
 verify_unit returns the problems found; check_unit raises if there are any. The verifier runs when
 QUEST_CHECK_IR=1, which the test runners set.
 """
@@ -22,8 +26,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, fields, is_dataclass
+from typing import Optional
 
 from quest.ir import nodes as ir
+from quest.ir.walk import global_variables
 
 
 def ir_checks_enabled() -> bool:
@@ -55,6 +61,8 @@ class _Verifier:
         self.bound: set[int] = set()
         # The modules the unit defines and imports, which module references must be
         self.modules: set[int] = set()
+        # After closure conversion, the unit's functions, which closures must be of (None before)
+        self.functions: Optional[set[int]] = None
         # Variables declared, and not yet bound by their let
         self.declared: set[int] = set()
 
@@ -86,6 +94,10 @@ class _Verifier:
         if not is_dataclass(o) or isinstance(o, (ir.Body, ir.Function)):
             self.problem(f"{where}: not an operation: {type(o).__name__}")
             return
+        if isinstance(o, (ir.MakeClosure, ir.EnvField)) and self.functions is None:
+            self.problem(f"{where}: {type(o).__name__} before closure conversion")
+        if isinstance(o, ir.MakeClosure) and self.functions is not None and id(o.code) not in self.functions:
+            self.problem(f"{where}: a closure of a function that is not the unit's")
         for f in fields(o):
             v = getattr(o, f.name)
             if f.name == "type_components":
@@ -112,6 +124,9 @@ class _Verifier:
         # mutable variables are globals
         outer_mutables = scope.outer_mutables | (frozenset() if scope.top_level else scope.local_mutables)
         inner = _Scope(scope.vars, (), (), True, outer_mutables, frozenset(), False)
+        if f.env is not None:
+            self.bind(f.env, where)
+            inner = inner.with_vars(f.env)
         for v, mode in f.params:
             self.bind(v, where)
             if mode not in ("value", "var", "out"):
@@ -163,6 +178,8 @@ class _Verifier:
             case ir.Do(value=value):
                 self.operation(value, scope, where)
             case ir.Funs(functions=functions, recursive=recursive):
+                if self.functions is not None:
+                    self.problem(f"{where}: a funs statement after closure conversion")
                 for f in functions:
                     self.bind(f.var, where)
                 inner = scope.with_vars(*(f.var for f in functions)) if recursive else scope
@@ -247,15 +264,22 @@ class _Verifier:
 
 
 def verify_unit(unit: ir.Unit) -> list[str]:
-    """The problems of a unit at the Core stage (empty when it satisfies every invariant)."""
+    """The problems of a unit at its stage (empty when it satisfies every invariant)."""
     v = _Verifier()
     v.modules = {id(m) for m in unit.modules} | {id(i) for i in unit.imports}
+    if unit.at_least("closed"):
+        v.functions = {id(f) for f in unit.functions}
     top = _Scope(frozenset())
     # A module's members are visible to the code after its definition (by name, through the module), not as
     # variables; each module's initializer is its own top level
     for m in unit.modules:
         v.body(m.init, top, f"module '{m.name}'")
     v.body(unit.main, top, "main")
+    if unit.at_least("closed"):
+        # Lifted functions use their parameters, their environment, and the unit's globals
+        globals_scope = _Scope(frozenset(global_variables(unit)))
+        for f in unit.functions:
+            v.function(f, globals_scope)
     # A declared exception made only on a path the lowering never reached would be left unbound
     if v.declared:
         v.problem(f"{len(v.declared)} declared variable(s) never bound")

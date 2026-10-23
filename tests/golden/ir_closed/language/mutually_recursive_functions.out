@@ -1,0 +1,317 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import arrayOp = "arrayOp" : ArrayOp
+fun printInt(x: Int): Ok {
+  let %1: String = call conv.int(x)
+  do call writer.putString(wOut?, %1)
+  let %2: Ok = call writer.putString(wOut?, "\n")
+  return %2
+}
+fun printBool(b: Bool): Ok {
+  join k1(r: Int) {
+    let %3: Ok = call printInt?(r)
+    return %3
+  } in {
+    if b {
+      jump k1(1)
+    } else {
+      jump k1(0)
+    }
+  }
+}
+fun even(n: Int): Bool {
+  join k2(r.1: Bool) {
+    return r.1
+  } in {
+    let %4: Bool = prim is(n, 0)
+    if %4 {
+      jump k2(true)
+    } else {
+      let %5: Int = prim -(n, 1)
+      let %6: Bool = call odd?(%5)
+      jump k2(%6)
+    }
+  }
+}
+fun odd(n.1: Int): Bool {
+  join k3(r.2: Bool) {
+    return r.2
+  } in {
+    let %7: Bool = prim is(n.1, 0)
+    if %7 {
+      jump k3(false)
+    } else {
+      let %8: Int = prim -(n.1, 1)
+      let %9: Bool = call even?(%8)
+      jump k3(%9)
+    }
+  }
+}
+fun down {env}(n.2: Int): Int {
+  let k: Int = env_field(env, 0)
+  let up.1: Fun(n: Int): Int = env_field(env, 1)
+  join k4(r.3: Int) {
+    return r.3
+  } in {
+    let %10: Bool = prim <=(n.2, 0)
+    if %10 {
+      jump k4(k)
+    } else {
+      let %11: Int = prim -(n.2, 1)
+      let %12: Int = call up.1(%11)
+      let %13: Int = prim +(%12, 1)
+      jump k4(%13)
+    }
+  }
+}
+fun up {env.1}(n.3: Int): Int {
+  let k.1: Int = env_field(env.1, 0)
+  let down.1: Fun(n: Int): Int = env_field(env.1, 1)
+  join k5(r.4: Int) {
+    return r.4
+  } in {
+    let %14: Bool = prim <=(n.3, 0)
+    if %14 {
+      jump k5(k.1)
+    } else {
+      let %15: Int = prim -(n.3, 1)
+      let %16: Int = call down.1(%15)
+      let %17: Int = prim +(%16, 10)
+      jump k5(%17)
+    }
+  }
+}
+fun countDown(k.2: Int): Int {
+  let rec (down.2: Fun(n: Int): Int, up.2: Fun(n: Int): Int) {
+    let down.2: Fun(n: Int): Int = closure down {k.2, up.2}
+    let up.2: Fun(n: Int): Int = closure up {k.2, down.2}
+  }
+  let %18: Int = call down.2(4)
+  return %18
+}
+fun sum {env.2}(n.4: Int): Int {
+  let k.3: Int = env_field(env.2, 0)
+  let sum.1: Fun(n: Int): Int = env_field(env.2, 1)
+  join k6(r.5: Int) {
+    return r.5
+  } in {
+    let %19: Bool = prim <=(n.4, 0)
+    if %19 {
+      jump k6(k.3)
+    } else {
+      let %20: Int = prim -(n.4, 1)
+      let %21: Int = call sum.1(%20)
+      let %22: Int = prim +(n.4, %21)
+      jump k6(%22)
+    }
+  }
+}
+fun total(k.4: Int): Int {
+  let rec (sum.2: Fun(n: Int): Int) {
+    let sum.2: Fun(n: Int): Int = closure sum {k.4, sum.2}
+  }
+  let %23: Int = call sum.2(4)
+  return %23
+}
+fun f(n.5: Int): Int {
+  join k7(r.6: Int) {
+    return r.6
+  } in {
+    let %24: Bool = prim <=(n.5, 0)
+    if %24 {
+      jump k7(base?)
+    } else {
+      let %25: Int = prim -(n.5, 1)
+      let %26: Int = call g?(%25)
+      let %27: Int = prim *(%26, 2)
+      jump k7(%27)
+    }
+  }
+}
+fun g(n.6: Int): Int {
+  join k8(r.7: Int) {
+    return r.7
+  } in {
+    let %28: Bool = prim <=(n.6, 0)
+    if %28 {
+      jump k8(base?)
+    } else {
+      let %29: Int = prim -(n.6, 1)
+      let %30: Int = call f?(%29)
+      let %31: Int = prim +(%30, 1)
+      jump k8(%31)
+    }
+  }
+}
+fun r0(n.7: Int): Int {
+  join k9(r.8: Int) {
+    return r.8
+  } in {
+    let %32: Bool = prim is(n.7, 0)
+    if %32 {
+      jump k9(0)
+    } else {
+      let %33: Int = prim -(n.7, 1)
+      let %34: Int = call r1?(%33)
+      jump k9(%34)
+    }
+  }
+}
+fun r1(n.8: Int): Int {
+  join k10(r.9: Int) {
+    return r.9
+  } in {
+    let %35: Bool = prim is(n.8, 0)
+    if %35 {
+      jump k10(1)
+    } else {
+      let %36: Int = prim -(n.8, 1)
+      let %37: Int = call r2?(%36)
+      jump k10(%37)
+    }
+  }
+}
+fun r2(n.9: Int): Int {
+  join k11(r.10: Int) {
+    return r.10
+  } in {
+    let %38: Bool = prim is(n.9, 0)
+    if %38 {
+      jump k11(2)
+    } else {
+      let %39: Int = prim -(n.9, 1)
+      let %40: Int = call r0?(%39)
+      jump k11(%40)
+    }
+  }
+}
+fun sumTree(t: Tree): Int {
+  join k12(r.11: Int) {
+    return r.11
+  } in {
+    switch tag(t) {
+      case leaf (n.10: Int): {
+        jump k12(n.10)
+      }
+      case node (f.1: Forest): {
+        let %41: Int = call sumForest?(f.1)
+        jump k12(%41)
+      }
+      else: {
+        jump k12(0)
+      }
+    }
+  }
+}
+fun sumForest(f.2: Forest): Int {
+  var s: Int = 0
+  let %42: Array(Tree) = record_field(f.2, trees)
+  let %43: Int = call arrayOp.size [Tree](%42)
+  let %44: Int = prim -(%43, 1)
+  var i: Int = 0
+  loop L1 {
+    let %45: Bool = prim <=(i, %44)
+    if %45 {
+      let i.1: Int = i
+      let %46: Array(Tree) = record_field(f.2, trees)
+      let %47: Tree = index(%46, i.1)
+      let %48: Int = call sumTree?(%47)
+      let %49: Int = prim +(s, %48)
+      s := %49
+      let %50: Int = prim +(i, 1)
+      i := %50
+    } else {
+      break L1
+    }
+  }
+  return s
+}
+fun leaf(n.11: Int): Tree {
+  let %51: Tree = variant(leaf, n.11)
+  return %51
+}
+fun node(f.3: Forest): Tree {
+  let %52: Tree = variant(node, f.3)
+  return %52
+}
+fun ping [A::TYPE](x.1: A, n.12: Int): A {
+  join k13(r.12: A) {
+    return r.12
+  } in {
+    let %53: Bool = prim <=(n.12, 0)
+    if %53 {
+      jump k13(x.1)
+    } else {
+      let %54: Int = prim -(n.12, 1)
+      let %55: A = call pong? [A](x.1, %54)
+      jump k13(%55)
+    }
+  }
+}
+fun pong [A::TYPE](x.2: A, n.13: Int): A {
+  join k14(r.13: A) {
+    return r.13
+  } in {
+    let %56: Bool = prim <=(n.13, 0)
+    if %56 {
+      jump k14(x.2)
+    } else {
+      let %57: Int = prim -(n.13, 1)
+      let %58: A = call ping? [A](x.2, %57)
+      jump k14(%58)
+    }
+  }
+}
+main {
+  let wOut: writer.T = member writer.output
+  let printInt.1: Fun(x: Int): Ok = closure printInt {}
+  let printBool.1: Fun(b: Bool): Ok = closure printBool {}
+  let even.1: Fun(n: Int): Bool = closure even {}
+  let odd.1: Fun(n: Int): Bool = closure odd {}
+  let %59: Bool = call even.1(10)
+  do call printBool.1(%59)
+  let %60: Bool = call odd.1(7)
+  do call printBool.1(%60)
+  let countDown.1: Fun(k: Int): Int = closure countDown {}
+  let %61: Int = call countDown.1(100)
+  do call printInt.1(%61)
+  let total.1: Fun(k: Int): Int = closure total {}
+  let %62: Int = call total.1(1000)
+  do call printInt.1(%62)
+  let base: Int = 5
+  let f.4: Fun(n: Int): Int = closure f {}
+  let g.1: Fun(n: Int): Int = closure g {}
+  let f.5: Fun(n: Int): Int = f.4
+  let g.2: Fun(n: Int): Int = g.1
+  let pair: Tuple f: Fun(n: Int): Int g: Fun(n: Int): Int end = tuple(f.5, g.2)
+  let %63: Fun(n: Int): Int = tuple_field(pair, 0)
+  let %64: Int = call %63(3)
+  do call printInt.1(%64)
+  let %65: Fun(n: Int): Int = tuple_field(pair, 1)
+  let %66: Int = call %65(3)
+  do call printInt.1(%66)
+  let r0.1: Fun(n: Int): Int = closure r0 {}
+  let r1.1: Fun(n: Int): Int = closure r1 {}
+  let r2.1: Fun(n: Int): Int = closure r2 {}
+  let %67: Int = call r0.1(7)
+  do call printInt.1(%67)
+  let sumTree.1: Fun(t: Tree): Int = closure sumTree {}
+  let sumForest.1: Fun(f: Forest): Int = closure sumForest {}
+  let leaf.1: Fun(n: Int): Tree = closure leaf {}
+  let node.1: Fun(f: Forest): Tree = closure node {}
+  let %68: Tree = call leaf.1(1)
+  let %69: Tree = call leaf.1(2)
+  let %70: Tree = call leaf.1(3)
+  let %71: Array(Tree) = array(%69, %70)
+  let %72: Record trees: Array(Tree) end = record(trees = %71)
+  let %73: Tree = call node.1(%72)
+  let %74: Array(Tree) = array(%68, %73)
+  let %75: Record trees: Array(Tree) end = record(trees = %74)
+  let %76: Int = call sumForest.1(%75)
+  do call printInt.1(%76)
+  let ping.1: All(A :: TYPE) Fun(x: A n: Int): A = closure ping {}
+  let pong.1: All(A :: TYPE) Fun(x: A n: Int): A = closure pong {}
+  let %77: Int = call ping.1 [Int](42, 5)
+  do call printInt.1(%77)
+}
+

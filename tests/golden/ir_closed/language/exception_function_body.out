@@ -1,0 +1,228 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+fun printInt(x: Int): Ok {
+  let %1: String = call conv.int(x)
+  do call writer.putString(wOut?, %1)
+  let %2: Ok = call writer.putString(wOut?, "\n")
+  return %2
+}
+fun mk(x.1: Int): Exception(Int) {
+  let Made: Exception(Int) = exception Made: Int
+  return Made
+}
+fun g(x.2: Int): Int {
+  declare Inline: Exception(Int)
+  join k4(r: Int) {
+    return r
+  } in {
+    try {
+      let Inline: Exception(Int) = exception Inline: Int
+      raise Inline with x.2
+    } handle (e: Exception) {
+      let %3: Bool = prim is(e, Inline)
+      if %3 {
+        let n: Int = exception_payload(e)
+        let %4: Int = prim +(n, 1)
+        jump k4(%4)
+      } else {
+        raise e
+      }
+    }
+  }
+}
+fun h(x.3: Int): Int {
+  declare Pos: Exception(Int)
+  join k5(r.1: Int) {
+    return r.1
+  } in {
+    let %5: Bool = prim >(x.3, 0)
+    if %5 {
+      join k6(r.2: Int) {
+        jump k5(r.2)
+      } in {
+        try {
+          let Pos: Exception(Int) = exception Pos: Int
+          raise Pos with x.3
+        } handle (e.1: Exception) {
+          let %6: Bool = prim is(e.1, Pos)
+          if %6 {
+            let n.1: Int = exception_payload(e.1)
+            let %7: Int = prim *(n.1, 2)
+            jump k6(%7)
+          } else {
+            raise e.1
+          }
+        }
+      }
+    } else {
+      jump k5(0)
+    }
+  }
+}
+fun catcher {env}(y: Int): Int {
+  let x.4: Int = env_field(env, 0)
+  declare Cap: Exception(Int)
+  join k7(r.3: Int) {
+    return r.3
+  } in {
+    try {
+      let Cap: Exception(Int) = exception Cap: Int
+      raise Cap with y
+    } handle (e.2: Exception) {
+      let %8: Bool = prim is(e.2, Cap)
+      if %8 {
+        let n.2: Int = exception_payload(e.2)
+        let %9: Int = prim +(n.2, x.4)
+        jump k7(%9)
+      } else {
+        raise e.2
+      }
+    }
+  }
+}
+fun k(x.5: Int): Int {
+  let catcher.1: Fun(y: Int): Int = closure catcher {x.5}
+  let %10: Int = call catcher.1(10)
+  return %10
+}
+fun thrower {env.1}(y.1: Int): Int {
+  let Outer: Exception(Int) = env_field(env.1, 0)
+  join k8(r.4: Int) {
+    return r.4
+  } in {
+    let %11: Bool = prim >(y.1, 0)
+    if %11 {
+      raise Outer with y.1
+    } else {
+      jump k8(y.1)
+    }
+  }
+}
+fun lam(x.6: Int): Int {
+  let Outer.1: Exception(Int) = exception Outer: Int
+  let e.3: Exception(Int) = Outer.1
+  let thrower.1: Fun(y: Int): Int = closure thrower {Outer.1}
+  join k9(r.5: Int) {
+    return r.5
+  } in {
+    try {
+      let %12: Int = call thrower.1(x.6)
+      jump k9(%12)
+    } handle (e.4: Exception) {
+      let %13: Bool = prim is(e.4, e.3)
+      if %13 {
+        let n.3: Int = exception_payload(e.4)
+        let %14: Int = prim *(n.3, 2)
+        jump k9(%14)
+      } else {
+        raise e.4
+      }
+    }
+  }
+}
+fun sh(x.7: Int): Int {
+  declare Shadow: Exception(Int)
+  join k10(r.6: Int) {
+    return r.6
+  } in {
+    try {
+      let Shadow: Exception(Int) = exception Shadow: Int
+      raise Shadow with x.7
+    } handle (e.5: Exception) {
+      let %15: Bool = prim is(e.5, Shadow)
+      if %15 {
+        let n.4: Int = exception_payload(e.5)
+        jump k10(n.4)
+      } else {
+        raise e.5
+      }
+    }
+  }
+}
+main {
+  let wOut: writer.T = member writer.output
+  let printInt.1: Fun(x: Int): Ok = closure printInt {}
+  let mk.1: Fun(x: Int): Exception(Int) = closure mk {}
+  let m1: Exception(Int) = call mk.1(1)
+  let m2: Exception(Int) = call mk.1(2)
+  join k1(r.7: Int) {
+    do call printInt.1(r.7)
+    join k2(r.8: Int) {
+      do call printInt.1(r.8)
+      let g.1: Fun(x: Int): Int = closure g {}
+      let %16: Int = call g.1(4)
+      do call printInt.1(%16)
+      let h.1: Fun(x: Int): Int = closure h {}
+      let %17: Int = call h.1(8)
+      do call printInt.1(%17)
+      let %18: Int = call h.1(-8)
+      do call printInt.1(%18)
+      let k.1: Fun(x: Int): Int = closure k {}
+      let %19: Int = call k.1(1)
+      do call printInt.1(%19)
+      let lam.1: Fun(x: Int): Int = closure lam {}
+      let %20: Int = call lam.1(21)
+      do call printInt.1(%20)
+      let Shadow.1: Exception(Int) = exception Shadow: Int
+      let sh.1: Fun(x: Int): Int = closure sh {}
+      let %21: Int = call sh.1(9)
+      do call printInt.1(%21)
+      join k11(r.9: Int) {
+        do call printInt.1(r.9)
+      } in {
+        try {
+          raise Shadow.1 with 3
+        } handle (e.6: Exception) {
+          let %22: Bool = prim is(e.6, Shadow.1)
+          if %22 {
+            let n.5: Int = exception_payload(e.6)
+            let %23: Int = prim +(n.5, 30)
+            jump k11(%23)
+          } else {
+            raise e.6
+          }
+        }
+      }
+    } in {
+      try {
+        join k3(r.10: Int) {
+          jump k2(r.10)
+        } in {
+          try {
+            raise m1 with 6
+          } handle (e.7: Exception) {
+            let %24: Bool = prim is(e.7, m2)
+            if %24 {
+              let n.6: Int = exception_payload(e.7)
+              let %25: Int = prim -(0, n.6)
+              jump k3(%25)
+            } else {
+              raise e.7
+            }
+          }
+        }
+      } handle (e.8: Exception) {
+        let %26: Bool = prim is(e.8, m1)
+        if %26 {
+          let n.7: Int = exception_payload(e.8)
+          jump k2(n.7)
+        } else {
+          raise e.8
+        }
+      }
+    }
+  } in {
+    try {
+      raise m1 with 5
+    } handle (e.9: Exception) {
+      let %27: Bool = prim is(e.9, m1)
+      if %27 {
+        let n.8: Int = exception_payload(e.9)
+        jump k1(n.8)
+      } else {
+        raise e.9
+      }
+    }
+  }
+}
+

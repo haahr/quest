@@ -1,0 +1,256 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+fun print(s: String): Ok {
+  let %1: String = prim <>(s, "\n")
+  let %2: Ok = call writer.putString(wOut?, %1)
+  return %2
+}
+fun twice [A::TYPE](y: Int): Int {
+  let %3: Int = prim *(y, 2)
+  return %3
+}
+fun keep [A::TYPE](x: A): A {
+  let twice.2: Fun(y: Int): Int = closure twice {} [A]
+  let n: Int = call twice.2(1)
+  return x
+}
+fun twice.1(y.1: Int): Int {
+  let %4: Int = prim *(y.1, 2)
+  return %4
+}
+fun keep_spec(x.1: P): P {
+  let twice.3: Fun(y: Int): Int = closure twice.1 {}
+  let n.1: Int = call twice.3(1)
+  return x.1
+}
+fun pick {env} [A::TYPE](z: A): A {
+  let n.2: Int = env_field(env, 0)
+  let y.2: A = env_field(env, 1)
+  join k1(r: A) {
+    return r
+  } in {
+    let %5: Bool = prim >(n.2, 0)
+    if %5 {
+      jump k1(z)
+    } else {
+      jump k1(y.2)
+    }
+  }
+}
+fun choose [A::TYPE](x.2: A, y.3: A, n.3: Int): A {
+  let pick.3: Fun(z: A): A = closure pick {n.3, y.3} [A]
+  let %6: A = call pick.3(x.2)
+  return %6
+}
+fun pick.1 {env.1}(z.1: P): P {
+  let n.4: Int = env_field(env.1, 0)
+  let y.4: P = env_field(env.1, 1)
+  join k1(r.1: P) {
+    return r.1
+  } in {
+    let %7: Bool = prim >(n.4, 0)
+    if %7 {
+      jump k1(z.1)
+    } else {
+      jump k1(y.4)
+    }
+  }
+}
+fun choose_spec(x.3: P, y.5: P, n.5: Int): P {
+  let pick.4: Fun(z: P): P = closure pick.1 {n.5, y.5}
+  let %8: P = call pick.4(x.3)
+  return %8
+}
+fun pick.2 {env.2}(z.2: V): V {
+  let n.6: Int = env_field(env.2, 0)
+  let y.6: V = env_field(env.2, 1)
+  join k1(r.2: V) {
+    return r.2
+  } in {
+    let %9: Bool = prim >(n.6, 0)
+    if %9 {
+      jump k1(z.2)
+    } else {
+      jump k1(y.6)
+    }
+  }
+}
+fun choose_spec.1(x.4: V, y.7: V, n.7: Int): V {
+  let pick.5: Fun(z: V): V = closure pick.2 {n.7, y.7}
+  let %10: V = call pick.5(x.4)
+  return %10
+}
+fun f [A::TYPE](y.8: A): Int {
+  return 4
+}
+fun measure [A::TYPE](x.5: A): Int {
+  let f.5: Fun(y: A): Int = closure f {} [A]
+  let %11: Int = call f.5(x.5)
+  return %11
+}
+fun f.1(y.9: P): Int {
+  return 4
+}
+fun measure_spec(x.6: P): Int {
+  let f.6: Fun(y: P): Int = closure f.1 {}
+  let %12: Int = call f.6(x.6)
+  return %12
+}
+fun f.2(y.10: V): Int {
+  return 4
+}
+fun measure_spec.1(x.7: V): Int {
+  let f.7: Fun(y: V): Int = closure f.2 {}
+  let %13: Int = call f.7(x.7)
+  return %13
+}
+fun same [A::TYPE A::TYPE](y.11: A): A {
+  return y.11
+}
+fun wrap [A::TYPE](x.8: A): A {
+  let same.2: All(A :: TYPE) Fun(y: A): A = closure same {} [A]
+  let b: Bool = call same.2 [Bool](true)
+  join k3(r.3: A) {
+    return r.3
+  } in {
+    if b {
+      let %14: A = call same.2 [A](x.8)
+      jump k3(%14)
+    } else {
+      jump k3(x.8)
+    }
+  }
+}
+fun same.1 [A::TYPE](y.12: A): A {
+  return y.12
+}
+fun same_spec(y.13: P): P {
+  return y.13
+}
+fun wrap_spec(x.9: P): P {
+  let same.3: All(A :: TYPE) Fun(y: A): A = closure same.1 {}
+  let same_spec.1: Fun(y: A): A = closure same_spec {}
+  let b.1: Bool = call same.3 [Bool](true)
+  join k3(r.4: P) {
+    return r.4
+  } in {
+    if b.1 {
+      let %15: P = call same_spec.1(x.9)
+      jump k3(%15)
+    } else {
+      jump k3(x.9)
+    }
+  }
+}
+fun id [A::TYPE](y.14: A): A {
+  let %16: A = call keep? [A](y.14)
+  return %16
+}
+fun outer [A::TYPE](x.10: A): A {
+  let id.2: Fun(y: A): A = closure id {} [A]
+  let %17: A = call id.2(x.10)
+  return %17
+}
+fun id.1(y.15: P): P {
+  let %18: P = call keep_spec?(y.15)
+  return %18
+}
+fun outer_spec(x.11: P): P {
+  let id.3: Fun(y: P): P = closure id.1 {}
+  let %19: P = call id.3(x.11)
+  return %19
+}
+fun g [A::TYPE](z.3: A): A {
+  return z.3
+}
+fun f.3 [A::TYPE](y.16: A): A {
+  let g.2: Fun(z: A): A = closure g {} [A]
+  let %20: A = call g.2(y.16)
+  return %20
+}
+fun nest [A::TYPE](x.12: A): A {
+  let f.8: Fun(y: A): A = closure f.3 {} [A]
+  let %21: A = call f.8(x.12)
+  return %21
+}
+fun g.1(z.4: P): P {
+  return z.4
+}
+fun f.4(y.17: P): P {
+  let g.3: Fun(z: P): P = closure g.1 {}
+  let %22: P = call g.3(y.17)
+  return %22
+}
+fun nest_spec(x.13: P): P {
+  let f.9: Fun(y: P): P = closure f.4 {}
+  let %23: P = call f.9(x.13)
+  return %23
+}
+main {
+  let wOut: writer.T = member writer.output
+  let print.1: Fun(s: String): Ok = closure print {}
+  let keep.1: All(A :: TYPE) Fun(x: A): A = closure keep {}
+  let keep_spec.1: Fun(x: A): A = closure keep_spec {}
+  let %24: Record a: Int end = record(a = 1)
+  let %25: P = call keep_spec.1(%24)
+  let %26: Int = record_field(%25, a)
+  let %27: String = call conv.int(%26)
+  do call print.1(%27)
+  let choose.1: All(A :: TYPE) Fun(x: A y: A n: Int): A = closure choose {}
+  let choose_spec.2: Fun(x: A y: A n: Int): A = closure choose_spec {}
+  let choose_spec.3: Fun(x: A y: A n: Int): A = closure choose_spec.1 {}
+  let %28: Record a: Int end = record(a = 2)
+  let %29: Record a: Int end = record(a = 20)
+  let %30: P = call choose_spec.2(%28, %29, 1)
+  let %31: Int = record_field(%30, a)
+  let %32: String = call conv.int(%31)
+  do call print.1(%32)
+  join k2(r.5: Int) {
+    let %33: String = call conv.int(r.5)
+    do call print.1(%33)
+    let measure.1: All(A :: TYPE) Fun(x: A): Int = closure measure {}
+    let measure_spec.2: Fun(x: A): Int = closure measure_spec {}
+    let measure_spec.3: Fun(x: A): Int = closure measure_spec.1 {}
+    let %34: Record a: Int end = record(a = 0)
+    let %35: Int = call measure_spec.2(%34)
+    let %36: V = variant(q, false)
+    let %37: Int = call measure_spec.3(%36)
+    let %38: Int = prim +(%35, %37)
+    let %39: String = call conv.int(%38)
+    do call print.1(%39)
+    let wrap.1: All(A :: TYPE) Fun(x: A): A = closure wrap {}
+    let wrap_spec.1: Fun(x: A): A = closure wrap_spec {}
+    let %40: Record a: Int end = record(a = 5)
+    let %41: P = call wrap_spec.1(%40)
+    let %42: Int = record_field(%41, a)
+    let %43: String = call conv.int(%42)
+    do call print.1(%43)
+    let outer.1: All(A :: TYPE) Fun(x: A): A = closure outer {}
+    let outer_spec.1: Fun(x: A): A = closure outer_spec {}
+    let %44: Record a: Int end = record(a = 6)
+    let %45: P = call outer_spec.1(%44)
+    let %46: Int = record_field(%45, a)
+    let %47: String = call conv.int(%46)
+    do call print.1(%47)
+    let nest.1: All(A :: TYPE) Fun(x: A): A = closure nest {}
+    let nest_spec.1: Fun(x: A): A = closure nest_spec {}
+    let %48: Record a: Int end = record(a = 7)
+    let %49: P = call nest_spec.1(%48)
+    let %50: Int = record_field(%49, a)
+    let %51: String = call conv.int(%50)
+    do call print.1(%51)
+  } in {
+    let %52: V = variant(p, 3)
+    let %53: V = variant(q, true)
+    let %54: V = call choose_spec.3(%52, %53, 0)
+    switch tag(%54) {
+      case p (k: Int): {
+        jump k2(k)
+      }
+      else: {
+        jump k2(30)
+      }
+    }
+  }
+}
+

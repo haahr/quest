@@ -1,0 +1,186 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+fun p(n: Int): Ok {
+  let %1: writer.T = member writer.output
+  let %2: String = call conv.int(n)
+  let %3: String = prim <>(%2, "\n")
+  let %4: Ok = call writer.putString(%1, %3)
+  return %4
+}
+fun s(text: String): Ok {
+  let %5: writer.T = member writer.output
+  let %6: String = prim <>(text, "\n")
+  let %7: Ok = call writer.putString(%5, %6)
+  return %7
+}
+fun box [A::TYPE](x: A): Boxed {
+  let a: A = x
+  let %8: Tuple a: A end = tuple(a)
+  let %9: Boxed = auto[A](%8)
+  return %9
+}
+fun box_spec(x.1: Car): Boxed {
+  let a.1: Car = x.1
+  let %10: Tuple a: Car end = tuple(a.1)
+  let %11: Boxed = auto[Car](%10)
+  return %11
+}
+fun unbox [A::TYPE](b: Boxed, default: A): A {
+  join k3(r: A) {
+    return r
+  } in {
+    inspect b {
+      case A (x.2: Tuple a: A end): {
+        let %12: A = tuple_field(x.2, 0)
+        jump k3(%12)
+      }
+      else: {
+        jump k3(default)
+      }
+    }
+  }
+}
+fun unbox_spec(b.1: Boxed, default.1: Object): Object {
+  join k3(r.1: Object) {
+    return r.1
+  } in {
+    inspect b.1 {
+      case Object (x.3: Tuple a: Object end): {
+        let %13: Object = tuple_field(x.3, 0)
+        jump k3(%13)
+      }
+      else: {
+        jump k3(default.1)
+      }
+    }
+  }
+}
+fun boxTwice [B::TYPE](y: B): Tuple first: Boxed second: Boxed end {
+  let first: Boxed = call box? [B](y)
+  let second: Boxed = call box? [B](y)
+  let %14: Tuple first: Boxed second: Boxed end = tuple(first, second)
+  return %14
+}
+fun pack [A::TYPE](x.4: A): Dynamic {
+  let %15: T = call dynamic.new [A](x.4)
+  return %15
+}
+fun pack_spec(x.5: Car): Dynamic {
+  let %16: T = call dynamic.new [Car](x.5)
+  return %16
+}
+fun showable [A::TYPE](x.6: A, f.1: Fun(_: A): String): Showable {
+  let x.7: A = x.6
+  let show: Fun(_: A): String = f.1
+  let %17: Tuple x: A show: Fun(_: A): String end = tuple(x.7, show)
+  let %18: Showable = auto[A](%17)
+  return %18
+}
+fun f(n.1: Int): String {
+  let %19: Int = prim *(n.1, 10)
+  let %20: String = call conv.int(%19)
+  return %20
+}
+main {
+  let p.1: Fun(n: Int): Ok = closure p {}
+  let s.1: Fun(text: String): Ok = closure s {}
+  let myCar: Car = record(age = 3, fuel = "diesel")
+  let box.1: All(A :: TYPE) Fun(x: A): Boxed = closure box {}
+  let box_spec.1: Fun(x: A): Boxed = closure box_spec {}
+  let boxedInt: Boxed = call box.1 [Int](42)
+  let boxedCar: Boxed = call box_spec.1(myCar)
+  join k1(r.2: Int) {
+    do call p.1(r.2)
+    join k2(r.3: String) {
+      do call s.1(r.3)
+      let unbox.1: All(A :: TYPE) Fun(b: Boxed default: A): A = closure unbox {}
+      let unbox_spec.1: Fun(b: Boxed default: A): A = closure unbox_spec {}
+      let %21: Int = call unbox.1 [Int](boxedInt, 0)
+      do call p.1(%21)
+      let %22: Int = prim -(0, 1)
+      let %23: Int = call unbox.1 [Int](boxedCar, %22)
+      do call p.1(%23)
+      let %24: Record age: Int end = record(age = 0)
+      let %25: Object = call unbox_spec.1(boxedCar, %24)
+      let %26: Int = record_field(%25, age)
+      do call p.1(%26)
+      let boxTwice.1: All(B :: TYPE) Fun(y: B): Tuple first: Boxed second: Boxed end = closure boxTwice {}
+      let twice: Tuple first: Boxed second: Boxed end = call boxTwice.1 [String]("twice")
+      join k4(r.4: String) {
+        do call s.1(r.4)
+        let pack.1: All(A :: TYPE) Fun(x: A): Dynamic = closure pack {}
+        let pack_spec.1: Fun(x: A): Dynamic = closure pack_spec {}
+        let %27: Dynamic = call pack.1 [Int](7)
+        let %28: Int = call dynamic.be [Int](%27)
+        do call p.1(%28)
+        join k5(r.5: Int) {
+          do call p.1(r.5)
+          let showable.1: All(A :: TYPE) Fun(x: A f: Fun(_: A): String): Showable = closure showable {}
+          let f.2: Fun(n: Int): String = closure f {}
+          let showInt: Showable = call showable.1 [Int](5, f.2)
+          join k6(r.6: String) {
+            do call s.1(r.6)
+          } in {
+            inspect showInt {
+              case Int exact (i: Tuple x: Int show: Fun(_: Int): String end): {
+                let %29: Fun(_: Int): String = tuple_field(i, 1)
+                let %30: Int = tuple_field(i, 0)
+                let %31: String = call %29(%30)
+                jump k6(%31)
+              }
+              else: {
+                jump k6("?")
+              }
+            }
+          }
+        } in {
+          let %32: Dynamic = call pack_spec.1(myCar)
+          inspect %32 {
+            case Object (o: Tuple a: Object end): {
+              let %33: Object = tuple_field(o, 0)
+              let %34: Int = record_field(%33, age)
+              jump k5(%34)
+            }
+            else: {
+              jump k5(0)
+            }
+          }
+        }
+      } in {
+        let %35: Boxed = tuple_field(twice, 1)
+        inspect %35 {
+          case String (t: Tuple a: String end): {
+            let %36: String = tuple_field(t, 0)
+            jump k4(%36)
+          }
+          else: {
+            jump k4("?")
+          }
+        }
+      }
+    } in {
+      inspect boxedCar {
+        case Car (c: Tuple a: Car end): {
+          let %37: Car = tuple_field(c, 0)
+          let %38: String = record_field(%37, fuel)
+          jump k2(%38)
+        }
+        else: {
+          jump k2("?")
+        }
+      }
+    }
+  } in {
+    inspect boxedInt {
+      case Int (i.1: Tuple a: Int end): {
+        let %39: Int = tuple_field(i.1, 0)
+        jump k1(%39)
+      }
+      else: {
+        jump k1(0)
+      }
+    }
+  }
+}
+

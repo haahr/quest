@@ -666,8 +666,14 @@ def _specialize(unit: Any) -> Any:
     return specialize_unit(unit)
 
 
-# The IR's stages after Core (docs/ir.md §9), in order, and the passes that produce them
-_IR_PASSES = (("specialized", _specialize),)
+def _closure_convert(unit: Any) -> Any:
+    from quest.ir.closure import closure_convert_unit
+
+    return closure_convert_unit(unit)
+
+
+# The IR's stages after Core (docs/ir.md §9, quest.ir.nodes.STAGES), in order, and the passes that produce them
+_IR_PASSES = (("specialized", _specialize), ("closed", _closure_convert))
 IR_STAGES = ("core", *(stage for stage, _ in _IR_PASSES))
 IR_DUMP_PHASES = tuple(f"ir_{stage}" for stage in IR_STAGES)
 IR_RUN_PHASES = tuple(f"run_ir_{stage}" for stage in IR_STAGES)

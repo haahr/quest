@@ -87,6 +87,10 @@ class _Printer:
                 return f"builtin {name}"
             case ir.External(symbol=symbol):
                 return f"external {json.dumps(symbol)}"
+            case ir.MakeClosure(code=code, captures=captures, type_args=type_args):
+                return f"closure {self.name(code.var)} {{{self.atoms(captures)}}}{self.type_args(type_args)}"
+            case ir.EnvField(env=env, index=index):
+                return f"env_field({self.atom(env)}, {index})"
             case ir.MakeTuple(args=args, type_components=type_components):
                 types = "".join(f"Let {n} = {self.type(t)} " for n, t in type_components)
                 return f"tuple({types}{self.atoms(args)})"
@@ -154,7 +158,9 @@ class _Printer:
     def function(self, f: ir.Function, depth: int) -> None:
         tps = (" [" + " ".join(f"{tp.name}::{tp.kind}" for tp in f.type_params) + "]") if f.type_params else ""
         params = ", ".join(f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params)
-        self.block(f"fun {self.name(f.var)}{tps}({params}): {self.type(f.result_type)}", f.body, depth)
+        # A lifted function's environment, which has no Quest type
+        env = f" {{{self.bind(f.env)}}}" if f.env is not None else ""
+        self.block(f"fun {self.name(f.var)}{env}{tps}({params}): {self.type(f.result_type)}", f.body, depth)
 
     def statement(self, s, depth: int) -> None:
         match s:
@@ -258,6 +264,11 @@ def format_unit(unit: ir.Unit) -> str:
     p = _Printer()
     for i in unit.imports:
         p.emit(0, f"import {i.name} = {json.dumps(i.module_path)} : {i.interface_path}")
+    # The unit's functions, after closure conversion, are named before any is printed, as closures refer to them
+    for f in unit.functions:
+        p.bind(f.var)
+    for f in unit.functions:
+        p.function(f, 0)
     for m in unit.modules:
         p.emit(0, f"module {m.name} : {m.interface_name} {{")
         p.body(m.init, 1)

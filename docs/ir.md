@@ -146,7 +146,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Scalars | `prim op(a...)`: arithmetic, comparison, logic, string concatenation, identity (`is`) | C+ |
 | Calls | `call f [τ...](a...)` (a function bound by `funs`, or a function value in a variable), `call m.x [τ...](a...)` (a module's member), `type_app f [τ...]` (a polymorphic value applied to types only) | C+ |
 | Modules and externals | `member m.x` (a module's member as a value), `external "symbol"` | C+ |
-| Closures | `closure f {env: a...}`, `env_field(e, i)` | after closure conversion |
+| Closures | `closure f {a...} [τ...]` (a closure of the unit's function `f`, capturing the atoms, and supplying the enclosing functions' type parameters it takes first), `env_field(env, i)` | after closure conversion |
 | Tuples | `tuple(a...)` (value components; type components kept for printing), `tuple_field(t, i)` | C+ |
 | Records | `record(name = a, var name = a...)`, `record_field(r, name)` | C+ |
 | Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n, a...)`, `is_tag(v, tag)`, `payload(v, tag)`, `ordinal(v)` | C+ |
@@ -300,12 +300,25 @@ argument arrives expanded (`B`, an alias the C compilation mode expands) but not
 
 ### 8.2. Closure-convert
 
-Lifts every nested `fun` to a top-level function taking an environment, and replaces it with a `closure`
-operation listing the captured atoms. Captured variables are found by symbol (free variables of the function's
-body); since closures do not capture mutable locals, captures are values, copied into the environment. Recursive
-local functions (`let rec`) capture each other through the environment, built after all members' closures are
-allocated (the deferred captures of today's `_emit_rec_bindings`). `type_app` becomes a closure over the function and
-its type arguments.
+`ir/closure.py`. Lifts every function, top-level and nested alike, to the unit's functions, and replaces each `funs`
+statement with lets of `closure f {captures...}`. A function's captures are its free variables (by identity) other
+than globals, in the order of their first use; globals are the variables the unit's top levels (its main body and
+its modules' initializers) bind outside loops, each bound at most once in a run, which lifted functions use
+directly. Since closures do not capture mutable locals, captures are values, copied into the closure; the lifted
+function reads them from its environment (`fun f {env} ...`) at its start, `let x = env_field(env, i)`, and uses
+those variables in their place. Nested functions are converted first, so a function's captures include what the
+closures it makes capture.
+
+A function nested in a polymorphic one takes the enclosing functions' type parameters as its leading type
+parameters (same symbols, so its types need no rewriting), which its closure supplies: `closure g {x} [A]` inside
+`f [A]`. Recursive local functions that capture one another (or themselves) are made in a `let rec`, whose closures
+refer to the variables being bound; the C printer fills in those captures once all the group's closures are
+allocated (the deferred captures of today's `_emit_rec_bindings`), as the IR interpreter does.
+
+`type_app` stays an operation, now on closures: instantiating a polymorphic closure binds its next type
+parameters, which the descriptor stage (§7) makes descriptor values and the C printer a call of the runtime's
+instantiation, rather than a generated closure per use (a change from the first plan, which made it a closure over
+the function and its type arguments).
 
 ### 8.3. Represent
 
@@ -370,7 +383,7 @@ builds its own SSA and optimizes.
 |---|---|---|
 | **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (step 1), as abstract types of modules are type variables too |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
-| **Closed** | §8.2 | no nested `fun` or `type_app`; every function's free variables are its parameters, its environment, and globals |
+| **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
 | **Represented** | §8.3 | every binder has a representation; every operation's atoms have the representations it requires; conversions only through `convert` |
 | **Descriptors** | §8.4 | no type parameters or type arguments remain; every run-time type is a `descriptor` value |
 
@@ -538,7 +551,10 @@ step 6.
   and targeted tests in `tests/python/test_ir_specialize.py`. Before it, IR variables and functions got their
   shapes from their types (a pass rewriting types cannot leave the two disagreeing), and module references became
   the modules and imports themselves.
-- Closure-convert (§8.2).
+- Closure-convert (§8.2). *Done:* the `ir_closed` stage, run on every golden test (`run_ir_closed`), where the IR
+  interpreter gives lifted functions only the globals, so that a missed capture fails; goldens for 15 programs, and
+  targeted tests in `tests/python/test_ir_closure.py`. The unit records its stage, which the verifier checks
+  against.
 - Represent (§8.3): representations, plans, and `convert` insertion, including variant tag maps decided from cases
   (closing the variant tag-map task).
 - Materialize descriptors (§7), with type parameters keyed by symbol.

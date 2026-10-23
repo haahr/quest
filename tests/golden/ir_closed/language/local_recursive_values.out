@@ -1,0 +1,191 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+fun say(s: String): Ok {
+  let %1: writer.T = member writer.output
+  let %2: Ok = call writer.putString(%1, s)
+  return %2
+}
+fun me {env}(): T {
+  let self: T = env_field(env, 0)
+  return self
+}
+fun mkT(): T {
+  let rec (self.1: T) {
+    let me.3: Fun(): T = closure me {self.1}
+    let name: String = "tuple\n"
+    let self.1: T = tuple(me.3, name)
+  }
+  return self.1
+}
+fun f {env.1}(): R {
+  let self.2: R = env_field(env.1, 0)
+  return self.2
+}
+fun mkR(): R {
+  let rec (self.3: R) {
+    let f.1: Fun(): R = closure f {self.3}
+    let self.3: R = record(me = f.1, name = "record\n")
+  }
+  return self.3
+}
+fun me.1 {env.2}(): O {
+  let self.4: O = env_field(env.2, 0)
+  return self.4
+}
+fun mkO(): O {
+  let rec (self.5: O) {
+    let me.4: Fun(): O = closure me.1 {self.5}
+    let name.1: String = "option\n"
+    let %3: Tuple me: Fun(): O name: String end = tuple(me.4, name.1)
+    let self.5: O = option(node, %3)
+  }
+  return self.5
+}
+fun nameO(o: O): String {
+  join k1(r: String) {
+    return r
+  } in {
+    switch tag(o) {
+      case node (n: Tuple me: Fun(): O name: String end): {
+        join k2(r.1: String) {
+          jump k1(r.1)
+        } in {
+          let %4: Fun(): O = tuple_field(n, 0)
+          let %5: O = call %4()
+          switch tag(%5) {
+            case node (m: Tuple me: Fun(): O name: String end): {
+              let %6: String = tuple_field(m, 1)
+              jump k2(%6)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+fun me.2 {env.3}(): A {
+  let self.6: A = env_field(env.3, 0)
+  return self.6
+}
+fun mkA(): A {
+  let rec (self.7: A) {
+    let me.5: Fun(): A = closure me.2 {self.7}
+    let name.2: String = "array\n"
+    let %7: Tuple me: Fun(): A name: String end = tuple(me.5, name.2)
+    let self.7: A = array(%7)
+  }
+  return self.7
+}
+fun add {env.4}(n.1: Int): Counter {
+  let state: Tuple var sum: Int end = env_field(env.4, 0)
+  let self.8: Counter = env_field(env.4, 1)
+  let %8: Int = tuple_field(state, 0)
+  let %9: Int = prim +(%8, n.1)
+  store state.#0 := %9
+  return self.8
+}
+fun total {env.5}(): Int {
+  let state.1: Tuple var sum: Int end = env_field(env.5, 0)
+  let %10: Int = tuple_field(state.1, 0)
+  return %10
+}
+fun newCounter(): Counter {
+  let sum: Int = 0
+  let state.2: Tuple var sum: Int end = tuple(sum)
+  let rec (self.9: Counter) {
+    let add.1: Fun(n: Int): Counter = closure add {state.2, self.9}
+    let total.1: Fun(): Int = closure total {state.2}
+    let self.9: Counter = tuple(add.1, total.1)
+  }
+  return self.9
+}
+fun other {env.6}(): Ping {
+  let pong: Ping = env_field(env.6, 0)
+  return pong
+}
+fun other.1 {env.7}(): Ping {
+  let ping: Ping = env_field(env.7, 0)
+  return ping
+}
+fun pair(): Ping {
+  let rec (ping.1: Ping, pong.1: Ping) {
+    let other.2: Fun(): Ping = closure other {pong.1}
+    let name.3: String = "ping"
+    let ping.1: Ping = tuple(other.2, name.3)
+    let other.3: Fun(): Ping = closure other.1 {ping.1}
+    let name.4: String = "pong"
+    let pong.1: Ping = tuple(other.3, name.4)
+  }
+  return ping.1
+}
+main {
+  let say.1: Fun(s: String): Ok = closure say {}
+  let mkT.1: Fun(): T = closure mkT {}
+  let %11: T = call mkT.1()
+  let %12: Fun(): T = tuple_field(%11, 0)
+  let %13: T = call %12()
+  let %14: Fun(): T = tuple_field(%13, 0)
+  let %15: T = call %14()
+  let %16: String = tuple_field(%15, 1)
+  do call say.1(%16)
+  let mkR.1: Fun(): R = closure mkR {}
+  let %17: R = call mkR.1()
+  let %18: Fun(): R = record_field(%17, me)
+  let %19: R = call %18()
+  let %20: Fun(): R = record_field(%19, me)
+  let %21: R = call %20()
+  let %22: String = record_field(%21, name)
+  do call say.1(%22)
+  let mkO.1: Fun(): O = closure mkO {}
+  let nameO.1: Fun(o: O): String = closure nameO {}
+  let %23: O = call mkO.1()
+  let %24: String = call nameO.1(%23)
+  do call say.1(%24)
+  let mkA.1: Fun(): A = closure mkA {}
+  let %25: A = call mkA.1()
+  let %26: Tuple me: Fun(): A name: String end = index(%25, 0)
+  let %27: Fun(): A = tuple_field(%26, 0)
+  let %28: A = call %27()
+  let %29: Tuple me: Fun(): A name: String end = index(%28, 0)
+  let %30: String = tuple_field(%29, 1)
+  do call say.1(%30)
+  let newCounter.1: Fun(): Counter = closure newCounter {}
+  let c1: Counter = call newCounter.1()
+  let c2: Counter = call newCounter.1()
+  let %31: Fun(n: Int): Counter = tuple_field(c1, 0)
+  let %32: Counter = call %31(1)
+  let %33: Fun(n: Int): Counter = tuple_field(%32, 0)
+  let %34: Counter = call %33(2)
+  let %35: Fun(n: Int): Counter = tuple_field(%34, 0)
+  let %36: Counter = call %35(3)
+  let %37: Fun(n: Int): Counter = tuple_field(c2, 0)
+  let %38: Counter = call %37(10)
+  let %39: Fun(): Int = tuple_field(c1, 1)
+  let %40: Int = call %39()
+  let %41: String = call conv.int(%40)
+  let %42: Fun(n: Int): Counter = tuple_field(c2, 0)
+  let %43: Counter = call %42(20)
+  let %44: Fun(): Int = tuple_field(%43, 1)
+  let %45: Int = call %44()
+  let %46: String = call conv.int(%45)
+  let %47: String = prim <>(%46, "\n")
+  let %48: String = prim <>(" ", %47)
+  let %49: String = prim <>(%41, %48)
+  do call say.1(%49)
+  let pair.1: Fun(): Ping = closure pair {}
+  let %50: Ping = call pair.1()
+  let %51: Fun(): Ping = tuple_field(%50, 0)
+  let %52: Ping = call %51()
+  let %53: String = tuple_field(%52, 1)
+  let %54: Ping = call pair.1()
+  let %55: Fun(): Ping = tuple_field(%54, 0)
+  let %56: Ping = call %55()
+  let %57: Fun(): Ping = tuple_field(%56, 0)
+  let %58: Ping = call %57()
+  let %59: String = tuple_field(%58, 1)
+  let %60: String = prim <>(%59, "\n")
+  let %61: String = prim <>(" ", %60)
+  let %62: String = prim <>(%53, %61)
+  do call say.1(%62)
+}
+

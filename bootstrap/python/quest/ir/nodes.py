@@ -115,6 +115,23 @@ class External:
 
 
 @dataclass(eq=False)
+class MakeClosure:
+    """A closure (after closure conversion): the lifted function `code` (one of the unit's functions), with the
+    values it captures, which its body reads from its environment, and the types of the enclosing functions' type
+    parameters it takes first (its leading type parameters)."""
+    code: Function
+    captures: tuple[Atom, ...]
+    type_args: tuple[QType, ...] = ()
+
+
+@dataclass(eq=False)
+class EnvField:
+    """A value a closure captured, read from the environment of the function it runs (its index'th capture)."""
+    env: Atom
+    index: int
+
+
+@dataclass(eq=False)
 class MakeTuple:
     """A tuple of the atoms, its value components in order. `type_components` keeps the names and types of its type
     components (erased from the layout), for printing."""
@@ -234,7 +251,7 @@ class Load:
 
 
 Operation = Union[
-    Prim, Call, TypeApp, ModuleMember, Builtin, External, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
+    Prim, Call, TypeApp, ModuleMember, Builtin, External, MakeClosure, EnvField, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
     MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index, MakeAuto, MakeException, ExceptionPayload, Addr,
     Load,
 ]
@@ -292,12 +309,15 @@ class Do:
 
 @dataclass(eq=False)
 class Function:
-    """A function: `var` names it; its type parameters, parameters (with modes), result type, and body."""
+    """A function: `var` names it; its type parameters, parameters (with modes), result type, and body. After closure
+    conversion, a function is one of the unit's, and `env`, if any, is the environment of the closure it runs, from
+    which its body reads the values it captured."""
     var: Var
     type_params: tuple[TypeParam, ...]
     params: tuple[tuple[Var, str], ...]
     result_type: QType
     body: Body
+    env: Optional[Var] = None
 
     @property
     def result(self) -> Shape:
@@ -479,6 +499,9 @@ class Import:
     interface_path: str
 
 
+# The IR's stages (docs/ir.md §9), in order: each pass produces the next
+STAGES = ("core", "specialized", "closed")
+
 # A reference to a module: one the unit defines, or one it imports (by identity, never by name)
 ModuleRef = Union[Module, Import]
 
@@ -490,3 +513,10 @@ class Unit:
     main: Body
     modules: list[Module] = field(default_factory=list)
     imports: tuple[Import, ...] = ()
+    # After closure conversion, every function of the unit, lifted out of the bodies that made closures of it
+    functions: list[Function] = field(default_factory=list)
+    stage: str = "core"
+
+    def at_least(self, stage: str) -> bool:
+        """Whether the unit is at the given stage or a later one."""
+        return STAGES.index(self.stage) >= STAGES.index(stage)

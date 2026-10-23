@@ -1,0 +1,65 @@
+import int = "int" : IntOp
+fun add(n: Int): Int {
+  let %1: Int = prim +(sum?, n)
+  sum? := %1
+  return sum?
+}
+fun total(): Int {
+  let %2: Int = prim +(start?, sum?)
+  return %2
+}
+fun make(n.1: Int): T {
+  return n.1
+}
+fun get(c: T): Int {
+  return c
+}
+fun next(c.1: T): T {
+  let %3: Int = prim +(c.1, 1)
+  return %3
+}
+fun value(n.2: Int): Int {
+  let %4: Int = call int.abs(n.2)
+  return %4
+}
+fun addTwice(n.3: Int): Int {
+  let %5: Int = call tally.add(n.3)
+  let %6: Int = call tally.add(n.3)
+  return %6
+}
+module tally : Tally {
+  let start: Int = 100
+  var sum: Int = 0
+  let add.1: Fun(n: Int): Int = closure add {}
+  let total.1: Fun(): Int = closure total {}
+  export start = start, sum = sum, add = add.1, total = total.1
+}
+module counter : Counter {
+  let make.1: Fun(n: Int): T = closure make {}
+  let get.1: Fun(c: T): Int = closure get {}
+  let next.1: Fun(c: T): T = closure next {}
+  export make = make.1, get = get.1, next = next.1
+}
+module absolute : Absolute {
+  let value.1: Fun(n: Int): Int = closure value {}
+  export value = value.1
+}
+main {
+  let %7: Int = member tally.start
+  let %8: Int = call tally.add(3)
+  let %9: Int = call tally.add(4)
+  let %10: Int = call tally.total()
+  let addTwice.1: Fun(n: Int): Int = closure addTwice {}
+  let %11: Int = call addTwice.1(10)
+  let %12: Int = call tally.total()
+  let k: counter.T = call counter.make(4)
+  let %13: counter.T = call counter.next(k)
+  let %14: Int = call counter.get(%13)
+  let m: Module 'counter' = module counter
+  let %15: Fun(c: counter.T): Int = record_field(m, get)
+  let %16: Fun(n: Int): counter.T = record_field(m, make)
+  let %17: counter.T = call %16(9)
+  let %18: Int = call %15(%17)
+  let %19: Int = call absolute.value(-7)
+}
+

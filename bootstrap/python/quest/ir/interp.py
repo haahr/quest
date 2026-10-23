@@ -86,13 +86,26 @@ class IRInterpreterError(Exception):
 
 
 class _Frame:
-    __slots__ = ("parent", "values", "types")
+    __slots__ = ("parent", "values", "types", "top")
 
     def __init__(self, parent: Optional[_Frame], types: Optional[dict[int, QType]] = None) -> None:
         self.parent = parent
         self.values: dict[int, Any] = {}
         # The type arguments of the type parameters (by symbol id) of the functions being run
         self.types: dict[int, QType] = types if types is not None else {}
+        # The frame of the top level (the main body, or a module's initializer) this frame runs in: the parent of
+        # lifted functions' frames, which see only its globals
+        self.top: _Frame = parent.top if parent is not None else self
+
+    def peek(self, var: ir.Var) -> Any:
+        """The value a variable holds, _UNBOUND if it is declared and not yet bound."""
+        key = id(var)
+        frame: Optional[_Frame] = self
+        while frame is not None:
+            if key in frame.values:
+                return frame.values[key]
+            frame = frame.parent
+        raise IRInterpreterError(f"variable '{var.hint}' is not bound")
 
     def lookup(self, var: ir.Var) -> Any:
         key = id(var)
@@ -155,17 +168,19 @@ class _Closure(QBuiltinFun):
     It is a built-in function to the source interpreter, so that library functions written in Quest can call it."""
 
     def __init__(self, interp: Interpreter, function: ir.Function, frame: _Frame,
-                 type_bindings: Optional[dict[int, QType]] = None) -> None:
+                 type_bindings: Optional[dict[int, QType]] = None, env: Optional[list[QValue]] = None) -> None:
         super().__init__(function.var.hint, lambda *args: interp.apply(self, list(args)))
         self.function = function
         self.frame = frame
         self.type_bindings: dict[int, QType] = dict(type_bindings or {})
+        # After closure conversion, the values the closure captured
+        self.env = env
 
     def instantiate(self, interp: Interpreter, type_args: tuple[QType, ...]) -> _Closure:
         unbound = [tp.symbol_id for tp in self.function.type_params if tp.symbol_id not in self.type_bindings]
         bindings = dict(self.type_bindings)
         bindings.update(zip(unbound, type_args))
-        return _Closure(interp, self.function, self.frame, bindings)
+        return _Closure(interp, self.function, self.frame, bindings, self.env)
 
     def to_str(self, visited: Optional[set[int]] = None) -> str:
         return f"<fun:{self.function.var.hint}>"
@@ -178,6 +193,9 @@ class Interpreter:
         # The unit's modules and those it imports (by identity), as records of their members
         self.modules: dict[int, QValue] = {}
         self.declared: set[int] = set()
+        # For each let rec being run, the captures of closures made in it of variables it has yet to bind: (the
+        # closure's captured values, the index, the variable, the let rec's frame)
+        self.fixups: list[list[tuple[list[QValue], int, ir.Var, _Frame]]] = []
 
     # Units
 
@@ -252,6 +270,8 @@ class Interpreter:
         match callee:
             case _Closure(function=f):
                 frame = _Frame(callee.frame, dict(callee.type_bindings))
+                if f.env is not None:
+                    frame.values[id(f.env)] = callee.env
                 for (param, _mode), arg in zip(f.params, args):
                     frame.values[id(param)] = arg
                 signal = self.body(f.body, frame)
@@ -326,6 +346,10 @@ class Interpreter:
                 return self.member(module, member)
             case ir.Builtin(name=name):
                 return self.root.lookup(name)
+            case ir.MakeClosure(code=code, captures=captures, type_args=type_args):
+                return self.make_closure(code, captures, type_args, frame)
+            case ir.EnvField(env=env, index=index):
+                return self.atom(env, frame)[index]
             case ir.External(symbol=symbol):
                 from quest.builtins import BuiltinModuleRegistry
 
@@ -411,6 +435,19 @@ class Interpreter:
         if op == "\\/":
             return TRUE_VALUE if (a.value or b.value) else FALSE_VALUE
         raise IRInterpreterError(f"primitive '{op}'")
+
+    def make_closure(self, code: ir.Function, captures, type_args, frame: _Frame) -> _Closure:
+        """A closure of a lifted function, whose frames see only the globals of the top level that makes it."""
+        values: list[QValue] = []
+        for i, a in enumerate(captures):
+            if isinstance(a, ir.Var) and frame.peek(a) is _UNBOUND and self.fixups:
+                # A variable of an enclosing let rec, bound once its body has run
+                self.fixups[-1].append((values, i, a, frame))
+                values.append(_UNBOUND)
+            else:
+                values.append(self.atom(a, frame))
+        bindings = {tp.symbol_id: frame.resolve(t) for tp, t in zip(code.type_params, type_args)}
+        return _Closure(self, code, frame.top, bindings, values)
 
     def make_tuple(self, values: list[QValue], type_components, result: ir.Var, frame: _Frame) -> QTuple:
         """A tuple laid out as the source interpreter lays it out: its type components are elements too (type
@@ -520,8 +557,22 @@ class Interpreter:
             case ir.Funs(functions=functions):
                 for f in functions:
                     frame.values[id(f.var)] = _Closure(self, f, frame)
-            case ir.LetRec(body=body):
-                return self.body(body, frame)
+            case ir.LetRec(vars=vars_, body=body):
+                for v in vars_:
+                    self.declared.add(id(v))
+                    frame.values[id(v)] = _UNBOUND
+                self.fixups.append([])
+                try:
+                    signal = self.body(body, frame)
+                finally:
+                    fixups = self.fixups.pop()
+                for values, i, var, var_frame in fixups:
+                    if var_frame.peek(var) is _UNBOUND and self.fixups:
+                        # A variable of an enclosing let rec
+                        self.fixups[-1].append((values, i, var, var_frame))
+                    else:
+                        values[i] = var_frame.lookup(var)
+                return signal
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
                 return self.body(then_body if self.atom(cond, frame).value else else_body, frame)
             case ir.Switch(value=value, cases=cases, else_body=else_body):
