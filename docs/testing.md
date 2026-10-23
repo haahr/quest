@@ -162,6 +162,16 @@ output; regenerate them with `python tests/astprint/generate.py` after changing 
 tests/astprint/generate.py --check` (add `--c` to compile to C) checks every parseable `.quest` file in the
 repository, in about a minute.
 
+**Conversion matrix:** `tests/conversions/generate.py` writes the programs in `tests/source/conversions`, one per place
+compiled code converts values between representations (polymorphic calls, first-class polymorphic values, type
+applications, closures, shapes as type arguments, dynamic values, subsumption, stores, identity), each exercising
+every shape over a type parameter (tuples, options, records, variants, arrays, closures, recursive types) at scalar,
+record, variant, and tuple type arguments ([ir.md](ir.md) §12, step 0). Goldens come from the interpreter. Cells
+listed in the generator's `KNOWN_FAILURES` go into `*_known_failures.quest`, which skips the compiled phase, each
+with its reason; cells in `REJECTED` are compile-time errors of C generation, checked by
+`tests/python/test_conversion_rejections.py`. After changing the generator, run `python tests/conversions/generate.py`
+and then `python run_tests.py -k conversions/ --update-golden`.
+
 **Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
 type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables
 every check. See `bootstrap/python/quest/shadow.py`.

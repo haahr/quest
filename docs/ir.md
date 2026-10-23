@@ -417,7 +417,9 @@ step 6.
           x
       end;
   ```
-- **A generated conversion matrix.** A checked-in script writes one program per place values convert (polymorphic
+- **A generated conversion matrix.** *Done* (`tests/conversions/generate.py`, [testing.md](testing.md)). It found two
+  bugs, both fixed: generic code read record fields of a type parameter wrongly when the record stored a record or
+  variant there natively, and specializations keyed by types crashed C generation. A checked-in script writes one program per place values convert (polymorphic
   call arguments and results, annotated bindings and subsumption, field and array stores, closure and
   type-application thunks, `inspect` arms, `dynamic.be`, record fields stored at a subtype) into
   `tests/source/conversions/`, each marked as generated, covering the type shapes (scalars, tuples, options, records
