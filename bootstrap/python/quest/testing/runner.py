@@ -157,8 +157,8 @@ def golden_dir_for_phase(phase_name: str) -> Path:
 
 def error_dir_for_phase(phase_name: str) -> Path:
     # The IR keeps no source offsets, so the IR interpreter's run-time errors are not located; the run error tests
-    # (whose diagnostics are compared) are not run through it
-    if phase_name in ("interpret", "run_c_compiled"):
+    # (whose diagnostics are compared) are not run through it. Compiled code reports its run-time errors itself.
+    if phase_name in ("interpret", "run_c_compiled", "run_c_ir"):
         return TESTS_ERRORS_DIR / "run"
     return TESTS_ERRORS_DIR / phase_name
 
@@ -358,11 +358,12 @@ def main() -> int:
         *IR_RUN_PHASES,
         "interpret",
         "run_c_compiled",
+        "run_c_ir",
     ]
 
     arg_parser = argparse.ArgumentParser(description="Run Quest compiler tests (golden outputs and error suites).")
     arg_parser.add_argument(
-        "--phase", choices=available_phases + ["all", "run_c_ir"], default="all", help="Compiler phase to test."
+        "--phase", choices=available_phases + ["all"], default="all", help="Compiler phase to test."
     )
     arg_parser.add_argument(
         "--suite",
@@ -449,7 +450,6 @@ def run_all_tests(
     # Fallback to sys.executable if specified python does not exist
     python_executable = args.python if os.path.exists(args.python) else sys.executable
 
-    # The IR's C backend (run_c_ir) is run when asked for, until it compiles every test (docs/ir.md §12, step 5)
     phases_to_run = available_phases if args.phase == "all" else [args.phase]
 
     total_golden = 0

@@ -322,29 +322,42 @@ the function and its type arguments).
 
 ### 8.3. Represent
 
-Assigns every binder a representation (§4.2) and inserts `convert` wherever a value's representation or layout
-differs from the one its use requires. This is the single conversion operation:
+`ir/represent.py`. A binder's representation is its type's C representation (`codegen/c_types.py`), so the pass
+inserts `convert` wherever a value's representation or layout differs from the one its use requires. This is the
+single conversion operation:
 
 ```
 let y: Box(Bool) = convert(x, plan)
 ```
 
-The plan is computed once per (source, target, context) and memoized; the context says why the value converts:
-plain subsumption, or passing to (or returning from) a polymorphic callee whose generic layout is described by the
-callee's type and the call's instantiation. Plan steps:
+The uses that require representations: a let's copy, an assignment, a return, a jump's argument, and a store take
+the type of what they bind, assign, return, pass to, or store into; a call's argument its callee's parameter type,
+and its result comes in its callee's result type; a component of a tuple, record, variant, option, or array being
+made its component's type, and one read comes in the type its aggregate gives it. A member of one of the unit's
+modules is called (or read) from outside at its interface's types and converts to the module's own at the boundary.
+A polymorphic call's argument converts first to its parameter's type at the type arguments (a record viewed at the
+type argument), then to the parameter's generic representation, in the context of the call's instantiation (and its
+result back the same way); a `var` or `out` argument whose location is laid out differently from its parameter is
+passed as a temporary of the parameter's representation (a shadow cell), copied in for `var` and out to the location
+after the call. An auto value's payload is stored in the auto type's witness-independent layout, its type
+component's values at their own type (inspect reads them by the stored descriptor). Plans (`plan`):
 
-| Step | Meaning |
+| Plan | Meaning |
 |---|---|
-| `same` | no change |
-| `box`, `unbox` | between a native scalar, pointer, record, or variant and its `word` form |
-| `bound_view` | between a bounded type parameter's own view and its bound's |
-| `record_view(target)` | re-view a record with the target's offset table |
-| `variant_tags(map)` | remap tags, only when the variants' cases differ |
+| none | used as it is |
+| `box`, `unbox` | between a native scalar, pointer, record, or variant and its QVal word |
+| `record_view` | a record viewed at a supertype, with its offset table (from the runtime map) |
+| `variant_tags` | a variant's tag remapped by the static table of a subtype pair, when the cases' order differs |
+| `view` | a variant or option converted by the runtime from a bounded type parameter's view at its bound to another type's |
 | `cast` | a pointer to an aggregate whose layouts agree in memory, viewed through the other struct |
-| `copy(steps...)` | build a new tuple or option, converting each component by its own plan |
-| `runtime(from, to)` | `quest_convert` with both descriptors: recursive types, and layouts known only at run time |
-| `adapt(param plans, result plan)` | wrap a closure in a thunk converting its arguments and result |
-| `reject` | a conversion that would copy mutable data laid out differently: a compile-time error |
+| `copy` | a new tuple, each component converted by its own plan |
+| `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call |
+| `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
+| rejected | a conversion that would copy mutable data laid out differently: a compile-time error (`RejectedConversion`) |
+
+Function types are compared with the target's type parameters renamed to the source's, and recursive ones
+coinductively. A value of a type parameter bounded by a record, variant, or option is held viewed at its bound, so it
+converts to that view whatever the layouts.
 
 Static decisions (whether layouts agree, whether a copy would lose updates) are made by `generic_layout_agrees` and
 `generic_layout_copies_mutable_data` in `codegen/c_types.py`, which a differential test checks against the runtime's
@@ -360,7 +373,12 @@ the conversion matrix (§12, step 0) tests it, so that the rule is checked rathe
 
 ### 8.4. Materialize descriptors
 
-§7.
+§7. *Done in the C printer, rather than as a stage of its own:* a run-time type's descriptor is printed where it is
+used, keyed by symbol (a type parameter's, the descriptor parameter of its function or of the closure's environment
+that captured it; a closed type's static one; a type mentioning type parameters in scope, its template instantiated
+with theirs; the generic layout of a polymorphic callee's type, its template with a hole for each of the callee's
+type parameters, instantiated with the type arguments'). A separate pass would only rename the same decisions; the
+native backend, which has no C printer to make them, can add one.
 
 ### 8.5. Print C
 
@@ -384,8 +402,8 @@ builds its own SSA and optimizes.
 | **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (step 1), as abstract types of modules are type variables too |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
-| **Represented** | §8.3 | every binder has a representation; every operation's atoms have the representations it requires; conversions only through `convert` |
-| **Descriptors** | §8.4 | no type parameters or type arguments remain; every run-time type is a `descriptor` value |
+| **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to); conversions only through `convert` |
+| (Descriptors) | §8.4 | not a stage: the C printer makes descriptors as it prints (§8.4) |
 
 The verifier runs after every pass when `QUEST_CHECK_IR=1`, which the test runners set (like
 `QUEST_CHECK_CANONICAL`); production builds skip it.
@@ -594,6 +612,16 @@ step 6.
   passes came of it: a clone's type is made from its parameters (a function's variable may be typed with other
   quantifier symbols than its type parameters), and a closure capturing only the enclosing functions' type
   parameters has an environment for their descriptors. 115 of the 159 programs compile and run.
+- *Slice 3 done, and step 5 with it:* polymorphism. Plans in a call's layout context (`runtime` conversions
+  between native and generic layouts by descriptor templates, casts where they agree, rejection where a copy would
+  lose updates), descriptor templates for types mentioning type parameters in scope, closure adapters (`adapt`
+  thunks), `type_app` (a closure binding the type arguments' descriptors, converting arguments and result; or a
+  polymorphic value's instance), shadow cells for `var` and `out` arguments of generic parameters, bounded type
+  parameters held viewed at their bounds (`view` back from the bound), and auto values and `inspect`. Represent is
+  a stage of its own (`ir_represented`, run and verified on every test, with goldens for 16 programs). Every golden
+  program and every run error test compiles and runs through the IR backend, and `run_c_ir` is part of the default
+  run. The conversion matrix's known identity failures (`identity_known_failures`) are skipped for it as for the
+  current emitter: copies change identity in both.
 
 **Step 6: Switch and delete.**
 - Make the IR backend the default; compare emission time and C size with the step 0 baseline.

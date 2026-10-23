@@ -1,0 +1,255 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+fun s(text: String): Ok {
+  let %66: writer.T = member writer.output
+  let %67: String = prim <>(text, "\n")
+  let %68: Ok = call writer.putString(%66, %67)
+  return %68
+}
+fun show(x: Big): String {
+  join k1(r.3: String) {
+    return r.3
+  } in {
+    switch tag(x) {
+      case a (n: Int): {
+        let %69: String = call conv.int(n)
+        jump k1(%69)
+      }
+      case b (t.3: String): {
+        jump k1(t.3)
+      }
+      case c (f: Bool): {
+        let %70: String = call conv.bool(f)
+        jump k1(%70)
+      }
+    }
+  }
+}
+fun mk0 [A::<: Big](x.1: A): AnyBig {
+  let a.1: A = x.1
+  let %71: Tuple a: A end = tuple(a.1)
+  let %72: AnyBig = auto[A](%71)
+  return %72
+}
+fun unbox0 [A::<: Big](b: AnyBig, default: A): A {
+  join k4(r.4: A) {
+    return r.4
+  } in {
+    inspect b {
+      case A (x.2: Tuple a: A end): {
+        let %73: A = tuple_field(x.2, 0)
+        jump k4(%73)
+      }
+      else: {
+        jump k4(default)
+      }
+    }
+  }
+}
+fun roundTrip0 [A::<: Big](x.3: A): A {
+  let %74: AnyBig = call mk [A](x.3)
+  let %75: A = call unbox [A](%74, x.3)
+  return %75
+}
+fun mkObj0 [A::<: Object](x.4: A): AnyObject {
+  let a.2: A = x.4
+  let %76: Tuple a: A end = tuple(a.2)
+  let %77: AnyObject = auto[A](%76)
+  return %77
+}
+fun unboxObj0 [A::<: Object](b.1: AnyObject, default.1: A): A {
+  join k6(r.5: A) {
+    return r.5
+  } in {
+    inspect b.1 {
+      case A (x.5: Tuple a: A end): {
+        let %78: A = tuple_field(x.5, 0)
+        jump k6(%78)
+      }
+      else: {
+        jump k6(default.1)
+      }
+    }
+  }
+}
+fun id0 [A::<: Big](x.6: A): A {
+  return x.6
+}
+fun showSmall(x.7: Small): String {
+  join k7(r.6: String) {
+    return r.6
+  } in {
+    switch tag(x.7) {
+      case b (t.4: String): {
+        jump k7(t.4)
+      }
+      case c (f.1: Bool): {
+        let %79: String = call conv.bool(f.1)
+        jump k7(%79)
+      }
+    }
+  }
+}
+fun same0 [A::<: Object](x.8: A): A {
+  return x.8
+}
+fun viaGeneric0 [B::<: Small](y: B): B {
+  let y.1: A = convert(y, variant_tags)
+  let %80: A = call id [B](y.1)
+  let %81: B = convert(%80, view)
+  let %82: B = %81
+  return %82
+}
+main {
+  let s.1: Fun(text: String): Ok = closure s {}
+  let show.1: Fun(x: Big): String = closure show {}
+  let small: Small = variant(c, true)
+  let other: Small = variant(b, "other")
+  let mk0.1: All(A <: Big) Fun(x: A): AnyBig = closure mk0 {}
+  let mk: All(A <: Big) Fun(x: A): AnyBig = mk0.1
+  join k2(r: String) {
+    do call s.1(r)
+    join k3(r.1: String) {
+      do call s.1(r.1)
+      let unbox0.1: All(A <: Big) Fun(b: AnyBig default: A): A = closure unbox0 {}
+      let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = unbox0.1
+      let a: Small = small
+      let %1: Tuple a: Small end = tuple(a)
+      let payload: Tuple a: A end = convert(%1, cast)
+      let direct: AnyBig = auto[Small](payload)
+      let other.1: A = convert(other, variant_tags)
+      let %2: A = call unbox [Small](direct, other.1)
+      let %3: Small = convert(%2, view)
+      let %4: Small = %3
+      let %5: Variant a: Int b: String c: Bool end = convert(%4, variant_tags)
+      let %6: String = call show.1(%5)
+      do call s.1(%6)
+      let %7: Big = variant(a, 0)
+      let %8: Big = call unbox [Big](direct, %7)
+      let %9: String = call show.1(%8)
+      do call s.1(%9)
+      let small.1: A = convert(small, variant_tags)
+      let %10: AnyBig = call mk [Small](small.1)
+      let other.2: A = convert(other, variant_tags)
+      let %11: A = call unbox [Small](%10, other.2)
+      let %12: Small = convert(%11, view)
+      let %13: Small = %12
+      let %14: Variant a: Int b: String c: Bool end = convert(%13, variant_tags)
+      let %15: String = call show.1(%14)
+      do call s.1(%15)
+      let roundTrip0.1: All(A <: Big) Fun(x: A): A = closure roundTrip0 {}
+      let roundTrip: All(A <: Big) Fun(x: A): A = roundTrip0.1
+      let small.2: A = convert(small, variant_tags)
+      let %16: A = call roundTrip [Small](small.2)
+      let %17: Small = convert(%16, view)
+      let %18: Small = %17
+      let %19: Variant a: Int b: String c: Bool end = convert(%18, variant_tags)
+      let %20: String = call show.1(%19)
+      do call s.1(%20)
+      let other.3: A = convert(other, variant_tags)
+      let %21: A = call roundTrip [Small](other.3)
+      let %22: Small = convert(%21, view)
+      let %23: Small = %22
+      let %24: Variant a: Int b: String c: Bool end = convert(%23, variant_tags)
+      let %25: String = call show.1(%24)
+      do call s.1(%25)
+      let mkObj0.1: All(A <: Object) Fun(x: A): AnyObject = closure mkObj0 {}
+      let mkObj: All(A <: Object) Fun(x: A): AnyObject = mkObj0.1
+      let car: Car = record(age = 3, fuel = "diesel")
+      join k5(r.2: String) {
+        do call s.1(r.2)
+        let unboxObj0.1: All(A <: Object) Fun(b: AnyObject default: A): A = closure unboxObj0 {}
+        let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = unboxObj0.1
+        let car.1: A = convert(car, runtime)
+        let %26: AnyObject = call mkObj [Car](car.1)
+        let %27: Record age: Int fuel: String end = record(age = 0, fuel = "none")
+        let %28: A = convert(%27, runtime)
+        let %29: A = call unboxObj [Car](%26, %28)
+        let %30: Car = convert(%29, runtime)
+        let %31: Car = %30
+        let %32: String = record_field(%31, fuel)
+        do call s.1(%32)
+        let car.2: A = convert(car, runtime)
+        let %33: AnyObject = call mkObj [Car](car.2)
+        let %34: Record age: Int end = record(age = 0)
+        let %35: A = convert(%34, runtime)
+        let %36: A = call unboxObj [Object](%33, %35)
+        let %37: Object = convert(%36, runtime)
+        let %38: Object = %37
+        let %39: Int = record_field(%38, age)
+        let %40: String = call conv.int(%39)
+        do call s.1(%40)
+        let id0.1: All(A <: Big) Fun(x: A): A = closure id0 {}
+        let id: All(A <: Big) Fun(x: A): A = id0.1
+        let showSmall.1: Fun(x: Small): String = closure showSmall {}
+        let small.3: A = convert(small, variant_tags)
+        let %41: A = call id [Small](small.3)
+        let %42: Small = convert(%41, view)
+        let %43: Small = %42
+        let %44: String = call showSmall.1(%43)
+        do call s.1(%44)
+        let other.4: A = convert(other, variant_tags)
+        let %45: A = call id [Small](other.4)
+        let %46: Small = convert(%45, view)
+        let %47: Small = %46
+        let %48: Variant a: Int b: String c: Bool end = convert(%47, variant_tags)
+        let %49: String = call show.1(%48)
+        do call s.1(%49)
+        let same0.1: All(A <: Object) Fun(x: A): A = closure same0 {}
+        let same: All(A <: Object) Fun(x: A): A = same0.1
+        let car.3: A = convert(car, runtime)
+        let %50: A = call same [Car](car.3)
+        let %51: Car = convert(%50, runtime)
+        let %52: Car = %51
+        let %53: String = record_field(%52, fuel)
+        do call s.1(%53)
+        let viaGeneric0.1: All(B <: Small) Fun(y: B): B = closure viaGeneric0 {}
+        let viaGeneric: All(B <: Small) Fun(y: B): B = viaGeneric0.1
+        let %54: Small = call viaGeneric [Small](small)
+        let %55: String = call showSmall.1(%54)
+        do call s.1(%55)
+      } in {
+        let car.4: A = convert(car, runtime)
+        let %56: AnyObject = call mkObj [Car](car.4)
+        inspect %56 {
+          case Car (t: Tuple a: Car end): {
+            let %57: Car = tuple_field(t, 0)
+            let %58: String = record_field(%57, fuel)
+            jump k5(%58)
+          }
+          else: {
+            jump k5("no")
+          }
+        }
+      }
+    } in {
+      let small.4: A = convert(small, variant_tags)
+      let %59: AnyBig = call mk [Small](small.4)
+      inspect %59 {
+        case Big (t.1: Tuple a: Big end): {
+          let %60: Big = tuple_field(t.1, 0)
+          let %61: String = call show.1(%60)
+          jump k3(%61)
+        }
+        else: {
+          jump k3("no")
+        }
+      }
+    }
+  } in {
+    let small.5: A = convert(small, variant_tags)
+    let %62: AnyBig = call mk [Small](small.5)
+    inspect %62 {
+      case Small (t.2: Tuple a: Small end): {
+        let %63: Small = tuple_field(t.2, 0)
+        let %64: Variant a: Int b: String c: Bool end = convert(%63, variant_tags)
+        let %65: String = call show.1(%64)
+        jump k2(%65)
+      }
+      else: {
+        jump k2("no")
+      }
+    }
+  }
+}
+

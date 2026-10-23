@@ -350,6 +350,9 @@ class Interpreter:
                 return self.make_closure(code, captures, type_args, frame)
             case ir.EnvField(env=env, index=index):
                 return self.atom(env, frame)[index]
+            case ir.Convert(value=v):
+                # A change of representation, which values here do not have
+                return self.atom(v, frame)
             case ir.External(symbol=symbol):
                 from quest.builtins import BuiltinModuleRegistry
 

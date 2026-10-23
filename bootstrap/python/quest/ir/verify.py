@@ -18,6 +18,10 @@ After closure conversion (the closed stage), also: no funs statement remains; ev
 functions; and those functions use only their parameters, their environment, and the unit's globals (the variables
 its top levels bind outside loops).
 
+After the represent pass (the represented stage), also: every value is used in the representation its use requires
+(a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C
+representations of what they bind, assign, return, or pass to), the conversions between being convert operations.
+
 verify_unit returns the problems found; check_unit raises if there are any. The verifier runs when
 QUEST_CHECK_IR=1, which the test runners set.
 """
@@ -285,10 +289,68 @@ def verify_unit(unit: ir.Unit) -> list[str]:
         globals_scope = _Scope(frozenset(global_variables(unit)))
         for f in unit.functions:
             v.function(f, globals_scope)
+    if unit.at_least("represented"):
+        v.problems.extend(_representation_problems(unit))
     # A declared exception made only on a path the lowering never reached would be left unbound
     if v.declared:
         v.problem(f"{len(v.declared)} declared variable(s) never bound")
     return v.problems
+
+
+def _representation_problems(unit: ir.Unit) -> list[str]:
+    """The uses of values in another representation than their use requires, after the represent pass."""
+    from quest.ir.represent import c_type, fun_signature
+    from quest.ir.walk import walk_statements
+    from quest.types import OK_TYPE, strip_aliases
+
+    problems: list[str] = []
+
+    def rep(t) -> Optional[str]:
+        return None if strip_aliases(t) is OK_TYPE else c_type(t)
+
+    def atom_type(a):
+        return a.type if isinstance(a, ir.Var) else a.shape.type
+
+    def expect(a, t, where: str) -> None:
+        have, want = rep(atom_type(a)), rep(t)
+        if have is not None and want is not None and have != want:
+            problems.append(f"{where}: a {have} used as a {want}")
+
+    def callee_type(call: ir.Call):
+        if call.callee is not None:
+            return call.callee.type
+        if isinstance(call.module, ir.Module):
+            return call.module.members[call.member].type
+        return call.callee_type
+
+    bodies = [(m.init, None) for m in unit.modules] + [(unit.main, None)] + [(f.body, f) for f in unit.functions]
+    for body, function in bodies:
+        where = f"function '{function.var.hint}'" if function is not None else "a top level"
+        joins: dict[str, tuple] = {}
+        for s in walk_statements(body, into_functions=False):
+            match s:
+                case ir.Join(label=label, params=params):
+                    joins[label] = params
+                case ir.Let(var=var, value=ir.Var() | ir.Const() as a):
+                    expect(a, var.type, f"{where}: let {var.hint}")
+                case ir.Let(value=ir.Call() as call) | ir.Do(value=ir.Call() as call):
+                    params, result_t = fun_signature(callee_type(call))
+                    for p, a in zip(params, call.args):
+                        if not (p.is_var or p.is_out):
+                            expect(a, p.type_val, f"{where}: an argument of {p.name}")
+                    if isinstance(s, ir.Let):
+                        expect(s.var, result_t, f"{where}: the result of a call")
+                case ir.VarDecl(var=var, init=init) if init is not None:
+                    expect(init, var.type, f"{where}: var {var.hint}")
+                case ir.Assign(var=var, value=value):
+                    expect(value, var.type, f"{where}: {var.hint} :=")
+                case ir.Return(value=value) if function is not None:
+                    expect(value, function.result_type, f"{where}: return")
+        for s in walk_statements(body, into_functions=False):
+            if isinstance(s, ir.Jump) and s.label in joins:
+                for p, a in zip(joins[s.label], s.args):
+                    expect(a, p.type, f"{where}: jump {s.label}")
+    return problems
 
 
 def check_unit(unit: ir.Unit) -> None:

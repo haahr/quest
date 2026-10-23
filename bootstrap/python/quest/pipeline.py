@@ -484,24 +484,20 @@ class RunIrPhase(Phase):
 
 
 class IrCodegenCPhase(Phase):
-    """The IR's C backend (docs/ir.md §12, step 5): represents the closed IR and prints it as C."""
+    """The IR's C backend (docs/ir.md §12, step 5): prints the represented IR as C."""
     name = "codegen_c_ir"
-    description = "Represent the IR and print it as C99 source code"
+    description = "Print the represented IR as C99 source code"
     artifact_name = "c_source"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
         from types import SimpleNamespace
 
         from quest.codegen.c_printer import print_c
-        from quest.ir.represent import represent_unit
-        from quest.ir.verify import check_unit, ir_checks_enabled
 
         if input_data is None:
             return None
         try:
-            unit = represent_unit(input_data)
-            if ir_checks_enabled():
-                check_unit(unit)
+            unit = input_data
             c_code = print_c(unit, ctx.env)
         except Exception as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
@@ -720,8 +716,14 @@ def _closure_convert(unit: Any) -> Any:
     return closure_convert_unit(unit)
 
 
+def _represent(unit: Any) -> Any:
+    from quest.ir.represent import represent_unit
+
+    return represent_unit(unit)
+
+
 # The IR's stages after Core (docs/ir.md §9, quest.ir.nodes.STAGES), in order, and the passes that produce them
-_IR_PASSES = (("specialized", _specialize), ("closed", _closure_convert))
+_IR_PASSES = (("specialized", _specialize), ("closed", _closure_convert), ("represented", _represent))
 IR_STAGES = ("core", *(stage for stage, _ in _IR_PASSES))
 # The IR's C backend's phases: printing C, and compiling and running it
 IR_C_PHASES = ("codegen_c_ir", "run_c_ir")

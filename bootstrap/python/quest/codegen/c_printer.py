@@ -15,6 +15,7 @@ program is compiled correctly or not at all.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from types import SimpleNamespace
 from typing import Any, Optional
@@ -30,6 +31,7 @@ from quest.codegen.c_types import (
     closure_fn_ptr_type,
     collect_fun_quantifiers,
     descriptor_form,
+    hole_var,
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
@@ -45,6 +47,7 @@ from quest.codegen.c_types import (
     qval_wrap,
     record_struct_name,
     tuple_struct_name,
+    type_identity_key,
     type_to_c_tag,
 )
 from quest.env import Scope
@@ -53,7 +56,9 @@ from quest.ir.represent import (
     _may_be_stored_as_subtype,
     array_element,
     option_type,
+    plan,
     record_type,
+    shared_signatures,
     tuple_type,
     variant_type,
 )
@@ -66,6 +71,10 @@ from quest.types import (
     INT_TYPE,
     OK_TYPE,
     REAL_TYPE,
+    QAbstractType,
+    QAutoType,
+    QPowerKind,
+    auto_payload_type,
     is_type_equal,
     QAllType,
     QFunType,
@@ -127,6 +136,10 @@ class CPrinter:
         self.lines: list[str] = []
         self.indent = 1
         self.tmp = 0
+        # The thunks printed (adapters and type applications), by what they convert
+        self.thunks: dict[tuple, Any] = {}
+        self.thunk_decls: list[str] = []
+        self.thunk_defs: list[str] = []
 
     # Names
 
@@ -174,17 +187,66 @@ class CPrinter:
         return strip_aliases(t) is OK_TYPE
 
     def descriptor(self, t: QType) -> str:
-        """The descriptor of a type: a type parameter's, passed to its function, or a closed type's static one."""
+        """The descriptor of a type: a type parameter's, passed to its function; a closed type's static one; or, for a
+        type mentioning type parameters in scope, its template (a hole for each), instantiated with theirs."""
         bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
-        if isinstance(bare, QTypeVar) and bare.symbol_id in self.descriptors:
+        if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in self.descriptors:
             return self.descriptors[bare.symbol_id]
-        if bare._fv & set(self.descriptors):
-            raise NotImplementedError(f"the descriptor of a type mentioning type parameters in scope: {t}")
-        self.types.append(t)
+        params = self.free_type_vars(bare, lambda v: v.symbol_id in self.descriptors)
+        return self.template_descriptor(bare, params, [self.descriptors[v.symbol_id] for v in params])
+
+    def template_descriptor(self, t: QType, holes: list, args: list[str]) -> str:
+        """The descriptor of t with a hole for each of holes (type variables), instantiated with args."""
+        template = t.substitute({v.symbol_id: hole_var(i, v.bound) for i, v in enumerate(holes)}) if holes else t
+        self.types.append(template)
         try:
-            return descriptor_form(bare, self.ctx).c_expr
+            form = descriptor_form(template, self.ctx)
         except MissingDescriptorError as e:
             raise NotImplementedError(f"C code generation: {e}") from None
+        if form.kind in ("base", "bound_var") or not holes:
+            return form.c_expr
+        return (
+            f"quest_instantiate_descriptor({form.c_expr}, {len(holes)}, "
+            f"(const QTypeDescriptor *const[]){{ {', '.join(args)} }})"
+        )
+
+    def generic_layout_descriptor(self, t: QType, instantiation: dict[int, QType]) -> str:
+        """The descriptor of a polymorphic callee's type t laid out as the callee lays it out at the call's type
+        arguments: its template, a hole for each of the callee's type parameters (and for each in scope), instantiated
+        with the type arguments' descriptors (and theirs)."""
+        bare = strip_aliases(t)
+        params = self.free_type_vars(bare, lambda v: v.symbol_id in instantiation)
+        in_scope = self.free_type_vars(
+            bare, lambda v: v.symbol_id in self.descriptors and v.symbol_id not in instantiation
+        )
+        args = [self.descriptor(instantiation[v.symbol_id]) for v in params]
+        args.extend(self.descriptors[v.symbol_id] for v in in_scope)
+        return self.template_descriptor(bare, params + in_scope, args)
+
+    @staticmethod
+    def free_type_vars(t: QType, wanted) -> list:
+        """The type variables occurring free in t for which wanted holds, in order of appearance."""
+        free = getattr(t, "_fv", None)
+        if not free:
+            return []
+        found: dict[int, Any] = {}
+        seen: set[int] = set()
+
+        def visit(node: Any) -> None:
+            if id(node) in seen:
+                return
+            seen.add(id(node))
+            if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in free and wanted(node):
+                found.setdefault(node.symbol_id, node)
+            if isinstance(node, (tuple, list)):
+                for item in node:
+                    visit(item)
+            elif dataclasses.is_dataclass(node) and not isinstance(node, type):
+                for f in dataclasses.fields(node):
+                    visit(getattr(node, f.name))
+
+        visit(t)
+        return list(found.values())
 
     # Output
 
@@ -307,6 +369,10 @@ class CPrinter:
                 return self.make_array(array_element(result.type), [self.atom(a) for a in args], result.type)
             case ir.ArrayRep(count=count, init=init):
                 return self.array_new(self.atom(count), self.atom(init), array_element(result.type))
+            case ir.TypeApp():
+                return self.type_app(o, result)
+            case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
+                return self.make_auto(witness, auto_t, payload)
             case ir.Index(array=a, index=i):
                 arr, idx = self.atom(a), self.atom(i)
                 self.emit(f"quest_check_array_bounds({arr}, {idx});")
@@ -330,6 +396,28 @@ class CPrinter:
                 return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
             case "cast":
                 return f"(({self.c_type(plan.target)}){c})"
+            case "view":
+                converted = f"quest_convert({qval_wrap(c, plan.source)}, {self.descriptor(plan.source)}, " \
+                            f"{self.descriptor(plan.target)})"
+                return qval_unwrap(converted, plan.target, self.ctx)
+            case "adapt":
+                thunk = self.adapter(plan)
+                clos = self.temp("QClosure *")
+                self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure));")
+                self.emit(f"{clos}->fn = (void *){thunk};")
+                self.emit(f"{clos}->env = (void *)({c});")
+                return clos
+            case "runtime":
+                instantiation, to_generic = plan.layout
+                generic_t = plan.target if to_generic else plan.source
+                native_t = generic_t.substitute(instantiation)
+                generic_d = self.generic_layout_descriptor(generic_t, instantiation)
+                native_d = self.descriptor(native_t)
+                from_t, from_d, to_t, to_d = (
+                    (native_t, native_d, generic_t, generic_d) if to_generic else (generic_t, generic_d, native_t, native_d)
+                )
+                converted = f"quest_convert({qval_wrap(c, from_t)}, {from_d}, {to_d})"
+                return qval_unwrap(converted, to_t, self.ctx)
             case "copy":
                 source, target = tuple_type(plan.source), tuple_type(plan.target)
                 src = self.temp(f"{self.c_type(plan.source)}")
@@ -340,6 +428,171 @@ class CPrinter:
                     fields.append(fc if fp is None else self.convert(fc, fp))
                 return self.make_tuple(plan.target, fields)
         raise NotImplementedError(f"conversion plan {plan.kind}")
+
+    # Thunks: closures adapted to other signatures, and polymorphic closures applied to types
+
+    def auxiliary(self):
+        """Prints an auxiliary function (a thunk) while printing another: the printing state is saved, and restored
+        on leaving the with block."""
+        printer = self
+
+        class _Saved:
+            def __enter__(self_inner):
+                self_inner.saved = (printer.fs, printer.lines, printer.indent, dict(printer.descriptors))
+                printer.fs = _FunctionState(None)
+                printer.lines = []
+                printer.indent = 1
+                return self_inner
+
+            def __exit__(self_inner, *exc):
+                printer.fs, printer.lines, printer.indent, printer.descriptors = self_inner.saved
+                return False
+
+        return _Saved()
+
+    def thunk_params(self, quants, params) -> tuple[list[str], list[str], list[str]]:
+        """A thunk's parameter declarations (after its environment), and the names of its descriptor and value
+        parameters."""
+        decls, descs, names = [], [], []
+        for k, _ in enumerate(quants):
+            descs.append(f"qd_{k}")
+            decls.append(f"const QTypeDescriptor *qd_{k}")
+        for i, p in enumerate(params):
+            names.append(f"qa_{i}")
+            c_t = "QVal" if self.is_ok(p.type_val) else self.c_type(p.type_val)
+            decls.append(f"{c_t} {'*' if p.is_var or p.is_out else ''}qa_{i}")
+        return decls, descs, names
+
+    def thunk(self, name: str, ret: str, decls: list[str], prologue: list[str]) -> None:
+        """Adds a thunk's definition, from the lines printed (in auxiliary()) and its own declarations."""
+        body = [f"    {line}" for line in prologue]
+        body.extend(f"    {c_t} {n};" for c_t, n in self.fs.locals)
+        body.extend(self.lines)
+        sig = f"static Q_UNUSED {ret} {name}({', '.join(['void *_raw_env'] + decls)})"
+        self.thunk_decls.append(sig + ";")
+        self.thunk_defs.extend([sig + " {", *body, "}", ""])
+
+    def adapter(self, plan: ir.Plan) -> str:
+        """The thunk adapting a closure of plan.source's type to plan.target's (an adapt plan)."""
+        key = ("adapt", type_identity_key(plan.source), type_identity_key(plan.target), self.layout_key(plan.layout))
+        if key in self.thunks:
+            return self.thunks[key]
+        name = self.fresh_name("qa_adapt")
+        self.thunks[key] = name
+        s_quants, _ = collect_fun_quantifiers(plan.source)
+        t_quants, t_inner = collect_fun_quantifiers(plan.target)
+        s_params, s_result, t_params, t_result = shared_signatures(plan.source, plan.target)
+        with self.auxiliary():
+            decls, descs, names = self.thunk_params(t_quants, t_params)
+            for q, d in zip(s_quants, descs):
+                self.descriptors[q.symbol_id] = d
+            for q, d in zip(t_quants, descs):
+                self.descriptors[q.symbol_id] = d
+            args = []
+            for p, n, fp in zip(t_params, names, plan.fields):
+                args.append(n if fp is None else self.convert(n, fp))
+            call = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))({', '.join(['orig->env'] + descs + args)})"
+            self.types.extend((plan.source, plan.target))
+            self.finish_thunk_call(call, s_result, t_result, plan.fields[-1])
+            ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
+            self.thunk(name, ret, decls, ["QClosure *orig = (QClosure *)_raw_env;"] + [f"(void){d};" for d in descs])
+        return name
+
+    def finish_thunk_call(self, call: str, source_result: QType, target_result: QType, result_plan) -> None:
+        if self.is_ok(target_result):
+            self.emit(f"{call};")
+            self.emit("return;")
+            return
+        if result_plan is None:
+            self.emit(f"return {call};")
+            return
+        r = self.temp(self.c_type(source_result))
+        self.emit(f"{r} = {call};")
+        self.emit(f"return {self.convert(r, result_plan)};")
+
+    @staticmethod
+    def layout_key(layout) -> tuple:
+        if layout is None:
+            return ()
+        instantiation, to_generic = layout
+        return (to_generic, tuple(sorted((k, type_identity_key(t)) for k, t in instantiation.items())))
+
+    def type_app(self, o: ir.TypeApp, result: ir.Var) -> str:
+        """A polymorphic value applied to types: a closure binding the type arguments' descriptors (converting its
+        arguments to the function's generic layouts and its result back), or, for a polymorphic value of no
+        parameters, its value at the type arguments."""
+        if o.callee is not None:
+            orig_t, clos = o.callee.type, self.atom(o.callee)
+        elif isinstance(o.module, ir.Module):
+            member = o.module.members[o.member]
+            orig_t, clos = member.type, self.atom(member)
+        else:
+            orig_t, clos = o.callee_type, self.module_member(o.module, o.member)
+        quants, inner = collect_fun_quantifiers(orig_t)
+        descs = [self.descriptor(t) for t in o.type_args]
+        instantiation = {q.symbol_id: t for q, t in zip(quants, o.type_args)}
+        self.types.extend((orig_t, result.type))
+        if not isinstance(inner, QFunType):
+            if o.callee is None and isinstance(o.module, ir.Import):
+                call = f"{mangle_module_ident(mangle_module_name(o.module.canonical_path), o.member)}({', '.join(descs)})"
+            else:
+                fn_ptr = closure_fn_ptr_type(orig_t, self.ctx)
+                call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + descs)})"
+            p = plan(inner, result.type, (instantiation, False))
+            return call if p is None else self.convert(call, p)
+        thunk, env_struct = self.type_app_thunk(orig_t, result.type, o.type_args)
+        env = self.temp(f"{env_struct} *")
+        self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}));")
+        self.emit(f"{env}->orig = {clos};")
+        for i, d in enumerate(descs):
+            self.emit(f"{env}->desc[{i}] = {d};")
+        c = self.temp("QClosure *")
+        self.emit(f"{c} = (QClosure *)quest_alloc(sizeof(QClosure));")
+        self.emit(f"{c}->fn = (void *){thunk};")
+        self.emit(f"{c}->env = (void *){env};")
+        return c
+
+    def type_app_thunk(self, orig_t: QType, target_t: QType, type_args) -> tuple[str, str]:
+        key = ("type_app", type_identity_key(orig_t), type_identity_key(target_t),
+               tuple(type_identity_key(t) for t in type_args))
+        if key in self.thunks:
+            return self.thunks[key]
+        name = self.fresh_name("qa_type_app")
+        env_struct = f"QTypeAppEnv_{name}"
+        self.thunks[key] = (name, env_struct)
+        n = len(type_args)
+        self.thunk_decls.append(
+            f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{max(n, 1)}]; }} {env_struct};"
+        )
+        o_quants, o_inner = collect_fun_quantifiers(orig_t)
+        t_quants, t_inner = collect_fun_quantifiers(target_t)
+        o_params = o_inner.params if isinstance(o_inner, QFunType) else ()
+        t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
+        o_result = o_inner.result_type if isinstance(o_inner, QFunType) else o_inner
+        t_result = t_inner.result_type if isinstance(t_inner, QFunType) else t_inner
+        # The function's type parameters: those bound stand for the type arguments, the others for the closure's own
+        instantiation = {q.symbol_id: t for q, t in zip(o_quants, type_args)}
+        for oq, tq in zip(o_quants[n:], t_quants):
+            instantiation[oq.symbol_id] = QTypeVar(name=tq.name, symbol_id=tq.symbol_id, bound=tq.bound)
+        with self.auxiliary():
+            decls, descs, names = self.thunk_params(t_quants, t_params)
+            for tq, d in zip(t_quants, descs):
+                self.descriptors[tq.symbol_id] = d
+            args = []
+            for tp, op, a in zip(t_params, o_params, names):
+                if tp.is_var or tp.is_out:
+                    args.append(a)
+                    continue
+                p = plan(tp.type_val, op.type_val, (instantiation, True))
+                args.append(a if p is None else self.convert(a, p))
+            env_descs = [f"_env->desc[{i}]" for i in range(n)]
+            call_args = ["_env->orig->env"] + env_descs + descs + args
+            call = f"(({closure_fn_ptr_type(orig_t, self.ctx)})(_env->orig->fn))({', '.join(call_args)})"
+            self.finish_thunk_call(call, o_result, t_result, plan(o_result, t_result, (instantiation, False)))
+            ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
+            self.thunk(name, ret, decls, [f"{env_struct} *_env = ({env_struct} *)_raw_env;"]
+                       + [f"(void){d};" for d in descs])
+        return name, env_struct
 
     # Aggregates (as the current emitter lays them out, docs/c-representation.md §5)
 
@@ -682,6 +935,8 @@ class CPrinter:
                 self.emit(f"{arr}->data[{idx}] = {c if self.wide(elem) else qval_wrap(c, elem)};")
             case ir.Switch(value=value, cases=cases, else_body=else_body):
                 self.switch(value, cases, else_body)
+            case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t):
+                self.inspect(value, cases, else_body, auto_t)
             case ir.LetRec(vars=vars_, body=body):
                 saved = self.deferred
                 self.deferred = ({id(v) for v in vars_}, [])
@@ -807,6 +1062,162 @@ class CPrinter:
         self.emit("}")
         self.indent -= 1
         self.emit("}")
+
+    # Auto values (docs/c-representation.md §6.4.4): a type component's descriptor and the payload, stored in the
+    # witness-independent layout, as the current emitter makes and inspects them
+
+    def bounded_param_in_scope(self, t: QType) -> Optional[QType]:
+        """The bound B of a type parameter in scope bounded by a record, variant, or option type (A <: B), which
+        generic code holds its values viewed at; None for any other type."""
+        bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
+        if not isinstance(bare, (QTypeVar, QAbstractType)) or bare.symbol_id not in self.descriptors:
+            return None
+        if not isinstance(bare.bound, QPowerKind):
+            return None
+        bound = bare.bound.bound
+        if not _may_be_stored_as_subtype(bound) or isinstance(normalize_type(bound), (QFunType, QAllType)):
+            return None
+        return bound
+
+    @staticmethod
+    def is_auto_param(auto_t: QAutoType, t: QType) -> bool:
+        bare = strip_aliases(t)
+        return isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id == auto_t.symbol_id
+
+    def make_auto(self, witness: QType, auto_t: QAutoType, payload: ir.Atom) -> str:
+        stored_t = auto_payload_type(auto_t)
+        self.types.extend((auto_t, stored_t))
+        c_payload = self.atom(payload)
+        desc = self.descriptor(witness)
+        if (bound := self.bounded_param_in_scope(witness)) is not None:
+            # Generic code holds a value of a bounded type parameter viewed at the bound; concrete code stores the
+            # type component's values at their own type, as inspect reads them, so convert them to it
+            struct = tuple_struct_name(stored_t)
+            p = self.temp(f"{struct} *")
+            self.emit(f"{p} = ({struct} *)({c_payload});")
+            for i, (sig_f, stored_f) in enumerate(zip(auto_t.signature, stored_t.value_fields)):
+                if self.is_auto_param(auto_t, sig_f.type_val):
+                    src = f"{p}->_{i}"
+                    converted = f"quest_convert({qval_wrap(src, bound)}, {self.descriptor(bound)}, {desc})"
+                    self.emit(f"{src} = {qval_unwrap(converted, stored_f.type_val, self.ctx)};")
+            c_payload = p
+        return f"quest_auto_new({desc}, {qval_wrap(c_payload, stored_t)})"
+
+    def auto_layouts_agree(self, stored_t: QTupleType, arm_t: QTupleType) -> bool:
+        """Whether a stored auto payload can be read in place through the arm's struct: each component has the same
+        representation, or is stored as a QVal holding a scalar or pointer."""
+        for stored_f, arm_f in zip(stored_t.value_fields, arm_t.value_fields):
+            stored_c, arm_c = self.c_type(stored_f.type_val), self.c_type(arm_f.type_val)
+            if stored_c == arm_c:
+                if isinstance(arm_f.type_val, (QFunType, QAllType)) and (
+                    closure_fn_ptr_type(stored_f.type_val, self.ctx) != closure_fn_ptr_type(arm_f.type_val, self.ctx)
+                ):
+                    return False
+            elif stored_c != "QVal" or arm_c in ("QRecordVal", "QVariantVal", "void"):
+                return False
+        return True
+
+    def auto_arm_converted(self, auto_t: QAutoType, stored: str, stored_t: QTupleType, arm_t: QTupleType,
+                           tgt: str, param_target: Optional[str] = None) -> str:
+        """The components S[T] of an auto value, converted by descriptor from the stored ones (those whose types
+        mention the auto type's parameter; the others copied)."""
+        arm_struct = tuple_struct_name(arm_t)
+        self.types.append(arm_t)
+        arm = self.temp(f"{arm_struct} *")
+        self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
+        for i, (sig_f, stored_f, arm_f) in enumerate(zip(auto_t.signature, stored_t.value_fields, arm_t.value_fields)):
+            src = f"{stored}->_{i}"
+            if auto_t.symbol_id not in sig_f.type_val._fv:
+                self.emit(f"{arm}->_{i} = {src};")
+                continue
+            to_desc = self.descriptor(arm_f.type_val)
+            if self.is_auto_param(auto_t, sig_f.type_val):
+                from_desc = f"{tgt}->type_desc"
+                if param_target is not None:
+                    to_desc = param_target
+            else:
+                saved = dict(self.descriptors)
+                self.descriptors[auto_t.symbol_id] = f"{tgt}->type_desc"
+                try:
+                    from_desc = self.descriptor(stored_f.type_val)
+                finally:
+                    self.descriptors = saved
+            as_qval = src if self.c_type(stored_f.type_val) == "QVal" else qval_wrap(src, stored_f.type_val)
+            viewed = f"quest_convert({as_qval}, {from_desc}, {to_desc})"
+            self.emit(f"{arm}->_{i} = {qval_unwrap(viewed, arm_f.type_val, self.ctx)};")
+        return arm
+
+    def inspect(self, value: ir.Atom, cases, else_body: Optional[ir.Body], auto_t: QAutoType) -> None:
+        stored_t = auto_payload_type(auto_t)
+        stored_struct = tuple_struct_name(stored_t)
+        self.types.extend((auto_t, stored_t))
+        tgt = self.temp("const QAuto *")
+        self.emit(f"{tgt} = {self.atom(value)};")
+        stored = self.temp(f"{stored_struct} *")
+        self.emit(f"{stored} = ({stored_struct} *){tgt}->payload.p;")
+        for i, case in enumerate(cases):
+            match_desc = self.descriptor(case.match_type)
+            cond = f"quest_is_subtype({tgt}->type_desc, {match_desc})"
+            if case.exact:
+                cond = f"{cond} && quest_is_subtype({match_desc}, {tgt}->type_desc)"
+            self.emit(f"{'if' if i == 0 else '} else if'} ({cond}) {{")
+            self.indent += 1
+            match_bound = self.bounded_param_in_scope(case.match_type)
+            if case.binders:
+                arm_t = auto_payload_type(auto_t, case.match_type)
+                if match_bound is not None:
+                    if any(f.is_var for f in auto_t.signature):
+                        raise NotImplementedError(
+                            f"C code generation cannot inspect an auto value of type '{auto_t}' at the bounded type "
+                            f"parameter '{case.match_type}': its components are converted to the bound, so the var "
+                            f"components could not be shared with the auto value"
+                        )
+                    arm = self.auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt, self.descriptor(match_bound))
+                elif case.exact:
+                    agree = self.auto_layouts_agree(stored_t, arm_t)
+                    if not agree and any(f.is_var for f in auto_t.signature):
+                        raise NotImplementedError(
+                            f"C code generation cannot inspect an auto value of type '{auto_t}' at type "
+                            f"'{case.match_type}': its components need conversion, so the var components could not be "
+                            f"shared with the auto value"
+                        )
+                    arm_struct = tuple_struct_name(arm_t)
+                    self.types.append(arm_t)
+                    arm = self.temp(f"{arm_struct} *")
+                    self.emit(f"if (quest_layout_equivalent({tgt}->type_desc, {match_desc})) {{")
+                    if agree:
+                        # The binders share the stored components (and so see updates of var components)
+                        self.emit(f"    {arm} = ({arm_struct} *){stored};")
+                    else:
+                        p = plan(stored_t, arm_t)
+                        self.indent += 1
+                        self.emit(f"{arm} = {stored if p is None else self.convert(stored, p)};")
+                        self.indent -= 1
+                    self.emit("} else {")
+                    self.indent += 1
+                    if any(f.is_var for f in auto_t.signature):
+                        self.emit(f"quest_layout_conversion_error({tgt}->type_desc, {match_desc});")
+                    converted = self.auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt)
+                    self.emit(f"{arm} = {converted};")
+                    self.indent -= 1
+                    self.emit("}")
+                else:
+                    arm = self.auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt)
+                for b in case.binders:
+                    p = plan(arm_t, b.type)
+                    self.assign(b, arm if p is None else self.convert(arm, p))
+            self.body(case.body)
+            self.indent -= 1
+        if cases:
+            self.emit("} else {")
+            self.indent += 1
+        if else_body is not None:
+            self.body(else_body)
+        else:
+            self.emit("quest_raise_dynamic_error();")
+        if cases:
+            self.indent -= 1
+            self.emit("}")
 
     def atom_type(self, a: ir.Atom) -> QType:
         return a.type if isinstance(a, ir.Var) else a.shape.type
@@ -973,7 +1384,10 @@ class CPrinter:
             out.append(f"static QRecordVal {module_record_ident(clean)};")
             out.append(f"static bool qv_mod_{clean}_initialized = false;")
         out.append("")
+        out.extend(self.thunk_decls)
+        out.append("")
         out.extend(functions)
+        out.extend(self.thunk_defs)
         out.extend(module_inits)
         out.append("int main(int argc, char **argv) {")
         out.append("    quest_gc_init();")

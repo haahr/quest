@@ -139,12 +139,18 @@ class Plan:
     """How `convert` changes a value's representation (docs/ir.md §8.3), from `source`'s to `target`'s: `box` (a
     native value to a QVal word, as generic code holds it) or `unbox` (back); `record_view` (a record viewed at a
     supertype, with that type's offset table); `variant_tags` (a variant's tag remapped to a supertype's); `cast` (a
-    tuple viewed through another struct, whose layout agrees); `copy` (a new tuple, each component converted by its
-    plan in `fields`, None where it is used as it is)."""
+    pointer viewed through another struct, whose layout agrees); `copy` (a new tuple, each component converted by its
+    plan in `fields`, None where it is used as it is); `runtime` (converted by the runtime, between the descriptors of
+    the two layouts, for a value passed to or returned from a polymorphic callee that lays it out generically: the
+    callee's type parameters' instantiation, and whether the value goes to the generic layout, are `layout`); `adapt`
+    (a closure wrapped in a thunk of the target's C signature converting arguments and result: `fields` are the
+    parameters' plans, then the result's); `view` (a variant or option converted by the runtime between two views'
+    descriptors, from a bounded type parameter's view at its bound to another)."""
     kind: str
     source: QType
     target: QType
     fields: tuple[Optional[Plan], ...] = ()
+    layout: Optional[tuple[dict[int, QType], bool]] = None
 
 
 @dataclass(eq=False)

@@ -1,0 +1,91 @@
+fun succ(x: Int): Int {
+  let %21: Int = prim +(x, 1)
+  return %21
+}
+fun succInferred(x.1: Int): Int {
+  let %22: Int = prim +(x.1, 1)
+  return %22
+}
+fun scale(a: Int, b: Real): Real {
+  let %23: Real = prim **(b, 2.0)
+  return %23
+}
+fun inc(var count: Int): Ok {
+  let %24: Int = prim +(count, 1)
+  count := %24
+  return ok
+}
+fun getDog(out d: Dog): Ok {
+  let %25: Record name: String breed: String end = record(name = "Rex", breed = "collie")
+  d := %25
+  return ok
+}
+fun viaClosure(): String {
+  let getter: Fun(out d: Dog): Ok = getDog.1
+  let %26: Record name: String end = record(name = "cat")
+  var local: Animal = %26
+  let %27: Var(Animal) = addr local
+  var cell.1: Record name: String breed: String end
+  let %28: Out(Record name: String breed: String end) = addr cell.1
+  do call getter(%28)
+  let %29: Record name: String breed: String end = cell.1
+  let %30: Animal = convert(%29, record_view)
+  store *%27 := %30
+  let %31: String = record_field(local, name)
+  return %31
+}
+fun id [X::TYPE](x.2: X): X {
+  return x.2
+}
+fun factorial(n: Int): Int {
+  join k1(r: Int) {
+    return r
+  } in {
+    let %32: Bool = prim is(n, 0)
+    if %32 {
+      jump k1(1)
+    } else {
+      let %33: Int = prim -(n, 1)
+      let %34: Int = call factorial.1(%33)
+      let %35: Int = prim *(n, %34)
+      jump k1(%35)
+    }
+  }
+}
+main {
+  let succ.1: Fun(x: Int): Int = closure succ {}
+  let succInferred.1: Fun(x: Int): Int = closure succInferred {}
+  let %1: Int = call succ.1(41)
+  let %2: Int = call succInferred.1(41)
+  let scale.1: Fun(a: Int b: Real): Real = closure scale {}
+  let %3: Real = call scale.1(10, 2.5)
+  let inc.1: Fun(var count: Int): Ok = closure inc {}
+  var c: Int = 5
+  let %4: Var(Int) = addr c
+  do call inc.1(%4)
+  let getDog.1: Fun(out d: Dog): Ok = closure getDog {}
+  let %5: Record name: String end = record(name = "cat")
+  var pet: Animal = %5
+  let %6: Var(Animal) = addr pet
+  var cell: Record name: String breed: String end
+  let %7: Out(Record name: String breed: String end) = addr cell
+  do call getDog.1(%7)
+  let %8: Record name: String breed: String end = cell
+  let %9: Animal = convert(%8, record_view)
+  store *%6 := %9
+  let %10: String = record_field(pet, name)
+  let viaClosure.1: Fun(): String = closure viaClosure {}
+  let %11: String = call viaClosure.1()
+  let id.1: All(X :: TYPE) Fun(x: X): X = closure id {}
+  let %12: X = convert(42, box)
+  let %13: X = call id.1 [Int](%12)
+  let %14: Int = convert(%13, unbox)
+  let %15: Int = %14
+  let %16: X = convert("hello", box)
+  let %17: X = call id.1 [String](%16)
+  let %18: String = convert(%17, unbox)
+  let %19: String = %18
+  let factorial.1: Fun(n: Int): Int = closure factorial {}
+  let %20: Int = call factorial.1(5)
+}
+

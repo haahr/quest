@@ -18,7 +18,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from quest.codegen.c_types import RecordNamingContext, collect_fun_quantifiers, normalize_type, qtype_to_c_type
+from quest.codegen.c_types import (
+    RecordNamingContext,
+    is_variant_subtype,
+    closure_fn_ptr_type,
+    collect_fun_quantifiers,
+    generic_layout_agrees,
+    generic_layout_copies_mutable_data,
+    normalize_type,
+    qtype_to_c_type,
+)
 from quest.ir import nodes as ir
 from quest.ir.walk import statement_bodies
 from quest.types import (
@@ -32,8 +41,10 @@ from quest.types import (
     QRecordType,
     QTupleType,
     QType,
+    QTypeVar,
     QVariantType,
     QVarType,
+    auto_payload_type,
     is_type_equal,
     resolve_option_bound,
     resolve_record_bound,
@@ -100,15 +111,110 @@ def _may_be_stored_as_subtype(t: QType) -> bool:
     )
 
 
+def _bounded_view(t: QType) -> bool:
+    """Whether t is a type parameter bounded by a record, variant, or option type, held viewed at its bound."""
+    n = normalize_type(t)
+    if isinstance(n, (QRecordType, QVariantType, QOptionType)):
+        return False
+    return any(resolve(n) is not None for resolve in (resolve_record_bound, resolve_variant_bound, resolve_option_bound))
+
+
 def _equal(a: QType, b: QType) -> bool:
     return a is b or is_type_equal(a, b)
 
 
-def plan(source: QType, target: QType) -> Optional[ir.Plan]:
-    """How a value of type source is converted to be used at type target (None when it is used as it is)."""
+class RejectedConversion(Exception):
+    """A conversion that would copy mutable data laid out differently, which would then not share its updates: a
+    compile-time error (docs/c-representation.md §5.1, Polymorphic Calls)."""
+
+
+def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bool]) -> Optional[ir.Plan]:
+    """How a value passed to or returned from a polymorphic callee converts between the callee's generic layout of
+    its type and the native layout at the call's type arguments (layout: the instantiation, and whether the value goes
+    to the generic layout, target being the callee's type, or comes from it, source being)."""
+    instantiation, to_generic = layout
+    generic_t = target if to_generic else source
+    native_t = generic_t.substitute(instantiation)
+    generic_c, native_c = c_type(generic_t), c_type(native_t)
+    if isinstance(normalize_type(generic_t), (QFunType, QAllType)):
+        return None
+    is_record = generic_c == native_c == "QRecordVal"
+    if not is_record and (not generic_c.endswith("*") or not native_c.endswith("*")):
+        return None
+    if generic_layout_agrees(generic_t, instantiation):
+        return None if generic_c == native_c else ir.Plan("cast", source, target)
+    if generic_layout_copies_mutable_data(generic_t, instantiation):
+        raise RejectedConversion(
+            f"C code generation cannot pass a value of type '{native_t}' to or from a polymorphic function that lays "
+            f"it out as '{generic_t}': the layouts differ, and converting the value would copy mutable data, which "
+            f"would then not share its updates"
+        )
+    return ir.Plan("runtime", source, target, layout=layout)
+
+
+def shared_signatures(source: QType, target: QType) -> tuple[tuple, QType, tuple, QType]:
+    """Two (possibly polymorphic) function types' parameters and results, target's type parameters renamed to
+    source's, so that they can be compared."""
+    s_quants, s_inner = collect_fun_quantifiers(source)
+    t_quants, t_inner = collect_fun_quantifiers(target)
+    if s_quants and len(s_quants) == len(t_quants):
+        t_inner = t_inner.substitute({
+            tq.symbol_id: QTypeVar(name=sq.name, symbol_id=sq.symbol_id, bound=sq.bound)
+            for sq, tq in zip(s_quants, t_quants)
+        })
+    s_params = s_inner.params if isinstance(s_inner, QFunType) else ()
+    t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
+    s_result = s_inner.result_type if isinstance(s_inner, QFunType) else s_inner
+    t_result = t_inner.result_type if isinstance(t_inner, QFunType) else t_inner
+    return tuple(s_params), s_result, tuple(t_params), t_result
+
+
+_ADAPTING: set[tuple] = set()
+
+
+def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
+    """How a closure of type source is used at type target: as it is, when the C signatures agree and no argument or
+    result converts, or else wrapped in a thunk of target's signature (`adapt`), which converts each argument from
+    target's parameter type to source's (the other way from the closure) and the result from source's to target's,
+    by the plans in `fields` (the parameters', then the result's)."""
+    if _equal(source, target) and not (layout is not None and layout[0]):
+        return None
+    # Recursive function types are compared coinductively: a pair being compared needs no conversion of its own
+    key = (id(normalize_type(source)), id(normalize_type(target)), layout is not None and layout[1])
+    if key in _ADAPTING:
+        return None
+    s_params, s_result, t_params, t_result = shared_signatures(source, target)
+    if len(s_params) != len(t_params):
+        raise UnsupportedConversion(f"converting a function of type {source} to {target}")
+    flipped = (layout[0], not layout[1]) if layout is not None else None
+    _ADAPTING.add(key)
+    try:
+        fields = tuple(
+            None if tp.is_var or tp.is_out else plan(tp.type_val, sp.type_val, flipped)
+            for sp, tp in zip(s_params, t_params)
+        ) + (plan(s_result, t_result, layout),)
+    finally:
+        _ADAPTING.discard(key)
+    if all(p is None for p in fields) and closure_fn_ptr_type(source, _CTX) == closure_fn_ptr_type(target, _CTX):
+        return None
+    return ir.Plan("adapt", source, target, fields, layout)
+
+
+def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]] = None) -> Optional[ir.Plan]:
+    """How a value of type source is converted to be used at type target (None when it is used as it is). layout is
+    set for a value passed to or returned from a polymorphic callee (see layout_plan)."""
     if source is target or strip_aliases(source) is OK_TYPE or strip_aliases(target) is OK_TYPE:
         return None
     cs, ct = c_type(source), c_type(target)
+    if cs != "QVal" and ct != "QVal" and isinstance(normalize_type(source), (QFunType, QAllType)) \
+            and isinstance(normalize_type(target), (QFunType, QAllType)):
+        return adapt_plan(source, target, layout)
+    if layout is not None and layout[0] and cs != "QVal" and ct != "QVal":
+        lp = layout_plan(source, target, layout)
+        # A value of a bounded type parameter is held viewed at its bound, whatever the layouts: a record or variant
+        # of another type converts to the bound's view (and back), as below
+        if lp is not None or not (_bounded_view(source) or _bounded_view(target)):
+            return lp
     # A value of a type parameter, held as a QVal word: a scalar or pointer in its bits, a record or variant boxed
     if ct == "QVal" and cs != "QVal":
         return ir.Plan("box", source, target)
@@ -122,7 +228,14 @@ def plan(source: QType, target: QType) -> Optional[ir.Plan]:
         index = {case.name: i for i, case in enumerate(t_var.variants)}
         if all(index.get(case.name) == i for i, case in enumerate(s_var.variants)):
             return None
-        return ir.Plan("variant_tags", source, target)
+        if is_variant_subtype(s_var, t_var):
+            return ir.Plan("variant_tags", source, target)
+        # From a bounded type parameter's view at its bound back to the type the caller holds it at: by the runtime,
+        # between the two views' descriptors (no static tag map relates them)
+        return ir.Plan("view", s_var, t_var)
+    if (t_opt := option_type(target)) is not None and (s_opt := option_type(source)) is not None \
+            and (_bounded_view(source) or _bounded_view(target)) and not _equal(s_opt, t_opt):
+        return ir.Plan("view", s_opt, t_opt)
     if (t_tup := tuple_type(target)) is not None and (s_tup := tuple_type(source)) is not None:
         if len(s_tup.value_fields) < len(t_tup.value_fields):
             raise UnsupportedConversion(f"converting a tuple of type {source} to {target}")
@@ -134,6 +247,28 @@ def plan(source: QType, target: QType) -> Optional[ir.Plan]:
     if cs == ct and not isinstance(normalize_type(target), (QFunType, QAllType, QOptionType, QArrayType)):
         return None
     raise UnsupportedConversion(f"converting a value of type {source} ({cs}) to {target} ({ct})")
+
+
+def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.Plan]:
+    """How an auto value's components are stored, in the auto type's witness-independent layout: a component of the
+    type component's type keeps its own representation (a bounded parameter's value is not viewed at the bound, as
+    inspect reads it by the stored type component's descriptor), boxed where the layout holds a QVal; the others
+    convert to their stored types."""
+    source = tuple_type(payload_t)
+    target = tuple_type(stored_t)
+    fields = []
+    for sig_f, sf, tf in zip(auto_t.signature, source.value_fields, target.value_fields):
+        bare = strip_aliases(sig_f.type_val)
+        if getattr(bare, "symbol_id", None) == auto_t.symbol_id:
+            fields.append(ir.Plan("box", sf.type_val, tf.type_val) if c_type(tf.type_val) == "QVal"
+                          and c_type(sf.type_val) != "QVal" else None)
+        else:
+            fields.append(plan(sf.type_val, tf.type_val))
+    if all(p is None for p in fields) and all(
+        c_type(sf.type_val) == c_type(tf.type_val) for sf, tf in zip(source.value_fields, target.value_fields)
+    ):
+        return None if c_type(payload_t) == c_type(stored_t) else ir.Plan("cast", payload_t, stored_t)
+    return ir.Plan("copy", payload_t, stored_t, tuple(fields))
 
 
 def fun_signature(t: QType) -> tuple[tuple, QType]:
@@ -153,11 +288,11 @@ class _Representer:
     def __init__(self, unit: ir.Unit) -> None:
         self.unit = unit
         self.joins: dict[str, tuple[ir.Var, ...]] = {}
-        self.generic_results: list[tuple[QType, QType]] = []
+        self.generic_results: list[tuple[QType, QType, dict]] = []
 
-    def convert(self, a: ir.Atom, target: QType, before: list) -> ir.Atom:
+    def convert(self, a: ir.Atom, target: QType, before: list, layout=None) -> ir.Atom:
         """a, converted to be used at target (by a let added to before), or a itself."""
-        p = plan(_type_of(a), target)
+        p = plan(_type_of(a), target, layout)
         if p is None:
             return a
         converted = ir.Var(a.hint if isinstance(a, ir.Var) else "", target)
@@ -195,8 +330,8 @@ class _Representer:
                 result_t = self.call(call, before, writebacks)
                 if self.generic_results:
                     # The callee's generic result, converted to its type at the type arguments, then to the let's
-                    generic_t, instantiated_t = self.generic_results[0]
-                    step = plan(generic_t, instantiated_t)
+                    generic_t, instantiated_t, instantiation = self.generic_results[0]
+                    step = plan(generic_t, instantiated_t, (instantiation, False))
                     if step is not None:
                         instantiated = ir.Var(var.hint, instantiated_t)
                         generic = ir.Var(var.hint, generic_t)
@@ -208,7 +343,8 @@ class _Representer:
                         else:
                             after.append(ir.Let(var, ir.Convert(instantiated, final)))
                     else:
-                        self.result(s, result_t, after)
+                        # The generic result is laid out as the native one at the type arguments
+                        self.result(s, instantiated_t, after)
                 else:
                     self.result(s, result_t, after)
                 after.extend(writebacks)
@@ -260,6 +396,13 @@ class _Representer:
                 o.args = tuple(self.convert(a, elem, before) for a in args)
             case ir.ArrayRep(init=init):
                 o.init = self.convert(init, array_element(result_t), before)
+            case ir.MakeAuto(auto_type=auto_t, payload=payload):
+                stored_t = auto_payload_type(auto_t)
+                p = auto_payload_plan(_type_of(payload), stored_t, auto_t)
+                if p is not None:
+                    stored = ir.Var("payload", stored_t)
+                    before.append(ir.Let(stored, ir.Convert(payload, p)))
+                    o.payload = stored
             case ir.TupleField(tuple=t, index=index):
                 tt = tuple_type(_type_of(t))
                 return tt.value_fields[index].type_val if tt is not None else None
@@ -293,9 +436,10 @@ class _Representer:
         return array_element(base_t)
 
     def call(self, call: ir.Call, before: list, after: list) -> QType:
-        """Converts a call's arguments to its callee's parameter types, returning its callee's result type. An out
-        argument whose location's type is a supertype of the parameter's, laid out differently, is a temporary of the
-        parameter's type, converted into the location after the call (added to after)."""
+        """Converts a call's arguments to its callee's parameter types, returning its callee's result type. A var or
+        out argument whose location is laid out differently from the parameter is a temporary of the parameter's
+        type, converted into the location after the call (added to after)."""
+        self.generic_results = []
         if call.callee is not None:
             callee_t = call.callee.type
         elif isinstance(call.module, ir.Module):
@@ -313,34 +457,51 @@ class _Representer:
         instantiation = {q.symbol_id: t for q, t in zip(quants, call.type_args)}
         args = []
         for i, a in enumerate(call.args):
-            if i < len(params) and params[i].is_out:
-                a = self.out_argument(a, params[i].type_val, before, after)
-            elif i < len(params) and not params[i].is_var:
+            if i < len(params) and (params[i].is_out or params[i].is_var):
+                a = self.ref_argument(a, params[i], instantiation, before, after)
+            elif i < len(params):
                 if instantiation:
                     a = self.convert(a, params[i].type_val.substitute(instantiation), before)
-                a = self.convert(a, params[i].type_val, before)
+                a = self.convert(a, params[i].type_val, before, (instantiation, True))
             args.append(a)
         call.args = tuple(args)
         if instantiation:
-            self.generic_results.append((result_t, result_t.substitute(instantiation)))
+            self.generic_results.append((result_t, result_t.substitute(instantiation), instantiation))
         return result_t
 
-    def out_argument(self, address: ir.Atom, param_t: QType, before: list, after: list) -> ir.Atom:
+    def ref_argument(self, address: ir.Atom, param, instantiation: dict, before: list, after: list) -> ir.Atom:
+        """The address passed for a var or out argument: the location's own, or that of a temporary of the
+        parameter's representation (a shadow cell of a generic parameter's QVal, or a cell of an out parameter's type
+        where the location's is a supertype laid out differently), copied in from the location (for var) and out to
+        it after the call."""
         location_t = _type_of(address)
         if isinstance(location_t, (QVarType, QOutType)):
             location_t = location_t.element_type
-        p = plan(param_t, location_t)
-        if p is None:
+        param_t = param.type_val
+        layout_out = (instantiation, False) if instantiation else None
+        p_out = plan(param_t, location_t, layout_out)
+        p_in = None if param.is_out else plan(location_t, param_t, (instantiation, True) if instantiation else None)
+        if p_out is None and p_in is None:
             return address
-        temp = ir.Var("out", param_t, mutable=True)
-        temp_address = ir.Var("", _type_of(address))
-        before.append(ir.VarDecl(temp, None))
+        temp = ir.Var("cell", param_t, mutable=True)
+        temp_address = ir.Var("", QOutType(element_type=param_t) if param.is_out else QVarType(element_type=param_t))
+        init = None
+        if not param.is_out:
+            current = ir.Var("", location_t)
+            before.append(ir.Let(current, ir.Load(address)))
+            init = current
+            if p_in is not None:
+                init = ir.Var("", param_t)
+                before.append(ir.Let(init, ir.Convert(current, p_in)))
+        before.append(ir.VarDecl(temp, init))
         before.append(ir.Let(temp_address, ir.Addr(var=temp)))
         written = ir.Var("", param_t)
-        converted = ir.Var("", location_t)
         after.append(ir.Let(written, temp))
-        after.append(ir.Let(converted, ir.Convert(written, p)))
-        after.append(ir.Store(converted, address=address))
+        if p_out is not None:
+            converted = ir.Var("", location_t)
+            after.append(ir.Let(converted, ir.Convert(written, p_out)))
+            written = converted
+        after.append(ir.Store(written, address=address))
         return temp_address
 
     def run(self) -> None:

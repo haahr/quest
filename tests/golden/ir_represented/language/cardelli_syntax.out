@@ -1,0 +1,104 @@
+fun id [A::TYPE](a.1: A): A {
+  return a.1
+}
+fun pair [A::TYPE B::TYPE](a.2: A, b: B): Tuple A B end {
+  let %11: Tuple A B end = tuple(a.2, b)
+  return %11
+}
+fun pair_spec(a.3: Int, b.1: String): Tuple Int String end {
+  let %12: Tuple Int String end = tuple(a.3, b.1)
+  return %12
+}
+fun assign(out x: Int, y: Int): Ok {
+  x := y
+  return ok
+}
+fun inc(var x.1: Int): Ok {
+  let %13: Int = prim +(x.1, 1)
+  x.1 := %13
+  return ok
+}
+fun addFive(var x.2: Int): Int {
+  let %14: Int = prim +(x.2, 5)
+  x.2 := %14
+  return x.2
+}
+fun assignPoly [A::TYPE](out x.3: A, y.1: A): Ok {
+  x.3 := y.1
+  return ok
+}
+fun assignPoly_spec(out x.4: Int, y.2: Int): Ok {
+  x.4 := y.2
+  return ok
+}
+fun sum(arrVal: Array(Int)): Int {
+  var total: Int = 0
+  let %15: Int = prim extent(arrVal)
+  let %16: Int = prim -(%15, 1)
+  var i: Int = 0
+  loop L1 {
+    let %17: Bool = prim <=(i, %16)
+    if %17 {
+      let i.1: Int = i
+      let %18: Int = index(arrVal, i.1)
+      let %19: Int = prim +(total, %18)
+      total := %19
+      let %20: Int = prim +(i, 1)
+      i := %20
+    } else {
+      break L1
+    }
+  }
+  return total
+}
+main {
+  let id.1: All(A :: TYPE) Fun(a: A): A = closure id {}
+  let %1: A = convert(42, box)
+  let v1: A = call id.1 [Int](%1)
+  let v1.1: Int = convert(v1, unbox)
+  let v1.2: Int = v1.1
+  let %2: A = convert(43, box)
+  let v2: A = call id.1 [Int](%2)
+  let v2.1: Int = convert(v2, unbox)
+  let v2.2: Int = v2.1
+  let pair.1: All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple A B end = closure pair {}
+  let pair_spec.1: Fun(a: Int b: String): Tuple Int String end = closure pair_spec {}
+  let p: Tuple Int String end = call pair_spec.1(100, "test")
+  var a: Int = 0
+  let assign.1: Fun(out x: Int y: Int): Ok = closure assign {}
+  let %3: Var(Int) = addr a
+  do call assign.1(%3, 7)
+  let t: Record var a: Int end = record(var a = 10)
+  let inc.1: Fun(var x: Int): Ok = closure inc {}
+  let %4: Var(Int) = addr t.a
+  do call inc.1(%4)
+  let addFive.1: Fun(var x: Int): Int = closure addFive {}
+  let %5: Var(Int) = cell(10)
+  let r: Int = call addFive.1(%5)
+  let assignPoly.1: All(A :: TYPE) Fun(out x: A y: A): Ok = closure assignPoly {}
+  let assignPoly_spec.1: Fun(out x: Int y: Int): Ok = closure assignPoly_spec {}
+  let %6: Var(Int) = addr a
+  do call assignPoly_spec.1(%6, 99)
+  let notA: Bool = prim not(true)
+  let notB: Bool = prim not(false)
+  let notC: Bool = prim not(true)
+  let %7: Bool = prim not(true)
+  let notD: Bool = prim not(%7)
+  let arr: Array(Int) = array(10, 20, 30, 40)
+  let len1: Int = prim extent(arr)
+  let len2: Int = prim extent(arr)
+  let c0: Color = option(red)
+  let c1: Color = option(green)
+  let c2: Color = option(blue)
+  let ord0: Int = ordinal(c0)
+  let ord1: Int = ordinal(c1)
+  let ord2: Int = ordinal(c2)
+  let sum.1: Fun(arrVal: Array(Int)): Int = closure sum {}
+  let %8: Array(Int) = array(0, 1, 2, 3, 4)
+  let s1: Int = call sum.1(%8)
+  let %9: Array(Int) = array_rep(5, 1)
+  let s2: Int = call sum.1(%9)
+  let %10: Array(Int) = array(10, 20, 30)
+  let s3: Int = call sum.1(%10)
+}
+
