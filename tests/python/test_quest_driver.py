@@ -6,16 +6,20 @@ Tests:
 - Compilation of interfaces and modules to build directory
 - Full separate compilation and linking of main routines
 - Whole-program compilation flag override
+- Errors located with their source line in every mode
 """
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Callable
 
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
@@ -154,6 +158,37 @@ class TestQuestDriverCLI(unittest.TestCase):
                 )
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn(f"array of {expected} end", proc.stdout)
+
+    def _stderr_of(self, run: Callable[[list[str]], int], args: list[str]) -> str:
+        """Runs a driver entry point, expecting it to fail, and returns what it wrote to stderr."""
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertNotEqual(run(args), 0)
+        return err.getvalue()
+
+    def test_errors_are_located_in_every_mode(self) -> None:
+        main_file = self.root / "bad.quest"
+        main_file.write_text("let a = 1;\nlet b: String = a;\n", encoding="utf-8")
+        iface_file = self.root / "m.int.quest"
+        iface_file.write_text("interface M export f(c: Bool): Ok end;\n", encoding="utf-8")
+        mod_file = self.root / "m.mod.quest"
+        mod_file.write_text(
+            "module m : M export\n    let f(c: Bool): Ok = begin if c then ok else 3 end; ok end;\nend;\n",
+            encoding="utf-8",
+        )
+        build = ["--build-dir", str(self.build_dir), "-I", str(self.root)]
+        cases = [
+            (run_driver, [str(main_file), "-o", str(self.root / "bad")], main_file, "2:17", "let b: String = a;"),
+            (run_compile, [str(main_file)], main_file, "2:17", "let b: String = a;"),
+            (run_compile, [str(main_file), "-c"], main_file, "2:17", "let b: String = a;"),
+            (run_driver, [str(mod_file)], mod_file, "2:32", "if c then ok else 3"),
+            (run_compile, [str(mod_file)], mod_file, "2:32", "if c then ok else 3"),
+        ]
+        for run, args, file, location, line in cases:
+            with self.subTest(run=run.__name__, args=args[1:]):
+                stderr = self._stderr_of(run, [*args, *build])
+                self.assertIn(f"{file}:{location}: error:", stderr)
+                self.assertIn(line, stderr)
 
 
 if __name__ == "__main__":

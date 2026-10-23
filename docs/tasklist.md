@@ -35,35 +35,21 @@ function at the top level after functions and closures that refer to them.
 
 ---
 
-## Source locations for errors in interface and module files given to the driver
+## The driver ignores `--stop-after` for interface and module files
 
-**Problem.** When an interface or module file is passed to the driver directly, its errors are printed without a
-location: no `file:line:col` and no source line with a caret. This happens for any error, such as "Cannot find
-common supertype for conditional branches 'Ok' and 'Int'" or "Undefined variable". The same errors in a program file
-are located. This made errors slow to track down while migrating StringBuilder callers. The driver also ignores
-`--stop-after` for these files: it compiles them fully, writing `.qi`, `.qm`, `.c` and `.o` files next to the
-source unless `--build-dir` is given.
+**Problem.** When an interface or module file is passed to the driver directly, it is compiled fully, writing
+`.qi`, `.qm`, `.c` and `.o` files (next to the source unless `--build-dir` is given), whatever `--stop-after` says.
 
 **Reproduce.** With `m.int.quest` containing `interface M export f(c: Bool): Ok end;` and `m.mod.quest` containing
-
-```quest
-module m : M export
-    let f(c: Bool): Ok = begin if c then ok else 3 end; ok end;
-end;
-```
-
-`quest_driver.py --stop-after typecheck m.mod.quest` prints only `quest: error: Cannot find common supertype for
-conditional branches 'Ok' and 'Int'`. The same function in a program file is reported at `3:9` with a caret.
+`module m : M export let f(c: Bool): Ok = ok; end;`, `quest --stop-after typecheck m.mod.quest` writes `m.qi`,
+`m.qm`, `m.mod.c` and `m.o` next to the source.
 
 **Where to start.** `bootstrap/python/quest_driver.py` handles `.int.quest` and `.mod.quest` files in two places,
-the default mode (around the `compile_interface_file` and `compile_module_file` calls) and `compile` mode. Both
-catch `Exception` and write `str(err)`. They should render a `QuestCompilerError` as programs do, through
-`diagnostic_of` (`diagnostics.py`, which supplies the file's source map) and `DiagnosticRenderer.render_diagnostic`.
-They should also honour `--stop-after`.
+the default mode (around the `compile_interface_file` and `compile_module_file` calls) and `compile` mode, before
+looking at `--stop-after`.
 
-**Done when.** Errors in interface and module files given to the driver are located like errors in programs, in
-both modes. `--stop-after typecheck` on such a file stops after typechecking and writes no artifacts. Tests (in the
-error suite, or in `tests/python/test_quest_driver.py`) cover an interface file and a module file passed directly.
+**Done when.** `--stop-after typecheck` on such a file stops after typechecking and writes no artifacts, and a test
+in `tests/python/test_quest_driver.py` covers an interface file and a module file.
 
 ---
 
@@ -346,3 +332,52 @@ from the template's with the holes replaced by the arguments' names (memoized wi
 `bootstrap/python/quest/codegen/c_types.py` names the holes.
 
 **Done when.** Both C backends print the program above as the interpreter does, and a golden test covers it.
+
+---
+
+## Uncaught exceptions are reported at the wrong place, or none
+
+**Problem.** An exception that escapes the program should be reported where it was raised, with the source line, as
+the interpreter does for `raise` in the program itself. Elsewhere it is not:
+
+- Compiled code does not know where it raised. A binary run directly prints only `Exception: E`, and the
+  `run_c_compiled` and `run_c_ir` phases report the binary's stderr at offset 0, so every uncaught exception
+  appears to be at `1:1`, under the program's first line.
+- In the interpreter, an exception raised inside a library module, such as `dynamic.error` from `dynamic.be`, is
+  reported either with no location or at its offset in the module's source rendered against the program's, which
+  can name a line past the end of the program.
+
+**Reproduce.**
+
+```quest
+let a = 1;
+let b = 2;
+let e = exception E end;
+let f(n: Int): Int = raise E end;
+f(a)
+```
+
+is reported at `4:22` interpreted but at `1:1` by `--stop-after run_c_compiled` and `run_c_ir`, and as a bare
+`Exception: E` by the binary that `-o` builds. With
+
+```quest
+import dynamic: Dynamic;
+let f(A::TYPE x: A): Dynamic = dynamic.new(:Tuple v: A w: Int end tuple x 1 end);
+let g: All(A::TYPE x: A) Dynamic = f;
+let d = g(:String "hi");
+let n = dynamic.be(:Int d);
+```
+
+the interpreter reports `dynamic.error` at `6:1` in a five-line file.
+
+**Where to start.** In C, `quest_raise` and the uncaught-exception handler in `runtime/quest_runtime.c` (near
+`fprintf(stderr, "Exception: %s\n", name)`) have no source position; the generated code could pass one to raises
+(and to the run-time checks that raise, such as integer overflow), or keep the position of the outermost phrase
+being run, and print `file:line:col`. The run phase (`run_c_compiled` in `bootstrap/python/quest/pipeline.py`)
+should then parse that, or report without a location rather than at offset 0. In the interpreter, a
+`QuestException` raised while running a module's code should carry that unit's source map (as `in_unit` in
+`diagnostics.py` does for compile-time errors), or be relocated to the call in the program it escaped through.
+
+**Done when.** Both programs above report a correct location (in the program, or in the library module with its
+file name) in the interpreter and in both C backends, a binary run directly prints the location, and error tests
+cover an exception raised in the program and one raised in a library module.

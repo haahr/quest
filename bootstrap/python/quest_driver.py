@@ -11,12 +11,13 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from quest.builtins import BuiltinModuleRegistry
-from quest.diagnostics import DiagnosticRenderer, Severity
+from quest.diagnostics import DiagnosticRenderer, QuestCompilerError, Severity, diagnostic_of
 from quest.config import CompilerOptions
 from quest.interpreter import format_interactive_result
 from quest.pipeline import (
@@ -41,6 +42,24 @@ from quest.repl import run_repl
 from quest.runtime import QOk, qvalue_to_str
 from quest import shadow
 from quest.syntax.sources import SourceMap
+
+
+def report_error(prog: str, error: Exception, source_file: Optional[Path] = None) -> None:
+    """Writes an error raised while building or compiling source_file to stderr. A compiler error is located in the
+    file it was raised in (an imported unit's, or else source_file) with its source line, as the pipeline reports
+    errors in programs; any other error is written as its message."""
+    if isinstance(error, QuestCompilerError):
+        diag = diagnostic_of(error)
+        source_map = None
+        if diag.source_map is None and source_file is not None:
+            try:
+                source_map = SourceMap(source_file.read_text(encoding="utf-8"), str(source_file))
+            except OSError:
+                pass
+        if diag.source_map is not None or source_map is not None:
+            sys.stderr.write(DiagnosticRenderer.render_diagnostic(diag, source_map=source_map) + "\n")
+            return
+    sys.stderr.write(f"{prog}: error: {error}\n")
 
 
 def run_driver(args: list[str]) -> int:
@@ -224,7 +243,7 @@ def run_driver(args: list[str]) -> int:
                 )
                 return 0
             except Exception as err:
-                sys.stderr.write(f"quest: error: {err}\n")
+                report_error("quest", err, file_path)
                 return 1
         if file_path.name.endswith(".mod.quest"):
             try:
@@ -242,7 +261,7 @@ def run_driver(args: list[str]) -> int:
                 )
                 return 0
             except Exception as err:
-                sys.stderr.write(f"quest: error: {err}\n")
+                report_error("quest", err, file_path)
                 return 1
         try:
             source_text = file_path.read_text(encoding="utf-8")
@@ -276,7 +295,7 @@ def run_driver(args: list[str]) -> int:
             engine.build_main(file_path, output_binary=Path(parsed_args.output))
             return 0
         except Exception as err:
-            sys.stderr.write(f"quest: error: {err}\n")
+            report_error("quest", err, file_path)
             return 1
     has_objects = bool(extra_objects)
     needs_c_pipeline = (
@@ -561,7 +580,7 @@ def run_compile(args: list[str]) -> int:
                 )
                 return 0
             except Exception as err:
-                sys.stderr.write(f"quest compile: error: {err}\n")
+                report_error("quest compile", err, file_path)
                 return 1
         if file_path.name.endswith(".mod.quest"):
             try:
@@ -579,7 +598,7 @@ def run_compile(args: list[str]) -> int:
                 )
                 return 0
             except Exception as err:
-                sys.stderr.write(f"quest compile: error: {err}\n")
+                report_error("quest compile", err, file_path)
                 return 1
         try:
             source_text = file_path.read_text(encoding="utf-8")
@@ -621,7 +640,7 @@ def run_compile(args: list[str]) -> int:
                 engine.build_main(file_path, output_binary=output_path)
             return 0
         except Exception as err:
-            sys.stderr.write(f"quest compile: error: {err}\n")
+            report_error("quest compile", err, file_path)
             return 1
 
     options = CompilerOptions(
