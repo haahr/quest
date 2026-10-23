@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from quest.build.engine import BuildEngine, unit_module_refs
 from quest.builtins import BuiltinModuleRegistry
-from quest.codegen.c_emitter import CEmitter
+from quest.codegen.backend import IR_PASSES
 from quest.codegen.compiler_runner import compile_c_source, run_binary
 from quest.config import CompilerOptions
 
@@ -346,43 +346,6 @@ class InterpretPhase(Phase):
         return qvalue_to_str(val)
 
 
-class CodegenCPhase(Phase):
-    """C code generation phase: translates typed AST into C99 source code."""
-    name = "codegen_c"
-    description = "Translate typed AST into C99 source code"
-    artifact_name = "c_source"
-
-    def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
-        try:
-            emitter = CEmitter(
-                echo=ctx.options.echo,
-                print_result=getattr(ctx.options, "print_result", False),
-                env=ctx.env,
-            )
-            loaded_mods = ctx.env.loaded_modules_ast if ctx.env else None
-            match input_data:
-                case TypedProgram():
-                    prog = input_data
-                case TypedExpr() | TypedBinding():
-                    prog = TypedProgram(phrases=(input_data,))
-                case _:
-                    return None
-            c_code = emitter.emit_program(prog, loaded_modules=loaded_mods)
-        except Exception as error:
-            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
-            return None
-
-        import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
-        implicit = [(m.name, m.interface_name) for m in emitter.analysis.sorted_modules if m.is_precompiled]
-        ctx.imported_modules = unit_module_refs(
-            import_items, implicit, ctx.env.current_dir, ctx.env.include_paths, ctx.env.program_dir
-        )
-        return c_code
-
-    def dump(self, output_data: Any, ctx: CompilerContext) -> str:
-        return str(output_data) if output_data is not None else ""
-
-
 def link_dependencies(ctx: CompilerContext) -> list[Path]:
     """Builds the modules a C unit produced by CodegenCPhase imports, returning the objects to link.
 
@@ -401,8 +364,7 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
 
 
 class IrCorePhase(Phase):
-    """Lowering to the IR's Core stage (docs/ir.md): not yet part of C compilation, which still translates the typed
-    AST directly; reached with --stop-after ir_core or --dump-after ir_core."""
+    """Lowering to the IR's Core stage (docs/ir.md), the first step of C compilation."""
     name = "ir_core"
     description = "Lower the typed AST to Core IR"
     artifact_name = "ir_unit"
@@ -484,9 +446,9 @@ class RunIrPhase(Phase):
         return ""
 
 
-class IrCodegenCPhase(Phase):
-    """The IR's C backend (docs/ir.md §12, step 5): prints the represented IR as C."""
-    name = "codegen_c_ir"
+class CodegenCPhase(Phase):
+    """C code generation: prints the represented IR as C99 source code (docs/ir.md §8.5)."""
+    name = "codegen_c"
     description = "Print the represented IR as C99 source code"
     artifact_name = "c_source"
 
@@ -519,9 +481,6 @@ class RunCCompiledPhase(Phase):
     name = "run_c_compiled"
     description = "Compile C code to native binary and execute it"
     artifact_name = "stdout"
-
-    def __init__(self, name: str = "run_c_compiled") -> None:
-        self.name = name
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
         if not isinstance(input_data, str):
@@ -687,39 +646,8 @@ def default_pipeline() -> PhasePipeline:
     return pipeline
 
 
-def compile_pipeline() -> PhasePipeline:
-    """Returns the C compilation pipeline (Tokenize -> Parse -> Typecheck -> CodegenC)."""
-    pipeline = PhasePipeline()
-    pipeline.register(TokenizePhase())
-    pipeline.register(ParsePhase())
-    pipeline.register(TypecheckPhase())
-    pipeline.register(CodegenCPhase())
-    return pipeline
-
-
-def _specialize(unit: Any) -> Any:
-    from quest.ir.specialize import specialize_unit
-
-    return specialize_unit(unit)
-
-
-def _closure_convert(unit: Any) -> Any:
-    from quest.ir.closure import closure_convert_unit
-
-    return closure_convert_unit(unit)
-
-
-def _represent(unit: Any) -> Any:
-    from quest.ir.represent import represent_unit
-
-    return represent_unit(unit)
-
-
-# The IR's stages after Core (docs/ir.md §9, quest.ir.nodes.STAGES), in order, and the passes that produce them
-_IR_PASSES = (("specialized", _specialize), ("closed", _closure_convert), ("represented", _represent))
-IR_STAGES = ("core", *(stage for stage, _ in _IR_PASSES))
-# The IR's C backend's phases: printing C, and compiling and running it
-IR_C_PHASES = ("codegen_c_ir", "run_c_ir")
+# The IR's stages (docs/ir.md §9, quest.ir.nodes.STAGES), in order: Core, then those the passes produce
+IR_STAGES = ("core", *(stage for stage, _ in IR_PASSES))
 IR_DUMP_PHASES = tuple(f"ir_{stage}" for stage in IR_STAGES)
 IR_RUN_PHASES = tuple(f"run_ir_{stage}" for stage in IR_STAGES)
 
@@ -734,7 +662,7 @@ def ir_pipeline(stage: str = "core") -> PhasePipeline:
     pipeline.register(ParsePhase())
     pipeline.register(TypecheckPhase())
     pipeline.register(IrCorePhase())
-    for pass_stage, run_pass in _IR_PASSES[:IR_STAGES.index(stage)]:
+    for pass_stage, run_pass in IR_PASSES[:IR_STAGES.index(stage)]:
         pipeline.register(IrPassPhase(pass_stage, run_pass))
     return pipeline
 
@@ -747,21 +675,17 @@ def ir_run_pipeline(stage: str) -> PhasePipeline:
     return pipeline
 
 
-def ir_c_pipeline() -> PhasePipeline:
-    """Returns the pipeline compiling through the IR's C backend and running the result."""
+def compile_pipeline() -> PhasePipeline:
+    """Returns the C compilation pipeline: through the IR's passes to C (Tokenize -> Parse -> Typecheck -> IrCore ->
+    the IR passes -> CodegenC)."""
     pipeline = ir_pipeline(IR_STAGES[-1])
-    pipeline.register(IrCodegenCPhase())
-    pipeline.register(RunCCompiledPhase("run_c_ir"))
+    pipeline.register(CodegenCPhase())
     return pipeline
 
 
 def full_pipeline() -> PhasePipeline:
     """Returns the full C compilation and execution pipeline."""
-    pipeline = PhasePipeline()
-    pipeline.register(TokenizePhase())
-    pipeline.register(ParsePhase())
-    pipeline.register(TypecheckPhase())
-    pipeline.register(CodegenCPhase())
+    pipeline = compile_pipeline()
     pipeline.register(RunCCompiledPhase())
     return pipeline
 

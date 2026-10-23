@@ -24,10 +24,8 @@ from quest.pipeline import (
     CompilerContext,
     compile_pipeline,
     default_pipeline,
-    IR_C_PHASES,
     IR_DUMP_PHASES,
     IR_RUN_PHASES,
-    ir_c_pipeline,
     ir_pipeline,
     ir_run_pipeline,
     full_pipeline,
@@ -69,7 +67,6 @@ def run_driver(args: list[str]) -> int:
 
     all_phases = [
         "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled",
-        *IR_C_PHASES,
     ]
 
     if "--" in args:
@@ -308,8 +305,6 @@ def run_driver(args: list[str]) -> int:
         pipeline = compile_pipeline()
     elif needs_c_pipeline:
         pipeline = full_pipeline()
-    elif parsed_args.stop_after in IR_C_PHASES or any(p in IR_C_PHASES for p in parsed_args.dump_after):
-        pipeline = ir_c_pipeline()
     elif parsed_args.stop_after in IR_RUN_PHASES:
         pipeline = ir_run_pipeline(parsed_args.stop_after.removeprefix("run_ir_"))
     elif parsed_args.stop_after in IR_DUMP_PHASES or any(p in IR_DUMP_PHASES for p in parsed_args.dump_after):
@@ -326,7 +321,7 @@ def run_driver(args: list[str]) -> int:
         stop_after = "run_c_compiled"
     # Running compiled code, or IR, prints the last phrase's result as the interpreter does
     print_result = (
-        parsed_args.print_result or stop_after in ("run_c_compiled", "run_c_ir") or stop_after in IR_RUN_PHASES
+        parsed_args.print_result or stop_after == "run_c_compiled" or stop_after in IR_RUN_PHASES
     )
 
     options = CompilerOptions(
@@ -417,7 +412,7 @@ def run_driver(args: list[str]) -> int:
     if parsed_args.interactive:
         return run_repl(ctx=ctx)
 
-    if parsed_args.expected_exit != 0 and parsed_args.stop_after in ("run_c_compiled", "run_c_ir"):
+    if parsed_args.expected_exit != 0 and parsed_args.stop_after == "run_c_compiled":
         return parsed_args.expected_exit
 
     return 0

@@ -1,12 +1,14 @@
-"""Measures the C backend, for comparing the IR backend against today's (docs/ir.md §12, steps 0 and 6).
+"""Measures the C backend, for comparing it with the baseline taken of the emitter it replaced (docs/ir.md §12, steps 0
+and 6).
 
     python tests/perf/measure.py             # print a summary, comparing with tests/perf/baseline.json if present
     python tests/perf/measure.py --save      # also write the measurements to tests/perf/baseline.json
 
 Two measurements:
 
-- C generation: for every golden test program that is compiled to C, the time spent in the C emitter (emit_program
-  and emit_module, so neither type checking nor clang) and the size of the C it produces.
+- C generation: for every golden test program that is compiled to C, the time spent in the C backend (lowering to the
+  IR, its passes, and printing C: neither type checking nor clang) and the size of the C it produces. The program's
+  own C: the modules it imports are compiled on their own (the baseline's emitter compiled some into the program).
 - Run time: for each benchmark in this directory (*.quest), the fastest of several runs of its compiled binary. The
   benchmarks cross polymorphic boundaries heavily, so they measure what the represent pass changes: casts, copies,
   and thunks.
@@ -28,8 +30,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.codegen import compile_c_source, run_binary  # noqa: E402
-from quest.codegen import c_emitter  # noqa: E402
-from quest.pipeline import compile_pipeline  # noqa: E402
+from quest.codegen.backend import program_to_c  # noqa: E402
+from quest.config import CompilerOptions  # noqa: E402
+from quest.pipeline import CompilerContext, compile_pipeline, default_pipeline, link_dependencies  # noqa: E402
 from quest.testing.runner import discover_tests, parse_skipped_phases  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -38,34 +41,23 @@ SOURCE_DIR = ROOT_DIR / "tests" / "source"
 RUNS = 5
 
 
-def _timed_emitter() -> list[float]:
-    """Wraps the emitter's entry points so that the time spent in them is recorded."""
-    spent: list[float] = []
-    for name in ("emit_program", "emit_module"):
-        original = getattr(c_emitter.CEmitter, name)
-
-        def timed(self, *args, _original=original, **kwargs):
-            start = time.perf_counter()
-            try:
-                return _original(self, *args, **kwargs)
-            finally:
-                spent.append(time.perf_counter() - start)
-
-        setattr(c_emitter.CEmitter, name, timed)
-    return spent
-
-
 def measure_generation() -> dict:
-    spent = _timed_emitter()
     programs: dict[str, list[float | int]] = {}
     for path in discover_tests(SOURCE_DIR):
         if "run_c_compiled" in parse_skipped_phases(path):
             continue
-        spent.clear()
-        res = compile_pipeline().execute(path.read_text(), str(path))
-        if not res.success or "codegen_c" not in res.artifacts:
+        source = path.read_text()
+        options = CompilerOptions(stop_after="typecheck")
+        ctx = CompilerContext.create(source_text=source, file_name=str(path), options=options)
+        res = default_pipeline().execute(source, str(path), options=options, ctx=ctx)
+        if not res.success:
             continue
-        programs[str(path.relative_to(ROOT_DIR))] = [round(sum(spent), 4), len(res.artifacts["codegen_c"])]
+        start = time.perf_counter()
+        try:
+            c_code, _ = program_to_c(res.artifacts["typecheck"], ctx.env, print_result=True)
+        except Exception:
+            continue
+        programs[str(path.relative_to(ROOT_DIR))] = [round(time.perf_counter() - start, 4), len(c_code)]
     return {
         "programs": len(programs),
         "seconds": round(sum(p[0] for p in programs.values()), 3),
@@ -77,12 +69,15 @@ def measure_generation() -> dict:
 def measure_benchmarks() -> dict:
     results: dict[str, dict] = {}
     for path in sorted(HERE.glob("*.quest")):
-        res = compile_pipeline().execute(path.read_text(), str(path))
-        if not res.success:
-            raise SystemExit(f"{path.name}: {[d.message for d in res.diagnostics]}")
         with tempfile.TemporaryDirectory() as tmp:
+            source = path.read_text()
+            options = CompilerOptions(build_dir=Path(tmp) / "build")
+            ctx = CompilerContext.create(source_text=source, file_name=str(path), options=options)
+            res = compile_pipeline().execute(source, str(path), options=options, ctx=ctx)
+            if not res.success:
+                raise SystemExit(f"{path.name}: {[d.message for d in res.diagnostics]}")
             binary = Path(tmp) / path.stem
-            compile_c_source(res.artifacts["codegen_c"], output_path=binary)
+            compile_c_source(res.artifacts["codegen_c"], output_path=binary, extra_objects=link_dependencies(ctx))
             times = []
             output = None
             for _ in range(RUNS):

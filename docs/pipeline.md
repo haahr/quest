@@ -29,10 +29,16 @@ The compiler processes Quest programs through a linear sequence of modular passe
                 [ Phase: typecheck ] ===> (typed AST)
                     /        \
                    v          v
-   [ Phase: interpret ]    [ Phase: codegen_c ]
+   [ Phase: interpret ]    [ Phases: ir_core ... ir_represented ]
             |                       |
             v                       v
-    (runtime value)           (C99 source)
+    (runtime value)            (IR unit, docs/ir.md)
+            |                       |
+            |                       v
+            |              [ Phase: codegen_c ]
+            |                       |
+            |                       v
+            |                 (C99 source)
             |                       |
       Interactive/REPL         Host Compiler (clang/gcc)
                                     |
@@ -44,10 +50,11 @@ The compiler processes Quest programs through a linear sequence of modular passe
 The compiler driver exposes three execution pipelines:
 - **Default Pipeline (`default_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `interpret`.
   Used by default for `quest <file>`, `quest -e "<code>"`, and interactive REPL sessions.
-- **Compilation Pipeline (`compile_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `codegen_c`.
-  Used by `quest compile <file>`, translating typed AST into C99 source and building native binaries.
-- **Full Execution Pipeline (`full_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$
-  `codegen_c` $\to$ `run_c_compiled`.
+- **Compilation Pipeline (`compile_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `ir_core`
+  $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented` $\to$ `codegen_c`. Used by `quest compile <file>`,
+  lowering the typed AST to the IR ([ir.md](ir.md)), running its passes, and printing C99 source to build native
+  binaries.
+- **Full Execution Pipeline (`full_pipeline()`):** the compilation pipeline, then `run_c_compiled`.
   Used for automated end-to-end compiled testing via `quest --stop-after run_c_compiled <file>`.
 
 ---
@@ -61,7 +68,9 @@ All compiler phases are named by their **Verb / Action Form**:
 - `interpret`: Direct evaluation of typed AST via tree-walking interpreter (Step 3). Returns final phrase
   `QValue`. Output is silent if `ok` (`QOk`), formatted if non-ok. Runtime I/O operations execute as direct
   side effects.
-- `codegen_c`: C code generation (Step 4), translating typed AST into portable C99 source.
+- `ir_core`, `ir_specialized`, `ir_closed`, `ir_represented`: lowering the typed AST to the IR and the IR's passes
+  ([ir.md](ir.md) §8, §9).
+- `codegen_c`: C code generation, printing the represented IR as portable C99 source.
 - `run_c_compiled`: Host compilation and execution of generated C code. Runs the binary and captures standard output.
 
 ### Uniform Enforcement Across Interfaces
@@ -115,9 +124,9 @@ class Phase(ABC):
 
 ### 3.4. Pipeline Construction Factories
 - **`default_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `interpret`.
-- **`compile_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `codegen_c`.
-- **`full_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$
-  `codegen_c` $\to$ `run_c_compiled`.
+- **`compile_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ the IR's
+  phases (`ir_pipeline("represented")`) $\to$ `codegen_c`.
+- **`full_pipeline() -> PhasePipeline`:** Registers the compilation pipeline's phases $\to$ `run_c_compiled`.
 
 ---
 

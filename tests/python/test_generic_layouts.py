@@ -117,8 +117,8 @@ class TestPolymorphicCallsInC(unittest.TestCase):
 
     def test_agreeing_layouts_are_cast(self) -> None:
         main = self.c_code("let b: Box(Bool) = mkBox(:Bool true); getBox(:Bool b)").split("int main")[1]
-        self.assertIn("((QTuple_Bool *)qv_mkBox(", main)
-        self.assertIn("((QTuple_QVal *)qv_b)", main)
+        self.assertIn("((QTuple_Bool *)", main)
+        self.assertIn("((QTuple_QVal *)", main)
         self.assertNotIn("quest_convert(", main)
 
     def test_differing_layouts_are_converted(self) -> None:

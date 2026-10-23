@@ -601,8 +601,8 @@ step 6.
   capturing nothing, direct calls of known closures, globals at file scope, join points and loop exits as labels, try
   regions as setjmp handlers popped on every way out, `volatile` for what a try body assigns, module calls and
   records by the current emitter's ABI, declarations through `c_declarations.py`), and the `codegen_c_ir` and
-  `run_c_ir` phases (`run_tests.py --phase run_c_ir`, not yet part of the default run): 50 of the 159 golden
-  programs compile and run through it. The rest need tuples, records, options, variants, arrays, `inspect`,
+  `run_c_ir` phases (`run_tests.py --phase run_c_ir`, not yet part of the default run; now `codegen_c` and
+  `run_c_compiled`, step 6): 50 of the 159 golden programs compile and run through it. The rest need tuples, records, options, variants, arrays, `inspect`,
   `type_app`, and the conversions between layouts, which raise until their slices.
 - *Slice 2 done:* tuples, records (offset tables, static for literals viewed at width subtypes and from the runtime
   map otherwise, fields read through stored types), variants, options, and arrays (wide for records and variants),
@@ -642,6 +642,14 @@ step 6.
   it (or called directly, where a variable bound to it is called). A program built by `quest compile` is now silent
   unless built with `--print-result`, as [testing.md](testing.md) says; the emitter printed a final expression
   phrase's value regardless.
+- *The switch: done.* The IR's printer is the `codegen_c` phase, after the IR's phases in `compile_pipeline()`, and
+  `run_c_compiled` runs what it prints; the emitter's phases and `codegen_c_ir`/`run_c_ir` are gone.
+- *Performance* (`tests/perf/measure.py`, against the emitter's baseline at `cf47e75`, same machine): C generation
+  for the 158 compiled programs takes 6.6s (0.43x) and produces 21 MB of C (0.43x). Those ratios flatter the IR: the
+  emitter compiled imported modules with source files into each program's C, and the IR links them, compiled once.
+  Like for like, the 26 programs with no imports: 0.52x the time, 0.70x the C. Benchmark run times:
+  `copied_records` 0.98x, `generic_closures` 1.01x, `generic_lists` 1.13x, all within the 20% bar.
+  `tests/perf/baseline.json` stays the emitter's, for comparison.
 - Update [codegen-c.md](codegen-c.md) and [c-representation.md](c-representation.md) (§5.1 and §6.4 around the
   `convert` plans), and the task list: close the variant tag-map task, and note what is now in place for top-level
   rebindings (distinct globals per symbol) and for specializing local functions.

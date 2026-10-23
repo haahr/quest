@@ -19,7 +19,7 @@ class TestPhase41Codegen(unittest.TestCase):
     def compile_quest(self, code: str, nogc: bool = False) -> subprocess.CompletedProcess[str]:
         """Helper to compile Quest code snippet to binary and run it."""
         pipeline = compile_pipeline()
-        res = pipeline.execute(code, "<test>")
+        res = pipeline.execute(code, "<test>", options=CompilerOptions(print_result=True))
         self.assertTrue(res.success, f"Pipeline failed: {res.diagnostics}")
         c_code = res.artifacts.get("codegen_c")
         self.assertIsNotNone(c_code)
@@ -38,7 +38,10 @@ class TestPhase41Codegen(unittest.TestCase):
     def test_pipeline_phases(self):
         """Verifies compile_pipeline registers the expected phases."""
         p = compile_pipeline()
-        self.assertEqual(p.phase_names(), ["tokenize", "parse", "typecheck", "codegen_c"])
+        self.assertEqual(
+            p.phase_names(),
+            ["tokenize", "parse", "typecheck", "ir_core", "ir_specialized", "ir_closed", "ir_represented", "codegen_c"],
+        )
 
     def test_nogc_compilation(self):
         """Compiles and runs strings, functions, closures, and arrays with --nogc (the same programs without it are

@@ -1,7 +1,7 @@
 """Representation (quest/ir/represent.py, docs/ir.md §8.3).
 
 Every golden test program is represented, verified (each value used in the representation its use requires), and
-run (run_tests.py's run_ir_represented phase), and compiled through the IR's C backend (run_c_ir); these tests check
+run (run_tests.py's run_ir_represented phase), and compiled to C (run_c_compiled); these tests check
 the pass's plans on small programs."""
 
 from __future__ import annotations

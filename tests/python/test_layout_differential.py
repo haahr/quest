@@ -29,7 +29,8 @@ from quest.codegen import compile_c_source, run_binary  # noqa: E402
 from quest.codegen.c_types import generic_layout_agrees  # noqa: E402
 from quest.elaborate_types import elaborate_type_binding, elaborate_type_binding_group  # noqa: E402
 from quest.env import Environment, TypeSymbol  # noqa: E402
-from quest.pipeline import compile_pipeline  # noqa: E402
+from quest.config import CompilerOptions  # noqa: E402
+from quest.pipeline import CompilerContext, compile_pipeline, link_dependencies  # noqa: E402
 from quest.types import TYPE_KIND  # noqa: E402
 from tests.python.helpers import elaborate_test_type, parse_phrase  # noqa: E402
 
@@ -99,9 +100,16 @@ class TestLayoutDifferential(unittest.TestCase):
             lines.append(f"let dg{k} = pack{packs[_type(shapes, 'A')]}(:{arg.name} {value});")
             lines.append(f"let dn{k} = dynamic.new(:{native} {value});")
         lines.append("ok")
-        res = compile_pipeline().execute("\n".join(lines) + "\n", "<layouts>")
+        build_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(build_dir.cleanup)
+        source = "\n".join(lines) + "\n"
+        options = CompilerOptions(build_dir=Path(build_dir.name))
+        ctx = CompilerContext.create(source_text=source, file_name="<layouts>", options=options)
+        res = compile_pipeline().execute(source, "<layouts>", options=options, ctx=ctx)
         self.assertTrue(res.success, [d.message for d in res.diagnostics])
         c_code = res.artifacts["codegen_c"]
+        # The modules the program imports (dynamic), compiled on their own and linked with it
+        objects = link_dependencies(ctx)
         program_main = "int main(int argc, char **argv) {"
         self.assertEqual(c_code.count(program_main), 1)
         c_code = c_code.replace(program_main, "static int quest_program_main(int argc, char **argv) {")
@@ -110,13 +118,16 @@ class TestLayoutDifferential(unittest.TestCase):
             "    quest_program_main(argc, argv);",
         ]
         harness.extend(
-            f'    printf("%d\\n", quest_layout_equivalent(qv_dn{k}->type_desc, qv_dg{k}->type_desc) ? 1 : 0);'
+            f'    printf("%d\\n", quest_layout_equivalent(g_dn{k}->type_desc, g_dg{k}->type_desc) ? 1 : 0);'
             for k in range(len(pairs))
         )
         harness.extend(["    return 0;", "}"])
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "layouts"
-            compile_c_source(c_code + "\n#include <stdio.h>\n" + "\n".join(harness) + "\n", output_path=binary)
+            compile_c_source(
+                c_code + "\n#include <stdio.h>\n" + "\n".join(harness) + "\n", output_path=binary,
+                extra_objects=objects,
+            )
             proc = run_binary(binary, timeout=60.0)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         results = proc.stdout.split()
