@@ -124,64 +124,72 @@ agree in memory is decided by `generic_layout_agrees` (§8.3), mirroring the run
 
 ## 5. Atoms, Operations, and Bindings
 
-**Atoms** are variables (symbols) and constants (`Int`, `Real`, `Bool`, `Char`, `String`, `ok`). Operations take
-atoms only.
+The nodes are defined in `ir/nodes.py`, printed by `ir/printer.py`, and checked by `ir/verify.py`.
 
-A **binding** names the result of one operation:
+**Variables are objects.** An IR variable (`Var`) has a name hint, a shape, and its Quest type (for printing, with
+alias names). It is bound by exactly one binder, and every use refers to the same object, so identity never depends
+on names; the printer makes names distinct (`x`, `x.1`). Lowering maps each typed-AST symbol to its variable once.
+
+**Atoms** are variables and constants (`Int`, `Real`, `Bool`, `Char`, `String`, `ok`). Operations take atoms only.
+
+A **let** names the result of one operation, or copies an atom:
 
 ```
-let t1: Int = add(x, 1)
+let t1: Int = prim +(x, 1)
 ```
 
 The operations, by group (the stage column says where they may appear; `C` is Core, `R` represented):
 
 | Group | Operations | Stage |
 |---|---|---|
-| Scalars | `prim op(a...)`: arithmetic, comparison, logical, `Word` operations, conversions between scalars | C+ |
-| Calls | `call f [τ...] (a...)` (known function), `call_closure c [τ...] (a...)`, `call_native n (a...)` | C+ |
-| Functions | `fun ... ` (nested function value), `type_app f [τ...]` (polymorphic value applied to types only) | C (until closure conversion) |
+| Scalars | `prim op(a...)`: arithmetic, comparison, logic, string concatenation, identity (`is`) | C+ |
+| Calls | `call f [τ...](a...)` (a function bound by `funs`, or a function value in a variable), `call m.x [τ...](a...)` (a module's member), `type_app f [τ...]` (a polymorphic value applied to types only) | C+ |
+| Modules and externals | `member m.x` (a module's member as a value), `external "symbol"` | C+ |
 | Closures | `closure f {env: a...}`, `env_field(e, i)` | after closure conversion |
-| Tuples | `tuple(a...)`, `tuple_field(t, i)` | C+ |
-| Records | `record(name: a...)`, `record_field(r, name)` | C+ |
-| Variants and options | `variant(tag, a)`, `option(tag, a...)`, `tag(v)`, `is_tag(v, tag)`, `payload(v, tag)` | C+ |
-| Arrays | `array(a...)`, `array_rep(n, a)`, `index(a, i)`, `size(a)` | C+ |
-| Auto values | `auto(τ, a...)`, `auto_type(v)`, `auto_payload(v)` | C+ |
-| Exceptions | `exception(name)` (generative), `raise` (§6.4) | C+ |
-| Cells and addresses | `addr(x)` (of a mutable variable), `addr_field(t, i)`, `addr_index(a, i)`, `load(p)`, `store(p, a)` | C+ |
-| Modules | `module_record(m)` (forces initialization), `global(g)` | C+ |
+| Tuples | `tuple(a...)` (value components; type components kept for printing), `tuple_field(t, i)` | C+ |
+| Records | `record(name = a, var name = a...)`, `record_field(r, name)` | C+ |
+| Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n, a...)`, `is_tag(v, tag)`, `payload(v, tag)`, `ordinal(v)` | C+ |
+| Arrays | `array(a...)`, `array_rep(n, a)`, `index(a, i)` | C+ |
+| Auto values | `auto[τ](a)` | C+ |
+| Exceptions | `exception Name` (generative), `exception_payload(e)` | C+ |
+| Addresses | `addr x` (a mutable variable), `addr r.name`, `addr t.#i`, `addr a[i]`, `cell(a)` (a fresh cell, for `var(e)`), `load p` | C+ |
 | Conversions | `convert(a, plan)` (§8) | R+ |
 | Descriptors | `descriptor(τ)`, `instantiate(template, d...)`, `descriptor_param(A)` | after materialization |
-| Dynamic | `dynamic_new(d, a)`, `dynamic_be(d, a)`, `inspect` (§6.5) | C+ |
 
-Operations that can raise (calls, array indexing, `payload` of the wrong tag, `dynamic_be`, division) do so through
-the enclosing `try` regions (§6.4); the IR does not mark them, as no stage needs edges to handlers.
+Library functions (`dynamic.new`, `arrayOp.size`, ...) are calls of module members, not operations of their own.
+Operations that can raise (calls, array indexing, `payload` of the wrong tag, division) do so through the enclosing
+`try` regions (§6.4); the IR does not mark them, as no stage needs edges to handlers.
 
-**Mutable variables** are declared and assigned by statements:
+**Statements** besides `let`:
 
-```
-var n: Int = 0
-n := add(n, 1)
-```
-
-Only source-level `let var` locals, and `var`/`out` parameters (as pointers), are mutable. `addr(x)` takes the
-address of a mutable variable for a `var` or `out` argument (`@x`); field and element addresses take the address of
-a `var` component or an array element. Module-level `var` variables are globals.
+- `var x: τ = a` declares a mutable variable, and `x := a` assigns it. Only source-level `let var` locals and
+  `var`/`out` parameters are mutable; a use of one reads it, and how a `var` parameter is passed (by pointer) is the
+  printer's business. `addr x` takes the address of one for a `var` or `out` argument (`@x`). Mutable variables of a
+  unit's or module's top level are globals.
+- `store r.name := a`, `store t.#i := a`, `store a[i] := v`, and `store *p := a` store into a `var` component, an
+  array element, or the location at an address.
+- `do op` evaluates an operation for its effect.
+- `funs { fun f [A::K](x: τ, var y: τ): τ { body } ... }` binds functions, top-level, module, and local alike: the
+  members of a `funs rec` see one another (and themselves), and those of a plain `funs` do not. An anonymous function
+  is bound to a temporary. Closure conversion (§8.2) tells top-level from local functions by their free variables.
+- `echo x : τ` and `result x : τ` print a top-level phrase's value (§6.6).
 
 ## 6. Control Flow
 
-A **body** is a sequence of bindings, mutable-variable statements, and expression statements, ending in a
-terminator. The terminators are `return a`, `jump k(a...)`, `break l`, `continue l`, `raise a`, and `unreachable`
-(after a call that cannot return, such as `exit`).
+A **body** is a sequence of statements; a terminator, if any, is last. The terminators are `return a`, `jump
+k(a...)`, `break l`, `continue l`, `raise a [with p]`, and `unreachable` (after a call that cannot return, such as
+`exit`). Structured statements (`if`, `switch`, `inspect`, `loop`, `try`, `join`) may appear anywhere in a body: a
+branch that ends without a terminator continues with the statement after the structured statement.
 
 ### 6.1. Conditionals and Switches
 
 ```
-if a then { body } else { body }
-switch tag(v) { case cons: { body } case nil: { body } else: { body } }
+if a { body } else { body }
+switch tag(v) { case cons (c: τ): { body } case nil: { body } else: { body } }
 ```
 
-`switch` covers `case` on variants and options (by tag), and on ordinals. Both are statements: their branches end in
-terminators. A conditional *expression* jumps to a join point (§6.3).
+`switch` covers `case` on variants and options, by tag; a case may bind the payload. A conditional or `case`
+*expression* jumps to a join point with its value (§6.3).
 
 ### 6.2. Loops
 
@@ -198,40 +206,41 @@ A join point is a local continuation, used only in tail position:
 
 ```
 join k(r: Int) { rest of the block, using r } in {
-  if c then { jump k(1) } else { let t: Int = f(x); jump k(t) }
+  if c { jump k(1) } else { let t: Int = call f(x); jump k(t) }
 }
 ```
 
 Its parameters are the values flowing into it (an SSA block's arguments). Lowering uses a join point for every
-construct that produces a value on more than one path: `if`, `case`, and `inspect` expressions, blocks whose last
-expression is one of these, and `try` expressions. Join points are not values, are never captured by closures, and
-are jumped to only from their own scope; the C printer prints them as a labeled block with variables for their
-parameters, or inlines a join point used once.
+construct that produces a value on more than one path: `if`, `case`, `inspect`, and `try` expressions. After the
+continuation (which may itself end without a terminator), control continues with the statement after the `join`.
+Join points are not values, are never captured by closures, and are jumped to only from their own body; the C
+printer prints them as a labeled block with variables for their parameters, or inlines a join point used once.
 
 ### 6.4. Exceptions
 
 ```
-try { body } handle (e) { body }
+try { body } handle (e: Exception) { body }
 raise a
 ```
 
 `try` is a region: a `raise` in the body, or in any function it calls, transfers to the handler, which receives the
-exception value; branches of a Quest `try ... when ... else ... end` become a `switch` on the exception in the
+exception value; branches of a Quest `try ... when ... else ... end` become tests of the exception's identity in the
 handler, re-raising when none matches. The C printer prints `try` with `setjmp`/`longjmp` (as
-[c-representation.md](c-representation.md) §7 describes). C makes a non-`volatile` local modified between `setjmp`
-and `longjmp` indeterminate afterwards, so the printer declares `volatile` every mutable variable that is assigned in
-a `try` body and live in its handler or after the `try`. The IR makes this decidable from the region structure.
+[c-representation.md](c-representation.md) §7 describes), popping the handler on every way out of the body (falling
+off its end, or a jump, break, continue, or return). C makes a non-`volatile` local modified between `setjmp` and
+`longjmp` indeterminate afterwards, so the printer declares `volatile` every mutable variable that is assigned in a
+`try` body and live in its handler or after the `try`. The IR makes this decidable from the region structure.
 
 ### 6.5. Inspect and Dynamic
 
-`inspect` (auto values and dynamic values) is a structured statement, like `switch`: each branch tests the value's
-run-time type against a branch type (subtype or exact match), binds the converted components, and ends in a
-terminator. Conversions of the components are explicit `convert` operations in the branch (§8).
+`inspect` (auto values and dynamic values) is a structured statement, like `switch`: each case tests the value's
+run-time type against a type (subtype or exact match) and binds the value's components as of that type. Conversions
+of the components are explicit `convert` operations in the case (§8).
 
 ### 6.6. Echo
 
-The REPL-style echo of top-level phrases is `echo(a, τ)`, an expression statement that prints a value with the
-original Quest type (for alias names) and its descriptor or static format.
+`echo x : τ` prints a top-level phrase's value with its original Quest type (for alias names), as the driver's
+`--echo` does; `result x : τ` prints the value of a program's last phrase, as the driver always does.
 
 ## 7. Type Parameters and Descriptors
 
@@ -331,7 +340,7 @@ builds its own SSA and optimizes.
 
 | Stage | After | Invariants (checked by the verifier) |
 |---|---|---|
-| **Core** | lowering | ANF: operation arguments are atoms; every binder is a symbol bound once, used only in its scope; join points jumped to only in tail position within their scope; shapes only (no aliases, no unreduced applications); type parameters in scope for every `typevar` |
+| **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (step 1), as abstract types of modules are type variables too |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no nested `fun` or `type_app`; every function's free variables are its parameters, its environment, and globals |
 | **Represented** | §8.3 | every binder has a representation; every operation's atoms have the representations it requires; conversions only through `convert` |
