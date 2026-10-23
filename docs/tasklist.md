@@ -238,3 +238,111 @@ should be made where its scope begins rather than where it is written.
 
 **Done when.** The type checker rejects the program above (or the language defines its meaning and both backends
 agree), and an error test covers it.
+
+---
+
+## Auto types may not mention type parameters inside mutable data
+
+**Problem.** Generic code lays out values of types that mention its type parameters generically, and a value used
+at a particular type argument is converted between layouts by copying (`quest_convert`, `docs/c-representation.md`
+§6.4.5). A copy of mutable data would not share its updates, so the type checker rejects a type parameter inside
+mutable data (arrays, var components and fields, var and out parameters) in an auto value's witness, in the types
+of inspect's when clauses, and in the type arguments of `dynamic.new` and `dynamic.be`
+(`docs/type-system.md` §6.11). Where it cannot see the type, as when one reaches `dynamic.new` as an ordinary type
+argument, compiled code stops with a run-time error. The interpreter has no layouts and runs such programs.
+
+**Reproduce.** `tests/errors/typecheck/auto/{witness,inspect,dynamic}_type_parameter_in_mutable_data.quest` are
+rejected, and `tests/errors/run/layout_conversion_mutable_data.quest` runs interpreted but fails in both C backends
+with `a value used at type Array(Tuple v: Record age: Int fuel: String end end) was laid out by generic code, and
+converting it would copy mutable data`.
+
+**Where to start.** `_check_closed_type` in `bootstrap/python/quest/typechecker/typecheck.py` makes the static
+check; `quest_convert` and `quest_layout_conversion_error` in `runtime/quest_runtime.c` the run-time one. Lifting
+the restriction needs conversion without copying: converting array elements and var slots lazily, through a view
+that reads and writes the original's layout, or a uniform layout for type-parameter positions inside mutable data
+(compare "Conversions that copy change object identity in C" above). With the IR (`docs/ir.md`), either is a
+change to the represent pass.
+
+**Done when.** The four tests above run (the error tests becoming golden tests) with the same results interpreted
+and in both C backends.
+
+---
+
+## Auto types with var components may not have witnesses that mention type parameters
+
+**Problem.** The type component of an auto value whose auto type has var components may be a type parameter of an
+enclosing function, but not a larger type that mentions one: the binders of an inspect share the var components,
+so converting them from the generic layout would lose updates. The type checker rejects such witnesses, open
+compound types in when clauses for such auto types, and such type arguments of the dynamic operations.
+
+**Reproduce.** `tests/errors/typecheck/auto/witness_type_parameter_with_var_components.quest`:
+
+```quest
+Let Cell = Auto A::TYPE with var a:A end;
+let cell(A::TYPE x:A):Cell = auto :Tuple y: A end with tuple x end end;
+```
+
+**Where to start.** The `auto_type` check in `_check_closed_type` in
+`bootstrap/python/quest/typechecker/typecheck.py`, and `_emit_auto_inspect` in
+`bootstrap/python/quest/codegen/c_emitter.py`. Shares a solution with the task above: var components converted
+without copying.
+
+**Done when.** The test above becomes a golden test where an inspect updates a var component and the update is
+seen through the auto value, in all backends.
+
+---
+
+## Only `Dynamic.T` among auto types can be externed
+
+**Problem.** The serialization format writes `Dynamic.T` by its built-in name, but no other auto type is encodable
+(`docs/dynamic.md` §2.2), so `dynamic.extern` raises `dynamic.error` on a value whose type contains any other auto
+type, such as a dynamic holding a value of `Auto A::TYPE with a:A b:A end`.
+
+**Reproduce.**
+
+```quest
+import dynamic: Dynamic;
+import writer: Writer;
+Let Pair = Auto A::TYPE with a:A b:A end;
+dynamic.extern(writer.output dynamic.new(:Pair auto :Int with 1 2 end))
+```
+
+raises `dynamic.error` in every backend.
+
+**Where to start.** A type node for auto types in `docs/dynamic.md` §2.2 (the kind bound, and the components'
+names, var-ness, and types with the bound type variable), each value written with its witness type; then the
+encoders and decoders in `bootstrap/python/quest/dynamic_json.py` and `runtime/quest_serialization.c`
+(`QTYPE_KIND_AUTO` in the encodability check, writer, and reader), which already write and read `Dynamic.T`'s
+witness. Bump the format version if the change is not backward compatible.
+
+**Done when.** Values of auto types round-trip through `extern` and `intern` in all backends, including autos whose
+witnesses were built in generic code, and `tests/source/stdlib/dynamic_extern.quest` (or a new golden test) covers
+them.
+
+---
+
+## Auto values built in generic code print `?0` for their witness in C
+
+**Problem.** A type descriptor that generic code builds from a template at run time
+(`quest_instantiate_descriptor`, `docs/c-representation.md` §6.4.5) keeps the template's name, in which each type
+parameter is a hole named `?0`, `?1`, …. Printing an auto value prints its witness by that name.
+
+**Reproduce.**
+
+```quest
+import dynamic: Dynamic;
+let f(A::TYPE x: A): Dynamic = dynamic.new(:Tuple v: A w: Int end tuple x 1 end);
+let g: All(A::TYPE x: A) Dynamic = f;
+g(:String "hi")
+```
+
+with `--print-result` prints `auto :Tuple v: String w: Int end with …` interpreted but
+`auto :Tuple v: ?0 w: Int end with …` with `--stop-after run_c_compiled` and `run_c_ir`. Serialization is
+structural and not affected.
+
+**Where to start.** `quest_instantiate_descriptor` in `runtime/quest_runtime.c` could build the instance's name
+from the template's with the holes replaced by the arguments' names (memoized with the instance), or the printer
+(the `QTYPE_KIND_AUTO` case near `printf("auto :%s with"`) could print descriptors structurally. `hole_var` in
+`bootstrap/python/quest/codegen/c_types.py` names the holes.
+
+**Done when.** Both C backends print the program above as the interpreter does, and a golden test covers it.
