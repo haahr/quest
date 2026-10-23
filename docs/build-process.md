@@ -150,6 +150,19 @@ quest/
    - Interface `util/Path` (`lib/util/path.int.quest`) -> `.build/util/path.qi`, `.build/util/path.int.h`.
    - Module `util/path` (`lib/util/path.mod.quest`):
      `.build/util/path.qm`, `.build/util/path.mod.c`, `.build/util/path.o`.
+
+   **Units of different programs can share artifact paths.** A canonical name identifies a unit only within one
+   program's roots: its include paths and its program directory (`docs/modules.md` §2.3). Programs built into the same
+   build directory with different roots can have different units with one canonical name, and so with one set of
+   artifact paths. For example, `a/counter.mod.quest` and `b/counter.mod.quest`, each beside its program
+   (`a/main.quest`, `b/main.quest`) and under no include root, are both named `counter`, and both build to
+   `.build/counter.{qi,int.h,qm,mod.c,o}`. Units at the same relative path under different include roots (`-I x` with
+   `x/util/path.mod.quest`, `-I y` with `y/util/path.mod.quest`) share paths the same way.
+
+   This is correct but costs rebuilds, and is accepted rather than avoided. Every `.qi` and `.qm` records the source
+   it was built from, and artifacts are reused only for that source (§5 Rule 1, §7.1 rule 5). So each program is
+   always built from its own units, but building the programs alternately recompiles the shared units every time.
+   A build directory per program (`--build-dir`) avoids the rebuilds.
 2. **C Header Collision Prevention (`.int.h` and `.mod.c`):**
    Generated C files keep the `.int` or `.mod` of their source's name: `math.int.quest` generates `math.int.h`
    and `math.mod.quest` generates `math.mod.c`. The build directory and its subdirectories are on the host C
@@ -283,6 +296,8 @@ The compiler applies three strict rules in order:
    - Compare filesystem modification timestamps (`mtime`).
    - If `I.int.quest` is newer than `I.qi` or `I.int.h`, the artifacts are **out of date**.
    - If `I.qi` and `I.int.h` are both newer than or equal to `I.int.quest`, the artifacts are **up to date**.
+   - In either case, if `I.qi` records a different source (`source`) than this `I.int.quest`, the artifacts belong to
+     another interface with the same canonical name (§3.2) and are **out of date**.
 
 2. **Rule 2 (Source Present, Artifacts Incomplete):**
    If `I.int.quest` exists but either `I.qi` or `I.int.h` is missing from `.build/`, the artifacts are **out of date**.
@@ -556,6 +571,8 @@ and rebuild the transitive closure of required modules.
         adding a file earlier on the search path, rebuilds the units it affects even though no file they were compiled
         against changed. Without this rule such a build would reuse the old artifacts and, because the build engine
         compiles the module sources a manifest names, link the old imported modules too.
+     5. The `.qm` records a different `source` than the unit's source file: the artifacts belong to another unit with
+        the same artifact paths (§3.2).
 
    - **Action if Stale:**
      - Compile the source file (`main.quest` or `M.mod.quest`).
