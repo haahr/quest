@@ -11,6 +11,10 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 
 - **One committer.** Paul Haahr is the only committer. Work on the branch you are given, commit there, and push
   directly to `origin/main` (`git push origin HEAD:main`) *only when asked*. Never open pull requests.
+- **Never push without an explicit instruction to push.** Pushing publishes to `main`, so it needs the owner's
+  explicit request for the change at hand. Do not infer one: a request to commit, rebase, fix, or finish something
+  is not a request to push, and an instruction to push one change does not carry over to later ones. When work is
+  ready, commit it and say that it is ready to push.
 - **Before pushing:** fetch, rebase on `origin/main` (or bring the branch up to date as your environment provides),
   and run both test suites (§2). Push only a branch whose tests all pass.
 - **Ask about decisions that are his,** and act on the rest. Language semantics, deviations from Cardelli's papers,
