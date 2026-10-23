@@ -1,0 +1,42 @@
+(* Language: local functions inside polymorphic functions specialized at record and variant types. C compiles a
+   specialized clone of a function called with a record or variant type argument; its local functions are clones too,
+   lifted like the originals. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let print(s: String): Ok = writer.putString(wOut s <> "\n");
+
+Let P = Record a: Int end;
+Let V = Variant p: Int q: Bool end;
+
+(* 1. A monomorphic local function *)
+let keep(A::TYPE x: A): A = begin let twice(y: Int): Int = y * 2; let n = twice(1); x end;
+print(conv.int(keep(:P record a = 1 end).a));
+
+(* 2. A local function capturing the parameters, typed with the type parameter *)
+let choose(A::TYPE x: A y: A n: Int): A = begin let pick(z: A): A = if n > 0 then z else y end; pick(x) end;
+print(conv.int(choose(:P record a = 2 end record a = 20 end 1).a));
+print(conv.int(case choose(:V variant p of V with 3 end variant q of V with true end 0) when p with k then k else 30 end));
+
+(* 3. An anonymous local function, in a function specialized at two types *)
+let measure(A::TYPE x: A): Int = begin let f = fun(y: A): Int 4; f(x) end;
+print(conv.int(measure(:P record a = 0 end) + measure(:V variant q of V with false end)));
+
+(* 4. A polymorphic local function reusing the type parameter's name, at another type *)
+let wrap(A::TYPE x: A): A =
+    begin
+        let same(A::TYPE y: A): A = y;
+        let b = same(:Bool true);
+        if b then same(:A x) else x end
+    end;
+print(conv.int(wrap(:P record a = 5 end).a));
+
+(* 5. A specialized function calling another with a local function *)
+let outer(A::TYPE x: A): A = begin let id(y: A): A = keep(:A y); id(x) end;
+print(conv.int(outer(:P record a = 6 end).a));
+
+(* 6. Nested local functions *)
+let nest(A::TYPE x: A): A = begin let f(y: A): A = begin let g(z: A): A = z; g(y) end; f(x) end;
+print(conv.int(nest(:P record a = 7 end).a));

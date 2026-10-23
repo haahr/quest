@@ -136,8 +136,12 @@ def analyze_closures(
     prog: Any,
     top_fun_objs: set[int],
     is_global: Callable[[TypedVar], bool],
+    id_prefix: str = "",
 ) -> list[LambdaAnalysis]:
-    """Scans AST to find all lambdas needing lifting and collects their free variables."""
+    """Scans AST to find all lambdas needing lifting and collects their free variables.
+
+    Lambdas are numbered from 1 in each scan, so scans of different trees whose lambdas share a namespace (the
+    program and the specialized clones of its functions) give each its own id_prefix."""
     lambdas: list[LambdaAnalysis] = []
     lambda_counter = 0
     current_module: Optional[str] = None
@@ -156,7 +160,7 @@ def analyze_closures(
         if isinstance(node, TypedFun):
             if id(node) not in top_fun_objs:
                 lambda_counter += 1
-                lid = f"lambda_{lambda_counter}"
+                lid = f"{id_prefix}lambda_{lambda_counter}"
                 fvars = find_free_vars(node, is_global)
                 lambdas.append(
                     LambdaAnalysis(

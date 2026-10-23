@@ -871,6 +871,10 @@ def analyze_program_for_c(
         if not getattr(mod, "is_precompiled", False):
             agnostic_lambdas.extend(analyze_closures(mod, top_fun_objs, is_global))
 
+    # Specialized clones are not part of the program: their lambdas are clones too, lifted like the originals
+    for spec_ident, spec_fun in specializations.values():
+        agnostic_lambdas.extend(analyze_closures(spec_fun, top_fun_objs, is_global, id_prefix=f"{spec_ident}_"))
+
     lifted_lambdas: list[CLambdaInfo] = []
     for l in agnostic_lambdas:
         if l.module_name:
