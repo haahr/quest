@@ -1,0 +1,264 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun print(s: String): Ok {
+      let %1: String = prim <>(s, "\n")
+      let %2: Ok = call writer.putString(wOut, %1)
+      return %2
+    }
+  }
+  funs {
+    fun keep [A::TYPE](x: A): A {
+      funs {
+        fun twice(y: Int): Int {
+          let %3: Int = prim *(y, 2)
+          return %3
+        }
+      }
+      let n: Int = call twice(1)
+      return x
+    }
+    fun keep_spec(x.1: P): P {
+      funs {
+        fun twice.1(y.1: Int): Int {
+          let %4: Int = prim *(y.1, 2)
+          return %4
+        }
+      }
+      let n.1: Int = call twice.1(1)
+      return x.1
+    }
+  }
+  let %5: Record a: Int end = record(a = 1)
+  let %6: P = call keep_spec(%5)
+  let %7: Int = record_field(%6, a)
+  let %8: String = call conv.int(%7)
+  do call print(%8)
+  funs {
+    fun choose [A::TYPE](x.2: A, y.2: A, n.2: Int): A {
+      funs {
+        fun pick(z: A): A {
+          join k1(r: A) {
+            return r
+          } in {
+            let %9: Bool = prim >(n.2, 0)
+            if %9 {
+              jump k1(z)
+            } else {
+              jump k1(y.2)
+            }
+          }
+        }
+      }
+      let %10: A = call pick(x.2)
+      return %10
+    }
+    fun choose_spec(x.3: P, y.3: P, n.3: Int): P {
+      funs {
+        fun pick.1(z.1: P): P {
+          join k1(r.1: P) {
+            return r.1
+          } in {
+            let %11: Bool = prim >(n.3, 0)
+            if %11 {
+              jump k1(z.1)
+            } else {
+              jump k1(y.3)
+            }
+          }
+        }
+      }
+      let %12: P = call pick.1(x.3)
+      return %12
+    }
+    fun choose_spec.1(x.4: V, y.4: V, n.4: Int): V {
+      funs {
+        fun pick.2(z.2: V): V {
+          join k1(r.2: V) {
+            return r.2
+          } in {
+            let %13: Bool = prim >(n.4, 0)
+            if %13 {
+              jump k1(z.2)
+            } else {
+              jump k1(y.4)
+            }
+          }
+        }
+      }
+      let %14: V = call pick.2(x.4)
+      return %14
+    }
+  }
+  let %15: Record a: Int end = record(a = 2)
+  let %16: Record a: Int end = record(a = 20)
+  let %17: P = call choose_spec(%15, %16, 1)
+  let %18: Int = record_field(%17, a)
+  let %19: String = call conv.int(%18)
+  do call print(%19)
+  join k2(r.3: Int) {
+    let %20: String = call conv.int(r.3)
+    do call print(%20)
+    funs {
+      fun measure [A::TYPE](x.5: A): Int {
+        funs {
+          fun f(y.5: A): Int {
+            return 4
+          }
+        }
+        let %21: Int = call f(x.5)
+        return %21
+      }
+      fun measure_spec(x.6: P): Int {
+        funs {
+          fun f.1(y.6: P): Int {
+            return 4
+          }
+        }
+        let %22: Int = call f.1(x.6)
+        return %22
+      }
+      fun measure_spec.1(x.7: V): Int {
+        funs {
+          fun f.2(y.7: V): Int {
+            return 4
+          }
+        }
+        let %23: Int = call f.2(x.7)
+        return %23
+      }
+    }
+    let %24: Record a: Int end = record(a = 0)
+    let %25: Int = call measure_spec(%24)
+    let %26: V = variant(q, false)
+    let %27: Int = call measure_spec.1(%26)
+    let %28: Int = prim +(%25, %27)
+    let %29: String = call conv.int(%28)
+    do call print(%29)
+    funs {
+      fun wrap [A::TYPE](x.8: A): A {
+        funs {
+          fun same [A::TYPE](y.8: A): A {
+            return y.8
+          }
+        }
+        let b: Bool = call same [Bool](true)
+        join k3(r.4: A) {
+          return r.4
+        } in {
+          if b {
+            let %30: A = call same [A](x.8)
+            jump k3(%30)
+          } else {
+            jump k3(x.8)
+          }
+        }
+      }
+      fun wrap_spec(x.9: P): P {
+        funs {
+          fun same.1 [A::TYPE](y.9: A): A {
+            return y.9
+          }
+          fun same_spec(y.10: P): P {
+            return y.10
+          }
+        }
+        let b.1: Bool = call same.1 [Bool](true)
+        join k3(r.5: P) {
+          return r.5
+        } in {
+          if b.1 {
+            let %31: P = call same_spec(x.9)
+            jump k3(%31)
+          } else {
+            jump k3(x.9)
+          }
+        }
+      }
+    }
+    let %32: Record a: Int end = record(a = 5)
+    let %33: P = call wrap_spec(%32)
+    let %34: Int = record_field(%33, a)
+    let %35: String = call conv.int(%34)
+    do call print(%35)
+    funs {
+      fun outer [A::TYPE](x.10: A): A {
+        funs {
+          fun id(y.11: A): A {
+            let %36: A = call keep [A](y.11)
+            return %36
+          }
+        }
+        let %37: A = call id(x.10)
+        return %37
+      }
+      fun outer_spec(x.11: P): P {
+        funs {
+          fun id.1(y.12: P): P {
+            let %38: P = call keep_spec(y.12)
+            return %38
+          }
+        }
+        let %39: P = call id.1(x.11)
+        return %39
+      }
+    }
+    let %40: Record a: Int end = record(a = 6)
+    let %41: P = call outer_spec(%40)
+    let %42: Int = record_field(%41, a)
+    let %43: String = call conv.int(%42)
+    do call print(%43)
+    funs {
+      fun nest [A::TYPE](x.12: A): A {
+        funs {
+          fun f.3(y.13: A): A {
+            funs {
+              fun g(z.3: A): A {
+                return z.3
+              }
+            }
+            let %44: A = call g(y.13)
+            return %44
+          }
+        }
+        let %45: A = call f.3(x.12)
+        return %45
+      }
+      fun nest_spec(x.13: P): P {
+        funs {
+          fun f.4(y.14: P): P {
+            funs {
+              fun g.1(z.4: P): P {
+                return z.4
+              }
+            }
+            let %46: P = call g.1(y.14)
+            return %46
+          }
+        }
+        let %47: P = call f.4(x.13)
+        return %47
+      }
+    }
+    let %48: Record a: Int end = record(a = 7)
+    let %49: P = call nest_spec(%48)
+    let %50: Int = record_field(%49, a)
+    let %51: String = call conv.int(%50)
+    do call print(%51)
+  } in {
+    let %52: V = variant(p, 3)
+    let %53: V = variant(q, true)
+    let %54: V = call choose_spec.1(%52, %53, 0)
+    switch tag(%54) {
+      case p (k: Int): {
+        jump k2(k)
+      }
+      else: {
+        jump k2(30)
+      }
+    }
+  }
+}
+

@@ -1,0 +1,133 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  let one: Expr = variant(num, 1)
+  let l: Expr = one
+  let r: Expr = one
+  let %3: Tuple l: Expr r: Expr end = tuple(l, r)
+  let two: Expr = variant(add, %3)
+  let l.1: Expr = one
+  let r.1: Expr = two
+  let %4: Tuple l: Expr r: Expr end = tuple(l.1, r.1)
+  let e: Expr = variant(add, %4)
+  funs rec {
+    fun eval(x.1: Expr): Int {
+      join k1(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(x.1) {
+          case num (n: Int): {
+            jump k1(n)
+          }
+          case add (p: Tuple l: Expr r: Expr end): {
+            let %5: Expr = tuple_field(p, 0)
+            let %6: Int = call eval(%5)
+            let %7: Expr = tuple_field(p, 1)
+            let %8: Int = call eval(%7)
+            let %9: Int = prim +(%6, %8)
+            jump k1(%9)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let %10: Int = call eval(e)
+  do call printInt(%10)
+  funs {
+    fun id [A::TYPE](x.2: A): A {
+      return x.2
+    }
+    fun id_spec(x.3: Expr): Expr {
+      return x.3
+    }
+  }
+  let %11: Expr = call id_spec(e)
+  let %12: Int = call eval(%11)
+  do call printInt(%12)
+  let t: Expr = e
+  let n.1: Int = 7
+  let h: Holder = tuple(t, n.1)
+  let %13: Expr = tuple_field(h, 0)
+  let %14: Int = call eval(%13)
+  let %15: Int = tuple_field(h, 1)
+  let %16: Int = prim +(%14, %15)
+  do call printInt(%16)
+  let %17: T = call dynamic.new [Expr](e)
+  let back: Expr = call dynamic.be [Expr](%17)
+  let %18: Int = call eval(back)
+  do call printInt(%18)
+  join k2(r.3: Int) {
+    do call printInt(r.3)
+    let %19: Tuple l: Expr r: Expr end = payload(back, add)
+    let %20: Expr = tuple_field(%19, 1)
+    let %21: Int = call eval(%20)
+    do call printInt(%21)
+    let %22: T = call dynamic.new [Expr](e)
+    let e2: Expr2 = call dynamic.be [Expr2](%22)
+    join k3(r.4: Int) {
+      do call printInt(r.4)
+      let l.2: RExpr(Int) = variant(num, 4)
+      let r.5: RExpr(Int) = variant(num, 5)
+      let %23: Tuple l: Rec(E :: TYPE) Variant num: Int add: Tuple l: E r: E end end r: Rec(E :: TYPE) Variant num: Int add: Tuple l: E r: E end end end = tuple(l.2, r.5)
+      let re: RExpr(Int) = variant(add, %23)
+      let %24: T = call dynamic.new [RExpr(Int)](re)
+      let %25: Expr = call dynamic.be [Expr](%24)
+      let %26: Int = call eval(%25)
+      do call printInt(%26)
+      join k4(o: Int) {
+        do call printInt(o)
+      } in {
+        try {
+          join k5(r.6: Int) {
+            jump k4(r.6)
+          } in {
+            let %27: T = call dynamic.new [Expr](e)
+            let %28: Other = call dynamic.be [Other](%27)
+            let %29: Bool = is_tag(%28, num)
+            if %29 {
+              jump k5(1)
+            } else {
+              jump k5(0)
+            }
+          }
+        } handle (e.1: Exception) {
+          let %30: Exception = member dynamic.error
+          let %31: Bool = prim is(e.1, %30)
+          if %31 {
+            jump k4(-1)
+          } else {
+            raise e.1
+          }
+        }
+      }
+    } in {
+      let %32: Bool = is_tag(e2, add)
+      if %32 {
+        jump k3(1)
+      } else {
+        jump k3(0)
+      }
+    }
+  } in {
+    let %33: Bool = is_tag(back, add)
+    if %33 {
+      jump k2(1)
+    } else {
+      jump k2(0)
+    }
+  }
+}
+

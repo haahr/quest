@@ -1,0 +1,469 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun print(s: String): Ok {
+      let %1: String = prim <>(s, "\n")
+      let %2: Ok = call writer.putString(wOut, %1)
+      return %2
+    }
+  }
+  funs {
+    fun mkTuple [A::TYPE](v: A): Tuple x: A end {
+      let x: A = v
+      let %3: Tuple x: A end = tuple(x)
+      return %3
+    }
+    fun mkTuple_spec(v.1: Bool): Tuple x: Bool end {
+      let x.1: Bool = v.1
+      let %4: Tuple x: Bool end = tuple(x.1)
+      return %4
+    }
+  }
+  funs {
+    fun getTuple [A::TYPE](t: Tuple x: A end): A {
+      let %5: A = tuple_field(t, 0)
+      return %5
+    }
+    fun getTuple_spec(t.1: Tuple x: Bool end): Bool {
+      let %6: Bool = tuple_field(t.1, 0)
+      return %6
+    }
+  }
+  funs {
+    fun mkBox [A::TYPE](v.2: A): Box(A) {
+      let x.2: A = v.2
+      let %7: Tuple x: A end = tuple(x.2)
+      return %7
+    }
+  }
+  funs {
+    fun getBox [A::TYPE](b: Box(A)): A {
+      let %8: A = tuple_field(b, 0)
+      return %8
+    }
+  }
+  funs {
+    fun id [A::TYPE](v.3: A): A {
+      return v.3
+    }
+  }
+  let bools: Box(Bool) = call mkBox [Bool](true)
+  let %9: Bool = call getBox [Bool](bools)
+  let %10: String = call conv.bool(%9)
+  do call print(%10)
+  let %11: Tuple x: Bool end = call mkTuple_spec(false)
+  let %12: Bool = call getTuple_spec(%11)
+  let %13: String = call conv.bool(%12)
+  do call print(%13)
+  let %14: Box(Int) = call mkBox [Int](3)
+  let %15: Int = call getBox [Int](%14)
+  let %16: String = call conv.int(%15)
+  do call print(%16)
+  let %17: Box(Real) = call mkBox [Real](2.5)
+  let %18: Real = call getBox [Real](%17)
+  let %19: String = call conv.real(%18)
+  do call print(%19)
+  let %20: Box(Char) = call mkBox [Char]('c')
+  let %21: Char = call getBox [Char](%20)
+  let %22: String = call conv.char(%21)
+  do call print(%22)
+  let %23: Box(String) = call mkBox [String]("box")
+  let %24: String = call getBox [String](%23)
+  do call print(%24)
+  let %25: Box(Bool) = call id [Box(Bool)](bools)
+  let %26: Bool = tuple_field(%25, 0)
+  let %27: String = call conv.bool(%26)
+  do call print(%27)
+  funs {
+    fun mkPair [A::TYPE](v.4: A): Pair(A) {
+      let first: Box(A) = call mkBox [A](v.4)
+      let second: Int = 1
+      let %28: Tuple first: Box(A) second: Int end = tuple(first, second)
+      return %28
+    }
+  }
+  funs {
+    fun firstOf [A::TYPE](p: Pair(A)): A {
+      let %29: Box(A) = tuple_field(p, 0)
+      let %30: A = tuple_field(%29, 0)
+      return %30
+    }
+  }
+  let pair: Pair(Bool) = call mkPair [Bool](true)
+  let %31: Box(Bool) = tuple_field(pair, 0)
+  let %32: Bool = tuple_field(%31, 0)
+  let %33: String = call conv.bool(%32)
+  let %34: Bool = call firstOf [Bool](pair)
+  let %35: String = call conv.bool(%34)
+  let %36: String = prim <>(" ", %35)
+  let %37: String = prim <>(%33, %36)
+  do call print(%37)
+  funs {
+    fun mkSome [A::TYPE](v.5: A): Maybe(A) {
+      let value: A = v.5
+      let %38: Tuple value: A end = tuple(value)
+      let %39: Maybe(A) = option(some, %38)
+      return %39
+    }
+  }
+  funs {
+    fun getOr [A::TYPE](m: Maybe(A), d: A): A {
+      join k1(r: A) {
+        return r
+      } in {
+        switch tag(m) {
+          case some (s.1: Tuple value: A end): {
+            let %40: A = tuple_field(s.1, 0)
+            jump k1(%40)
+          }
+          else: {
+            jump k1(d)
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun mkOpt [A::TYPE](v.6: A): Option none some with Tuple value: A end end {
+      let value.1: A = v.6
+      let %41: Tuple value: A end = tuple(value.1)
+      let %42: Maybe(A) = option(some, %41)
+      return %42
+    }
+  }
+  funs {
+    fun getOpt [A::TYPE](m.1: Option none some with Tuple value: A end end, d.1: A): A {
+      join k2(r.1: A) {
+        return r.1
+      } in {
+        switch tag(m.1) {
+          case some (s.2: Tuple value: A end): {
+            let %43: A = tuple_field(s.2, 0)
+            jump k2(%43)
+          }
+          else: {
+            jump k2(d.1)
+          }
+        }
+      }
+    }
+  }
+  let maybe: Maybe(Bool) = call mkSome [Bool](true)
+  let %44: Tuple Int value: Bool end = payload(maybe, some)
+  let %45: Bool = tuple_field(%44, 1)
+  let %46: String = call conv.bool(%45)
+  do call print(%46)
+  let %47: Bool = call getOr [Bool](maybe, false)
+  let %48: String = call conv.bool(%47)
+  do call print(%48)
+  let %49: Maybe(Bool) = option(none)
+  let %50: Bool = call getOr [Bool](%49, false)
+  let %51: String = call conv.bool(%50)
+  do call print(%51)
+  let %52: Option none some with Tuple value: Bool end end = call mkOpt [Bool](true)
+  let %53: Bool = call getOpt [Bool](%52, false)
+  let %54: String = call conv.bool(%53)
+  do call print(%54)
+  let %55: Maybe(Char) = call mkSome [Char]('m')
+  let %56: Char = call getOr [Char](%55, ' ')
+  let %57: String = call conv.char(%56)
+  do call print(%57)
+  funs {
+    fun nil [A::TYPE](): List(A) {
+      let %58: List(A) = option(nil)
+      return %58
+    }
+  }
+  funs {
+    fun cons [A::TYPE](head: A, tail: List(A)): List(A) {
+      let head.1: A = head
+      let tail.1: List(A) = tail
+      let %59: Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end = tuple(head.1, tail.1)
+      let %60: List(A) = option(cons, %59)
+      return %60
+    }
+    fun cons_spec(head.2: Tree(Bool), tail.2: List(Tree(Bool))): List(Tree(Bool)) {
+      let head.3: Tree(Bool) = head.2
+      let tail.3: List(Tree(Bool)) = tail.2
+      let %61: Tuple head: Tree(Bool) tail: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(Bool) tail: List end end end = tuple(head.3, tail.3)
+      let %62: List(Tree(Bool)) = option(cons, %61)
+      return %62
+    }
+  }
+  funs rec {
+    fun length [A::TYPE](l: List(A)): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(l) {
+          case cons (c: Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end): {
+            let %63: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end = tuple_field(c, 1)
+            let %64: Int = call length [A](%63)
+            let %65: Int = prim +(1, %64)
+            jump k3(%65)
+          }
+          else: {
+            jump k3(0)
+          }
+        }
+      }
+    }
+  }
+  funs rec {
+    fun last [A::TYPE](l.1: List(A), d.2: A): A {
+      join k4(r.3: A) {
+        return r.3
+      } in {
+        switch tag(l.1) {
+          case cons (c.1: Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end): {
+            let %66: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end = tuple_field(c.1, 1)
+            let %67: A = tuple_field(c.1, 0)
+            let %68: A = call last [A](%66, %67)
+            jump k4(%68)
+          }
+          else: {
+            jump k4(d.2)
+          }
+        }
+      }
+    }
+  }
+  let %69: List(Bool) = type_app nil [Bool]
+  let %70: List(Bool) = call cons [Bool](false, %69)
+  let flags: List(Bool) = call cons [Bool](true, %70)
+  let %71: Int = call length [Bool](flags)
+  let %72: String = call conv.int(%71)
+  let %73: Bool = call last [Bool](flags, true)
+  let %74: String = call conv.bool(%73)
+  let %75: String = prim <>(" ", %74)
+  let %76: String = prim <>(%72, %75)
+  do call print(%76)
+  let head.4: String = "a"
+  let head.5: String = "b"
+  let tail.4: List(String) = option(nil)
+  let %77: Tuple head: String tail: Rec(List :: TYPE) Option nil cons with Tuple head: String tail: List end end end = tuple(head.5, tail.4)
+  let tail.5: List(String) = option(cons, %77)
+  let %78: Tuple head: String tail: Rec(List :: TYPE) Option nil cons with Tuple head: String tail: List end end end = tuple(head.4, tail.5)
+  let words: List(String) = option(cons, %78)
+  let %79: Int = call length [String](words)
+  let %80: String = call conv.int(%79)
+  let %81: String = call last [String](words, "")
+  let %82: String = prim <>(" ", %81)
+  let %83: String = prim <>(%80, %82)
+  do call print(%83)
+  let %84: Tuple Int head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end = payload(flags, cons)
+  let %85: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end = tuple_field(%84, 2)
+  let %86: Tuple Int head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end = payload(%85, cons)
+  let %87: Bool = tuple_field(%86, 1)
+  let %88: String = call conv.bool(%87)
+  do call print(%88)
+  funs {
+    fun leaf [A::TYPE](v.7: A): Tree(A) {
+      let %89: Tree(A) = variant(leaf, v.7)
+      return %89
+    }
+  }
+  funs {
+    fun node [A::TYPE](trees: List(Tree(A))): Tree(A) {
+      let trees.1: List(Tree(A)) = trees
+      let %90: Tuple trees: List(Rec(Tree :: TYPE) Variant leaf: A node: Forest end) end = tuple(trees.1)
+      let %91: Tree(A) = variant(node, %90)
+      return %91
+    }
+  }
+  funs rec {
+    fun count [A::TYPE](t.2: Tree(A)): Int {
+      join k5(r.4: Int) {
+        return r.4
+      } in {
+        switch tag(t.2) {
+          case leaf: {
+            jump k5(1)
+          }
+          case node (f: Rec(Forest :: TYPE) Tuple trees: List(Tree) end): {
+            let %92: List(Rec(Tree :: TYPE) Variant leaf: A node: Forest end) = tuple_field(f, 0)
+            let %93: Int = call countList [A](%92)
+            jump k5(%93)
+          }
+          else: {
+            jump k5(0)
+          }
+        }
+      }
+    }
+    fun countList [A::TYPE](l.2: List(Tree(A))): Int {
+      join k6(r.5: Int) {
+        return r.5
+      } in {
+        switch tag(l.2) {
+          case cons (c.2: Tuple head: Tree(A) tail: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end end): {
+            let %94: Tree(A) = tuple_field(c.2, 0)
+            let %95: Int = call count [A](%94)
+            let %96: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end = tuple_field(c.2, 1)
+            let %97: Int = call countList [A](%96)
+            let %98: Int = prim +(%95, %97)
+            jump k6(%98)
+          }
+          else: {
+            jump k6(0)
+          }
+        }
+      }
+    }
+  }
+  let %99: Tree(Bool) = call leaf [Bool](true)
+  let %100: Tree(Bool) = call leaf [Bool](false)
+  let %101: List(Tree(Bool)) = type_app nil [Tree(Bool)]
+  let %102: List(Tree(Bool)) = call cons_spec(%100, %101)
+  let %103: List(Tree(Bool)) = call cons_spec(%99, %102)
+  let tree: Tree(Bool) = call node [Bool](%103)
+  let %104: Int = call count [Bool](tree)
+  let %105: String = call conv.int(%104)
+  do call print(%105)
+  let mkB: All(A :: TYPE) Fun(v: A): Box(A) = mkBox
+  let getB: All(A :: TYPE) Fun(b: Box(A)): A = getBox
+  let mkS: All(A :: TYPE) Fun(v: A): Maybe(A) = mkSome
+  let consF: All(A :: TYPE) Fun(head: A tail: List(A)): List(A) = cons
+  let %106: Record a: Int end = record(a = 4)
+  let rb: Box(P) = call mkB [P](%106)
+  let %107: P = tuple_field(rb, 0)
+  let %108: Int = record_field(%107, a)
+  let %109: String = call conv.int(%108)
+  let %110: P = call getB [P](rb)
+  let %111: Int = record_field(%110, a)
+  let %112: String = call conv.int(%111)
+  let %113: String = prim <>(" ", %112)
+  let %114: String = prim <>(%109, %113)
+  do call print(%114)
+  let %115: V = variant(p, 5)
+  let vb: Box(V) = call mkB [V](%115)
+  join k7(r.6: Int) {
+    let %116: String = call conv.int(r.6)
+    do call print(%116)
+    let %117: Record a: Int end = record(a = 6)
+    let rm: Maybe(P) = call mkS [P](%117)
+    let %118: Tuple Int value: P end = payload(rm, some)
+    let %119: P = tuple_field(%118, 1)
+    let %120: Int = record_field(%119, a)
+    let %121: String = call conv.int(%120)
+    do call print(%121)
+    let %122: Record a: Int end = record(a = 7)
+    let %123: Record a: Int end = record(a = 8)
+    let %124: List(P) = option(nil)
+    let %125: List(P) = call consF [P](%123, %124)
+    let rl: List(P) = call consF [P](%122, %125)
+    let %126: Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end = payload(rl, cons)
+    let %127: P = tuple_field(%126, 1)
+    let %128: Int = record_field(%127, a)
+    let %129: Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end = payload(rl, cons)
+    let %130: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end = tuple_field(%129, 2)
+    let %131: Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end = payload(%130, cons)
+    let %132: P = tuple_field(%131, 1)
+    let %133: Int = record_field(%132, a)
+    let %134: Int = prim +(%128, %133)
+    let %135: String = call conv.int(%134)
+    do call print(%135)
+    funs {
+      fun applyTo [A::TYPE](f.1: Fun(b: Box(A)): A, b.1: Box(A)): A {
+        let %136: A = call f.1(b.1)
+        return %136
+      }
+    }
+    funs {
+      fun isSet(b.2: Box(Bool)): Bool {
+        let %137: Bool = tuple_field(b.2, 0)
+        return %137
+      }
+    }
+    let %138: Bool = call applyTo [Bool](isSet, bools)
+    let %139: String = call conv.bool(%138)
+    do call print(%139)
+    funs {
+      fun make [A::TYPE](f.2: Fun(v: A): Box(A), v.8: A): A {
+        let %140: Box(A) = call f.2(v.8)
+        let %141: A = tuple_field(%140, 0)
+        return %141
+      }
+    }
+    funs {
+      fun boxed(v.9: Bool): Box(Bool) {
+        let x.3: Bool = v.9
+        let %142: Tuple x: Bool end = tuple(x.3)
+        return %142
+      }
+    }
+    let %143: Bool = call make [Bool](boxed, false)
+    let %144: String = call conv.bool(%143)
+    do call print(%144)
+    funs {
+      fun applyOpt [A::TYPE](f.3: Fun(m: Maybe(A)): A, m.2: Maybe(A)): A {
+        let %145: A = call f.3(m.2)
+        return %145
+      }
+    }
+    funs {
+      fun orFalse(m.3: Maybe(Bool)): Bool {
+        let %146: Bool = call getOr [Bool](m.3, false)
+        return %146
+      }
+    }
+    let %147: Bool = call applyOpt [Bool](orFalse, maybe)
+    let %148: String = call conv.bool(%147)
+    do call print(%148)
+    funs {
+      fun getter [A::TYPE](b.3: Box(A)): A {
+        let %149: A = tuple_field(b.3, 0)
+        return %149
+      }
+    }
+    let %150: Bool = call getter [Bool](bools)
+    let %151: String = call conv.bool(%150)
+    do call print(%151)
+    let getBool: Fun(b: Box(Bool)): Bool = type_app getBox [Bool]
+    let getReal: Fun(b: Box(Real)): Real = type_app getBox [Real]
+    let mkP: Fun(v: P): Box(P) = type_app mkBox [P]
+    let %152: Bool = call getBool(bools)
+    let %153: String = call conv.bool(%152)
+    let %154: Box(Real) = call mkBox [Real](1.5)
+    let %155: Real = call getReal(%154)
+    let %156: String = call conv.real(%155)
+    let %157: Record a: Int end = record(a = 3)
+    let %158: Box(P) = call mkP(%157)
+    let %159: P = tuple_field(%158, 0)
+    let %160: Int = record_field(%159, a)
+    let %161: String = call conv.int(%160)
+    let %162: String = prim <>(" ", %161)
+    let %163: String = prim <>(%156, %162)
+    let %164: String = prim <>(" ", %163)
+    let %165: String = prim <>(%153, %164)
+    do call print(%165)
+    let lengthOf: Fun(l: List(Bool)): Int = type_app length [Bool]
+    let %166: Int = call lengthOf(flags)
+    let %167: String = call conv.int(%166)
+    do call print(%167)
+    let x.4: Bool = true
+    let y: Int = 2
+    let wide: Tuple x: Bool y: Int end = tuple(x.4, y)
+    let narrow: Box(Bool) = wide
+    let %168: Bool = tuple_field(narrow, 0)
+    let %169: String = call conv.bool(%168)
+    let %170: Bool = call getBox [Bool](wide)
+    let %171: String = call conv.bool(%170)
+    let %172: String = prim <>(" ", %171)
+    let %173: String = prim <>(%169, %172)
+    do call print(%173)
+  } in {
+    let %174: V = call getB [V](vb)
+    switch tag(%174) {
+      case p (n: Int): {
+        jump k7(n)
+      }
+      else: {
+        jump k7(0)
+      }
+    }
+  }
+}
+

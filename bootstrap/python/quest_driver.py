@@ -23,6 +23,7 @@ from quest.pipeline import (
     CompilerContext,
     compile_pipeline,
     default_pipeline,
+    IR_DUMP_PHASES,
     IR_RUN_PHASES,
     ir_pipeline,
     ir_run_pipeline,
@@ -46,7 +47,7 @@ def run_driver(args: list[str]) -> int:
         return run_compile(args[1:])
 
     all_phases = [
-        "tokenize", "parse", "typecheck", "ir_core", *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled",
+        "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled",
     ]
 
     if "--" in args:
@@ -287,8 +288,11 @@ def run_driver(args: list[str]) -> int:
         pipeline = full_pipeline()
     elif parsed_args.stop_after in IR_RUN_PHASES:
         pipeline = ir_run_pipeline(parsed_args.stop_after.removeprefix("run_ir_"))
-    elif parsed_args.stop_after == "ir_core" or "ir_core" in parsed_args.dump_after:
-        pipeline = ir_pipeline()
+    elif parsed_args.stop_after in IR_DUMP_PHASES or any(p in IR_DUMP_PHASES for p in parsed_args.dump_after):
+        last = max(
+            (IR_DUMP_PHASES.index(p) for p in [parsed_args.stop_after, *parsed_args.dump_after] if p in IR_DUMP_PHASES)
+        )
+        pipeline = ir_pipeline(IR_DUMP_PHASES[last].removeprefix("ir_"))
     else:
         pipeline = default_pipeline()
 

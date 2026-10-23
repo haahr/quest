@@ -174,6 +174,8 @@ cannot be specialized statically, since the function is not known.
 
 **Done when.** Calls of local polymorphic functions with record or variant type arguments use specialized clones,
 golden tests cover local functions that capture variables of the enclosing function, and §6.4.3 describes them.
+The IR's specialize pass (`docs/ir.md` §8.1) does this already; it is done for C when the C printer (§12, step 5)
+replaces the current emitter.
 
 ---
 

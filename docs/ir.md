@@ -275,13 +275,28 @@ name.
 
 ### 8.1. Specialize
 
-Clones a polymorphic top-level or module function called with record or variant type arguments (the selective
-trigger of [c-representation.md](c-representation.md) §6.4.3), substituting the type arguments for its type
-parameters, and redirects those calls to the clone. Specialization runs *before* closure conversion: a clone's local
-functions are part of the clone, and are lifted with it. Calls are matched to functions by symbol, so a local binding
-shadowing a top-level function is never confused with it. Calls of local polymorphic functions can be specialized
-here too, since a local function is a symbol like any other (the restriction recorded in
-[tasklist.md](tasklist.md) can be lifted once this pass exists).
+`ir/specialize.py`. Clones a polymorphic function bound by a `funs` statement (top-level, local, or a member of
+one of the unit's modules), substituting the type arguments of a call for its type parameters, and redirects the
+call to the clone. A call is specialized when it supplies all the function's type parameters, its type arguments
+are closed (they mention no type parameter of the functions enclosing the call, for which a clone would have no
+descriptor; the enclosing function's own clones specialize the call in turn), and the selective trigger of
+[c-representation.md](c-representation.md) §6.4.3 holds: a type argument that is or holds (in tuples, options,
+arrays, or cells) a record or variant, decided on its shape; or a `var` or `out` parameter, or a tuple parameter or
+result, over the function's type parameters.
+
+The clone has fresh binders throughout and is bound by the same `funs` statement as the original, so it is in scope
+wherever the original is and sees the same free variables (a local function's clone captures what the original
+does). A clone of a module's function is also a member of the module (`first_spec1`), which calls from outside the
+module name. Clones are specialized in turn, and shared by function and type arguments (by identity, never by name),
+so a recursive function's clone calls itself; clones made for calls in clones are bounded in depth (16), beyond
+which calls stay generic, since polymorphic recursion (a function of `A` calling itself at `List(A)`) would
+otherwise specialize without end. Specialization runs *before* closure conversion: a clone's local functions are
+part of the clone, and are lifted with it.
+
+The current emitter's trigger differs on tuples: `is_specialization_needed` returns true for any tuple type
+(reaching its own tuple case never), so it specializes for a tuple, option, or list of scalars when the type
+argument arrives expanded (`B`, an alias the C compilation mode expands) but not as an alias application
+(`Box(Int)`). The pass follows the rule as stated, seeing through aliases.
 
 ### 8.2. Closure-convert
 
@@ -519,6 +534,10 @@ step 6.
   interpreter (and the C printer) find them.
 - Specialize (§8.1), with calls matched by symbol, including calls of local polymorphic functions (lifting the
   restriction in [tasklist.md](tasklist.md)); the trigger stays selective (record or variant type arguments).
+  *Done:* the `ir_specialized` stage, run on every golden test (`run_ir_specialized`), with goldens for 16 programs
+  and targeted tests in `tests/python/test_ir_specialize.py`. Before it, IR variables and functions got their
+  shapes from their types (a pass rewriting types cannot leave the two disagreeing), and module references became
+  the modules and imports themselves.
 - Closure-convert (§8.2).
 - Represent (§8.3): representations, plans, and `convert` insertion, including variant tag maps decided from cases
   (closing the variant tag-map task).

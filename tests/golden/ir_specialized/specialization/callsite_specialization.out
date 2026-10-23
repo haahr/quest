@@ -1,0 +1,48 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun id [A::TYPE](a: A): A {
+      return a
+    }
+    fun id_spec(a.1: Point): Point {
+      return a.1
+    }
+  }
+  let p: Record x: Int y: Int end = record(x = 42, y = 100)
+  let pRes: Point = call id_spec(p)
+  let %3: Int = record_field(pRes, x)
+  do call printInt(%3)
+  let %4: Int = record_field(pRes, y)
+  do call printInt(%4)
+  funs {
+    fun pair [A::TYPE B::TYPE](a.2: A, b: B): Tuple first: A second: B end {
+      let first: A = a.2
+      let second: B = b
+      let %5: Tuple first: A second: B end = tuple(first, second)
+      return %5
+    }
+    fun pair_spec(a.3: Int, b.1: Point): Tuple first: Int second: Point end {
+      let first.1: Int = a.3
+      let second.1: Point = b.1
+      let %6: Tuple first: Int second: Point end = tuple(first.1, second.1)
+      return %6
+    }
+  }
+  let pr: Tuple first: Int second: Point end = call pair_spec(10, p)
+  let %7: Int = tuple_field(pr, 0)
+  do call printInt(%7)
+  let %8: Point = tuple_field(pr, 1)
+  let %9: Int = record_field(%8, x)
+  do call printInt(%9)
+}
+

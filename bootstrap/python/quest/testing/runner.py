@@ -19,7 +19,15 @@ from typing import Callable, Optional
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 
-from quest.pipeline import IR_RUN_PHASES, PhasePipeline, default_pipeline, full_pipeline, ir_run_pipeline
+from quest.pipeline import (
+    IR_DUMP_PHASES,
+    IR_RUN_PHASES,
+    PhasePipeline,
+    default_pipeline,
+    full_pipeline,
+    ir_pipeline,
+    ir_run_pipeline,
+)
 from quest.testing.errors import run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
@@ -130,6 +138,11 @@ def discover_tests(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*.quest") if not p.name.endswith(UNIT_SUFFIXES))
 
 
+# The IR's stages after Core are dumped (and compared with goldens) for a subset of the programs, chosen to exercise
+# each pass: those that have a golden in the stage's directory. (Every program runs through every stage, verified, in
+# the run_ir phases.) To add a program to a stage's subset, create its golden file empty and update goldens.
+SUBSET_PHASES = IR_DUMP_PHASES[1:]
+
 # The phases that run programs, whose output is compared with the run goldens
 RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
 
@@ -166,6 +179,8 @@ def pipeline_for_phase(phase_name: str) -> PhasePipeline:
         return full_pipeline()
     if phase_name in IR_RUN_PHASES:
         return ir_run_pipeline(phase_name.removeprefix("run_ir_"))
+    if phase_name in IR_DUMP_PHASES:
+        return ir_pipeline(phase_name.removeprefix("ir_"))
     return default_pipeline()
 
 
@@ -335,7 +350,7 @@ def main() -> int:
         "tokenize",
         "parse",
         "typecheck",
-        "ir_core",
+        *IR_DUMP_PHASES,
         *IR_RUN_PHASES,
         "interpret",
         "run_c_compiled",
@@ -477,6 +492,9 @@ def run_all_tests(
                         if phase.lower() in skipped_phases:
                             skipped_golden += 1
                             print(f"  [SKIP] {phase}:{test_id}")
+                            continue
+                        if phase in SUBSET_PHASES and not (golden_dir / rel_source.with_suffix(".out")).exists():
+                            # Dumped for a subset of the programs only: those with goldens
                             continue
 
                         def make_golden_runner(

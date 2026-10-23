@@ -1,0 +1,81 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun print(s: String): Ok {
+      let %1: String = prim <>(s, "\n")
+      let %2: Ok = call writer.putString(wOut, %1)
+      return %2
+    }
+  }
+  funs {
+    fun first [X::TYPE Y::TYPE](x: X, y: Y): X {
+      return x
+    }
+  }
+  let %3: Int = call first [Int Bool](1, true)
+  let %4: String = call conv.int(%3)
+  do call print(%4)
+  funs {
+    fun widen [A::TYPE B::<: A](x.1: B): A {
+      return x.1
+    }
+  }
+  let %5: Int = call widen [Int Int](2)
+  let %6: String = call conv.int(%5)
+  do call print(%6)
+  funs {
+    fun view [A::<: P B::<: A](x.2: B): A {
+      return x.2
+    }
+    fun view_spec(x.3: Q): P {
+      return x.3
+    }
+  }
+  let %7: Record a: Int b: Int end = record(a = 3, b = 30)
+  let %8: P = call view_spec(%7)
+  let %9: Int = record_field(%8, a)
+  let %10: String = call conv.int(%9)
+  do call print(%10)
+  funs {
+    fun getA [X::<: Q](x.4: X): Int {
+      let %11: Int = record_field(x.4, a)
+      return %11
+    }
+    fun getA_spec(x.5: Q): Int {
+      let %12: Int = record_field(x.5, a)
+      return %12
+    }
+  }
+  let %13: Record a: Int b: Int end = record(a = 4, b = 40)
+  let %14: Int = call getA_spec(%13)
+  let %15: String = call conv.int(%14)
+  do call print(%15)
+  funs {
+    fun pick [X::<: Q](x.6: X): X {
+      return x.6
+    }
+    fun pick_spec(x.7: Q): Q {
+      return x.7
+    }
+  }
+  let %16: Record a: Int b: Int end = record(a = 5, b = 50)
+  let %17: Q = call pick_spec(%16)
+  let %18: Int = record_field(%17, b)
+  let %19: String = call conv.int(%18)
+  do call print(%19)
+  funs {
+    fun same [T::TYPE](x.8: T): T {
+      return x.8
+    }
+  }
+  let %20: Bool = call same [Bool](true)
+  let %21: String = call conv.bool(%20)
+  do call print(%21)
+  let firstInt: Fun(x: Int y: Int): Int = type_app first [Int Int]
+  let %22: Int = call firstInt(6, 60)
+  let %23: String = call conv.int(%22)
+  do call print(%23)
+}
+

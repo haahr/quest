@@ -1,0 +1,100 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+module m : M {
+  funs {
+    fun first [A::TYPE](x: A, y: A): A {
+      return x
+    }
+    fun first_spec(x.1: P, y.1: P): P {
+      return x.1
+    }
+  }
+  export first = first, first_spec1 = first_spec
+}
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun print(s: String): Ok {
+      let %1: String = prim <>(s, "\n")
+      let %2: Ok = call writer.putString(wOut, %1)
+      return %2
+    }
+  }
+  funs {
+    fun first.1 [A::TYPE](x.2: A, y.2: A): A {
+      return x.2
+    }
+    fun first_spec.1(x.3: P, y.3: P): P {
+      return x.3
+    }
+  }
+  let %3: Record a: Int end = record(a = 1)
+  let %4: Record a: Int end = record(a = 10)
+  let %5: P = call first_spec.1(%3, %4)
+  let %6: Int = record_field(%5, a)
+  let %7: String = call conv.int(%6)
+  do call print(%7)
+  let %8: Record a: Int end = record(a = 2)
+  let %9: Record a: Int end = record(a = 20)
+  let %10: P = call m.first_spec1(%8, %9)
+  let %11: Int = record_field(%10, a)
+  let %12: String = call conv.int(%11)
+  do call print(%12)
+  funs {
+    fun local(n: Int): Int {
+      funs {
+        fun first.2 [A::TYPE](x.4: A, y.4: A): A {
+          return y.4
+        }
+        fun first_spec.2(x.5: P, y.5: P): P {
+          return y.5
+        }
+      }
+      let %13: Record a: Int end = record(a = 3)
+      let %14: Record a: Int end = record(a = 30)
+      let %15: P = call first_spec.2(%13, %14)
+      let %16: Int = record_field(%15, a)
+      return %16
+    }
+  }
+  let %17: Int = call local(0)
+  let %18: String = call conv.int(%17)
+  do call print(%18)
+  funs {
+    fun viaParam(first.3: All(A :: TYPE) Fun(x: A y: A): A): Int {
+      let %19: Record a: Int end = record(a = 4)
+      let %20: Record a: Int end = record(a = 40)
+      let %21: P = call first.3 [P](%19, %20)
+      let %22: Int = record_field(%21, a)
+      return %22
+    }
+  }
+  funs {
+    fun f [A::TYPE](x.6: A, y.6: A): A {
+      return y.6
+    }
+  }
+  let %23: Int = call viaParam(f)
+  let %24: String = call conv.int(%23)
+  do call print(%24)
+  funs {
+    fun viaTuple(n.1: Int): Int {
+      funs {
+        fun first.4 [A::TYPE](x.7: A, y.7: A): A {
+          return y.7
+        }
+      }
+      let m: Tuple first: All(A :: TYPE) Fun(x: A y: A): A end = tuple(first.4)
+      let %25: All(A :: TYPE) Fun(x: A y: A): A = tuple_field(m, 0)
+      let %26: Record a: Int end = record(a = 5)
+      let %27: Record a: Int end = record(a = 50)
+      let %28: P = call %25 [P](%26, %27)
+      let %29: Int = record_field(%28, a)
+      return %29
+    }
+  }
+  let %30: Int = call viaTuple(0)
+  let %31: String = call conv.int(%30)
+  do call print(%31)
+}
+

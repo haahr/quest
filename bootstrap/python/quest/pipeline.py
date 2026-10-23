@@ -426,6 +426,35 @@ class IrCorePhase(Phase):
         return format_unit(output_data) if output_data is not None else ""
 
 
+class IrPassPhase(Phase):
+    """An IR pass, producing the IR at its stage (docs/ir.md §8, §9), verified when QUEST_CHECK_IR=1."""
+    artifact_name = "ir_unit"
+
+    def __init__(self, stage: str, run_pass: Any) -> None:
+        self.name = f"ir_{stage}"
+        self.description = f"Run the IR pass producing the {stage} stage"
+        self.run_pass = run_pass
+
+    def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
+        from quest.ir.verify import check_unit, ir_checks_enabled
+
+        if input_data is None:
+            return None
+        try:
+            unit = self.run_pass(input_data)
+            if ir_checks_enabled():
+                check_unit(unit)
+            return unit
+        except Exception as error:
+            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
+            return None
+
+    def dump(self, output_data: Any, ctx: CompilerContext) -> str:
+        from quest.ir.printer import format_unit
+
+        return format_unit(output_data) if output_data is not None else ""
+
+
 class RunIrPhase(Phase):
     """Runs the IR in the IR interpreter (quest/ir/interp.py), a test oracle for the lowering and the passes: its
     output is compared with the source interpreter's. The IR prints the program's results itself."""
@@ -631,26 +660,40 @@ def compile_pipeline() -> PhasePipeline:
     return pipeline
 
 
-def ir_pipeline() -> PhasePipeline:
-    """Returns the pipeline lowering to Core IR (Tokenize -> Parse -> Typecheck -> IrCore)."""
+def _specialize(unit: Any) -> Any:
+    from quest.ir.specialize import specialize_unit
+
+    return specialize_unit(unit)
+
+
+# The IR's stages after Core (docs/ir.md §9), in order, and the passes that produce them
+_IR_PASSES = (("specialized", _specialize),)
+IR_STAGES = ("core", *(stage for stage, _ in _IR_PASSES))
+IR_DUMP_PHASES = tuple(f"ir_{stage}" for stage in IR_STAGES)
+IR_RUN_PHASES = tuple(f"run_ir_{stage}" for stage in IR_STAGES)
+
+
+def ir_pipeline(stage: str = "core") -> PhasePipeline:
+    """Returns the pipeline lowering to IR and running its passes up to the given stage (Tokenize -> Parse ->
+    Typecheck -> IrCore -> ...)."""
+    if stage not in IR_STAGES:
+        raise ValueError(f"no IR stage '{stage}'")
     pipeline = PhasePipeline()
     pipeline.register(TokenizePhase())
     pipeline.register(ParsePhase())
     pipeline.register(TypecheckPhase())
     pipeline.register(IrCorePhase())
+    for pass_stage, run_pass in _IR_PASSES[:IR_STAGES.index(stage)]:
+        pipeline.register(IrPassPhase(pass_stage, run_pass))
     return pipeline
 
 
 def ir_run_pipeline(stage: str) -> PhasePipeline:
-    """Returns the pipeline lowering to IR and running it in the IR interpreter at the given stage."""
-    if stage != "core":
-        raise ValueError(f"no IR stage '{stage}'")
-    pipeline = ir_pipeline()
+    """Returns the pipeline lowering to IR, running its passes up to the given stage, and running it in the IR
+    interpreter."""
+    pipeline = ir_pipeline(stage)
     pipeline.register(RunIrPhase(stage))
     return pipeline
-
-
-IR_RUN_PHASES = ("run_ir_core",)
 
 
 def full_pipeline() -> PhasePipeline:

@@ -119,6 +119,10 @@ The test runner executes each test source file across active compiler phases via
 - `typecheck`: Runs `quest_driver.py --stop-after typecheck <source_file>`.
 - `ir_core`: Runs `quest_driver.py --stop-after ir_core <source_file>`, which lowers the typed program to Core IR
   ([ir.md](ir.md)) and prints it (compared against `tests/golden/ir_core/`). Generated tests skip it.
+- `ir_specialized` (and each later IR stage, `ir_<stage>`): the IR after that stage's pass, compared against
+  `tests/golden/ir_<stage>/` for a subset of the programs only, those with a golden there, chosen to exercise the
+  pass (every program runs through every stage, verified, in the `run_ir_<stage>` phases). To add a program to a
+  stage's subset, create its golden file empty and update goldens (`--phase ir_<stage> --update-golden`).
 - `run_ir_core`: Runs `quest_driver.py --stop-after run_ir_core <source_file>`, which runs the Core IR in the IR
   interpreter (`quest/ir/interp.py`), compared against `tests/golden/run/`. Each later IR stage gets a phase of its
   own (`run_ir_<stage>`), so that a pass that changes a program's output fails in its stage's phase. The run error

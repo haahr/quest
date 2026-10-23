@@ -1,0 +1,83 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun boxed [A::TYPE](x: A): Tuple x: A end {
+      let x.1: A = x
+      let %4: Tuple x: A end = tuple(x.1)
+      return %4
+    }
+    fun boxed_spec(x.2: Thunk(Int)): Tuple x: Thunk(Int) end {
+      let x.3: Thunk(Int) = x.2
+      let %5: Tuple x: Thunk(Int) end = tuple(x.3)
+      return %5
+    }
+    fun boxed_spec.1(x.4: Thunk(P)): Tuple x: Thunk(P) end {
+      let x.5: Thunk(P) = x.4
+      let %6: Tuple x: Thunk(P) end = tuple(x.5)
+      return %6
+    }
+    fun boxed_spec.2(x.6: Thunk(String)): Tuple x: Thunk(String) end {
+      let x.7: Thunk(String) = x.6
+      let %7: Tuple x: Thunk(String) end = tuple(x.7)
+      return %7
+    }
+    fun boxed_spec.3(x.8: P): Tuple x: P end {
+      let x.9: P = x.8
+      let %8: Tuple x: P end = tuple(x.9)
+      return %8
+    }
+  }
+  funs {
+    fun ti(u: Int): Int {
+      return 1
+    }
+  }
+  funs {
+    fun tp(u.1: Int): P {
+      let %9: Record a: Int end = record(a = 2)
+      return %9
+    }
+  }
+  funs {
+    fun ts(u.2: Int): String {
+      return "three"
+    }
+  }
+  let %10: Tuple x: Thunk(Int) end = call boxed_spec(ti)
+  let %11: Thunk(Int) = tuple_field(%10, 0)
+  let %12: Int = call %11(0)
+  let %13: String = call conv.int(%12)
+  do call print(%13)
+  let %14: Tuple x: Thunk(P) end = call boxed_spec.1(tp)
+  let %15: Thunk(P) = tuple_field(%14, 0)
+  let %16: P = call %15(0)
+  let %17: Int = record_field(%16, a)
+  let %18: String = call conv.int(%17)
+  do call print(%18)
+  let %19: Tuple x: Thunk(String) end = call boxed_spec.2(ts)
+  let %20: Thunk(String) = tuple_field(%19, 0)
+  let %21: String = call %20(0)
+  do call print(%21)
+  let %22: Record a: Int end = record(a = 4)
+  let %23: Tuple x: P end = call boxed_spec.3(%22)
+  let %24: P = tuple_field(%23, 0)
+  let %25: Int = record_field(%24, a)
+  let %26: String = call conv.int(%25)
+  do call print(%26)
+  let %27: Record a: Int end = record(a = 5)
+  let %28: Tuple x: P end = call boxed_spec.3(%27)
+  let %29: P = tuple_field(%28, 0)
+  let %30: Int = record_field(%29, a)
+  let %31: String = call conv.int(%30)
+  do call print(%31)
+}
+

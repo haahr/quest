@@ -1,0 +1,52 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(x: Int): Ok {
+      let %1: String = call conv.int(x)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun getX [A::<: Point](p: A): Int {
+      let %3: Int = record_field(p, x)
+      return %3
+    }
+    fun getX_spec(p.1: Point3D): Int {
+      let %4: Int = record_field(p.1, x)
+      return %4
+    }
+  }
+  funs {
+    fun getY [A::<: Point](p.2: A): Int {
+      let %5: Int = record_field(p.2, y)
+      return %5
+    }
+    fun getY_spec(p.3: Point3D): Int {
+      let %6: Int = record_field(p.3, y)
+      return %6
+    }
+  }
+  let p.4: Record x: Int y: Int z: Int end = record(x = 42, y = 100, z = 999)
+  let %7: Int = call getX_spec(p.4)
+  do call printInt(%7)
+  let %8: Int = call getY_spec(p.4)
+  do call printInt(%8)
+  funs {
+    fun identity [A::<: Point](p.5: A): A {
+      return p.5
+    }
+    fun identity_spec(p.6: Point3D): Point3D {
+      return p.6
+    }
+  }
+  let p2: Point3D = call identity_spec(p.4)
+  let %9: Int = record_field(p2, x)
+  do call printInt(%9)
+  let %10: Int = record_field(p2, z)
+  do call printInt(%10)
+}
+
