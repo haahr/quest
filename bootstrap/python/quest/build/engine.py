@@ -33,6 +33,7 @@ from quest.modules.paths import (
     canonicalize_module_name,
     canonicalize_module_path,
     find_canonical_module_source,
+    import_resolution_change,
     resolve_interface_source_file,
     resolve_module_file,
     resolve_object_file,
@@ -107,11 +108,13 @@ def unit_module_refs(
     refs: list[ImportedModuleRef] = []
     seen: set[str] = set()
 
-    def _add(name: str, interface: str, source: Optional[Path]) -> None:
+    def _add(name: str, interface: str, source: Optional[Path], path: str) -> None:
         if name in seen:
             return
         seen.add(name)
-        refs.append(ImportedModuleRef(name=name, interface=interface, source=str(source) if source else ""))
+        refs.append(
+            ImportedModuleRef(name=name, interface=interface, source=str(source) if source else "", path=path)
+        )
 
     for it in import_items:
         iface_path = it.effective_interface_path
@@ -120,7 +123,7 @@ def unit_module_refs(
         for iname, mpath in zip(it.names, it.effective_module_paths):
             mod_ref = mpath if mpath else iname
             mod_src = resolve_module_file(mod_ref, current_dir, include_paths)
-            _add(canonicalize_module_name(mod_src, include_paths, mod_ref, program_dir), canon_iface, mod_src)
+            _add(canonicalize_module_name(mod_src, include_paths, mod_ref, program_dir), canon_iface, mod_src, mod_ref)
 
     for mod_name, interface_name in implicit:
         mod_src = resolve_module_file(mod_name, current_dir, include_paths)
@@ -129,7 +132,7 @@ def unit_module_refs(
         if interface_name:
             iface_src = resolve_interface_source_file(interface_name, current_dir, include_paths)
             canon_iface = canonicalize_interface_name(iface_src, include_paths, interface_name, program_dir)
-        _add(canon_mod, canon_iface, mod_src)
+        _add(canon_mod, canon_iface, mod_src, mod_name)
 
     return refs
 
@@ -264,6 +267,7 @@ class BuildEngine:
                     name=canon_imp_iface,
                     source=str(imp_src.resolve()) if imp_src else "",
                     mtime=imp_mtime,
+                    path=iface_path,
                 )
             )
 
@@ -300,9 +304,21 @@ class BuildEngine:
 
         return (c_path, o_path, qm_path, imported_modules)
 
-    def _unit_staleness(self, source: Path, qm_path: Path, c_path: Path, o_path: Path) -> Optional[str]:
-        """Returns why a unit with a source file must be recompiled, or None if it is up to date (§7.1)."""
-        return unit_staleness(source, qm_path, c_path, o_path)
+    def _unit_staleness(
+        self, source: Path, qm_path: Path, c_path: Path, o_path: Path, program_dir: Optional[Path]
+    ) -> Optional[str]:
+        """Returns why a unit with a source file must be recompiled, or None if it is up to date (§7.1).
+
+        Besides the artifacts' own freshness, the unit's imports must still resolve to the files it was compiled
+        against: its compilation resolves them from its own directory and the engine's search paths, which may
+        have changed since (a different -I, say).
+        """
+        search_paths = self._get_search_paths()
+
+        def imports_changed(manifest: ModuleManifest) -> Optional[str]:
+            return import_resolution_change(manifest, source.parent, search_paths, program_dir)
+
+        return unit_staleness(source, qm_path, c_path, o_path, imports_changed)
 
     def build_main(
         self,
@@ -330,7 +346,7 @@ class BuildEngine:
         qm_path, c_path, o_path = self.main_artifact_paths(main_file)
 
         compiled_units: list[str] = []
-        reason = self._unit_staleness(main_file, qm_path, c_path, o_path)
+        reason = self._unit_staleness(main_file, qm_path, c_path, o_path, main_file.parent)
         if reason is not None:
             self.logger.log("EVAL STALENESS", f"'{item_name}' -> STALE ({reason})")
             self.logger.log("COMPILE MAIN", f"'{item_name}'")
@@ -501,14 +517,14 @@ class BuildEngine:
                         f"or precompiled object in {search_paths}"
                     )
             else:
-                reason = self._unit_staleness(mod_src, qm_path, c_path, o_path)
+                reason = self._unit_staleness(mod_src, qm_path, c_path, o_path, program_dir)
                 if reason is not None:
                     # Fresh artifacts next to the source (from a standalone compilation) are used like
                     # those in the build directory (docs/build-process.md §5.2).
                     beside = [mod_src.parent / f"{stem}{ext}" for ext in (".qm", ".mod.c", ".o")]
                     if (
                         beside[0] != qm_path
-                        and self._unit_staleness(mod_src, *beside) is None
+                        and self._unit_staleness(mod_src, *beside, program_dir) is None
                         and _manifest_name(beside[0]) == canon_name
                     ):
                         qm_path, c_path, o_path = beside

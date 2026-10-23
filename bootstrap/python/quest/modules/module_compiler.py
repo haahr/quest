@@ -121,6 +121,7 @@ def compile_module(
             name=canon_target_interface,
             source=str(tgt_src.resolve()) if tgt_src else "",
             mtime=tgt_mtime,
+            path=module_decl.interface_name,
         )
     )
 
@@ -138,6 +139,7 @@ def compile_module(
                 name=canon_imp_iface,
                 source=str(imp_src.resolve()) if imp_src else "",
                 mtime=imp_mtime,
+                path=iface_path,
             )
         )
 
@@ -147,7 +149,10 @@ def compile_module(
             canon_mod_ref = canonicalize_module_name(mod_src, env.include_paths, mod_ref, env.program_dir)
             imported_modules.append(
                 ImportedModuleRef(
-                    name=canon_mod_ref, interface=canon_imp_iface, source=str(mod_src) if mod_src else ""
+                    name=canon_mod_ref,
+                    interface=canon_imp_iface,
+                    source=str(mod_src) if mod_src else "",
+                    path=mod_ref,
                 )
             )
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from quest.config.abi import ABI_VERSION, PRODUCER
 
@@ -20,19 +20,27 @@ class ImportedModuleRef:
 
     source is the module's source file as the importer found it, or "" if it has none (a builtin or prebuilt
     module). The build engine builds that file: units under different include roots can share a canonical name,
-    so the name alone does not identify one.
+    so the name alone does not identify one. path is the module path the importer resolved (as written in its
+    import, or the name of an implicitly used module), so that a later build can check that it still resolves to
+    the same file.
     """
     name: str
     interface: str
     source: str = ""
+    path: str = ""
 
 
 @dataclass
 class ImportedInterfaceRef:
-    """Reference to an imported interface and its source/timestamp."""
+    """Reference to an imported interface: its canonical name, source file, and timestamp.
+
+    path is the interface path the importer resolved (as written in its import), so that a later build can check
+    that it still resolves to the same file.
+    """
     name: str
     source: str
     mtime: float
+    path: str = ""
 
 
 @dataclass
@@ -66,7 +74,9 @@ class ModuleManifest:
     def from_dict(cls, data: dict[str, Any]) -> ModuleManifest:
         """Constructs a ModuleManifest from a dictionary."""
         imported_modules = [
-            ImportedModuleRef(name=m["name"], interface=m["interface"], source=m.get("source", ""))
+            ImportedModuleRef(
+                name=m["name"], interface=m["interface"], source=m.get("source", ""), path=m.get("path", "")
+            )
             for m in data.get("imported_modules", [])
         ]
         imported_interfaces = [
@@ -74,6 +84,7 @@ class ModuleManifest:
                 name=i["name"],
                 source=i.get("source", ""),
                 mtime=float(i.get("mtime", 0.0)),
+                path=i.get("path", ""),
             )
             for i in data.get("imported_interfaces", [])
         ]
@@ -147,13 +158,23 @@ def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
     return False
 
 
-def unit_staleness(source: Path, qm_path: Path, c_path: Path, o_path: Path) -> Optional[str]:
+def unit_staleness(
+    source: Path,
+    qm_path: Path,
+    c_path: Path,
+    o_path: Path,
+    imports_changed: Optional[Callable[[ModuleManifest], Optional[str]]] = None,
+) -> Optional[str]:
     """Returns why a unit with a source file must be recompiled, or None if its artifacts are up to date.
 
     Up to date means: the .qm, .c, and .o exist and are no older than the source (and the .o no older than the
     .c), and the manifest records this source, the current ABI version, and no newer interface
     (docs/build-process.md §5.2, §7.1). Artifacts are named by canonical unit name only, so the recorded source
     tells a unit's artifacts from those of a same-named unit elsewhere.
+
+    imports_changed, when given, says why the unit's imports would now resolve to other files than the manifest
+    records (for example after a change of include paths), or returns None if they would not
+    (paths.import_resolution_change).
     """
     if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
         return f"missing artifacts in {qm_path.parent}"
@@ -171,4 +192,6 @@ def unit_staleness(source: Path, qm_path: Path, c_path: Path, o_path: Path) -> O
         return f"artifacts built from a different source ({manifest.source or 'none recorded'})"
     if is_manifest_stale(manifest, qm_path):
         return "manifest indicates stale"
+    if imports_changed is not None:
+        return imports_changed(manifest)
     return None

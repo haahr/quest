@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from quest.config.abi import built_from, has_current_abi
-from quest.modules.manifest import unit_staleness
+from quest.modules.manifest import ModuleManifest, unit_staleness
 from quest.config import CompilerOptions
 from quest.diagnostics import QuestCompilerError, QuestTypeError
 from quest.syntax.tokens import TokenKind
@@ -85,20 +85,72 @@ def has_fresh_module_artifacts(
     canon_name: str,
     target: Optional[Union[CompilerOptions, Any]],
 ) -> bool:
-    """True if module source file_path has up-to-date .qm/.mod.c/.o in the build directory or beside it."""
-    if isinstance(target, CompilerOptions):
-        build_dir = target.build_dir
-    else:
-        build_dir = getattr(getattr(target, "options", None), "build_dir", None)
+    """True if module source file_path has up-to-date .qm/.mod.c/.o in the build directory or beside it.
+
+    Up to date includes its imports still resolving, with the current include paths, to the files it was built
+    against.
+    """
+    opts = target if isinstance(target, CompilerOptions) else getattr(target, "options", None)
+    build_dir = getattr(opts, "build_dir", None)
+    include_paths = list(getattr(opts, "include_paths", None) or [])
+    program_dir = getattr(opts, "program_dir", None)
+    if build_dir is not None:
+        root = Path(build_dir).resolve()
+        if root not in include_paths:
+            include_paths.insert(0, root)
+
+    def imports_changed(manifest: ModuleManifest) -> Optional[str]:
+        return import_resolution_change(manifest, file_path.parent, include_paths, program_dir)
+
     stem = Path(canon_name).name.lower()
     candidates = [file_path.parent]
     if build_dir is not None:
         root = Path(build_dir).resolve()
         candidates.insert(0, root / Path(canon_name).parent if "/" in canon_name else root)
     return any(
-        unit_staleness(file_path, d / f"{stem}.qm", d / f"{stem}.mod.c", d / f"{stem}.o") is None
+        unit_staleness(file_path, d / f"{stem}.qm", d / f"{stem}.mod.c", d / f"{stem}.o", imports_changed) is None
         for d in candidates
     )
+
+
+def import_resolution_change(
+    manifest: ModuleManifest,
+    current_dir: Optional[Path],
+    include_paths: list[Path],
+    program_dir: Optional[Path] = None,
+) -> Optional[str]:
+    """Says how a unit's recorded imports would now resolve differently, or returns None if they would not.
+
+    Each interface and module path the unit imported is resolved again as the unit's compilation resolves it (from
+    the unit's directory current_dir, then include_paths) and canonicalized against the same roots. A different
+    source file or canonical name (after a change of include paths, or a new file earlier on the search path) means
+    the unit was compiled against other code than it would be now (docs/build-process.md §7.1). Imports recorded
+    without a path (by manifests that predate recording it) cannot be checked and are skipped.
+    """
+    def same_file(found: Optional[Path], recorded: str) -> bool:
+        if found is None or not recorded:
+            return found is None and not recorded
+        return found.resolve() == Path(recorded).resolve()
+
+    for iface in manifest.imported_interfaces:
+        if not iface.path:
+            continue
+        src = resolve_interface_source_file(iface.path, current_dir, include_paths)
+        if not same_file(src, iface.source):
+            return f"interface '{iface.path}' now resolves to {src or 'no source'}, not {iface.source or 'no source'}"
+        canon = canonicalize_interface_name(src, include_paths, iface.path, program_dir)
+        if canon != iface.name:
+            return f"interface '{iface.path}' is now named '{canon}', not '{iface.name}'"
+    for mod in manifest.imported_modules:
+        if not mod.path:
+            continue
+        src = resolve_module_file(mod.path, current_dir, include_paths)
+        if not same_file(src, mod.source):
+            return f"module '{mod.path}' now resolves to {src or 'no source'}, not {mod.source or 'no source'}"
+        canon = canonicalize_module_name(src, include_paths, mod.path, program_dir)
+        if canon != mod.name:
+            return f"module '{mod.path}' is now named '{canon}', not '{mod.name}'"
+    return None
 
 
 def resolve_interface_file(

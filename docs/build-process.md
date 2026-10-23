@@ -220,11 +220,16 @@ A `.qm` file records the build manifest for an implementation module or main rou
 - `source`: Path to source file (`.mod.quest` or `.quest`).
 - `object`: Path to compiled `.o` file in `.build/`.
 - `imported_modules`: Array of imported modules with canonical module and interface names (`docs/modules.md` §2.3),
-  and the source file the importer found (empty for builtin and prebuilt modules), which the build engine compiles:
-  `[ { "name": "util/strutil", "interface": "util/Strutil", "source": "/src/lib/util/strutil.mod.quest" }, ... ]`.
+  the source file the importer found (empty for builtin and prebuilt modules), which the build engine compiles, and
+  the module path the importer resolved (as written in its import, or the name of a module it uses implicitly):
+  `[ { "name": "util/strutil", "interface": "util/Strutil", "source": "/src/lib/util/strutil.mod.quest",
+  "path": "util/strutil" }, ... ]`.
   A manifest without `source` (written before it was recorded) is followed by finding the file with that canonical name.
-- `imported_interfaces`: Array of imported interfaces with canonical names, source paths, and timestamps:
-  `[ { "name": "util/Path", "source": "lib/util/path.int.quest", "mtime": 1727891234 }, ... ]`.
+- `imported_interfaces`: Array of imported interfaces with canonical names, source paths, timestamps, and the
+  interface path the importer resolved (for a module, including the interface it implements):
+  `[ { "name": "util/Path", "source": "lib/util/path.int.quest", "mtime": 1727891234, "path": "util/Path" }, ... ]`.
+
+The recorded paths let a later build check that each import still resolves to the recorded source (§7.1, rule 4).
 
 ### 4.4. Builtin Runtime Modules (`BUILTIN_RUNTIME_MODULES`)
 Certain core modules are implemented directly in the native C runtime (`runtime/quest_runtime.c`, with
@@ -545,6 +550,12 @@ and rebuild the transitive closure of required modules.
      2. `mtime(source) > mtime(.qm)` or `mtime(source) > mtime(.c)` or `mtime(.c) > mtime(.o)`.
      3. Any interface `I` in `.qm.imported_interfaces` has `mtime(I.int.quest) > mtime(.qm)` (the **Transitive Interface
         Invalidation Rule**; see §7.2).
+     4. Any interface or module path the unit imports would now resolve to a different source file or canonical name
+        than `.qm.imported_interfaces` / `.qm.imported_modules` record. Imports are resolved again as the unit's
+        compilation resolves them (from the unit's directory, then the current search paths), so changing `-I`, or
+        adding a file earlier on the search path, rebuilds the units it affects even though no file they were compiled
+        against changed. Without this rule such a build would reuse the old artifacts and, because the build engine
+        compiles the module sources a manifest names, link the old imported modules too.
 
    - **Action if Stale:**
      - Compile the source file (`main.quest` or `M.mod.quest`).

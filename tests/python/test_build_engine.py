@@ -544,6 +544,105 @@ class TestMainRoutineAndModuleWithSameName(unittest.TestCase):
             self.assertEqual(engine.build_main(prog / "tool.quest").compiled_units, [])
 
 
+class TestImportsResolvedAgain(unittest.TestCase):
+    """A unit's artifacts are stale when its imports would now resolve to other files than it was compiled
+    against, for example after a change of include paths, even though no file it was compiled against changed.
+
+    The module user (in lib/) imports Helper, which -I h1, -I h2, or -I h3 supplies: get() returns Int in h1 and
+    h3 (with different values) but Real in h2, which user's call conv.int(helper.get()) does not accept.
+    """
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.build_dir = self.root / ".build"
+        for d in ("prog", "lib", "h1", "h2", "h3"):
+            (self.root / d).mkdir()
+        self.lib = self.root / "lib"
+        (self.lib / "user.int.quest").write_text("interface User export show(): String end;\n", encoding="utf-8")
+        (self.lib / "user.mod.quest").write_text(
+            "module user : User import helper: Helper conv: Conv export\n"
+            "    let show(): String = conv.int(helper.get());\n"
+            "end;\n",
+            encoding="utf-8",
+        )
+        self._write_helper(self.root / "h1", "Int", "7")
+        self._write_helper(self.root / "h2", "Real", "2.5")
+        self._write_helper(self.root / "h3", "Int", "9")
+        self.main_file = self.root / "prog" / "main.quest"
+        self.main_file.write_text(
+            "import user: User;\nimport writer: Writer;\nwriter.putString(writer.output user.show());\n",
+            encoding="utf-8",
+        )
+        # Every source predates every artifact, so no timestamp says that anything changed.
+        past = time.time() - 60
+        for src in self.root.rglob("*.quest"):
+            os.utime(src, (past, past))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    @staticmethod
+    def _write_helper(d: Path, result_type: str, value: str) -> None:
+        (d / "helper.int.quest").write_text(f"interface Helper export get(): {result_type} end;\n", encoding="utf-8")
+        (d / "helper.mod.quest").write_text(
+            f"module helper : Helper export let get(): {result_type} = {value}; end;\n", encoding="utf-8"
+        )
+
+    def _build(self, helper_dir: str) -> tuple[list[str], str]:
+        engine = BuildEngine(
+            build_dir=self.build_dir,
+            include_paths=[self.lib, self.root / helper_dir],
+            log_file=self.build_dir / "build.log",
+        )
+        res = engine.build_main(self.main_file)
+        proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)
+        self.assertEqual(proc.returncode, 0)
+        return res.compiled_units, proc.stdout
+
+    def test_changed_include_path_rebuilds_against_new_files(self) -> None:
+        self.assertEqual(self._build("h1")[1], "7")
+        units, out = self._build("h3")
+        # user is rebuilt against h3's Helper, and its manifest then names h3's helper module, which is built too.
+        self.assertEqual(out, "9")
+        self.assertTrue({"user", "helper"}.issubset(units), units)
+        self.assertEqual(self._build("h3")[0], [])
+
+    def test_changed_include_path_rejects_incompatible_interface(self) -> None:
+        from quest.diagnostics import QuestCompilerError
+
+        self.assertEqual(self._build("h1")[1], "7")
+        with self.assertRaises(QuestCompilerError) as ctx:
+            self._build("h2")
+        self.assertIn("Real", str(ctx.exception))
+
+    def test_new_file_earlier_on_search_path(self) -> None:
+        self.assertEqual(self._build("h1")[1], "7")
+        # A Helper beside user is found before any include path.
+        self._write_helper(self.lib, "Int", "3")
+        units, out = self._build("h1")
+        self.assertEqual(out, "3")
+        self.assertIn("user", units)
+
+    def test_typecheck_only_freshness_rechecks_imports(self) -> None:
+        from quest.config import CompilerOptions
+        from quest.modules.paths import has_fresh_module_artifacts
+
+        self._build("h1")
+        program_dir = self.main_file.parent
+
+        def fresh(helper_dir: str) -> bool:
+            options = CompilerOptions(
+                build_dir=self.build_dir,
+                include_paths=[self.lib, self.root / helper_dir],
+                program_dir=program_dir,
+            )
+            return has_fresh_module_artifacts(self.lib / "user.mod.quest", "user", options)
+
+        self.assertTrue(fresh("h1"))
+        self.assertFalse(fresh("h3"))
+
+
 if __name__ == "__main__":
     unittest.main()
 
