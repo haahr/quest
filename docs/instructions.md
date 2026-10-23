@@ -81,9 +81,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **Types reach code generation unreduced:** alias nodes, applications of type operators (`Box(A)`), and recursive
   types. Reduce with `normalize_type` (or, after the IR's step 2, use shapes) before structural tests such as
   `isinstance(t, QTupleType)`; a test on the unreduced type silently skips `Box(A)`.
-- **Invariant checks run in tests.** `QUEST_CHECK_CANONICAL=1` (C canonical forms) and `QUEST_CHECK_SCOPES=1`
-  (well-scoped typed programs) are set by the test runners and the unit tests' helpers; production builds warn or
-  skip. Add new internal checks the same way.
+- **Invariant checks run in tests.** `QUEST_CHECK_CANONICAL=1` (C canonical forms), `QUEST_CHECK_SCOPES=1`
+  (well-scoped typed programs), and `QUEST_CHECK_IR=1` (verified IR) are set by the test runners and the unit tests'
+  helpers; production builds warn or skip. Add new internal checks the same way.
 - **Diagnostics** are `QuestCompilerError` and its subclasses (`QuestTypeError`, which the type checker calls
   `TypeError`; `KindError`; ...) with source offsets.
   Messages are full sentences that quote names and types (`Recursive type 'T' must be applied to exactly its

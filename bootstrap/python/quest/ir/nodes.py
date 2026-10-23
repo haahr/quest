@@ -425,8 +425,8 @@ class Unreachable:
 
 Terminator = Union[Return, Jump, Break, Continue, Raise, Unreachable]
 Statement = Union[
-    Let, VarDecl, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return, Jump, Break, Continue,
-    Raise, Unreachable,
+    Let, VarDecl, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return, Jump,
+    Break, Continue, Raise, Unreachable,
 ]
 TERMINATORS = (Return, Jump, Break, Continue, Raise, Unreachable)
 

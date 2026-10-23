@@ -117,6 +117,8 @@ The test runner executes each test source file across active compiler phases via
 - `tokenize`: Runs `quest_driver.py --stop-after tokenize <source_file>`.
 - `parse`: Runs `quest_driver.py --stop-after parse <source_file>`.
 - `typecheck`: Runs `quest_driver.py --stop-after typecheck <source_file>`.
+- `ir_core`: Runs `quest_driver.py --stop-after ir_core <source_file>`, which lowers the typed program to Core IR
+  ([ir.md](ir.md)) and prints it (compared against `tests/golden/ir_core/`). Generated tests skip it.
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).
 - `run_c_compiled`: Runs `quest_driver.py --stop-after run_c_compiled <source_file>`
   (compared against `tests/golden/run/`).
@@ -180,6 +182,11 @@ with `tests/perf/baseline.json` (`--save` rewrites it). It is not part of the te
 the type checker checks that every typed program is well scoped (`quest/typechecker/scoping.py`): variables are used
 within their binders' scopes, and functions' type parameters within their functions. A failure is an internal
 error. Production builds skip the check.
+
+**IR checks:** with `QUEST_CHECK_IR=1`, set in the same places, the compiler verifies the IR after lowering
+(`quest/ir/verify.py`): every variable is used within its binder's scope and bound once, closures capture no mutable
+local, jumps and breaks name enclosing join points and loops, and terminators end their bodies. A failure is an
+internal error.
 
 **Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
 type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables

@@ -471,13 +471,25 @@ step 6.
   parameters by symbol where descriptors are made (§7).
 - The current emitter keeps its structural type tests; it is replaced, not migrated.
 
-**Step 3: IR and lowering to Core.**
-- `ir/` package: node types (§5, §6), symbols, the textual form (§10), and the verifier for the Core stage (§9).
-- Lowering from the typed AST, construct by construct (expressions, blocks and join points, loops, `case`, `try`,
-  `inspect`, functions and type parameters, tuples with type components, modules and their records, top-level
-  phrases and echo), with IR dump goldens for a representative set of tests (a `--dump-after ir_core` phase in the
-  test runner).
-- Every golden test lowers to verified Core IR (a test mode that lowers without printing).
+**Step 3: IR and lowering to Core.** *Done.*
+- `ir/` package: node types (`ir/nodes.py`, §5, §6), the textual form (`ir/printer.py`, §10), and the verifier for
+  the Core stage (`ir/verify.py`, §9). Variables are objects, bound once and used by reference; the printer gives
+  them distinct names.
+- Lowering from the typed AST (`ir/lower.py`), construct by construct: expressions, blocks and join points, loops,
+  `case`, `try`, `inspect`, functions and type parameters, tuples with type components, modules and their records,
+  and top-level phrases and echo.
+- An `ir_core` pipeline phase (`--stop-after ir_core`) prints a program's Core IR; the test runner lowers and
+  verifies every non-generated golden test with it (`QUEST_CHECK_IR=1`), with goldens in `tests/golden/ir_core` and
+  targeted tests in `tests/python/test_ir_lower.py`. The generated tests (conversions, astprint) skip the phase.
+- Additions to the IR as specified: `LetRec`, for recursive values (`let rec self: T = tuple ... end`), whose
+  closures refer to the variables being bound; `Echo` and `EchoText`, for top-level phrases printed as the
+  interpreter does; and `Builtin` and `ModuleMember` (with no member) for built-in functions and modules used as
+  values.
+- The typed AST gained what the lowering needs to bind by symbol: `TypedException.symbol`, the symbol a named
+  exception's name binds, and `TypedTuple.labels`, the symbols of a tuple's component labels.
+- A named exception made inside an expression is visible to the rest of its scope, including handlers of a `try`
+  around it, so the lowering hoists it: a mutable variable, initially null, declared before the binding (or at the
+  start of the function body) that contains it, and assigned where the exception is made.
 
 **Step 4: Passes.**
 - Specialize (§8.1), with calls matched by symbol.
