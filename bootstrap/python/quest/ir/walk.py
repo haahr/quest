@@ -72,7 +72,7 @@ def statement_uses(s) -> list[ir.Atom]:
         case ir.Let(value=value) | ir.Do(value=value):
             return list(_atoms_of(value))
         case ir.VarDecl(init=init):
-            return [init]
+            return [init] if init is not None else []
         case ir.Assign(var=var, value=value):
             return [var, value]
         case ir.Store():

@@ -582,6 +582,18 @@ step 6.
   `run_c_ir` phases (`run_tests.py --phase run_c_ir`, not yet part of the default run): 50 of the 159 golden
   programs compile and run through it. The rest need tuples, records, options, variants, arrays, `inspect`,
   `type_app`, and the conversions between layouts, which raise until their slices.
+- *Slice 2 done:* tuples, records (offset tables, static for literals viewed at width subtypes and from the runtime
+  map otherwise, fields read through stored types), variants, options, and arrays (wide for records and variants),
+  as the current emitter lays them out; plans `record_view`, `variant_tags`, `cast`, and `copy` (a tuple whose
+  components convert); out arguments whose location's type is a supertype of the parameter's (through a
+  temporary, converted into the location after the call); calls of the unit's modules' members converted at the
+  module's boundary (its interface's types, abstract ones among them, to its own); and a polymorphic call's
+  arguments converted to the parameter types at the type arguments before their generic ones (and results back).
+  The standard library's `arrayOp.new`, `size`, `get`, and `set` lower to the IR's array operations, since arrays of
+  records and variants are stored wide and could not be passed to the generic functions. Two fixes in earlier
+  passes came of it: a clone's type is made from its parameters (a function's variable may be typed with other
+  quantifier symbols than its type parameters), and a closure capturing only the enclosing functions' type
+  parameters has an environment for their descriptors. 115 of the 159 programs compile and run.
 
 **Step 6: Switch and delete.**
 - Make the IR backend the default; compare emission time and C size with the step 0 baseline.

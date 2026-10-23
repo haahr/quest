@@ -62,8 +62,9 @@ class _Converter:
                     used.setdefault(id(a), a)
         captures = [v for key, v in used.items() if key not in bound and key not in self.globals]
         env = None
-        if captures:
-            # The environment is not a value of a Quest type; its type is a placeholder (it prints without one)
+        if captures or type_params:
+            # The environment (of the captured values, and of the descriptors of the enclosing functions' type
+            # parameters) is not a value of a Quest type; its type is a placeholder (it prints without one)
             env = ir.Var("env", OK_TYPE)
             renamed: dict[int, ir.Var] = {}
             prologue = []

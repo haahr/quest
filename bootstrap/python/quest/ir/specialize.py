@@ -15,11 +15,11 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 from typing import Any, Optional
 
-from quest.codegen.c_types import type_identity_key
+from quest.codegen.c_types import collect_fun_quantifiers, type_identity_key
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import statement_bodies
-from quest.types import QAllType, QTupleType, QType, QTypeFun, strip_aliases
+from quest.types import QFunType, QParam, QTupleType, QType, QTypeFun, strip_aliases
 
 # The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion (a function of
 # A calling itself at List(A)) would otherwise specialize without end, each clone calling for the next
@@ -199,12 +199,26 @@ class _Cloner:
 
     def function(self, f: ir.Function) -> ir.Function:
         """The clone of a function the substitution instantiates (its type parameters are substituted away)."""
-        t = f.var.type
-        inner = t.body if isinstance(t, QAllType) else t
-        var = ir.Var(f"{f.var.hint}_spec", inner.substitute(self.subst), f.var.mutable)
         self.bind_all(f.body)
         params = tuple((self.fresh(v), mode) for v, mode in f.params)
-        return ir.Function(var, (), params, self.type(f.result_type), self.copy(f.body))
+        result_t = self.type(f.result_type)
+        # The clone's type is made from its parameters and result: the type of the variable naming the original may
+        # be elaborated with quantifiers of other symbols than the function's own type parameters
+        _, inner = collect_fun_quantifiers(f.var.type)
+        names = [p.name for p in inner.params] if isinstance(inner, QFunType) else []
+        if isinstance(inner, QFunType) or params:
+            clone_t: QType = QFunType(
+                params=tuple(
+                    QParam(name=names[i] if i < len(names) else v.hint, type_val=v.type, is_var=mode == "var",
+                           is_out=mode == "out")
+                    for i, (v, mode) in enumerate(params)
+                ),
+                result_type=result_t,
+            )
+        else:
+            clone_t = result_t
+        var = ir.Var(f"{f.var.hint}_spec", clone_t, f.var.mutable)
+        return ir.Function(var, (), params, result_t, self.copy(f.body))
 
     def bind_all(self, body: ir.Body) -> None:
         """Makes fresh variables for every binder in body (and in the functions it binds)."""

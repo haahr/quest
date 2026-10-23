@@ -544,7 +544,7 @@ class Interpreter:
                 else:
                     frame.values[id(var)] = v
             case ir.VarDecl(var=var, init=init):
-                frame.values[id(var)] = QRef(self.atom(init, frame))
+                frame.values[id(var)] = QRef(self.atom(init, frame) if init is not None else OK_VALUE)
             case ir.Declare(var=var):
                 self.declared.add(id(var))
                 frame.values[id(var)] = _UNBOUND

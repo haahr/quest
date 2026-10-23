@@ -94,6 +94,8 @@ from quest.types import (
 )
 
 _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent", "ordinal"}
+# The standard library's array operations, which are lowered to the IR's (array_op)
+_ARRAY_OPS = frozenset({"new", "size", "get", "set"})
 
 
 class LoweringError(Exception):
@@ -341,8 +343,25 @@ class _Lowerer:
                 return self.let(op, e.type_val, into)
         callee, module, member = self.callee(func)
         args = tuple(self.argument(a) for a in e.args)
+        if isinstance(module, ir.Import) and module.canonical_path.lower() == "arrayop" and member in _ARRAY_OPS:
+            return self.array_op(member, args, e.type_val, into)
         call = ir.Call(callee, type_args, args, module, member, func.type_val if module is not None else None)
         return self.let(call, e.type_val, into)
+
+    def array_op(self, member: str, args: tuple[ir.Atom, ...], t: QType, into: Optional[ir.Var]) -> ir.Atom:
+        """A call of the standard library's arrayOp, as the array operation it is (arrays of records and variants,
+        stored wide, could not be passed to the generic functions without copying)."""
+        match member:
+            case "new":
+                return self.let(ir.ArrayRep(args[0], args[1]), t, into)
+            case "size":
+                return self.let(ir.Prim("extent", (args[0],)), t, into)
+            case "get":
+                return self.let(ir.Index(args[0], args[1]), t, into)
+            case "set":
+                self.emit(ir.Store(args[2], base=args[0], index=args[1]))
+                return self.copy_into(self.const(None, OK_TYPE), into)
+        raise LoweringError(f"arrayOp.{member}")
 
     def argument(self, a: TypedExpr) -> ir.Atom:
         # A var or out argument is an address: a mutable variable (TypedVar) or a reference node, which value() lowers

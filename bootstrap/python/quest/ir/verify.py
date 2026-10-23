@@ -166,7 +166,8 @@ class _Verifier:
                     self.problem(f"{where}: declare of mutable variable '{var.hint}'")
                 return scope.with_vars(var)
             case ir.VarDecl(var=var, init=init):
-                self.use(init, scope, where)
+                if init is not None:
+                    self.use(init, scope, where)
                 self.bind(var, where)
                 if not var.mutable:
                     self.problem(f"{where}: var declares immutable variable '{var.hint}'")

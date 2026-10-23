@@ -10,6 +10,7 @@ import json
 from typing import Optional
 
 from quest.ir import nodes as ir
+from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.types import format_type_compact
 
 
@@ -170,8 +171,10 @@ class _Printer:
                 text = self.op(value)
                 self.emit(depth, f"let {self.decl(var)} = {text}")
             case ir.VarDecl(var=var, init=init):
-                text = self.atom(init)
-                self.emit(depth, f"var {self.decl(var)} = {text}")
+                if init is None:
+                    self.emit(depth, f"var {self.decl(var)}")
+                else:
+                    self.emit(depth, f"var {self.decl(var)} = {self.atom(init)}")
             case ir.Declare(var=var):
                 self.emit(depth, f"declare {self.decl(var)}")
             case ir.Assign(var=var, value=value):
@@ -266,9 +269,17 @@ def format_unit(unit: ir.Unit) -> str:
     p = _Printer()
     for i in unit.imports:
         p.emit(0, f"import {i.name} = {json.dumps(i.module_path)} : {i.interface_path}")
-    # The unit's functions, after closure conversion, are named before any is printed, as closures refer to them
+    # The unit's functions, after closure conversion, are named before any is printed, as closures refer to them, and
+    # so are the globals they use (the variables the top levels bind outside loops), printed after them
     for f in unit.functions:
         p.bind(f.var)
+    if unit.functions:
+        globals_ = global_variables(unit)
+        for body in [*(m.init for m in unit.modules), unit.main]:
+            for s in walk_statements(body, into_functions=False):
+                for v in statement_binders(s):
+                    if id(v) in globals_:
+                        p.bind(v)
     for f in unit.functions:
         p.function(f, 0)
     for m in unit.modules:

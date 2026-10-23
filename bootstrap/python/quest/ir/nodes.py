@@ -137,10 +137,14 @@ class EnvField:
 @dataclass(eq=False)
 class Plan:
     """How `convert` changes a value's representation (docs/ir.md §8.3), from `source`'s to `target`'s: `box` (a
-    native value to a QVal word, as generic code holds it) or `unbox` (back)."""
+    native value to a QVal word, as generic code holds it) or `unbox` (back); `record_view` (a record viewed at a
+    supertype, with that type's offset table); `variant_tags` (a variant's tag remapped to a supertype's); `cast` (a
+    tuple viewed through another struct, whose layout agrees); `copy` (a new tuple, each component converted by its
+    plan in `fields`, None where it is used as it is)."""
     kind: str
     source: QType
     target: QType
+    fields: tuple[Optional[Plan], ...] = ()
 
 
 @dataclass(eq=False)
@@ -289,9 +293,10 @@ class Let:
 
 @dataclass(eq=False)
 class VarDecl:
-    """A mutable variable and its initial value."""
+    """A mutable variable and its initial value (none for the temporary of an out argument, which the callee
+    writes before it is read)."""
     var: Var
-    init: Atom
+    init: Optional[Atom]
 
 
 @dataclass(eq=False)

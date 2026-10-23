@@ -37,6 +37,8 @@ from quest.codegen.c_types import (
     mangle_module_ident,
     mangle_module_name,
     module_record_ident,
+    normalize_type,
+    option_struct_name,
     qtype_to_c_type,
     qtype_to_name_str,
     qval_unwrap,
@@ -47,11 +49,24 @@ from quest.codegen.c_types import (
 )
 from quest.env import Scope
 from quest.ir import nodes as ir
+from quest.ir.represent import (
+    _may_be_stored_as_subtype,
+    array_element,
+    option_type,
+    record_type,
+    tuple_type,
+    variant_type,
+)
 from quest.ir.walk import global_variables, statement_binders, statement_bodies, walk_statements
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.typed_ast import TypedModule
 from quest.types import (
+    BOOL_TYPE,
+    CHAR_TYPE,
+    INT_TYPE,
     OK_TYPE,
+    REAL_TYPE,
+    is_type_equal,
     QAllType,
     QFunType,
     QParam,
@@ -88,6 +103,7 @@ class _FunctionState:
         # The try handlers entered, innermost last, and for each label the number entered where it is defined
         self.handlers: list[str] = []
         self.label_depth: dict[str, int] = {}
+        self.join_params: dict[str, tuple[ir.Var, ...]] = {}
         self.volatile: set[int] = set()
 
 
@@ -252,6 +268,49 @@ class CPrinter:
                 return f"(&{cell_c})"
             case ir.Load(address=a):
                 return f"(*{self.atom(a)})"
+            case ir.Addr(base=base, name=name) if name is not None:
+                rt = record_type(self.atom_type(base))
+                field = next(f for f in rt.fields if f.name == name)
+                return self.record_field(self.atom(base), rt, name, field.type_val, as_ref=True)
+            case ir.Addr(base=base, index=index) if isinstance(index, int):
+                return f"(&({self.atom(base)}->_{index}))"
+            case ir.Addr(base=base, index=index):
+                return self.array_slot(self.atom(base), self.atom(index), array_element(self.atom_type(base)))
+            case ir.MakeTuple(args=args):
+                return self.make_tuple(result.type, [self.atom(a) for a in args])
+            case ir.TupleField(tuple=t, index=index):
+                return f"({self.atom(t)}->_{index})"
+            case ir.MakeRecord(fields=fields):
+                return self.make_record(fields, result.type)
+            case ir.RecordField(record=r, name=name):
+                rt = record_type(self.atom_type(r))
+                field = next(f for f in rt.fields if f.name == name)
+                return self.record_field(self.atom(r), rt, name, field.type_val)
+            case ir.MakeVariant(tag=tag, payload=payload):
+                vt = variant_type(result.type)
+                index = self.tag_index(vt, tag)
+                if payload is None:
+                    return f"((QVariantVal){{ .tag = {index}LL, .payload = Q_OK_VAL }})"
+                case = vt.get_variant(tag)
+                case_t = case.type_val if case is not None and case.type_val is not None else self.atom_type(payload)
+                return f"((QVariantVal){{ .tag = {index}LL, .payload = {qval_wrap(self.atom(payload), case_t)} }})"
+            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal):
+                return self.make_option(tag, payload, ordinal, result.type)
+            case ir.IsTag(value=v, tag=tag):
+                vt = self.atom_type(v)
+                if (var_t := variant_type(vt)) is not None:
+                    return f"({self.atom(v)}.tag == {self.tag_index(var_t, tag)}LL)"
+                return f"({self.atom(v)}->tag == {self.tag_index(option_type(vt), tag)}LL)"
+            case ir.Payload(value=v, tag=tag):
+                return self.payload(v, tag, result.type)
+            case ir.MakeArray(args=args):
+                return self.make_array(array_element(result.type), [self.atom(a) for a in args], result.type)
+            case ir.ArrayRep(count=count, init=init):
+                return self.array_new(self.atom(count), self.atom(init), array_element(result.type))
+            case ir.Index(array=a, index=i):
+                arr, idx = self.atom(a), self.atom(i)
+                self.emit(f"quest_check_array_bounds({arr}, {idx});")
+                return self.array_get(arr, idx, array_element(self.atom_type(a)))
         raise NotImplementedError(f"C printing of {type(o).__name__}")
 
     def convert(self, c: str, plan: ir.Plan) -> str:
@@ -260,7 +319,206 @@ class CPrinter:
                 return qval_wrap(c, plan.source)
             case "unbox":
                 return qval_unwrap(c, plan.target, self.ctx)
+            case "record_view":
+                return f"quest_record_view({c}, {self.descriptor(record_type(plan.target))})"
+            case "variant_tags":
+                source, target = variant_type(plan.source), variant_type(plan.target)
+                self.types.extend((source, target))
+                v = self.temp("QVariantVal")
+                self.emit(f"{v} = {c};")
+                tagmap = f"tagmap_{type_to_c_tag(target)}_{type_to_c_tag(source)}"
+                return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
+            case "cast":
+                return f"(({self.c_type(plan.target)}){c})"
+            case "copy":
+                source, target = tuple_type(plan.source), tuple_type(plan.target)
+                src = self.temp(f"{self.c_type(plan.source)}")
+                self.emit(f"{src} = {c};")
+                fields = []
+                for i, (tf, fp) in enumerate(zip(target.value_fields, plan.fields)):
+                    fc = f"{src}->_{i}"
+                    fields.append(fc if fp is None else self.convert(fc, fp))
+                return self.make_tuple(plan.target, fields)
         raise NotImplementedError(f"conversion plan {plan.kind}")
+
+    # Aggregates (as the current emitter lays them out, docs/c-representation.md §5)
+
+    def tag_index(self, t, tag: Optional[str]) -> int:
+        cases = t.variants if isinstance(t, QVariantType) else t.options
+        return next((i for i, case in enumerate(cases) if case.name == tag), 0)
+
+    def make_tuple(self, t: QType, fields: list[str]) -> str:
+        struct = tuple_struct_name(tuple_type(t))
+        self.c_type(t)
+        tmp = self.temp(f"{struct} *")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        for i, c in enumerate(fields):
+            self.emit(f"{tmp}->_{i} = {c};")
+        return tmp
+
+    def make_record(self, fields, t: QType) -> str:
+        concrete = QRecordType(tuple(
+            QRecordField(name=n, type_val=self.atom_type(a), is_var=is_var) for n, a, is_var in fields
+        ))
+        target = record_type(t) or concrete
+        self.types.extend((concrete, target))
+        struct = record_struct_name(concrete, self.ctx)
+        payload = self.temp(f"{struct} *")
+        self.emit(f"{payload} = ({struct} *)quest_alloc(sizeof({struct}));")
+        self.emit(f"{payload}->header.descriptor = {self.descriptor(concrete)};")
+        for n, a, _ in fields:
+            if not self.is_ok(self.atom_type(a)):
+                self.emit(f"{payload}->qf_{n} = {self.atom(a)};")
+        if is_type_equal(target, concrete) or is_record_subtype(concrete, target):
+            dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(target, concrete)}"
+        else:
+            dict_expr = f"quest_record_dict({self.descriptor(target)}, {self.descriptor(concrete)})"
+        return f"((QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }})"
+
+    def record_field(self, rec: str, rt: QRecordType, name: str, field_t: QType, as_ref: bool = False) -> str:
+        """A record's field, through its offset table (a field the payload stores at another type, as its stored
+        types say, read as stored and converted)."""
+        self.types.append(rt)
+        c_fld = self.c_type(field_t)
+        dict_t = self.ctx.offset_dict_struct_name(rt)
+        ptr = f"(({c_fld} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))"
+        if as_ref:
+            return ptr
+        fields = sorted(rt.fields, key=lambda f: f.name)
+        index = next(i for i, f in enumerate(fields) if f.name == name)
+        if fields[index].is_var or not (c_fld == "QVal" or _may_be_stored_as_subtype(field_t)):
+            return f"(*{ptr})"
+        val = self.temp(c_fld)
+        stored = f"((const {dict_t} *){rec}.dict)->stored_types"
+        converted = qval_unwrap(
+            f"quest_convert(quest_slot_read({stored}[{index}], {ptr}), {stored}[{index}], {self.descriptor(field_t)})",
+            field_t, self.ctx,
+        )
+        self.emit(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
+        self.emit(f"else {val} = *{ptr};")
+        return val
+
+    def make_option(self, tag: Optional[str], payload, ordinal, t: QType) -> str:
+        ot = option_type(t)
+        self.types.append(ot)
+        struct = option_struct_name(ot)
+        tmp = self.temp(f"{struct} *")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        if ordinal is not None:
+            self.emit(f"{tmp}->tag = quest_check_option_ordinal({self.atom(ordinal)}, {len(ot.options)}LL);")
+            # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
+            # does, whose components the union overlays on the other cases' (as the current emitter stores them)
+            n = ordinal.value if isinstance(ordinal, ir.Const) else 0
+            tag = ot.options[n].name if 0 <= n < len(ot.options) else ot.options[0].name
+        else:
+            self.emit(f"{tmp}->tag = {self.tag_index(ot, tag)}LL;")
+        if payload is not None and tag is not None:
+            case = ot.get_option(tag)
+            pt = normalize_type(case.payload_type) if case is not None and case.payload_type is not None else None
+            p = self.atom(payload)
+            if isinstance(pt, QTupleType):
+                for i, _ in enumerate(pt.value_fields):
+                    self.emit(f"{tmp}->u.{tag}._{i} = {p}->_{i};")
+            else:
+                self.emit(f"{tmp}->u.{tag}.val = {p};")
+        return tmp
+
+    def option_field(self, src: str, stored_payload, index: int, wanted: QType) -> str:
+        """A component of an option's case, read from the case's struct, in the C type of `wanted`."""
+        if not isinstance(stored_payload, QTupleType) or index >= len(stored_payload.value_fields):
+            return src
+        stored_c = self.c_type(stored_payload.value_fields[index].type_val)
+        wanted_c = self.c_type(wanted)
+        if stored_c == "QVal" and wanted_c != "QVal":
+            return qval_unwrap(src, wanted, self.ctx)
+        if stored_c.endswith("*") and wanted_c.endswith("*") and stored_c != wanted_c:
+            return f"({wanted_c})({src})"
+        return src
+
+    def option_case_tuple(self, opt: str, ot, tag: str, tuple_t: QType, offset: int) -> str:
+        """A new tuple of an option's case components (after `offset` components of tuple_t, such as the ordinal)."""
+        tt = tuple_type(tuple_t)
+        struct = tuple_struct_name(tt)
+        self.c_type(tuple_t)
+        tmp = self.temp(f"{struct} *")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        case = ot.get_option(tag)
+        pt = normalize_type(case.payload_type) if case is not None and case.payload_type is not None else None
+        if offset:
+            self.emit(f"{tmp}->_0 = {opt}->tag;")
+        if isinstance(pt, QTupleType):
+            for i, _ in enumerate(pt.value_fields):
+                if i + offset < len(tt.value_fields):
+                    src = self.option_field(f"{opt}->u.{tag}._{i}", pt, i, tt.value_fields[i + offset].type_val)
+                    self.emit(f"{tmp}->_{i + offset} = {src};")
+        elif pt is not None:
+            self.emit(f"{tmp}->_{offset} = {opt}->u.{tag}.val;")
+        return tmp
+
+    def payload(self, v: ir.Atom, tag: str, t: QType) -> str:
+        vt = self.atom_type(v)
+        if (var_t := variant_type(vt)) is not None:
+            index = self.tag_index(var_t, tag)
+            self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error();")
+            case = var_t.get_variant(tag)
+            case_t = case.type_val if case is not None and case.type_val is not None else t
+            return qval_unwrap(f"{self.atom(v)}.payload", case_t, self.ctx)
+        ot = option_type(vt)
+        self.emit(f"if ({self.atom(v)}->tag != {self.tag_index(ot, tag)}LL) quest_raise_variant_error();")
+        return self.option_case_tuple(self.atom(v), ot, tag, t, 1)
+
+    def array_get(self, arr: str, idx: str, elem_t: QType) -> str:
+        elem = normalize_type(elem_t)
+        if self.wide(elem):
+            return f"({arr}->data[{idx}])"
+        if self.c_type(elem) == "QVal":
+            return f"({arr}->data[{idx}])"
+        return qval_unwrap(f"({arr}->data[{idx}])", elem, self.ctx)
+
+    def array_slot(self, arr: str, idx: str, elem_t: QType) -> str:
+        elem = normalize_type(elem_t)
+        self.emit(f"quest_check_array_bounds({arr}, {idx});")
+        if self.wide(elem):
+            return f"(&({arr}->data[{idx}]))"
+        c_elem = self.c_type(elem)
+        if c_elem == "QVal":
+            return f"(&({arr}->data[{idx}]))"
+        if elem is INT_TYPE or elem is BOOL_TYPE or elem is CHAR_TYPE:
+            return f"(&({arr}->data[{idx}].i))"
+        if elem is REAL_TYPE:
+            return f"(&({arr}->data[{idx}].r))"
+        return f"(({c_elem} *)(&({arr}->data[{idx}].p)))"
+
+    def wide(self, elem: QType) -> bool:
+        """Whether an array of elem stores its elements wide (records and variants, 16 bytes each)."""
+        return self.c_type(elem) in ("QRecordVal", "QVariantVal")
+
+    def array_new(self, count: str, init: str, elem_t: QType) -> str:
+        elem = normalize_type(elem_t)
+        match self.c_type(elem):
+            case "QRecordVal":
+                return f"quest_array_new_wide_record({count}, {init})"
+            case "QVariantVal":
+                return f"quest_array_new_wide_variant({count}, {init})"
+        return f"quest_array_new({count}, {qval_wrap(init, elem)})"
+
+    def make_array(self, elem_t: QType, elements: list[str], t: QType) -> str:
+        elem = normalize_type(elem_t)
+        n = len(elements)
+        c_elem = self.c_type(elem)
+        arr = self.temp(self.c_type(t))
+        if c_elem in ("QRecordVal", "QVariantVal"):
+            struct = "QArrayWideRecord" if c_elem == "QRecordVal" else "QArrayWideVariant"
+            self.emit(f"{arr} = ({struct} *)quest_alloc(sizeof({struct}) + (size_t)({n}LL) * sizeof({c_elem}));")
+            self.emit(f"{arr}->length = {n}LL;")
+            for i, c in enumerate(elements):
+                self.emit(f"{arr}->data[{i}LL] = {c};")
+        else:
+            self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({n}LL) * sizeof(QVal));")
+            self.emit(f"{arr}->length = {n}LL;")
+            for i, c in enumerate(elements):
+                self.emit(f"{arr}->data[{i}LL] = {qval_wrap(c, elem)};")
+        return arr
 
     def prim(self, op: str, args: tuple[ir.Atom, ...]) -> str:
         cs = [self.atom(a) for a in args]
@@ -401,13 +659,29 @@ class CPrinter:
                 c = self.operation(value, None)
                 self.emit(f"{c};")
             case ir.VarDecl(var=var, init=init):
-                self.assign(var, self.atom(init))
+                if init is not None:
+                    self.assign(var, self.atom(init))
             case ir.Declare():
                 pass
             case ir.Assign(var=var, value=value):
                 self.assign(var, self.atom(value))
             case ir.Store(value=value, address=address) if address is not None:
                 self.emit(f"*{self.atom(address)} = {self.atom(value)};")
+            case ir.Store(value=value, base=base, name=name) if name is not None:
+                rt = record_type(self.atom_type(base))
+                field = next(f for f in rt.fields if f.name == name)
+                ptr = self.record_field(self.atom(base), rt, name, field.type_val, as_ref=True)
+                self.emit(f"*{ptr} = {self.atom(value)};")
+            case ir.Store(value=value, base=base, index=index) if isinstance(index, int):
+                self.emit(f"{self.atom(base)}->_{index} = {self.atom(value)};")
+            case ir.Store(value=value, base=base, index=index):
+                arr, idx = self.atom(base), self.atom(index)
+                elem = normalize_type(array_element(self.atom_type(base)))
+                self.emit(f"quest_check_array_bounds({arr}, {idx});")
+                c = self.atom(value)
+                self.emit(f"{arr}->data[{idx}] = {c if self.wide(elem) else qval_wrap(c, elem)};")
+            case ir.Switch(value=value, cases=cases, else_body=else_body):
+                self.switch(value, cases, else_body)
             case ir.LetRec(vars=vars_, body=body):
                 saved = self.deferred
                 self.deferred = ({id(v) for v in vars_}, [])
@@ -437,6 +711,8 @@ class CPrinter:
                 self.fs.used_labels.add(f"{label}_{which}")
                 self.emit(f"goto {label}_{which};")
             case ir.Join(label=label, params=params, continuation=continuation, body=body):
+                # Labels are unique within a function (a clone keeps its original's)
+                self.fs.join_params[label] = params
                 self.fs.label_depth[label] = len(self.fs.handlers)
                 self.emit("{")
                 self.block(body)
@@ -452,7 +728,7 @@ class CPrinter:
                 if end in self.fs.used_labels:
                     self.emit(f"{end}:;")
             case ir.Jump(label=label, args=args):
-                join_params = self.join_params[label]
+                join_params = self.fs.join_params[label]
                 for p, a in zip(join_params, args):
                     self.assign(p, self.atom(a))
                 self.leave_to(self.fs.label_depth[label])
@@ -498,10 +774,49 @@ class CPrinter:
             case _:
                 raise NotImplementedError(f"C printing of {type(s).__name__}")
 
+    def switch(self, value: ir.Atom, cases, else_body: Optional[ir.Body]) -> None:
+        vt = self.atom_type(value)
+        v = self.atom(value)
+        var_t = variant_type(vt)
+        t = var_t if var_t is not None else option_type(vt)
+        self.types.append(t)
+        self.emit(f"switch ({v}{'.tag' if var_t is not None else '->tag'}) {{")
+        self.indent += 1
+        for c in cases:
+            for tag in c.tags:
+                self.emit(f"case {self.tag_index(t, tag)}LL:")
+            self.emit("{")
+            self.indent += 1
+            if c.binder is not None and not self.is_ok(c.binder.type):
+                if var_t is not None:
+                    self.assign(c.binder, qval_unwrap(f"{v}.payload", c.binder.type, self.ctx))
+                elif tuple_type(c.binder.type) is not None:
+                    self.assign(c.binder, self.option_case_tuple(v, t, c.tags[0], c.binder.type, 0))
+                else:
+                    self.assign(c.binder, f"{v}->u.{c.tags[0]}.val")
+            self.body(c.body)
+            self.emit("break;")
+            self.indent -= 1
+            self.emit("}")
+        self.emit("default: {")
+        if else_body is not None:
+            self.block(else_body)
+        else:
+            self.emit("    quest_raise_variant_error();")
+        self.emit("    break;")
+        self.emit("}")
+        self.indent -= 1
+        self.emit("}")
+
     def atom_type(self, a: ir.Atom) -> QType:
         return a.type if isinstance(a, ir.Var) else a.shape.type
 
     def echo(self, prefix: str, value: str, t: QType, suffix: str) -> None:
+        bare = strip_aliases(t)
+        if prefix and isinstance(bare, QTupleType) and bare.is_existential:
+            # A package's components are hidden, so the line is known statically (as the interpreter prints it)
+            self.emit(f"puts({c_string_literal(prefix + CEmitter()._format_existential_tuple_val(bare))});")
+            return
         wrapped = qval_wrap(value, t)
         if kind := _value_kind(t):
             self.emit(f"quest_print_value({c_string_literal(prefix)}, {wrapped}, {c_string_literal(kind)}, "
@@ -622,12 +937,6 @@ class CPrinter:
         return decls + self.fs.locals, self.lines
 
     def print_unit(self) -> str:
-        self.join_params = {
-            s.label: s.params
-            for body in [self.unit.main, *(m.init for m in self.unit.modules), *(f.body for f in self.unit.functions)]
-            for s in walk_statements(body, into_functions=False)
-            if isinstance(s, ir.Join)
-        }
         # The closures of each function (for its environment's struct), and those bound by lets (direct calls)
         closures_of: dict[int, ir.MakeClosure] = {}
         for body in [self.unit.main, *(m.init for m in self.unit.modules), *(f.body for f in self.unit.functions)]:
