@@ -174,3 +174,34 @@ cannot be specialized statically, since the function is not known.
 
 **Done when.** Calls of local polymorphic functions with record or variant type arguments use specialized clones,
 golden tests cover local functions that capture variables of the enclosing function, and §6.4.3 describes them.
+
+---
+
+## Conversions that copy change object identity in C
+
+**Problem.** `is` compares tuples, records, and arrays by identity. When a value passed to or returned from a
+polymorphic function is laid out differently from the callee's generic layout, and the layouts do not agree in
+memory (a type parameter standing for a record or a variant), C copies the tuple or option
+(`docs/c-representation.md` §5.1, Polymorphic Calls), and the copy is a different object. The interpreter has no
+layouts, so the two backends disagree. This is documented as a limitation for now (`docs/ir.md` §8.3).
+
+**Reproduce.**
+
+```quest
+Let P = Record a: Int end;
+let id(A::TYPE t: Tuple x: A end): Tuple x: A end = t;
+let f: All(A::TYPE t: Tuple x: A end) Tuple x: A end = id;
+let t: Tuple x: P end = tuple let x = record a = 1 end end;
+f(:P t) is t
+```
+
+prints `true` interpreted and `false` compiled. At `Bool` the conversion is a cast and both print `true`.
+
+**Where to start.** The choice is between rejecting such conversions of aggregates statically (as conversions that
+would copy mutable data are rejected), which rejects more programs where calls are not specialized (first-class
+polymorphic values, functions of other units), and representing type-parameter positions uniformly (records and
+variants boxed inside tuples and options), which removes the copies and revisits the dual C representation
+(`docs/c-representation.md` §1). With the IR (`docs/ir.md`), either is a change to the represent pass's plans.
+
+**Done when.** Compiled code and the interpreter agree on `is` for converted values, or the language documents where
+they may differ, and the conversion matrix's identity column checks the rule.

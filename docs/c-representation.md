@@ -305,6 +305,8 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     `var` component of the parameter, at a record type argument) cannot be converted, since the copy would not share
     its updates; the compiler rejects the call (`generic_layout_copies_mutable_data`). An array's C type is the same
     whatever its elements, so its layout is judged from its type, not its C type.
+    A copy is a new object, so a converted tuple or option is not `is` the original (identity is kept by casts,
+    and specialized calls need no conversion); this is a known limitation (`docs/tasklist.md`).
   - **Record Width Subtyping in Tuples:** When a tuple field contains a record subtype whose field dictionary differs
     from the target tuple field, the compiler synthesizes the new fat pointer by attaching the target evidence
     dictionary (`(QRecordVal){ .val = src._i.val, .dict = &... }`) rather than an unsafe pointer cast.

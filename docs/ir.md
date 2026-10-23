@@ -301,6 +301,13 @@ Static decisions (whether layouts agree, whether a copy would lose updates) are 
 `quest_layout_equivalent` (§12, step 0). After this pass, every operation's atoms have exactly the representations
 the operation requires.
 
+**Identity.** A `copy` or `runtime` step builds a new tuple or option, so the converted value is not the same object
+as the original, and `is` (object identity for tuples, records, and arrays) can answer differently in compiled code
+than in the interpreter: a `Tuple x: P end`, with `P` a record type, passed through an unspecialized polymorphic
+function that returns it is no longer `is` the original. A `cast` keeps identity, and specialized calls need no
+conversion. This is a documented limitation of the C backend, recorded in [tasklist.md](tasklist.md) to return to;
+the conversion matrix (§12, step 0) tests it, so that the rule is checked rather than incidental.
+
 ### 8.4. Materialize descriptors
 
 §7.
@@ -395,15 +402,36 @@ Each step is one or more commits that keep the full test suite passing. The curr
 step 6.
 
 **Step 0: Safety net.**
-- A conversion matrix golden test, compiled and interpreted: type shapes (scalars, tuples, options, records with
-  width and depth subtyping, variants, arrays, closures, recursive types, bounded parameters, auto types) against the
-  places values convert (polymorphic call arguments and results, annotated bindings and subsumption, field and array
-  stores, closure and type-application thunks, `inspect` arms, `dynamic.be`, record fields stored at a subtype).
-- A differential layout test: for generated pairs of types, C programs compare `quest_layout_equivalent` with
-  `generic_layout_agrees` (whenever the static check says the layouts agree, the runtime must).
-- A test of mutable variables assigned in a `try` body and read in its handler, which will show whether today's
-  emitter needs `volatile` (§6.4); a fix in the current emitter if it does.
-- A baseline of C emission time and generated C size over the test corpus.
+- **Policy for what it finds.** Silent miscompilations in today's emitter are fixed in the emitter now, since every
+  compiled program is exposed until the IR backend replaces it. Anything else is recorded as a known failure (the
+  compiled phase skipped, with a reason naming the task) for the IR backend to fix.
+- **Mutable variables across `setjmp`.** Today's emitter miscompiles a mutable local assigned in a `try` body and
+  read in its handler or after it: at `-O2` the assignment is lost (`bump(4)` below prints 40 compiled and 50
+  interpreted). A golden test, and a fix in the emitter declaring such locals `volatile` (§6.4):
+  ```quest
+  exception Stop end;
+  let bump(n: Int): Int =
+      begin
+          let var x = n;
+          try begin x := x + 1; raise Stop end; x := 100 end when Stop then x := x * 10 end;
+          x
+      end;
+  ```
+- **A generated conversion matrix.** A checked-in script writes one program per place values convert (polymorphic
+  call arguments and results, annotated bindings and subsumption, field and array stores, closure and
+  type-application thunks, `inspect` arms, `dynamic.be`, record fields stored at a subtype) into
+  `tests/source/conversions/`, each marked as generated, covering the type shapes (scalars, tuples, options, records
+  with width and depth subtyping, variants, arrays, closures, recursive types, bounded parameters, auto types) at
+  scalar, record, and variant type arguments. Goldens come from the interpreter. An identity column checks `is`
+  where conversions cast (identity kept) and records where they copy (§8.3). Conversions the C backend rejects at
+  compile time (mutable data laid out differently) become unit tests, since the error suite cannot express errors
+  of C generation.
+- **A differential layout test**, built on `codegen/c_types.py` alone (descriptor forms, holes, and templates, which
+  outlive the emitter): for enumerated small types and seeded random ones, C programs compare
+  `quest_layout_equivalent` with `generic_layout_agrees`, asserting soundness (wherever the static check says the
+  layouts agree, the runtime must) and reporting where the static check is only conservative.
+- **A baseline**, committed as a report: C emission time and generated C size over the test corpus, and run times of
+  a few compiled programs that cross polymorphic boundaries heavily, for step 6 to compare against.
 
 **Step 1: Identity in the typechecker.**
 - A well-scopedness check over the typed AST, run in tests: every type variable is bound by an enclosing quantifier
