@@ -11,6 +11,7 @@ from quest.env import Scope, ValueSymbol
 from quest.modules.paths import is_c_compilation_mode
 from quest.typed_ast import (
     TypedApp,
+    TypedAssign,
     TypedBlock,
     TypedException,
     TypedExpr,
@@ -25,6 +26,7 @@ from quest.typed_ast import (
     TypedProgram,
     TypedRecord,
     TypedSelect,
+    TypedTry,
     TypedTypeApp,
     TypedVar,
     binding_members,
@@ -108,6 +110,42 @@ class CProgramAnalysis:
     specialization_origin_modules: dict[str, str] = field(default_factory=dict)
     needed_builtin_modules: list[str] = field(default_factory=list)
     implicit_library_imports: list[str] = field(default_factory=list)
+    # Symbols of variables assigned in the protected body of a try, which C declares volatile (setjmp/longjmp)
+    try_assigned_symbols: frozenset[int] = frozenset()
+
+
+def symbols_assigned_in_try_bodies(node: Any) -> set[int]:
+    """The symbols of variables assigned in the protected body of a try within node.
+
+    C leaves a non-volatile local that is modified between setjmp and longjmp indeterminate after the longjmp, so a
+    mutable local assigned in a try body and read by the handler, or after the try, must be volatile. Nested
+    functions are scanned too (each its own C function); their own locals are declared where they are emitted."""
+    found: set[int] = set()
+    seen: set[int] = set()
+
+    def walk(n: Any, in_try: bool) -> None:
+        if n is None or isinstance(n, (str, int, float, bool, QType)) or id(n) in seen:
+            return
+        seen.add(id(n))
+        if isinstance(n, TypedTry):
+            walk(n.body, True)
+            walk(n.branches, in_try)
+            walk(n.else_branch, in_try)
+            return
+        if isinstance(n, TypedFun):
+            walk(n.body, False)
+            return
+        if in_try and isinstance(n, TypedAssign) and isinstance(n.target, TypedVar):
+            found.add(n.target.symbol.symbol_id)
+        if isinstance(n, (list, tuple)):
+            for item in n:
+                walk(item, in_try)
+        elif isinstance(n, TypedNode):
+            for f_name in n.__dataclass_fields__:
+                walk(getattr(n, f_name), in_try)
+
+    walk(node, False)
+    return found
 
 
 def topological_sort_modules(modules: list[TypedModule]) -> list[TypedModule]:
@@ -877,6 +915,9 @@ def analyze_program_for_c(
             if isinstance(b, TypedLetValue) and isinstance(b.value, TypedFun):
                 top_fun_objs.add(id(b.value))
     agnostic_lambdas = analyze_closures(prog, top_fun_objs, is_global)
+    try_assigned = symbols_assigned_in_try_bodies(prog)
+    for mod in sorted_modules:
+        try_assigned |= symbols_assigned_in_try_bodies(mod)
     for mod in sorted_modules:
         # Modules that are phrases of prog were already covered by analyze_closures(prog).
         if mod.name in current_unit_modules:
@@ -939,4 +980,5 @@ def analyze_program_for_c(
         specialization_origin_modules=specialization_origin_modules,
         needed_builtin_modules=needed_builtin_modules,
         implicit_library_imports=implicit_library_imports,
+        try_assigned_symbols=frozenset(try_assigned),
     )

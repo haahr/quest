@@ -1,0 +1,86 @@
+(* Language: mutable locals assigned in a try body keep their values in the handler and after the try. C compiles
+   try with setjmp and longjmp, after which a non-volatile local modified in between is indeterminate, so such locals
+   are volatile. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let print(s: String): Ok = writer.putString(wOut s <> "\n");
+
+exception Stop end;
+exception Carry: Int end;
+Let P = Record a: Int end;
+
+(* 1. An Int assigned before the raise, read in the handler and after *)
+let bump(n: Int): Int =
+    begin
+        let var x = n;
+        try begin x := x + 1; raise Stop end; x := 100 end when Stop then x := x * 10 end;
+        x
+    end;
+print(conv.int(bump(4)));
+
+(* 2. A string and a record, assigned in the body and read after the try *)
+let label(n: Int): String =
+    begin
+        let var s = "start";
+        let var r: P = record a = 0 end;
+        try
+            begin s := s <> "+body"; r := record a = n end; if n > 0 then raise Stop end end end
+        when Stop then
+            s := s <> "+handler"
+        end;
+        s <> " " <> conv.int(r.a)
+    end;
+print(label(7));
+
+(* 3. Assigned in a loop inside the try body *)
+let count(n: Int): Int =
+    begin
+        let var total = 0;
+        try
+            for i = 1 upto n do
+                total := total + i;
+                if i is 3 then raise Carry with total end end
+            end
+        when Carry with t then
+            total := {total * 100} + t
+        end;
+        total
+    end;
+print(conv.int(count(5)));
+
+(* 4. Passed by reference from inside the try body *)
+let incr(var v: Int): Ok = v := v + 1;
+let viaRef(n: Int): Int =
+    begin
+        let var x = n;
+        try begin incr(@x); x := x + 1; raise Stop end end when Stop then ok end;
+        x
+    end;
+print(conv.int(viaRef(1)));
+
+(* 5. Nested try, assigned in the inner body and read by the outer handler *)
+let nested(n: Int): Int =
+    begin
+        let var x = n;
+        try
+            begin
+                try begin x := x + 1; raise Stop end end when Carry then x := 0 end
+            end
+        when Stop then
+            x := x + 1000
+        end;
+        x
+    end;
+print(conv.int(nested(1)));
+
+(* 6. A try whose value is used, with the local read in the handler's value *)
+let valued(n: Int): Int =
+    begin
+        let var x = n;
+        let r = try begin x := x * 2; raise Stop end; 0 end when Stop then x + 1 end;
+        r + x
+    end;
+print(conv.int(valued(3)));

@@ -1077,6 +1077,13 @@ if (setjmp(q_handler.env_jmp) == 0) {
 }
 ```
 
+A local that is modified between `setjmp` and `longjmp` and is not `volatile` has an indeterminate value after the
+`longjmp` (C99 §7.13.2.1), and at `-O2` clang keeps such locals in registers, so an assignment made in the protected
+body before a raise was lost. Mutable locals (`let var`) assigned in the protected body of a `try` are therefore
+declared `volatile` (`symbols_assigned_in_try_bodies` in `codegen/c_analysis.py`), and the address of one passed for a
+`var` or `out` argument is cast to a plain pointer. Named exceptions constructed locally are `volatile` for the same
+reason.
+
 ---
 
 ## 8. Auto Values and Dynamic Values (`QAuto`)

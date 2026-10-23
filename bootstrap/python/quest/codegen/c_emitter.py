@@ -350,6 +350,8 @@ class CEmitter:
         self.top_var_names: set[str] = set()
         self.val_referenced_top_funs: set[str] = set()
         self.lambda_info_by_id: dict[int, LambdaInfo] = {}
+        # C identifiers of locals declared volatile (assigned in a try body)
+        self.volatile_idents: set[str] = set()
         self.lifted_lambdas: list[LambdaInfo] = []
         self.current_env_vars: dict[str, str] = {}
         # Local recursive declarations being emitted (_emit_rec_bindings): the names whose captures each of their
@@ -1233,12 +1235,14 @@ class CEmitter:
         lines: list[str],
         declared: set[str],
         fresh: bool = False,
+        volatile: bool = False,
     ) -> str:
         """Declares the C variable of a local binding of a block, returning its identifier.
 
         The identifier is the binding's mangled name, unless the block already declares that name (a binding that
         shadows another of the same block, which C cannot redeclare) or fresh is set, for a value that refers to the
         binding it shadows; then it is a fresh identifier, which the name stands for in the rest of the block.
+        A volatile variable (a mutable local assigned in a try body) keeps its value across longjmp.
         """
         ident = mangle_ident(name)
         if fresh or name in declared:
@@ -1246,8 +1250,19 @@ class CEmitter:
         if ident != mangle_ident(name) or name in self.current_env_vars:
             self.current_env_vars[name] = ident
         declared.add(name)
-        lines.append(f"{self.c_type(t)} {ident};")
+        if volatile:
+            self.volatile_idents.add(ident)
+            lines.append(f"{self.c_type(t)} volatile {ident};")
+        else:
+            lines.append(f"{self.c_type(t)} {ident};")
         return ident
+
+    def _local_address(self, c_name: str, c_type: str) -> str:
+        """The address of a local variable, for a var or out argument. A volatile local's address is passed without
+        the qualifier: the callee's parameter is a plain pointer, and the variable lives in memory either way."""
+        if c_name in self.volatile_idents:
+            return f"(({c_type} *)&{c_name})"
+        return f"(&{c_name})"
 
     def _emit_simultaneous_bindings(
         self,
@@ -1488,7 +1503,7 @@ class CEmitter:
         """Emits a pointer to the location a var or out argument names, returning the temporary holding it."""
         if isinstance(actual_a, TypedVar):
             c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
-            loc_ptr = c_name if actual_a.name in self.pointer_params else f"(&{c_name})"
+            loc_ptr = c_name if actual_a.name in self.pointer_params else self._local_address(c_name, actual_c)
         elif isinstance(actual_a, TypedVarCell):
             tmp = self.fresh_tmp("_var_cell")
             c_t = self.c_type(actual_a.value.type_val)
@@ -1561,7 +1576,7 @@ class CEmitter:
                 c_name = self._env_ident(actual_a) or mangle_ident(actual_a.name)
                 if actual_a.name in self.pointer_params:
                     return c_name
-                return f"(&{c_name})"
+                return self._local_address(c_name, actual_c)
             elif isinstance(actual_a, TypedVarCell):
                 tmp = self.fresh_tmp("_var_cell")
                 c_t = self.c_type(actual_a.value.type_val)
@@ -3621,7 +3636,13 @@ class CEmitter:
                                 # binding of the name it shadows
                                 val_c = self.emit_val(val, block_lines)
                                 c_ident = self._declare_local(
-                                    name, symbol.type_val, block_lines, declared, fresh=_mentions_var(val, name)
+                                    name,
+                                    symbol.type_val,
+                                    block_lines,
+                                    declared,
+                                    fresh=_mentions_var(val, name),
+                                    volatile=self.analysis is not None
+                                    and symbol.symbol_id in self.analysis.try_assigned_symbols,
                                 )
                                 self._coerce_val(
                                     val_c, val, symbol.type_val, block_lines, dest=c_ident

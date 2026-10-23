@@ -405,9 +405,9 @@ step 6.
 - **Policy for what it finds.** Silent miscompilations in today's emitter are fixed in the emitter now, since every
   compiled program is exposed until the IR backend replaces it. Anything else is recorded as a known failure (the
   compiled phase skipped, with a reason naming the task) for the IR backend to fix.
-- **Mutable variables across `setjmp`.** Today's emitter miscompiles a mutable local assigned in a `try` body and
-  read in its handler or after it: at `-O2` the assignment is lost (`bump(4)` below prints 40 compiled and 50
-  interpreted). A golden test, and a fix in the emitter declaring such locals `volatile` (§6.4):
+- **Mutable variables across `setjmp`.** *Done.* The emitter miscompiled a mutable local assigned in a `try` body
+  and read in its handler or after it: at `-O2` the assignment was lost (`bump(4)` below printed 40 compiled and 50
+  interpreted). Such locals are now `volatile` (§6.4), tested by `tests/source/language/try_mutable_locals.quest`:
   ```quest
   exception Stop end;
   let bump(n: Int): Int =
