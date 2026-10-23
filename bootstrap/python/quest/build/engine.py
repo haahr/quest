@@ -21,7 +21,7 @@ from quest.modules.manifest import (
 )
 from quest.builtins import BuiltinModuleRegistry
 from quest.codegen import compile_c_to_object, link_objects
-from quest.codegen.c_emitter import CEmitter
+from quest.codegen.backend import implicit_imports, program_to_c
 from quest.env import Environment
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.loader import load_interface
@@ -94,15 +94,15 @@ def detect_module_cycle(graph: dict[str, list[str]]) -> Optional[list[str]]:
 
 def unit_module_refs(
     import_items: Iterable[Any],
-    analysis: Optional[Any],
+    implicit: Iterable[tuple[str, str]],
     current_dir: Optional[Path],
     include_paths: list[Path],
     program_dir: Optional[Path] = None,
 ) -> list[ImportedModuleRef]:
     """Returns the modules a compiled C unit links against, with the interfaces it expects of them.
 
-    These are the explicitly imported modules plus any module the C analysis treated as precompiled
-    (e.g. standard library modules a main routine uses without importing them, §6.2).
+    These are the explicitly imported modules plus the modules (by name and interface name) the unit uses without
+    importing them (standard library modules, §6.2).
     """
     refs: list[ImportedModuleRef] = []
     seen: set[str] = set()
@@ -122,17 +122,14 @@ def unit_module_refs(
             mod_src = resolve_module_file(mod_ref, current_dir, include_paths)
             _add(canonicalize_module_name(mod_src, include_paths, mod_ref, program_dir), canon_iface, mod_src)
 
-    if analysis is not None:
-        for mod in analysis.sorted_modules:
-            if not getattr(mod, "is_precompiled", False):
-                continue
-            mod_src = resolve_module_file(mod.name, current_dir, include_paths)
-            canon_mod = canonicalize_module_name(mod_src, include_paths, mod.name, program_dir)
-            canon_iface = ""
-            if mod.interface_name:
-                iface_src = resolve_interface_source_file(mod.interface_name, current_dir, include_paths)
-                canon_iface = canonicalize_interface_name(iface_src, include_paths, mod.interface_name, program_dir)
-            _add(canon_mod, canon_iface, mod_src)
+    for mod_name, interface_name in implicit:
+        mod_src = resolve_module_file(mod_name, current_dir, include_paths)
+        canon_mod = canonicalize_module_name(mod_src, include_paths, mod_name, program_dir)
+        canon_iface = ""
+        if interface_name:
+            iface_src = resolve_interface_source_file(interface_name, current_dir, include_paths)
+            canon_iface = canonicalize_interface_name(iface_src, include_paths, interface_name, program_dir)
+        _add(canon_mod, canon_iface, mod_src)
 
     return refs
 
@@ -271,11 +268,10 @@ class BuildEngine:
             )
 
         typed_prog = TypeElaborator(env=env).elaborate_program(ast_prog, env=env)
-        emitter = CEmitter(echo=False, env=env)
-        c_code = emitter.emit_program(typed_prog)
+        c_code, unit = program_to_c(typed_prog, env)
 
         imported_modules = unit_module_refs(
-            import_items, emitter.analysis, env.current_dir, env.include_paths, env.program_dir
+            import_items, implicit_imports(unit, typed_prog), env.current_dir, env.include_paths, env.program_dir
         )
 
         self.logger.log("EMIT C", str(c_path))

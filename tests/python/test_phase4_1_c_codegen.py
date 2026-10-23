@@ -56,7 +56,7 @@ class TestPhase41Codegen(unittest.TestCase):
         self.assertIn('tuple "Quest C Backend" 15 15 2 end', proc.stdout)
 
     def test_cli_driver_compile_and_run(self):
-        """Tests quest compile CLI end-to-end."""
+        """Tests quest compile CLI end-to-end: the binary is silent unless built with --print-result."""
         with tempfile.NamedTemporaryFile(suffix=".quest", mode="w", delete=False) as src_f:
             src_f.write("let x = 123; x\n")
             src_path = Path(src_f.name)
@@ -64,15 +64,17 @@ class TestPhase41Codegen(unittest.TestCase):
         bin_path = src_path.with_suffix(".bin")
 
         try:
-            exit_code = run_driver([
-                "compile", str(src_path), "-o", str(bin_path), "--build-dir", str(src_path.with_suffix(".build")),
-            ])
-            self.assertEqual(exit_code, 0)
-            self.assertTrue(bin_path.exists())
+            for flags, expected in (([], ""), (["--print-result"], "123 : Int\n")):
+                exit_code = run_driver([
+                    "compile", str(src_path), "-o", str(bin_path), "--build-dir", str(src_path.with_suffix(".build")),
+                    *flags,
+                ])
+                self.assertEqual(exit_code, 0)
+                self.assertTrue(bin_path.exists())
 
-            proc = run_binary(bin_path)
-            self.assertEqual(proc.returncode, 0)
-            self.assertIn("123 : Int", proc.stdout)
+                proc = run_binary(bin_path)
+                self.assertEqual(proc.returncode, 0)
+                self.assertEqual(proc.stdout, expected)
         finally:
             shutil.rmtree(src_path.with_suffix(".build"), ignore_errors=True)
             if src_path.exists():

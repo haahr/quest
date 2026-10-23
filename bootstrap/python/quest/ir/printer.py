@@ -88,6 +88,8 @@ class _Printer:
                 return f"builtin {name}"
             case ir.External(symbol=symbol):
                 return f"external {json.dumps(symbol)}"
+            case ir.CallExternal(symbol=symbol, type_args=type_args, args=args):
+                return f"call external {json.dumps(symbol)}{self.type_args(type_args)}({self.atoms(args)})"
             case ir.MakeClosure(code=code, captures=captures, type_args=type_args):
                 return f"closure {self.name(code.var)} {{{self.atoms(captures)}}}{self.type_args(type_args)}"
             case ir.EnvField(env=env, index=index):

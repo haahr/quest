@@ -82,6 +82,28 @@ def emit_trampoline(
     return lines
 
 
+def module_function_signature(
+    clean_mod: str, name: str, type_val: QType, c_type: Callable[[QType], str]
+) -> Optional[tuple[str, str, list[str]]]:
+    """The C function a module file exports for a member of its interface that is a function or a polymorphic value
+    (`qv_<module>_<member>`, taking its type parameters' descriptors and then its parameters, at the interface's
+    types): its result's C type, its name, and its parameters' declarations; None for other members."""
+    if isinstance(type_val, QAllType):
+        quants, fun_t = type_val.quantifiers, type_val.body
+    else:
+        quants, fun_t = (), type_val
+    if not isinstance(fun_t, QFunType) and not quants:
+        return None
+    ret_type = fun_t.result_type if isinstance(fun_t, QFunType) else fun_t
+    ret_c = "void" if ret_type is OK_TYPE else ("QRecordVal" if isinstance(ret_type, QRecordType) else c_type(ret_type))
+    param_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
+    if isinstance(fun_t, QFunType):
+        param_decls += [
+            f"{c_type(p.type_val)}{' *' if p.is_out or p.is_var else ' '}qv_p_{p.name}" for p in fun_t.params
+        ]
+    return ret_c, mangle_module_ident(clean_mod, name), param_decls
+
+
 class CDeclarationEmitter:
     """Emits forward declarations, structs, typedefs, evidence dictionaries, and trampolines."""
 
@@ -149,39 +171,10 @@ class CDeclarationEmitter:
                 clean_mod = mangle_module_name(mod.name)
                 if getattr(mod, "scope", None) and hasattr(mod.scope, "values"):
                     for val_name, val_sym in mod.scope.values.items():
-                        type_val = val_sym.type_val
-                        if isinstance(type_val, QAllType):
-                            quants = type_val.quantifiers
-                            fun_t = type_val.body
-                        else:
-                            quants = ()
-                            fun_t = type_val
-                        if isinstance(fun_t, QFunType):
-                            m_ident = mangle_module_ident(clean_mod, val_name)
-                            ret_type = fun_t.result_type
-                            ret_c = "void" if ret_type is OK_TYPE else (
-                                "QRecordVal"
-                                if isinstance(ret_type, QRecordType)
-                                else self.c_type(ret_type)
-                            )
-                            quant_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
-                            param_decls = quant_decls + [
-                                f"{self.c_type(p.type_val)}{' *' if p.is_out or p.is_var else ' '}qv_p_{p.name}"
-                                for p in fun_t.params
-                            ]
-                            sig = "void" if not param_decls else ", ".join(param_decls)
-                            lines.append(f"extern {ret_c} {m_ident}({sig});")
-                        elif quants:
-                            m_ident = mangle_module_ident(clean_mod, val_name)
-                            ret_type = fun_t
-                            ret_c = "void" if ret_type is OK_TYPE else (
-                                "QRecordVal"
-                                if isinstance(ret_type, QRecordType)
-                                else self.c_type(ret_type)
-                            )
-                            quant_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
-                            sig = ", ".join(quant_decls)
-                            lines.append(f"extern {ret_c} {m_ident}({sig});")
+                        sig = module_function_signature(clean_mod, val_name, val_sym.type_val, self.c_type)
+                        if sig is not None:
+                            ret_c, m_ident, param_decls = sig
+                            lines.append(f"extern {ret_c} {m_ident}({', '.join(param_decls) or 'void'});")
             lines.append("")
         return lines
 

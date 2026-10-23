@@ -21,7 +21,7 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 from quest.codegen.c_analysis import collect_aggregate_types
-from quest.codegen.c_declarations import CDeclarationEmitter
+from quest.codegen.c_declarations import CDeclarationEmitter, module_function_signature
 from quest.codegen.c_emitter import CEmitter, _value_kind
 from quest.codegen.c_types import (
     MissingDescriptorError,
@@ -73,7 +73,10 @@ from quest.types import (
     REAL_TYPE,
     QAbstractType,
     QAutoType,
+    QAllKind,
     QPowerKind,
+    QTypeFun,
+    QTypeKind,
     auto_payload_type,
     is_type_equal,
     QAllType,
@@ -117,8 +120,11 @@ class _FunctionState:
 
 
 class CPrinter:
-    def __init__(self, unit: ir.Unit, env: Any, module_scopes: dict[int, Scope]) -> None:
+    def __init__(
+        self, unit: ir.Unit, env: Any, module_scopes: dict[int, Scope], interface_header: Optional[str] = None
+    ) -> None:
         self.unit = unit
+        self.interface_header = interface_header
         self.env = env
         self.ctx = RecordNamingContext()
         self.module_scopes = module_scopes
@@ -128,6 +134,8 @@ class CPrinter:
         self.code_names: dict[int, str] = {}
         # Closures bound by lets (by variable), whose calls call their functions directly
         self.closures: dict[int, ir.MakeClosure] = {}
+        # External C functions bound by lets (by variable), which are called directly
+        self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
         self.types: list[QType] = []
         self.descriptors: dict[int, str] = {}
@@ -307,7 +315,11 @@ class CPrinter:
                 return f"(&{mangle_ident(name)}_closure)"
             case ir.External(symbol=symbol):
                 t = result.type if result is not None else None
-                return f"{symbol}()" if isinstance(t, QFunType) and not t.params else symbol
+                if t is not None and self.is_function(t):
+                    return self.external_closure(o, t)
+                return symbol
+            case ir.CallExternal(type_args=type_args, args=args):
+                return self.external_call(o, [self.descriptor(t) for t in type_args], [self.atom(a) for a in args])
             case ir.MakeClosure():
                 return self.make_closure(o, result)
             case ir.EnvField(env=env, index=index):
@@ -826,8 +838,39 @@ class CPrinter:
             return f"{mangle_module_ident(clean, call.member)}({', '.join(args)})"
         return self.call_closure(call.callee, descs, call.args)
 
+    @staticmethod
+    def is_function(t: QType) -> bool:
+        return isinstance(collect_fun_quantifiers(strip_aliases(t))[1], QFunType)
+
+    @staticmethod
+    def external_call(o, descs: list[str], args: list[str]) -> str:
+        """A call of an external C function (its template filled in, if it has one)."""
+        if o.inline_template:
+            return o.inline_template.format(*descs, *args)
+        return f"{o.symbol}({', '.join(descs + args)})"
+
+    def external_closure(self, o: ir.External, t: QType) -> str:
+        """An external C function as a value: a static closure over a thunk calling it."""
+        key = ("external", o.symbol, o.inline_template, o.pass_type_descriptors, type_identity_key(t))
+        if key in self.thunks:
+            return f"(&{self.thunks[key]}_closure)"
+        name = self.fresh_name("qx_" + mangle_ident(o.symbol).removeprefix("qv_"))
+        self.thunks[key] = name
+        quants, params, result_t = _signature(t)
+        with self.auxiliary():
+            decls, descs, names = self.thunk_params(quants, params)
+            call = self.external_call(o, descs if o.pass_type_descriptors else [], names)
+            ret = "void" if self.is_ok(result_t) else self.c_type(result_t)
+            self.emit(f"{call};" if ret == "void" else f"return {call};")
+            self.thunk(name, ret, decls, ["(void)_raw_env;"] + [f"(void){d};" for d in descs])
+        self.thunk_decls.append(f"static Q_UNUSED QClosure {name}_closure = {{ (void *){name}, NULL }};")
+        return f"(&{name}_closure)"
+
     def call_closure(self, callee: ir.Var, descs: list[str], args: tuple[ir.Atom, ...]) -> str:
         c_args = descs + self.args((), args)
+        external = self.externals.get(id(callee))
+        if external is not None:
+            return self.external_call(external, descs if external.pass_type_descriptors else [], self.args((), args))
         known = self.closures.get(id(callee))
         if known is not None and not known.type_args:
             env = "NULL" if not known.captures else f"{self.name(callee)}->env"
@@ -1355,6 +1398,9 @@ class CPrinter:
                 if isinstance(s, ir.Let) and isinstance(s.value, ir.MakeClosure):
                     closures_of.setdefault(id(s.value.code), s.value)
                     self.closures[id(s.var)] = s.value
+                elif isinstance(s, ir.Let) and isinstance(s.value, ir.External) and self.is_function(s.var.type):
+                    # Called directly
+                    self.externals[id(s.var)] = s.value
 
         functions = []
         for f in self.unit.functions:
@@ -1364,7 +1410,11 @@ class CPrinter:
             module_inits.extend(self.module_init(m))
         main_decls, main_lines = self.top_level(self.unit.main)
 
-        out = ["/* Emitted by the Quest IR C printer */", '#include "quest_runtime.h"', ""]
+        module_file = any(m.exports is not None for m in self.unit.modules)
+        out = ["/* Emitted by the Quest IR C printer */", '#include "quest_runtime.h"']
+        if self.interface_header:
+            out.append(f'#include "{self.interface_header}"')
+        out.append("")
         out.extend(self.declarations())
         out.extend(self.import_declarations())
         for f in self.unit.functions:
@@ -1381,21 +1431,31 @@ class CPrinter:
             out.append(f"static {c_t} {name};")
         for m in self.unit.modules:
             clean = mangle_module_name(m.name)
-            out.append(f"static QRecordVal {module_record_ident(clean)};")
+            linkage = "" if m.exports is not None else "static "
+            out.append(f"{linkage}QRecordVal {module_record_ident(clean)};")
             out.append(f"static bool qv_mod_{clean}_initialized = false;")
+            if m.exports is not None:
+                out.append(f"void qv_mod_{clean}_init(void);")
         out.append("")
         out.extend(self.thunk_decls)
         out.append("")
-        out.extend(functions)
-        out.extend(self.thunk_defs)
-        out.extend(module_inits)
-        out.append("int main(int argc, char **argv) {")
-        out.append("    quest_gc_init();")
-        out.append("    quest_builtins_init(argc, argv);")
+        # The offset tables of the records the unit views at supertypes, registered for dynamic values
+        out.append("static void qr_register_dicts(void) {")
         for view_t, layout_t in self.needed_dicts:
             dict_name = self.ctx.offset_dict_instance_name(view_t, layout_t)
             out.append(f"    quest_register_record_dict({self.descriptor(view_t)}, {self.descriptor(layout_t)}, "
                        f"&{dict_name});")
+        out.append("}")
+        out.append("")
+        out.extend(functions)
+        out.extend(self.thunk_defs)
+        out.extend(module_inits)
+        if module_file:
+            return "\n".join(out)
+        out.append("int main(int argc, char **argv) {")
+        out.append("    quest_gc_init();")
+        out.append("    quest_builtins_init(argc, argv);")
+        out.append("    qr_register_dicts();")
         for imp in self.unit.imports:
             out.append(f"    qv_mod_{mangle_module_name(imp.canonical_path)}_init();")
         for m in self.unit.modules:
@@ -1419,19 +1479,27 @@ class CPrinter:
         return found
 
     def module_init(self, m: ir.Module) -> list[str]:
+        """A module's initializer, which makes its record. A module file's is extern, as are its record and its
+        exported functions, and initializes the modules it imports first, as a program's main does."""
         clean = mangle_module_name(m.name)
         decls, lines = self.top_level(m.init)
-        out = [f"static void qv_mod_{clean}_init(void) {{",
+        linkage = "" if m.exports is not None else "static "
+        out = [f"{linkage}void qv_mod_{clean}_init(void) {{",
                f"    if (qv_mod_{clean}_initialized) return;",
                f"    qv_mod_{clean}_initialized = true;"]
         out.extend(f"    {c_t} {name};" for c_t, name in decls)
+        out.extend(self.abstract_type_registrations(m.name))
+        if m.exports is not None:
+            out.append("    qr_register_dicts();")
+            out.extend(f"    qv_mod_{mangle_module_name(imp.canonical_path)}_init();" for imp in self.unit.imports)
         out.extend(lines)
-        rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in m.members.items()))
+        fields = m.members if m.exports is None else m.exports
+        rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
         self.types.append(rec_t)
         struct = record_struct_name(rec_t, self.ctx)
         out.append(f"    {struct} *_payload = ({struct} *)quest_alloc(sizeof({struct}));")
         out.append(f"    _payload->header.descriptor = {self.descriptor(rec_t)};")
-        for n, v in sorted(m.members.items()):
+        for n, v in sorted(fields.items()):
             if not self.is_ok(v.type):
                 out.append(f"    _payload->qf_{n} = {self.name(v)};")
         dict_name = self.ctx.offset_dict_instance_name(rec_t, rec_t)
@@ -1439,7 +1507,61 @@ class CPrinter:
                    f".dict = (const void *)&{dict_name} }};")
         out.append("}")
         out.append("")
+        if m.exports is not None:
+            out.extend(self.exported_functions(m))
         return out
+
+    def exported_functions(self, m: ir.Module) -> list[str]:
+        """A module file's exported functions (`qv_<module>_<member>`, codegen/c_declarations.py), one for each of its
+        interface's functions and polymorphic values, which call its export's closure."""
+        clean = mangle_module_name(m.name)
+        out = []
+        for name, export in m.exports.items():
+            sig = module_function_signature(clean, name, export.type, self.c_type)
+            if sig is None:
+                continue
+            ret_c, ident, param_decls = sig
+            quants, params, _ = _signature(export.type)
+            args = [f"descriptor_{q.name}" for q in quants] + [f"qv_p_{p.name}" for p in params]
+            known = self.closures.get(id(export))
+            if known is not None and not known.type_args and not known.captures:
+                call = f"{self.code_name(known.code)}({', '.join(['NULL'] + args)})"
+            else:
+                fn_ptr = closure_fn_ptr_type(export.type, self.ctx)
+                self.types.append(export.type)
+                clos = self.name(export)
+                call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + args)})"
+            out.append(f"{ret_c} {ident}({', '.join(param_decls) or 'void'}) {{")
+            out.append(f"    {call};" if ret_c == "void" else f"    return {call};")
+            out.append("}")
+            out.append("")
+        return out
+
+    def abstract_type_registrations(self, canon: str) -> list[str]:
+        """Registers a module's abstract types with their representations, for dynamic values (docs/dynamic.md
+        §2.3): an abstract type operator's representation as a template whose holes are its parameters."""
+        from quest.modules.abstract_types import module_abstract_types
+
+        lines: list[str] = []
+        for entry in module_abstract_types(canon):
+            rep = strip_aliases(entry.rep)
+            arity = 0
+            kind = entry.type_var.bound
+            while isinstance(kind, QAllKind):
+                arity, kind = arity + 1, kind.result_kind
+            if not isinstance(kind, (QTypeKind, QPowerKind)) or (arity and isinstance(kind, QPowerKind)):
+                continue
+            if arity:
+                if not isinstance(rep, QTypeFun) or len(rep.params) != arity:
+                    continue
+                rep = rep.body.substitute({p.symbol_id: hole_var(i, p.bound) for i, p in enumerate(rep.params)})
+            try:
+                form = descriptor_form(rep, self.ctx)
+            except MissingDescriptorError:
+                continue
+            self.types.append(rep)
+            lines.append(f'    quest_register_abstract_type("{entry.global_name}", {arity}, {form.c_expr});')
+        return lines
 
     def import_declarations(self) -> list[str]:
         stubs = []
@@ -1499,8 +1621,9 @@ class CPrinter:
         return lines
 
 
-def print_c(unit: ir.Unit, env: Any) -> str:
-    """The C translation of a represented unit."""
+def print_c(unit: ir.Unit, env: Any, interface_header: Optional[str] = None) -> str:
+    """The C translation of a represented unit: a program, or a module file (including its interface's C header,
+    if it has one)."""
     scopes: dict[int, Scope] = {}
     for imp in unit.imports:
         scope = None
@@ -1513,4 +1636,4 @@ def print_c(unit: ir.Unit, env: Any) -> str:
             )
         if scope is not None:
             scopes[id(imp)] = scope
-    return CPrinter(unit, env, scopes).print_unit()
+    return CPrinter(unit, env, scopes, interface_header).print_unit()

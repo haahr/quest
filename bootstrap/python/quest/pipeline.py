@@ -373,8 +373,9 @@ class CodegenCPhase(Phase):
             return None
 
         import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
+        implicit = [(m.name, m.interface_name) for m in emitter.analysis.sorted_modules if m.is_precompiled]
         ctx.imported_modules = unit_module_refs(
-            import_items, emitter.analysis, ctx.env.current_dir, ctx.env.include_paths, ctx.env.program_dir
+            import_items, implicit, ctx.env.current_dir, ctx.env.include_paths, ctx.env.program_dir
         )
         return c_code
 
@@ -490,8 +491,7 @@ class IrCodegenCPhase(Phase):
     artifact_name = "c_source"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
-        from types import SimpleNamespace
-
+        from quest.codegen.backend import implicit_imports
         from quest.codegen.c_printer import print_c
 
         if input_data is None:
@@ -504,15 +504,8 @@ class IrCodegenCPhase(Phase):
             return None
         prog = ctx.typed_program
         import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
-        imported = {name for it in import_items for name in it.names}
-        # The standard library modules the unit uses without importing them, which it links against too
-        implicit = [
-            TypedModule(name=imp.canonical_path, interface_name=imp.interface_path, bindings=(), scope=Scope(),
-                        is_precompiled=True)
-            for imp in unit.imports if imp.name not in imported
-        ]
         ctx.imported_modules = unit_module_refs(
-            import_items, SimpleNamespace(sorted_modules=implicit), ctx.env.current_dir, ctx.env.include_paths,
+            import_items, implicit_imports(unit, prog), ctx.env.current_dir, ctx.env.include_paths,
             ctx.env.program_dir,
         )
         return c_code

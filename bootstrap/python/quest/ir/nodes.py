@@ -112,9 +112,21 @@ class Builtin:
 
 @dataclass(eq=False)
 class External:
-    """An external C value or function (`external "symbol"`), and its inline C template if any."""
+    """An external C value or function (`external "symbol"`), and its inline C template if any. A function is passed
+    its type parameters' descriptors only if pass_type_descriptors (a native binding's choice)."""
     symbol: str
     inline_template: Optional[str] = None
+    pass_type_descriptors: bool = False
+
+
+@dataclass(eq=False)
+class CallExternal:
+    """A call of an external C function: the body of a function defined as `external "symbol"`, which passes the C
+    function its type parameters' descriptors (type_args) and its parameters (args; addresses for var and out)."""
+    symbol: str
+    inline_template: Optional[str]
+    type_args: tuple[QType, ...]
+    args: tuple[Atom, ...]
 
 
 @dataclass(eq=False)
@@ -280,7 +292,7 @@ class Load:
 
 
 Operation = Union[
-    Prim, Call, TypeApp, ModuleMember, Builtin, External, MakeClosure, EnvField, Convert, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
+    Prim, Call, TypeApp, ModuleMember, Builtin, External, CallExternal, MakeClosure, EnvField, Convert, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
     MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index, MakeAuto, MakeException, ExceptionPayload, Addr,
     Load,
 ]
@@ -512,11 +524,14 @@ class Body:
 
 @dataclass(eq=False)
 class Module:
-    """A module defined by the unit: its members, bound in its initializer body, by name."""
+    """A module defined by the unit: its members, bound in its initializer body, by name. A module file's module (a
+    unit of its own, which other units import) also has exports: its interface's members, at the interface's types,
+    bound last in its initializer (a member itself where the types are the same)."""
     name: str
     interface_name: str
     init: Body
     members: dict[str, Var]
+    exports: Optional[dict[str, Var]] = None
 
 
 @dataclass(eq=False)

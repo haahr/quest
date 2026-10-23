@@ -77,6 +77,7 @@ from quest.typed_ast import (
     TypedWhile,
 )
 from quest.types import (
+    is_type_equal,
     BOOL_TYPE,
     CHAR_TYPE,
     EXCEPTION_TYPE,
@@ -88,6 +89,7 @@ from quest.types import (
     QAllType,
     QFunType,
     QType,
+    QTypeVar,
     QVarType,
     QOutType,
     binds_module,
@@ -643,13 +645,29 @@ class _Lowerer:
         body = ir.Body()
         saved_loops, self.loops = self.loops, []
         with self.in_body(body):
-            # The body is a scope of its own: exceptions made inside it are visible throughout it
-            self.declare_exceptions(e.body)
-            result = self.value(e.body)
+            if isinstance(e.body, TypedExternal):
+                result = self.external_call(e.body, t, params, result_t)
+            else:
+                # The body is a scope of its own: exceptions made inside it are visible throughout it
+                self.declare_exceptions(e.body)
+                result = self.value(e.body)
             if not self.body.terminated:
                 self.terminate(ir.Return(result))
         self.loops = saved_loops
         return ir.Function(var, type_params, tuple(params), result_t, body)
+
+    def external_call(self, ext: TypedExternal, t: QType, params, result_t: QType) -> ir.Atom:
+        """The body of a function defined as an external C function: a call of it."""
+        quants = t.quantifiers if isinstance(t, QAllType) else ()
+        type_args = tuple(QTypeVar(q.name, q.symbol_id, q.bound) for q in quants)
+        args = []
+        for var, mode in params:
+            if mode == "value":
+                args.append(var)
+            else:
+                ref_t = QVarType(element_type=var.type) if mode == "var" else QOutType(element_type=var.type)
+                args.append(self.let(ir.Addr(var=var), ref_t))
+        return self.let(ir.CallExternal(ext.symbol, ext.inline_template, type_args, tuple(args)), result_t)
 
     # Bindings
 
@@ -791,9 +809,10 @@ class _Lowerer:
         with self.in_body(init):
             for b in m.bindings:
                 match b:
-                    case TypedNativeBinding(name=name, symbol=symbol, inline_template=template, type_val=t):
+                    case TypedNativeBinding(name=name, symbol=symbol, inline_template=template, type_val=t,
+                                            pass_type_descriptors=pass_descriptors):
                         var = self.fresh(name, t)
-                        self.emit(ir.Let(var, ir.External(symbol, template)))
+                        self.emit(ir.Let(var, ir.External(symbol, template, pass_descriptors)))
                         members[name] = var
                     case TypedImport(items=items):
                         self.add_imports(items)
@@ -850,6 +869,25 @@ def _named_exceptions_in(node) -> list[TypedException]:
 def _display(t: QType) -> str:
     # As the interpreter prints a phrase's type
     return str(t)
+
+
+def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
+    """Lowers a module file's typed module to a Core IR unit of the module alone, with its exports."""
+    unit = _Lowerer(env, False, False).program(TypedProgram(phrases=(mod,)))
+    module = unit.modules[0]
+    exports: dict[str, ir.Var] = {}
+    for name, symbol in mod.scope.values.items():
+        member = module.members.get(name)
+        if member is None:
+            raise LoweringError(f"module {mod.name} does not define its interface's member '{name}'")
+        if is_type_equal(member.type, symbol.type_val):
+            exports[name] = member
+        else:
+            export = ir.Var(name, symbol.type_val)
+            module.init.statements.append(ir.Let(export, member))
+            exports[name] = export
+    module.exports = exports
+    return unit
 
 
 def lower_program(

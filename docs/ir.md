@@ -67,7 +67,11 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
 - **Globals:** top-level values and module-level `var` state, each a symbol with a type. Top-level rebindings
   (`let x = 1; ... let x = 2`) are distinct symbols, so distinct globals.
 - **Module records:** a module's exported record, its layout, and its lazy initializer function
-  ([c-representation.md](c-representation.md) §5.6).
+  ([c-representation.md](c-representation.md) §5.6). A module file's unit is its module alone, with its
+  **exports**: its interface's members at the interface's types, bound last in its initializer (converted from the
+  members, at the abstract types' representations, by the represent pass). Its record holds them, and it exports a
+  C function `qv_<module>_<member>` for each that is a function or a polymorphic value, the ABI other units call
+  (`codegen/c_declarations.py`, `module_function_signature`).
 - **Main:** the program's top-level phrases, in order, as the body of an initializer, including echo (§6.6).
 - **Imports:** the units it depends on and the symbols it uses from them; interfaces (`.qi`) are unchanged.
 
@@ -145,7 +149,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 |---|---|---|
 | Scalars | `prim op(a...)`: arithmetic, comparison, logic, string concatenation, identity (`is`) | C+ |
 | Calls | `call f [τ...](a...)` (a function bound by `funs`, or a function value in a variable), `call m.x [τ...](a...)` (a module's member), `type_app f [τ...]` (a polymorphic value applied to types only) | C+ |
-| Modules and externals | `member m.x` (a module's member as a value), `external "symbol"` | C+ |
+| Modules and externals | `member m.x` (a module's member as a value), `external "symbol"` (a C value, or a C function as a closure), `call external "symbol" [τ...](a...)` (the body of a function defined as `external`: a call of the C function, with its type parameters' descriptors) | C+ |
 | Closures | `closure f {a...} [τ...]` (a closure of the unit's function `f`, capturing the atoms, and supplying the enclosing functions' type parameters it takes first), `env_field(env, i)` | after closure conversion |
 | Tuples | `tuple(a...)` (value components; type components kept for printing), `tuple_field(t, i)` | C+ |
 | Records | `record(name = a, var name = a...)`, `record_field(r, name)` | C+ |
@@ -625,12 +629,19 @@ step 6.
 
 **Step 6: Switch and delete.**
 - Make the IR backend the default, for programs and for module files (`module_compiler.py`, `build/engine.py`);
-  the IR's phases take the old names (`codegen_c`, `run_c`), and the emitter's phases go.
+  the IR's phases take the old names (`codegen_c`, `run_c_compiled`), and the emitter's phases go.
 - Compare emission time, C size, and benchmark run times with the step 0 baseline, and record them here. A
   regression does not block the switch; one over about 20% becomes a task in the task list.
 - Delete the emitter in the step's last commit, once both suites pass through the IR alone (no period behind a
   flag).
 - Delete `c_emitter.py`, most of `c_analysis.py`, and the parts of `c_types.py` that only the emitter used.
+- *Module files: done.* `module_compiler.py` and `BuildEngine` compile through the IR (`codegen/backend.py`), so the
+  standard library is IR-compiled, and both suites pass with the emitter's programs linking against it (its ABI is
+  the emitter's). Module files needed exports (§3) and externals: a function defined as `external` calls its C
+  function (`call external`), and an external C function used as a value is a static closure over a thunk calling
+  it (or called directly, where a variable bound to it is called). A program built by `quest compile` is now silent
+  unless built with `--print-result`, as [testing.md](testing.md) says; the emitter printed a final expression
+  phrase's value regardless.
 - Update [codegen-c.md](codegen-c.md) and [c-representation.md](c-representation.md) (§5.1 and §6.4 around the
   `convert` plans), and the task list: close the variant tag-map task, and note what is now in place for top-level
   rebindings (distinct globals per symbol) and for specializing local functions.

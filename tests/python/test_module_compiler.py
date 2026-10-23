@@ -88,12 +88,9 @@ class TestModuleCompiler(unittest.TestCase):
         self.assertIn("void qv_counter_inc(QVal qv_p_c) {", c_source)
         self.assertNotIn("static QInt qv_counter_read(QVal", c_source)
         self.assertNotIn("static void qv_counter_inc(QVal", c_source)
-        # Internal implementations take concrete module type QRecordVal
-        self.assertIn("static QInt _qv_counter_read_impl(QRecordVal qv_counter_c) {", c_source)
-        self.assertIn("static void _qv_counter_inc_impl(QRecordVal qv_counter_c) {", c_source)
-        # Trampoline functions are static
-        self.assertIn("static QInt qv_counter_read_trampoline(void *env", c_source)
-        self.assertIn("static void qv_counter_inc_trampoline(void *env", c_source)
+        # The module's own functions are static and take its representation of T, a record
+        self.assertIn("static Q_UNUSED QInt qf_read(void *_raw_env, QRecordVal ", c_source)
+        self.assertIn("static Q_UNUSED void qf_inc(void *_raw_env, QRecordVal ", c_source)
 
     def test_chained_module_initialization(self) -> None:
         """Tests that a module importing another module chains initialization calls."""

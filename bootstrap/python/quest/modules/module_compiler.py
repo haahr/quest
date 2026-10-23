@@ -19,7 +19,7 @@ from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.builtins import BuiltinModuleRegistry
-from quest.codegen.c_emitter import CEmitter
+from quest.codegen.backend import module_file_to_c
 from quest.codegen.compiler_runner import compile_c_to_object
 from quest.config import CompilerOptions
 from quest.diagnostics import QuestTypeError, in_unit
@@ -185,21 +185,12 @@ def compile_module(
                         continue
                 interface_header = str(rel_cand) if rel_cand is not None else cand_h.name
 
-    # 5. Determine exported functions
-    exported_funs = set(target_interface_scope.values.keys())
-
     mod_name = canonical_name or module_decl.name
     if mod_name != typed_mod.name:
         typed_mod = replace(typed_mod, name=mod_name)
 
-    # 6. Emit C source
-    emitter = CEmitter(echo=False, module_prefix=mod_name, env=env)
-    c_source = emitter.emit_module(
-        typed_mod,
-        loaded_modules=env.loaded_modules_ast,
-        interface_header=interface_header,
-        exported_funs=exported_funs,
-    )
+    # 5. Emit C source (exporting the interface's members)
+    c_source = module_file_to_c(typed_mod, env, interface_header)
 
     base = stem_name or module_decl.name.lower()
     c_file = output_dir / f"{base}.mod.c"
@@ -209,7 +200,7 @@ def compile_module(
 
     c_file.write_text(c_source, encoding="utf-8")
 
-    # 7. Compile .c to .o
+    # 6. Compile .c to .o
     compile_dirs = list(dict.fromkeys(search_dirs))
     compile_c_to_object(
         c_file,
@@ -245,7 +236,7 @@ def compile_module(
         prereqs_str = " ".join(dep_objects)
         dep_file.write_text(f"{target_rel}: {prereqs_str}\n", encoding="utf-8")
 
-    # 8. Emit .qm metadata file
+    # 7. Emit .qm metadata file
     qm_file = output_dir / f"{base}.qm"
     manifest = ModuleManifest(
         name=mod_name,
