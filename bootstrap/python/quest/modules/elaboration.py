@@ -327,7 +327,10 @@ def elaborate_module(
     module_internal_scope = Scope(name=f"module_internal_{decl.name}", parent=env.base_scope)
 
     # 1. Resolve imports into module_internal_scope
+    import_symbols: list[list[Optional[ValueSymbol]]] = []
     for imp in decl.imports:
+        symbols: list[Optional[ValueSymbol]] = []
+        import_symbols.append(symbols)
         with at_import(imp.offset, env.source_map):
             iface_path = imp.effective_interface_path
             source_interface_scope = import_interface(iface_path, imp.interface_name, env)
@@ -339,6 +342,7 @@ def elaborate_module(
                     module_internal_scope.declare_kind(kind_sym)
             else:
                 for local_name, mod_path in zip(imp.names, imp.effective_module_paths):
+                    symbols.append(None)
                     if local_name == mod_path:
                         type_symbol = source_interface_scope.lookup_type_local(local_name)
                         if type_symbol is not None:
@@ -370,7 +374,8 @@ def elaborate_module(
                     env.register_module(mod_path, registered_scope)
                     if local_name != mod_path:
                         env.register_module(local_name, registered_scope)
-                    module_internal_scope.declare_value(ValueSymbol(name=local_name, type_val=mod_type))
+                    symbols[-1] = ValueSymbol(name=local_name, type_val=mod_type)
+                    module_internal_scope.declare_value(symbols[-1])
 
     # 2. Elaborate module internal bindings
     if binding_elaborator is None:
@@ -392,8 +397,9 @@ def elaborate_module(
                     canonical_import_name(mod_path, env, current_dir=env.current_dir)
                     for mod_path in imp.effective_module_paths
                 ),
+                symbol_ids=tuple(s.symbol_id if s is not None else None for s in symbols),
             )
-            for imp in decl.imports
+            for imp, symbols in zip(decl.imports, import_symbols)
         )
         typed_bindings.append(TypedImport(items=typed_items, offset=decl.offset))
     try:
@@ -493,9 +499,8 @@ def elaborate_module(
         QRecordField(name=v.name, type_val=v.type_val, is_var=v.is_var)
         for v in module_export_scope.values.values()
     )
-    env.current_scope.declare_value(
-        ValueSymbol(name=decl.name, type_val=QRecordType(fields=rec_fields, provenance=decl.name))
-    )
+    module_symbol = ValueSymbol(name=decl.name, type_val=QRecordType(fields=rec_fields, provenance=decl.name))
+    env.current_scope.declare_value(module_symbol)
 
     return TypedModule(
         name=decl.name,
@@ -503,6 +508,7 @@ def elaborate_module(
         bindings=tuple(typed_bindings),
         scope=module_export_scope,
         offset=decl.offset,
+        symbol_id=module_symbol.symbol_id,
     )
 
 
@@ -532,6 +538,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                 )
             else:
                 # import mod1, mod2: Interface
+                symbols: list[ValueSymbol] = []
                 for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
                     from quest.modules.loader import load_module
                     if is_c_compilation_mode(env):
@@ -552,7 +559,8 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                     env.register_module(mod_path, registered_scope)
                     if local_mod_name != mod_path:
                         env.register_module(local_mod_name, registered_scope)
-                    env.current_scope.declare_value(ValueSymbol(name=local_mod_name, type_val=mod_type))
+                    symbols.append(ValueSymbol(name=local_mod_name, type_val=mod_type))
+                    env.current_scope.declare_value(symbols[-1])
                 typed_items.append(
                     TypedImportItem(
                         names=item.names,
@@ -563,6 +571,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                             canonical_import_name(mod_path, env, current_dir=env.current_dir)
                             for mod_path in item.effective_module_paths
                         ),
+                        symbol_ids=tuple(s.symbol_id for s in symbols),
                     )
                 )
 

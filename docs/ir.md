@@ -156,7 +156,11 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Conversions | `convert(a, plan)` (§8) | R+ |
 | Descriptors | `descriptor(τ)`, `instantiate(template, d...)`, `descriptor_param(A)` | after materialization |
 
-Library functions (`dynamic.new`, `arrayOp.size`, ...) are calls of module members, not operations of their own.
+Library functions (`dynamic.new`, `arrayOp.size`, ...) are calls of module members, not operations of their own. A
+module reference (the `m` of `call m.x` and `member m.x`) is the module itself: one the unit defines (`module m`), or
+one it imports (`import m = "path" : Interface`, with its canonical name), never a name to look up. The lowering
+maps the symbol a module's name binds (recorded on `TypedModule` and `TypedImportItem`) to it, and a standard
+library module used without an import gets an import of its own.
 Operations that can raise (calls, array indexing, `payload` of the wrong tag, division) do so through the enclosing
 `try` regions (§6.4); the IR does not mark them, as no stage needs edges to handlers.
 

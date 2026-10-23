@@ -904,13 +904,16 @@ class TypedInterface(TypedBinding):
 
 @dataclass(frozen=True)
 class TypedModule(TypedBinding):
-    """Module implementation conforming to an interface."""
+    """Module implementation conforming to an interface. `symbol_id` identifies the value symbol its name binds, which
+    uses of the module refer to (an id rather than the symbol, whose record type the C backend's walkers of the typed
+    AST would otherwise visit)."""
     name: str
     interface_name: str
     bindings: tuple[TypedBinding, ...]
     scope: Scope
     c_init: Optional[str] = None
     is_precompiled: bool = False
+    symbol_id: Optional[int] = field(default=None, compare=False)
 
     def dump_header(self) -> str:
         return f"'{self.name}' implements '{self.interface_name}'"
@@ -928,6 +931,10 @@ class TypedImportItem(TypedNode):
     # The canonical names of the imported modules (docs/modules.md §2.3), which name them in C symbols; None
     # where they are the module paths as written.
     canonical_module_paths: Optional[tuple[str, ...]] = None
+    # The ids of the value symbols the names bind to the modules, which uses of the modules refer to (None for a
+    # name that imports a type, value, or kind of the interface rather than a module). Not compared: the same import
+    # elaborated twice is the same import
+    symbol_ids: Optional[tuple[Optional[int], ...]] = field(default=None, compare=False)
 
     @property
     def effective_module_paths(self) -> tuple[str, ...]:

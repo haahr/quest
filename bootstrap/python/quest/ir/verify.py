@@ -6,6 +6,7 @@ Core invariants, checked here:
 - every variable is bound by exactly one binder, and used only in its scope: after its let or declaration in the
   same body (or a body within it), within its function, case, handler, or join point's continuation; a declared
   variable (declare) is bound by one let in its scope, and is in scope from its declaration;
+- a module reference is to a module the unit defines or imports;
 - a function does not use a mutable variable of an enclosing function (closures do not capture mutable locals;
   mutable variables of a unit's or module's top level are globals, which any function may use);
 - a jump names a join point whose body encloses it, and passes as many values as the join point has parameters; a
@@ -52,6 +53,8 @@ class _Verifier:
     def __init__(self) -> None:
         self.problems: list[str] = []
         self.bound: set[int] = set()
+        # The modules the unit defines and imports, which module references must be
+        self.modules: set[int] = set()
         # Variables declared, and not yet bound by their let
         self.declared: set[int] = set()
 
@@ -86,6 +89,10 @@ class _Verifier:
         for f in fields(o):
             v = getattr(o, f.name)
             if f.name == "type_components":
+                continue
+            if f.name == "module":
+                if v is not None and id(v) not in self.modules:
+                    self.problem(f"{where}: reference to a module that is not the unit's or imported by it")
                 continue
             if isinstance(v, (ir.Var, ir.Const)):
                 self.use(v, scope, where)
@@ -242,6 +249,7 @@ class _Verifier:
 def verify_unit(unit: ir.Unit) -> list[str]:
     """The problems of a unit at the Core stage (empty when it satisfies every invariant)."""
     v = _Verifier()
+    v.modules = {id(m) for m in unit.modules} | {id(i) for i in unit.imports}
     top = _Scope(frozenset())
     # A module's members are visible to the code after its definition (by name, through the module), not as
     # variables; each module's initializer is its own top level

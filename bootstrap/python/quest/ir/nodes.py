@@ -72,11 +72,11 @@ class Prim:
 @dataclass(eq=False)
 class Call:
     """A call: of a function bound by a funs statement or held in a variable (`callee`), or of a module's member
-    (`module` and `member`), with type arguments and arguments."""
+    (`module`, the unit's module or import it refers to, and `member`), with type arguments and arguments."""
     callee: Optional[Var]
     type_args: tuple[QType, ...]
     args: tuple[Atom, ...]
-    module: Optional[str] = None
+    module: Optional[ModuleRef] = None
     member: Optional[str] = None
 
 
@@ -85,7 +85,7 @@ class TypeApp:
     """A polymorphic value applied to types only: the instance, a value of the instantiated type."""
     callee: Optional[Var]
     type_args: tuple[QType, ...]
-    module: Optional[str] = None
+    module: Optional[ModuleRef] = None
     member: Optional[str] = None
 
 
@@ -93,7 +93,7 @@ class TypeApp:
 class ModuleMember:
     """A member of a module, as a value (`conv.int` passed as an argument), or the module itself when `member` is
     None (a module used as a value)."""
-    module: str
+    module: ModuleRef
     member: Optional[str] = None
 
 
@@ -471,6 +471,10 @@ class Import:
     module_path: str
     canonical_path: str
     interface_path: str
+
+
+# A reference to a module: one the unit defines, or one it imports (by identity, never by name)
+ModuleRef = Union[Module, Import]
 
 
 @dataclass(eq=False)

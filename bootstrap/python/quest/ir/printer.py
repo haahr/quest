@@ -68,8 +68,8 @@ class _Printer:
 
     # Operations
 
-    def callee(self, var: Optional[ir.Var], module: Optional[str], member: Optional[str]) -> str:
-        return f"{module}.{member}" if var is None else self.name(var)
+    def callee(self, var: Optional[ir.Var], module: Optional[ir.ModuleRef], member: Optional[str]) -> str:
+        return f"{module.name}.{member}" if var is None else self.name(var)
 
     def op(self, o) -> str:
         match o:
@@ -82,7 +82,7 @@ class _Printer:
             case ir.TypeApp(callee=callee, type_args=type_args, module=module, member=member):
                 return f"type_app {self.callee(callee, module, member)}{self.type_args(type_args)}"
             case ir.ModuleMember(module=module, member=member):
-                return f"member {module}.{member}" if member is not None else f"module {module}"
+                return f"member {module.name}.{member}" if member is not None else f"module {module.name}"
             case ir.Builtin(name=name):
                 return f"builtin {name}"
             case ir.External(symbol=symbol):

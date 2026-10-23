@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from quest.builtins import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions
 from quest.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
@@ -111,6 +112,8 @@ class _Lowerer:
         self.loops: list[str] = []
         self.label_counts: dict[str, int] = {}
         self.imports: list[ir.Import] = []
+        # The modules the unit defines and imports, by the symbols their names bind
+        self.module_refs: dict[int, ir.ModuleRef] = {}
         # Exceptions made inside an expression, whose names the enclosing scope sees: declared before the binding
         # containing them, and bound where they are made
         self.declared: set[int] = set()
@@ -296,19 +299,28 @@ class _Lowerer:
             if name == "ok":
                 return self.copy_into(self.const(None, OK_TYPE), into)
             return self.let(ir.Builtin(name), e.type_val, into)
-        if binds_module(e.name, e.type_val):
-            return self.let(ir.ModuleMember(e.name), e.type_val, into)
+        if (module := self.module_ref(e)) is not None:
+            return self.let(ir.ModuleMember(module), e.type_val, into)
         raise LoweringError(f"variable '{e.name}' (#{sym_id}) has no binder in the unit")
 
-    def module_path(self, e: TypedExpr) -> Optional[str]:
-        """The module e names (as written), if it is a reference to a module rather than a value."""
-        if isinstance(e, TypedVar) and e.symbol.symbol_id not in self.vars and binds_module(e.name, e.type_val):
-            return e.name
-        return None
+    def module_ref(self, e: TypedExpr) -> Optional[ir.ModuleRef]:
+        """The module e refers to, if it is a reference to a module rather than a value."""
+        if not isinstance(e, TypedVar) or e.symbol.symbol_id in self.vars:
+            return None
+        module = self.module_refs.get(e.symbol.symbol_id)
+        if module is None and binds_module(e.name, e.type_val):
+            # A standard library module, which a unit uses without importing it
+            name = STANDARD_LIBRARY_MODULE_NAMES.get(e.name, STANDARD_LIBRARY_MODULE_NAMES.get(e.name.lower()))
+            if name is None:
+                raise LoweringError(f"module '{e.name}' (#{e.symbol.symbol_id}) is neither defined nor imported")
+            module = ir.Import(e.name, name, name, STANDARD_LIBRARY_MODULES[name])
+            self.imports.append(module)
+            self.module_refs[e.symbol.symbol_id] = module
+        return module
 
-    def callee(self, func: TypedExpr) -> tuple[Optional[ir.Var], Optional[str], Optional[str]]:
+    def callee(self, func: TypedExpr) -> tuple[Optional[ir.Var], Optional[ir.ModuleRef], Optional[str]]:
         """What a call or type application applies: a variable, or a module's member."""
-        if isinstance(func, TypedSelect) and (module := self.module_path(func.target)) is not None:
+        if isinstance(func, TypedSelect) and (module := self.module_ref(func.target)) is not None:
             return None, module, func.field
         atom = self.value(func)
         if not isinstance(atom, ir.Var):
@@ -349,7 +361,7 @@ class _Lowerer:
         raise LoweringError(f"tuple {tuple_type} has no component {fld or index}")
 
     def select(self, e: TypedSelect, target: TypedExpr, fld: str, into: Optional[ir.Var]) -> ir.Atom:
-        if (module := self.module_path(target)) is not None:
+        if (module := self.module_ref(target)) is not None:
             return self.let(ir.ModuleMember(module, fld), e.type_val, into)
         base = self.value(target)
         s = shape(target.type_val)
@@ -744,10 +756,14 @@ class _Lowerer:
 
     def add_imports(self, items) -> None:
         for item in items:
-            for name, path, canonical in zip(
-                item.names, item.effective_module_paths, item.effective_canonical_module_paths
+            symbol_ids = item.symbol_ids if item.symbol_ids is not None else (None,) * len(item.names)
+            for name, path, canonical, symbol_id in zip(
+                item.names, item.effective_module_paths, item.effective_canonical_module_paths, symbol_ids
             ):
-                self.imports.append(ir.Import(name, path, canonical, item.effective_interface_path))
+                imp = ir.Import(name, path, canonical, item.effective_interface_path)
+                self.imports.append(imp)
+                if symbol_id is not None:
+                    self.module_refs[symbol_id] = imp
 
     def module(self, m: TypedModule) -> ir.Module:
         init = ir.Body()
@@ -766,7 +782,10 @@ class _Lowerer:
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
                             if isinstance(member, TypedLetValue):
                                 members[member.name] = self.vars[member.symbol.symbol_id]
-        return ir.Module(m.name, m.interface_name, init, members)
+        module = ir.Module(m.name, m.interface_name, init, members)
+        if m.symbol_id is not None:
+            self.module_refs[m.symbol_id] = module
+        return module
 
     def program(self, prog: TypedProgram) -> ir.Unit:
         main = ir.Body()

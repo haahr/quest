@@ -175,8 +175,8 @@ class Interpreter:
     def __init__(self, runtime_env: RuntimeEnvironment) -> None:
         self.renv = runtime_env
         self.root = RuntimeEnvironment.create_root_env()
-        # Modules by the names the unit refers to them by: its own, and those it imports
-        self.modules: dict[str, QValue] = {}
+        # The unit's modules and those it imports (by identity), as records of their members
+        self.modules: dict[int, QValue] = {}
         self.declared: set[int] = set()
 
     # Units
@@ -187,7 +187,7 @@ class Interpreter:
         for m in unit.modules:
             frame = _Frame(None)
             self.run_top_level(m.init, frame)
-            self.modules[m.name] = QRecord({name: frame.lookup(var) for name, var in m.members.items()})
+            self.modules[id(m)] = QRecord({name: frame.lookup(var) for name, var in m.members.items()})
         self.run_top_level(unit.main, _Frame(None))
 
     def run_top_level(self, body: ir.Body, frame: _Frame) -> None:
@@ -205,21 +205,17 @@ class Interpreter:
             value = load_module_for_interpreter(imp.module_path, imp.interface_path, self.renv)
             if value is not None:
                 evaluated[imp.canonical_path] = value
-        if value is not None:
-            self.modules[imp.name] = value
-
-    def module(self, name: str) -> QValue:
-        value = self.modules.get(name)
         if value is None:
-            # The standard library, loaded when first used
-            value = self.renv.lookup(name)
-            self.modules[name] = value
-        return value
+            raise IRInterpreterError(f"module '{imp.module_path}' could not be loaded")
+        self.modules[id(imp)] = value
 
-    def member(self, module: str, member: str) -> QValue:
+    def module(self, ref: ir.ModuleRef) -> QValue:
+        return self.modules[id(ref)]
+
+    def member(self, module: ir.ModuleRef, member: str) -> QValue:
         record = self.module(module)
         if not isinstance(record, QRecord):
-            raise IRInterpreterError(f"module '{module}' is a {record.type_name}")
+            raise IRInterpreterError(f"module '{module.name}' is a {record.type_name}")
         value = record.get(member)
         return value.deref() if isinstance(value, QRef) else value
 
@@ -304,7 +300,8 @@ class Interpreter:
                 return QList(())
         return callee
 
-    def callee(self, var: Optional[ir.Var], module: Optional[str], member: Optional[str], frame: _Frame) -> QValue:
+    def callee(self, var: Optional[ir.Var], module: Optional[ir.ModuleRef], member: Optional[str],
+               frame: _Frame) -> QValue:
         return self.atom(var, frame) if var is not None else self.member(module, member)
 
     # Operations
