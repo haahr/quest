@@ -172,6 +172,10 @@ with its reason; cells in `REJECTED` are compile-time errors of C generation, ch
 `tests/python/test_conversion_rejections.py`. After changing the generator, run `python tests/conversions/generate.py`
 and then `python run_tests.py -k conversions/ --update-golden`.
 
+**Performance baseline:** `python tests/perf/measure.py` measures the time spent in the C emitter and the size of the
+C it produces over the compiled test programs, and the run times of the benchmarks in `tests/perf`, comparing them
+with `tests/perf/baseline.json` (`--save` rewrites it). It is not part of the test suite.
+
 **Shadow mode:** `--shadow CHECK` (repeatable) runs the compiler with `--shadow-CHECK`, which cross-checks an optimized
 type-checker algorithm against its reference implementation and fails on any disagreement; `--shadow all` enables
 every check. See `bootstrap/python/quest/shadow.py`.

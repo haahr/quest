@@ -436,8 +436,11 @@ step 6.
   conservative; today the two agree on all 124 pairs. Getting the descriptors from dynamic values, rather than from
   `c_types.py` alone as first planned, uses the emitter's descriptor emission, so the test will move to the IR
   backend's in step 5.
-- **A baseline**, committed as a report: C emission time and generated C size over the test corpus, and run times of
-  a few compiled programs that cross polymorphic boundaries heavily, for step 6 to compare against.
+- **A baseline.** *Done* (`tests/perf/measure.py`, saved in `tests/perf/baseline.json` at `cf47e75`): time in the C
+  emitter and size of the C for the 158 compiled test programs (15.3s, 49 MB), and run times of three benchmarks
+  that cross polymorphic boundaries heavily (`tests/perf/*.quest`: generic lists at `Int`, tuples of records copied
+  through an unspecialized function, closures adapted by thunks; 0.31–0.44s each). `python tests/perf/measure.py`
+  compares a later state with it, on the same machine.
 
 **Step 1: Identity in the typechecker.**
 - A well-scopedness check over the typed AST, run in tests: every type variable is bound by an enclosing quantifier
