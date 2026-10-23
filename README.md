@@ -151,6 +151,8 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
   syntax.
 
 ### Compiler Architecture & Subsystems
+- [docs/instructions.md](docs/instructions.md): Instructions for models (and people) working on the project: working with
+  its owner, commands, method, code, test, documentation, and commit conventions, and Quest's syntax traps.
 - [docs/pipeline.md](docs/pipeline.md): The compiler phase pipeline framework, dual-pipeline architecture (interpreter
   vs. C compilation), and CLI driver interface.
 - [docs/codegen-c.md](docs/codegen-c.md): Bootstrap C transpiler architecture, AST lowering, statement expressions, and
