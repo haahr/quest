@@ -127,6 +127,9 @@ The test runner executes each test source file across active compiler phases via
   interpreter (`quest/ir/interp.py`), compared against `tests/golden/run/`. Each later IR stage gets a phase of its
   own (`run_ir_<stage>`), so that a pass that changes a program's output fails in its stage's phase. The run error
   tests are not run through them.
+- `run_c_ir`: Runs `quest_driver.py --stop-after run_c_ir <source_file>`, which compiles the program through the IR's C
+  backend (`quest/codegen/c_printer.py`) and runs it, compared against `tests/golden/run/`. It is run only when
+  asked for (`--phase run_c_ir`) until the backend compiles every program (docs/ir.md §12, step 5).
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).
 - `run_c_compiled`: Runs `quest_driver.py --stop-after run_c_compiled <source_file>`
   (compared against `tests/golden/run/`).

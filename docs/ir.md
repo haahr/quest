@@ -574,6 +574,14 @@ step 6.
   descriptors), function subtyping (adapters), auto values and `inspect`, and modules. Done when every compiled test
   passes through it and the conversion matrix matches.
 - Changes to the current emitter are frozen from here, except for fixes needed to keep tests passing.
+- *Slice 1 done:* `ir/represent.py` (box and unbox plans: values of type parameters held as QVal words),
+  `codegen/c_printer.py` (functions as C functions taking their closure's environment, static closures for those
+  capturing nothing, direct calls of known closures, globals at file scope, join points and loop exits as labels, try
+  regions as setjmp handlers popped on every way out, `volatile` for what a try body assigns, module calls and
+  records by the current emitter's ABI, declarations through `c_declarations.py`), and the `codegen_c_ir` and
+  `run_c_ir` phases (`run_tests.py --phase run_c_ir`, not yet part of the default run): 50 of the 159 golden
+  programs compile and run through it. The rest need tuples, records, options, variants, arrays, `inspect`,
+  `type_app`, and the conversions between layouts, which raise until their slices.
 
 **Step 6: Switch and delete.**
 - Make the IR backend the default; compare emission time and C size with the step 0 baseline.

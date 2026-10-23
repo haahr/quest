@@ -38,11 +38,13 @@ class CompilerOptions:
         """Checks whether compilation options specify actively compiling or generating C code."""
         if self.whole_program:
             return False
-        if self.stop_after in ("codegen_c", "run_c_compiled"):
+        # The C backends' phases: the current emitter's, and the IR's (docs/ir.md §12, step 5)
+        c_phases = ("codegen_c", "run_c_compiled", "codegen_c_ir", "run_c_ir")
+        if self.stop_after in c_phases:
             return True
         if self.emit_c or self.output_path is not None:
             return True
-        return any(p in ("codegen_c", "run_c_compiled") for p in self.dump_after)
+        return any(p in c_phases for p in self.dump_after)
 
     @property
     def is_typecheck_only(self) -> bool:

@@ -207,7 +207,8 @@ class _Lowerer:
                 return self.call(e, into)
             case TypedTypeApp(func=func, type_args=type_args):
                 callee, module, member = self.callee(func)
-                return self.let(ir.TypeApp(callee, tuple(type_args), module, member), e.type_val, into)
+                callee_type = func.type_val if module is not None else None
+                return self.let(ir.TypeApp(callee, tuple(type_args), module, member, callee_type), e.type_val, into)
             case TypedInfix(left=left, op=op, right=right):
                 l = self.value(left)
                 r = self.value(right)
@@ -340,7 +341,7 @@ class _Lowerer:
                 return self.let(op, e.type_val, into)
         callee, module, member = self.callee(func)
         args = tuple(self.argument(a) for a in e.args)
-        call = ir.Call(callee, type_args, args, module, member)
+        call = ir.Call(callee, type_args, args, module, member, func.type_val if module is not None else None)
         return self.let(call, e.type_val, into)
 
     def argument(self, a: TypedExpr) -> ir.Atom:

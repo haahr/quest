@@ -29,7 +29,7 @@ from quest.diagnostics import (
     Severity,
 )
 from quest.elaborate_types import elaborate_kind, elaborate_type
-from quest.env import Environment
+from quest.env import Environment, Scope
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter import (
     QuestException,
@@ -51,7 +51,7 @@ from quest.typechecker.typecheck import (
     elaborate_program,
     synth_expr,
 )
-from quest.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedProgram
+from quest.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedModule, TypedProgram
 from quest.types import KindError, QKind, QType
 
 
@@ -67,6 +67,8 @@ class CompilerContext:
     _runtime_env: Optional[RuntimeEnvironment] = field(default=None, repr=False)
     # Modules the generated C unit links against; set by CodegenCPhase (see link_dependencies).
     imported_modules: list[Any] = field(default_factory=list)
+    # The typed program, kept by IrCorePhase for the IR's C backend (its imports, for linking)
+    typed_program: Optional[Any] = None
 
     @property
     def runtime_env(self) -> RuntimeEnvironment:
@@ -410,6 +412,7 @@ class IrCorePhase(Phase):
 
         try:
             prog = input_data if isinstance(input_data, TypedProgram) else TypedProgram(phrases=(input_data,))
+            ctx.typed_program = prog
             unit = lower_program(
                 prog, ctx.env, echo=ctx.options.echo, print_result=getattr(ctx.options, "print_result", False)
             )
@@ -480,11 +483,56 @@ class RunIrPhase(Phase):
         return ""
 
 
+class IrCodegenCPhase(Phase):
+    """The IR's C backend (docs/ir.md §12, step 5): represents the closed IR and prints it as C."""
+    name = "codegen_c_ir"
+    description = "Represent the IR and print it as C99 source code"
+    artifact_name = "c_source"
+
+    def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
+        from types import SimpleNamespace
+
+        from quest.codegen.c_printer import print_c
+        from quest.ir.represent import represent_unit
+        from quest.ir.verify import check_unit, ir_checks_enabled
+
+        if input_data is None:
+            return None
+        try:
+            unit = represent_unit(input_data)
+            if ir_checks_enabled():
+                check_unit(unit)
+            c_code = print_c(unit, ctx.env)
+        except Exception as error:
+            ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
+            return None
+        prog = ctx.typed_program
+        import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
+        imported = {name for it in import_items for name in it.names}
+        # The standard library modules the unit uses without importing them, which it links against too
+        implicit = [
+            TypedModule(name=imp.canonical_path, interface_name=imp.interface_path, bindings=(), scope=Scope(),
+                        is_precompiled=True)
+            for imp in unit.imports if imp.name not in imported
+        ]
+        ctx.imported_modules = unit_module_refs(
+            import_items, SimpleNamespace(sorted_modules=implicit), ctx.env.current_dir, ctx.env.include_paths,
+            ctx.env.program_dir,
+        )
+        return c_code
+
+    def dump(self, output_data: Any, ctx: CompilerContext) -> str:
+        return str(output_data) if output_data is not None else ""
+
+
 class RunCCompiledPhase(Phase):
     """Native binary execution phase: compiles C code and runs the resulting binary."""
     name = "run_c_compiled"
     description = "Compile C code to native binary and execute it"
     artifact_name = "stdout"
+
+    def __init__(self, name: str = "run_c_compiled") -> None:
+        self.name = name
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
         if not isinstance(input_data, str):
@@ -675,6 +723,8 @@ def _closure_convert(unit: Any) -> Any:
 # The IR's stages after Core (docs/ir.md §9, quest.ir.nodes.STAGES), in order, and the passes that produce them
 _IR_PASSES = (("specialized", _specialize), ("closed", _closure_convert))
 IR_STAGES = ("core", *(stage for stage, _ in _IR_PASSES))
+# The IR's C backend's phases: printing C, and compiling and running it
+IR_C_PHASES = ("codegen_c_ir", "run_c_ir")
 IR_DUMP_PHASES = tuple(f"ir_{stage}" for stage in IR_STAGES)
 IR_RUN_PHASES = tuple(f"run_ir_{stage}" for stage in IR_STAGES)
 
@@ -699,6 +749,14 @@ def ir_run_pipeline(stage: str) -> PhasePipeline:
     interpreter."""
     pipeline = ir_pipeline(stage)
     pipeline.register(RunIrPhase(stage))
+    return pipeline
+
+
+def ir_c_pipeline() -> PhasePipeline:
+    """Returns the pipeline compiling through the IR's C backend and running the result."""
+    pipeline = ir_pipeline(IR_STAGES[-1])
+    pipeline.register(IrCodegenCPhase())
+    pipeline.register(RunCCompiledPhase("run_c_ir"))
     return pipeline
 
 

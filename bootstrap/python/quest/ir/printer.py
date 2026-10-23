@@ -91,6 +91,8 @@ class _Printer:
                 return f"closure {self.name(code.var)} {{{self.atoms(captures)}}}{self.type_args(type_args)}"
             case ir.EnvField(env=env, index=index):
                 return f"env_field({self.atom(env)}, {index})"
+            case ir.Convert(value=v, plan=plan):
+                return f"convert({self.atom(v)}, {plan.kind})"
             case ir.MakeTuple(args=args, type_components=type_components):
                 types = "".join(f"Let {n} = {self.type(t)} " for n, t in type_components)
                 return f"tuple({types}{self.atoms(args)})"

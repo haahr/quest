@@ -20,11 +20,13 @@ from typing import Callable, Optional
 ROOT_DIR = Path(__file__).resolve().parents[4]
 
 from quest.pipeline import (
+    IR_C_PHASES,
     IR_DUMP_PHASES,
     IR_RUN_PHASES,
     PhasePipeline,
     default_pipeline,
     full_pipeline,
+    ir_c_pipeline,
     ir_pipeline,
     ir_run_pipeline,
 )
@@ -144,7 +146,7 @@ def discover_tests(directory: Path) -> list[Path]:
 SUBSET_PHASES = IR_DUMP_PHASES[1:]
 
 # The phases that run programs, whose output is compared with the run goldens
-RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
+RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES, "run_c_ir")
 
 
 def golden_dir_for_phase(phase_name: str) -> Path:
@@ -177,6 +179,8 @@ def golden_error_file_for_test(source_file: Path, phase_name: str) -> Path:
 def pipeline_for_phase(phase_name: str) -> PhasePipeline:
     if phase_name in ("codegen_c", "run_c_compiled"):
         return full_pipeline()
+    if phase_name in IR_C_PHASES:
+        return ir_c_pipeline()
     if phase_name in IR_RUN_PHASES:
         return ir_run_pipeline(phase_name.removeprefix("run_ir_"))
     if phase_name in IR_DUMP_PHASES:
@@ -358,7 +362,7 @@ def main() -> int:
 
     arg_parser = argparse.ArgumentParser(description="Run Quest compiler tests (golden outputs and error suites).")
     arg_parser.add_argument(
-        "--phase", choices=available_phases + ["all"], default="all", help="Compiler phase to test."
+        "--phase", choices=available_phases + ["all", "run_c_ir"], default="all", help="Compiler phase to test."
     )
     arg_parser.add_argument(
         "--suite",
@@ -445,6 +449,7 @@ def run_all_tests(
     # Fallback to sys.executable if specified python does not exist
     python_executable = args.python if os.path.exists(args.python) else sys.executable
 
+    # The IR's C backend (run_c_ir) is run when asked for, until it compiles every test (docs/ir.md §12, step 5)
     phases_to_run = available_phases if args.phase == "all" else [args.phase]
 
     total_golden = 0

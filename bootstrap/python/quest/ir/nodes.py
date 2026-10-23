@@ -82,6 +82,8 @@ class Call:
     args: tuple[Atom, ...]
     module: Optional[ModuleRef] = None
     member: Optional[str] = None
+    # The type of a module's member called (a variable's is its own)
+    callee_type: Optional[QType] = None
 
 
 @dataclass(eq=False)
@@ -91,6 +93,7 @@ class TypeApp:
     type_args: tuple[QType, ...]
     module: Optional[ModuleRef] = None
     member: Optional[str] = None
+    callee_type: Optional[QType] = None
 
 
 @dataclass(eq=False)
@@ -129,6 +132,22 @@ class EnvField:
     """A value a closure captured, read from the environment of the function it runs (its index'th capture)."""
     env: Atom
     index: int
+
+
+@dataclass(eq=False)
+class Plan:
+    """How `convert` changes a value's representation (docs/ir.md §8.3), from `source`'s to `target`'s: `box` (a
+    native value to a QVal word, as generic code holds it) or `unbox` (back)."""
+    kind: str
+    source: QType
+    target: QType
+
+
+@dataclass(eq=False)
+class Convert:
+    """A value converted to another representation (after the represent pass)."""
+    value: Atom
+    plan: Plan
 
 
 @dataclass(eq=False)
@@ -251,7 +270,7 @@ class Load:
 
 
 Operation = Union[
-    Prim, Call, TypeApp, ModuleMember, Builtin, External, MakeClosure, EnvField, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
+    Prim, Call, TypeApp, ModuleMember, Builtin, External, MakeClosure, EnvField, Convert, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
     MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index, MakeAuto, MakeException, ExceptionPayload, Addr,
     Load,
 ]
@@ -500,7 +519,7 @@ class Import:
 
 
 # The IR's stages (docs/ir.md §9), in order: each pass produces the next
-STAGES = ("core", "specialized", "closed")
+STAGES = ("core", "specialized", "closed", "represented")
 
 # A reference to a module: one the unit defines, or one it imports (by identity, never by name)
 ModuleRef = Union[Module, Import]

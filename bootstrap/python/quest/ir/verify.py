@@ -63,6 +63,7 @@ class _Verifier:
         self.modules: set[int] = set()
         # After closure conversion, the unit's functions, which closures must be of (None before)
         self.functions: Optional[set[int]] = None
+        self.represented = False
         # Variables declared, and not yet bound by their let
         self.declared: set[int] = set()
 
@@ -94,6 +95,8 @@ class _Verifier:
         if not is_dataclass(o) or isinstance(o, (ir.Body, ir.Function)):
             self.problem(f"{where}: not an operation: {type(o).__name__}")
             return
+        if isinstance(o, ir.Convert) and not self.represented:
+            self.problem(f"{where}: convert before the represent pass")
         if isinstance(o, (ir.MakeClosure, ir.EnvField)) and self.functions is None:
             self.problem(f"{where}: {type(o).__name__} before closure conversion")
         if isinstance(o, ir.MakeClosure) and self.functions is not None and id(o.code) not in self.functions:
@@ -269,6 +272,7 @@ def verify_unit(unit: ir.Unit) -> list[str]:
     v.modules = {id(m) for m in unit.modules} | {id(i) for i in unit.imports}
     if unit.at_least("closed"):
         v.functions = {id(f) for f in unit.functions}
+    v.represented = unit.at_least("represented")
     top = _Scope(frozenset())
     # A module's members are visible to the code after its definition (by name, through the module), not as
     # variables; each module's initializer is its own top level
