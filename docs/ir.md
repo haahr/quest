@@ -93,8 +93,8 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `all` | type parameters (symbol, bound), body shape |
 | `auto` | type component bound, signature |
 | `exception` | payload shape |
-| `typevar` | type parameter symbol (in scope), bound |
-| `abstract` | opaque: an abstract type of a module, an application of an abstract operator, a path type |
+| `typevar` | a type variable: a type parameter in scope, or an abstract type of a module or interface (`m.T`); symbol, bound |
+| `abstract` | opaque: an abstract type elaborated as such, an application of an abstract operator, a path type (`x.T`) |
 | `external` | C-level opaque type |
 | `rec` | a reference into a recursive group: the canonical recursive graph of `codegen/c_types.py` |
 
@@ -452,12 +452,15 @@ step 6.
   outside its binder (`All(A B <: A) T` had `A` free, and substitution reached the bound's `A`); quantifiers are now a
   telescope, each bound seeing the quantifiers before it as bound.
 
-**Step 2: Shapes.**
-- `codegen/shapes.py` (or `ir/shapes.py`): `shape(t)` and the shape kinds of §4.1, built on the canonical forms of
-  `codegen/c_types.py`, with unit tests (equal types share shapes; aliases and applications reduce; recursion is
-  explicit).
-- Optionally, move the current emitter's structural type tests onto shapes where that is cheap; not required, since
-  the emitter is replaced.
+**Step 2: Shapes.** *Done.*
+- `ir/shapes.py`: `shape(t)` and the shape kinds of §4.1, built on the canonical forms of `codegen/c_types.py` and
+  cached per canonical type, with unit tests (`tests/python/test_shapes.py`: equal types share one shape, aliases
+  and applications reduce, recursion is a cycle of shapes, and every type of a set of programs covering all kinds
+  has a shape). Over the whole test corpus, about 12,000 types have shapes; only type operators (`Fun(A::K) T`, in
+  type declarations), which are not the types of values, have none.
+- Abstract types of modules are elaborated as type variables, so their shapes are `typevar`s, told apart from type
+  parameters by symbol where descriptors are made (§7).
+- The current emitter keeps its structural type tests; it is replaced, not migrated.
 
 **Step 3: IR and lowering to Core.**
 - `ir/` package: node types (§5, §6), symbols, the textual form (§10), and the verifier for the Core stage (§9).
