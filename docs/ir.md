@@ -627,7 +627,7 @@ step 6.
   run. The conversion matrix's known identity failures (`identity_known_failures`) are skipped for it as for the
   current emitter: copies change identity in both.
 
-**Step 6: Switch and delete.**
+**Step 6: Switch and delete.** *Done.*
 - Make the IR backend the default, for programs and for module files (`module_compiler.py`, `build/engine.py`);
   the IR's phases take the old names (`codegen_c`, `run_c_compiled`), and the emitter's phases go.
 - Compare emission time, C size, and benchmark run times with the step 0 baseline, and record them here. A

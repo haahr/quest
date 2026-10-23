@@ -1402,7 +1402,7 @@ _BASE_DESCRIPTORS: dict[int, str] = {}
 
 
 def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> DescriptorForm:
-    """Decides the runtime descriptor of a closed type (type parameters in scope are the emitter's business).
+    """Decides the runtime descriptor of a closed type (type parameters in scope are the printer's business).
 
     Each distinct type gets its own tag: tags of compound types include a digest of the type, because C tags
     conflate types with the same representation (every closure is a QClosure, every type variable a QVal).

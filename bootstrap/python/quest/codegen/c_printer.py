@@ -5,12 +5,10 @@ own type parameters' descriptors, then its parameters), each closure a QClosure 
 nothing), each variable a C variable of its type's representation (globals for the variables the top levels bind
 outside loops, declared at file scope), and each structured statement a C statement: join points and loop exits are
 labels, and try regions setjmp handlers, popped on every way out. Conversions are `convert` operations, printed as
-their plans say. The declarations of the types it uses (structs, descriptors, function type adapters) and the ABI
-of modules (`qv_<module>_<member>`, `qm_<module>`, `qv_mod_<module>_init`) are the current emitter's, so that units
-of either backend link together (codegen/c_declarations.py, c_types.py).
-
-Built a slice at a time (docs/ir.md §12, step 5): what a slice does not cover yet raises NotImplementedError, so a
-program is compiled correctly or not at all.
+their plans say. The declarations of the types it uses (structs, descriptors, function type adapters) are
+codegen/c_declarations.py's, and the representations c_types.py's (docs/c-representation.md). A module file's unit
+exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function
+for each function or polymorphic value (`qv_<module>_<member>`), the ABI other units link against.
 """
 
 from __future__ import annotations
@@ -647,7 +645,7 @@ class CPrinter:
                        + [f"(void){d};" for d in descs])
         return name, env_struct
 
-    # Aggregates (as the current emitter lays them out, docs/c-representation.md §5)
+    # Aggregates (laid out as docs/c-representation.md §5 says)
 
     def tag_index(self, t, tag: Optional[str]) -> int:
         cases = t.variants if isinstance(t, QVariantType) else t.options
@@ -713,7 +711,7 @@ class CPrinter:
         if ordinal is not None:
             self.emit(f"{tmp}->tag = quest_check_option_ordinal({self.atom(ordinal)}, {len(ot.options)}LL);")
             # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
-            # does, whose components the union overlays on the other cases' (as the current emitter stores them)
+            # does, whose components the union overlays on the other cases' (docs/c-representation.md §5)
             n = ordinal.value if isinstance(ordinal, ir.Const) else 0
             tag = ot.options[n].name if 0 <= n < len(ot.options) else ot.options[0].name
         else:
@@ -1148,7 +1146,7 @@ class CPrinter:
         self.emit("}")
 
     # Auto values (docs/c-representation.md §6.4.4): a type component's descriptor and the payload, stored in the
-    # witness-independent layout, as the current emitter makes and inspects them
+    # witness-independent layout (docs/c-representation.md §8)
 
     def bounded_param_in_scope(self, t: QType) -> Optional[QType]:
         """The bound B of a type parameter in scope bounded by a record, variant, or option type (A <: B), which
