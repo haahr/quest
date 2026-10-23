@@ -555,17 +555,24 @@ step 6.
   interpreter gives lifted functions only the globals, so that a missed capture fails; goldens for 15 programs, and
   targeted tests in `tests/python/test_ir_closure.py`. The unit records its stage, which the verifier checks
   against.
-- Represent (§8.3): representations, plans, and `convert` insertion, including variant tag maps decided from cases
-  (closing the variant tag-map task).
-- Materialize descriptors (§7), with type parameters keyed by symbol.
 - Each pass with its stage's verifier on every test, and dump goldens for a subset of 15 to 20 programs chosen to
   exercise it (Core IR keeps goldens for every program).
+- *Changed:* represent and descriptors move to step 5, built with the C printer. The IR interpreter checks a pass
+  that changes a program's meaning, but representations do not change meaning: to the interpreter, `convert` is an
+  identity (but for copies), so only the C a representation is printed as shows whether it is right.
 
-**Step 5: C printer, as an alternative backend.**
+**Step 5: Represent, descriptors, and the C printer, as an alternative backend, in vertical slices.**
+- Represent (§8.3): representations, plans, and `convert` insertion, including variant tag maps decided from cases
+  (closing the variant tag-map task). Materialize descriptors (§7), with type parameters keyed by symbol. Each with
+  its stage's verifier and dump goldens for a subset, as the earlier passes.
 - `codegen/c_printer.py` printing the descriptor stage (§8.5), reusing `c_declarations.py` for struct declarations,
   descriptors, and adapters where it fits.
-- A driver option (`--backend ir`) and a test runner mode running every compiled test through it, until all pass and
-  the conversion matrix matches.
+- A driver option (`--backend ir`) and a test runner mode running every compiled test through it.
+- Built a slice at a time, each slice's representations checked by compiling and running the tests it covers:
+  scalars, strings, functions, closures, control flow, exceptions, and library calls first; then tuples, records
+  (views), variants (tag maps), options, and arrays; then polymorphic calls (generic layouts, conversion plans,
+  descriptors), function subtyping (adapters), auto values and `inspect`, and modules. Done when every compiled test
+  passes through it and the conversion matrix matches.
 - Changes to the current emitter are frozen from here, except for fixes needed to keep tests passing.
 
 **Step 6: Switch and delete.**
