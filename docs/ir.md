@@ -166,6 +166,13 @@ Operations that can raise (calls, array indexing, `payload` of the wrong tag, di
   `var`/`out` parameters are mutable; a use of one reads it, and how a `var` parameter is passed (by pointer) is the
   printer's business. `addr x` takes the address of one for a `var` or `out` argument (`@x`). Mutable variables of a
   unit's or module's top level are globals.
+- `declare x: τ` declares a variable whose value one later `let x = op` in its scope binds: a named exception made
+  inside an expression, whose name the rest of the enclosing scope sees (handlers of a `try` around it included).
+  It is a value, not a mutable variable, so closures capture it; reading it before its `let` has run is undefined
+  (the type checker allows naming an exception made on a branch that did not run, a gap in
+  [tasklist.md](tasklist.md)).
+- `let rec (x: τ ...) { body }` binds recursive values: `body` computes each variable's value (a constructor or a
+  function), and closures made in it may refer to all of them.
 - `store r.name := a`, `store t.#i := a`, `store a[i] := v`, and `store *p := a` store into a `var` component, an
   array element, or the location at an address.
 - `do op` evaluates an operation for its effect.
@@ -488,13 +495,14 @@ step 6.
 - The typed AST gained what the lowering needs to bind by symbol: `TypedException.symbol`, the symbol a named
   exception's name binds, and `TypedTuple.labels`, the symbols of a tuple's component labels.
 - A named exception made inside an expression is visible to the rest of its scope, including handlers of a `try`
-  around it, so the lowering hoists it: a mutable variable, initially null, declared before the binding (or at the
-  start of the function body) that contains it, and assigned where the exception is made.
+  around it, so the lowering declares it (`declare`) before the binding (or at the start of the function body) that
+  contains it, and binds it where the exception is made (step 4 replaced a first version, a mutable variable, which
+  closures could not capture).
 
 **Step 4: Passes.**
-- Fix first: a nested function using a hoisted exception of its enclosing function fails verification, since
-  closures do not capture mutable variables. Replace hoisting's mutable variable with an IR binder that declares a
-  variable whose value is bound later, once, so the exception is a value that closures capture.
+- Fix first: a nested function using a hoisted exception of its enclosing function failed verification, since
+  closures do not capture mutable variables. *Done:* `declare` (§5) declares a variable whose value one later let
+  binds, so the exception is a value that closures capture.
 - An IR interpreter (`ir/interp.py`), run by the test runner on the IR after each stage and compared with
   `tests/golden/run`, so that a pass that changes a program's meaning is caught at that pass.
 - Specialize (§8.1), with calls matched by symbol, including calls of local polymorphic functions (lifting the

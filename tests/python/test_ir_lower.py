@@ -66,8 +66,16 @@ class TestLowering(unittest.TestCase):
 
     def test_an_exception_made_inside_an_expression_is_visible_to_its_scope(self) -> None:
         _, text = lower("let g(x: Int): Int = try raise exception I: Int end with x end when I with n then n end; g(2)")
-        self.assertIn("var I: Exception(Int) = null", text)
-        self.assertIn("I := %", text)
+        self.assertIn("declare I: Exception(Int)", text)
+        self.assertIn("let I: Exception(Int) = exception I: Int", text)
+        # A nested function may use it: it is a value, not a mutable variable
+        _, text = lower(
+            "let f(x: Int): Int = begin "
+            "let a: Int = try raise exception I: Int end with x end when I with n then n end; "
+            "let h(): Int = try raise I with 2 end when I with n then n end; "
+            "a + h() end; f(1)"
+        )
+        self.assertIn("raise I with 2", text)
 
     def test_tuple_labels_bind_for_later_components(self) -> None:
         _, text = lower("let t = tuple let x = 1 let y = x + 1 end; t.y")

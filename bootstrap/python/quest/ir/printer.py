@@ -44,8 +44,7 @@ class _Printer:
             return self.name(a)
         v = a.value
         if v is None:
-            # ok, or no value yet (the initial value of a variable assigned before it is read, such as an exception)
-            return "ok" if a.shape.kind == "ok" else "null"
+            return "ok"
         if isinstance(v, bool):
             return "true" if v else "false"
         if isinstance(v, str):
@@ -166,6 +165,8 @@ class _Printer:
             case ir.VarDecl(var=var, init=init):
                 text = self.atom(init)
                 self.emit(depth, f"var {self.decl(var)} = {text}")
+            case ir.Declare(var=var):
+                self.emit(depth, f"declare {self.decl(var)}")
             case ir.Assign(var=var, value=value):
                 self.emit(depth, f"{self.name(var)} := {self.atom(value)}")
             case ir.Store(value=value, base=base, name=name, index=index, address=address):

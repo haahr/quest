@@ -205,3 +205,34 @@ variants boxed inside tuples and options), which removes the copies and revisits
 
 **Done when.** Compiled code and the interpreter agree on `is` for converted values, or the language documents where
 they may differ, and the conversion matrix's identity column checks the rule.
+
+---
+
+## An exception made on a branch that does not run can be named later
+
+**Problem.** A named exception made inside an expression (`exception I end`) binds its name for the rest of the
+enclosing scope, whether or not the expression that makes it runs. The type checker accepts a later use of the name
+after a branch that did not make it: the interpreter fails with an undefined runtime symbol, and compiled C reads an
+exception that was never made (a null pointer), so `raise I` there matches whichever handler compares equal to it.
+The IR declares such an exception before the binding that makes it (`declare`, `docs/ir.md` §5), and reading it before
+its let has run is undefined.
+
+**Reproduce.**
+
+```quest
+let f(c: Bool): Int = begin
+  let e: Exception = if c then exception I end else exception J end end;
+  try raise I end when I then 1 when J then 2 end
+end;
+f(false)
+```
+
+fails interpreted (`Undefined runtime symbol 'I'`) and prints `1` compiled.
+
+**Where to start.** `_synth_exception_expr` in `bootstrap/python/quest/typechecker/typecheck.py`, which declares the
+exception's name in the enclosing scope. Either the name should be visible only when the exception is made on every
+path to the use (a definite-assignment check), or only within the expression that makes it, or a named exception
+should be made where its scope begins rather than where it is written.
+
+**Done when.** The type checker rejects the program above (or the language defines its meaning and both backends
+agree), and an error test covers it.

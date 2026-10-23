@@ -112,9 +112,9 @@ class _Lowerer:
         self.loops: list[str] = []
         self.label_counts: dict[str, int] = {}
         self.imports: list[str] = []
-        # Exceptions declared inside an expression, whose names the enclosing scope sees: mutable variables declared
-        # before the binding containing them, assigned where they are made, and read (not addressed) where used
-        self.hoisted: set[int] = set()
+        # Exceptions made inside an expression, whose names the enclosing scope sees: declared before the binding
+        # containing them, and bound where they are made
+        self.declared: set[int] = set()
 
     # Building
 
@@ -252,10 +252,12 @@ class _Lowerer:
             case TypedAuto(witness_type=witness, auto_type=auto_type, payload=payload):
                 return self.let(ir.MakeAuto(witness, auto_type, self.value(payload)), e.type_val, into)
             case TypedException(name=name, payload_type=payload_type, symbol=symbol):
-                if symbol is not None and (hoisted := self.vars.get(symbol.symbol_id)) is not None:
-                    made = self.let(ir.MakeException(name, payload_type), e.type_val)
-                    self.emit(ir.Assign(hoisted, made))
-                    return self.copy_into(hoisted, into)
+                if symbol is not None and (declared := self.vars.get(symbol.symbol_id)) is not None:
+                    if id(declared) not in self.declared:
+                        raise LoweringError(f"exception '{name}' is bound twice")
+                    self.declared.discard(id(declared))
+                    self.emit(ir.Let(declared, ir.MakeException(name, payload_type)))
+                    return self.copy_into(declared, into)
                 if symbol is not None:
                     bound = self.bind_symbol(symbol, e.type_val)
                     self.emit(ir.Let(bound, ir.MakeException(name, payload_type)))
@@ -284,7 +286,7 @@ class _Lowerer:
         sym_id = e.symbol.symbol_id
         var = self.vars.get(sym_id)
         if var is not None:
-            if var.mutable and id(var) not in self.hoisted:
+            if var.mutable:
                 # A mutable variable not read through a dereference is passed by address (@x)
                 return self.let(ir.Addr(var=var), e.type_val, into)
             return self.copy_into(var, into)
@@ -611,7 +613,7 @@ class _Lowerer:
         saved_loops, self.loops = self.loops, []
         with self.in_body(body):
             # The body is a scope of its own: exceptions made inside it are visible throughout it
-            self.hoist_exceptions(e.body)
+            self.declare_exceptions(e.body)
             result = self.value(e.body)
             if not self.body.terminated:
                 self.terminate(ir.Return(result))
@@ -620,19 +622,19 @@ class _Lowerer:
 
     # Bindings
 
-    def hoist_exceptions(self, b: TypedNode) -> None:
+    def declare_exceptions(self, b: TypedNode) -> None:
         """Declares, before b, the named exceptions made inside b whose names b's scope sees (not those b is itself,
         or binds directly, nor those inside functions and blocks, which bind them in their own scopes)."""
         direct = b.expr if isinstance(b, TypedExprStmt) else b.value if isinstance(b, TypedLetValue) else b
         for exc in _named_exceptions_in(b):
             if exc is direct or exc.symbol is None or exc.symbol.symbol_id in self.vars:
                 continue
-            var = self.bind_symbol(exc.symbol, exc.type_val, mutable=True)
-            self.hoisted.add(id(var))
-            self.emit(ir.VarDecl(var, self.const(None, exc.type_val)))
+            var = self.bind_symbol(exc.symbol, exc.type_val)
+            self.declared.add(id(var))
+            self.emit(ir.Declare(var))
 
     def binding(self, b: TypedNode, show: bool = False) -> None:
-        self.hoist_exceptions(b)
+        self.declare_exceptions(b)
         match b:
             case TypedLetValue(value=value, is_rec=True) if not isinstance(value, TypedFun):
                 self.rec_values((b,), show)
