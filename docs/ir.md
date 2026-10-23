@@ -428,10 +428,14 @@ step 6.
   where conversions cast (identity kept) and records where they copy (§8.3). Conversions the C backend rejects at
   compile time (mutable data laid out differently) become unit tests, since the error suite cannot express errors
   of C generation.
-- **A differential layout test**, built on `codegen/c_types.py` alone (descriptor forms, holes, and templates, which
-  outlive the emitter): for enumerated small types and seeded random ones, C programs compare
-  `quest_layout_equivalent` with `generic_layout_agrees`, asserting soundness (wherever the static check says the
-  layouts agree, the runtime must) and reporting where the static check is only conservative.
+- **A differential layout test.** *Done* (`tests/python/test_layout_differential.py`). For every shape at every type
+  argument, and seeded random compositions of shapes, a generated program makes a dynamic value of each type in
+  generic code (through a first-class value, so that it is not specialized) and in native code, and a harness
+  appended to its C compares the two descriptors with `quest_layout_equivalent`. The test asserts soundness (wherever
+  `generic_layout_agrees` says the layouts agree, the runtime must) and reports where the compiler is only
+  conservative; today the two agree on all 124 pairs. Getting the descriptors from dynamic values, rather than from
+  `c_types.py` alone as first planned, uses the emitter's descriptor emission, so the test will move to the IR
+  backend's in step 5.
 - **A baseline**, committed as a report: C emission time and generated C size over the test corpus, and run times of
   a few compiled programs that cross polymorphic boundaries heavily, for step 6 to compare against.
 
