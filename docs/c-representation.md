@@ -744,8 +744,14 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
   `Record`, `Variant`, or aggregate containing them. Calls with standard 8-byte types (`Int`, `Bool`, `String`)
   continue executing via the canonical uniform `QVal` implementation without code bloat.
 - **Typed AST Cloning & Type Substitution**: When `c_analysis.py` encounters a call site `f(:Point, p)`, the compiler
-  clones the `TypedFun` AST node with all occurrences of type parameter `A` substituted by `Point`. The specialized
-  clone is emitted as `static Q_UNUSED ret_t qv_<name>_spec_<type_tags>(param_types...)`.
+  clones the `TypedFun` AST node with the type parameter `A` (the quantifier of the function's own type, which its
+  parameters and body refer to) substituted by `Point`. The specialized clone is emitted as
+  `static Q_UNUSED ret_t qv_<name>_spec_<type_tags>(param_types...)`. The clone's local functions are clones too,
+  lifted like the originals and named after the clone (`qv_<name>_spec_<type_tags>_lambda_<n>`).
+- **Specialized Callees**: Only calls of top-level and module functions are specialized, found and looked up by name
+  after checking that the callee is that binding itself (`specializable_callee`): a local function, parameter, or
+  tuple of the same name is a different function, called as a generic closure. Calls of local polymorphic functions
+  are not specialized at all (a restriction recorded in `docs/tasklist.md`).
 - **Layout Alignment & Zero-Boxing**: Inside the specialized clone, any generic tuple (e.g. `Tuple item: A end`)
   allocates a concrete specialized struct (`struct QTuple_QRecord_x_Int_end` with a 16-byte `QRecordVal` slot) matching the
   exact struct and layout expected by the caller. Arguments and return values are passed unboxed in register pairs
