@@ -624,7 +624,12 @@ step 6.
   current emitter: copies change identity in both.
 
 **Step 6: Switch and delete.**
-- Make the IR backend the default; compare emission time and C size with the step 0 baseline.
+- Make the IR backend the default, for programs and for module files (`module_compiler.py`, `build/engine.py`);
+  the IR's phases take the old names (`codegen_c`, `run_c`), and the emitter's phases go.
+- Compare emission time, C size, and benchmark run times with the step 0 baseline, and record them here. A
+  regression does not block the switch; one over about 20% becomes a task in the task list.
+- Delete the emitter in the step's last commit, once both suites pass through the IR alone (no period behind a
+  flag).
 - Delete `c_emitter.py`, most of `c_analysis.py`, and the parts of `c_types.py` that only the emitter used.
 - Update [codegen-c.md](codegen-c.md) and [c-representation.md](c-representation.md) (§5.1 and §6.4 around the
   `convert` plans), and the task list: close the variant tag-map task, and note what is now in place for top-level
