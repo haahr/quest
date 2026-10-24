@@ -387,7 +387,12 @@ The typechecking environment employs a two-tier root architecture:
 
 ## 6. Term Elaboration and Typechecking (`typechecker/elaborate_types.py` and `typechecker/typecheck.py`)
 
-Term typechecking translates syntactic AST expressions into decorated `TypedExpr` nodes:
+Term typechecking translates syntactic AST expressions into decorated `TypedExpr` nodes. `typechecker/typecheck.py`
+holds `TypeElaborator`'s state, its dispatch on expression forms (`check_expr`, `synth_expr`), phrase and program
+elaboration, and the module-level entry points; the constructs are elaborated by mixins it combines, one module per
+family: `bindings.py` (functions and bindings), `application.py` (calls), `aggregates.py` (records, tuples,
+selection, options, variants, arrays), `control.py` (case, infix operators and assignment, conditionals, for loops,
+blocks), `exceptions.py` (exceptions, raise, try), and `auto_values.py` (auto values and `inspect`).
 
 ### 6.1. Bidirectional Discipline
 - **Checking Mode ($\Gamma \vdash e \Leftarrow T$):** Pushes expected type $T$ down into expression $e$. Enables
@@ -723,7 +728,7 @@ The `StringOp` interface and `string` module provide substring comparison:
 | **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_check_tuple_expr` |
 | **Auto Types** | Run-time type discrimination stays sound | Types closed up to enclosing type parameters (not in mutable data); subtype matching only for covariant signatures |
 | **Path-Dependent Types** | Abstract identity tied to bindings | `QPathType` with `root_symbol_id` |
-| **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker.py` |
+| **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker/escape.py` |
 | **Type $\lambda$-Calculus** | $\beta$-reduction & variable capture | Lazy eval + `QTypeVar` symbol IDs |
 | **Module Manifest Types** | Concrete inside, abstract outside | Structural `TypeSymbol(kind, definition)` |
 | **Diamond Imports** | Disparate paths for same interface | Canonical symbol interning in `Environment` |

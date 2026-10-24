@@ -54,7 +54,7 @@ let tk = tt.k;
 the binding has no bound; elaborating a `Def` in a tuple type (`elaborate_tuple_type_bindings` in
 `typechecker/elaborate_types.py`) gives none. A tuple value's type has its definitions already substituted into
 its fields' types (`x: Int`), which is why selecting from one is fine; selecting a field of a tuple type written with
-`Def` (in `typechecker/typecheck.py`) should substitute them too. Fixing the printing changes
+`Def` (`_synth_select_expr` in `typechecker/aggregates.py`) should substitute them too. Fixing the printing changes
 goldens that show such types (`language/option_payload_components`).
 
 **Done when.** The program above prints `Let T::TYPE = Tuple Let K::TYPE = Int k: K end` (or as `Def`, if that is
@@ -140,7 +140,7 @@ f(false)
 
 fails interpreted (`Undefined runtime symbol 'I'`) and prints `1` compiled.
 
-**Where to start.** `_synth_exception_expr` in `bootstrap/python/quest/typechecker/typecheck.py`, which declares the
+**Where to start.** `_synth_exception_expr` in `bootstrap/python/quest/typechecker/exceptions.py`, which declares the
 exception's name in the enclosing scope. Either the name should be visible only when the exception is made on every
 path to the use (a definite-assignment check), or only within the expression that makes it, or a named exception
 should be made where its scope begins rather than where it is written.
@@ -165,7 +165,7 @@ rejected, and `tests/errors/run/layout_conversion_mutable_data.quest` runs inter
 with `a value used at type Array(Tuple v: Record age: Int fuel: String end end) was laid out by generic code, and
 converting it would copy mutable data`.
 
-**Where to start.** `_check_closed_type` in `bootstrap/python/quest/typechecker/typecheck.py` makes the static
+**Where to start.** `_check_closed_type` in `bootstrap/python/quest/typechecker/auto_values.py` makes the static
 check; `quest_convert` and `quest_layout_conversion_error` in `runtime/quest_runtime.c` the run-time one. Lifting
 the restriction needs conversion without copying: converting array elements and var slots lazily, through a view
 that reads and writes the original's layout, or a uniform layout for type-parameter positions inside mutable data
@@ -192,7 +192,7 @@ let cell(A::TYPE x:A):Cell = auto :Tuple y: A end with tuple x end end;
 ```
 
 **Where to start.** The `auto_type` check in `_check_closed_type` in
-`bootstrap/python/quest/typechecker/typecheck.py`, and `inspect` in
+`bootstrap/python/quest/typechecker/auto_values.py`, and `inspect` in
 `bootstrap/python/quest/codegen/c/printer.py`. Shares a solution with the task above: var components converted
 without copying.
 

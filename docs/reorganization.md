@@ -212,6 +212,10 @@ structure.
 **B1. Split `typecheck.py`** into files by construct family (bindings and functions, aggregates, control flow,
 exceptions and `inspect`, application), with no change in behavior.
 
+**Done:** `TypeElaborator` in `typecheck.py` keeps its state, the dispatch, the shared helpers, and the entry points,
+and combines one mixin per family: `bindings.py`, `application.py`, `aggregates.py`, `control.py`, `exceptions.py`,
+and `auto_values.py`.
+
 **B2. Merge check and synthesis pairs** construct by construct, where checking is synthesis followed by subsumption
 except for what the expected type propagates into.
 
