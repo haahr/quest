@@ -449,10 +449,17 @@ class Loop:
 @dataclass(eq=False)
 class Try:
     """A try region: a raise in `body`, or in what it calls, transfers to `handler`, with `exception` bound to the
-    exception raised."""
+    exception raised. `catches` says what the handler catches (docs/exceptions.md §5.1): the exceptions its patterns
+    are (atoms bound before the try), or CATCH_ALL (it has an else branch), or None, if its patterns are computed in
+    the handler."""
     body: Body
     exception: Var
     handler: Body
+    catches: Union[None, str, tuple[Atom, ...]] = None
+
+
+# A try whose handler catches every exception
+CATCH_ALL = "all"
 
 
 @dataclass(eq=False)

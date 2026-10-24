@@ -192,6 +192,16 @@ When `dynamic.be` or `inspect` succeeds on a structural subtype:
 - **Natural C ABI Packing:** Dynamically interned compound records allocate heap memory matching standard C ABI struct
   packing rules (8-byte aligned scalars and pointers, 16-byte aligned fat records and variants).
 
+## 7. Uncaught Exceptions and Tracebacks
+
+An uncaught exception is reported with the site it was raised at and the Quest functions running there, most recent
+first ([exceptions.md](exceptions.md)). Generated code passes each raise's site to the runtime (`quest_raise_at` and
+the `_at` checked operations), and each `try` records in its `QExceptionHandler` what it catches. A raise that no
+handler will catch prints the exception, its site, and the frames of the live stack, walked with the platform
+unwinder (`<unwind.h>`) and named from the function tables each unit registers (`quest_register_funcs`), matching
+functions by their exact starts; a raise that a handler might catch and raise again captures the frames first
+(`QTrace`, in `QExceptionState`). Code that does not raise pays nothing: no shadow stack, no frame links.
+
 ---
 
 ## See Also

@@ -228,7 +228,10 @@ class _Verifier:
                 inner = _Scope(scope.vars, scope.joins, scope.loops + (label,), scope.in_function,
                                scope.outer_mutables, scope.local_mutables, scope.top_level)
                 self.body(body, inner, where)
-            case ir.Try(body=body, exception=exception, handler=handler):
+            case ir.Try(body=body, exception=exception, handler=handler, catches=catches):
+                if isinstance(catches, tuple):
+                    for c in catches:
+                        self.use(c, scope, where)
                 self.body(body, scope, where)
                 self.bind(exception, where)
                 self.body(handler, scope.with_vars(exception), where)

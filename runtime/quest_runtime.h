@@ -312,19 +312,48 @@ typedef struct QAuto {
     QVal                   payload;
 } QAuto;
 
-/* Thread-local active exception state: the exception raised, its payload, and the site it was raised at
-   ("file:line:col", or NULL inside an external; docs/exceptions.md §3.3), which a re-raise keeps */
+/* Frames captured at a raise that a handler might catch and raise again: the starts of the functions running, most
+   recent first, a run of calls of the same function kept once with its count (docs/exceptions.md §5.4) */
+#define Q_MAX_TRACE_RUNS 64
+typedef struct QTrace {
+    int         n_runs;
+    bool        truncated;
+    const void *starts[Q_MAX_TRACE_RUNS];
+    int64_t     counts[Q_MAX_TRACE_RUNS];
+} QTrace;
+
+/* Thread-local active exception state: the exception raised, its payload, the site it was raised at
+   ("file:line:col", or NULL inside an external; docs/exceptions.md §3.3), and the frames captured there, if any,
+   which a re-raise keeps */
 typedef struct QExceptionState {
     const QException *exc;
     QVal              payload;
     const char       *loc;
+    const QTrace     *trace;
 } QExceptionState;
+
+/* What a handler catches (docs/exceptions.md §5.1): the n_catches exceptions in catches, or every exception
+   (Q_CATCH_ALL, a try with an else branch), or any (Q_CATCH_UNKNOWN, a try whose patterns are computed after the
+   exception is caught) */
+#define Q_CATCH_ALL     (-1)
+#define Q_CATCH_UNKNOWN (-2)
 
 /* Linked node in thread-local exception handler stack */
 typedef struct QExceptionHandler {
     jmp_buf                    env_jmp;
     struct QExceptionHandler  *prev;
+    const QException *const   *catches;
+    int64_t                    n_catches;
 } QExceptionHandler;
+
+/* A generated unit's table of its functions with frames in tracebacks: each one's start and frame name, registered
+   when the unit is initialized (docs/exceptions.md §5.2) */
+typedef struct QFuncEntry {
+    const void *addr;
+    const char *name;
+} QFuncEntry;
+
+void quest_register_funcs(const QFuncEntry *entries, size_t count);
 
 extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
@@ -366,7 +395,7 @@ static_assert(offsetof(QVariantVal, tag)     == 0,  qvariantval_tag_at_offset_0)
 static_assert(offsetof(QVariantVal, payload) == 8,  qvariantval_payload_at_offset_8);
 static_assert(sizeof(QVariant)      == 24, qvariant_must_be_24_bytes);
 static_assert(sizeof(QException)    == 8, qexception_must_be_8_bytes);
-static_assert(sizeof(QExceptionState) == 24, qexception_state_must_be_24_bytes);
+static_assert(sizeof(QExceptionState) == 32, qexception_state_must_be_32_bytes);
 static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 static_assert(offsetof(QArray, data)  == 8, qarray_data_at_offset_8);
 static_assert(offsetof(QArrayWideRecord, data)  == 8, qarray_wide_rec_data_at_offset_8);

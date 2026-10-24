@@ -128,13 +128,13 @@ main {
     do call printStr("--- Render All Diagnostics ---")
     do call diagbag.renderAll(bag, sm, wOut)
   } in {
-    try {
-      let %50: Span = call location.span("test.quest", 24, 39)
-      do call diagbag.addFatal(bag, %50, "unrecoverable syntax failure")
+    let %50: Exception(diagnostics.Diagnostic) = member diagbag.fatalError
+    try catching (%50) {
+      let %51: Span = call location.span("test.quest", 24, 39)
+      do call diagbag.addFatal(bag, %51, "unrecoverable syntax failure")
       jump k1(false)
     } handle (e: Exception) {
-      let %51: Exception(diagnostics.Diagnostic) = member diagbag.fatalError
-      let %52: Bool = prim is(e, %51)
+      let %52: Bool = prim is(e, %50)
       if %52 {
         let fatalDiag: diagnostics.Diagnostic = exception_payload(e)
         let %53: String = call diagnostics.message(fatalDiag)

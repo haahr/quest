@@ -197,7 +197,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         self.assertEqual(run_driver([str(main_file), "-o", str(bin_path), "--build-dir", str(self.build_dir)]), 0)
         proc = subprocess.run([str(bin_path)], capture_output=True, text=True, timeout=60)
         self.assertEqual(proc.returncode, 1)
-        self.assertRegex(proc.stderr, r"\AException: E\n  at .*raises\.quest:2:16\n\Z")
+        self.assertRegex(proc.stderr, r"\AException: E\n  at .*raises\.quest:2:16\n(  in .*\n)*  in <main>\n\Z")
 
 
 if __name__ == "__main__":

@@ -217,14 +217,14 @@ main {
       join k6(mismatch: Int) {
         do call printInt(mismatch)
       } in {
-        try {
-          let %74: T = call dynamic.new [Odd](three)
-          let %75: Even = call dynamic.be [Even](%74)
-          let %76: Int = call evenValue(%75)
-          jump k6(%76)
+        let %74: Exception = member dynamic.error
+        try catching (%74) {
+          let %75: T = call dynamic.new [Odd](three)
+          let %76: Even = call dynamic.be [Even](%75)
+          let %77: Int = call evenValue(%76)
+          jump k6(%77)
         } handle (e.2: Exception) {
-          let %77: Exception = member dynamic.error
-          let %78: Bool = prim is(e.2, %77)
+          let %78: Bool = prim is(e.2, %74)
           if %78 {
             jump k6(-1)
           } else {

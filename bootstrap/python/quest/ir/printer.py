@@ -233,8 +233,13 @@ class _Printer:
                 self.emit(depth, "}")
             case ir.Loop(label=label, body=body):
                 self.block(f"loop {label}", body, depth)
-            case ir.Try(body=body, exception=exception, handler=handler):
-                self.emit(depth, "try {")
+            case ir.Try(body=body, exception=exception, handler=handler, catches=catches):
+                if catches is None:
+                    self.emit(depth, "try {")
+                elif catches is ir.CATCH_ALL:
+                    self.emit(depth, "try catching all {")
+                else:
+                    self.emit(depth, f"try catching ({self.atoms(catches)}) {{")
                 self.body(body, depth + 1)
                 self.emit(depth, f"}} handle ({self.decl(exception)}) {{")
                 self.body(handler, depth + 1)

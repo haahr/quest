@@ -47,6 +47,7 @@ from quest.codegen.layout import (
 from quest.codegen.descriptors import hole_var
 from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types.env import Scope
+from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
 from quest.ir.represent import (
     _may_be_stored_as_subtype,
@@ -1082,12 +1083,13 @@ class CPrinter:
                     self.assign(p, self.atom(a))
                 self.leave_to(self.fs.label_depth[label])
                 self.emit(f"goto {label};")
-            case ir.Try(body=body, exception=exception, handler=handler):
+            case ir.Try(body=body, exception=exception, handler=handler, catches=catches):
                 h = self.fresh_name("_qh")
                 self.emit("{")
                 self.indent += 1
                 self.emit(f"QExceptionHandler {h};")
                 self.emit(f"{h}.prev = quest_current_exception_handler;")
+                self.emit_catches(h, catches)
                 self.emit(f"quest_current_exception_handler = &{h};")
                 self.emit(f"if (setjmp({h}.env_jmp) == 0) {{")
                 self.fs.handlers.append(h)
@@ -1490,8 +1492,23 @@ class CPrinter:
         out.append("")
         out.extend(self.thunk_decls)
         out.append("")
-        # The offset tables of the records the unit views at supertypes, registered for dynamic values
+        # The unit's functions with frames in tracebacks (docs/exceptions.md §5.2)
+        funcs = self.func_table_entries()
+        if funcs:
+            for m in self.unit.modules:
+                if m.exports is None:
+                    out.append(f"static void qv_mod_{mangle_module_name(m.name)}_init(void);")
+            if not module_file:
+                out.append("int main(int argc, char **argv);")
+            out.append("static const QFuncEntry qr_funcs[] = {")
+            out.extend(f"    {{ (const void *)&{c_name}, {c_string_literal(name)} }}," for c_name, name in funcs)
+            out.append("};")
+            out.append("")
+        # The offset tables of the records the unit views at supertypes, registered for dynamic values, and its
+        # function table
         out.append("static void qr_register_dicts(void) {")
+        if funcs:
+            out.append("    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
         for view_t, layout_t in self.needed_dicts:
             dict_name = self.ctx.offset_dict_instance_name(view_t, layout_t)
             out.append(f"    quest_register_record_dict({self.descriptor(view_t)}, {self.descriptor(layout_t)}, "
@@ -1528,6 +1545,29 @@ class CPrinter:
                         seen.add(id(v))
                         found.append((id(v), self.name(v), self.var_c_type(v)))
         return found
+
+    def func_table_entries(self) -> list[tuple[str, str]]:
+        """The C functions of the unit that have frames in tracebacks, and their frame names: its functions with names
+        (not those the passes made), its modules' initializers, and a program's main."""
+        entries = [(self.code_name(f), f.trace_name) for f in self.unit.functions if f.trace_name is not None]
+        entries.extend((f"qv_mod_{mangle_module_name(m.name)}_init", init_frame(m.name)) for m in self.unit.modules)
+        if not any(m.exports is not None for m in self.unit.modules):
+            entries.append(("main", MAIN_FRAME))
+        return entries
+
+    def emit_catches(self, handler: str, catches) -> None:
+        """Records in a try's handler what it catches (docs/exceptions.md §5.1)."""
+        if catches is ir.CATCH_ALL:
+            self.emit(f"{handler}.catches = NULL;")
+            self.emit(f"{handler}.n_catches = Q_CATCH_ALL;")
+        elif catches is None:
+            self.emit(f"{handler}.catches = NULL;")
+            self.emit(f"{handler}.n_catches = Q_CATCH_UNKNOWN;")
+        else:
+            array = self.fresh_name("_qc")
+            self.emit(f"const QException *{array}[] = {{ {', '.join(self.atom(a) for a in catches)} }};")
+            self.emit(f"{handler}.catches = {array};")
+            self.emit(f"{handler}.n_catches = {len(catches)};")
 
     def module_init(self, m: ir.Module) -> list[str]:
         """A module's initializer, which makes its record. A module file's is extern, as are its record and its

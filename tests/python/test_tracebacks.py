@@ -1,6 +1,7 @@
 """Tracebacks of uncaught exceptions (docs/exceptions.md): the interpreters report the frames active where an
 exception was raised, most recent first, and the IR interpreter reports them exactly as the source interpreter does,
-at every stage of the IR."""
+at every stage of the IR. Compiled code reports the same exception and site, and some of the frames (the C compiler
+inlines functions), in the same order."""
 
 from __future__ import annotations
 
@@ -84,6 +85,16 @@ g();
 """,
         ["in f", "in g", "in <main>"],
     ),
+    "reraise_computed_pattern": (
+        """exception Inner end;
+exception Other end;
+let pick(): Exception = Other;
+let f(): Int = raise Inner end;
+let g(): Int = try f() when pick() then 0 end;
+g();
+""",
+        ["in f", "in g", "in <main>"],
+    ),
     "module_initializer": (
         """import broken: Broken;
 broken.x;
@@ -95,6 +106,23 @@ broken.x;
 
 def _frames(stderr: str) -> list[str]:
     return [line.strip() for line in stderr.splitlines() if line.startswith(("  in ", "  ... "))]
+
+
+def _expanded(frames: list[str]) -> list[str]:
+    """Frames with each run of the same frame listed in full."""
+    out: list[str] = []
+    for f in frames:
+        if f.startswith("... "):
+            name, count = f[len("... "):].rsplit(" repeated ", 1)
+            out.extend([f"in {name}"] * int(count.split()[0]))
+        else:
+            out.append(f)
+    return out
+
+
+def _is_subsequence(part: list[str], whole: list[str]) -> bool:
+    it = iter(whole)
+    return all(any(x == y for y in it) for x in part)
 
 
 class TestInterpreterTracebacks(unittest.TestCase):
@@ -128,6 +156,20 @@ class TestInterpreterTracebacks(unittest.TestCase):
                 self.assertEqual(_frames(expected), frames)
                 for phase in INTERPRETER_PHASES[1:]:
                     self.assertEqual(self.stderr_of(program, phase), expected, phase)
+
+    def test_compiled_code_reports_some_of_the_frames_in_order(self) -> None:
+        for name, (text, frames) in CASES.items():
+            program = self.root / f"{name}.quest"
+            program.write_text(text, encoding="utf-8")
+            interpreted = self.stderr_of(program, "interpret")
+            compiled = self.stderr_of(program, "run_c_compiled")
+            with self.subTest(case=name):
+                # The same header (the exception, at the same site) and source line
+                self.assertEqual(compiled.splitlines()[:3], interpreted.splitlines()[:3])
+                compiled_frames = _expanded(_frames(compiled))
+                self.assertTrue(compiled_frames, compiled)
+                self.assertEqual(compiled_frames[-1], "in <main>", compiled)
+                self.assertTrue(_is_subsequence(compiled_frames, _expanded(frames)), compiled)
 
 
 if __name__ == "__main__":

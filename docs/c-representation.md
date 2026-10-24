@@ -1016,11 +1016,14 @@ typedef struct QExceptionState {
     const QException *exc;
     QVal              payload;
     const char       *loc;      /* the raise site, "file:line:col", or NULL (docs/exceptions.md §3.3) */
+    const QTrace     *trace;    /* frames captured at the raise, or NULL (docs/exceptions.md §5.4) */
 } QExceptionState;
 
 typedef struct QExceptionHandler {
     jmp_buf                     env_jmp;
     struct QExceptionHandler   *prev;
+    const QException *const    *catches;    /* what the handler catches (docs/exceptions.md §5.1): these, */
+    int64_t                     n_catches;  /* n_catches of them, or Q_CATCH_ALL, or Q_CATCH_UNKNOWN */
 } QExceptionHandler;
 
 /* Thread-local exception handler chain */
@@ -1046,20 +1049,26 @@ Built-in exceptions (e.g. `quest_exc_int_error`, `quest_exc_real_error`, `quest_
 A raise passes the site it is at, as a string literal the printer makes from the raise's source offset, and the
 checked operations pass theirs to their failing branch (`quest_int_div_at(a, b, "f.quest:3:11")`). The runtime's own
 primitives raise with no site (`quest_raise`, which passes NULL).
+A raise first asks whether a handler will catch the exception (`quest_handlers_catch`, from what each handler
+records it catches). If none will, the exception is uncaught: the runtime prints it, the site it was raised at, which
+the driver reads, and the frames of the live stack (docs/exceptions.md §5), and exits. If one might (a handler whose
+patterns are computed when it runs), the raise captures the frames first, in case the handler raises it again.
 ```c
 void quest_reraise(QExceptionState state) {
-    if (quest_current_exception_handler == NULL) {
-        /* Uncaught: the exception, and the site it was raised at, which the driver reads */
-        fprintf(stderr, "Exception: %s\n", state.exc->name);
-        if (state.loc != NULL) fprintf(stderr, "  at %s\n", state.loc);
-        exit(1);
+    switch (quest_handlers_catch(quest_current_exception_handler, state.exc)) {
+        case 0:   /* uncaught */
+            fprintf(stderr, "Exception: %s\n", state.exc->name);
+            quest_fail_with(state.loc, state.trace);   /* the site, the frames; exit(1) */
+        case -1:  /* might be caught, and raised again */
+            if (state.trace == NULL) state.trace = quest_capture_trace();
+            break;
     }
     quest_current_exception = state;
     longjmp(quest_current_exception_handler->env_jmp, 1);
 }
 
 void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
-    quest_reraise((QExceptionState){ exc, payload, loc });
+    quest_reraise((QExceptionState){ exc, payload, loc, NULL });
 }
 ```
 
@@ -1067,6 +1076,9 @@ void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
 ```c
 QExceptionHandler q_handler;
 q_handler.prev = quest_current_exception_handler;
+const QException *q_catches[] = { qv_Exc1, qv_Exc2 };  /* the patterns, computed before the try when they can be */
+q_handler.catches = q_catches;
+q_handler.n_catches = 2;                               /* or Q_CATCH_ALL with an else, or Q_CATCH_UNKNOWN */
 quest_current_exception_handler = &q_handler;
 
 if (setjmp(q_handler.env_jmp) == 0) {

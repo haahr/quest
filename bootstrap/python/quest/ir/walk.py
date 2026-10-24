@@ -85,6 +85,8 @@ def statement_uses(s) -> list[ir.Atom]:
             return [e] if p is None else [e, p]
         case ir.Reraise(exception=e):
             return [e]
+        case ir.Try(catches=catches) if isinstance(catches, tuple):
+            return list(catches)
     return []
 
 

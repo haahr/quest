@@ -236,7 +236,7 @@ double quest_real_pow(double base, double exp) {
 
 /* Exception handling globals */
 Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler = NULL;
-Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 }, NULL };
+Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 }, NULL, NULL };
 
 /* Built-in singleton exception descriptors */
 const QException quest_exc_arrayOp_error = { "arrayOp.error" };
@@ -257,25 +257,227 @@ const QException *quest_alloc_exception(const char *name) {
     return exc;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Tracebacks (docs/exceptions.md §5)                                        */
+/* ------------------------------------------------------------------------- */
+
+/* The registered function tables, and their entries sorted by start, made when frames are first named */
+typedef struct QFuncTables {
+    const QFuncEntry   *entries;
+    size_t              count;
+    struct QFuncTables *next;
+} QFuncTables;
+
+static QFuncTables *quest_func_tables = NULL;
+static QFuncEntry  *quest_funcs_sorted = NULL;
+static size_t       quest_funcs_count = 0;
+
+void quest_register_funcs(const QFuncEntry *entries, size_t count) {
+    QFuncTables *t = (QFuncTables *)malloc(sizeof(QFuncTables));
+    if (t == NULL) return;
+    t->entries = entries;
+    t->count = count;
+    t->next = quest_func_tables;
+    quest_func_tables = t;
+    free(quest_funcs_sorted);
+    quest_funcs_sorted = NULL;
+}
+
+static int quest_func_entry_compare(const void *a, const void *b) {
+    uintptr_t x = (uintptr_t)((const QFuncEntry *)a)->addr, y = (uintptr_t)((const QFuncEntry *)b)->addr;
+    return x < y ? -1 : x > y;
+}
+
+/* The frame name of the function starting at start, or NULL for one with no frame (in the runtime, the C library,
+   or made by the compiler's passes): functions are matched by their exact starts, never by proximity */
+static const char *quest_frame_name(const void *start) {
+    if (start == NULL) return NULL;
+    if (quest_funcs_sorted == NULL) {
+        size_t n = 0;
+        for (QFuncTables *t = quest_func_tables; t != NULL; t = t->next) n += t->count;
+        quest_funcs_sorted = (QFuncEntry *)malloc((n > 0 ? n : 1) * sizeof(QFuncEntry));
+        if (quest_funcs_sorted == NULL) return NULL;
+        quest_funcs_count = 0;
+        for (QFuncTables *t = quest_func_tables; t != NULL; t = t->next) {
+            memcpy(quest_funcs_sorted + quest_funcs_count, t->entries, t->count * sizeof(QFuncEntry));
+            quest_funcs_count += t->count;
+        }
+        qsort(quest_funcs_sorted, quest_funcs_count, sizeof(QFuncEntry), quest_func_entry_compare);
+    }
+    QFuncEntry key = { start, NULL };
+    const QFuncEntry *e = (const QFuncEntry *)bsearch(&key, quest_funcs_sorted, quest_funcs_count, sizeof(QFuncEntry),
+                                                      quest_func_entry_compare);
+    return e != NULL ? e->name : NULL;
+}
+
+/* Prints frames, most recent first, collapsing a run of the same frame name */
+typedef struct QFramePrinter {
+    const char *name;
+    int64_t     count;
+} QFramePrinter;
+
+static void quest_frames_flush(QFramePrinter *p) {
+    if (p->name == NULL) return;
+    fprintf(stderr, "  in %s\n", p->name);
+    if (p->count > 1) fprintf(stderr, "  ... %s repeated %lld more times\n", p->name, (long long)(p->count - 1));
+    p->name = NULL;
+    p->count = 0;
+}
+
+static void quest_frames_add(QFramePrinter *p, const void *start, int64_t count) {
+    const char *name = quest_frame_name(start);
+    if (name == NULL) return;
+    if (p->name != NULL && strcmp(p->name, name) == 0) {
+        p->count += count;
+        return;
+    }
+    quest_frames_flush(p);
+    p->name = name;
+    p->count = count;
+}
+
+#if defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__))
+#include <unwind.h>
+#define Q_HAVE_UNWIND 1
+#ifdef __APPLE__
+#include <dlfcn.h>
+#endif
+
+/* The start of the function containing pc. Linux's unwind tables (.eh_frame) describe each function on its own,
+   so the unwinder's start is the function's. macOS's compact unwind tables describe a run of adjacent functions
+   whose prologues are alike as one, so the unwinder's start may be an earlier function's: the symbol table's start
+   (which has static functions, unless the binary is stripped) is the function's own, if it is no earlier. */
+static const void *quest_function_start(void *pc) {
+    void *start = _Unwind_FindEnclosingFunction(pc);
+#ifdef __APPLE__
+    Dl_info info;
+    if (dladdr(pc, &info) != 0 && info.dli_saddr != NULL && (uintptr_t)info.dli_saddr >= (uintptr_t)start &&
+        (uintptr_t)info.dli_saddr <= (uintptr_t)pc) {
+        start = info.dli_saddr;
+    }
+#endif
+    return start;
+}
+
+/* The start of the function of each frame of the stack, from the platform's unwind tables, for a visitor */
+typedef void (*QFrameVisitor)(const void *start, void *arg);
+
+typedef struct QStackWalk {
+    QFrameVisitor visit;
+    void         *arg;
+} QStackWalk;
+
+static _Unwind_Reason_Code quest_walk_frame(struct _Unwind_Context *context, void *arg) {
+    QStackWalk *walk = (QStackWalk *)arg;
+    uintptr_t ip = (uintptr_t)_Unwind_GetIP(context);
+    if (ip == 0) return _URC_END_OF_STACK;
+    /* ip is the return address, which follows the call: a call to a noreturn helper may end its function */
+    walk->visit(quest_function_start((void *)(ip - 1)), walk->arg);
+    return _URC_NO_REASON;
+}
+
+static void quest_walk_stack(QFrameVisitor visit, void *arg) {
+    QStackWalk walk = { visit, arg };
+    _Unwind_Backtrace(quest_walk_frame, &walk);
+}
+
+static void quest_print_live_frame(const void *start, void *arg) {
+    quest_frames_add((QFramePrinter *)arg, start, 1);
+}
+
+static void quest_capture_frame(const void *start, void *arg) {
+    QTrace *trace = (QTrace *)arg;
+    if (quest_frame_name(start) == NULL) return;
+    if (trace->n_runs > 0 && trace->starts[trace->n_runs - 1] == start) {
+        trace->counts[trace->n_runs - 1]++;
+    } else if (trace->n_runs < Q_MAX_TRACE_RUNS) {
+        trace->starts[trace->n_runs] = start;
+        trace->counts[trace->n_runs] = 1;
+        trace->n_runs++;
+    } else {
+        trace->truncated = true;
+    }
+}
+#endif
+
+/* Prints the frames of the live stack, where an uncaught error is being reported */
+static void quest_print_live_frames(void) {
+#ifdef Q_HAVE_UNWIND
+    QFramePrinter printer = { NULL, 0 };
+    quest_walk_stack(quest_print_live_frame, &printer);
+    quest_frames_flush(&printer);
+#endif
+}
+
+/* The frames of the live stack, captured at a raise a handler might catch and raise again (§5.4) */
+static const QTrace *quest_capture_trace(void) {
+#ifdef Q_HAVE_UNWIND
+    QTrace *trace = (QTrace *)quest_alloc_atomic(sizeof(QTrace));
+    trace->n_runs = 0;
+    trace->truncated = false;
+    quest_walk_stack(quest_capture_frame, trace);
+    return trace;
+#else
+    return NULL;
+#endif
+}
+
+static void quest_print_trace(const QTrace *trace) {
+    QFramePrinter printer = { NULL, 0 };
+    for (int i = 0; i < trace->n_runs; ++i) quest_frames_add(&printer, trace->starts[i], trace->counts[i]);
+    quest_frames_flush(&printer);
+    if (trace->truncated) fprintf(stderr, "  ... (traceback truncated)\n");
+}
+
 /* Ends the program after an error's message has been printed, printing the site it was raised at, if known, which
-   the driver reads to locate the error in the source (docs/exceptions.md §2.2) */
-static Q_NORETURN void quest_fail_at(const char *loc) {
+   the driver reads to locate the error in the source (docs/exceptions.md §2.2), and the frames running there: those
+   captured at the raise, if any, else the live stack's */
+static Q_NORETURN void quest_fail_with(const char *loc, const QTrace *trace) {
     if (loc != NULL) fprintf(stderr, "  at %s\n", loc);
+    if (trace != NULL) {
+        quest_print_trace(trace);
+    } else {
+        quest_print_live_frames();
+    }
     exit(1);
 }
 
+static Q_NORETURN void quest_fail_at(const char *loc) {
+    quest_fail_with(loc, NULL);
+}
+
+/* Whether a handler from h out will catch exc (docs/exceptions.md §5.1): 1 if one will, 0 if none will, -1 if one
+   might (its patterns are computed when it runs) */
+static int quest_handlers_catch(const QExceptionHandler *h, const QException *exc) {
+    for (; h != NULL; h = h->prev) {
+        if (h->n_catches == Q_CATCH_ALL) return 1;
+        if (h->n_catches == Q_CATCH_UNKNOWN) return -1;
+        for (int64_t i = 0; i < h->n_catches; ++i) {
+            if (h->catches[i] == exc) return 1;
+        }
+    }
+    return 0;
+}
+
 void quest_reraise(QExceptionState state) {
-    if (quest_current_exception_handler == NULL) {
-        const char *name = (state.exc != NULL && state.exc->name != NULL) ? state.exc->name : "<unknown>";
-        fprintf(stderr, "Exception: %s\n", name);
-        quest_fail_at(state.loc);
+    switch (quest_handlers_catch(quest_current_exception_handler, state.exc)) {
+        case 0: {
+            const char *name = (state.exc != NULL && state.exc->name != NULL) ? state.exc->name : "<unknown>";
+            fprintf(stderr, "Exception: %s\n", name);
+            quest_fail_with(state.loc, state.trace);
+        }
+        case -1:
+            if (state.trace == NULL) state.trace = quest_capture_trace();
+            break;
+        default:
+            break;
     }
     quest_current_exception = state;
     longjmp(quest_current_exception_handler->env_jmp, 1);
 }
 
 void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
-    quest_reraise((QExceptionState){ exc, payload, loc });
+    quest_reraise((QExceptionState){ exc, payload, loc, NULL });
 }
 
 void quest_raise(const QException *exc, QVal payload) {
@@ -1177,7 +1379,7 @@ void quest_layout_conversion_error(const QTypeDescriptor *from, const QTypeDescr
             "Runtime error: a value used at type %s was laid out by generic code, and converting it would copy "
             "mutable data\n",
             to != NULL && to->name != NULL ? to->name : "?");
-    exit(1);
+    quest_fail_at(NULL);
 }
 
 /* How a value stored as a type parameter is held: in its QVal form, as a value of its own type, or in the

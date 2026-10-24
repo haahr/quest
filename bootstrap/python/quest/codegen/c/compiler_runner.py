@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import subprocess
@@ -17,6 +18,20 @@ def find_c_compiler() -> str:
         if path is not None:
             return path
     raise RuntimeError("No C compiler (clang or gcc) found in PATH")
+
+
+@functools.lru_cache(maxsize=None)
+def traceback_flags(compiler: str) -> tuple[str, ...]:
+    """Flags that keep tracebacks' frames (docs/exceptions.md §5.3): GCC moves the cold paths of functions, which
+    hold the calls that raise, into separate sections that tracebacks cannot attribute to the functions. (Clang does
+    not, and gcc on macOS is clang.)"""
+    try:
+        version = subprocess.run([compiler, "--version"], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ()
+    if "Free Software Foundation" in version:
+        return ("-fno-reorder-blocks-and-partition",)
+    return ()
 
 
 def get_runtime_dir() -> Path:
@@ -85,6 +100,7 @@ def compile_c_source(
             "-Wall",
             "-Wextra",
             "-O2",
+            *traceback_flags(compiler),
             f"-I{runtime_dir}",
             str(runtime_c),
             str(serialization_c),
@@ -154,6 +170,7 @@ def compile_c_to_object(
         "-Wall",
         "-Wextra",
         "-O2",
+        *traceback_flags(compiler),
         f"-I{runtime_dir}",
     ]
     if include_paths:
@@ -205,6 +222,7 @@ def link_objects(
         "-Wall",
         "-Wextra",
         "-O2",
+        *traceback_flags(compiler),
         f"-I{runtime_dir}",
         str(runtime_c),
         str(serialization_c),

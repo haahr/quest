@@ -12,7 +12,7 @@ module member, and a use of a built-in value is a constant or a built-in functio
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 from quest.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
@@ -599,18 +599,39 @@ class _Lowerer:
                 self.emit(ir.Inspect(v, tuple(cases), else_body, auto_type, e.offset))
             case TypedTry(body=body_e, branches=branches, else_branch=else_e):
                 exception = self.fresh("e", EXCEPTION_TYPE)
-                stmt = ir.Try(ir.Body(), exception, ir.Body())
+                # What the handler catches, when that is known before the try (docs/exceptions.md §5.1): its
+                # patterns' values, computed before the try when computing them there gives the same values
+                patterns: Optional[list[ir.Atom]] = None
+                catches: Union[None, str, tuple[ir.Atom, ...]] = None
+                if else_e is not None:
+                    catches = ir.CATCH_ALL
+                elif all(self.pure_pattern(br.exc_pattern) for br in branches):
+                    patterns = [self.value(br.exc_pattern) for br in branches]
+                    catches = tuple(patterns)
+                stmt = ir.Try(ir.Body(), exception, ir.Body(), catches)
                 self.emit(stmt)
                 with self.in_body(stmt.body):
                     lower_branch(body_e)
                 with self.in_body(stmt.handler):
-                    self.handler(exception, branches, else_e, lower_branch)
+                    self.handler(exception, branches, else_e, lower_branch, patterns)
             case _:
                 raise LoweringError(f"branches of {type(e).__name__}")
 
-    def handler(self, exception: ir.Var, branches, else_e, lower_branch) -> None:
-        """A try's handler: the branches' patterns tested in order against the exception, else the else branch, or
-        the exception raised again."""
+    def pure_pattern(self, e: TypedExpr) -> bool:
+        """Whether a try's pattern has the same value computed before the try as in its handler: an immutable
+        variable already bound (not an exception declared before it is made), or a module's member."""
+        match e:
+            case TypedVar(symbol=symbol):
+                var = self.vars.get(symbol.symbol_id)
+                return var is not None and not var.mutable and id(var) not in self.declared
+            case TypedSelect(target=target):
+                return self.module_ref(target) is not None
+        return False
+
+    def handler(self, exception: ir.Var, branches, else_e, lower_branch,
+                patterns: Optional[list[ir.Atom]] = None) -> None:
+        """A try's handler: the branches' patterns (or their values, computed before the try) tested in order against
+        the exception, else the else branch, or the exception raised again."""
         if not branches:
             if else_e is not None:
                 lower_branch(else_e)
@@ -618,7 +639,7 @@ class _Lowerer:
                 self.terminate(ir.Reraise(exception))
             return
         br, rest = branches[0], branches[1:]
-        pattern = self.value(br.exc_pattern)
+        pattern = patterns[0] if patterns is not None else self.value(br.exc_pattern)
         matches = self.let(ir.Prim("is", (exception, pattern)), BOOL_TYPE)
         stmt = ir.If(matches, ir.Body(), ir.Body())
         self.emit(stmt)
@@ -627,7 +648,7 @@ class _Lowerer:
                 self.emit(ir.Let(self.bind_symbol(br.binder), ir.ExceptionPayload(exception)))
             lower_branch(br.body)
         with self.in_body(stmt.else_body):
-            self.handler(exception, rest, else_e, lower_branch)
+            self.handler(exception, rest, else_e, lower_branch, patterns[1:] if patterns is not None else None)
 
     # Functions
 

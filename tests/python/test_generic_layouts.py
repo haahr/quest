@@ -19,6 +19,10 @@ from quest.types import TYPE_KIND, QPowerKind, QTypeVar
 from tests.python.helpers import elaborate_test_type, parse_phrase
 
 
+# Where a program's main begins in its C (a prototype of it may come earlier)
+MAIN_DEFINITION = "int main(int argc, char **argv) {"
+
+
 class TestGenericLayoutAgrees(unittest.TestCase):
     def setUp(self) -> None:
         self.env = Environment()
@@ -116,13 +120,13 @@ class TestPolymorphicCallsInC(unittest.TestCase):
         return res.artifacts["codegen_c"]
 
     def test_agreeing_layouts_are_cast(self) -> None:
-        main = self.c_code("let b: Box(Bool) = mkBox(:Bool true); getBox(:Bool b)").split("int main")[1]
+        main = self.c_code("let b: Box(Bool) = mkBox(:Bool true); getBox(:Bool b)").split(MAIN_DEFINITION)[1]
         self.assertIn("((QTuple_Bool *)", main)
         self.assertIn("((QTuple_QVal *)", main)
         self.assertNotIn("quest_convert(", main)
 
     def test_differing_layouts_are_converted(self) -> None:
-        main = self.c_code("let b: Box(P) = mkB(:P record a = 1 end); b.x.a").split("int main")[1]
+        main = self.c_code("let b: Box(P) = mkB(:P record a = 1 end); b.x.a").split(MAIN_DEFINITION)[1]
         self.assertIn("quest_convert(", main)
 
     def test_mutable_data_is_not_copied(self) -> None:

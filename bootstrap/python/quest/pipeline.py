@@ -486,29 +486,47 @@ class CodegenCPhase(Phase):
         return str(output_data) if output_data is not None else ""
 
 
-# The line after an error's message in a compiled program's output naming the site it was raised at
+# The lines after an error's message in a compiled program's output: the site it was raised at, and the frames
+# running there (docs/exceptions.md §2.2)
 _RAISE_SITE = re.compile(r"^  at (.+):(\d+):(\d+)$")
+_FRAME_LINE = re.compile(r"^  (in |\.\.\. )")
+
+
+def _trace_of(lines: list[str]) -> tuple[str, ...]:
+    """The frames of a traceback's lines, a run of calls of the same function listed in full."""
+    frames: list[str] = []
+    for line in lines:
+        if line.startswith("  in "):
+            frames.append(line[len("  in "):])
+        elif (m := re.match(r"^  \.\.\. (.+) repeated (\d+) more times$", line)) is not None:
+            frames.extend([m.group(1)] * int(m.group(2)))
+    return tuple(frames)
 
 
 def binary_error_diagnostic(stderr: str, source_map: SourceMap) -> Diagnostic:
     """The diagnostic for the error output of a compiled program (docs/exceptions.md §2.2): its message, located at
     the site the program printed, in the program's file (source_map) or the file the site names, which is read for
-    its source line. Without a site, or when the file cannot be read, the diagnostic has no location."""
+    its source line, with the frames it printed. Without a site, or when the file cannot be read, the diagnostic has
+    no location."""
     lines = stderr.rstrip("\n").splitlines()
-    match = _RAISE_SITE.match(lines[-1]) if lines else None
+    end = len(lines)
+    while end > 0 and _FRAME_LINE.match(lines[end - 1]):
+        end -= 1
+    trace = _trace_of(lines[end:])
+    match = _RAISE_SITE.match(lines[end - 1]) if end > 0 else None
     if match is None:
-        return Diagnostic(Severity.ERROR, stderr.strip())
-    message = "\n".join(lines[:-1]).strip()
+        return Diagnostic(Severity.ERROR, "\n".join(lines[:end]).strip(), trace=trace)
+    message = "\n".join(lines[:end - 1]).strip()
     file_name, line, column = match.group(1), int(match.group(2)), int(match.group(3))
     site_map: Optional[SourceMap] = source_map if file_name == source_map.file_name else None
     if site_map is None:
         try:
             site_map = SourceMap(Path(file_name).read_text(encoding="utf-8"), file_name)
         except OSError:
-            return Diagnostic(Severity.ERROR, f"{message}\n  at {file_name}:{line}:{column}")
+            return Diagnostic(Severity.ERROR, f"{message}\n  at {file_name}:{line}:{column}", trace=trace)
     label = DiagnosticLabel(offset=site_map.offset_of(line, column), length=1, is_primary=True)
     return Diagnostic(Severity.ERROR, message, primary_label=label,
-                      source_map=site_map if site_map is not source_map else None)
+                      source_map=site_map if site_map is not source_map else None, trace=trace)
 
 
 class RunCCompiledPhase(Phase):

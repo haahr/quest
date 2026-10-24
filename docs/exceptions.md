@@ -4,8 +4,7 @@ This document specifies how an uncaught Quest exception is reported, with where 
 active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
 (`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`).
 
-Status: steps 1 and 2 of the plan (§7), raise sites in every backend and frames in the interpreters, are
-implemented; frames in compiled code (step 3) are a design.
+Status: implemented (§7, steps 1 to 3).
 
 ---
 
@@ -225,8 +224,9 @@ link-time step, generated file, or naming convention for tables is needed. The r
 by address the first time it prints frames.
 
 Taking the address of every named function means the C compiler can no longer drop unused arguments or change the
-calling conventions of those static functions. `tests/perf/measure.py` measures the cost (`docs/testing.md`) before
-this step lands.
+calling conventions of those static functions. (The printer already makes a static closure of every function, which
+takes its address, though one that is not used is dropped.) `tests/perf/measure.py` (`docs/testing.md`) found no
+difference in the benchmarks' run times with the tables (§7, step 3).
 
 ### 5.3. Walking and Attributing Frames
 
@@ -237,6 +237,13 @@ where clang and gcc emit unwind tables at `-O2` by default:
 - `_Unwind_FindEnclosingFunction(ip - 1)` gives the start of the function containing the call, from the unwind tables
   (`ip - 1`, because a call to a `noreturn` helper may be a function's last instruction);
 - the frame is attributed to the table entry whose address is **exactly** that start, and skipped if there is none.
+
+Linux's unwind tables (`.eh_frame`) describe each function on its own. macOS's compact unwind tables do not: they
+describe a run of adjacent functions whose prologues are alike as one entry, so the unwinder's start can be an
+earlier function's (a function placed just after `main` was reported as `main`). On macOS, the runtime takes the
+start from the symbol table instead (`dladdr`, which has static functions), when it lies between the unwinder's start
+and `ip` (`quest_function_start`). A stripped binary has no local symbols, and its frames may be attributed to the
+nearest exported function before them; the driver does not strip binaries.
 
 Exact matching attributes nothing by proximity. Frames in the runtime, in the C library, below `main`, and in
 compiler-generated functions match no entry and are skipped. An inlined function's code belongs to the function it
@@ -300,6 +307,8 @@ output ends with `  ... (traceback truncated)`.
 ### Step 3: Frames in compiled code
 
 - Measure with `tests/perf/measure.py` with function tables emitted and registered (§5.2), before going further.
+  Measured: the benchmarks' run times were the same with the tables as without (0.435s, 0.32s, and 0.50s, within
+  run-to-run noise), C generation took as long, and the C grew by 0.5%.
 - `ir.Try.catches`, with pure patterns hoisted in `lower.py`; the handler fields and the chain walk of §5.1.
 - Stack walking and exact attribution (§5.3), captured frames (§5.4), and `-fno-reorder-blocks-and-partition` for gcc.
 - **Done when:** the tests of §6.4 pass, and `docs/c-representation.md` and `docs/runtime-design.md` describe the
