@@ -25,6 +25,7 @@ from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.types.env import (
     Environment,
     Scope,
+    ValueSymbol,
 )
 from quest.diagnostics import (
     QuestCompilerError,
@@ -159,6 +160,19 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         """Synthesizes expr and asserts that the synthesized type is a subtype of expected_type."""
         typed = self.synth_expr(expr, env, loop_depth)
         return require_subtype(expr, typed, expected_type, env, type_desc)
+
+    def _check_capturable(self, sym: ValueSymbol, offset: int) -> None:
+        """Rejects a use, from a closure, of a var or out parameter or a mutable local variable of an enclosing
+        function: such locations live in that function's frame, so closures may not capture them. Module-level
+        variables (function depth 0) may be used anywhere."""
+        sym_depth = getattr(sym, "function_depth", 0)
+        if (sym.is_out or sym.is_var) and sym_depth > 0 and self.function_depth > sym_depth:
+            kind_str = (
+                "'out' parameter"
+                if sym.is_out
+                else ("'var' parameter" if getattr(sym, "is_param", False) else "'var' variable")
+            )
+            raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=offset)
 
     def check(
         self,
@@ -329,14 +343,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                     raise TypeError(f"Undefined variable '{name}'", offset=off)
 
                 # Disallow capturing out or var parameters / local mutable variables in nested closures
-                sym_depth = getattr(sym, "function_depth", 0)
-                if (sym.is_out or sym.is_var) and sym_depth > 0 and self.function_depth > sym_depth:
-                    kind_str = (
-                        "'out' parameter"
-                        if sym.is_out
-                        else ("'var' parameter" if getattr(sym, "is_param", False) else "'var' variable")
-                    )
-                    raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=off)
+                self._check_capturable(sym, off)
 
                 # Strict write-only enforcement for out parameters
                 if sym.is_out:

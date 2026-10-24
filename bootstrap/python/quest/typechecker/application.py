@@ -178,14 +178,7 @@ class ApplicationMixin:
             sym = env.lookup_value(target.name)
             if sym is None:
                 raise TypeError(f"Undefined variable '{target.name}'", offset=offset)
-            sym_depth = getattr(sym, "function_depth", 0)
-            if (sym.is_out or sym.is_var) and sym_depth > 0 and self.function_depth > sym_depth:
-                kind_str = (
-                    "'out' parameter"
-                    if sym.is_out
-                    else ("'var' parameter" if getattr(sym, "is_param", False) else "'var' variable")
-                )
-                raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=offset)
+            self._check_capturable(sym, offset)
             if is_out:
                 if not sym.is_var and not sym.is_out and not isinstance(sym.type_val, (QVarType, QOutType)):
                     raise TypeError(
