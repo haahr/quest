@@ -851,6 +851,9 @@ class _Lowerer:
                         self.add_imports(items)
                     case _:
                         self.binding(b)
+                        for exc in _named_exceptions_in(b):
+                            if exc.symbol is not None:
+                                members[exc.name] = self.vars[exc.symbol.symbol_id]
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
                             if isinstance(member, TypedLetValue):
                                 members[member.name] = self.vars[member.symbol.symbol_id]

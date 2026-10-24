@@ -1,0 +1,41 @@
+import alarms = "alarms" : Alarms
+import conv = "conv" : Conv
+main {
+  funs {
+    fun describe(n: Int): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %1: Exception = member alarms.alarm
+        let %2: Exception(Int) = member alarms.signal
+        try catching (%1, %2) {
+          let %3: Int = call alarms.check(n)
+          jump k1("fine")
+        } handle (e: Exception) {
+          let %4: Bool = prim is(e, %1)
+          if %4 {
+            jump k1("alarm")
+          } else {
+            let %5: Bool = prim is(e, %2)
+            if %5 {
+              let k: Int = exception_payload(e)
+              let %6: String = call conv.int(k)
+              let %7: String = prim <>("signal ", %6)
+              jump k1(%7)
+            } else {
+              reraise e
+            }
+          }
+        }
+      }
+    }
+  }
+  let %8: String = call describe(2)
+  let %9: String = call describe(1)
+  let %10: String = call describe(0)
+  let %11: String = prim <>(", ", %10)
+  let %12: String = prim <>(%9, %11)
+  let %13: String = prim <>(", ", %12)
+  let %14: String = prim <>(%8, %13)
+}
+

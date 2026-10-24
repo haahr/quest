@@ -1,0 +1,108 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('alarms') 'Alarms')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'describe'
+      :value (ExprTry
+        :body (ExprBlock
+          :bindings (
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'alarms')
+                  :field 'check'
+                )
+                :args (
+                  (ExprId 'n')
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprString 'fine' '"fine"')
+            )
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'alarms')
+              :field 'alarm'
+            )
+            :body (ExprString 'alarm' '"alarm"')
+          )
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'alarms')
+              :field 'signal'
+            )
+            :binder 'k'
+            :body (ExprInfix
+              :left (ExprString 'signal ' '"signal "')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprId 'k')
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprApp
+          :func (ExprId 'describe')
+          :args (
+            (ExprInt 2 '2')
+          )
+        )
+        :op '<>'
+        :right (ExprInfix
+          :left (ExprString ', ' '", "')
+          :op '<>'
+          :right (ExprInfix
+            :left (ExprApp
+              :func (ExprId 'describe')
+              :args (
+                (ExprInt 1 '1')
+              )
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ', ' '", "')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprId 'describe')
+                :args (
+                  (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
