@@ -223,16 +223,20 @@ int64_t quest_array_size(const QArray *a) {
 /* The ^^ operator and real.exp: a zero base with a negative exponent is a pole, like division by zero, and
    raises real.error; so does a NaN result (a negative base with a non-integral exponent). Overflow is an
    infinity. */
-double quest_real_pow(double base, double exp) {
+double quest_real_pow_at(double base, double exp, const char *loc) {
     if (base == 0.0 && exp < 0.0) {
-        quest_raise_real_error();
+        quest_raise_real_error_at(loc);
     }
-    return quest_real_result(pow(base, exp));
+    return quest_real_result_at(pow(base, exp), loc);
+}
+
+double quest_real_pow(double base, double exp) {
+    return quest_real_pow_at(base, exp, NULL);
 }
 
 /* Exception handling globals */
 Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler = NULL;
-Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 } };
+Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 }, NULL };
 
 /* Built-in singleton exception descriptors */
 const QException quest_exc_arrayOp_error = { "arrayOp.error" };
@@ -253,36 +257,66 @@ const QException *quest_alloc_exception(const char *name) {
     return exc;
 }
 
-void quest_raise(const QException *exc, QVal payload) {
+/* Ends the program after an error's message has been printed, printing the site it was raised at, if known, which
+   the driver reads to locate the error in the source (docs/exceptions.md §2.2) */
+static Q_NORETURN void quest_fail_at(const char *loc) {
+    if (loc != NULL) fprintf(stderr, "  at %s\n", loc);
+    exit(1);
+}
+
+void quest_reraise(QExceptionState state) {
     if (quest_current_exception_handler == NULL) {
-        const char *name = (exc != NULL && exc->name != NULL) ? exc->name : "<unknown>";
+        const char *name = (state.exc != NULL && state.exc->name != NULL) ? state.exc->name : "<unknown>";
         fprintf(stderr, "Exception: %s\n", name);
-        exit(1);
+        quest_fail_at(state.loc);
     }
-    quest_current_exception.exc = exc;
-    quest_current_exception.payload = payload;
+    quest_current_exception = state;
     longjmp(quest_current_exception_handler->env_jmp, 1);
 }
 
+void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
+    quest_reraise((QExceptionState){ exc, payload, loc });
+}
+
+void quest_raise(const QException *exc, QVal payload) {
+    quest_raise_at(exc, payload, NULL);
+}
+
+void quest_raise_array_error_at(const char *loc) {
+    quest_raise_at(&quest_exc_arrayOp_error, Q_OK_VAL, loc);
+}
+
 void quest_raise_array_error(void) {
-    quest_raise(&quest_exc_arrayOp_error, Q_OK_VAL);
+    quest_raise_array_error_at(NULL);
 }
 
 void quest_raise_string_error(void) {
     quest_raise(&quest_exc_string_error, Q_OK_VAL);
 }
 
+void quest_raise_variant_error_at(const char *loc) {
+    quest_raise_at(&quest_exc_variant_error, Q_OK_VAL, loc);
+}
+
 void quest_raise_variant_error(void) {
-    quest_raise(&quest_exc_variant_error, Q_OK_VAL);
+    quest_raise_variant_error_at(NULL);
+}
+
+void quest_raise_dynamic_error_at(const char *loc) {
+    quest_raise_at(&quest_exc_dynamic_error, Q_OK_VAL, loc);
 }
 
 void quest_raise_dynamic_error(void) {
-    quest_raise(&quest_exc_dynamic_error, Q_OK_VAL);
+    quest_raise_dynamic_error_at(NULL);
+}
+
+void quest_option_ordinal_error_at(int64_t n, int64_t count, const char *loc) {
+    fprintf(stderr, "Option ordinal %lld out of bounds (0 <= ordinal < %lld)\n", (long long)n, (long long)count);
+    quest_fail_at(loc);
 }
 
 void quest_option_ordinal_error(int64_t n, int64_t count) {
-    fprintf(stderr, "Option ordinal %lld out of bounds (0 <= ordinal < %lld)\n", (long long)n, (long long)count);
-    exit(1);
+    quest_option_ordinal_error_at(n, count, NULL);
 }
 
 void quest_raise_writer_error(void) {
@@ -297,12 +331,20 @@ void quest_raise_ascii_error(void) {
     quest_raise(&quest_exc_ascii_error, Q_OK_VAL);
 }
 
+void quest_raise_int_error_at(const char *loc) {
+    quest_raise_at(&quest_exc_int_error, Q_OK_VAL, loc);
+}
+
 void quest_raise_int_error(void) {
-    quest_raise(&quest_exc_int_error, Q_OK_VAL);
+    quest_raise_int_error_at(NULL);
+}
+
+void quest_raise_real_error_at(const char *loc) {
+    quest_raise_at(&quest_exc_real_error, Q_OK_VAL, loc);
 }
 
 void quest_raise_real_error(void) {
-    quest_raise(&quest_exc_real_error, Q_OK_VAL);
+    quest_raise_real_error_at(NULL);
 }
 
 void quest_raise_word_error(void) {

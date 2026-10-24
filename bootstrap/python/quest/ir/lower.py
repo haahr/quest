@@ -112,6 +112,8 @@ class _Lowerer:
         }
         self.echo = echo
         self.print_result = print_result
+        # The source file's map, in which the offsets of the nodes that can raise are (docs/exceptions.md §3.1)
+        self.source_map = getattr(env, "source_map", None)
         self.body = ir.Body()
         self.loops: list[str] = []
         self.label_counts: dict[str, int] = {}
@@ -216,7 +218,7 @@ class _Lowerer:
             case TypedInfix(left=left, op=op, right=right):
                 l = self.value(left)
                 r = self.value(right)
-                return self.let(ir.Prim(op, (l, r)), e.type_val, into)
+                return self.let(ir.Prim(op, (l, r), e.offset), e.type_val, into)
             case TypedRecord(fields=fields):
                 atoms = tuple((f.name, self.value(f.value), f.is_var) for f in fields)
                 return self.let(ir.MakeRecord(atoms), e.type_val, into)
@@ -227,13 +229,13 @@ class _Lowerer:
             case TypedIndex(target=target, index=index):
                 a = self.value(target)
                 i = self.value(index)
-                return self.let(ir.Index(a, i), e.type_val, into)
+                return self.let(ir.Index(a, i, e.offset), e.type_val, into)
             case TypedArray(elements=elements):
                 return self.let(ir.MakeArray(tuple(self.value(x) for x in elements)), e.type_val, into)
             case TypedArrayRep(count=count, init_val=init):
                 n = self.value(count)
                 v = self.value(init)
-                return self.let(ir.ArrayRep(n, v), e.type_val, into)
+                return self.let(ir.ArrayRep(n, v, e.offset), e.type_val, into)
             case TypedVarCell(value=v):
                 return self.let(ir.Addr(cell=self.value(v)), e.type_val, into)
             case TypedSelectRef(target=target, field=fld):
@@ -241,7 +243,7 @@ class _Lowerer:
             case TypedIndexRef(target=target, index=index):
                 a = self.value(target)
                 i = self.value(index)
-                return self.let(ir.Addr(base=a, index=i), e.type_val, into)
+                return self.let(ir.Addr(base=a, index=i, offset=e.offset), e.type_val, into)
             case TypedTupleSelectRef(target=target, index=index, field=fld):
                 t = self.value(target)
                 return self.let(ir.Addr(base=t, index=self.tuple_index(target.type_val, index, fld)), e.type_val, into)
@@ -251,11 +253,11 @@ class _Lowerer:
             case TypedOption(tag=tag, payload=payload, ordinal_expr=ordinal_expr):
                 ordinal = self.value(ordinal_expr) if ordinal_expr is not None else None
                 p = self.value(payload) if payload is not None else None
-                return self.let(ir.MakeOption(tag, p, ordinal), e.type_val, into)
+                return self.let(ir.MakeOption(tag, p, ordinal, e.offset), e.type_val, into)
             case TypedVariantCheck(target=target, tag=tag):
                 return self.let(ir.IsTag(self.value(target), tag), e.type_val, into)
             case TypedVariantAssert(target=target, tag=tag):
-                return self.let(ir.Payload(self.value(target), tag), e.type_val, into)
+                return self.let(ir.Payload(self.value(target), tag, e.offset), e.type_val, into)
             case TypedAuto(witness_type=witness, auto_type=auto_type, payload=payload):
                 return self.let(ir.MakeAuto(witness, auto_type, self.value(payload)), e.type_val, into)
             case TypedException(name=name, payload_type=payload_type, symbol=symbol):
@@ -341,27 +343,29 @@ class _Lowerer:
             name = self.builtins[func.symbol.symbol_id]
             if name in _BUILTIN_FUNCTIONS:
                 args = tuple(self.value(a) for a in e.args)
-                op = ir.Ordinal(args[0]) if name == "ordinal" else ir.Prim(name, args)
+                op = ir.Ordinal(args[0]) if name == "ordinal" else ir.Prim(name, args, e.offset)
                 return self.let(op, e.type_val, into)
         callee, module, member = self.callee(func)
         args = tuple(self.argument(a) for a in e.args)
         if isinstance(module, ir.Import) and module.canonical_path.lower() == "arrayop" and member in _ARRAY_OPS:
-            return self.array_op(member, args, e.type_val, into)
+            return self.array_op(member, args, e.type_val, into, e.offset)
         call = ir.Call(callee, type_args, args, module, member, func.type_val if module is not None else None)
         return self.let(call, e.type_val, into)
 
-    def array_op(self, member: str, args: tuple[ir.Atom, ...], t: QType, into: Optional[ir.Var]) -> ir.Atom:
+    def array_op(self, member: str, args: tuple[ir.Atom, ...], t: QType, into: Optional[ir.Var],
+                 offset: Optional[int]) -> ir.Atom:
         """A call of the standard library's arrayOp, as the array operation it is (arrays of records and variants,
-        stored wide, could not be passed to the generic functions without copying)."""
+        stored wide, could not be passed to the generic functions without copying). Its errors are located at the
+        call (offset)."""
         match member:
             case "new":
-                return self.let(ir.ArrayRep(args[0], args[1]), t, into)
+                return self.let(ir.ArrayRep(args[0], args[1], offset), t, into)
             case "size":
                 return self.let(ir.Prim("extent", (args[0],)), t, into)
             case "get":
-                return self.let(ir.Index(args[0], args[1]), t, into)
+                return self.let(ir.Index(args[0], args[1], offset), t, into)
             case "set":
-                self.emit(ir.Store(args[2], base=args[0], index=args[1]))
+                self.emit(ir.Store(args[2], base=args[0], index=args[1], offset=offset))
                 return self.copy_into(self.const(None, OK_TYPE), into)
         raise LoweringError(f"arrayOp.{member}")
 
@@ -493,11 +497,11 @@ class _Lowerer:
                 a = self.value(target)
                 i = self.value(index)
                 v = self.value(value)
-                self.emit(ir.Store(v, base=a, index=i))
+                self.emit(ir.Store(v, base=a, index=i, offset=e.offset))
             case TypedRaise(exc=exc, payload=payload):
                 x = self.value(exc)
                 p = self.value(payload) if payload is not None else None
-                self.terminate(ir.Raise(x, p))
+                self.terminate(ir.Raise(x, p, e.offset))
             case TypedApp() if e.type_val is OK_TYPE:
                 atom = self.call(e, None)
                 # A call for its effect: its result is not used (Ok)
@@ -589,7 +593,7 @@ class _Lowerer:
                     else_body = ir.Body()
                     with self.in_body(else_body):
                         lower_branch(else_e)
-                self.emit(ir.Inspect(v, tuple(cases), else_body, auto_type))
+                self.emit(ir.Inspect(v, tuple(cases), else_body, auto_type, e.offset))
             case TypedTry(body=body_e, branches=branches, else_branch=else_e):
                 exception = self.fresh("e", EXCEPTION_TYPE)
                 stmt = ir.Try(ir.Body(), exception, ir.Body())
@@ -608,7 +612,7 @@ class _Lowerer:
             if else_e is not None:
                 lower_branch(else_e)
             else:
-                self.terminate(ir.Raise(exception))
+                self.terminate(ir.Reraise(exception))
             return
         br, rest = branches[0], branches[1:]
         pattern = self.value(br.exc_pattern)
@@ -841,7 +845,7 @@ class _Lowerer:
                         pass
                     case _:
                         self.binding(phrase, show)
-        return ir.Unit(main, modules, tuple(self.imports))
+        return ir.Unit(main, modules, tuple(self.imports), source_map=self.source_map)
 
 
 def _named_exceptions_in(node) -> list[TypedException]:

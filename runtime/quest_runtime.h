@@ -312,10 +312,12 @@ typedef struct QAuto {
     QVal                   payload;
 } QAuto;
 
-/* Thread-local active exception state */
+/* Thread-local active exception state: the exception raised, its payload, and the site it was raised at
+   ("file:line:col", or NULL inside an external; docs/exceptions.md §3.3), which a re-raise keeps */
 typedef struct QExceptionState {
     const QException *exc;
     QVal              payload;
+    const char       *loc;
 } QExceptionState;
 
 /* Linked node in thread-local exception handler stack */
@@ -364,7 +366,7 @@ static_assert(offsetof(QVariantVal, tag)     == 0,  qvariantval_tag_at_offset_0)
 static_assert(offsetof(QVariantVal, payload) == 8,  qvariantval_payload_at_offset_8);
 static_assert(sizeof(QVariant)      == 24, qvariant_must_be_24_bytes);
 static_assert(sizeof(QException)    == 8, qexception_must_be_8_bytes);
-static_assert(sizeof(QExceptionState) == 16, qexception_state_must_be_16_bytes);
+static_assert(sizeof(QExceptionState) == 24, qexception_state_must_be_24_bytes);
 static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 static_assert(offsetof(QArray, data)  == 8, qarray_data_at_offset_8);
 static_assert(offsetof(QArrayWideRecord, data)  == 8, qarray_wide_rec_data_at_offset_8);
@@ -417,12 +419,20 @@ QArrayWideVariant *quest_array_new_wide_variant(int64_t len, QVariantVal init_va
 int64_t  quest_array_size(const QArray *a);
 double   quest_real_pow(double base, double exp);
 const QException *quest_alloc_exception(const char *name);
+/* Raises: generated code passes the raise site (docs/exceptions.md §3.3); the runtime's primitives raise with none */
 Q_NORETURN void quest_raise(const QException *exc, QVal payload);
+Q_NORETURN void quest_raise_at(const QException *exc, QVal payload, const char *loc);
+Q_NORETURN void quest_reraise(QExceptionState state);
 Q_NORETURN void quest_raise_array_error(void);
+Q_NORETURN void quest_raise_array_error_at(const char *loc);
 Q_NORETURN void quest_raise_string_error(void);
 Q_NORETURN void quest_raise_variant_error(void);
+Q_NORETURN void quest_raise_variant_error_at(const char *loc);
 Q_NORETURN void quest_raise_dynamic_error(void);
+Q_NORETURN void quest_raise_dynamic_error_at(const char *loc);
 Q_NORETURN void quest_option_ordinal_error(int64_t n, int64_t count);
+Q_NORETURN void quest_option_ordinal_error_at(int64_t n, int64_t count, const char *loc);
+double   quest_real_pow_at(double base, double exp, const char *loc);
 void     quest_print_val(QVal val, const char *type_name);
 void     quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix);
 void     quest_print_typed(const char *prefix, QVal val, const QTypeDescriptor *type, const char *suffix);
@@ -440,7 +450,9 @@ Q_NORETURN void quest_raise_writer_error(void);
 Q_NORETURN void quest_raise_reader_error(void);
 Q_NORETURN void quest_raise_ascii_error(void);
 Q_NORETURN void quest_raise_int_error(void);
+Q_NORETURN void quest_raise_int_error_at(const char *loc);
 Q_NORETURN void quest_raise_real_error(void);
+Q_NORETURN void quest_raise_real_error_at(const char *loc);
 Q_NORETURN void quest_raise_word_error(void);
 Q_NORETURN void quest_raise_system_error(void);
 
@@ -704,47 +716,72 @@ static inline QVariantVal *quest_variant_box(QVariantVal var) {
     return box;
 }
 
-static inline void quest_check_array_bounds(const void *arr_ptr, int64_t idx) {
+/* The checked operations take the site of the operation (loc, "file:line:col"), which only their failing branch
+   uses; the versions without _at are the runtime's own, with no site. */
+
+static inline void quest_check_array_bounds_at(const void *arr_ptr, int64_t idx, const char *loc) {
     const QArray *a = (const QArray *)arr_ptr;
     if (a == NULL || idx < 0 || idx >= a->length) {
-        quest_raise_array_error();
+        quest_raise_array_error_at(loc);
     }
 }
 
-static inline QInt quest_int_div(QInt a, QInt b) {
+static inline void quest_check_array_bounds(const void *arr_ptr, int64_t idx) {
+    quest_check_array_bounds_at(arr_ptr, idx, NULL);
+}
+
+/* The count of a new array, which may not be negative */
+static inline int64_t quest_check_array_count_at(int64_t n, const char *loc) {
+    if (n < 0) {
+        quest_raise_array_error_at(loc);
+    }
+    return n;
+}
+
+static inline QInt quest_int_div_at(QInt a, QInt b, const char *loc) {
     if (b == 0) {
-        quest_raise_int_error();
+        quest_raise_int_error_at(loc);
     }
     return a / b;
 }
 
-static inline QInt quest_int_mod(QInt a, QInt b) {
+static inline QInt quest_int_mod_at(QInt a, QInt b, const char *loc) {
     if (b == 0) {
-        quest_raise_int_error();
+        quest_raise_int_error_at(loc);
     }
     return a % b;
 }
 
+static inline QInt quest_int_div(QInt a, QInt b) { return quest_int_div_at(a, b, NULL); }
+static inline QInt quest_int_mod(QInt a, QInt b) { return quest_int_mod_at(a, b, NULL); }
+
 /* Real arithmetic keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
    Infinities are ordinary Real values. See docs/type-system.md §6.3.1. */
-static inline double quest_real_result(double r) {
+static inline double quest_real_result_at(double r, const char *loc) {
     if (isnan(r)) {
-        quest_raise_real_error();
+        quest_raise_real_error_at(loc);
     }
     return r;
 }
 
-static inline double quest_real_add(double a, double b) { return quest_real_result(a + b); }
-static inline double quest_real_sub(double a, double b) { return quest_real_result(a - b); }
-static inline double quest_real_mul(double a, double b) { return quest_real_result(a * b); }
+static inline double quest_real_result(double r) { return quest_real_result_at(r, NULL); }
+
+static inline double quest_real_add_at(double a, double b, const char *loc) { return quest_real_result_at(a + b, loc); }
+static inline double quest_real_sub_at(double a, double b, const char *loc) { return quest_real_result_at(a - b, loc); }
+static inline double quest_real_mul_at(double a, double b, const char *loc) { return quest_real_result_at(a * b, loc); }
 
 /* The // operator and real.div: a zero divisor also raises real.error. */
-static inline double quest_real_divide(double a, double b) {
+static inline double quest_real_divide_at(double a, double b, const char *loc) {
     if (b == 0.0) {
-        quest_raise_real_error();
+        quest_raise_real_error_at(loc);
     }
-    return quest_real_result(a / b);
+    return quest_real_result_at(a / b, loc);
 }
+
+static inline double quest_real_add(double a, double b) { return quest_real_add_at(a, b, NULL); }
+static inline double quest_real_sub(double a, double b) { return quest_real_sub_at(a, b, NULL); }
+static inline double quest_real_mul(double a, double b) { return quest_real_mul_at(a, b, NULL); }
+static inline double quest_real_divide(double a, double b) { return quest_real_divide_at(a, b, NULL); }
 
 /* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
    where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs). */
@@ -753,11 +790,15 @@ static inline bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     return t != NULL && t->kind == QTYPE_KIND_REAL && a.r == b.r;
 }
 
-static inline int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
+static inline int64_t quest_check_option_ordinal_at(int64_t n, int64_t count, const char *loc) {
     if (n < 0 || n >= count) {
-        quest_option_ordinal_error(n, count);
+        quest_option_ordinal_error_at(n, count, loc);
     }
     return n;
+}
+
+static inline int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
+    return quest_check_option_ordinal_at(n, count, NULL);
 }
 
 static inline uint64_t quest_word_shift(uint64_t w, int64_t count) {

@@ -1015,6 +1015,7 @@ typedef struct QException {
 typedef struct QExceptionState {
     const QException *exc;
     QVal              payload;
+    const char       *loc;      /* the raise site, "file:line:col", or NULL (docs/exceptions.md §3.3) */
 } QExceptionState;
 
 typedef struct QExceptionHandler {
@@ -1042,17 +1043,23 @@ Evaluating `exception name [: Type] end` invokes `quest_alloc_exception("name")`
 Built-in exceptions (e.g. `quest_exc_int_error`, `quest_exc_real_error`, `quest_exc_arrayOp_error`, `quest_exc_string_error`, `quest_exc_variant_error`) are pre-allocated global `QException` singletons whose static addresses provide their immutable identity.
 
 ### 7.2. Raising an Exception (`raise E [with payload] end`)
+A raise passes the site it is at, as a string literal the printer makes from the raise's source offset, and the
+checked operations pass theirs to their failing branch (`quest_int_div_at(a, b, "f.quest:3:11")`). The runtime's own
+primitives raise with no site (`quest_raise`, which passes NULL).
 ```c
-void quest_raise(const QException *exc, QVal payload) {
-    if (!quest_current_exception_handler) {
-        /* Uncaught exception diagnostic */
-        const char *name = (exc && exc->name) ? exc->name : "<unknown>";
-        fprintf(stderr, "Exception: %s\n", name);
+void quest_reraise(QExceptionState state) {
+    if (quest_current_exception_handler == NULL) {
+        /* Uncaught: the exception, and the site it was raised at, which the driver reads */
+        fprintf(stderr, "Exception: %s\n", state.exc->name);
+        if (state.loc != NULL) fprintf(stderr, "  at %s\n", state.loc);
         exit(1);
     }
-    quest_current_exception.exc = exc;
-    quest_current_exception.payload = payload;
+    quest_current_exception = state;
     longjmp(quest_current_exception_handler->env_jmp, 1);
+}
+
+void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
+    quest_reraise((QExceptionState){ exc, payload, loc });
 }
 ```
 
@@ -1077,8 +1084,8 @@ if (setjmp(q_handler.env_jmp) == 0) {
     } else if (q_caught.exc == qv_Exc2) {
         /* Handle branch 2 */
     } else {
-        /* Else clause, or re-raise if no matching when */
-        quest_raise(q_caught.exc, q_caught.payload);
+        /* Else clause, or raise again, from the original site, if no when matches */
+        quest_reraise(q_caught);
     }
 }
 ```

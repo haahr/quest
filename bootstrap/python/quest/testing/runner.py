@@ -154,9 +154,8 @@ def golden_dir_for_phase(phase_name: str) -> Path:
 
 
 def error_dir_for_phase(phase_name: str) -> Path:
-    # The IR keeps no source offsets, so the IR interpreter's run-time errors are not located; the run error tests
-    # (whose diagnostics are compared) are not run through it. Compiled code reports its run-time errors itself.
-    if phase_name in ("interpret", "run_c_compiled"):
+    # Every phase that runs programs locates run-time errors at their raise sites (docs/exceptions.md §3)
+    if phase_name in RUN_PHASES:
         return TESTS_ERRORS_DIR / "run"
     return TESTS_ERRORS_DIR / phase_name
 

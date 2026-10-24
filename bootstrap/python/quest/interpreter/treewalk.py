@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
+from quest.syntax.sources import SourceMap, display_file_name
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,
@@ -200,12 +201,16 @@ class RuntimeEnvironment:
             self.current_dir: Optional[Path] = parent.current_dir
             self.program_dir: Optional[Path] = parent.program_dir
             self.loaded_modules_ast: dict[str, Any] = parent.loaded_modules_ast
+            self.source_map: Optional[Any] = parent.source_map
         else:
             self.evaluated_modules: dict[str, Any] = {}
             self.include_paths: list[Path] = []
             self.current_dir: Optional[Path] = None
             self.program_dir: Optional[Path] = None
             self.loaded_modules_ast: dict[str, Any] = {}
+            # The source map of the file whose code runs in this scope (the program's, or a module file's), where
+            # the offsets of the errors that code raises are (docs/exceptions.md §3.2)
+            self.source_map: Optional[Any] = None
 
     def push_scope(self) -> RuntimeEnvironment:
         """Pushes a new child scope inheriting from this environment."""
@@ -620,9 +625,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                 if callee.name == "list.nil":
                     return QList(())
             if isinstance(callee, QClosure) and len(callee.params) == 0:
-                call_env = callee.env.push_scope()
-                call_env.bind_types(callee.type_bindings)
-                return eval_expr(callee.body, call_env)
+                return run_closure(callee, [])
             return callee
 
         case TypedApp(func=func, args=args, offset=offset):
@@ -632,20 +635,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             match callee_val:
                 case QBuiltinFun(fn=fn):
                     return fn(*arg_vals)
-                case QClosure(params=callee_params, body=body, env=closure_env):
-                    call_env = closure_env.push_scope()
-                    call_env.bind_types(callee_val.type_bindings)
-                    for param_name, arg_val in zip(callee_params, arg_vals):
-                        call_env.define(param_name, arg_val)
-                    if isinstance(body, TypedExternal):
-                        from quest.interpreter.builtins import resolve_external_symbol
-                        ext_val = resolve_external_symbol(body.symbol)
-                        if isinstance(ext_val, QBuiltinFun):
-                            return ext_val.fn(*arg_vals)
-                        if callable(ext_val):
-                            return ext_val(*arg_vals)
-                        return ext_val
-                    return eval_expr(body, call_env)
+                case QClosure():
+                    return run_closure(callee_val, arg_vals)
                 case _:
                     raise QuestRuntimeError(
                         f"Cannot call non-function of type {callee_val.type_name}",
@@ -1093,6 +1084,30 @@ def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ..
         env.define(member.name, QRef(val) if member.symbol.is_var else val)
 
 
+def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
+    """Applies a closure to its arguments: an external's built-in implementation, or the closure's body. An error the
+    body raises is located in the file the closure was made in, unless code it called located it already."""
+    if isinstance(closure.body, TypedExternal):
+        from quest.interpreter.builtins import resolve_external_symbol
+
+        ext_val = resolve_external_symbol(closure.body.symbol)
+        if isinstance(ext_val, QBuiltinFun):
+            return ext_val.fn(*args)
+        if callable(ext_val):
+            return ext_val(*args)
+        return ext_val
+    call_env = closure.env.push_scope()
+    call_env.bind_types(closure.type_bindings)
+    for param_name, arg_val in zip(closure.params, args):
+        call_env.define(param_name, arg_val)
+    try:
+        return eval_expr(closure.body, call_env)
+    except QuestCompilerError as error:
+        if error.source_map is None:
+            error.source_map = closure.env.source_map
+        raise
+
+
 def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
     """Evaluates a declaration or binding inside a block or top-level program."""
     match binding:
@@ -1402,8 +1417,14 @@ def load_module_for_interpreter(
     mod_env = r_env.push_scope()
     if file_path is not None:
         mod_env.current_dir = file_path.parent
-    for b in typed_mod.bindings:
-        eval_binding(b, mod_env)
+        mod_env.source_map = SourceMap(file_path.read_text(encoding="utf-8"), display_file_name(file_path))
+    try:
+        for b in typed_mod.bindings:
+            eval_binding(b, mod_env)
+    except QuestCompilerError as error:
+        if error.source_map is None:
+            error.source_map = mod_env.source_map
+        raise
 
     exported_fields = {}
     for val_name in typed_mod.scope.values:

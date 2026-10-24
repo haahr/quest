@@ -342,8 +342,8 @@ class CPrinter:
         match o:
             case ir.Var() | ir.Const():
                 return self.atom(o)
-            case ir.Prim(op=op, args=args):
-                return self.prim(op, args)
+            case ir.Prim(op=op, args=args, offset=offset):
+                return self.prim(op, args, offset)
             case ir.Ordinal(value=v):
                 return f"(({self.atom(v)})->tag)"
             case ir.Call():
@@ -387,8 +387,8 @@ class CPrinter:
                 return self.record_field(self.atom(base), rt, name, field.type_val, as_ref=True)
             case ir.Addr(base=base, index=index) if isinstance(index, int):
                 return f"(&({self.atom(base)}->_{index}))"
-            case ir.Addr(base=base, index=index):
-                return self.array_slot(self.atom(base), self.atom(index), array_element(self.atom_type(base)))
+            case ir.Addr(base=base, index=index, offset=offset):
+                return self.array_slot(self.atom(base), self.atom(index), array_element(self.atom_type(base)), offset)
             case ir.MakeTuple(args=args):
                 return self.make_tuple(result.type, [self.atom(a) for a in args])
             case ir.TupleField(tuple=t, index=index):
@@ -407,26 +407,27 @@ class CPrinter:
                 case = vt.get_variant(tag)
                 case_t = case.type_val if case is not None and case.type_val is not None else self.atom_type(payload)
                 return f"((QVariantVal){{ .tag = {index}LL, .payload = {qval_wrap(self.atom(payload), case_t)} }})"
-            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal):
-                return self.make_option(tag, payload, ordinal, result.type)
+            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset):
+                return self.make_option(tag, payload, ordinal, result.type, offset)
             case ir.IsTag(value=v, tag=tag):
                 vt = self.atom_type(v)
                 if (var_t := variant_type(vt)) is not None:
                     return f"({self.atom(v)}.tag == {self.tag_index(var_t, tag)}LL)"
                 return f"({self.atom(v)}->tag == {self.tag_index(option_type(vt), tag)}LL)"
-            case ir.Payload(value=v, tag=tag):
-                return self.payload(v, tag, result.type)
+            case ir.Payload(value=v, tag=tag, offset=offset):
+                return self.payload(v, tag, result.type, offset)
             case ir.MakeArray(args=args):
                 return self.make_array(array_element(result.type), [self.atom(a) for a in args], result.type)
-            case ir.ArrayRep(count=count, init=init):
-                return self.array_new(self.atom(count), self.atom(init), array_element(result.type))
+            case ir.ArrayRep(count=count, init=init, offset=offset):
+                n = f"quest_check_array_count_at({self.atom(count)}, {self.site(offset)})"
+                return self.array_new(n, self.atom(init), array_element(result.type))
             case ir.TypeApp():
                 return self.type_app(o, result)
             case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
                 return self.make_auto(witness, auto_t, payload)
-            case ir.Index(array=a, index=i):
+            case ir.Index(array=a, index=i, offset=offset):
                 arr, idx = self.atom(a), self.atom(i)
-                self.emit(f"quest_check_array_bounds({arr}, {idx});")
+                self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
                 return self.array_get(arr, idx, array_element(self.atom_type(a)))
         raise NotImplementedError(f"C printing of {type(o).__name__}")
 
@@ -702,14 +703,15 @@ class CPrinter:
         self.emit(f"else {val} = *{ptr};")
         return val
 
-    def make_option(self, tag: Optional[str], payload, ordinal, t: QType) -> str:
+    def make_option(self, tag: Optional[str], payload, ordinal, t: QType, offset: Optional[int]) -> str:
         ot = option_type(t)
         self.types.append(ot)
         struct = option_struct_name(ot)
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
         if ordinal is not None:
-            self.emit(f"{tmp}->tag = quest_check_option_ordinal({self.atom(ordinal)}, {len(ot.options)}LL);")
+            self.emit(f"{tmp}->tag = quest_check_option_ordinal_at({self.atom(ordinal)}, {len(ot.options)}LL, "
+                      f"{self.site(offset)});")
             # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
             # does, whose components the union overlays on the other cases' (docs/c-representation.md §5)
             n = ordinal.value if isinstance(ordinal, ir.Const) else 0
@@ -759,16 +761,17 @@ class CPrinter:
             self.emit(f"{tmp}->_{offset} = {opt}->u.{tag}.val;")
         return tmp
 
-    def payload(self, v: ir.Atom, tag: str, t: QType) -> str:
+    def payload(self, v: ir.Atom, tag: str, t: QType, offset: Optional[int]) -> str:
         vt = self.atom_type(v)
+        site = self.site(offset)
         if (var_t := variant_type(vt)) is not None:
             index = self.tag_index(var_t, tag)
-            self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error();")
+            self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error_at({site});")
             case = var_t.get_variant(tag)
             case_t = case.type_val if case is not None and case.type_val is not None else t
             return qval_unwrap(f"{self.atom(v)}.payload", case_t, self.ctx)
         ot = option_type(vt)
-        self.emit(f"if ({self.atom(v)}->tag != {self.tag_index(ot, tag)}LL) quest_raise_variant_error();")
+        self.emit(f"if ({self.atom(v)}->tag != {self.tag_index(ot, tag)}LL) quest_raise_variant_error_at({site});")
         return self.option_case_tuple(self.atom(v), ot, tag, t, 1)
 
     def array_get(self, arr: str, idx: str, elem_t: QType) -> str:
@@ -779,9 +782,9 @@ class CPrinter:
             return f"({arr}->data[{idx}])"
         return qval_unwrap(f"({arr}->data[{idx}])", elem, self.ctx)
 
-    def array_slot(self, arr: str, idx: str, elem_t: QType) -> str:
+    def array_slot(self, arr: str, idx: str, elem_t: QType, offset: Optional[int]) -> str:
         elem = normalize_type(elem_t)
-        self.emit(f"quest_check_array_bounds({arr}, {idx});")
+        self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
         if self.wide(elem):
             return f"(&({arr}->data[{idx}]))"
         c_elem = self.c_type(elem)
@@ -824,7 +827,16 @@ class CPrinter:
                 self.emit(f"{arr}->data[{i}LL] = {qval_wrap(c, elem)};")
         return arr
 
-    def prim(self, op: str, args: tuple[ir.Atom, ...]) -> str:
+    def site(self, offset: Optional[int]) -> str:
+        """The site of a raise at offset in the unit's file, as a C string ("file:line:col"), or NULL if it is not
+        known (docs/exceptions.md §3.3)."""
+        source_map = self.unit.source_map
+        if offset is None or source_map is None:
+            return "NULL"
+        loc = source_map.locate(offset)
+        return c_string_literal(f"{loc.file_name}:{loc.line}:{loc.column}")
+
+    def prim(self, op: str, args: tuple[ir.Atom, ...], offset: Optional[int] = None) -> str:
         cs = [self.atom(a) for a in args]
         if op == "not":
             return f"(!({cs[0]}))"
@@ -832,13 +844,13 @@ class CPrinter:
             return f"(({cs[0]})->length)"
         left, right = cs
         if op == "/":
-            return f"quest_int_div({left}, {right})"
+            return f"quest_int_div_at({left}, {right}, {self.site(offset)})"
         if op in ("%", "mod"):
-            return f"quest_int_mod({left}, {right})"
+            return f"quest_int_mod_at({left}, {right}, {self.site(offset)})"
         if op in _REAL_OPS:
-            return f"{_REAL_OPS[op]}({left}, {right})"
+            return f"{_REAL_OPS[op]}_at({left}, {right}, {self.site(offset)})"
         if op == "^^":
-            return f"quest_real_pow({left}, {right})"
+            return f"quest_real_pow_at({left}, {right}, {self.site(offset)})"
         if op == "<>":
             return f"quest_string_concat({left}, {right})"
         if op in ("is", "isnot"):
@@ -1009,16 +1021,16 @@ class CPrinter:
                 self.emit(f"*{ptr} = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index) if isinstance(index, int):
                 self.emit(f"{self.atom(base)}->_{index} = {self.atom(value)};")
-            case ir.Store(value=value, base=base, index=index):
+            case ir.Store(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
                 elem = normalize_type(array_element(self.atom_type(base)))
-                self.emit(f"quest_check_array_bounds({arr}, {idx});")
+                self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
                 c = self.atom(value)
                 self.emit(f"{arr}->data[{idx}] = {c if self.wide(elem) else qval_wrap(c, elem)};")
             case ir.Switch(value=value, cases=cases, else_body=else_body):
                 self.switch(value, cases, else_body)
-            case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t):
-                self.inspect(value, cases, else_body, auto_t)
+            case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
+                self.inspect(value, cases, else_body, auto_t, offset)
             case ir.LetRec(vars=vars_, body=body):
                 saved = self.deferred
                 self.deferred = ({id(v) for v in vars_}, [])
@@ -1096,12 +1108,11 @@ class CPrinter:
                     self.emit("return;")
                 else:
                     self.emit(f"return {self.atom(value)};")
-            case ir.Raise(exception=e, payload=p):
-                if id(e) in self.handler_vars and p is None:
-                    self.emit(f"quest_raise({self.name(e)}.exc, {self.name(e)}.payload);")
-                else:
-                    payload = "Q_OK_VAL" if p is None else qval_wrap(self.atom(p), self.atom_type(p))
-                    self.emit(f"quest_raise({self.atom(e)}, {payload});")
+            case ir.Raise(exception=e, payload=p, offset=offset):
+                payload = "Q_OK_VAL" if p is None else qval_wrap(self.atom(p), self.atom_type(p))
+                self.emit(f"quest_raise_at({self.atom(e)}, {payload}, {self.site(offset)});")
+            case ir.Reraise(exception=e):
+                self.emit(f"quest_reraise({self.name(e)});")
             case ir.Unreachable():
                 self.emit("abort();")
             case ir.Echo(value=value, type=t, prefix=prefix):
@@ -1229,7 +1240,8 @@ class CPrinter:
             self.emit(f"{arm}->_{i} = {qval_unwrap(viewed, arm_f.type_val, self.ctx)};")
         return arm
 
-    def inspect(self, value: ir.Atom, cases, else_body: Optional[ir.Body], auto_t: QAutoType) -> None:
+    def inspect(self, value: ir.Atom, cases, else_body: Optional[ir.Body], auto_t: QAutoType,
+                offset: Optional[int]) -> None:
         stored_t = auto_payload_type(auto_t)
         stored_struct = tuple_struct_name(stored_t)
         self.types.extend((auto_t, stored_t))
@@ -1296,7 +1308,7 @@ class CPrinter:
         if else_body is not None:
             self.body(else_body)
         else:
-            self.emit("quest_raise_dynamic_error();")
+            self.emit(f"quest_raise_dynamic_error_at({self.site(offset)});")
         if cases:
             self.indent -= 1
             self.emit("}")

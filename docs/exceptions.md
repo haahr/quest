@@ -4,8 +4,8 @@ This document specifies how an uncaught Quest exception is reported, with where 
 active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
 (`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`).
 
-Status: **design**. Nothing described here is implemented yet; §7 is the plan. Its first step replaces the task
-"Uncaught exceptions are reported at the wrong place, or none" in `docs/tasklist.md`.
+Status: step 1 of the plan (§7), raise sites in every backend, is implemented; the frames of steps 2 and 3 are a
+design.
 
 ---
 
@@ -94,26 +94,33 @@ gives a module it declares. Compiler-generated functions (closure environments' 
 
 ### 3.1. In the IR
 
-`ir.Unit` gains the source map of its file, and the IR nodes that can raise gain `offset: Optional[int]`, copied from
-the typed expression they are lowered from: `ir.Raise`, `ir.Prim` (checked arithmetic, ordinal checks),
-`ir.ArrayNew`, `ir.ArrayGet`, `ir.ArraySet`, `ir.VariantAssert`, and `ir.AutoInspect`. The passes copy offsets with
-the nodes, as they copy everything else.
+`ir.Unit` has the source map of its file (`source_map`, from the environment's when the unit is lowered), and the IR
+nodes that can raise have `offset: Optional[int]`, copied from the typed expression they are lowered from: `ir.Raise`;
+`ir.Prim` (integer and real arithmetic); `ir.Payload` (`v!tag`); `ir.MakeOption` (a computed ordinal);
+`ir.ArrayRep`, `ir.Index`, `ir.Addr` of an element, and `ir.Store` to an element (array counts and bounds); and
+`ir.Inspect` (an auto value no case matches). The passes copy offsets with the nodes, as they copy everything else.
 
-A try's handler raises the caught exception again when no branch matches. Today that is `ir.Raise(exception)` with
-the handler's variable, recognized in the C printer by the variable's identity (`handler_vars`). It becomes its own
-terminator, `ir.Reraise(exception)`, which keeps the original raise site (and, in compiled code, the original frames;
-§5.4). `ir.Raise` then always makes a new raise.
+The IR lowers calls of the standard library's `arrayOp.new`, `get`, and `set` to the array operations themselves,
+so their errors are located at the call. The tree-walking interpreter runs `lib/arrayop.mod.quest`, whose functions
+raise the errors themselves, so it locates them in that file: the one place the backends report different sites.
+
+A try's handler raises the caught exception again when no branch matches, with its own terminator,
+`ir.Reraise(exception)`, which keeps the original raise site (and, in compiled code, the original frames; §5.4).
+`ir.Raise` always makes a new raise.
 
 ### 3.2. In the Interpreters
 
 `QuestException` already has `offset`, and `in_unit` (`quest/diagnostics.py`) attaches an imported unit's source map
 to errors raised while elaborating it. Raise sites use the same two fields rather than a new location type:
 
-- The tree-walking interpreter tracks the source map of the unit whose code it is running (the program's, or a module
-  file's while running that module's code), and sets it on a `QuestException` as it sets `offset`. Today an exception
-  raised in `lib/dynamic.mod.quest` is rendered at its offset in the program's source, which can name a line past the
-  end of the program.
-- The IR interpreter sets `offset` from the raising node and the source map from the unit.
+- The tree-walking interpreter's scopes have the source map of the file whose code runs in them (`RuntimeEnvironment.
+  source_map`: the program's, set by the interpret phase, or a module file's, set when the module is loaded). Every
+  closure is applied by `run_closure`, which gives an error raised in the closure's body the source map of the scope
+  the closure was made in, unless the error has one already; so does a module's initialization. (Before, an
+  exception raised in `lib/dynamic.mod.quest` was rendered at its offset in the program's source, which could name a
+  line past the end of the program.)
+- The IR interpreter sets `offset` from the raising node and the source map from the unit, for errors the operation
+  raises that are not located already.
 - `ir.Reraise` and a non-matching `TypedTry` raise the original `QuestException` object, so its site is kept.
 - An exception raised by a `@qchecked` builtin backing an `external` has no offset: there is no Quest location to give
   it (§2.1).
@@ -123,10 +130,12 @@ to errors raised while elaborating it. Raise sites use the same two fields rathe
 The C printer turns an offset into a string literal `"file:line:col"`, one per raising site.
 
 - `ir.Raise` prints `quest_raise_at(exc, payload, "file:line:col")`.
-- The cold helpers of checked operations (`quest_raise_int_error`, `quest_raise_array_error`,
-  `quest_raise_variant_error`, `quest_option_ordinal_error`, ...) take the location as an argument. The literal is
-  referenced only on the failing branch, so the path that does not raise is the same compare-and-branch as now.
-- Out-of-line runtime primitives raise with a null location.
+- The checked operations and their cold helpers have `_at` versions that take the location
+  (`quest_int_div_at`, `quest_check_array_bounds_at`, `quest_check_array_count_at`, `quest_real_divide_at`,
+  `quest_check_option_ordinal_at`, `quest_raise_variant_error_at`, `quest_raise_dynamic_error_at`, ...). The literal
+  is referenced only on the failing branch, so the path that does not raise is the same compare-and-branch as before.
+- The versions without `_at`, which the runtime's primitives use, raise with a null location.
+- A fatal run-time error with a site (an option ordinal out of bounds) prints the same `at` line after its message.
 - `QExceptionState` gains `const char *loc`, so a caught exception carries its raise site into the handler, and
   `ir.Reraise` prints `quest_reraise(state)`, which raises with the same location.
 
@@ -248,11 +257,14 @@ output ends with `  ... (traceback truncated)`.
 
 ## 6. Testing
 
-1. **Run-error goldens** (`tests/golden/errors/run/*.error`) still match: the header is unchanged.
-2. **Raise sites** (step 1): error tests whose `.error` patterns include the location, run in every phase: a `raise`
-   in the program, each checked operation, a raise inside a library module's Quest code, a raise inside an external,
-   and a re-raise through a `try` whose branches do not match. A unit test runs a binary directly and checks the
-   format of §2.2.
+1. **Run-error goldens** (`tests/golden/errors/run/*.error`) remain only for errors with no site (raised inside an
+   external, or a layout conversion error), and match the unchanged header.
+2. **Raise sites** (step 1): the run error tests (`tests/errors/run`) run in every phase that runs programs, the four
+   `run_ir_*` phases included, and their `(* ERROR *)` comments check the line of the site: a `raise` in the
+   program, each checked operation, a raise in a module's function (`raise_in_module`, in `raiser.mod.quest` beside
+   it), a raise in a function the program passes to a module (`raise_in_callback`), and a re-raise through a `try`
+   whose branches do not match (`reraise_keeps_site`). A unit test in `tests/python/test_quest_driver.py` runs a
+   binary directly and checks the format of §2.2.
 3. **Interpreter frames** (step 2): for a set of traceback programs (nested and recursive calls, closures, module
    functions, library callbacks, re-raises), the full output of `interpret` and of the four `run_ir_*` phases is
    identical.

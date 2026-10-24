@@ -18,6 +18,7 @@ from __future__ import annotations
 import sys
 from typing import Any, Optional
 
+from quest.diagnostics import QuestCompilerError
 from quest.interpreter.treewalk import (
     ARRAY_OP_ERROR_EXC,
     VARIANT_ERROR_EXC,
@@ -29,6 +30,7 @@ from quest.interpreter.treewalk import (
     _eval_real_relational,
     _exposed_type,
     format_value_with_type,
+    run_closure,
 )
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
@@ -197,10 +199,13 @@ class Interpreter:
         # For each let rec being run, the captures of closures made in it of variables it has yet to bind: (the
         # closure's captured values, the index, the variable, the let rec's frame)
         self.fixups: list[list[tuple[list[QValue], int, ir.Var, _Frame]]] = []
+        # The source map of the unit's file, where its nodes' offsets are
+        self.source_map: Optional[Any] = None
 
     # Units
 
     def run(self, unit: ir.Unit) -> None:
+        self.source_map = unit.source_map
         for imp in unit.imports:
             self.import_module(imp)
         for m in unit.modules:
@@ -282,21 +287,7 @@ class Interpreter:
             case QBuiltinFun(fn=fn):
                 return fn(*args)
             case QClosure():
-                from quest.interpreter.treewalk import eval_expr
-                from quest.typechecker.typed_ast import TypedExternal
-
-                call_env = callee.env.push_scope()
-                call_env.bind_types(callee.type_bindings)
-                for name, arg in zip(callee.params, args):
-                    call_env.define(name, arg)
-                if isinstance(callee.body, TypedExternal):
-                    from quest.interpreter.builtins import resolve_external_symbol
-
-                    ext = resolve_external_symbol(callee.body.symbol)
-                    if isinstance(ext, QBuiltinFun):
-                        return ext.fn(*args)
-                    return ext(*args) if callable(ext) else ext
-                return eval_expr(callee.body, call_env)
+                return run_closure(callee, args)
         raise QuestRuntimeError(f"Cannot call non-function of type {callee.type_name}")
 
     def type_apply(self, callee: QValue, type_args: tuple[QType, ...]) -> QValue:
@@ -311,11 +302,7 @@ class Interpreter:
             case QClosure():
                 inst = callee.instantiate(type_args) if callee.type_param_ids else callee
                 if len(inst.params) == 0:
-                    from quest.interpreter.treewalk import eval_expr
-
-                    call_env = inst.env.push_scope()
-                    call_env.bind_types(inst.type_bindings)
-                    return eval_expr(inst.body, call_env)
+                    return run_closure(inst, [])
                 return inst
             case QBuiltinFun(name="list.nil"):
                 return QList(())
@@ -327,12 +314,26 @@ class Interpreter:
 
     # Operations
 
+    def located(self, error: QuestCompilerError, offset: Optional[int]) -> QuestCompilerError:
+        """error, raised by an operation at offset in the unit, located there unless it already is (an exception a
+        library function raised is located in its own unit, or nowhere)."""
+        if error.offset is None and error.source_map is None and offset is not None:
+            error.offset, error.source_map = offset, self.source_map
+        return error
+
+    def raising(self, exc: QExceptionVal, offset: Optional[int]) -> QuestException:
+        """The exception exc, raised at offset in the unit."""
+        return self.located(QuestException(exc), offset)
+
     def operation(self, o, frame: _Frame, result: ir.Var) -> QValue:
         match o:
             case ir.Var() | ir.Const():
                 return self.atom(o, frame)
-            case ir.Prim(op=op, args=args):
-                return self.prim(op, self.atoms(args, frame))
+            case ir.Prim(op=op, args=args, offset=offset):
+                try:
+                    return self.prim(op, self.atoms(args, frame))
+                except QuestCompilerError as error:
+                    raise self.located(error, offset)
             case ir.Call(callee=callee, type_args=type_args, args=args, module=module, member=member):
                 f = self.callee(callee, module, member, frame)
                 if type_args:
@@ -382,12 +383,18 @@ class Interpreter:
                 return _deref(rec.get(name))
             case ir.MakeVariant(tag=tag, payload=payload):
                 return QVariant(tag=tag, payload=self.atom(payload, frame) if payload is not None else None)
-            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal):
-                return self.make_option(tag, payload, ordinal, result, frame)
+            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset):
+                try:
+                    return self.make_option(tag, payload, ordinal, result, frame)
+                except QuestCompilerError as error:
+                    raise self.located(error, offset)
             case ir.IsTag(value=v, tag=tag):
                 return QBool(self.atom(v, frame).tag == tag)
-            case ir.Payload(value=v, tag=tag):
-                return _payload(self.atom(v, frame), tag)
+            case ir.Payload(value=v, tag=tag, offset=offset):
+                try:
+                    return _payload(self.atom(v, frame), tag)
+                except QuestCompilerError as error:
+                    raise self.located(error, offset)
             case ir.Ordinal(value=v):
                 o_val = self.atom(v, frame)
                 if not isinstance(o_val, QOption):
@@ -395,17 +402,17 @@ class Interpreter:
                 return QInt(o_val.ordinal)
             case ir.MakeArray(args=args):
                 return QArray(elements=self.atoms(args, frame))
-            case ir.ArrayRep(count=count, init=init):
+            case ir.ArrayRep(count=count, init=init, offset=offset):
                 n = self.atom(count, frame).value
                 if n < 0:
-                    raise QuestException(ARRAY_OP_ERROR_EXC)
+                    raise self.raising(ARRAY_OP_ERROR_EXC, offset)
                 v = self.atom(init, frame)
                 return QArray(elements=[v for _ in range(n)])
-            case ir.Index(array=a, index=i):
+            case ir.Index(array=a, index=i, offset=offset):
                 arr = self.atom(a, frame)
                 idx = self.atom(i, frame).value
                 if idx < 0 or idx >= arr.size():
-                    raise QuestException(ARRAY_OP_ERROR_EXC)
+                    raise self.raising(ARRAY_OP_ERROR_EXC, offset)
                 return arr.get(idx)
             case ir.MakeAuto(witness=witness, payload=p):
                 return QAutoVal(self.atom(p, frame), frame.resolve(witness))
@@ -511,7 +518,7 @@ class Interpreter:
             return element if isinstance(element, QRef) else QTupleElementRef(base, i)
         idx = self.atom(o.index, frame).value
         if idx < 0 or idx >= base.size():
-            raise QuestException(ARRAY_OP_ERROR_EXC)
+            raise self.raising(ARRAY_OP_ERROR_EXC, o.offset)
         return QArrayElementRef(base, idx)
 
     def store(self, s: ir.Store, frame: _Frame) -> None:
@@ -535,7 +542,7 @@ class Interpreter:
         else:
             idx = self.atom(s.index, frame).value
             if idx < 0 or idx >= base.size():
-                raise QuestException(ARRAY_OP_ERROR_EXC)
+                raise self.raising(ARRAY_OP_ERROR_EXC, s.offset)
             base.set(idx, value)
 
     # Statements
@@ -609,7 +616,7 @@ class Interpreter:
                         return self.body(c.body, frame)
                 if else_body is not None:
                     return self.body(else_body, frame)
-                raise QuestException(DYNAMIC_ERROR_EXC)
+                raise self.raising(DYNAMIC_ERROR_EXC, s.offset)
             case ir.Loop(label=label, body=body):
                 while True:
                     signal = self.body(body, _Frame(frame))
@@ -647,15 +654,13 @@ class Interpreter:
                 return ("break", label)
             case ir.Continue(label=label):
                 return ("continue", label)
-            case ir.Raise(exception=e, payload=p):
+            case ir.Raise(exception=e, payload=p, offset=offset):
                 exc = self.atom(e, frame)
-                if isinstance(exc, _Raised):
-                    if p is None:
-                        raise exc.raised
-                    exc = exc.raised.exc_val
                 payload = self.atom(p, frame) if p is not None else None
                 payload_type = p.type if isinstance(p, ir.Var) else None
-                raise QuestException(exc_val=exc, payload=payload, payload_type=payload_type)
+                raise self.located(QuestException(exc_val=exc, payload=payload, payload_type=payload_type), offset)
+            case ir.Reraise(exception=e):
+                raise self.atom(e, frame).raised
             case ir.Unreachable():
                 raise IRInterpreterError("reached unreachable code")
             case _:

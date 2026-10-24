@@ -46,3 +46,8 @@ class SourceMap:
         line = line_index + 1
         column = offset - self.line_starts[line_index] + 1
         return SourceLocation(self.file_name, offset, line, column)
+
+    def offset_of(self, line: int, column: int) -> int:
+        """The 0-indexed character offset of a (1-indexed) line and column, the inverse of locate."""
+        line_index = max(0, min(line - 1, len(self.line_starts) - 1))
+        return min(self.line_starts[line_index] + max(column - 1, 0), len(self.source_text))

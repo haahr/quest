@@ -42,7 +42,7 @@ from quest.modules.paths import (
 )
 from quest.config import CompilerOptions
 from quest.syntax.tokenizer import Tokenizer
-from quest.syntax.sources import SourceMap
+from quest.syntax.sources import SourceMap, display_file_name
 from quest.typechecker.typecheck import TypeElaborator
 
 
@@ -226,7 +226,7 @@ class BuildEngine:
         c_path.parent.mkdir(parents=True, exist_ok=True)
 
         source_text = main_file.read_text(encoding="utf-8")
-        source_map = SourceMap(source_text, str(main_file))
+        source_map = SourceMap(source_text, display_file_name(main_file))
         tokens = Tokenizer(source_text, str(main_file)).tokenize_all()
         ast_prog = parse_quest_program(tokens, source_map)
 
@@ -245,6 +245,8 @@ class BuildEngine:
         env.current_dir = main_file.parent
         env.program_dir = main_file.parent
         env.include_paths = search_paths
+        # Where the sites of raises compiled code reports are (docs/exceptions.md §3.3)
+        env.source_map = source_map
         env.options = CompilerOptions(
             build_dir=self.build_dir,
             stop_after="codegen_c",

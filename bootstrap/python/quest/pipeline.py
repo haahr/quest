@@ -6,6 +6,7 @@ across compiler phases (tokenize, parse, typecheck, interpret, codegen).
 
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
 from abc import ABC, abstractmethod
@@ -23,6 +24,7 @@ import quest.syntax.ast as ast
 from quest.diagnostics import (
     diagnostic_of,
     Diagnostic,
+    DiagnosticLabel,
     DiagnosticSink,
     FatalDiagnosticError,
     QuestCompilerError,
@@ -286,6 +288,8 @@ class InterpretPhase(Phase):
         return self._last_phrase_results
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[QValue]:
+        # The program's code raises errors located in its file; a module's, in the module's (docs/exceptions.md §3.2)
+        ctx.runtime_env.source_map = ctx.source_map
         try:
             match input_data:
                 case TypedProgram():
@@ -475,6 +479,31 @@ class CodegenCPhase(Phase):
         return str(output_data) if output_data is not None else ""
 
 
+# The line after an error's message in a compiled program's output naming the site it was raised at
+_RAISE_SITE = re.compile(r"^  at (.+):(\d+):(\d+)$")
+
+
+def binary_error_diagnostic(stderr: str, source_map: SourceMap) -> Diagnostic:
+    """The diagnostic for the error output of a compiled program (docs/exceptions.md §2.2): its message, located at
+    the site the program printed, in the program's file (source_map) or the file the site names, which is read for
+    its source line. Without a site, or when the file cannot be read, the diagnostic has no location."""
+    lines = stderr.rstrip("\n").splitlines()
+    match = _RAISE_SITE.match(lines[-1]) if lines else None
+    if match is None:
+        return Diagnostic(Severity.ERROR, stderr.strip())
+    message = "\n".join(lines[:-1]).strip()
+    file_name, line, column = match.group(1), int(match.group(2)), int(match.group(3))
+    site_map: Optional[SourceMap] = source_map if file_name == source_map.file_name else None
+    if site_map is None:
+        try:
+            site_map = SourceMap(Path(file_name).read_text(encoding="utf-8"), file_name)
+        except OSError:
+            return Diagnostic(Severity.ERROR, f"{message}\n  at {file_name}:{line}:{column}")
+    label = DiagnosticLabel(offset=site_map.offset_of(line, column), length=1, is_primary=True)
+    return Diagnostic(Severity.ERROR, message, primary_label=label,
+                      source_map=site_map if site_map is not source_map else None)
+
+
 class RunCCompiledPhase(Phase):
     """Native binary execution phase: compiles C code and runs the resulting binary."""
     name = "run_c_compiled"
@@ -504,8 +533,10 @@ class RunCCompiledPhase(Phase):
                 input_data=ctx.options.target_stdin,
             )
             if proc.returncode != ctx.options.expected_exit:
-                msg = proc.stderr.strip() if proc.stderr else f"Binary exited with code {proc.returncode}"
-                ctx.sink.emit(Diagnostic.make_error(msg, 0))
+                if proc.stderr:
+                    ctx.sink.emit(binary_error_diagnostic(proc.stderr, ctx.source_map))
+                else:
+                    ctx.sink.emit(Diagnostic(Severity.ERROR, f"Binary exited with code {proc.returncode}"))
             return proc.stdout
         except QuestCompilerError as error:
             # Such as a type error in an imported module's body, found when the module is compiled

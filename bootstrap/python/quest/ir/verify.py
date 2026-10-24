@@ -264,6 +264,8 @@ class _Verifier:
                 self.use(e, scope, where)
                 if p is not None:
                     self.use(p, scope, where)
+            case ir.Reraise(exception=e):
+                self.use(e, scope, where)
             case ir.Unreachable():
                 pass
             case _:

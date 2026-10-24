@@ -11,12 +11,16 @@ same object. A declared variable (Declare) is in scope from its declaration, and
 (ir/verify.py).
 
 Nodes are plain mutable dataclasses with identity equality, built once by lowering and then rewritten by passes.
+
+The nodes that can raise an exception (checked operations, raise) keep the source offset of the expression they were
+lowered from, in the unit's source file, so that every backend reports where an uncaught exception was raised
+(docs/exceptions.md §3).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from quest.ir.shapes import Shape, shape
 from quest.types import QKind, QType
@@ -71,6 +75,7 @@ class Prim:
     """A primitive operation on scalars and strings: arithmetic, comparison, logic, concatenation, identity (`is`)."""
     op: str
     args: tuple[Atom, ...]
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -211,6 +216,7 @@ class MakeOption:
     tag: Optional[str]
     payload: Optional[Atom] = None
     ordinal: Optional[Atom] = None
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -225,6 +231,7 @@ class Payload:
     """A variant's payload, or an option's payload as a tuple, for the case (`v!tag`, raising if it is another)."""
     value: Atom
     tag: str
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -243,6 +250,7 @@ class ArrayRep:
     """An array of `count` copies of `init`."""
     count: Atom
     init: Atom
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -250,6 +258,7 @@ class Index:
     """An array's element (raising if the index is out of bounds)."""
     array: Atom
     index: Atom
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -283,6 +292,7 @@ class Addr:
     name: Optional[str] = None
     index: Optional[Union[int, Atom]] = None
     cell: Optional[Atom] = None
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -341,6 +351,7 @@ class Store:
     name: Optional[str] = None
     index: Optional[Union[int, Atom]] = None
     address: Optional[Atom] = None
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -423,6 +434,7 @@ class Inspect:
     cases: tuple[InspectCase, ...]
     else_body: Optional[Body] = None
     auto_type: Optional[QType] = None
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -491,8 +503,17 @@ class Continue:
 
 @dataclass(eq=False)
 class Raise:
+    """A new raise of an exception, with its payload, if any."""
     exception: Atom
     payload: Optional[Atom] = None
+    offset: Optional[int] = None
+
+
+@dataclass(eq=False)
+class Reraise:
+    """A try's handler raising the exception it caught again, when none of its branches matches: the exception keeps
+    the site it was raised at."""
+    exception: Var
 
 
 @dataclass(eq=False)
@@ -500,12 +521,12 @@ class Unreachable:
     """After a call that does not return (exit), or where no path can reach."""
 
 
-Terminator = Union[Return, Jump, Break, Continue, Raise, Unreachable]
+Terminator = Union[Return, Jump, Break, Continue, Raise, Reraise, Unreachable]
 Statement = Union[
     Let, VarDecl, Declare, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return,
-    Jump, Break, Continue, Raise, Unreachable,
+    Jump, Break, Continue, Raise, Reraise, Unreachable,
 ]
-TERMINATORS = (Return, Jump, Break, Continue, Raise, Unreachable)
+TERMINATORS = (Return, Jump, Break, Continue, Raise, Reraise, Unreachable)
 
 
 @dataclass(eq=False)
@@ -561,6 +582,8 @@ class Unit:
     # After closure conversion, every function of the unit, lifted out of the bodies that made closures of it
     functions: list[Function] = field(default_factory=list)
     stage: str = "core"
+    # The source map of the unit's file, in which the nodes' offsets are
+    source_map: Optional[Any] = None
 
     def at_least(self, stage: str) -> bool:
         """Whether the unit is at the given stage or a later one."""

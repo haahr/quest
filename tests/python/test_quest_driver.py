@@ -190,6 +190,15 @@ class TestQuestDriverCLI(unittest.TestCase):
                 self.assertIn(f"{file}:{location}: error:", stderr)
                 self.assertIn(line, stderr)
 
+    def test_binary_reports_where_an_uncaught_exception_was_raised(self) -> None:
+        main_file = self.root / "raises.quest"
+        main_file.write_text("exception E end;\nlet f(): Int = raise E end;\nf();\n", encoding="utf-8")
+        bin_path = self.root / "raises"
+        self.assertEqual(run_driver([str(main_file), "-o", str(bin_path), "--build-dir", str(self.build_dir)]), 0)
+        proc = subprocess.run([str(bin_path)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 1)
+        self.assertRegex(proc.stderr, r"\AException: E\n  at .*raises\.quest:2:16\n\Z")
+
 
 if __name__ == "__main__":
     unittest.main()

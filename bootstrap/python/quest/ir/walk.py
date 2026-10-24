@@ -83,6 +83,8 @@ def statement_uses(s) -> list[ir.Atom]:
             return list(args)
         case ir.Raise(exception=e, payload=p):
             return [e] if p is None else [e, p]
+        case ir.Reraise(exception=e):
+            return [e]
     return []
 
 
