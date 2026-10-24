@@ -249,7 +249,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 6. Case expression: check all branches against expected_type
             case ast.ExprCase():
-                return self._check_case_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_case_expr(expr, expected_type, env, loop_depth)
 
             # 7. Array expressions: check elements against expected array element type
             case ast.ExprArray():
@@ -260,19 +260,19 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 8. Phase 5: Raise expression (divergent control flow checks against any expected type)
             case ast.ExprRaise():
-                return self._check_raise_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_raise_expr(expr, expected_type, env, loop_depth)
 
             # 9. Phase 5: Try expression
             case ast.ExprTry():
-                return self._check_try_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_try_expr(expr, expected_type, env, loop_depth)
 
             # 10. Phase 5: Inspect expression
             case ast.ExprInspect():
-                return self._check_inspect_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_inspect_expr(expr, expected_type, env, loop_depth)
 
             # 10b. Auto value: checked against the expected auto type
             case ast.ExprAuto():
-                return self._check_auto_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_auto_expr(expr, expected_type, env, loop_depth)
 
             # 12. External C symbol binding
             case ast.ExprExternal(symbol=symbol, offset=off):
@@ -462,7 +462,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 return self._synth_variant_assert_expr(expr, env, loop_depth)
 
             case ast.ExprCase():
-                return self._synth_case_expr(expr, env, loop_depth)
+                return self._elaborate_case_expr(expr, None, env, loop_depth)
 
             case ast.ExprArray():
                 return self._synth_array_expr(expr, env, loop_depth)
@@ -481,20 +481,16 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 return self._synth_exception_expr(expr, env, loop_depth)
 
             case ast.ExprRaise():
-                return self._synth_raise_expr(expr, env, loop_depth)
+                return self._elaborate_raise_expr(expr, None, env, loop_depth)
 
             case ast.ExprTry():
-                return self._synth_try_expr(expr, env, loop_depth)
+                return self._elaborate_try_expr(expr, None, env, loop_depth)
 
             case ast.ExprInspect():
-                return self._synth_inspect_expr(expr, env, loop_depth)
+                return self._elaborate_inspect_expr(expr, None, env, loop_depth)
 
             case ast.ExprAuto():
-                raise TypeError(
-                    "Cannot infer the type of an auto value; give it an expected Auto type "
-                    "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)",
-                    offset=expr.offset,
-                )
+                return self._elaborate_auto_expr(expr, None, env, loop_depth)
 
             case _:
                 raise TypeError(f"Unsupported AST expression '{expr}'", offset=getattr(expr, "offset", 0))

@@ -56,66 +56,42 @@ class ControlMixin:
     (`check_expr`, `synth_expr`), and call the other families' methods through `self`.
     """
 
-    def _synth_case_expr(self, expr: ast.ExprCase, env: Environment, loop_depth: int) -> TypedCase:
-        """Synthesizes a case expression over an option or variant target."""
-        target_typed = self.synth_expr(expr.target, env, loop_depth)
-        target_type = target_typed.type_val.evaluate_lazily(env)
-
-        available_tags, typed_branches = self._elaborate_case_branches(
-            expr, target_type, expected_type=None, env=env, loop_depth=loop_depth
-        )
-
-        else_typed = self._elaborate_optional_branch(expr.else_branch, None, env, loop_depth)
-        branch_types = self._collect_branch_types(typed_branches, else_typed)
-
-        if not branch_types:
-            return TypedCase(
-                target=target_typed,
-                branches=tuple(typed_branches),
-                else_branch=else_typed,
-                type_val=OK_TYPE,
-                offset=expr.offset,
-            )
-
-        join_type = join_types(
-            branch_types,
-            env,
-            expr.offset,
-            error_msg="Cannot find common supertype join for case branch types '{t1}' and '{t2}'",
-        )
-
-        return TypedCase(
-            target=target_typed,
-            branches=tuple(typed_branches),
-            else_branch=else_typed,
-            type_val=join_type,
-            offset=expr.offset,
-        )
-
-    def _check_case_expr(
+    def _elaborate_case_expr(
         self,
         expr: ast.ExprCase,
-        expected_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
     ) -> TypedCase:
-        """Checks a case expression against an expected QType."""
+        """Elaborates a case expression over an option or variant target: its branches are checked against the
+        expected type if there is one; otherwise its type is the join of their synthesized types (Ok if it has
+        none)."""
         target_typed = self.synth_expr(expr.target, env, loop_depth)
         target_type = target_typed.type_val.evaluate_lazily(env)
 
-        available_tags, typed_branches = self._elaborate_case_branches(
+        typed_branches = self._elaborate_case_branches(
             expr, target_type, expected_type=expected_type, env=env, loop_depth=loop_depth
         )
 
-        else_typed = self._elaborate_optional_branch(
-            expr.else_branch, expected_type, env, loop_depth
-        )
+        else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
+
+        if expected_type is not None:
+            result_type = expected_type
+        elif branch_types := self._collect_branch_types(typed_branches, else_typed):
+            result_type = join_types(
+                branch_types,
+                env,
+                expr.offset,
+                error_msg="Cannot find common supertype join for case branch types '{t1}' and '{t2}'",
+            )
+        else:
+            result_type = OK_TYPE
 
         return TypedCase(
             target=target_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
-            type_val=expected_type,
+            type_val=result_type,
             offset=expr.offset,
         )
 
@@ -126,7 +102,7 @@ class ControlMixin:
         expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> tuple[dict[str, Optional[QType]], list[TypedCaseBranch]]:
+    ) -> list[TypedCaseBranch]:
         """Validates tags, binders, exhaustiveness, and elaborates typed case branches."""
         if isinstance(target_type, QOptionType):
             available_tags = {opt.name: opt.payload_type for opt in target_type.options}
@@ -209,7 +185,7 @@ class ControlMixin:
                     offset=expr.offset,
                 )
 
-        return available_tags, typed_branches
+        return typed_branches
 
     def _synth_infix_expr(self, expr: ast.ExprInfix, env: Environment, loop_depth: int) -> TypedExpr:
         """Synthesizes an infix expression (assignment, logic, arithmetic, comparison)."""

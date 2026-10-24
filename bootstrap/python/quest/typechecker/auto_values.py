@@ -59,34 +59,55 @@ class AutoValueMixin:
     (`check_expr`, `synth_expr`), and call the other families' methods through `self`.
     """
 
-    def _elaborate_inspect_branches(
+    def _elaborate_inspect_expr(
         self,
         expr: ast.ExprInspect,
         expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> tuple[TypedExpr, list[TypedInspectBranch], Optional[TypedExpr]]:
-        """Elaborates target, inspect branches, and optional else branch for an inspect expression."""
+    ) -> TypedInspect:
+        """Elaborates an inspect expression on an auto value: its branches are checked against the expected type if
+        there is one; otherwise its type is the join of their synthesized types (Ok if it has none)."""
         target_typed = self.synth_expr(expr.target, env, loop_depth)
         target_type = target_typed.type_val.evaluate_lazily(env)
-        if isinstance(target_type, QAutoType):
-            return self._elaborate_auto_inspect_branches(
-                expr, target_typed, target_type, expected_type, env, loop_depth
+        if not isinstance(target_type, QAutoType):
+            raise TypeError(
+                f"Target of inspect must have an Auto type (such as Dynamic), got '{target_type}'",
+                offset=expr.target.offset,
             )
-        raise TypeError(
-            f"Target of inspect must have an Auto type (such as Dynamic), got '{target_type}'",
-            offset=expr.target.offset,
+        typed_branches, else_typed = self._elaborate_auto_inspect_branches(
+            expr, target_type, expected_type, env, loop_depth
+        )
+
+        if expected_type is not None:
+            result_type = expected_type
+        elif branch_types := self._collect_branch_types(typed_branches, else_typed):
+            result_type = join_types(
+                branch_types,
+                env,
+                expr.offset,
+                error_msg="Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'",
+            )
+        else:
+            result_type = OK_TYPE
+
+        return TypedInspect(
+            target=target_typed,
+            branches=tuple(typed_branches),
+            else_branch=else_typed,
+            auto_type=inspected_auto_type(target_typed, env),
+            type_val=result_type,
+            offset=expr.offset,
         )
 
     def _elaborate_auto_inspect_branches(
         self,
         expr: ast.ExprInspect,
-        target_typed: TypedExpr,
         auto_type: QAutoType,
         expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> tuple[TypedExpr, list[TypedInspectBranch], Optional[TypedExpr]]:
+    ) -> tuple[list[TypedInspectBranch], Optional[TypedExpr]]:
         """Elaborates the branches of an inspect on an auto value (Cardelli §4.6).
 
         In the branch for type T, the binders denote the auto value's components, with signature S[T].
@@ -131,7 +152,7 @@ class AutoValueMixin:
             )
 
         else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
-        return target_typed, typed_branches, else_typed
+        return typed_branches, else_typed
 
     def _check_closed_type(
         self, t: QType, what: str, offset: int, auto_type: Optional[QAutoType] = None
@@ -168,14 +189,21 @@ class AutoValueMixin:
                 offset=offset,
             )
 
-    def _check_auto_expr(
+    def _elaborate_auto_expr(
         self,
         expr: ast.ExprAuto,
-        expected_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
     ) -> TypedAuto:
-        """Checks an auto value auto [let A [HasKind] =] :W with Binding end against an Auto type."""
+        """Checks an auto value auto [let A [HasKind] =] :W with Binding end against an Auto type. An auto value's
+        type cannot be synthesized: it needs an expected type."""
+        if expected_type is None:
+            raise TypeError(
+                "Cannot infer the type of an auto value; give it an expected Auto type "
+                "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)",
+                offset=expr.offset,
+            )
         auto_type = expected_type.evaluate_lazily(env)
         if not isinstance(auto_type, QAutoType):
             raise TypeError(
@@ -223,57 +251,5 @@ class AutoValueMixin:
             auto_type=auto_type,
             payload=payload_typed,
             type_val=expected_type,
-            offset=expr.offset,
-        )
-
-    def _check_inspect_expr(
-        self,
-        expr: ast.ExprInspect,
-        expected_type: QType,
-        env: Environment,
-        loop_depth: int,
-    ) -> TypedInspect:
-        """Checks an inspect expression against an expected QType."""
-        target_typed, typed_branches, else_typed = self._elaborate_inspect_branches(
-            expr, expected_type, env, loop_depth
-        )
-        return TypedInspect(
-            target=target_typed,
-            branches=tuple(typed_branches),
-            else_branch=else_typed,
-            auto_type=inspected_auto_type(target_typed, env),
-            type_val=expected_type,
-            offset=expr.offset,
-        )
-
-    def _synth_inspect_expr(self, expr: ast.ExprInspect, env: Environment, loop_depth: int) -> TypedInspect:
-        """Synthesizes an inspect expression by joining branch result types."""
-        target_typed, typed_branches, else_typed = self._elaborate_inspect_branches(
-            expr, None, env, loop_depth
-        )
-        branch_types = self._collect_branch_types(typed_branches, else_typed)
-
-        if not branch_types:
-            return TypedInspect(
-                target=target_typed,
-                branches=tuple(typed_branches),
-                else_branch=else_typed,
-                auto_type=inspected_auto_type(target_typed, env),
-                type_val=OK_TYPE,
-                offset=expr.offset,
-            )
-
-        join_type = join_types(
-            branch_types,
-            env,
-            expr.offset,
-            error_msg="Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'",
-        )
-        return TypedInspect(
-            target=target_typed,
-            branches=tuple(typed_branches),
-            else_branch=else_typed,
-            auto_type=inspected_auto_type(target_typed, env),
-            type_val=join_type,
             offset=expr.offset,
         )

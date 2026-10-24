@@ -18,7 +18,6 @@ from quest.diagnostics import QuestTypeError
 from quest.typechecker.elaborate_types import elaborate_type
 from quest.typechecker.typed_ast import (
     TypedException,
-    TypedExpr,
     TypedRaise,
     TypedTry,
     TypedTryBranch,
@@ -55,14 +54,24 @@ class ExceptionMixin:
             offset=expr.offset,
         )
 
-    def _elaborate_raise(
+    def _elaborate_raise_expr(
         self,
         expr: ast.ExprRaise,
-        res_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
     ) -> TypedRaise:
-        """Shared elaboration core for raise expressions."""
+        """Elaborates a raise expression: raise Exc [with Payload] [as Type] end.
+
+        A raise diverges, so it has any expected type, and its `as` clause is not consulted then. Synthesized, its type
+        is the one the `as` clause declares, or Ok."""
+        if expected_type is not None:
+            res_type = expected_type
+        elif expr.as_type is not None:
+            res_type = elaborate_type(expr.as_type, env)
+        else:
+            res_type = OK_TYPE
+
         exc_typed = self.synth_expr(expr.exc, env, loop_depth)
         exc_type = exc_typed.type_val.evaluate_lazily(env)
         if not isinstance(exc_type, QExceptionType):
@@ -85,29 +94,15 @@ class ExceptionMixin:
             offset=expr.offset,
         )
 
-    def _check_raise_expr(
-        self,
-        expr: ast.ExprRaise,
-        expected_type: QType,
-        env: Environment,
-        loop_depth: int,
-    ) -> TypedRaise:
-        """Checks a raise expression against any expected type (divergent control flow)."""
-        return self._elaborate_raise(expr, expected_type, env, loop_depth)
-
-    def _synth_raise_expr(self, expr: ast.ExprRaise, env: Environment, loop_depth: int) -> TypedRaise:
-        """Synthesizes a raise expression. Defaults to Ok if no declared type is present."""
-        res_type = elaborate_type(expr.as_type, env) if expr.as_type is not None else OK_TYPE
-        return self._elaborate_raise(expr, res_type, env, loop_depth)
-
-    def _elaborate_try_branches(
+    def _elaborate_try_expr(
         self,
         expr: ast.ExprTry,
         expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> tuple[TypedExpr, list[TypedTryBranch], Optional[TypedExpr]]:
-        """Elaborates body, handler branches, and optional else branch for a try expression."""
+    ) -> TypedTry:
+        """Elaborates a try expression: its body, handler branches, and else branch are checked against the
+        expected type if there is one; otherwise its type is the join of their synthesized types."""
         body_typed = self._elaborate_subexpr(expr.body, expected_type, env, loop_depth)
 
         typed_branches: list[TypedTryBranch] = []
@@ -144,46 +139,20 @@ class ExceptionMixin:
             )
 
         else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
-        return body_typed, typed_branches, else_typed
 
-    def _check_try_expr(
-        self,
-        expr: ast.ExprTry,
-        expected_type: QType,
-        env: Environment,
-        loop_depth: int,
-    ) -> TypedTry:
-        """Checks a try expression against an expected QType."""
-        body_typed, typed_branches, else_typed = self._elaborate_try_branches(
-            expr, expected_type, env, loop_depth
-        )
+        if expected_type is not None:
+            result_type = expected_type
+        else:
+            result_type = join_types(
+                self._collect_branch_types(typed_branches, else_typed, initial_type=body_typed.type_val),
+                env,
+                expr.offset,
+                error_msg="Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'",
+            )
         return TypedTry(
             body=body_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
-            type_val=expected_type,
-            offset=expr.offset,
-        )
-
-    def _synth_try_expr(self, expr: ast.ExprTry, env: Environment, loop_depth: int) -> TypedTry:
-        """Synthesizes a try expression by joining body and branch result types."""
-        body_typed, typed_branches, else_typed = self._elaborate_try_branches(
-            expr, None, env, loop_depth
-        )
-        all_types = self._collect_branch_types(
-            typed_branches, else_typed, initial_type=body_typed.type_val
-        )
-
-        join_type = join_types(
-            all_types,
-            env,
-            expr.offset,
-            error_msg="Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'",
-        )
-        return TypedTry(
-            body=body_typed,
-            branches=tuple(typed_branches),
-            else_branch=else_typed,
-            type_val=join_type,
+            type_val=result_type,
             offset=expr.offset,
         )
