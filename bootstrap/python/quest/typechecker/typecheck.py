@@ -229,11 +229,11 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         match expr:
             # 1. Conditionals with else branch: check both branches against expected_type
             case ast.ExprIf(else_branch=else_br) if else_br is not None:
-                return self._check_if_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_if_expr(expr, expected_type, env, loop_depth)
 
             # 2. Block expression: check final result against expected_type
             case ast.ExprBlock():
-                return self._check_block_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_block_expr(expr, expected_type, env, loop_depth)
 
             # 3. Function abstraction: check against expected function type
             case ast.ExprFun():
@@ -409,7 +409,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # --- Conditionals ---
             case ast.ExprIf():
-                return self._synth_if_expr(expr, env, loop_depth)
+                return self._elaborate_if_expr(expr, None, env, loop_depth)
 
             # --- Loops & Control Flow ---
             case ast.ExprWhile(cond=cond, body=body, offset=off):
@@ -430,7 +430,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # --- Block Expressions ---
             case ast.ExprBlock():
-                return self._synth_block_expr(expr, env, loop_depth)
+                return self._elaborate_block_expr(expr, None, env, loop_depth)
 
             # --- Functions and Applications ---
             case ast.ExprFun():

@@ -372,11 +372,23 @@ class ControlMixin:
             )
         return desugared_else
 
-    def _synth_if_expr(self, expr: ast.ExprIf, env: Environment, loop_depth: int) -> TypedIf:
-        """Synthesizes an if expression."""
+    def _elaborate_if_expr(
+        self,
+        expr: ast.ExprIf,
+        expected_type: Optional[QType],
+        env: Environment,
+        loop_depth: int,
+    ) -> TypedIf:
+        """Elaborates a conditional; elsif branches become conditionals nested in the else branch.
+
+        Against an expected type, both branches are checked against it (check_expr does so only for a conditional
+        with an else branch, and checks the others by synthesis and subsumption). Synthesized, its type is the join
+        of its branches' types, with a missing else branch Ok, except that a conditional with neither elsif nor else
+        branches is a statement: its then branch is evaluated for its effect, and its type is Ok.
+        """
         cond_typed = self.check_expr(expr.cond, BOOL_TYPE, env, loop_depth)
 
-        if expr.else_branch is None and not expr.elsifs:
+        if expected_type is None and expr.else_branch is None and not expr.elsifs:
             then_typed = self.synth_expr(expr.then_branch, env, loop_depth)
             then_body = TypedBlock(
                 bindings=(TypedExprStmt(expr=then_typed, offset=then_typed.offset),),
@@ -393,41 +405,23 @@ class ControlMixin:
             )
 
         desugared_else = self._desugar_if_else(expr)
-        then_typed = self.synth_expr(expr.then_branch, env, loop_depth)
-        else_typed = self.synth_expr(desugared_else, env, loop_depth)
+        then_typed = self._elaborate_subexpr(expr.then_branch, expected_type, env, loop_depth)
+        else_typed = self._elaborate_subexpr(desugared_else, expected_type, env, loop_depth)
 
-        join_type = join_types(
-            [then_typed.type_val, else_typed.type_val],
-            env,
-            expr.offset,
-            error_msg="Cannot find common supertype for conditional branches '{t1}' and '{t2}'",
-        )
+        if expected_type is not None:
+            result_type = expected_type
+        else:
+            result_type = join_types(
+                [then_typed.type_val, else_typed.type_val],
+                env,
+                expr.offset,
+                error_msg="Cannot find common supertype for conditional branches '{t1}' and '{t2}'",
+            )
         return TypedIf(
             cond=cond_typed,
             then_branch=then_typed,
             else_branch=else_typed,
-            type_val=join_type,
-            offset=expr.offset,
-        )
-
-    def _check_if_expr(
-        self,
-        expr: ast.ExprIf,
-        expected_type: QType,
-        env: Environment,
-        loop_depth: int,
-    ) -> TypedIf:
-        """Checks an if expression against an expected QType."""
-        cond_typed = self.check_expr(expr.cond, BOOL_TYPE, env, loop_depth)
-        desugared_else = self._desugar_if_else(expr)
-        then_typed = self.check_expr(expr.then_branch, expected_type, env, loop_depth)
-        else_typed = self.check_expr(desugared_else, expected_type, env, loop_depth)
-
-        return TypedIf(
-            cond=cond_typed,
-            then_branch=then_typed,
-            else_branch=else_typed,
-            type_val=expected_type,
+            type_val=result_type,
             offset=expr.offset,
         )
 
@@ -458,71 +452,53 @@ class ControlMixin:
             offset=expr.offset,
         )
 
-    def _synth_block_expr(self, expr: ast.ExprBlock, env: Environment, loop_depth: int) -> TypedBlock:
-        """Synthesizes a scoped block expression: begin bindings... result end."""
+    def _elaborate_block_expr(
+        self,
+        expr: ast.ExprBlock,
+        expected_type: Optional[QType],
+        env: Environment,
+        loop_depth: int,
+    ) -> TypedBlock:
+        """Elaborates a scoped block expression: begin bindings... result end.
+
+        A block ending with an expression statement has that expression's value, which is checked against the
+        expected type if there is one; otherwise the block's type is Ok, which must then be a subtype of the expected
+        type. A synthesized type may not mention the block's own bindings.
+        """
         with env.scoped("block") as block_scope:
-            typed_bindings: list[TypedBinding] = []
-            for binding in expr.bindings:
-                typed_b = self._elaborate_binding(binding, env, loop_depth)
-                typed_bindings.append(typed_b)
+            typed_bindings: list[TypedBinding] = [
+                self._elaborate_binding(binding, env, loop_depth) for binding in expr.bindings[:-1]
+            ]
 
-            if typed_bindings and isinstance(typed_bindings[-1], TypedExprStmt):
-                last_stmt = typed_bindings.pop()
-                assert isinstance(last_stmt, TypedExprStmt)
-                result_expr = last_stmt.expr
-                result_type = result_expr.type_val
-            else:
+            result_expr: Optional[TypedExpr] = None
+            if expr.bindings:
+                last_binding = expr.bindings[-1]
+                if isinstance(last_binding, ast.ExprStmt):
+                    result_expr = self._elaborate_subexpr(last_binding.expr, expected_type, env, loop_depth)
+                else:
+                    typed_bindings.append(self._elaborate_binding(last_binding, env, loop_depth))
+                    # Synthesized, a block also has the value of an exception declaration it ends with
+                    if expected_type is None and isinstance(typed_bindings[-1], TypedExprStmt):
+                        result_expr = typed_bindings.pop().expr
+            if result_expr is None:
+                if expected_type is not None and not is_subtype(OK_TYPE, expected_type, env):
+                    what = "Block ending with declaration" if expr.bindings else "Empty block"
+                    raise TypeError(
+                        f"{what} has type Ok, not expected type '{expected_type}'",
+                        offset=expr.offset,
+                    )
                 result_expr = TypedOk(offset=expr.offset)
-                result_type = OK_TYPE
 
-            local_symbol_ids = {sym.symbol_id for sym in block_scope.values.values()}
-            check_no_escaping_path_types(result_type, local_symbol_ids, "its scope", result_expr.offset)
+            if expected_type is not None:
+                result_type = expected_type
+            else:
+                result_type = result_expr.type_val
+                local_symbol_ids = {sym.symbol_id for sym in block_scope.values.values()}
+                check_no_escaping_path_types(result_type, local_symbol_ids, "its scope", result_expr.offset)
 
             return TypedBlock(
                 bindings=tuple(typed_bindings),
                 result=result_expr,
                 type_val=result_type,
-                offset=expr.offset,
-            )
-
-    def _check_block_expr(
-        self,
-        expr: ast.ExprBlock,
-        expected_type: QType,
-        env: Environment,
-        loop_depth: int,
-    ) -> TypedBlock:
-        """Checks a scoped block expression against an expected QType."""
-        with env.scoped("block"):
-            typed_bindings: list[TypedBinding] = []
-            for binding in expr.bindings[:-1]:
-                typed_b = self._elaborate_binding(binding, env, loop_depth)
-                typed_bindings.append(typed_b)
-
-            if expr.bindings:
-                last_binding = expr.bindings[-1]
-                if isinstance(last_binding, ast.ExprStmt):
-                    result_expr = self.check_expr(last_binding.expr, expected_type, env, loop_depth)
-                else:
-                    typed_b = self._elaborate_binding(last_binding, env, loop_depth)
-                    typed_bindings.append(typed_b)
-                    if not is_subtype(OK_TYPE, expected_type, env):
-                        raise TypeError(
-                            f"Block ending with declaration has type Ok, not expected type '{expected_type}'",
-                            offset=expr.offset,
-                        )
-                    result_expr = TypedOk(offset=expr.offset)
-            else:
-                if not is_subtype(OK_TYPE, expected_type, env):
-                    raise TypeError(
-                        f"Empty block has type Ok, not expected type '{expected_type}'",
-                        offset=expr.offset,
-                    )
-                result_expr = TypedOk(offset=expr.offset)
-
-            return TypedBlock(
-                bindings=tuple(typed_bindings),
-                result=result_expr,
-                type_val=expected_type,
                 offset=expr.offset,
             )
