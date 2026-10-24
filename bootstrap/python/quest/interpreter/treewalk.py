@@ -1,31 +1,30 @@
-"""Quest Bootstrap Tree-Walking Interpreter & Core Evaluation.
+"""The tree-walking interpreter of the typed AST: the `interpret` phase and the REPL.
 
-Implements Phase 3.2 of the Quest compiler:
-- Scoped runtime environment (RuntimeEnvironment)
-- Core literal evaluations (Int, Real, Bool, Char, String, Ok)
-- Variable lookup, assignment, and mutable cell dereferencing
-- Arithmetic operators (+, -, *, /, mod) with C-style truncation; division by zero raises int.error
-- Relational comparisons (<, <=, >, >=) and equality (is, isnot, ==, <>)
-- Short-circuit conditionals (TypedIf)
-- Loops (TypedLoop, TypedWhile, TypedFor) and early exit (TypedExit via _LoopExit)
-- Scoped block evaluation (TypedBlock)
-- Top-level program evaluation (TypedProgram)
+Evaluates typed expressions, bindings, and programs in lexically scoped runtime environments (RuntimeEnvironment),
+loading and evaluating the modules a program imports (load_module_for_interpreter). Primitive operations and the
+standard library's runtime errors are quest.interpreter.primitives', and printing values by their types
+quest.interpreter.formatting's; the IR interpreter (quest.interpreter.ir_interp) shares them.
 """
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from quest.diagnostics import (
     MAIN_FRAME,
-    Diagnostic,
-    DiagnosticLabel,
     QuestCompilerError,
-    Severity,
     frame_name,
     init_frame,
+)
+from quest.interpreter.primitives import (
+    ARRAY_OP_ERROR_EXC,
+    QuestRuntimeError,
+    VARIANT_ERROR_EXC,
+    int_arithmetic,
+    int_relational,
+    real_arithmetic,
+    real_relational,
 )
 from quest.syntax.sources import SourceMap, display_file_name
 from quest.values.model import (
@@ -55,40 +54,14 @@ from quest.values.model import (
     QTypeValue,
     QValue,
     QVariant,
-    QWord,
     qvalue_is,
-    qvalue_to_str,
 )
 from quest.types import (
-    unalias,
-    BOOL_TYPE,
-    CHAR_TYPE,
-    EXCEPTION_TYPE,
-    INT_TYPE,
-    OK_TYPE,
-    QAbstractType,
-    QAllType,
-    QArrayType,
-    QAutoType,
-    QFunType,
     QOptionType,
-    QRecordType,
-    QTypeApp,
-    QVariantType,
     QTupleType,
-    QTupleTypeFormal,
-    QTupleTypeBinding,
-    QTupleField,
-    QPathType,
-    QTypeVar,
     QType,
-    REAL_TYPE,
-    STRING_TYPE,
-    auto_payload_type,
     is_subtype,
     is_type_equal,
-    short_type_name,
-    unfold_head,
 )
 from quest.typechecker.typed_ast import (
     TypedApp,
@@ -117,7 +90,6 @@ from quest.typechecker.typed_ast import (
     TypedImport,
     TypedAuto,
     TypedInspect,
-    TypedInspectBranch,
     TypedInterface,
     TypedInt,
     TypedLetType,
@@ -126,7 +98,6 @@ from quest.typechecker.typed_ast import (
     TypedLetValue,
     TypedLoop,
     TypedModule,
-    TypedNode,
     TypedOk,
     TypedOption,
     TypedProgram,
@@ -138,7 +109,6 @@ from quest.typechecker.typed_ast import (
     TypedTupleSelectRef,
     TypedString,
     TypedTry,
-    TypedTryBranch,
     TypedTuple,
     TypedTypeApp,
     TypedTypeWitness,
@@ -153,41 +123,12 @@ from quest.typechecker.typed_ast import (
 
 
 # ============================================================================
-# 1. Runtime Exceptions & Control Signals
+# 1. Control Signals
 # ============================================================================
 
 class _LoopExit(Exception):
     """Internal control-flow signal raised by TypedExit to break out of loops."""
     pass
-
-
-class QuestRuntimeError(QuestCompilerError):
-    """System-level runtime evaluation error (e.g. undefined symbol)."""
-
-    def __init__(self, message: str, offset: Optional[int] = None, length: int = 1):
-        super().__init__(message=message, offset=offset, length=length)
-
-    def to_diagnostic(self, length: Optional[int] = None) -> Diagnostic:
-        len_val = length if length is not None else self.length
-        label = DiagnosticLabel(offset=self.offset, length=len_val) if self.offset is not None else None
-        return Diagnostic(
-            severity=Severity.ERROR,
-            message=self.message,
-            primary_label=label,
-        )
-
-
-ARRAY_OP_ERROR_EXC = QExceptionVal("arrayOp.error")
-LIST_ERROR_EXC = QExceptionVal("list.error")
-WRITER_ERROR_EXC = QExceptionVal("writer.error")
-READER_ERROR_EXC = QExceptionVal("reader.error")
-ASCII_ERROR_EXC = QExceptionVal("ascii.error")
-INT_ERROR_EXC = QExceptionVal("int.error")
-REAL_ERROR_EXC = QExceptionVal("real.error")
-WORD_ERROR_EXC = QExceptionVal("word.error")
-STRING_ERROR_EXC = QExceptionVal("string.error")
-SYSTEM_ERROR_EXC = QExceptionVal("system.error")
-VARIANT_ERROR_EXC = QExceptionVal("variant.tagMismatch")
 
 
 # ============================================================================
@@ -326,7 +267,7 @@ class RuntimeEnvironment:
                 QBuiltinFun(
                     op,
                     lambda a, b, op=op: QInt(
-                        _eval_int_arithmetic(op, a.value, b.value, offset=0)
+                        int_arithmetic(op, a.value, b.value, offset=0)
                     ),
                 ),
             )
@@ -337,7 +278,7 @@ class RuntimeEnvironment:
                     op,
                     lambda a, b, op=op: (
                         TRUE_VALUE
-                        if _eval_int_relational(op, a.value, b.value, offset=0)
+                        if int_relational(op, a.value, b.value, offset=0)
                         else FALSE_VALUE
                     ),
                 ),
@@ -348,7 +289,7 @@ class RuntimeEnvironment:
                 QBuiltinFun(
                     op,
                     lambda a, b, op=op: QReal(
-                        _eval_real_arithmetic(op, a.value, b.value, offset=0)
+                        real_arithmetic(op, a.value, b.value, offset=0)
                     ),
                 ),
             )
@@ -359,7 +300,7 @@ class RuntimeEnvironment:
                     op,
                     lambda a, b, op=op: (
                         TRUE_VALUE
-                        if _eval_real_relational(op, a.value, b.value, offset=0)
+                        if real_relational(op, a.value, b.value, offset=0)
                         else FALSE_VALUE
                     ),
                 ),
@@ -402,117 +343,7 @@ class RuntimeEnvironment:
 
 
 # ============================================================================
-# 3. Arithmetic & Infix Helper Functions
-# ============================================================================
-
-def _truncating_div(a: int, b: int) -> int:
-    """a / b rounded toward zero, as in C; exact, unlike int(a / b), which divides as floats."""
-    q = abs(a) // abs(b)
-    return q if (a < 0) == (b < 0) else -q
-
-
-def _eval_int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) -> int:
-    """Evaluates integer arithmetic with C-style truncation and an int.error check."""
-    match op:
-        case "+":
-            return a + b
-        case "-":
-            return a - b
-        case "*":
-            return a * b
-        case "/":
-            if b == 0:
-                raise QuestException(INT_ERROR_EXC, offset=offset)
-            return _truncating_div(a, b)
-        case "mod" | "%":
-            if b == 0:
-                raise QuestException(INT_ERROR_EXC, offset=offset)
-            # C-style modulo: a - trunc(a / b) * b
-            return a - _truncating_div(a, b) * b
-        case _:
-            raise QuestRuntimeError(f"Unknown integer arithmetic operator '{op}'", offset=offset)
-
-
-def _eval_int_relational(op: str, a: int, b: int, offset: Optional[int] = None) -> bool:
-    """Evaluates integer relational comparisons (<, <=, >, >=)."""
-    match op:
-        case "<":
-            return a < b
-        case "<=":
-            return a <= b
-        case ">":
-            return a > b
-        case ">=":
-            return a >= b
-        case _:
-            raise QuestRuntimeError(f"Unknown integer relational operator '{op}'", offset=offset)
-
-
-def real_result(r: float, offset: Optional[int] = None) -> float:
-    """Keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
-
-    Infinities are ordinary Real values (docs/type-system.md §6.3.1)."""
-    if math.isnan(r):
-        raise QuestException(REAL_ERROR_EXC, offset=offset)
-    return r
-
-
-def real_divide(a: float, b: float, offset: Optional[int] = None) -> float:
-    """Real division (// and real.div): a zero divisor or a NaN result raises real.error."""
-    if b == 0.0:
-        raise QuestException(REAL_ERROR_EXC, offset=offset)
-    return real_result(a / b, offset)
-
-
-def real_pow(a: float, b: float, offset: Optional[int] = None) -> float:
-    """Real exponentiation (^^ and real.exp) with C pow semantics, except that a zero base with a negative
-    exponent (a pole, like division by zero) or a NaN result raises real.error. Overflow yields an infinity."""
-    if a == 0.0 and b < 0.0:
-        raise QuestException(REAL_ERROR_EXC, offset=offset)
-    try:
-        return real_result(math.pow(a, b), offset)
-    except ValueError:
-        # A negative finite base with a non-integral exponent: C's pow returns NaN.
-        raise QuestException(REAL_ERROR_EXC, offset=offset)
-    except OverflowError:
-        negative = a < 0.0 and b.is_integer() and int(b) % 2 == 1
-        return -math.inf if negative else math.inf
-
-
-def _eval_real_arithmetic(op: str, a: float, b: float, offset: Optional[int] = None) -> float:
-    """Evaluates real floating-point arithmetic (++, --, **, //, ^^)."""
-    match op:
-        case "++":
-            return real_result(a + b, offset)
-        case "--":
-            return real_result(a - b, offset)
-        case "**":
-            return real_result(a * b, offset)
-        case "//":
-            return real_divide(a, b, offset)
-        case "^^":
-            return real_pow(a, b, offset)
-        case _:
-            raise QuestRuntimeError(f"Unknown real arithmetic operator '{op}'", offset=offset)
-
-
-def _eval_real_relational(op: str, a: float, b: float, offset: Optional[int] = None) -> bool:
-    """Evaluates real relational comparisons (<<, <<=, >>, >>=)."""
-    match op:
-        case "<<":
-            return a < b
-        case "<<=":
-            return a <= b
-        case ">>":
-            return a > b
-        case ">>=":
-            return a >= b
-        case _:
-            raise QuestRuntimeError(f"Unknown real relational operator '{op}'", offset=offset)
-
-
-# ============================================================================
-# 4. Expression Evaluator
+# 3. Expression Evaluator
 # ============================================================================
 
 def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
@@ -657,7 +488,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             # Integer Arithmetic
             if op in ("+", "-", "*", "/", "mod", "%"):
                 if isinstance(left_val, QInt) and isinstance(right_val, QInt):
-                    return QInt(_eval_int_arithmetic(op, left_val.value, right_val.value, offset=offset))
+                    return QInt(int_arithmetic(op, left_val.value, right_val.value, offset=offset))
                 raise QuestRuntimeError(
                     f"Operator '{op}' requires Int operands, got {left_val.type_name} and {right_val.type_name}",
                     offset=offset,
@@ -666,7 +497,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             # Integer Relational
             if op in ("<", "<=", ">", ">="):
                 if isinstance(left_val, QInt) and isinstance(right_val, QInt):
-                    res = _eval_int_relational(op, left_val.value, right_val.value, offset=offset)
+                    res = int_relational(op, left_val.value, right_val.value, offset=offset)
                     return TRUE_VALUE if res else FALSE_VALUE
                 raise QuestRuntimeError(
                     f"Operator '{op}' requires Int operands, got {left_val.type_name} and {right_val.type_name}",
@@ -676,7 +507,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             # Real Arithmetic
             if op in ("++", "--", "**", "//", "^^"):
                 if isinstance(left_val, QReal) and isinstance(right_val, QReal):
-                    return QReal(_eval_real_arithmetic(op, left_val.value, right_val.value, offset=offset))
+                    return QReal(real_arithmetic(op, left_val.value, right_val.value, offset=offset))
                 raise QuestRuntimeError(
                     f"Operator '{op}' requires Real operands, got {left_val.type_name} and {right_val.type_name}",
                     offset=offset,
@@ -685,7 +516,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             # Real Relational
             if op in ("<<", "<<=", ">>", ">>="):
                 if isinstance(left_val, QReal) and isinstance(right_val, QReal):
-                    res = _eval_real_relational(op, left_val.value, right_val.value, offset=offset)
+                    res = real_relational(op, left_val.value, right_val.value, offset=offset)
                     return TRUE_VALUE if res else FALSE_VALUE
                 raise QuestRuntimeError(
                     f"Operator '{op}' requires Real operands, got {left_val.type_name} and {right_val.type_name}",
@@ -1081,7 +912,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
 
 
 # ============================================================================
-# 5. Binding & Program Evaluator
+# 4. Binding & Program Evaluator
 # ============================================================================
 
 def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ...], env: RuntimeEnvironment) -> None:
@@ -1267,170 +1098,6 @@ def eval_program(program: TypedProgram, env: Optional[RuntimeEnvironment] = None
     """Evaluates an entire typed program sequentially, returning the final phrase value."""
     results = eval_program_phrases(program, env)
     return results[-1][1] if results else OK_VALUE
-
-
-def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
-    """Formats a runtime value with respect to its static type (Cardelli §5.3).
-
-    The type decides what is shown, all the way down, so that compiled code (quest_print_typed) can print the same
-    from the value's type descriptor: a record shows its type's fields, a function is <fun>, and a value of an
-    abstract type is <hidden>.
-    """
-    if typ is None:
-        return qvalue_to_str(val)
-    return _format_typed(val, typ, set())
-
-
-def _exposed_type(typ: QType) -> QType:
-    """typ with aliases removed, recursive types unfolded, and type operator applications reduced."""
-    typ = unalias(typ)
-    while (unfolded := unfold_head(typ)) is not None:
-        typ = unalias(unfolded)
-    return typ
-
-
-def _format_typed(val: QValue, typ: QType, visited: set[int]) -> str:
-    if isinstance(val, QRef):
-        val = val.deref()
-    typ = _exposed_type(typ)
-
-    # A value of an abstract type, such as a module's T, is hidden, so that the interpreter and compiled code (which
-    # cannot see a separately compiled module's representation) agree. Word.T is a library type with literals of
-    # its own.
-    if isinstance(typ, (QPathType, QAbstractType, QTypeApp)):
-        return "<hidden>"
-    if isinstance(typ, QTypeVar) and not isinstance(val, QWord):
-        return "<hidden>"
-    if isinstance(typ, (QFunType, QAllType)):
-        return "<fun>"
-
-    if isinstance(val, QTypeValue):
-        if val.bound:
-            return f"<Hidden>::{val.bound}"
-        return "<Hidden>::TYPE"
-
-    if isinstance(val, QAutoVal) and isinstance(typ, QAutoType):
-        components = _format_typed(val.value, auto_payload_type(typ, val.type_val), visited)
-        components = components.removeprefix("tuple").removesuffix("end").strip()
-        # The type component is shown as compiled code shows it, by its runtime descriptor's name
-        type_name = short_type_name(val.type_val)
-        return f"auto :{type_name} with {components} end" if components else f"auto :{type_name} with end"
-
-    if isinstance(val, (QTuple, QRecord, QArray)):
-        if id(val) in visited:
-            opening = {QTuple: "tuple", QRecord: "record", QArray: "array of"}[type(val)]
-            return f"{opening} ... end"
-        visited.add(id(val))
-        try:
-            return _format_aggregate(val, typ, visited)
-        finally:
-            visited.remove(id(val))
-
-    if isinstance(val, QOption) and isinstance(typ, QOptionType):
-        case = typ.get_option(val.tag)
-        if case is None or case.payload_type is None or val.payload is None:
-            return f"option {val.tag} end"
-        return f"option {val.tag} with {_format_typed(val.payload, case.payload_type, visited)} end"
-
-    if isinstance(val, QVariant) and isinstance(typ, QVariantType):
-        case = typ.get_variant(val.tag)
-        if case is None or case.type_val is None or unalias(case.type_val) is OK_TYPE or val.payload is None:
-            return f"variant {val.tag} end"
-        return f"variant {val.tag} with {_format_typed(val.payload, case.type_val, visited)} end"
-
-    return qvalue_to_str(val)
-
-
-def _format_aggregate(val: QTuple | QRecord | QArray, typ: QType, visited: set[int]) -> str:
-    if isinstance(val, QTuple) and isinstance(typ, QTupleType):
-        parts: list[str] = []
-        elem_idx = 0
-        for comp in typ.components:
-            if isinstance(comp, QTupleTypeFormal):
-                parts.append(f"<Hidden>::{comp.bound}")
-                elem_idx += 1
-            elif isinstance(comp, QTupleTypeBinding):
-                parts.append(f"Let {comp.name} = {comp.type_val}")
-                elem_idx += 1
-            elif isinstance(comp, QTupleField):
-                if elem_idx < len(val.elements):
-                    elem_str = _format_typed(val.elements[elem_idx], comp.type_val, visited)
-                    parts.append(f"{comp.name}={elem_str}" if comp.name else elem_str)
-                    elem_idx += 1
-        return f"tuple {' '.join(parts)} end" if parts else "tuple end"
-
-    if isinstance(val, QRecord) and isinstance(typ, QRecordType):
-        fields = [
-            f"{f.name}={_format_typed(val.fields[f.name], f.type_val, visited)}"
-            for f in sorted(typ.fields, key=lambda f: f.name)
-            if f.name in val.fields
-        ]
-        return f"record {' '.join(fields)} end" if fields else "record end"
-
-    if isinstance(val, QArray) and isinstance(typ, QArrayType):
-        elems = [_format_typed(e, typ.element_type, visited) for e in val.elements]
-        return f"array of {' '.join(elems)} end" if elems else "array of end"
-
-    return val.to_str(visited)
-
-
-def format_interactive_result(
-    phrase: Optional[TypedNode],
-    val: Optional[QValue],
-) -> str:
-    """Formats the result of evaluating a top-level phrase in Cardelli interactive style."""
-    if phrase is None or val is None:
-        return ""
-
-    match phrase:
-        case TypedLetValue(name=name, symbol=symbol):
-            var_str = "var " if symbol.is_var else ""
-            type_str = str(symbol.type_val)
-            val_str = format_value_with_type(val, symbol.type_val)
-            return f"let {var_str}{name}:{type_str} = {val_str}"
-
-        case TypedLetType(name=name, symbol=symbol):
-            kind_str = str(symbol.kind)
-            if symbol.definition is not None:
-                return f"Let {name}::{kind_str} = {symbol.definition}"
-            return f"Let {name}::{kind_str}"
-
-        case TypedLetTypeGroup(members=members):
-            return "\n".join(format_interactive_result(member, val) for member in members)
-
-        case TypedLetValueGroup(members=members):
-            assert isinstance(val, QTuple)
-            return "\n".join(
-                format_interactive_result(member, member_val) for member, member_val in zip(members, val.elements)
-            )
-
-        case TypedDefKind(name=name, symbol=symbol):
-            kind_str = str(symbol.kind)
-            return f"DEF {name} = {kind_str}"
-
-        case TypedImport() | TypedInterface() | TypedModule():
-            return ""
-
-        case TypedExprStmt(expr=TypedException(name=name)):
-            return f"exception {name}"
-
-        case TypedExprStmt(expr=inner_expr):
-            if isinstance(val, QOk):
-                return ""
-            val_str = format_value_with_type(val, inner_expr.type_val)
-            return f"{val_str} : {inner_expr.type_val}"
-
-        case TypedException(name=name):
-            return f"exception {name}"
-
-        case TypedExpr():
-            if isinstance(val, QOk):
-                return ""
-            val_str = format_value_with_type(val, phrase.type_val)
-            return f"{val_str} : {phrase.type_val}"
-
-        case _:
-            return ""
 
 
 def load_module_for_interpreter(

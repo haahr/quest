@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.interpreter.builtins import EXTERNAL_SYMBOLS, qchecked, resolve_external_symbol, set_system_args
 from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.interpreter.treewalk import QuestRuntimeError
+from quest.interpreter.primitives import QuestRuntimeError
 from quest.values.model import QuestException, QArray, QBuiltinFun, QExceptionVal, QInt, QString
 
 

@@ -37,14 +37,14 @@ from quest.diagnostics import (
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.types.env import Environment, Scope
 from quest.syntax.grammar import parse_quest_program
+from quest.interpreter.formatting import format_interactive_result
+from quest.interpreter.primitives import QuestRuntimeError
 from quest.interpreter.treewalk import (
-    QuestRuntimeError,
     RuntimeEnvironment,
     eval_binding,
     eval_expr,
     eval_program,
     eval_program_phrases,
-    format_interactive_result,
     note_frames,
 )
 from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str

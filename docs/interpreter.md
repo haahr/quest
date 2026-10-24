@@ -3,8 +3,10 @@
 This document details the architecture, runtime value representation, evaluation engine, and semantic decisions
 implemented for the bootstrap tree-walking interpreter in `bootstrap/python/quest/values/model.py` (the values,
 which compilation shares, for the dynamic format and `.qi` files) and `bootstrap/python/quest/interpreter/treewalk.py`.
-The `quest/interpreter/` package also holds the standard library's Python implementations (`builtins.py`) and the IR
-interpreter (`ir_interp.py`); compilation does not depend on it (`tests/python/test_dependencies.py`).
+The `quest/interpreter/` package also holds what the two interpreters share, primitive operations and the standard
+library's runtime errors (`primitives.py`) and printing values by their types (`formatting.py`), the standard
+library's Python implementations (`builtins.py`), and the IR interpreter (`ir_interp.py`); compilation does not depend
+on it (`tests/python/test_dependencies.py`).
 
 ---
 

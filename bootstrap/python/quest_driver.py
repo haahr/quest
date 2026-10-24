@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quest.interpreter.builtins import set_system_args
 from quest.diagnostics import DiagnosticRenderer, QuestCompilerError, Severity, diagnostic_of
 from quest.config import CompilerOptions
-from quest.interpreter.treewalk import format_interactive_result
+from quest.interpreter.formatting import format_interactive_result
 from quest.pipeline import (
     CompilerContext,
     compile_pipeline,

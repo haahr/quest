@@ -12,18 +12,18 @@ import sys
 from typing import Any, Callable, Optional
 
 from quest.values.dynamic_json import jsog_decode, jsog_encode
-from quest.interpreter.treewalk import (
+from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
     ASCII_ERROR_EXC,
     INT_ERROR_EXC,
     LIST_ERROR_EXC,
+    QuestRuntimeError,
     READER_ERROR_EXC,
     REAL_ERROR_EXC,
     STRING_ERROR_EXC,
     SYSTEM_ERROR_EXC,
     WORD_ERROR_EXC,
     WRITER_ERROR_EXC,
-    QuestRuntimeError,
     real_divide,
     real_pow,
 )

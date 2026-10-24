@@ -19,17 +19,18 @@ import sys
 from typing import Any, Optional
 
 from quest.diagnostics import MAIN_FRAME, QuestCompilerError, init_frame
-from quest.interpreter.treewalk import (
+from quest.interpreter.formatting import exposed_type, format_value_with_type
+from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
-    VARIANT_ERROR_EXC,
     QuestRuntimeError,
+    VARIANT_ERROR_EXC,
+    int_arithmetic,
+    int_relational,
+    real_arithmetic,
+    real_relational,
+)
+from quest.interpreter.treewalk import (
     RuntimeEnvironment,
-    _eval_int_arithmetic,
-    _eval_int_relational,
-    _eval_real_arithmetic,
-    _eval_real_relational,
-    _exposed_type,
-    format_value_with_type,
     note_frames,
     run_closure,
 )
@@ -466,13 +467,13 @@ class Interpreter:
             return QInt(len(args[0].elements))
         a, b = args
         if op in _INT_ARITHMETIC:
-            return QInt(_eval_int_arithmetic(op, a.value, b.value))
+            return QInt(int_arithmetic(op, a.value, b.value))
         if op in _INT_RELATIONAL:
-            return TRUE_VALUE if _eval_int_relational(op, a.value, b.value) else FALSE_VALUE
+            return TRUE_VALUE if int_relational(op, a.value, b.value) else FALSE_VALUE
         if op in _REAL_ARITHMETIC:
-            return QReal(_eval_real_arithmetic(op, a.value, b.value))
+            return QReal(real_arithmetic(op, a.value, b.value))
         if op in _REAL_RELATIONAL:
-            return TRUE_VALUE if _eval_real_relational(op, a.value, b.value) else FALSE_VALUE
+            return TRUE_VALUE if real_relational(op, a.value, b.value) else FALSE_VALUE
         if op == "<>":
             return QString(a.value + b.value)
         if op == "/\\":
@@ -497,7 +498,7 @@ class Interpreter:
     def make_tuple(self, values: list[QValue], type_components, result: ir.Var, frame: _Frame) -> QTuple:
         """A tuple laid out as the source interpreter lays it out: its type components are elements too (type
         values), which printing a tuple expects."""
-        t = _exposed_type(result.type)
+        t = exposed_type(result.type)
         if not isinstance(t, QTupleType) or not type_components:
             labels = tuple(f.name for f in t.fields) if isinstance(t, QTupleType) else None
             if labels is not None and len(labels) != len(values):
@@ -516,7 +517,7 @@ class Interpreter:
 
     def make_option(self, tag: Optional[str], payload, ordinal, result: ir.Var, frame: _Frame) -> QOption:
         p = self.atom(payload, frame) if payload is not None else None
-        t = _exposed_type(frame.resolve(result.type))
+        t = exposed_type(frame.resolve(result.type))
         if not isinstance(t, QOptionType):
             raise IRInterpreterError(f"option of type {result.type}")
         if ordinal is not None:
@@ -729,9 +730,9 @@ def _payload(v: QValue, tag: str) -> QValue:
 def _is_function_type(f: ir.Function) -> bool:
     """Whether a polymorphic function, applied to all its types, is a function (rather than a value computed when it
     is instantiated)."""
-    t = _exposed_type(f.var.type)
+    t = exposed_type(f.var.type)
     while isinstance(t, QAllType):
-        t = _exposed_type(t.body)
+        t = exposed_type(t.body)
     return isinstance(t, QFunType)
 
 

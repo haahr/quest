@@ -23,7 +23,7 @@ except ImportError:
 
 from quest.diagnostics import DiagnosticRenderer
 from quest.syntax.grammar import parse_quest_program
-from quest.interpreter.treewalk import format_interactive_result
+from quest.interpreter.formatting import format_interactive_result
 from quest.syntax.parser import ParserError
 from quest.config import CompilerOptions
 from quest.pipeline import CompilerContext, default_pipeline

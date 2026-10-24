@@ -11,7 +11,7 @@ from quest.syntax.sources import SourceMap
 from quest.syntax.tokenizer import TokenizerError
 from quest.syntax.parser import ParserError
 from quest.types import KindError
-from quest.interpreter.treewalk import QuestRuntimeError
+from quest.interpreter.primitives import QuestRuntimeError
 from quest.values.model import QuestException, QExceptionVal, QInt
 from quest.diagnostics import (
     CodeSuggestion,
