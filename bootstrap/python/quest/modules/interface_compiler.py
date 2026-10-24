@@ -25,9 +25,13 @@ from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.c_declarations import CDeclarationEmitter, collect_aggregate_types
 from quest.codegen.c_types import RecordNamingContext, qtype_to_c_type
 from quest.config import CompilerOptions
+from quest.modules.manifest import ImportedInterfaceRef
 from quest.modules.paths import (
+    InterfaceDependency,
     canonicalize_interface_name,
     canonicalize_module_path,
+    dependency_change,
+    recorded_dependencies,
     resolve_interface_file,
     resolve_interface_source_file,
     resolve_module_file,
@@ -95,6 +99,7 @@ from quest.types import (
 QI_SCHEMA_TYPE_STR = (
     "Record "
     "abi: Int "
+    "deps: Array(Record dir: String path: String source: String end) "
     "imports: Array(String) "
     "name: String "
     "producer: String "
@@ -359,11 +364,13 @@ def compile_interface_to_qi(
     iface_scope: Scope,
     env: Optional[Environment] = None,
     source: Optional[Path] = None,
+    deps: Optional[list[InterfaceDependency]] = None,
 ) -> str:
     """Serializes interface declarations to portable JSON/JSOG .qi format using shadow Quest records.
 
     source is the .int.quest the interface was compiled from; it is recorded (resolved) so that a .qi is used only
-    for the source it was built from (docs/build-process.md §5).
+    for the source it was built from (docs/build-process.md §5). deps are the interfaces it depends on
+    (interface_dependencies), recorded so that the .qi is stale when one of them changes.
     """
     imports_elems: list[QString] = []
     for imp in decl.imports:
@@ -443,6 +450,12 @@ def compile_interface_to_qi(
     desc_record = QRecord(
         {
             "abi": QInt(ABI_VERSION),
+            "deps": QArray(
+                [
+                    QRecord({"dir": QString(d.dir), "path": QString(d.path), "source": QString(d.source)})
+                    for d in deps or []
+                ]
+            ),
             "producer": QString(PRODUCER),
             "source": QString(str(source.resolve()) if source is not None else ""),
             "name": QString(decl.name),
@@ -594,6 +607,96 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
     return "\n".join(lines)
 
 
+# The interface paths each interface source imports, by resolved path and modification time.
+_interface_imports_cache: dict[tuple[Path, int], list[str]] = {}
+
+
+def _interface_imports(source: Path) -> list[str]:
+    """The interface paths an interface source file imports, as written.
+
+    A file that cannot be read or parsed imports nothing here; compiling it reports why.
+    """
+    try:
+        key = (source.resolve(), source.stat().st_mtime_ns)
+    except OSError:
+        return []
+    cached = _interface_imports_cache.get(key)
+    if cached is not None:
+        return cached
+    paths: list[str] = []
+    try:
+        text = source.read_text(encoding="utf-8")
+        prog = parse_quest_program(Tokenizer(text, str(source)).tokenize_all(), SourceMap(text, str(source)))
+        if isinstance(prog, ast.Program) and len(prog.phrases) == 1 and isinstance(prog.phrases[0], ast.InterfaceDecl):
+            paths = [imp.effective_interface_path for imp in prog.phrases[0].imports]
+    except (OSError, QuestCompilerError):
+        paths = []
+    _interface_imports_cache[key] = paths
+    return paths
+
+
+def interface_dependencies(source: Path, include_paths: list[Path]) -> list[InterfaceDependency]:
+    """The interfaces the interface in source depends on: those it imports, those they import, and so on.
+
+    Each import is resolved as compiling the importing interface resolves it (from its directory, then
+    include_paths). Every import path of every importing directory appears once, in depth-first order. A unit
+    compiled against an interface is compiled against all of these too: their types appear in the interface's
+    signatures and in its generated header.
+    """
+    deps: list[InterfaceDependency] = []
+    seen: set[tuple[str, str]] = set()
+    visited = {source.resolve()}
+
+    def visit(importer: Path) -> None:
+        importer_dir = str(importer.parent.resolve())
+        for path in _interface_imports(importer):
+            if (importer_dir, path) in seen:
+                continue
+            seen.add((importer_dir, path))
+            dep_src = resolve_interface_source_file(path, importer.parent, include_paths)
+            deps.append(InterfaceDependency(path=path, dir=importer_dir, source=str(dep_src) if dep_src else ""))
+            if dep_src is not None and dep_src.resolve() not in visited:
+                visited.add(dep_src.resolve())
+                visit(dep_src)
+
+    visit(source)
+    return deps
+
+
+def indirect_interface_refs(
+    direct: list[ImportedInterfaceRef],
+    include_paths: list[Path],
+    program_dir: Optional[Path] = None,
+) -> list[ImportedInterfaceRef]:
+    """The manifest entries for the interfaces a unit depends on through the interfaces it imports itself.
+
+    direct are the unit's own imported interfaces. Each entry records the directory its path was resolved from, so
+    that the staleness checks resolve it again the same way (paths.import_resolution_change). Interfaces the unit
+    also imports directly are left out.
+    """
+    refs: list[ImportedInterfaceRef] = []
+    seen = {ref.source for ref in direct if ref.source}
+    for ref in direct:
+        if not ref.source:
+            continue
+        for dep in interface_dependencies(Path(ref.source), include_paths):
+            if dep.source and dep.source in seen:
+                continue
+            if dep.source:
+                seen.add(dep.source)
+            src = Path(dep.source) if dep.source else None
+            refs.append(
+                ImportedInterfaceRef(
+                    name=canonicalize_interface_name(src, include_paths, dep.path, program_dir),
+                    source=dep.source,
+                    mtime=src.stat().st_mtime if src is not None and src.is_file() else 0.0,
+                    path=dep.path,
+                    dir=dep.dir,
+                )
+            )
+    return refs
+
+
 # The interface files being compiled, outermost first, with their canonical names. Compiling an interface first
 # compiles the interfaces it imports, each in an environment of its own, so a cycle of imports is detected here.
 _compiling_interfaces: list[tuple[Path, str]] = []
@@ -684,7 +787,8 @@ def _compile_interface_file(
                     )
         typed_iface = elaborate_interface(decl, env)
 
-    qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path)
+    deps = interface_dependencies(file_path, env.include_paths)
+    qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path, deps=deps)
 
     if build_dir is not None and output_dir is None:
         canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
@@ -742,8 +846,9 @@ def ensure_interface_artifacts(
     h_file = target_dir / f"{stem}.int.h"
 
     def current(qi: Path, h: Path) -> bool:
-        """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, match this compiler, and were
-        built from this source (not a same-named interface elsewhere).
+        """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, match this compiler, were built
+        from this source (not a same-named interface elsewhere), and none of the interfaces they depend on has
+        changed or would resolve elsewhere.
 
         The header is required only when one is wanted (C compilation).
         """
@@ -751,11 +856,13 @@ def ensure_interface_artifacts(
             return False
         if src is None or not src.is_file():
             return True
-        src_mtime = src.stat().st_mtime
+        artifact_mtime = min(qi.stat().st_mtime, h.stat().st_mtime) if header else qi.stat().st_mtime
+        deps = recorded_dependencies(qi)
         return (
-            src_mtime <= qi.stat().st_mtime
-            and (not header or src_mtime <= h.stat().st_mtime)
+            src.stat().st_mtime <= artifact_mtime
             and built_from(qi, src)
+            and deps is not None
+            and dependency_change(deps, include_paths, artifact_mtime) is None
         )
 
     # Fresh artifacts found elsewhere on the search path (e.g. next to the source, from a standalone

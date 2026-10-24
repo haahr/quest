@@ -24,6 +24,7 @@ from quest.codegen import compile_c_to_object, link_objects
 from quest.codegen.backend import implicit_imports, program_to_c
 from quest.types.env import Environment
 from quest.syntax.grammar import parse_quest_program
+from quest.modules.interface_compiler import indirect_interface_refs
 from quest.modules.loader import load_interface
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import (
@@ -297,7 +298,8 @@ class BuildEngine:
             source=str(main_file.resolve()),
             object=str(o_path.resolve()),
             imported_modules=imported_modules,
-            imported_interfaces=imported_interfaces,
+            imported_interfaces=imported_interfaces
+            + indirect_interface_refs(imported_interfaces, env.include_paths, env.program_dir),
         )
         self.logger.log("WRITE QM", str(qm_path))
         write_qm(manifest, qm_path)

@@ -43,6 +43,11 @@ def _normalize_qi(text: str) -> str:
     # The recorded source is an absolute path; keep only its location within the inputs.
     if value.get("source"):
         value["source"] = Path(value["source"]).relative_to(INPUTS_DIR.resolve()).as_posix()
+    # So are the directories and sources of the interfaces it depends on.
+    for dep in value.get("deps", []):
+        for key in ("dir", "source"):
+            if dep.get(key):
+                dep[key] = Path(dep[key]).relative_to(INPUTS_DIR.resolve()).as_posix()
     return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
 

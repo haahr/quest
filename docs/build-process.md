@@ -211,6 +211,10 @@ interface-to-module contracts or semantic metadata.
 A `.qi` file contains the complete type signature of an interface:
 - Canonical interface name and declaring source path.
 - List of imported interfaces.
+- The interfaces it depends on (`deps`): those it imports, those they import, and so on, each with the path as
+  written, the directory of the interface that imports it (the path was resolved from there, by sibling search,
+  before the include paths), and the source it resolved to. They make the `.qi` stale when one of them changes
+  (§5, Rule 1).
 - Exported type declarations (abstract types, manifest definitions, records, variants, options).
 - Exported value signatures and parameter modes (`val`, `var`, `out`).
 
@@ -241,6 +245,9 @@ A `.qm` file records the build manifest for an implementation module or main rou
 - `imported_interfaces`: Array of imported interfaces with canonical names, source paths, timestamps, and the
   interface path the importer resolved (for a module, including the interface it implements):
   `[ { "name": "util/Path", "source": "lib/util/path.int.quest", "mtime": 1727891234, "path": "util/Path" }, ... ]`.
+  It also lists the interfaces the unit depends on through those interfaces' imports (§7.2), each with `dir`, the
+  directory of the interface that imports it, which its path is resolved from; for the unit's own imports `dir` is
+  absent or empty and the path is resolved from the unit's directory.
 
 The recorded paths let a later build check that each import still resolves to the recorded source (§7.1, rule 4).
 
@@ -298,6 +305,9 @@ The compiler applies three strict rules in order:
    - If `I.qi` and `I.int.h` are both newer than or equal to `I.int.quest`, the artifacts are **up to date**.
    - In either case, if `I.qi` records a different source (`source`) than this `I.int.quest`, the artifacts belong to
      another interface with the same canonical name (§3.2) and are **out of date**.
+   - They are also **out of date** if an interface `I` depends on (its `deps`, §4.2) has a source newer than `I.qi` or
+     `I.int.h`, or would now resolve to a different source. `I`'s signatures and generated header use the types of
+     the interfaces it imports, so they change with them.
 
 2. **Rule 2 (Source Present, Artifacts Incomplete):**
    If `I.int.quest` exists but either `I.qi` or `I.int.h` is missing from `.build/`, the artifacts are **out of date**.
@@ -619,6 +629,15 @@ A critical flaw in naive separate compilation systems is the *Fragile Interface 
 **Resolution:** When inspecting an existing `.qm` file during staleness checking, the compiler checks the datestamps
 of all interfaces recorded in `imported_interfaces`. If any interface source (`I.int.quest`) is newer than `M.qm`,
 unit `M` is deemed **stale** and recompiled against the updated interface.
+
+The interfaces recorded are not only those `M` imports but also those they import, transitively: if `M` imports
+only `Helper`, and `Helper` imports `Base` and uses `Base`'s type `T` in its signatures, then `M` is compiled against
+`Base` as well. Changing `T` from `Int` to `Real` changes `Helper`'s C signatures without touching `M`'s or `Helper`'s
+source. If `M` were not rebuilt, its object would still call `Helper`'s functions with integer arguments and results
+while the rebuilt `Helper` module uses doubles, a mismatch that links and then computes wrong values. Rebuilding the
+modules that import `Base` directly does not help, since a rebuilt module does not make its importers stale; only
+recording `Base` in `M.qm` does. Rule 4 of §7.1 likewise resolves these indirect imports again, from the directory
+of the interface that imports them.
 
 ### 7.3. One Build Path for Full Builds and Pipeline C Phases
 The driver produces native code from a main routine in two ways: the **full build** (`questc main.quest -o app`,

@@ -643,6 +643,111 @@ class TestImportsResolvedAgain(unittest.TestCase):
         self.assertFalse(fresh("h3"))
 
 
+class TestIndirectlyImportedInterfaces(unittest.TestCase):
+    """A unit depends on the interfaces its imported interfaces import, not just on those it imports itself.
+
+    The module user (in lib/) imports only Helper, whose interface imports Base and uses Base's manifest type T in
+    its signatures. Changing T from Int to Real changes Helper's C signatures without touching user's or Helper's
+    sources; a user.o compiled against the old ones then calls helper.o with the wrong C types, a silent wrong
+    answer (on arm64 it prints 2.5: the value user keeps in an integer register is not the one helper returned).
+    """
+
+    BASE = {
+        "Int": (
+            "interface Base export Def T = Int one(): T two(): T pair(x: T y: T): String end;\n",
+            "module base : Base import conv: Conv export\n"
+            "    Def T = Int; let one(): T = 1; let two(): T = 2; let pair(x: T y: T): String = conv.int(x);\n"
+            "end;\n",
+        ),
+        "Real": (
+            "interface Base export Def T = Real one(): T two(): T pair(x: T y: T): String end;\n",
+            "module base : Base import conv: Conv export\n"
+            "    Def T = Real; let one(): T = 1.25; let two(): T = 2.5; let pair(x: T y: T): String = conv.real(x);\n"
+            "end;\n",
+        ),
+    }
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.build_dir = self.root / ".build"
+        self.lib = self.root / "lib"
+        for d in ("prog", "lib", "b1", "b2"):
+            (self.root / d).mkdir()
+        (self.lib / "helper.int.quest").write_text(
+            "interface Helper import base: Base export one(): base.T two(): base.T pair(x: base.T y: base.T): String"
+            " end;\n",
+            encoding="utf-8",
+        )
+        (self.lib / "helper.mod.quest").write_text(
+            "module helper : Helper import base: Base export\n"
+            "    let one(): base.T = base.one(); let two(): base.T = base.two();\n"
+            "    let pair(x: base.T y: base.T): String = base.pair(x y);\n"
+            "end;\n",
+            encoding="utf-8",
+        )
+        (self.lib / "user.int.quest").write_text("interface User export show(): String end;\n", encoding="utf-8")
+        (self.lib / "user.mod.quest").write_text(
+            "module user : User import helper: Helper export\n"
+            "    let show(): String = begin let a = helper.one(); let b = helper.two(); helper.pair(a b) end;\n"
+            "end;\n",
+            encoding="utf-8",
+        )
+        self.main_file = self.root / "prog" / "main.quest"
+        self.main_file.write_text(
+            "import user: User;\nimport writer: Writer;\nwriter.putString(writer.output user.show());\n",
+            encoding="utf-8",
+        )
+        self._write_base(self.lib, "Int")
+        self._write_base(self.root / "b1", "Int")
+        self._write_base(self.root / "b2", "Real")
+        past = time.time() - 60
+        for src in self.root.rglob("*.quest"):
+            os.utime(src, (past, past))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _write_base(self, d: Path, t: str) -> None:
+        interface_text, module_text = self.BASE[t]
+        (d / "base.int.quest").write_text(interface_text, encoding="utf-8")
+        (d / "base.mod.quest").write_text(module_text, encoding="utf-8")
+
+    def _build(self, include_paths: list[Path]) -> tuple[list[str], str]:
+        engine = BuildEngine(
+            build_dir=self.build_dir, include_paths=include_paths, log_file=self.build_dir / "build.log"
+        )
+        res = engine.build_main(self.main_file)
+        proc = subprocess.run([str(res.output_binary)], stdout=subprocess.PIPE, text=True)
+        self.assertEqual(proc.returncode, 0)
+        return res.compiled_units, proc.stdout
+
+    def test_edit_to_indirectly_imported_interface_rebuilds_importers(self) -> None:
+        self.assertEqual(self._build([self.lib])[1], "1")
+        self._write_base(self.lib, "Real")
+        units, out = self._build([self.lib])
+        self.assertIn("user", units)
+        self.assertEqual(out, "1.25")
+        self.assertIn("QReal", (self.build_dir / "helper.int.h").read_text(encoding="utf-8"))
+        self.assertEqual(self._build([self.lib])[0], [])
+
+    def test_indirectly_imported_interface_resolving_elsewhere(self) -> None:
+        # lib/ has its own Base; remove it so that -I b1 or -I b2 supplies Base.
+        for name in ("base.int.quest", "base.mod.quest"):
+            (self.lib / name).unlink()
+        self.assertEqual(self._build([self.lib, self.root / "b1"])[1], "1")
+        units, out = self._build([self.lib, self.root / "b2"])
+        self.assertIn("user", units)
+        self.assertEqual(out, "1.25")
+
+    def test_interface_artifacts_rebuilt_when_an_import_changes(self) -> None:
+        qi, h, _ = ensure_interface_artifacts("Helper", self.lib, [self.lib], self.build_dir)
+        self.assertIn("QInt", h.read_text(encoding="utf-8"))
+        self._write_base(self.lib, "Real")
+        qi, h, _ = ensure_interface_artifacts("Helper", self.lib, [self.lib], self.build_dir)
+        self.assertIn("QReal", h.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

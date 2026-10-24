@@ -11,8 +11,10 @@ name mangling, and artifact freshness checking:
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -31,6 +33,60 @@ UNIT_SUFFIXES = (".int.quest", ".mod.quest", ".qi", ".o")
 # Each directory and file name in a canonical name; anything else could not be mangled into C identifiers
 # unambiguously (docs/modules.md §2.3, docs/name-mangling.md §4.1).
 _NAME_COMPONENT = re.compile(r"[A-Za-z0-9]+")
+
+
+@dataclass(frozen=True)
+class InterfaceDependency:
+    """An interface that an interface imports, directly or through the interfaces it imports.
+
+    path is the interface path as written in the importing interface, dir the importing interface's directory (the
+    path was resolved from it, by sibling search, before the include paths), and source the .int.quest it resolved
+    to, or "" if none (a builtin or prebuilt interface). A .qi records the dependencies of its interface, so that it
+    is stale when one of them changes or would resolve elsewhere (docs/build-process.md §5, Rule 1).
+    """
+    path: str
+    dir: str
+    source: str
+
+
+def _same_file(found: Optional[Path], recorded: str) -> bool:
+    """True if found, a resolved source or None, is the file recorded ("" for none)."""
+    if found is None or not recorded:
+        return found is None and not recorded
+    return found.resolve() == Path(recorded).resolve()
+
+
+def recorded_dependencies(qi_path: Path) -> Optional[list[InterfaceDependency]]:
+    """The interface dependencies a .qi records, or None if it cannot be read or records none."""
+    try:
+        data = json.loads(Path(qi_path).read_text(encoding="utf-8"))
+        deps = data["value"]["deps"]
+        return [InterfaceDependency(path=d["path"], dir=d["dir"], source=d["source"]) for d in deps]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def dependency_change(
+    deps: list[InterfaceDependency], include_paths: list[Path], artifact_mtime: float
+) -> Optional[str]:
+    """Says how an interface's recorded dependencies changed since an artifact built from them, or returns None.
+
+    A dependency changed if its path would now resolve to a different source (from the directory recorded with it,
+    then include_paths), or if its source is newer than the artifact.
+    """
+    for dep in deps:
+        src = resolve_interface_source_file(dep.path, Path(dep.dir) if dep.dir else None, include_paths)
+        if not _same_file(src, dep.source):
+            return f"interface '{dep.path}' now resolves to {src or 'no source'}, not {dep.source or 'no source'}"
+        if src is not None and src.stat().st_mtime > artifact_mtime:
+            return f"imported interface {src} is newer"
+    return None
+
+
+def _dependencies_unchanged(qi_path: Path, include_paths: list[Path]) -> bool:
+    """True if a .qi records its interface's dependencies and none has changed since it was built."""
+    deps = recorded_dependencies(qi_path)
+    return deps is not None and dependency_change(deps, include_paths, qi_path.stat().st_mtime) is None
 
 
 def strip_unit_suffix(filename: str) -> str:
@@ -124,19 +180,15 @@ def import_resolution_change(
     Each interface and module path the unit imported is resolved again as the unit's compilation resolves it (from
     the unit's directory current_dir, then include_paths) and canonicalized against the same roots. A different
     source file or canonical name (after a change of include paths, or a new file earlier on the search path) means
-    the unit was compiled against other code than it would be now (docs/build-process.md §7.1). Imports recorded
-    without a path (by manifests that predate recording it) cannot be checked and are skipped.
+    the unit was compiled against other code than it would be now (docs/build-process.md §7.1). An interface the
+    unit depends on through another interface's imports is resolved from that interface's directory, recorded with
+    it. Imports recorded without a path (by manifests that predate recording it) cannot be checked and are skipped.
     """
-    def same_file(found: Optional[Path], recorded: str) -> bool:
-        if found is None or not recorded:
-            return found is None and not recorded
-        return found.resolve() == Path(recorded).resolve()
-
     for iface in manifest.imported_interfaces:
         if not iface.path:
             continue
-        src = resolve_interface_source_file(iface.path, current_dir, include_paths)
-        if not same_file(src, iface.source):
+        src = resolve_interface_source_file(iface.path, Path(iface.dir) if iface.dir else current_dir, include_paths)
+        if not _same_file(src, iface.source):
             return f"interface '{iface.path}' now resolves to {src or 'no source'}, not {iface.source or 'no source'}"
         canon = canonicalize_interface_name(src, include_paths, iface.path, program_dir)
         if canon != iface.name:
@@ -145,7 +197,7 @@ def import_resolution_change(
         if not mod.path:
             continue
         src = resolve_module_file(mod.path, current_dir, include_paths)
-        if not same_file(src, mod.source):
+        if not _same_file(src, mod.source):
             return f"module '{mod.path}' now resolves to {src or 'no source'}, not {mod.source or 'no source'}"
         canon = canonicalize_module_name(src, include_paths, mod.path, program_dir)
         if canon != mod.name:
@@ -191,6 +243,7 @@ def resolve_interface_file(
             has_current_abi(qi_candidate)
             and qi_candidate.stat().st_mtime >= source_mtime
             and built_from(qi_candidate, source_file)
+            and _dependencies_unchanged(qi_candidate, include_paths)
         ):
             return qi_candidate.resolve()
 

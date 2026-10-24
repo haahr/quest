@@ -32,6 +32,7 @@ from quest.modules.manifest import (
 from quest.types.env import Environment
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_module
+from quest.modules.interface_compiler import indirect_interface_refs
 from quest.modules.loader import load_interface
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
@@ -249,7 +250,8 @@ def compile_module(
         source=str(source_file.resolve()) if source_file else "",
         object=str(o_file.resolve()),
         imported_modules=imported_modules,
-        imported_interfaces=imported_interfaces,
+        imported_interfaces=imported_interfaces
+        + indirect_interface_refs(imported_interfaces, env.include_paths, env.program_dir),
     )
     write_qm(manifest, qm_file)
 

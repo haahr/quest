@@ -35,12 +35,15 @@ class ImportedInterfaceRef:
     """Reference to an imported interface: its canonical name, source file, and timestamp.
 
     path is the interface path the importer resolved (as written in its import), so that a later build can check
-    that it still resolves to the same file.
+    that it still resolves to the same file. dir is "" for an interface the unit imports itself (resolved from the
+    unit's directory), and otherwise, for an interface the unit depends on through an imported interface's
+    imports, the directory of the interface that imports it, which the path was resolved from.
     """
     name: str
     source: str
     mtime: float
     path: str = ""
+    dir: str = ""
 
 
 @dataclass
@@ -85,6 +88,7 @@ class ModuleManifest:
                 source=i.get("source", ""),
                 mtime=float(i.get("mtime", 0.0)),
                 path=i.get("path", ""),
+                dir=i.get("dir", ""),
             )
             for i in data.get("imported_interfaces", [])
         ]
