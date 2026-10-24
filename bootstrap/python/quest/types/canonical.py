@@ -107,6 +107,72 @@ def unfold_recursive(
     return t if isinstance(t, kinds) else None
 
 
+# Reduced forms by the id of the type node, kept with the node so that its id is not reused
+_NORMALIZED: dict[int, tuple[QType, QType]] = {}
+
+
+def normalize_type(t: QType) -> QType:
+    """t with its outermost constructor exposed, which shapes are built from (ir/shapes.py): aliases stripped, a
+    recursive type replaced by its unfolding, and an application of a type operator by its reduction. An application
+    that reduces to a recursive type is replaced by the unfolding when that is a constructed type, and otherwise by
+    the application's lazy evaluation when that is a tuple or record type; an application of an abstract type
+    operator stays as it is."""
+    t = t.prune() if hasattr(t, "prune") else t
+    if getattr(t, "_has_meta", True):
+        return _normalize_uncached(t)
+    entry = _NORMALIZED.get(id(t))
+    if entry is None or entry[0] is not t:
+        entry = (t, _normalize_uncached(t))
+        _NORMALIZED[id(t)] = entry
+    return entry[1]
+
+
+def _normalize_uncached(t: QType) -> QType:
+    t = strip_aliases(t)
+    if isinstance(t, (QRecType, QRecGroupType)):
+        unfolded = unfold_recursive(t, None)
+        if unfolded is not None:
+            return unfolded
+    if isinstance(t, QTypeApp):
+        unfolded = unfold_recursive(t)
+        if unfolded is not None:
+            return unfolded
+        reduced = beta_reduce_head(t)
+        if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
+            return reduced
+        evaled = t.evaluate_lazily()
+        if evaled is not t and isinstance(evaled, (QTupleType, QRecordType)):
+            return evaled
+    return t
+
+
+def resolve_type_bound(t: QType) -> QType:
+    """t, or for a type variable, abstract type, or path type bounded by POWER(T), the type its bounds resolve to."""
+    curr = t.prune() if hasattr(t, "prune") else t
+    curr = strip_aliases(curr)
+    visited = set()
+    while isinstance(curr, (QTypeVar, QAbstractType, QPathType)) and isinstance(curr.bound, QPowerKind):
+        sym_id = getattr(curr, "symbol_id", id(curr))
+        if sym_id in visited:
+            break
+        visited.add(sym_id)
+        curr = curr.bound.bound
+        curr = curr.prune() if hasattr(curr, "prune") else curr
+    return curr
+
+
+def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], QType]:
+    """The universal quantifiers wrapping a function type (a recursive one, through its unfolding), and the type they
+    quantify, as written: their symbols are those the type's own parts refer to, where a shape's are those of its
+    canonical form (ir/shapes.py)."""
+    quants: tuple[QQuantifier, ...] = ()
+    curr = normalize_type(fun_type)
+    while isinstance(curr, QAllType):
+        quants = quants + curr.quantifiers
+        curr = normalize_type(curr.body)
+    return quants, curr
+
+
 # ============================================================================
 # Canonical forms of recursive types
 # ============================================================================

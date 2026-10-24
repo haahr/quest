@@ -18,7 +18,7 @@ Typed AST (TypedProgram, or a module file's TypedModule)
            v  ir/lower.py: Core IR (ANF with join points)
            v  ir/specialize.py, ir/closure.py, ir/represent.py: the passes (ir.md §8)
            |
-+-----------------------+      layout.py, canonical.py, descriptors.py, symbols.py (shared by backends)
++-----------------------+      layout.py, descriptors.py, symbols.py (shared by backends)
 |   c/printer.py        | <--- c/types.py: C spellings; c/declarations.py: structs, tables, descriptors
 |   (CPrinter)          |      Prints what the passes decided: no representation decisions of its own
 +-----------------------+
@@ -35,11 +35,11 @@ Typed AST (TypedProgram, or a module file's TypedModule)
 ### Module Structure (`bootstrap/python/quest/codegen/`)
 What every backend shares, since a backend's units use the C runtime and link with the C backend's:
 - **`backend.py`:** The IR's passes after lowering (`run_passes`), and the modules a unit uses without importing them.
-- **`layout.py`:** How values are laid out: types' normalized forms, layout tags (which name structs and descriptors),
-  type digests and identity keys, representations (`representation`, named by the runtime's C types, and
-  `signature_representation` for calls), and whether generic code's layout agrees with the native one
-  (`generic_layout_agrees`). The IR's represent pass decides its plans from these.
-- **`canonical.py`:** Reduced types and the canonical forms of recursive types (`canonical_type`).
+- **`layout.py`:** How values are laid out, computed from shapes (`ir/shapes.py`) and cached per shape: layout tags
+  (which name structs and descriptors), type digests and identity keys, representations (`representation`, named by
+  the runtime's C types, and `signature_representation` for calls), and whether generic code's layout agrees with the
+  native one (`generic_layout_agrees`). The IR's represent pass decides its plans from these. Reduced types and the
+  canonical forms of recursive types, which shapes are built from, are `types/canonical.py`'s.
 - **`descriptors.py`:** Runtime descriptors' type-level forms: placeholders for bound type parameters and template
   holes, and the canonical function and auto types that descriptors compare.
 - **`symbols.py`:** The names units link against (identifier and module mangling).

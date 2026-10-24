@@ -23,9 +23,8 @@ from quest.codegen.c.types import (
     tuple_type_components,
 )
 from quest.codegen.descriptors import fun_descriptor_tag
+from quest.types.canonical import collect_fun_quantifiers, normalize_type
 from quest.codegen.layout import (
-    collect_fun_quantifiers,
-    normalize_type,
     option_struct_name,
     tuple_struct_name,
     type_tag,

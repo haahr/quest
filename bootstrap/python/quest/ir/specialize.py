@@ -15,7 +15,8 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 from typing import Any, Optional
 
-from quest.codegen.layout import collect_fun_quantifiers, type_identity_key
+from quest.codegen.layout import type_identity_key
+from quest.types.canonical import collect_fun_quantifiers
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import statement_bodies

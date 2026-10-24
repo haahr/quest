@@ -10,7 +10,10 @@ written, are one type; shapes are cached per canonical type, so equal types have
 type's shape is a cycle: the shape of List(Int) is an option whose cons payload's tail is that same shape. Shapes are
 built once and not changed afterwards.
 
-Each shape keeps the canonical type it describes (`type`), from which later stages take C names and descriptors.
+Each shape keeps the canonical type it describes (`type`), from which later stages take C names and descriptors, and
+the type whose outermost constructor it describes (`structure`: the unfolding of a recursive type, and otherwise
+`type` itself). Canonical forms name their binders afresh (types/canonical.py), so the type parameters of a shape's
+polymorphic function or auto type are not those of the type it was asked for, whose parts refer to its own.
 """
 
 from __future__ import annotations
@@ -18,8 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator, Optional
 
-from quest.types.canonical import canonical_type
-from quest.codegen.layout import is_word_type, normalize_type
+from quest.types.canonical import canonical_type, normalize_type, resolve_type_bound
 from quest.types import (
     QAbstractType,
     QAliasType,
@@ -42,6 +44,7 @@ from quest.types import (
     QTupleType,
     QType,
     QTypeApp,
+    QTypeFun,
     QTypeVar,
     QVariantType,
     QVarType,
@@ -50,6 +53,8 @@ from quest.types import (
     INT_TYPE,
     REAL_TYPE,
     STRING_TYPE,
+    resolve_metas,
+    short_type_name,
     strip_aliases,
 )
 
@@ -57,7 +62,7 @@ from quest.types import (
 SCALAR_KINDS = ("int", "real", "bool", "char", "string", "ok", "word", "bottom")
 KINDS = SCALAR_KINDS + (
     "tuple", "record", "variant", "option", "array", "cell", "out", "fun", "all", "auto", "exception", "typevar",
-    "abstract", "external",
+    "abstract", "external", "operator",
 )
 
 
@@ -98,18 +103,21 @@ class Shape:
       module or interface (m.T, declared T::K in the interface), which have the same representation and are told
       apart by symbol where it matters (a type parameter's descriptor is passed to its function); `bound` is the
       shape of its POWER bound, if any;
-    - `name`: abstract (an abstract type of a module, an application of an abstract operator, or a path type) and
-      external (an opaque C type).
+    - `name`: abstract (an abstract type of a module, an application of an abstract operator, or a path type, by its
+      short name) and external (an opaque C type).
+
+    An `operator` shape is a type operator's (Fun(X::K) T), passed for a higher-kinded type parameter: opaque.
     """
 
     __slots__ = (
-        "kind", "type", "components", "cases", "element", "params", "result", "type_params", "body", "symbol_id",
-        "bound", "name",
+        "kind", "type", "structure", "components", "cases", "element", "params", "result", "type_params", "body",
+        "symbol_id", "bound", "name",
     )
 
     def __init__(self, kind: str, t: QType) -> None:
         self.kind = kind
         self.type = t
+        self.structure = t
         self.components: tuple[Component, ...] = ()
         self.cases: tuple[Component, ...] = ()
         self.element: Optional[Shape] = None
@@ -124,6 +132,11 @@ class Shape:
     @property
     def is_scalar(self) -> bool:
         return self.kind in SCALAR_KINDS
+
+    @property
+    def is_recursive(self) -> bool:
+        """Whether this is the shape of a recursive type (whose structure is its unfolding's)."""
+        return isinstance(self.type, (QRecType, QRecGroupType))
 
     def component(self, name: str) -> Optional[Component]:
         return next((c for c in self.components if c.name == name), None)
@@ -161,15 +174,40 @@ _SCALARS = {
 # node so that its id is not reused
 _SHAPES: dict[int, tuple[QType, Shape]] = {}
 
+# The shapes of the types asked for (shape), by the id of the type node
+_ASKED: dict[int, tuple[QType, Shape]] = {}
+
 
 def shape(t: QType) -> Shape:
     """The shape of a type (which must not contain unsolved metavariables)."""
     t = t.prune() if hasattr(t, "prune") else t
+    entry = _ASKED.get(id(t))
+    if entry is not None and entry[0] is t:
+        return entry[1]
     if getattr(t, "_has_meta", False):
-        raise ValueError(f"the type {t} has unsolved metavariables and no shape")
-    t = strip_aliases(t)
-    canonical = canonical_type(t)
-    return _shape(canonical if canonical is not None else t)
+        # Solved metavariables stand for their solutions, which are cached; the type itself is not
+        resolved = resolve_metas(t)
+        if getattr(resolved, "_has_meta", False):
+            raise ValueError(f"the type {t} has unsolved metavariables and no shape")
+        return shape(resolved)
+    stripped = strip_aliases(t)
+    canonical = canonical_type(stripped)
+    s = _shape(canonical if canonical is not None else stripped)
+    _ASKED[id(t)] = (t, s)
+    return s
+
+
+def is_word_type(t: QType) -> bool:
+    """Whether t is the standard library's Word.T (or a type parameter bounded by it), whose values are held in a
+    uint64_t."""
+    t = normalize_type(resolve_type_bound(t))
+    if isinstance(t, QTypeVar) and t.name in ("Word.T", "word.T"):
+        return True
+    if isinstance(t, QPathType) and t.field_name == "T" and t.root_name in ("Word", "word"):
+        return True
+    if isinstance(t, QExternalType) and (t.name in ("Word.T", "word.T") or t.c_type == "uint64_t"):
+        return True
+    return False
 
 
 def _cached(t: QType) -> Optional[Shape]:
@@ -260,15 +298,17 @@ def _build(t: QType) -> Shape:
         case QAbstractType(bound=bound) | QPathType(bound=bound):
             # An abstract type elaborated as such, or a path type (x.T): opaque, with its bound
             s = Shape("abstract", t)
-            s.name = str(t)
+            s.name = short_type_name(t)
             s.bound = _kind_bound(bound)
         case QTypeApp():
             # An application of an abstract type operator (normalize_type reduced every other): opaque
             s = Shape("abstract", t)
-            s.name = str(t)
+            s.name = short_type_name(t)
         case QExternalType(c_type=c_type):
             s = Shape("external", t)
             s.name = c_type
+        case QTypeFun():
+            s = Shape("operator", t)
         case _:
             raise ValueError(f"the type {t} ({type(t).__name__}) has no shape")
     return s

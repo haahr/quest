@@ -32,13 +32,12 @@ from quest.codegen.c.types import (
     record_struct_name,
     RecordNamingContext,
 )
+from quest.types.canonical import collect_fun_quantifiers, normalize_type
 from quest.codegen.layout import (
-    collect_fun_quantifiers,
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
     is_word_type,
-    normalize_type,
     option_struct_name,
     qtype_to_name_str,
     tuple_struct_name,

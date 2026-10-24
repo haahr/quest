@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
-from quest.types.canonical import canonical_type
+from quest.types.canonical import canonical_type, normalize_type, resolve_type_bound
 from quest.codegen.descriptors import (
     bound_var_index,
     canonical_auto_type,
@@ -17,11 +17,9 @@ from quest.codegen.descriptors import (
 from quest.codegen.layout import (
     PRINTED_TEXT_LIMIT,
     is_word_type,
-    normalize_type,
     option_struct_name,
     printed,
     representation,
-    resolve_type_bound,
     text_digest,
     tuple_struct_name,
     type_digest,

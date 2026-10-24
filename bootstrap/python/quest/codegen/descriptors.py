@@ -7,7 +7,8 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Optional
 
-from quest.codegen.layout import normalize_type, type_digest
+from quest.codegen.layout import type_digest
+from quest.types.canonical import normalize_type
 from quest.types import (
     strip_aliases,
     QAllType,

@@ -14,9 +14,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
 from quest.types import canonical
-from quest.types.canonical import canonical_type
+from quest.types.canonical import canonical_type, normalize_type
 from quest.codegen.c.types import descriptor_form, qtype_to_c_type
-from quest.codegen.layout import normalize_type, tuple_struct_name, type_tag
+from quest.codegen.layout import tuple_struct_name, type_tag
 from quest.types import (
     BOOL_TYPE,
     INT_TYPE,

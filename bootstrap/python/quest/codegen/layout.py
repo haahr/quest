@@ -1,34 +1,25 @@
-"""How values are laid out, for every backend (docs/c-representation.md): each type's normalized form, its layout's
-tag (which names its struct and descriptor), digests and identity keys of types, and its representation, the
-runtime's (runtime/quest_runtime.h): a scalar, a QVal word, a 16-byte record or variant value, or a pointer (to a
-tuple's or option's struct, a closure, an array, ...). Representations are named by the runtime's C types, which a
-native backend lays out as C does, to share the runtime and link with C units. Also whether generic code's layout of
-a type agrees with the native one (generic_layout_agrees)."""
+"""How values are laid out, for every backend (docs/c-representation.md), computed from shapes (ir/shapes.py) and
+cached per shape: each type's layout tag (which names its struct and descriptor), digests and identity keys of types,
+and its representation, the runtime's (runtime/quest_runtime.h): a scalar, a QVal word, a 16-byte record or variant
+value, or a pointer (to a tuple's or option's struct, a closure, an array, ...). Representations are named by the
+runtime's C types, which a native backend lays out as C does, to share the runtime and link with C units. Also
+whether generic code's layout of a type agrees with the native one (generic_layout_agrees)."""
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any, Optional
 
-from quest.types.canonical import (
-    SELF_NAMED,
-    beta_reduce_head,
-    canonical_type,
-    is_rec_self_symbol,
-    rec_self_level,
-    rec_self_var,
-    unfold_recursive,
-)
+from quest.ir.shapes import Shape, shape
+from quest.types.canonical import is_rec_self_symbol, rec_self_level, rec_self_var
 from quest.types import (
-    QAliasType,
-    strip_aliases,
     BOOL_TYPE,
     CHAR_TYPE,
     INT_TYPE,
     OK_TYPE,
     REAL_TYPE,
     STRING_TYPE,
-    QAbstractType,
+    QAliasType,
     QAllKind,
     QAllType,
     QArrayType,
@@ -38,7 +29,8 @@ from quest.types import (
     QFunType,
     QOptionField,
     QOptionType,
-    QPathType,
+    QOutType,
+    QParam,
     QPowerKind,
     QQuantifier,
     QRecGroupType,
@@ -55,185 +47,228 @@ from quest.types import (
     QTypeFun,
     QTypeVar,
     QVarType,
-    QOutType,
     QVariantField,
     QVariantType,
-    resolve_record_bound,
-    resolve_variant_bound,
-    resolve_option_bound,
-    is_type_equal,
     auto_payload_type,
-    QParam,
+    is_type_equal,
 )
 
 
-def _normalize_type_raw(t: QType) -> QType:
-    t = t.prune() if hasattr(t, "prune") else t
-    t = strip_aliases(t)
-    if isinstance(t, (QRecType, QRecGroupType)):
-        unfolded = unfold_recursive(t, None)
-        if unfolded is not None:
-            return unfolded
-    if isinstance(t, QTypeApp):
-        unfolded = unfold_recursive(t)
-        if unfolded is not None:
-            return unfolded
-        reduced = beta_reduce_head(t)
-        if not isinstance(reduced, (QTypeApp, QRecType, QRecGroupType)):
-            return reduced
-        evaled = t.evaluate_lazily()
-        if evaled is not t and isinstance(evaled, (QTupleType, QRecordType)):
-            return evaled
-    return t
+# ============================================================================
+# Layouts of shapes
+# ============================================================================
+#
+# A type's layout (its tag and representation) depends only on its shape, and shapes are built once per canonical
+# type, so each layout is computed once per shape and kept for the whole process.
 
 
-def resolve_type_bound(t: QType) -> QType:
-    """Unwraps upper bounds for path types and type variables bounded by POWER(T)."""
-    curr = t.prune() if hasattr(t, "prune") else t
-    curr = strip_aliases(curr)
-    visited = set()
-    while isinstance(curr, (QTypeVar, QAbstractType, QPathType)) and isinstance(curr.bound, QPowerKind):
-        sym_id = getattr(curr, "symbol_id", id(curr))
-        if sym_id in visited:
-            break
-        visited.add(sym_id)
-        curr = curr.bound.bound
-        curr = curr.prune() if hasattr(curr, "prune") else curr
-    return curr
+_UNSET = object()
 
 
-def _is_word_type_raw(t: QType) -> bool:
-    t = t.prune() if hasattr(t, "prune") else t
-    t = resolve_type_bound(t)
-    t = _normalize_type_raw(t)
-    if isinstance(t, QTypeVar) and t.name in ("Word.T", "word.T"):
-        return True
-    if isinstance(t, QPathType) and t.field_name == "T" and t.root_name in ("Word", "word"):
-        return True
-    if isinstance(t, QExternalType) and (t.name in ("Word.T", "word.T") or t.c_type == "uint64_t"):
-        return True
-    return False
+class Layout:
+    """The layout of one shape; each part is computed on first use."""
+
+    __slots__ = ("shape", "_tag", "_representation")
+
+    def __init__(self, s: Shape) -> None:
+        self.shape = s
+        self._tag = self._representation = _UNSET
+
+    @property
+    def tag(self) -> str:
+        if self._tag is _UNSET:
+            raw = _shape_tag(self.shape)
+            if len(raw) > 64:
+                digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+                raw = f"{raw[:24]}_{digest}"
+            self._tag = raw
+        return self._tag
+
+    @property
+    def representation(self) -> str:
+        if self._representation is _UNSET:
+            self._representation = _shape_representation(self.shape)
+        return self._representation
 
 
-def _type_tag_uncached(t: QType) -> str:
-    raw = _type_tag_raw(t)
-    if len(raw) > 64:
-        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-        return f"{raw[:24]}_{digest}"
-    return raw
+# Layouts by the id of their shape (shapes are kept for the whole process, so ids are not reused)
+_LAYOUTS: dict[int, Layout] = {}
 
 
-def _recursive_tag(t: QType) -> Optional[str]:
-    """Returns the tag of a recursive type whose unfolding's tag is built from its parts' tags (SELF_NAMED), or None
-    otherwise.
+def layout_of(s: Shape) -> Layout:
+    """The layout of a shape, shared by every type of that shape."""
+    entry = _LAYOUTS.get(id(s))
+    if entry is None:
+        entry = _LAYOUTS[id(s)] = Layout(s)
+    return entry
 
-    The tag names the recursive type itself rather than its unfolding, whose tag would contain the tag being defined.
+
+def resolved_shape(s: Shape) -> Shape:
+    """s, or for a type variable or abstract type bounded by POWER(T), the shape its bounds resolve to: generic code
+    holds a value of a bounded type parameter as a value of its bound."""
+    seen: set[int] = set()
+    while s.kind in ("typevar", "abstract") and s.bound is not None and id(s) not in seen:
+        seen.add(id(s))
+        s = s.bound
+    return s
+
+
+def is_word_type(t: QType) -> bool:
+    """Returns True if t is the standard library Word.T type."""
+    return shape(t).kind == "word"
+
+
+def representation(t: QType) -> str:
+    """The representation of a value of t, named by the runtime's C type for it (`QInt`, `QVal`, `QRecordVal`, a
+    tuple's struct pointer `QTuple_Int_Real *`, ...): values of types with the same representation are laid out
+    alike."""
+    return layout_of(shape(t)).representation
+
+
+def type_tag(t: QType) -> str:
+    """Produces a deterministic, valid C identifier component for a QType."""
+    return layout_of(shape(t)).tag
+
+
+def shape_tag(s: Shape) -> str:
+    """The tag of the types of shape s (see type_tag)."""
+    return layout_of(s).tag
+
+
+def shape_representation(s: Shape) -> str:
+    """The representation of the values of shape s (see representation)."""
+    return layout_of(s).representation
+
+
+_SCALAR_TAGS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char", "string": "String", "ok": "Ok"}
+_SCALAR_REPRESENTATIONS = {
+    "int": "QInt", "real": "QReal", "bool": "QBool", "char": "QChar", "string": "QString *", "ok": "void",
+}
+
+
+def _recursive_tag(s: Shape) -> str:
+    """The tag of a recursive type whose unfolding's tag is built from its parts' tags (a tuple, record, variant,
+    option, array, cell, or auto type).
+
+    The tag names the recursive type itself rather than its unfolding, whose tag would contain the tag being defined:
+    its body, its variable replaced by a placeholder numbered by nesting depth, so that the tag is finite and the same
+    for alpha-equivalent types.
     """
-    if unfold_recursive(t, SELF_NAMED) is None:
-        return None
-    if isinstance(t, QTypeApp):
-        t = beta_reduce_head(t)
+    t = s.type
     level = sum(1 for sym in t._fv if is_rec_self_symbol(sym))
     if isinstance(t, QRecType):
         body = t.body.substitute({t.symbol_id: rec_self_var(level)})
         return f"Rec{level}_{type_tag(body)}"
-    if isinstance(t, QRecGroupType):
-        subst = {b[1]: rec_self_var(level + i) for i, b in enumerate(t.bindings)}
-        tags = [type_tag(b[3].substitute(subst)) for b in t.bindings]
-        return f"RecGroup{level}_{t.active_index}_" + "_".join(tags)
-    return None
+    subst = {b[1]: rec_self_var(level + i) for i, b in enumerate(t.bindings)}
+    tags = [type_tag(b[3].substitute(subst)) for b in t.bindings]
+    return f"RecGroup{level}_{t.active_index}_" + "_".join(tags)
 
 
+_SELF_NAMED_KINDS = ("tuple", "record", "variant", "option", "array", "cell", "out", "auto")
 _AGGREGATE_TAG_PREFIXES = ("QTuple_", "QRecord_", "QVariant_", "QOption_", "Auto_")
 
 
-def _element_tag(t: QType) -> str:
-    """The tag of a component type inside another type's tag: an aggregate's tag, which lists its own components,
+def _element_tag(s: Shape) -> str:
+    """The tag of a component's shape inside another type's tag: an aggregate's tag, which lists its own components,
     is closed with _end, so that tags of different nestings differ (Tuple (Tuple A Int) end and Tuple (Tuple A) Int
     end)."""
-    tag = type_tag(t)
+    tag = _component_tag(s)
     if tag.startswith(_AGGREGATE_TAG_PREFIXES) and not tag.endswith("_empty"):
         return f"{tag}_end"
     return tag
 
 
-def _type_tag_raw(t: QType) -> str:
-    t = t.prune() if hasattr(t, "prune") else t
-    t = strip_aliases(t)
-    t = resolve_type_bound(t)
-    if (self_level := rec_self_level(t)) is not None:
+def _component_tag(s: Shape) -> str:
+    # A component is named as its type is: a type containing recursion by its own canonical form, which a part of
+    # another type's canonical form need not be
+    return shape_tag(shape(s.type))
+
+
+def _shape_tag(s: Shape) -> str:
+    s = resolved_shape(s)
+    if s.kind == "typevar" and (self_level := rec_self_level(s.type)) is not None:
         return f"Self{self_level}"
-    if (canonical := canonical_type(t)) is not None:
+    if (canonical := shape(s.type)) is not s:
         # Equal types share a tag: a type containing recursion is named by its canonical form
-        return type_tag(canonical)
-    if (rec_tag := _recursive_tag(t)) is not None:
-        return rec_tag
-    t = _normalize_type_raw(t)
-    if _is_word_type_raw(t):
+        return shape_tag(canonical)
+    if s.is_recursive and s.kind in _SELF_NAMED_KINDS:
+        return _recursive_tag(s)
+    kind = s.kind
+    if kind == "word":
         return "Word"
-    if t is INT_TYPE:
-        return "Int"
-    if t is REAL_TYPE:
-        return "Real"
-    if t is BOOL_TYPE:
-        return "Bool"
-    if t is CHAR_TYPE:
-        return "Char"
-    if t is STRING_TYPE:
-        return "String"
-    if t is OK_TYPE:
-        return "Ok"
-    if isinstance(t, QExternalType):
+    if kind in _SCALAR_TAGS:
+        return _SCALAR_TAGS[kind]
+    if kind == "external":
+        t = s.type
         return t.name.replace(".", "_") if t.name else t.c_type.replace("*", "").strip()
-    if isinstance(t, QTypeVar) and t.name in ("Writer.T", "writer.T"):
+    if kind == "typevar" and s.name in ("Writer.T", "writer.T"):
         return "QWriter"
-    if isinstance(t, QTypeVar) and t.name in ("Reader.T", "reader.T"):
+    if kind == "typevar" and s.name in ("Reader.T", "reader.T"):
         return "QReader"
-    if isinstance(t, QTupleType):
-        tags = [_element_tag(f.type_val) for f in t.value_fields]
+    if kind == "tuple":
+        tags = [_element_tag(c.shape) for c in s.components]
         return "QTuple_" + ("_".join(tags) if tags else "empty")
-    if isinstance(t, QRecordType):
-        sorted_fields = sorted(t.fields, key=lambda f: f.name)
-        tags = [f"{f.name}_{_element_tag(f.type_val)}" for f in sorted_fields]
+    if kind == "record":
+        tags = [f"{c.name}_{_element_tag(c.shape)}" for c in s.sorted_components()]
         return "QRecord_" + ("_".join(tags) if tags else "empty")
-    if isinstance(t, (QFunType, QAllType)):
+    if kind in ("fun", "all"):
         return "QClosure"
-    if isinstance(t, (QVarType, QOutType)):
-        return f"Ref_{_element_tag(t.element_type)}"
-    if isinstance(t, (QTypeVar, QAbstractType, QPathType)):
-        return "QVal"
-    if isinstance(t, QArrayType):
-        return f"QArray_{_element_tag(t.element_type)}"
-    if isinstance(t, QVariantType):
-        tags = []
-        for v in t.variants:
-            if v.type_val:
-                tags.append(f"{v.name}_{_element_tag(v.type_val)}")
-            else:
-                tags.append(v.name)
-        return "QVariant_" + ("_".join(tags) if tags else "empty")
-    if isinstance(t, QExceptionType):
+    if kind in ("cell", "out"):
+        return f"Ref_{_element_tag(s.element)}"
+    if kind == "array":
+        return f"QArray_{_element_tag(s.element)}"
+    if kind in ("variant", "option"):
+        tags = [f"{c.name}_{_element_tag(c.shape)}" if c.shape is not None else c.name for c in s.cases]
+        return ("QVariant_" if kind == "variant" else "QOption_") + ("_".join(tags) if tags else "empty")
+    if kind == "exception":
         return "QException"
-    if isinstance(t, QAutoType):
-        return "Auto_" + type_tag(auto_payload_type(t))
-    if isinstance(t, QOptionType) or (opt_bound := resolve_option_bound(t)) is not None:
-        opt_t = t if isinstance(t, QOptionType) else opt_bound
-        tags = []
-        for o in opt_t.options:
-            if o.payload_type:
-                tags.append(f"{o.name}_{_element_tag(o.payload_type)}")
-            else:
-                tags.append(o.name)
-        return "QOption_" + ("_".join(tags) if tags else "empty")
+    if kind == "auto":
+        return "Auto_" + type_tag(auto_payload_type(s.structure))
+    return "QVal"
+
+
+def _shape_representation(s: Shape) -> str:
+    s = resolved_shape(s)
+    kind = s.kind
+    if kind == "word":
+        return "uint64_t"
+    if kind in _SCALAR_REPRESENTATIONS:
+        return _SCALAR_REPRESENTATIONS[kind]
+    if kind == "auto":
+        # An auto value (including a dynamic value): its type component's descriptor and its payload
+        return "QAuto *"
+    if kind == "external":
+        return s.name
+    if kind == "typevar" and s.name in ("Writer.T", "writer.T"):
+        return "QWriter *"
+    if kind == "typevar" and s.name in ("Reader.T", "reader.T"):
+        return "QReader *"
+    if kind in ("tuple", "option"):
+        return f"{shape_tag(s)} *"
+    if kind == "record":
+        return "QRecordVal"
+    if kind in ("fun", "all"):
+        return "QClosure *"
+    if kind == "array":
+        elem = resolved_shape(s.element).kind
+        if elem == "record":
+            return "QArrayWideRecord *"
+        if elem == "variant":
+            return "QArrayWideVariant *"
+        return "QArray *"
+    if kind == "variant":
+        return "QVariantVal"
+    if kind == "exception":
+        return "const QException *"
+    if kind in ("cell", "out"):
+        return f"{shape_representation(s.element)} *"
     return "QVal"
 
 
 def type_digest(t: QType) -> str:
-    """A short digest of a type's printed text, telling apart types that type_tag conflates (see printed)."""
-    t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
-    if (canonical := canonical_type(t)) is not None:
-        t = normalize_type(canonical)
-    return printed(t)[1][:16]
+    """A short digest of a type's printed text, telling apart types that type_tag conflates (see printed): the text
+    of the structure of its canonical form (the unfolding of a recursive type)."""
+    return printed(shape(t).structure)[1][:16]
 
 
 def type_identity_key(t: QType) -> str:
@@ -351,13 +386,15 @@ def _printed_uncached(node: Any) -> tuple[int, str]:
     return length, hashlib.sha256(("\1" + "".join(pieces)).encode("utf-8")).hexdigest()
 
 
+# The printed lengths and digests of hash-consed nodes (types, components, kinds) without metavariables, by id, kept
+# with the node so that its id is not reused
 _PRINTED_PARTS: dict[int, tuple[Any, tuple[int, str]]] = {}
 
 
 def printed(node: Any) -> tuple[int, str]:
     """The length of str(node) and a digest of that text, for a type, type component, or kind."""
     if isinstance(node, QType):
-        return lower_type(node).printed
+        node = node.prune() if hasattr(node, "prune") else node
     if getattr(node, "_has_meta", True):
         return _printed_uncached(node)
     entry = _PRINTED_PARTS.get(id(node))
@@ -367,7 +404,7 @@ def printed(node: Any) -> tuple[int, str]:
     return entry[1]
 
 
-def tuple_struct_name(t: QTupleType) -> str:
+def tuple_struct_name(t: QType) -> str:
     """Returns the C struct tag name for a given QTupleType."""
     return type_tag(t)
 
@@ -375,142 +412,6 @@ def tuple_struct_name(t: QTupleType) -> str:
 def option_struct_name(t: QType) -> str:
     """Returns the C struct tag name for a given QOptionType."""
     return type_tag(t)
-
-
-def _representation_raw(t: QType) -> str:
-    t = t.prune() if hasattr(t, "prune") else t
-    t = strip_aliases(t)
-    t = resolve_type_bound(t)
-    t = _normalize_type_raw(t)
-    if _is_word_type_raw(t):
-        return "uint64_t"
-    if t is INT_TYPE:
-        return "QInt"
-    if t is REAL_TYPE:
-        return "QReal"
-    if t is BOOL_TYPE:
-        return "QBool"
-    if t is CHAR_TYPE:
-        return "QChar"
-    if t is STRING_TYPE:
-        return "QString *"
-    if t is OK_TYPE:
-        return "void"
-    if isinstance(t, QAutoType):
-        # An auto value (including a dynamic value): its type component's descriptor and its payload
-        return "QAuto *"
-    if isinstance(t, QExternalType):
-        return t.c_type
-    if isinstance(t, QTypeVar) and t.name in ("Writer.T", "writer.T"):
-        return "QWriter *"
-    if isinstance(t, QTypeVar) and t.name in ("Reader.T", "reader.T"):
-        return "QReader *"
-    if isinstance(t, QTupleType):
-        return f"{tuple_struct_name(t)} *"
-    if isinstance(t, QRecordType) or resolve_record_bound(t) is not None:
-        return "QRecordVal"
-    if isinstance(t, (QFunType, QAllType)):
-        return "QClosure *"
-    if isinstance(t, QArrayType):
-        elem = t.element_type
-        if isinstance(elem, QRecordType) or resolve_record_bound(elem) is not None:
-            return "QArrayWideRecord *"
-        if isinstance(elem, QVariantType) or resolve_variant_bound(elem) is not None:
-            return "QArrayWideVariant *"
-        return "QArray *"
-    if isinstance(t, QVariantType) or resolve_variant_bound(t) is not None:
-        return "QVariantVal"
-    if isinstance(t, QExceptionType):
-        return "const QException *"
-    if isinstance(t, QOptionType) or (opt_bound := resolve_option_bound(t)) is not None:
-        opt_t = t if isinstance(t, QOptionType) else opt_bound
-        return f"{option_struct_name(opt_t)} *"
-    if isinstance(t, (QVarType, QOutType)):
-        return f"{representation(t.element_type)} *"
-    if isinstance(t, (QTypeVar, QAbstractType, QPathType)):
-        return "QVal"
-    return "QVal"
-
-
-# ============================================================================
-# Representation lowering
-# ============================================================================
-#
-# A type's layout (its normalized form, tag, representation, and whether it is Word.T)
-# depends only on the type node: the steps that choose it (alias stripping, bound resolution,
-# beta reduction, unfolding) read nothing but the node and its children, and the bounds of type
-# variables and path types are fields of those nodes. Because types are hash-consed, each
-# representation is computed once per canonical node and kept for the whole process. Nodes
-# containing a metavariable are lowered afresh every time, since a later solution can change them.
-
-
-_UNSET = object()
-
-
-class TypeLayout:
-    """The layout of one type; each part is computed on first use."""
-
-    __slots__ = ("type", "_normalized", "_tag", "_representation", "_is_word", "_printed")
-
-    def __init__(self, t: QType) -> None:
-        self.type = t
-        self._normalized = self._tag = self._representation = self._is_word = self._printed = _UNSET
-
-    @property
-    def normalized(self) -> QType:
-        if self._normalized is _UNSET:
-            self._normalized = _normalize_type_raw(self.type)
-        return self._normalized
-
-    @property
-    def tag(self) -> str:
-        if self._tag is _UNSET:
-            self._tag = _type_tag_uncached(self.type)
-        return self._tag
-
-    @property
-    def representation(self) -> str:
-        if self._representation is _UNSET:
-            self._representation = _representation_raw(self.type)
-        return self._representation
-
-    @property
-    def is_word(self) -> bool:
-        if self._is_word is _UNSET:
-            self._is_word = _is_word_type_raw(self.type)
-        return self._is_word
-
-    @property
-    def printed(self) -> tuple[int, str]:
-        """The length of str(type) and a digest of it (see printed)."""
-        if self._printed is _UNSET:
-            self._printed = _printed_uncached(self.type)
-        return self._printed
-
-
-_LOWERED: dict[int, TypeLayout] = {}
-
-
-def lower_type(t: QType) -> TypeLayout:
-    """Returns the layout of t, shared by every use of the same canonical type."""
-    t = t.prune() if hasattr(t, "prune") else t
-    if getattr(t, "_has_meta", True):
-        return TypeLayout(t)
-    entry = _LOWERED.get(id(t))
-    if entry is None or entry.type is not t:
-        entry = TypeLayout(t)
-        _LOWERED[id(t)] = entry
-    return entry
-
-
-def normalize_type(t: QType) -> QType:
-    """Reduces type operator applications so that representations are chosen from the reduced type.
-
-    Applications whose head reduces to a non-recursive type are replaced by that type; applications that
-    reduce to a recursive type are only unfolded when the unfolding is a concrete tuple or record type. A recursive
-    type whose unfolding is a tuple type is replaced by that unfolding.
-    """
-    return lower_type(t).normalized
 
 
 # The C types of values that a QVal holds in its own bits (pointers aside): stored as generic code stores a type
@@ -534,16 +435,22 @@ def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
     """
     if not subst:
         return True
-    return _generic_layout_agrees(t, subst, False, set())
+    return _generic_layout_agrees(shape(t), subst, False, set())
 
 
-def _stored_value_agrees(var: QTypeVar, arg: QType, in_register: bool) -> bool:
-    """Whether a native value of arg agrees with a value of the type parameter var as generic code stores it."""
+def _mentions(s: Shape, subst: dict[int, QType]) -> bool:
+    """Whether the type of shape s mentions one of the type parameters in subst (free type variables keep their
+    symbols in canonical forms)."""
+    return bool((getattr(s.type, "_fv", None) or frozenset()) & subst.keys())
+
+
+def _stored_value_agrees(var: Shape, arg: QType, in_register: bool) -> bool:
+    """Whether a native value of arg agrees with a value of the type parameter of shape var as generic code stores
+    it."""
     arg_c = representation(arg)
-    bound = var.bound.bound if isinstance(var.bound, QPowerKind) else None
-    if bound is not None:
+    if var.bound is not None:
         # Stored as a value of the bound, which agrees with one of arg only when both are the same scalar
-        return arg_c == representation(bound) and arg_c in _WORD_SCALARS and (
+        return arg_c == shape_representation(var.bound) and arg_c in _WORD_SCALARS and (
             not in_register or arg_c in _REGISTER_WORDS
         )
     if arg_c in ("QRecordVal", "QVariantVal"):
@@ -553,46 +460,41 @@ def _stored_value_agrees(var: QTypeVar, arg: QType, in_register: bool) -> bool:
     return True
 
 
-def _generic_layout_agrees(t: QType, subst: dict[int, QType], in_register: bool, seen: set[int]) -> bool:
-    if not (getattr(t, "_fv", None) or frozenset()) & subst.keys():
-        return True
-    if isinstance(t, QTypeVar):
-        return _stored_value_agrees(t, subst[t.symbol_id], in_register) if t.symbol_id in subst else True
-    if isinstance(t, (QRecType, QRecGroupType, QAliasType)):
-        if id(t) in seen:
-            return True
-        seen.add(id(t))
-        if isinstance(t, QAliasType):
-            target = t.unfold_lazily() if isinstance(t.target, (QRecType, QRecGroupType)) else t.target
-        else:
-            target = t.unfold_lazily()
-        return _generic_layout_agrees(target, subst, in_register, seen)
-    if isinstance(t, QTypeApp):
-        reduced = t.evaluate_lazily()
-        if reduced is t or isinstance(reduced, QTypeApp):
-            # An application of an abstract operator, whose values are opaque pointers
-            return True
-        return _generic_layout_agrees(reduced, subst, in_register, seen)
+def _type_parameter(s: Shape) -> Optional[int]:
+    """The symbol of the type variable s is the shape of (a type parameter bounded by Word.T is a word shape), or
+    None."""
+    return s.type.symbol_id if isinstance(s.type, QTypeVar) else None
 
-    def slot(component: QType) -> bool:
+
+def _generic_layout_agrees(s: Shape, subst: dict[int, QType], in_register: bool, seen: set[int]) -> bool:
+    if not _mentions(s, subst):
+        return True
+    if (symbol := _type_parameter(s)) is not None:
+        return _stored_value_agrees(s, subst[symbol], in_register) if symbol in subst else True
+    if s.is_recursive:
+        if id(s) in seen:
+            return True
+        seen.add(id(s))
+
+    def slot(component: Shape) -> bool:
         return _generic_layout_agrees(component, subst, False, seen)
 
-    if isinstance(t, QTupleType):
-        return all(slot(f.type_val) for f in t.value_fields)
-    if isinstance(t, QRecordType):
-        return all(slot(f.type_val) for f in t.fields)
-    if isinstance(t, QVariantType):
-        return all(v.type_val is None or slot(v.type_val) for v in t.variants)
-    if isinstance(t, QOptionType):
-        return all(o.payload_type is None or slot(o.payload_type) for o in t.options)
-    if isinstance(t, (QArrayType, QVarType, QOutType)):
-        return slot(t.element_type)
-    if isinstance(t, QFunType):
+    kind = s.kind
+    if kind == "abstract" and isinstance(s.type, QTypeApp):
+        # An application of an abstract operator, whose values are opaque pointers
+        return True
+    if kind in ("tuple", "record"):
+        return all(slot(c.shape) for c in s.components)
+    if kind in ("variant", "option"):
+        return all(c.shape is None or slot(c.shape) for c in s.cases)
+    if kind in ("array", "cell", "out"):
+        return slot(s.element)
+    if kind == "fun":
         return all(
-            _generic_layout_agrees(p.type_val, subst, not (p.is_var or p.is_out), seen) for p in t.params
-        ) and _generic_layout_agrees(t.result_type, subst, True, seen)
-    if isinstance(t, QAllType):
-        return _generic_layout_agrees(t.body, subst, in_register, seen)
+            _generic_layout_agrees(p.shape, subst, p.mode == "value", seen) for p in s.params
+        ) and _generic_layout_agrees(s.result, subst, True, seen)
+    if kind == "all":
+        return _generic_layout_agrees(s.body, subst, in_register, seen)
     # Anything else that mentions a type parameter (auto types, exception types, path types) may differ
     return False
 
@@ -603,79 +505,53 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
     holding a value that does not agree. The copy would not share the original's updates."""
     seen: set[int] = set()
 
-    def disagrees(component: QType) -> bool:
+    def disagrees(component: Shape) -> bool:
         return not _generic_layout_agrees(component, subst, False, set())
 
-    def visit(node: QType) -> bool:
-        if not (getattr(node, "_fv", None) or frozenset()) & subst.keys():
+    def visit(s: Shape) -> bool:
+        if not _mentions(s, subst):
             return False
-        if isinstance(node, (QRecType, QRecGroupType, QAliasType)):
-            if id(node) in seen:
+        if s.is_recursive:
+            if id(s) in seen:
                 return False
-            seen.add(id(node))
-            if isinstance(node, QAliasType) and not isinstance(node.target, (QRecType, QRecGroupType)):
-                return visit(node.target)
-            return visit(node.unfold_lazily())
-        if isinstance(node, QTypeApp):
-            reduced = node.evaluate_lazily()
-            return reduced is not node and not isinstance(reduced, QTypeApp) and visit(reduced)
-        if isinstance(node, (QArrayType, QVarType, QOutType)):
-            return disagrees(node.element_type) or visit(node.element_type)
-        if isinstance(node, QTupleType):
-            return any((f.is_var and disagrees(f.type_val)) or visit(f.type_val) for f in node.value_fields)
-        if isinstance(node, QRecordType):
-            return any((f.is_var and disagrees(f.type_val)) or visit(f.type_val) for f in node.fields)
-        if isinstance(node, QVariantType):
-            return any(v.type_val is not None and ((v.is_var and disagrees(v.type_val)) or visit(v.type_val))
-                       for v in node.variants)
-        if isinstance(node, QOptionType):
-            return any(o.payload_type is not None and visit(o.payload_type) for o in node.options)
+            seen.add(id(s))
+        kind = s.kind
+        if kind in ("array", "cell", "out"):
+            return disagrees(s.element) or visit(s.element)
+        if kind in ("tuple", "record"):
+            return any((c.is_var and disagrees(c.shape)) or visit(c.shape) for c in s.components)
+        if kind == "variant":
+            return any(c.shape is not None and ((c.is_var and disagrees(c.shape)) or visit(c.shape)) for c in s.cases)
+        if kind == "option":
+            return any(c.shape is not None and visit(c.shape) for c in s.cases)
         # Closures are adapted rather than copied
         return False
 
-    return visit(t)
-
-
-def is_word_type(t: QType) -> bool:
-    """Returns True if t is the standard library Word.T type."""
-    return lower_type(t).is_word
-
-
-def representation(t: QType) -> str:
-    """The representation of a value of t, named by the runtime's C type for it (`QInt`, `QVal`, `QRecordVal`, a
-    tuple's struct pointer `QTuple_Int_Real *`, ...): values of types with the same representation are laid out
-    alike."""
-    return lower_type(t).representation
+    return visit(shape(t))
 
 
 def signature_representation(t: QType) -> tuple:
     """The representation of a function type's calls: its result's and its parameters' representations (pointers
     for var and out parameters) and its number of type parameters, which closures of types with the same signature
     representation are called by alike."""
-    quantifiers, inner = collect_fun_quantifiers(t)
-    params = inner.params if isinstance(inner, QFunType) else ()
-    result_t = inner.result_type if isinstance(inner, QFunType) else inner
-
-    def rep(p_t: QType) -> str:
-        if p_t is OK_TYPE:
-            return "void"
-        return "QRecordVal" if isinstance(p_t, QRecordType) else representation(p_t)
-
+    s = shape(t)
+    count = 0
+    while s.kind == "all":
+        count += len(s.type_params)
+        s = s.body
+    params = s.params if s.kind == "fun" else ()
+    result = s.result if s.kind == "fun" else s
     return (
-        rep(result_t),
-        len(quantifiers),
-        tuple(f"{representation(p.type_val)} *" if p.is_var or p.is_out
-              else "QVal" if p.type_val is OK_TYPE else representation(p.type_val) for p in params),
+        shape_representation(result),
+        count,
+        tuple(f"{shape_representation(p.shape)} *" if p.mode != "value"
+              else "QVal" if p.shape.kind == "ok" else shape_representation(p.shape) for p in params),
     )
 
 
-def type_tag(t: QType) -> str:
-    """Produces a deterministic, valid C identifier component for a QType."""
-    return lower_type(t).tag
-
-
 def qtype_to_name_str(t: QType) -> str:
-    """Returns the human-readable Quest type name string for runtime diagnostics and printing."""
+    """Returns the human-readable Quest type name string for runtime diagnostics and printing (with its alias name,
+    which only the type as written has)."""
     t = t.prune() if hasattr(t, "prune") else t
     if isinstance(t, QAliasType):
         return t.name
@@ -736,12 +612,3 @@ def is_variant_subtype(s: QType, t: QType) -> bool:
             return False
     return True
 
-
-def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], QType]:
-    """Extracts any universal quantifiers wrapping a function type (a recursive one, through its unfolding)."""
-    quants: tuple[QQuantifier, ...] = ()
-    curr = normalize_type(fun_type)
-    while isinstance(curr, QAllType):
-        quants = quants + curr.quantifiers
-        curr = normalize_type(curr.body)
-    return quants, curr

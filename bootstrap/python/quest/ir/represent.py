@@ -19,14 +19,13 @@ from __future__ import annotations
 from typing import Optional
 
 from quest.codegen.layout import (
-    collect_fun_quantifiers,
     generic_layout_agrees,
     generic_layout_copies_mutable_data,
     is_variant_subtype,
-    normalize_type,
     representation,
     signature_representation,
 )
+from quest.types.canonical import collect_fun_quantifiers, normalize_type
 from quest.ir import nodes as ir
 from quest.ir.walk import statement_bodies
 from quest.types import (

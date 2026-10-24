@@ -1,4 +1,4 @@
-"""A type's C representation is computed once per canonical type and never cached through a metavariable.
+"""A type's C representation is computed once per shape (per canonical type) and never cached through a metavariable.
 
 Type digests stand for the printed type without printing it.
 """
@@ -13,7 +13,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import tests.python.helpers  # noqa: F401
-from quest.codegen.layout import lower_type, printed, PRINTED_TEXT_LIMIT, type_digest, type_tag
+from quest.codegen.layout import layout_of, printed, PRINTED_TEXT_LIMIT, type_digest, type_tag
+from quest.ir.shapes import shape
 from quest.codegen.c.types import descriptor_form, qtype_to_c_type
 from quest.codegen.descriptors import hole_var
 from quest.types import (
@@ -60,14 +61,15 @@ def _pair(a, b):
 class TestCLowering(unittest.TestCase):
     def test_representation_is_shared_per_canonical_type(self) -> None:
         t = _pair(INT_TYPE, STRING_TYPE)
-        self.assertIs(lower_type(t), lower_type(_pair(INT_TYPE, STRING_TYPE)))
+        self.assertIs(layout_of(shape(t)), layout_of(shape(_pair(INT_TYPE, STRING_TYPE))))
         self.assertEqual(type_tag(t), "QTuple_Int_String")
         self.assertEqual(qtype_to_c_type(t), "QTuple_Int_String *")
 
     def test_types_with_metavariables_are_not_cached(self) -> None:
         meta = QTypeMeta()
         t = _pair(INT_TYPE, meta)
-        self.assertIsNot(lower_type(t), lower_type(t))
+        with self.assertRaises(ValueError):
+            shape(t)
         meta.instance = STRING_TYPE
         self.assertEqual(type_tag(t), "QTuple_Int_String")
 
