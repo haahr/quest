@@ -195,22 +195,21 @@ def compile_stream(source_text: str, file_name: str) -> int:
 Runtime errors are divided into two categories:
 
 #### 1. Language-Level Quest Exceptions (`TypedRaise` / `TypedTry`)
-- User-defined exceptions declared with `let exc = exception of T end;` and raised via `raise exc with payload`.
-- Caught by `try ... when exc with p => ... end`.
-- If uncaught, the runtime unrolls the call stack and displays a formatted exception report:
+- User-defined exceptions declared with `let exc = exception E: T end;` (or `exception E: T end;`) and raised via
+  `raise exc with payload end`.
+- Caught by `try ... when exc with p then ... end`.
+- If uncaught, the exception is reported as a located error at the site it was raised, with the source line, followed
+  by the Quest functions running there, most recent first ([exceptions.md](exceptions.md) §2):
   ```
-  Unhandled Quest Exception: StackUnderflow (payload: "empty stack")
-    Traceback (most recent call last):
-      File "stack.quest", line 18, in pop
-        raise StackUnderflow with "empty stack"
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-      File "main.quest", line 5, in run
-        let item = stack.pop()
-                   ^^^^^^^^^^^
-      File "main.quest", line 12, in <toplevel>
-        run()
-        ^^^^^
+  stack.mod.quest:18:9: error: Exception: stack.underflow
+          raise underflow end
+          ^
+    in stack.pop
+    in run
+    in <main>
   ```
+  Every backend reports the same exception and site. The interpreters list every frame; compiled code lists only
+  some of them, those the C compiler did not inline or turn into jumps (exceptions.md §2.4).
 
 #### 2. System / Language Invariant Violations
 - **Division by Zero:** `x / 0` or `x mod 0`.
@@ -220,34 +219,10 @@ Runtime errors are divided into two categories:
 - **Uninitialized Variable Access:** Cyclic recursion accessing uninitialized cell.
 
 #### Runtime Call Stack Frame Model
-```python
-@dataclass
-class RuntimeStackFrame:
-    function_name: str
-    file_name: str
-    call_offset: int
-    call_length: int
-    scope_name: str
-
-class QuestRuntimeError(Exception):
-    def __init__(self, message: str, offset: int = 0, length: int = 1):
-        super().__init__(message)
-        self.message = message
-        self.offset = offset
-        self.length = length
-        self.quest_traceback: list[RuntimeStackFrame] = []
-
-    def format_traceback(self, source_map_provider: Callable[[str], Any]) -> str:
-        lines = [f"Runtime Error: {self.message}", "Traceback (most recent call last):"]
-        for frame in reversed(self.quest_traceback):
-            sm = source_map_provider(frame.file_name)
-            loc = sm.locate(frame.call_offset)
-            lines.append(f"  File \"{frame.file_name}\", line {loc.line}, in {frame.function_name}")
-            source_line = sm.format_error(frame.call_offset, frame.call_length, "").splitlines()
-            if len(source_line) > 1:
-                lines.extend(f"    {l}" for l in source_line[1:])
-        return "\n".join(lines)
-```
+The interpreters keep the names of the running Quest functions on `RuntimeEnvironment.call_stack`, and an error
+leaving a function records them in `QuestCompilerError.frames`, which the driver renders as `Diagnostic.trace`.
+Compiled code walks the native stack instead, naming functions from the tables each unit registers
+(exceptions.md §4 and §5).
 
 ### 4.4. Errors in Imported Interfaces and Modules
 An offset means nothing without the file it is in, and an error found while loading an imported interface or module is

@@ -200,7 +200,9 @@ the `_at` checked operations), and each `try` records in its `QExceptionHandler`
 handler will catch prints the exception, its site, and the frames of the live stack, walked with the platform
 unwinder (`<unwind.h>`) and named from the function tables each unit registers (`quest_register_funcs`), matching
 functions by their exact starts; a raise that a handler might catch and raise again captures the frames first
-(`QTrace`, in `QExceptionState`). Code that does not raise pays nothing: no shadow stack, no frame links.
+(`QTrace`, in `QExceptionState`). Code that does not raise pays nothing: no shadow stack, no frame links. The price
+is that functions the C compiler inlines or tail-calls leave no frames, so compiled code lists fewer of them than
+the interpreters, which is accepted ([exceptions.md](exceptions.md) §2.4).
 
 ---
 

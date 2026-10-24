@@ -15,7 +15,8 @@ Status: implemented (§7, steps 1 to 3).
    most, and it is cheap and exact in every backend, so it comes first (§7, step 1).
 2. **The active Quest functions, most recent first.** The interpreters report every frame. Compiled code reports an
    ordered subsequence of them: the C compiler inlines functions and turns tail calls into jumps, and those frames are
-   lost. A frame compiled code cannot attribute with certainty is left out, never guessed.
+   lost. A frame compiled code cannot attribute with certainty is left out, never guessed. Fewer frames from compiled
+   code is accepted, not a bug to fix (§2.4).
 3. **No cost to code that does not raise, nor to raises that are caught.** Compiled function entry and return are
    unchanged: no shadow stack, no frame links. Entering a `try` costs a few stores (§5.2). A raise walks the stack only
    when the exception will not be caught.
@@ -86,6 +87,29 @@ gives a module it declares. Compiler-generated functions (closure environments' 
 
 `k > 1` consecutive frames with the same name are printed as one `in <name>` line followed by
 `  ... <name> repeated <k-1> more times`.
+
+### 2.4. Compiled Code Lists Fewer Frames
+
+The exception and its raise site are the same in every backend (compiled code omits a payload, §2.1). The frames
+are not: compiled code lists an ordered subsequence of the interpreters' frames, often far fewer, and that is accepted.
+Generated C is compiled with `-O2`, and the frames of functions the C compiler inlines into their callers, or calls
+by a jump in tail position, do not exist at run time; recovering them would need either a shadow stack (a cost on
+every call, against §1's third goal) or reading the C compiler's debug information for inlined code. For
+
+```quest
+let a = 1;
+let e = exception E end;
+let f(n: Int): Int = raise E end;
+f(a)
+```
+
+the interpreters list `in f` and `in <main>`, and compiled code only `in <main>`, since `f` is inlined into the
+program's initializer. Frames are also lost in a gcc cold section when the driver's flag does not apply (§5.3), and
+all of them on a platform without the unwinder's functions. Whatever is listed is in the interpreters' order and
+ends with `<main>`, and nothing is listed that was not running.
+
+To see every frame, run the program with the interpreter (`--stop-after interpret`) or the IR interpreter
+(`--stop-after run_ir_represented`), which report the same raise site.
 
 ---
 
@@ -279,7 +303,8 @@ output ends with `  ... (traceback truncated)`.
    recursive calls, an anonymous callback, a module's functions and a callback from one, a re-raise, and a module
    initializer that raises, and that the full output of `interpret` and of the four `run_ir_*` phases is identical.
 4. **Compiled frames** (step 3): for the same programs, `run_c_compiled` reports the same header and raise site as
-   `interpret`, and its frames are a non-empty ordered subsequence of the interpreter's that ends with `<main>`.
+   `interpret`, and its frames are a non-empty ordered subsequence of the interpreter's that ends with `<main>`
+   (not the same frames, §2.4).
    Separate cases cover each outcome of §5.1: an exception caught by a listed handler, by `else`, not caught, and
    re-raised through an `UNKNOWN` handler.
 
