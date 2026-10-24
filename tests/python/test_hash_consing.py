@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.env import Environment, TypeSymbol
+from quest.types.env import Environment, TypeSymbol
 from quest.types import (
     QAliasType,
     alias_reference,

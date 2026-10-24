@@ -46,7 +46,7 @@ from quest.codegen.c_types import (
     type_identity_key,
     type_to_c_tag,
 )
-from quest.env import Scope
+from quest.types.env import Scope
 from quest.ir import nodes as ir
 from quest.ir.represent import (
     _may_be_stored_as_subtype,

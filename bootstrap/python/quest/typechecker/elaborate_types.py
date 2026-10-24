@@ -49,7 +49,7 @@ from quest.types import (
     check_type_contractive,
     synth_kind,
 )
-from quest.env import (
+from quest.types.env import (
     Environment,
     KindSymbol,
     Scope,

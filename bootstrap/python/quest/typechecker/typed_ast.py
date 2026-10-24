@@ -27,7 +27,7 @@ from quest.types import (
     format_type_compact,
     qtype_dump,
 )
-from quest.env import (
+from quest.types.env import (
     KindSymbol,
     Scope,
     Symbol,

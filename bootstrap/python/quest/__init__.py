@@ -67,7 +67,7 @@ from quest.types import (
     TypeLookupEnv,
     TypeSymbolProtocol,
 )
-from quest.env import (
+from quest.types.env import (
     Symbol,
     ValueSymbol,
     TypeSymbol,

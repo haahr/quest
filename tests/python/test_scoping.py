@@ -10,7 +10,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.config import CompilerOptions
-from quest.env import ValueSymbol
+from quest.types.env import ValueSymbol
 from quest.typechecker.typed_ast import TypedBlock, TypedFun, TypedLetValue, TypedNode, TypedVar
 from quest.typechecker.scoping import check_well_scoped
 from quest.types import INT_TYPE, TYPE_KIND, QAllType, QPowerKind, QQuantifier, QTypeVar

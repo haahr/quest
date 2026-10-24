@@ -17,7 +17,7 @@ import json
 import math
 from typing import Any, Optional, Union
 
-from quest.env import allocate_symbol_id
+from quest.types.env import allocate_symbol_id
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,
@@ -115,7 +115,7 @@ def parse_type_string(type_str: str) -> QType:
     try:
         from quest.diagnostics import QuestCompilerError
         from quest.typechecker.elaborate_types import elaborate_type
-        from quest.env import Environment
+        from quest.types.env import Environment
         from quest.syntax.grammar import parse_quest_program
         from quest.syntax.tokenizer import Tokenizer
         from quest.syntax.sources import SourceMap

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from quest.diagnostics import QuestTypeError
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.types import QOutType, QType, QVarType, is_subtype
 
 

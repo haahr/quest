@@ -13,7 +13,7 @@ os.environ["QUEST_CHECK_CANONICAL"] = "1"
 import quest.syntax.ast as ast
 from quest.codegen.c_types import generic_layout_agrees, generic_layout_copies_mutable_data
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
-from quest.env import Environment, TypeSymbol
+from quest.types.env import Environment, TypeSymbol
 from quest.pipeline import compile_pipeline
 from quest.types import TYPE_KIND, QPowerKind, QTypeVar
 from tests.python.helpers import elaborate_test_type, parse_phrase

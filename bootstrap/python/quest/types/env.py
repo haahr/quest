@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Any, ClassVar, Optional, Protocol
 
 from quest.diagnostics import in_unit
-from quest.types import (
+from quest.types.kinds import INFIX_OPERATORS
+from quest.types.model import (
     BOOL_TYPE,
     CHAR_TYPE,
     DYNAMIC_TYPE,
     EXCEPTION_TYPE,
-    INFIX_OPERATORS,
     INT_TYPE,
     OK_TYPE,
     QAllType,
@@ -28,8 +28,8 @@ from quest.types import (
     REAL_TYPE,
     STRING_TYPE,
     TYPE_KIND,
-    clear_subtype_cache,
 )
+from quest.types.subtyping import clear_subtype_cache
 
 
 # ============================================================================

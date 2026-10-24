@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, Optional
 
 from quest.diagnostics import QuestTypeError
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.typechecker.typed_ast import TypedExpr
 from quest.types import (
     QAbstractType,

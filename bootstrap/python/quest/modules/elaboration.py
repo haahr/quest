@@ -21,7 +21,7 @@ from quest.typechecker.elaborate_types import (
     elaborate_type_binding,
     elaborate_type_binding_group,
 )
-from quest.env import (
+from quest.types.env import (
     Environment,
     Scope,
     TypeSymbol,

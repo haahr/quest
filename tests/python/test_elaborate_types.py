@@ -12,7 +12,7 @@ from quest.typechecker.elaborate_types import (
     elaborate_mutual_rec_type_group,
     elaborate_type_binding,
 )
-from quest.env import (
+from quest.types.env import (
     Environment,
     KindSymbol,
     Scope,

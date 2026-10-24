@@ -17,7 +17,7 @@ The primary collection libraries required for self-hosting have been implemented
 - `collections/hashMap : collections/HashMap` (compact ordered hash tables `HashMap(K, V)`)
 - `collections/hashSet : collections/HashSet` (hash sets `HashSet(T)` built on `HashMap`)
 
-Queues and stacks (used for scope stacks in `env.py`, block nesting and token lookahead buffers, and
+Queues and stacks (used for scope stacks in `types/env.py`, block nesting and token lookahead buffers, and
 topological sort queues) are straightforwardly implemented on top of `collections/vector`.
 
 ---

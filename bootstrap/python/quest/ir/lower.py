@@ -16,7 +16,7 @@ from typing import Optional
 
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions
-from quest.env import Environment, ValueSymbol
+from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
 from quest.ir.shapes import shape
 from quest.typechecker.typed_ast import (

@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from quest.env import allocate_symbol_id
+from quest.types.env import allocate_symbol_id
 from quest.types import QType, QTypeVar
 
 

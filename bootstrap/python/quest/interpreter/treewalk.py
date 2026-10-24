@@ -1379,7 +1379,7 @@ def load_module_for_interpreter(
 
     Evaluated modules are shared by canonical name (docs/modules.md §2.3), so each is evaluated once.
     """
-    from quest.env import Environment
+    from quest.types.env import Environment
     from quest.modules.loader import load_module
     from quest.modules.paths import canonicalize_module_path, resolve_module_file
 

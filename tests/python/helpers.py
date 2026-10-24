@@ -8,7 +8,7 @@ import quest.syntax.ast as ast
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.interpreter.treewalk import RuntimeEnvironment, eval_program
 from quest.syntax.parser import SyntaxTarget
 from quest.pipeline import (

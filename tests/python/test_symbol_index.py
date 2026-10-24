@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.env import Environment, KindSymbol, TypeSymbol
+from quest.types.env import Environment, KindSymbol, TypeSymbol
 from quest.types import INT_TYPE, STRING_TYPE, TYPE_KIND, QKindVar, QPowerKind, QTypeVar
 
 

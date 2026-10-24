@@ -29,7 +29,7 @@ from quest.diagnostics import (
     Severity,
 )
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
-from quest.env import Environment, Scope
+from quest.types.env import Environment, Scope
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.treewalk import (
     QuestRuntimeError,

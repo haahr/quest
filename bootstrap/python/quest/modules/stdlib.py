@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from quest.env import Environment, Scope, ValueSymbol
+from quest.types.env import Environment, Scope, ValueSymbol
 from quest.types import QType
 
 STANDARD_LIBRARY_MODULES: dict[str, str] = {

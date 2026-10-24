@@ -28,7 +28,7 @@ import quest.syntax.ast as ast  # noqa: E402
 from quest.codegen import compile_c_source, run_binary  # noqa: E402
 from quest.codegen.c_types import generic_layout_agrees  # noqa: E402
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group  # noqa: E402
-from quest.env import Environment, TypeSymbol  # noqa: E402
+from quest.types.env import Environment, TypeSymbol  # noqa: E402
 from quest.config import CompilerOptions  # noqa: E402
 from quest.pipeline import CompilerContext, compile_pipeline, link_dependencies  # noqa: E402
 from quest.types import TYPE_KIND  # noqa: E402

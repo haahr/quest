@@ -2,7 +2,7 @@
 
 import unittest
 
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.modules import (
     elaborate_interface,
     elaborate_module,

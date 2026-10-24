@@ -16,7 +16,7 @@ import time
 import unittest
 from pathlib import Path
 
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.config import CompilerOptions
 from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.loader import load_interface

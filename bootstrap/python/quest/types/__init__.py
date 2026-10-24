@@ -2,6 +2,7 @@
 
 This package provides:
 - quest.types.model: QType, QKind, primitive and composite type representations.
+- quest.types.env: Symbol, ValueSymbol, TypeSymbol, KindSymbol, Scope, and Environment.
 - quest.types.subtyping: Equi-recursive subtyping proofs, subkinding, and cache.
 - quest.types.kinds: Kind checking, kind synthesis, and operator signatures.
 - quest.types.contractiveness: Recursive type contractiveness (C \succ X) verification.
@@ -127,6 +128,18 @@ from quest.types.dump import (
     format_type_compact,
     qtype_dump,
     short_type_name,
+)
+
+# 6. Scoping, Symbol Tables, and Lexical Environments
+from quest.types.env import (
+    BuiltinRegistry,
+    Environment,
+    KindSymbol,
+    Scope,
+    Symbol,
+    TypeSymbol,
+    ValueSymbol,
+    allocate_symbol_id,
 )
 
 # Backward-compatibility aliases

@@ -355,7 +355,7 @@ Following Cardelli §5.3:
 
 ---
 
-## 5. Environment and Scoping (`bootstrap/python/quest/env.py`)
+## 5. Environment and Scoping (`bootstrap/python/quest/types/env.py`)
 
 Compilation state is maintained across lexical scopes:
 - **`Scope`:** An ordered mapping of identifiers to `Symbol` instances. Ordered scope resolution ensures that

@@ -8,7 +8,7 @@ from quest.syntax.ast import (
     TypeTuple,
 )
 from quest.typechecker.elaborate_types import elaborate_type
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.types import (
     INT_TYPE,
     TYPE_KIND,

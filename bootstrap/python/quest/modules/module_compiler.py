@@ -29,7 +29,7 @@ from quest.modules.manifest import (
     ModuleManifest,
     write_qm,
 )
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_module
 from quest.modules.loader import load_interface

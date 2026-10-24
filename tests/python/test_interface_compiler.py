@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.modules.interface_compiler import (
     compile_interface_file,
     load_interface_from_qi_file,

@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 import quest.syntax.ast as ast
 from quest.config import CompilerOptions
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
-from quest.env import Environment, TypeSymbol, ValueSymbol
+from quest.types.env import Environment, TypeSymbol, ValueSymbol
 from quest.pipeline import default_pipeline
 from quest.ir.shapes import KINDS, shape, shapes_reachable
 from quest.typechecker.typed_ast import TypedNode

@@ -44,7 +44,7 @@ from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap, display_file_name
 
 if TYPE_CHECKING:
-    from quest.env import Environment, Scope
+    from quest.types.env import Environment, Scope
     from quest.typechecker.typed_ast import TypedModule
 
 
@@ -330,7 +330,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
                 elif env.lookup_interface(decl.interface_name) is None:
                     load_interface(decl.interface_name, env)
 
-                from quest.env import Scope
+                from quest.types.env import Scope
                 temp_scope = Scope(parent=env.base_scope, name=f"temp_load_{decl.name}")
                 env.current_scope = temp_scope
                 typed_mod = elaborate_module(decl, env)

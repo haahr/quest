@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.modules.loader import (
     load_interface,
     load_module,

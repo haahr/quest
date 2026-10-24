@@ -30,7 +30,7 @@ from quest.types import (
     STRING_TYPE,
     TYPE_KIND,
 )
-from quest.env import (
+from quest.types.env import (
     Scope,
     TypeSymbol,
     ValueSymbol,

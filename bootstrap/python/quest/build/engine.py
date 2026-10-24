@@ -22,7 +22,7 @@ from quest.modules.manifest import (
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen import compile_c_to_object, link_objects
 from quest.codegen.backend import implicit_imports, program_to_c
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.loader import load_interface
 from quest.modules.module_compiler import compile_module_file

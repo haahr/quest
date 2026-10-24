@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 from quest.config.abi import ABI_VERSION, PRODUCER, recorded_abi
 from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.modules.interface_compiler import (
     compile_interface_file,
     ensure_interface_artifacts,

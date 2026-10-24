@@ -67,7 +67,7 @@ from quest.types import (
     unalias,
 )
 from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.env import (
+from quest.types.env import (
     Environment,
     KindSymbol,
     Scope,

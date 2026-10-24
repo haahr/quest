@@ -21,7 +21,7 @@ import dataclasses
 import os
 from typing import Any, Iterator, Optional
 
-from quest.env import ValueSymbol
+from quest.types.env import ValueSymbol
 from quest.typechecker.typed_ast import (
     TypedBlock,
     TypedCase,

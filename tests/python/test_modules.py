@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
-from quest.env import Environment
+from quest.types.env import Environment
 from quest.modules import (
     elaborate_import,
     elaborate_interface,
