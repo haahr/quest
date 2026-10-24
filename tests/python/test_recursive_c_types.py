@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 # Checks canonical forms, as the other tests do (see helpers.py)
 os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
-from quest.codegen import canonical
-from quest.codegen.canonical import canonical_type
+from quest.types import canonical
+from quest.types.canonical import canonical_type
 from quest.codegen.c.types import descriptor_form, qtype_to_c_type
 from quest.codegen.layout import normalize_type, tuple_struct_name, type_tag
 from quest.types import (

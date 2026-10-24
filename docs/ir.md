@@ -97,7 +97,7 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `typevar` | a type variable: a type parameter in scope, or an abstract type of a module or interface (`m.T`); symbol, bound |
 | `abstract` | opaque: an abstract type elaborated as such, an application of an abstract operator, a path type (`x.T`) |
 | `external` | C-level opaque type |
-| `rec` | a reference into a recursive group: the canonical recursive graph of `codegen/canonical.py` |
+| `rec` | a reference into a recursive group: the canonical recursive graph of `types/canonical.py` |
 
 Aliases are stripped and operator applications reduced before a shape is built; recursion is explicit through
 `rec` references into the canonical graph, so that equal recursive types, however written, share one shape. The

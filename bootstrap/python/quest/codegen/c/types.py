@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
-from quest.codegen.canonical import canonical_type
+from quest.types.canonical import canonical_type
 from quest.codegen.descriptors import (
     bound_var_index,
     canonical_auto_type,

@@ -7,6 +7,7 @@ This package provides:
 - quest.types.kinds: Kind checking, kind synthesis, and operator signatures.
 - quest.types.contractiveness: Recursive type contractiveness (C \succ X) verification.
 - quest.types.dump: Canonical S-expression and compact alias-aware formatters.
+- quest.types.canonical: Reduced types, and the canonical (minimal graph) forms of recursive types.
 """
 
 from __future__ import annotations

@@ -614,7 +614,7 @@ Equal types share one C representation, so a value moves between them with a pla
   of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
   period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its
   `Rec`). Its tag (`type_tag`), descriptor (`descriptor_form`), and type digests are computed from its
-  canonical form (`canonical_type` in `codegen/canonical.py`): the graph of its nodes is minimized by partition refinement
+  canonical form (`canonical_type` in `types/canonical.py`): the graph of its nodes is minimized by partition refinement
   (as the dynamic type table is, §11), and the minimal graph is written back as a type whose recursion variables
   have reserved ids and bind the targets of the back edges of a depth-first walk. Nodes are tuples (with or without
   type components), records, variants, options, arrays, `var` and `out` types, function types (polymorphic or

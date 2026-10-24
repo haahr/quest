@@ -1,4 +1,4 @@
-"""Reduced and canonical forms of types, for the backends: type operator applications reduced (beta_reduce_head),
+"""Reduced and canonical forms of types, which the backends use: type operator applications reduced (beta_reduce_head),
 recursive types unfolded (unfold_recursive), and the canonical form of a recursive type, its minimal graph
 (canonical_type), so that equal types have one representation however they are written."""
 

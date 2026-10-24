@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Optional
 
-from quest.codegen.canonical import (
+from quest.types.canonical import (
     SELF_NAMED,
     beta_reduce_head,
     canonical_type,
