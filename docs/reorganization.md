@@ -147,6 +147,11 @@ beyond that, optimize before landing.
 
 **Done when.** The new benchmarks are in `tests/perf`, `measure.py` runs them, and the baseline is saved.
 
+**Done:** `record_fields`, `variant_dispatch`, and `questlang_tokenizer` (the self-hosted tokenizer over a fixed set
+of sources; there is no self-hosted parser yet), with the baseline saved after them. Against the previous baseline,
+the pre-IR emitter's, `generic_lists` runs 1.20x as long; it was 1.13x when the IR became the C backend, within that
+step's 20% bar, and has drifted since.
+
 ### 0c. Move `codegen/canonical.py` into `types/`
 
 Mechanical: the reduced and canonical forms of types belong with the types. Imports follow.
@@ -168,7 +173,7 @@ which later phrases continue in, so closures built earlier keep what they captur
 ### 0e. Bugs found while planning
 
 Recorded in [tasklist.md](tasklist.md): the lost update after a view-changing tuple upcast (fixed by A2, per 0a),
-and `is` between tuples of different types, which produces C that does not compile.
+and `is` between tuples of different types, which produces C that does not compile. **Done.**
 
 ---
 
