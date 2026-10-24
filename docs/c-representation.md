@@ -589,11 +589,12 @@ manipulated dynamically:
 - **Concrete Value Population**: When `qv_mod_<mod>_init()` executes (lazily on program startup or first import):
   1. It recursively invokes initializers for all imported modules in topological order.
   2. It evaluates local bindings and allocates `QT_<Interface>` payload struct via `quest_alloc`.
-  3. All fields are populated with **concrete values**: functions wrap static trampolines
-     (`qv_<mod>_<fn>_trampoline`) in allocated `QClosure` structs; data fields hold evaluated constants or pointers.
-  4. `qv_<mod>` is initialized with `.val = (void *)payload` and `.dict = (const void *)&offsetdict_<I>_<I>`.
-- **Zero-Cost Direct Calls**: Calling a known module function (e.g. `writer.putString(w s)`) directly invokes
-  `quest_writer_put_string(...)`, entirely bypassing record dispatch.
+  3. All fields are populated with **concrete values**: functions use static `QClosure` records (`qf_<fn>_closure`
+     or `qx_<symbol>_closure`); data fields hold evaluated constants or pointers.
+  4. `qm_<mod>` is initialized with `.val = (void *)payload` and `.dict = (const void *)&offsetdict_<I>_<I>`.
+  5. Exported module members are also copied into the non-static `qv_<mod>_<member>` C globals so importers can call
+     exported functions (`qv_<mod>_<fn>(...)`) and read exported values directly across translation units without going
+     through the `qm_<mod>` record.
 
 ### 5.7. Recursive Types
 Quest's recursive types are equi-recursive: `Rec(X) T` is equal to its unfolding `T[X := Rec(X) T]`, to any depth.
@@ -648,7 +649,7 @@ Equal types share one C representation, so a value moves between them with a pla
 
 ---
 
-## 6. Closures and Calling Convention (Phase 4.2c)
+## 6. Closures and Calling Convention
 
 In Quest, functions are first-class values and can capture lexical bindings:
 
@@ -665,34 +666,39 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 ```
 
 ### 6.2. Function Signatures and Calling Conventions
-1. **Direct Top-Level Functions:** Keep clean standard C signatures without an unused environment parameter:
-   `static QInt qv_square(QInt qv_x);`.
-2. **First-Class Top-Level Functions:** When a top-level function is referenced as a value, the compiler generates a
-   static trampoline adapter:
+1. **Closed IR Functions:** Every Quest function is lifted by closure conversion (`ir/closure_convert.py`) to a
+   module-scope C function `qf_<name>` with a leading `void *_raw_env` parameter:
    ```c
-   static QInt qv_square_trampoline(void *env, QInt qv_x) {
-       (void)env;
-       return qv_square(qv_x);
+   static QInt qf_square(void *_raw_env, QInt qv_x) {
+       (void)_raw_env;
+       return qv_x * qv_x;
    }
-   static QClosure qv_square_closure = { (void *)qv_square_trampoline, NULL };
    ```
-   Referencing `square` emits `(&qv_square_closure)`.
-3. **Lifted Lambdas:** Every non-top-level lambda is lifted to file scope with signature:
-   `static RetType qv_lambda_<id>(void *_raw_env, Params...)`.
+2. **Non-Capturing Functions:** For functions that capture no variables (`captures` is empty), the C printer emits a
+   static singleton closure alongside the function:
+   ```c
+   static QClosure qf_square_closure = { (void *)qf_square, NULL };
+   ```
+   Direct calls invoke `qf_square(NULL, ...)` directly; referencing `square` as a first-class value uses
+   `(&qf_square_closure)` without allocating.
+3. **Exported Module Functions:** For each exported function of a module `mod`, a non-static wrapper
+   `RetType qv_<mod>_<fn>(<descriptors>, <params>)` without an environment parameter is emitted at C file scope so
+   other compilation units can call it directly via `extern` declarations ([modules.md](modules.md) §5.3).
 4. **Indirect Call Site:**
    ```c
    ((RetType (*)(void *, ParamTypes...))(c_func->fn))(c_func->env, args...);
    ```
 
 ### 6.3. Flat Environment Frames
-Captured variables are grouped into flat environment structs allocated via `quest_alloc`:
+Captured variables are grouped into a flat environment struct allocated via `quest_alloc`:
 ```c
-struct QEnv_lambda_1 {
+struct QEnv_qf_add_x {
     QInt qv_x;
     QReal qv_y;
 };
 ```
-Non-capturing lambdas omit the environment struct and use file-scope static singleton closures.
+Creating a capturing closure (`make_closure`) allocates both `struct QEnv_qf_<name>` and `QClosure` on the heap and
+populates the captured fields.
 
 ### 6.4. Polymorphic Functions and Runtime Type Descriptors (`QTypeDescriptor`)
 While monomorphic functions pass values directly, polymorphic functions (`All(A::K) ...`) require **Intensional Type Analysis (ITA)** (see `docs/type-system.md` §6.10.1) to support Cardelli's `Dynamic` operations (`dynamic.new`, `dynamic.be`) and first-class abstraction barriers without restricting generic wrappers.
@@ -937,7 +943,7 @@ function passes on ([type-system.md](type-system.md) §6.11).
   as generic code laid them out, under the instance's descriptor.
 - **Serialization:** `dynamic.extern` reads stored types as stored and writes them at their own types.
 
-### 6.5. Mutable Reference Parameters (`out` and `var`) and `@` Lvalues (Phase 4.12)
+### 6.5. Mutable Reference Parameters (`out` and `var`) and `@` Lvalues
 
 Following Cardelli's *Typeful Programming* (§4.8), Quest supports passing mutable memory locations to functions via
 `var` (read-write) and `out` (write-only) parameters:
@@ -1295,5 +1301,5 @@ When an interface `x.int.quest` is compiled (`quest -c x.int.quest`), the compil
 - [runtime-design.md](runtime-design.md): Evidence Passing vs. Fat Pointers and AAPCS64 register ABI.
 - [roadmap.md](roadmap.md): 7-stage compiler implementation roadmap.
 - [type-system.md](type-system.md): Quest higher-order subtyping and typing rules.
-- [step3-interpreter.md](step3-interpreter.md): Python interpreter architecture and standard library modules.
+- [interpreter.md](interpreter.md): Python interpreter architecture and standard library modules.
 

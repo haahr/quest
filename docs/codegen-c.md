@@ -205,10 +205,10 @@ static QInt qf_add(void *_raw_env, QInt l_x, QInt l_y) {
 
 ---
 
-## 6. Tuples & Concrete Records (Phase 4.2b)
+## 6. Tuples & Concrete Records
 
-Phase 4.2b introduces standard C99 code generation for tuples and concrete records with heap allocation, uniform 64-bit
-slot layout, and direct pointer-based field access.
+Tuples and concrete records compile to C99 structs with heap allocation, uniform 64-bit slot layout, and direct
+pointer-based field access.
 
 ### 6.1. C Struct Layout & Tag Generation
 - **Positional Tuple Structs:** Tuple types map to positional members `_0`, `_1`, ... based on their component value
@@ -266,7 +266,7 @@ expression), a local temporary pointer is allocated and returned.
 
 ---
 
-## 7. Closures, Function Values & Lambda Lifting (Phase 4.2c)
+## 7. Closures, Function Values & Lambda Lifting
 
 In Quest, functions are first-class values that can be passed to higher-order functions, returned from functions,
 and capture variables from enclosing lexical scopes.
@@ -310,7 +310,7 @@ expected C function pointer signature and passes `env` as the first argument:
 
 ---
 
-## 8. Arrays and Strings (Phase 4.3)
+## 8. Arrays and Strings
 
 ### 8.1. Array Representation (`QArray`)
 Arrays are mutable buffers of 64-bit `QVal` words with an explicit length prefix:
@@ -349,7 +349,7 @@ and terminating with exit code 1.
 
 ---
 
-## 9. Options and Variants (Sums) (Phase 4.4)
+## 9. Options and Variants (Sums)
 
 ### 9.1. Option Types
 Option types are ordered sums with inline union payloads. Each unique `QOptionType` synthesizes:
@@ -390,9 +390,9 @@ static_assert(offsetof(QVariantVal, payload) == 8, qvariantval_payload_at_offset
 
 ---
 
-## 10. Structural Subtyping & Dynamic Dispatch (Phase 4.5)
+## 10. Structural Subtyping & Dynamic Dispatch
 
-Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and variants:
+Cardelli's structural subtyping is supported across tuples, records, and variants:
 
 ### 10.1. Prefix Tuple Subtyping
 - **Direct Pointer Coercion:** A wider tuple pointer `QT_Triple *` is cast directly to a prefix tuple `(QT_Pair *)`.
@@ -441,7 +441,7 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
 - **Zero-Allocation Upcast:** Coercion emits an unboxed compound literal:
   `((QVariantVal){ .tag = tagmap_Large_Small[src.tag], .payload = src.payload })`.
 
-### 10.4. Bounded Specialization for Records and Variants (Phase 4.9b)
+### 10.4. Bounded Specialization for Records and Variants
 - **Runtime Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_<T>`
   parameters in their C signatures to facilitate separate compilation and uniform reflection.
 - **Bounded Record Parameters & Field Selection:** Functions expecting `A <: Record` receive `QRecordVal` directly.
@@ -454,7 +454,7 @@ Phase 4.5 implements Cardelli's structural subtyping across tuples, records, and
   static `.rodata` tag tables into an unboxed compound literal, allowing callees to switch directly on `v.tag` without
   runtime translation or heap allocation.
 
-### 10.5. Call-Site Specialization for Unbounded Quantifiers (Phase 4.9c)
+### 10.5. Call-Site Specialization for Unbounded Quantifiers
 When unbounded polymorphic functions (`All(A::TYPE)`) are invoked at call sites with concrete `Record` or `Variant`
 arguments:
 - **Specialization Pass (`ir/specialize.py`, ir.md §8.1):** Clones a function called with type arguments that hold
@@ -467,7 +467,7 @@ arguments:
   (`struct QTuple_<TypeTags>`) with 16-byte inline slots matching caller expectations, eliminating pointer mismatches.
 - **First-Class Fallback:** The canonical unspecialized `QVal` version is retained for indirect calls and closures.
 
-### 10.6. Flat Stride Arrays (Phase 4.9d)
+### 10.6. Flat Stride Arrays
 Arrays containing records or variants (`Array(Record)` and `Array(Variant)`) are lowered to specialized wide array
 structures (`QArrayWideRecord` and `QArrayWideVariant`):
 - **Flat 16-Byte Stride Buffers:** Elements are stored directly in contiguous memory buffers without individual
@@ -479,7 +479,7 @@ structures (`QArrayWideRecord` and `QArrayWideVariant`):
 - **Interaction with Call-Site Specialization:** Generic functions operating on `Array(A)` where `A` is a record
   or variant specialize to concrete clones that access flat wide arrays directly.
 
-### 10.7. Unified Native Module Mechanism & Hybrid Modules (Phase 4.11)
+### 10.7. Unified Native Module Mechanism & Hybrid Modules
 All modules—whether pure Quest, standard library built-ins (`writer`, `reader`, `conv`, `ascii`, `int`, `real`,
 `string`, `system`, `arrayOp`, `dynamic`), or user-defined hybrid modules—are compiled uniformly:
 - **Module files through the IR:** a module file is a unit of its own (`module_file_to_c`), whose module has
@@ -495,17 +495,17 @@ All modules—whether pure Quest, standard library built-ins (`writer`, `reader`
       type is abstract.
 - **Calls of Library Functions:** A call of an imported module's function (e.g. `writer.putString(w s)`) calls the
   function the module exports (`qv_writer_putString`), which calls the C function (`quest_writer_put_string`).
-  Polymorphic functions that inspect runtime types (e.g. `dynamic.new`, `dynamic.be`) are defined as externals
-  taking their type parameters' descriptors. All `dynamic` operations (`dynamic.new`, `dynamic.be`, `dynamic.copy`, `dynamic.extern`,
-  `dynamic.intern`) are standard `TypedNativeBinding`s with zero compiler special-casing.
+  In `lib/dynamic.mod.quest`, `dynamic.new` and `dynamic.be` are Quest functions (`auto :A with a end` and `inspect`),
+  while `dynamic.copy`, `dynamic.extern`, and `dynamic.intern` are declared `external` with zero compiler
+  special-casing.
 - **External C Types and Values:** `external "C_TYPE"` and `external "C_SYMBOL"` seamlessly bridge C runtime
   structures (e.g. `QWriter *`, `QReader *`) into Quest's type system without compiler special-casing.
 
-### 10.8. Mutable Reference Parameters (`out` and `var`) and `@` Lvalues (Phase 4.12)
-Phase 4.12 implements native pointer lowering for Cardelli's mutable reference parameters:
+### 10.8. Mutable Reference Parameters (`out` and `var`) and `@` Lvalues
+Cardelli's mutable reference parameters compile directly to native C pointers:
 - **Native Pointer Parameters (`T *`):** Parameters marked `var p: T` or `out p: T` compile directly to
-  `T *qv_p` in C declarations, definitions, and closure trampolines. Reads from `var` parameters dereference the
-  pointer (`*qv_p`), and writes to `var`/`out` parameters assign through the pointer (`*qv_p = val;`).
+  `T *l_p` in C declarations, definitions, and closures. Reads from `var` parameters dereference the
+  pointer (`*l_p`), and writes to `var`/`out` parameters assign through the pointer (`*l_p = val;`).
 - **Callsite Lvalue Emission (`@`):**
   - Variable references `@x` emit `&qv_x`.
   - Pointer parameter forwarding `g(@y)` directly passes `qv_y` without taking its address (`&`).
@@ -523,9 +523,9 @@ Phase 4.12 implements native pointer lowering for Cardelli's mutable reference p
 - **Closure Capture Restrictions:** Closure capture of `out`/`var` parameters or local stack mutable variables
   is prohibited at compile time, guaranteeing that pointers never outlive their stack frames.
 
-### 10.9. Existential Tuples & Dot-Projections (Phase 4.13)
-Phase 4.13 implements existential tuples (weak sums `Tuple A::TYPE ... end`), path-type projection (`p.T`),
-and member projection (`p.v`):
+### 10.9. Existential Tuples & Dot-Projections
+Existential tuples (weak sums `Tuple A::TYPE ... end`), path-type projection (`p.T`), and member projection (`p.v`)
+are lowered as follows:
 - **Struct Layout & Type Formal Erasure:** In static compilation, type formal components (`A::TYPE`, `A <: T`) are
   erased from the physical C struct layout. Positional value indices (`_0`, `_1`, etc.) correspond strictly to the
   tuple's value components.

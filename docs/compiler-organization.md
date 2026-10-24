@@ -268,61 +268,45 @@ Layer 8:  [questlang/driver/*] (options, pipeline, main)
 
 ---
 
-## 6. Phased Implementation Milestones
+## 6. Implementation Milestones
 
-Porting will proceed through four self-contained milestones. Each milestone will be broken into multiple incremental,
-testable steps:
+Porting proceeds through four self-contained milestones:
 
 ### Milestone 1: Frontend & Syntax (`common` and `syntax`)
-- **Step 1.1:** `questlang/common/location`, `diagnostics`, `diagbag`.
-- **Step 1.2:** `questlang/syntax/tokens` and `questlang/syntax/tokenizer`
-  (verified against existing `tokenize` goldens).
-- **Step 1.3:** `questlang/syntax/ast/*` and `questlang/syntax/astprint/*`
-  (verified against `ast_dump` for every parseable `.quest` file by `tests/astprint/generate.py --check`).
-- **Step 1.4:** `questlang/syntax/parser/engine` (generic PEG engine with memoization).
-- **Step 1.5:** Grammar rules and actions for types and declarations.
-- **Step 1.6:** Grammar rules and actions for expressions, operators, and full modules
-  (verified against `parse` goldens).
+- `questlang/common/location`, `diagnostics`, `diagbag`.
+- `questlang/syntax/tokens` and `questlang/syntax/tokenizer` (verified against `tokenize` goldens).
+- `questlang/syntax/ast/*` and `questlang/syntax/astprint/*` (verified against `ast_dump` for every parseable `.quest`
+  file by `tests/astprint/generate.py --check`).
+- `questlang/syntax/parser/*`: generic PEG engine with memoization and grammar rules/actions for types, declarations,
+  expressions, operators, and modules (verified against `parse` goldens).
 
 ### Milestone 2: Types & Typechecking (`types` and `typecheck`)
-- **Step 2.1:** Semantic `kind`, `model` (Cardelli types), and lexical `env`.
-- **Step 2.2:** `subtyping` rules (Cardelli subtyping judgments, bound checking, and recursion contractiveness).
-- **Step 2.3:** `elaborate` (syntactic `TypeExpr` $\to$ semantic `Type`).
-- **Step 2.4:** `builtins` (initial typing environment and root interface signatures).
-- **Step 2.5:** `checkexpr` and `checkdecl` bidirectional typechecker.
-- **Step 2.6:** `pattern` exhaustiveness analysis for `case` expressions (verified against `typecheck` goldens).
+- Semantic `kind`, `model` (Cardelli types), and lexical `env`.
+- `subtyping` rules (Cardelli subtyping judgments, bound checking, and recursion contractiveness).
+- `elaborate` (syntactic `TypeExpr` $\to$ semantic `Type`) and `builtins` (initial typing environment and root
+  interface signatures).
+- `checkexpr`, `checkdecl` bidirectional typechecker, and `pattern` exhaustiveness analysis (verified against
+  `typecheck` goldens).
 
 ### Milestone 3: Modules & Interpreter (`modules` and `eval`)
-- **Step 3.1:** `modules/modid`, `loader`, and `graph` (dependency DAG and cycle validation).
-- **Step 3.2:** `modules/interfacecheck` and `linker`.
-- **Step 3.3:** `eval/value`, `env`, and `eval_builtins`.
-- **Step 3.4:** `eval/eval` tree-walking evaluator (verified against `interpret` goldens).
-- **Step 3.5:** `eval/dynamic` serialization and interactive REPL.
+- `modules/modid`, `loader`, `graph` (dependency DAG and cycle validation), `interfacecheck`, and `linker`.
+- `eval/value`, `env`, `eval_builtins`, `eval/eval` tree-walking evaluator (verified against `interpret` goldens),
+  `eval/dynamic` serialization, and interactive REPL.
 
 ### Milestone 4: C Code Generation & Self-Hosting (`codegen` and `driver`)
-- **Step 4.1:** `codegen/cmodel` and `codegen/ctypes` (boxing, unboxing, struct layouts).
-- **Step 4.2:** `codegen/cclosure` (capture analysis and closure record generation).
-- **Step 4.3:** `codegen/cdecl` and `codegen/cemit` (emitting clean C99).
-- **Step 4.4:** `codegen/crunner` (compiler driver and runtime linking).
-- **Step 4.5:** `driver/options`, `pipeline`, and `main` entrypoint.
-- **Step 4.6:** Complete self-hosting verification (`questc` compiling `questc`).
+- IR lowering and passes, `codegen` C99 emission, and compiler driver / runtime linking.
+- `driver/options`, `pipeline`, `main` entrypoint, and complete self-hosting verification (`questc` compiling
+  `questc`).
 
 ---
 
 ### 6.1. Milestone 1 Verification Strategy
 
-Rather than building a full test runner in Quest immediately, Milestone 1 will be validated directly using the existing
-Python test runner (`run_tests.py`) via focused Quest CLI driver harnesses:
-- `tests/questlang_tokenize.quest`: A small driver that invokes `questlang/syntax/tokenizer` and emits token outputs
-  matching the exact format of `tests/golden/tokenize/*.out`.
-- `tests/questlang_parse.quest`: A small driver that invokes `questlang/syntax/parser` and formats AST outputs matching
+Milestone 1 is validated using the Python test runner (`run_tests.py`) via focused Quest CLI driver harnesses:
+- `tests/questlang_tokenize.quest`: Invokes `questlang/syntax/tokenizer` and emits token outputs matching the exact
+  format of `tests/golden/tokenize/*.out`.
+- `tests/questlang_parse.quest`: Invokes `questlang/syntax/parser` and formats AST outputs matching
   `tests/golden/parse/*.out`.
 
 This allows `run_tests.py --phase tokenize` and `run_tests.py --phase parse` to verify the self-hosted frontend
-against all existing language tests before moving to Milestone 2.
-
-> [!NOTE] Compiler & Typechecker Performance Observation
-> During Milestone 1 verification of multi-module suites (e.g. `tests/source/questlang/syntax_ast.quest`), the
-> performance of the bootstrap compiler—specifically the typechecker during complex recursive type subtyping across
-> imported modules, as well as multi-module C compilation—looks problematic (~30s+ runtime per test). We will want to
-> investigate if further performance improvements and algorithmic optimizations are possible.
+against all existing language tests.

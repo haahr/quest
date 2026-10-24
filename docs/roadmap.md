@@ -23,7 +23,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 |  [Step 3] Tree-Walking Interpreter & Interactive REPL [COMPLETE]                  |
 |       │                                                                           |
 |       ▼                                                                           |
-|  [Step 4] Bootstrap C Transpiler (Compiles Quest AST -> C99 + Boehm GC -> Binary) |
+|  [Step 4] Bootstrap C Compiler (Typed AST -> IR -> C99 + Boehm GC) [COMPLETE]     |
 +-----------------------------------------------------------------------------------+
         │
         ▼
@@ -73,108 +73,51 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 - **Local Type Inference & Signatures:** Signature matching, manifest type/kind expansion (`Def`, `DEF`, `_`), and
   argument/parameter reconciliation.
 
-### Step 3: Bootstrap Tree-Walking Interpreter & REPL (Python) — *Complete (Phases 3.1–3.6)*
-- Tree-walking applicative-order interpreter executing typed AST representations.
-- Subphase progress:
-  - **Phase 3.1 (Runtime Values & Memory):** `QValue` class hierarchy, primitives, aggregates, heap reference cells
-    (`QRef`), Cardelli object identity (`is` / `isnot`), and deep structural equality. — *Complete*
-  - **Phase 3.2 (Environment & Core Evaluation):** Scoped lexical frames (`RuntimeEnvironment`), operators, truncation
-    towards zero for integer division/modulo, loops, and division-by-zero exception handling. — *Complete*
-  - **Phase 3.3 (Functions, Structures & Mutation):** Closures (`QClosure`), recursive bindings, record/tuple member
-    selection, mutable record fields, mutable arrays (`QArray`), and `case` pattern matching. — *Complete*
-  - **Phase 3.4 (Exceptions & Dynamic Types):** Exception declarations (`exception`), raising (`raise`), try-catch
-    handlers (`try...when...else`), dynamic type packaging (`dynamic`), type inspection (`inspect`), language-level
-    `dynamic.error`, and Cardelli-format exception diagnostics. — *Complete*
-  - **Phase 3.5 (Cardelli Standard Library Modules):** Builtin modules (`writer`, `reader`, `conv`, `ascii`, `int`,
-    `real`, `string`, `arrayOp`, `dynamic`), streams/files, and top-level `import` system. — *Complete*
-  - **Phase 3.6 (Pipeline Integration, CLI & Interactive REPL):** `InterpretPhase` integration, `--echo` batch mode,
-    `-i` / `--interactive` REPL launch, and persistent interactive multi-line REPL (`quest/repl.py`). — *Complete*
-- Interpreter architecture in [interpreter.md](interpreter.md); REPL guide in [repl.md](repl.md); implementation
-  plan in [step3-interpreter.md](step3-interpreter.md).
+### Step 3: Bootstrap Tree-Walking Interpreter & REPL (Python) — *Complete*
+- **Runtime Values & Memory (`quest/values/model.py`):** `QValue` hierarchy, primitives, aggregates (`QRecord`,
+  `QTuple`, `QArray`, `QList`, `QVariant`, `QOption`), closures (`QClosure`, `QBuiltinFun`), mutable reference cells
+  (`QRef`), auto/dynamic envelopes (`QAutoVal`), Cardelli object identity (`is` / `isnot`), and deep structural
+  equality.
+- **Evaluator (`quest/interpreter/`):** Scoped lexical frames (`RuntimeEnvironment`), tree-walking evaluator
+  (`treewalk.py`), IR interpreter (`ir_interp.py`), exceptions (`try...when...else`, `raise`), `auto` / `inspect`
+  dynamic type reflection, and Cardelli standard library bridges (`builtins.py`).
+- **Interactive REPL (`quest/repl.py`):** Persistent multi-line REPL and batch `--echo` / `-i` modes.
+- Interpreter architecture in [interpreter.md](interpreter.md); REPL guide in [repl.md](repl.md).
 
-### Step 4: Bootstrap C Transpiler (Python) — *Complete (Phases 4.1–4.16)*
-- Multi-pass translation pipeline emitting standard ISO C99 linked with Boehm GC (`libgc`) or libc (`--nogc`):
-  - **Phase 4.1 (Runtime ABI & Core Pipeline):** 64-bit `QVal` representation, `runtime/quest_runtime.h`,
-    `compiler_runner.py` toolchain discovery, and `codegen_c` pipeline integration. — *Complete*
-  - **Phase 4.2a (Top-Level & Recursive Functions):** Direct C calling convention, static hoisting, uncurrying
-    flattening, and mutual recursion. — *Complete*
-  - **Phase 4.2b (Tuples & Concrete Records):** C struct generation, typedef hoisting, heap allocation via
-    `quest_alloc`, named/indexed field selection, and mutable field updates. — *Complete*
-  - **Phase 4.2c (Closures & Function Values):** First-class closures, environment capture, lambda lifting,
-    and indirect dispatch. — *Complete*
-  - **Phase 4.3 (Arrays & Strings):** Fixed-size/dynamic arrays and extended string operations. — *Complete*
-  - **Phase 4.4 (Options & Variants):** Ordered options, tagged variants, tag checks, and case
-    discrimination. — *Complete*
-  - **Phase 4.5 (Subtyping & Dynamic Dispatch):** Prefix tuple subtyping, evidence-passing record
-    dictionaries, object headers, and static variant tag remapping. — *Complete*
-  - **Phase 4.6 (Exceptions & Panics):** Exception values, try-when exception handling, and
-    stack unwinding. — *Complete*
-  - **Phase 4.7 (Whole-Program Modules & Interfaces):** Multi-file compilation, interface checking, module records,
-    and linking. — *Complete*
-  - **Phase 4.8 (Runtime Type Descriptors & Dynamic Module):**
-    - *4.8a:* Runtime `QTypeDescriptor` structures, base descriptors, interning table, and `QDynamic`. — *Complete*
-    - *4.8b:* Compiler quantifier calling convention and call-site descriptor synthesis. — *Complete*
-    - *4.8c:* `dynamic` module lowering (`dynamic.new`, `dynamic.be`, `dynamic.copy`, `dynamic.error`) and generic
-      wrappers. — *Complete*
-  - **Phase 4.9 (Fat Pointers, Aggregate Subtyping, Specialization & Flat Stride Arrays):**
-    - *4.9a:* Uniform 16-byte `QRecordVal` fat pointers and aggregate subtyping across records and tuples. —
-      *Complete*
-    - *4.9b:* Bounded specialization for records (`A <: Record`) and variants (`V <: Variant`). — *Complete*
-    - *4.9c:* Call-site specialization for unbounded quantifiers (`All(A::TYPE)`). — *Complete*
-    - *4.9d:* Flat stride arrays (`Array(Record)`, `Array(Variant)`) with zero heap boxing. — *Complete*
-  - **Phase 4.10 (Standard Library Builtins & OS Primitives):** Cardelli standard library interfaces in C (`Writer`,
-    `Reader`, `Conv`, `Ascii`, `IntOp`, `RealOp`, `StringOp`) and `System` OS extensions (`args`, `sysexit`,
-    `getEnv`, `fileExists`, `error`). — *Complete*
-  - **Phase 4.11 (Unified Native Module Mechanism & Hybrid Modules):** Unified declarative module pipeline,
-    first-class `external` syntax for opaque C data structures (`type T = external "..."`) and native symbols
-    (`let x = external "..."`), elimination of legacy Section 8c, and lazy module loading with concrete value
-    records. — *Complete*
-  - **Phase 4.12 (`out` and `var` Parameter Bindings with `@` References):** Passing lvalues and reference locations
-    (`@x`, `@r.f`, `@a[i]`, `@t.1`, `var(e)`, chained paths) to `out` and `var` parameters, strict write-only
-    enforcement for `out`, callsite `@` syntax enforcement, closure capture restrictions, and native pointer lowering
-    (`T *`) with pointer forwarding in C transpilation. — *Complete*
-  - **Phase 4.13 (Existential Tuples & Dot-Projections):** Packing packages (weak sums `Tuple A::TYPE ... end`),
-    path-type projection (`p.T`), member projection (`p.v`), closure adaptation thunks for abstract signatures,
-    native unboxing for bounded path-types (`A <: T`), and structural tuple coercion in C transpilation. — *Complete*
-  - **Phase 4.14 (Dynamic Subtyping & Compound Type Descriptors):** Static and dynamic compound type descriptors
-    (records, tuples, variants, options, arrays, functions, opaques), unified structural subtyping in C runtime
-    (`quest_is_subtype` with coinductive cycle detection), dynamic value adaptation (`quest_record_adapt` for width,
-    permutation, and depth subtyping; `quest_variant_adapt` for tag remapping), static `.rodata` descriptor emission,
-    and `inspect` expression branching. — *Complete*
-  - **Phase 4.15 (Dynamic Serialization: `dynamic.extern` & `dynamic.intern`):** C runtime implementation of
-    text-format serialization and deserialization of typed dynamic packages (`dynamic.extern` converting arbitrary typed
-    values into serialized text streams with cyclic reference preservation, and `dynamic.intern` parsing stream
-    inputs back into dynamically typed values validated against compound type descriptors). Fully compatible and
-    interchangeable with the interpreter's JSON/JSOG representation (`dynamic_json.py`), featuring zero-dependency
-    streaming single-value JSON/JSOG decoding on `QReader`, recursive-descent type descriptor parsing, natural C ABI
-  - **Phase 4.16 (Separate Compilation & Object Linking):** Separate compilation of interfaces (`.int.quest`) into
-    C headers (`.h`) and portable serialized type metadata (`.qi`) via dynamic JSON/JSOG, compilation of modules
-    (`.mod.quest`) to object files (`.o`), and client linking (`main.quest` + `*.o` -> binary). Step 1 (Interface
-    compilation `.int.quest` -> `.h` + `.qi`), Step 2 (Module compilation `.mod.quest` -> `.c` -> `.o` with
-    dual direct C function and closure trampoline ABI and idempotent chained initialization), and Step 3 (Client
-    compilation and object linking `main.quest` + `*.o` -> native binary with dual linkage support and signature
-    adaptation) are complete. — *Complete*
-- C transpiler architecture in [codegen-c.md](codegen-c.md);
-  C ABI specification in [c-representation.md](c-representation.md);
-  planned intermediate representation in [ir.md](ir.md), whose passes the native backend (step 6) would share;
-  language extensions specification in [extensions.md](extensions.md).
+### Step 4: Bootstrap C Compiler (Python) — *Complete*
+- **Intermediate Representation & Passes (`quest/ir/`):** A-normal form with structured control flow and join points
+  (`ir/lower.py`), call-site specialization (`ir/specialize.py`), closure conversion and lambda lifting
+  (`ir/closure.py`), and representation & boundary conversion insertion (`ir/represent.py`).
+- **C Code Generation (`quest/codegen/`):** Uniform 64-bit `QVal` ABI, 16-byte `QRecordVal` fat pointers with static
+  offset dictionaries, 16-byte unboxed `QVariantVal` values with static tag remapping, flat stride wide arrays,
+  native pointer lowering (`T *`) for `var`/`out` parameters, existential tuples, runtime type descriptors
+  (`QTypeDescriptor`), shared layout/canonical/descriptor/symbol modules (`codegen/`), and portable C99 emission
+  (`codegen/c/`).
+- **Runtime & Separate Compilation (`runtime/`, `quest/modules/`, `quest/build/`):** C99 runtime linked with Boehm GC
+  (`libgc`) or libc (`--nogc`), `setjmp`/`longjmp` exceptions, JSOG dynamic graph serialization (`dynamic.extern` /
+  `dynamic.intern`), separate compilation of interfaces (`.int.h`, `.qi`) and modules (`.mod.c`, `.o`, `.qm`), and
+  incremental build/dependency resolution (`BuildEngine`).
+- Specifications: [ir.md](ir.md), [codegen-c.md](codegen-c.md), [c-representation.md](c-representation.md),
+  [modules.md](modules.md), [build-process.md](build-process.md), and [extensions.md](extensions.md).
 
-### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest)
-- Port the Python implementations of Steps 1–4 into idiomatic Quest.
-- Implement essential collection and data structure libraries in Quest (hash tables, string buffers, extensible arrays)
-  to support the compiler's own internals.
-- Compile the self-hosted Quest compiler using the Python bootstrap transpiler.
-- Validate bootstrap fixed-point: `Quest(Quest) == Quest`.
+### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest) — *In Progress*
+- Port the compiler and interpreter into idiomatic, modular Quest under `questlang/` (see
+  [compiler-organization.md](compiler-organization.md) and
+  [quest-self-hosting-prerequisites.md](quest-self-hosting-prerequisites.md)).
+- Implement collection and utility libraries in Quest (`collections/vector`, `collections/hashMap`,
+  `collections/hashSet`, `util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, `util/hash`;
+  see [new-libraries.md](new-libraries.md)).
+- Compile the self-hosted Quest compiler using the Python bootstrap C compiler and validate the bootstrap fixed-point:
+  `Quest(Quest) == Quest`.
 
 ### Step 6: Native AArch64 Code Generator (Written in Quest)
-- Replace C transpilation with native AArch64 machine code generation via small nanopass compiler passes:
-  1. *Desugaring & Type Elimination*
-  2. *Closure Conversion & Hoisting*
-  3. *A-Normal Form (ANF) / Monadic IR*
-  4. *Instruction Selection (AArch64 assembly AST)*
-  5. *Liveness Analysis & Register Allocation (Graph Coloring / Linear Scan)*
-  6. *Prolog/Epilog Generation & Binary/Assembly Emission (linked with `libgc`)*
-- Follows the evidence-passing object model detailed in [runtime-design.md](runtime-design.md).
+- Replace C emission with native AArch64 machine code generation consuming the represented IR ([ir.md](ir.md) §8.6):
+  1. *Descriptor Materialization*
+  2. *Control-Flow Graph (CFG) & SSA Construction*
+  3. *Instruction Selection (AArch64 assembly AST)*
+  4. *Liveness Analysis & Register Allocation*
+  5. *Prolog/Epilog Generation & Binary/Assembly Emission (linked with `libgc`)*
+- Follows the evidence-passing object model and AAPCS64 register conventions in [runtime-design.md](runtime-design.md).
 
 ### Step 7: Native AArch64 JIT & Interactive Incremental Runtime
 - In-process dynamic code emission and execution for REPL.
@@ -187,7 +130,10 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 - [syntax.md](syntax.md): Lexer, parser, and untyped AST specification.
 - [type-system.md](type-system.md): Semantic types, subtyping theory, and elaboration.
 - [pipeline.md](pipeline.md): Compiler pipeline framework and CLI driver.
+- [ir.md](ir.md): Intermediate representation and optimization/lowering passes.
+- [codegen-c.md](codegen-c.md): C code generator and compiler runner.
+- [c-representation.md](c-representation.md): C ABI and runtime representation.
 - [runtime-design.md](runtime-design.md): Object representation (Evidence Passing vs Fat Pointers) and ABI.
 - [interpreter.md](interpreter.md): Interpreter runtime architecture, value model, and semantic decisions.
-- [step3-interpreter.md](step3-interpreter.md): Step 3 interpreter and REPL implementation plan.
-- [extensions.md](extensions.md): Necessary OS and CLI extensions to the core language.
+- [compiler-organization.md](compiler-organization.md): Organization and milestones of the self-hosted compiler.
+- [extensions.md](extensions.md): OS, CLI, and native interop extensions to the core language.

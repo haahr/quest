@@ -26,19 +26,19 @@ Otherwise, if you're interested in a retro programming language and an interesti
 
 ## Roadmap Summary
 
-The compiler is built using a staged bootstrap methodology across seven distinct phases:
+The compiler is built using a staged bootstrap methodology across seven milestones:
 
 | Stage | Language | Subsystem | Status |
 | :--- | :--- | :--- | :--- |
 | **Step 1** | Python | Front-End: Lexer, PEG Parser, and Untyped AST | **Complete** |
 | **Step 2** | Python | Typechecker: $F_{<:}^\omega$ Subtyping, Equi-Recursion, Elaboration | **Complete** |
 | **Step 3** | Python | Tree-Walking Interpreter & Interactive REPL | **Complete** |
-| **Step 4** | Python | Bootstrap C Transpiler (emits C99 + Boehm GC) | **Complete** (Phases 4.1–4.16) |
-| **Step 5** | Quest | Self-Hosted Front-End & C Compiler (written in Quest) | Queued |
+| **Step 4** | Python | Bootstrap C Compiler (IR pipeline emitting C99 + Boehm GC) | **Complete** |
+| **Step 5** | Quest | Self-Hosted Front-End & C Compiler (written in Quest) | In Progress |
 | **Step 6** | Quest | Self-Hosted Native AArch64 Compiler (Nanopass Pipeline) | Queued |
 | **Step 7** | Quest | Native AArch64 JIT & Dynamic Incremental Runtime | Queued |
 
-For full architectural details on each stage, see [docs/roadmap.md](docs/roadmap.md).
+For architectural details on each stage, see [docs/roadmap.md](docs/roadmap.md).
 
 ---
 
@@ -155,12 +155,11 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
   its owner, commands, method, code, test, documentation, and commit conventions, and Quest's syntax traps.
 - [docs/pipeline.md](docs/pipeline.md): The compiler phase pipeline framework, dual-pipeline architecture (interpreter
   vs. C compilation), and CLI driver interface.
-- [docs/codegen-c.md](docs/codegen-c.md): Bootstrap C transpiler architecture, AST lowering, statement expressions, and
-  compiler runner.
+- [docs/codegen-c.md](docs/codegen-c.md): C code generator architecture, IR C printer, and host compiler runner.
 - [docs/c-representation.md](docs/c-representation.md): C representation, uniform 64-bit `QVal` ABI, static assertions,
   and runtime library design.
-- [docs/ir.md](docs/ir.md): Planned intermediate representation between the typed AST and the C backend (ANF with
-  join points, refined by passes), and the plan for introducing it.
+- [docs/ir.md](docs/ir.md): Intermediate representation between the typed AST and the C backend (ANF with join points,
+  refined by passes).
 - [docs/syntax.md](docs/syntax.md): Lexical scanning, character offset tracking, PEG parser combinators, and untyped
   AST structure.
 - [docs/type-system.md](docs/type-system.md): Higher-order type system, subkinding, equi-recursive coinductive
@@ -169,6 +168,8 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
   environment, Cardelli identity semantics, and operational evaluation engine.
 - [docs/modules.md](docs/modules.md): Cardelli module system, interfaces, information hiding, file-based loading
   conventions (.int.quest / .mod.quest), and singleton evaluation semantics.
+- [docs/build-process.md](docs/build-process.md): Incremental separate compilation engine, `.qi`/`.qm` metadata, and
+  transitive linking.
 - [docs/diagnostics.md](docs/diagnostics.md): Structured diagnostic error reporting, severity levels, and caret
   rendering.
 - [docs/runtime-design.md](docs/runtime-design.md): Compiled runtime architecture, evidence passing vs. fat pointers,
@@ -177,8 +178,8 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
   validation, and bidirectional matching.
 
 ### Implementation Plans
-- [docs/roadmap.md](docs/roadmap.md): Complete seven-stage implementation roadmap.
+- [docs/roadmap.md](docs/roadmap.md): Seven-stage implementation roadmap.
+- [docs/compiler-organization.md](docs/compiler-organization.md): Organization and milestones for the self-hosted
+  Quest compiler and interpreter (`questlang`).
 - [docs/quest-self-hosting-prerequisites.md](docs/quest-self-hosting-prerequisites.md): Architectural prerequisites,
   runtime libraries, and subsystem capabilities required for self-hosting.
-- [docs/step3-interpreter.md](docs/step3-interpreter.md): Detailed implementation plan for the Step 3 tree-walking
-  interpreter and interactive REPL.

@@ -1,7 +1,7 @@
 # Quest Bootstrap Tree-Walking Interpreter & REPL
 
 This document details the architecture, runtime value representation, evaluation engine, and semantic decisions
-implemented for the Step 3 bootstrap tree-walking interpreter in `bootstrap/python/quest/values/model.py` (the values,
+implemented for the bootstrap tree-walking interpreter in `bootstrap/python/quest/values/model.py` (the values,
 which compilation shares, for the dynamic format and `.qi` files) and `bootstrap/python/quest/interpreter/treewalk.py`.
 The `quest/interpreter/` package also holds the standard library's Python implementations (`builtins.py`) and the IR
 interpreter (`ir_interp.py`); compilation does not depend on it (`tests/python/test_dependencies.py`).
@@ -10,7 +10,7 @@ interpreter (`ir_interp.py`); compilation does not depend on it (`tests/python/t
 
 ## 1. Subsystem Overview
 
-The Step 3 interpreter executes typed Quest abstract syntax trees (`TypedProgram`) directly without bytecode
+The tree-walking interpreter executes typed Quest abstract syntax trees (`TypedProgram`) directly without bytecode
 compilation or machine code generation. It serves three primary purposes:
 
 1. **Bootstrap Ground Truth:** Provides immediate operational semantics validating the typechecker and grammar.
@@ -284,7 +284,6 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - Type inspection via `inspect dyn when Type with b then ... else ... end` checks subtyping dynamically.
   - If no `when` branch matches and no `else` branch is supplied, raises the language-level exception `dynamic.error`
     (`DYNAMIC_ERROR_EXC`).
-  - Legacy bare `dynamic(val)` syntax is removed in favor of `dynamic.new`.
 
 ### 4.11. Standard Library Modules & Import System
 - **Module Pre-linking & Import Semantics (Cardelli §11.3):**
@@ -322,23 +321,9 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
 
 ---
 
-## 5. Implementation Status
-
-| Phase | Description | Components | Status |
-| :--- | :--- | :--- | :--- |
-| **3.1** | Runtime Values & Memory | `QValue` hierarchy, primitives, aggregates, identity/equality | **Complete** |
-| **3.2** | Environment & Core Eval | `RuntimeEnvironment`, scoping, operators, loops, division by zero | **Complete** |
-| **3.3** | Structures & Mutation | Record/tuple selection, array operations, `case` matching | **Complete** |
-| **3.4** | Exceptions & Dynamic | `try...with`, `raise`, `inspect`, dynamic type reflection | **Complete** |
-| **3.5** | Cardelli Stdlib Modules | 10 standard modules, I/O streams, pre-linking & imports | **Complete** |
-| **3.6** | Pipeline & REPL | `InterpretPhase`, `--echo`, `-i`, interactive REPL (`repl.py`) | **Complete** |
-
----
-
 ## See Also
 
 - [docs/repl.md](repl.md): Interactive REPL guide, prompts, multi-line rules, and terminal handling.
-- [docs/step3-interpreter.md](step3-interpreter.md): Multi-phase implementation roadmap for Step 3.
 - [docs/pipeline.md](pipeline.md): Compiler phase pipeline and unified CLI driver options.
 - [docs/type-system.md](type-system.md): Typechecker architecture, semantic types, and term typing rules.
 - [docs/TypefulProgramming.md](TypefulProgramming.md): Cardelli's foundational treatise on Quest and language semantics.

@@ -173,7 +173,7 @@ def compile_stream(source_text: str, file_name: str) -> int:
   - Errors: Syntax errors at the furthest parsed token offset.
   - Information: Expected token kinds vs encountered token kind.
 
-### 4.2. Kind & Type Elaboration (Phase 2)
+### 4.2. Kind & Type Elaboration
 - **Error Accumulation with Poison Type (`QErrorType`):**
   - When an expression fails typechecking (e.g. `1 + "str"`), the typechecker records a `Diagnostic(ERROR, ...)` in the
     sink and returns `TypedErrorExpr(type_val=QErrorType())`.
@@ -191,7 +191,7 @@ def compile_stream(source_text: str, file_name: str) -> int:
 - **Internal Compiler Errors (`FATAL`):**
   - AST node invariant violations (e.g. malformed synthetic nodes or missing type annotations during lowering).
 
-### 4.3. Runtime Interpreter & Execution (Phase 3)
+### 4.3. Runtime Interpreter & Execution
 Runtime errors are divided into two categories:
 
 #### 1. Language-Level Quest Exceptions (`TypedRaise` / `TypedTry`)
@@ -295,20 +295,3 @@ error[E0105]: record type mismatch
    |
    = help: try converting the string using 'Int.fromString(y)'
 ```
-
----
-
-## 6. Implementation & Integration Roadmap
-
-1. **Step 2.5 (Foundation):**
-   - Create `quest/diagnostics.py` implementing `Severity` (`FATAL`, `ERROR`, `WARNING`, `INFO`), `DiagnosticLabel`,
-     `CodeSuggestion`, `Diagnostic`, `FatalDiagnosticError`, `DiagnosticSink`, and `DiagnosticRenderer`.
-   - Ensure diagnostic formatting operates purely on `SourceMap` offsets.
-2. **Step 3 Integration (Interpreter):**
-   - Implement `QuestRuntimeError` and `RuntimeStackFrame` tracking inside `tree_eval_expr` and function calls in
-     `interpreter/treewalk.py`.
-   - Ensure unhandled exceptions and runtime errors print clean, source-mapped Quest stack traces.
-3. **Step 3 REPL Integration:**
-   - REPL uses `DiagnosticSink` to display concise inline diagnostics without blowing away the REPL session.
-4. **Step 4 (Typechecker Error Recovery & Warnings):**
-   - Introduce `QErrorType` and optional multi-error collection in `typechecker.py`.

@@ -1,7 +1,7 @@
 # Quest Syntactic Front-End: Lexer, Parser, and AST Architecture
 
 This document specifies the lexical syntax, parsing mechanics, and abstract syntax tree (AST) data structures for the
-Quest bootstrap compiler (implementing Step 1).
+Quest compiler.
 
 ---
 
@@ -16,10 +16,10 @@ The front-end pipeline translates raw UTF-8 Quest source text into an immutable 
  [ Tokenizer ]    Lexical scanning with 0-indexed character offsets
        │          Emits stream of Token objects
        ▼
- [ PEG Parser ]   Recursive descent / PEG grammar rules (quest/grammar.py)
+ [ PEG Parser ]   Recursive descent / PEG grammar rules (quest/syntax/grammar.py)
        │          Uniform right-associativity, phrase separation
        ▼
-  [ AST Tree ]    Immutable dataclasses (quest/ast.py)
+  [ AST Tree ]    Immutable dataclasses (quest/syntax/ast.py)
                   Emits canonical 2-space indented S-expressions (ast_dump)
 ```
 
@@ -27,7 +27,7 @@ The formal EBNF grammar specification is preserved in [grammar.txt](grammar.txt)
 
 ---
 
-## 2. Lexical Architecture (`tokens.py` and `tokenizer.py`)
+## 2. Lexical Architecture (`quest/syntax/tokens.py` and `quest/syntax/tokenizer.py`)
 
 ### 2.1. Coordinate Tracking via Character Offsets
 Rather than eagerly tracking lines and columns during scanning, every `Token` and `ASTNode` records only a 0-indexed
@@ -81,10 +81,10 @@ Unclosed block comments at EOF trigger an `Unclosed comment` diagnostic.
 
 ---
 
-## 3. Parsing Mechanics (`grammar.py` and `parser.py`)
+## 3. Parsing Mechanics (`quest/syntax/grammar.py` and `quest/syntax/parser.py`)
 
 ### 3.1. Parsing Expression Grammar (PEG) Framework
-The parser is constructed using composable PEG combinators defined in `bootstrap/python/quest/parser.py`:
+The parser is constructed using composable PEG combinators defined in `bootstrap/python/quest/syntax/parser.py`:
 - `SyntaxTarget(name)`: A non-terminal. Its rules are tried in order (ordered choice); each rule is a sequence of
   constructs plus a semantic action called with the sequence's results. Results are memoized per position (packrat).
 - `MatchToken(kind, lexeme=None, silent=False)`: Matches a single token kind (and optionally an exact lexeme).
@@ -187,7 +187,7 @@ This eliminates dangling-else ambiguities and allows whitespace to be freely use
 
 ---
 
-## 4. Abstract Syntax Tree (AST) Hierarchy (`ast.py`)
+## 4. Abstract Syntax Tree (AST) Hierarchy (`quest/syntax/ast.py`)
 
 All AST nodes are defined using Python immutable frozen dataclasses (`@dataclass(frozen=True)`), deriving from the base
 class `ASTNode(offset: int)`:

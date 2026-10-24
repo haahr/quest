@@ -127,10 +127,11 @@ let stdout: Handle = external "quest_writer_output";
 let file(name: String): Handle = external "quest_writer_file";
 let maxVal: Int = external "QUEST_INT_MAX";
 ```
-- When called directly on a known module (e.g. `fileio.stdout` or `writer.putString(w s)`), the compiler directly
-  inlines the native C symbol or expression without allocating intermediate closures.
-- When modules are treated as first-class values (e.g. `let m = fileio;`), module initializers instantiate closure
-  trampolines (`QClosure *`) pointing to native wrapper functions.
+- Inside the declaring module, direct calls to an `external` function invoke the C symbol directly without allocating a
+  closure; when an `external` function is used as a first-class value or stored in the module record, the compiler
+  emits a static closure thunk (`qx_<symbol>` and `qx_<symbol>_closure`).
+- Importers calling an exported module function (`writer.putString(w s)`) invoke the module's exported C function
+  (`qv_writer_putString(w, s)`), which in turn calls the underlying C runtime function (`quest_writer_put_string`).
 
 ---
 
@@ -192,7 +193,7 @@ explicit aliasing of both module instances and interface types/kinds:
 
 ### 3. C Name Mangling
 In emitted C code and precompiled object files, slashes are mangled to `__` (double underscore):
-- Module record: `qv_util__random`
+- Module record: `qm_util__random`
 - Module initializer: `qv_mod_util__random_init`
 - Direct functions: `qv_util__random_next`
 Single underscores (`_`) continue to separate module prefixes from member names, preventing symbol collisions.
@@ -301,40 +302,33 @@ interface Word export
 end;
 ```
 
-### 2. Concrete C Representation and Direct Expression Inlining
-- **Underlying Type**: `Word.T` is backed in C by `uint64_t` (`typedef uint64_t QWord;`).
+### 2. Concrete C Representation and Runtime Helpers
+- **Underlying Type**: `Word.T` is declared in `lib/word.mod.quest` as `Let T = external "uint64_t";`
+  (`typedef uint64_t QWord;` in `quest_runtime.h`).
 - **Word Size Constant**: `word.bits` evaluates to `64`.
 - **Universal Word Boxing (`QVal`)**: In `QVal`, `Word.T` maps to the raw unsigned 64-bit word member `uint64_t u;`.
   Boxing is performed via `((QVal){ .u = (expr) })` and unboxing via `(expr).u`.
 - **Pure Quest Functions**: `getBit`, `setBit`, and `clearBit` are implemented directly in Quest source code
   within `lib/word.mod.quest`, composed from `shift`, `andBits`, `orBits`, and `notBits`.
-- **Direct Expression Inlining**: Builtin calls on the `word` module are directly inlined into C expressions:
-  - `notBits(w)` $\to$ `(~(w))`
-  - `andBits(w1 w2)` $\to$ `((w1) & (w2))`
-  - `orBits(w1 w2)` $\to$ `((w1) | (w2))`
-  - `xorBits(w1 w2)` $\to$ `((w1) ^ (w2))`
-  - `add(w1 w2)` $\to$ `((w1) + (w2))` (unsigned wrapping modulo $2^{64}$ is guaranteed by standard C)
-  - `sub(w1 w2)` $\to$ `((w1) - (w2))`
-  - `mul(w1 w2)` $\to$ `((w1) * (w2))`
-  - `div(w1 w2)` $\to$ `quest_word_div(w1, w2)` (checks for divisor `0` and raises `word.error`)
-  - `mod(w1 w2)` $\to$ `quest_word_mod(w1, w2)` (checks for divisor `0` and raises `word.error`)
-  - `lt(w1 w2)` $\to$ `((w1) < (w2))` (unsigned 64-bit comparison)
-  - `le(w1 w2)` $\to$ `((w1) <= (w2))` (unsigned 64-bit comparison)
-  - `gt(w1 w2)` $\to$ `((w1) > (w2))` (unsigned 64-bit comparison)
-  - `ge(w1 w2)` $\to$ `((w1) >= (w2))` (unsigned 64-bit comparison)
-  - `shift(w count)` $\to$ `quest_word_shift(w, count)` (logical right shift for negative counts, logical left shift
-    for positive counts, returning `0` if $|count| \ge 64$ to avoid C undefined behavior)
-  - `rotate(w count)` $\to$ `quest_word_rotate(w, count)` (circular rotation modulo 64)
-  - `extract(w pos width)` $\to$ `quest_word_extract(w, pos, width)` (extracts `width` bits right-aligned)
-  - `replace(w val pos width)` $\to$ `quest_word_replace(w, val, pos, width)` (replaces `width` bits starting at `pos`)
-  - `popCount(w)` $\to$ `quest_word_pop_count(w)` (`__builtin_popcountll`)
-  - `countLeadingZeros(w)` $\to$ `quest_word_count_leading_zeros(w)` (`__builtin_clzll`; 64 if $w = 0$)
-  - `countTrailingZeros(w)` $\to$ `quest_word_count_trailing_zeros(w)` (`__builtin_ctzll`; 64 if $w = 0$)
-  - `toInt(w)` $\to$ `((int64_t)(w))`
-  - `fromInt(n)` $\to$ `((uint64_t)(n))`
-  - `toReal(w)` $\to$ `quest_word_to_real_val(w)` (union punning, raising `word.error` for a NaN bit pattern, which
-    has no `Real` value; see [type-system.md](type-system.md) §6.3.1)
-  - `fromReal(r)` $\to$ `(((QVal){ .r = (r) }).u)` (direct C99 union compound literal punning)
-- **First-Class Closures**: When `word` functions are passed as first-class values or through records,
-  the compiler generates closure trampolines (`qv_word_<op>_trampoline`) ensuring seamless higher-order interop.
+- **External C Runtime Bindings**: The remaining operations in `lib/word.mod.quest` bind via `external` to inline
+  helpers in `runtime/quest_runtime.h`:
+  - `notBits`, `andBits`, `orBits`, `xorBits` $\to$ `quest_word_not_bits`, `quest_word_and_bits`,
+    `quest_word_or_bits`, `quest_word_xor_bits` (`~`, `&`, `|`, `^`)
+  - `add`, `sub`, `mul` $\to$ `quest_word_add`, `quest_word_sub`, `quest_word_mul` (unsigned wrapping modulo $2^{64}$)
+  - `div`, `mod` $\to$ `quest_word_div_val`, `quest_word_mod_val` (checks for divisor `0` and raises `word.error`)
+  - `lt`, `le`, `gt`, `ge` $\to$ `quest_word_lt`, `quest_word_le`, `quest_word_gt`, `quest_word_ge` (unsigned 64-bit
+    comparisons)
+  - `shift` $\to$ `quest_word_shift_val` (logical right shift for negative counts, logical left shift for positive
+    counts, returning `0` if $|count| \ge 64$ to avoid C undefined behavior)
+  - `rotate` $\to$ `quest_word_rotate_val` (circular rotation modulo 64)
+  - `extract`, `replace` $\to$ `quest_word_extract_val`, `quest_word_replace_val`
+  - `popCount`, `countLeadingZeros`, `countTrailingZeros` $\to$ `quest_word_pop_count_val` (`__builtin_popcountll`),
+    `quest_word_count_leading_zeros_val` (`__builtin_clzll`; 64 if $w = 0$), and
+    `quest_word_count_trailing_zeros_val` (`__builtin_ctzll`; 64 if $w = 0$)
+  - `toInt`, `fromInt` $\to$ `quest_word_to_int` (`(int64_t)w`), `quest_word_from_int` (`(uint64_t)n`)
+  - `toReal`, `fromReal` $\to$ `quest_word_to_real_val` (union punning, raising `word.error` for a NaN bit pattern;
+    see [type-system.md](type-system.md) §6.3.1), `quest_word_from_real_val`
+- **First-Class Closures**: When `word` functions are passed as first-class values or accessed through module records,
+  `lib/word.mod.quest` populates `qm_word` with static `QClosure` wrappers (`qx_quest_word_<op>_closure` and
+  `qf_<op>_closure`).
 

@@ -200,12 +200,9 @@ The compilation process produces four distinct artifact types alongside source c
 | **`.mod.c`/`.o`** | `.mod.quest` | C source and native object code | Module Compiler & C Compiler | Host Linker |
 | **`.c`/`.o`**| `.quest` | C source and native object code | Main Compiler & C Compiler | Host Linker |
 
-### 4.1. Retirement of `.d` Files
-Historically, dependency tracking relied on Make-style `.d` files containing object prerequisite lines. This approach
-proved brittle and incomplete because Make `.d` files only track object-level relationships and do not capture Quest
-interface-to-module contracts or semantic metadata.
-- **Decision:** `.d` files are fully retired.
-- All module dependency tracking and transitive closure resolution is governed directly by `.qm` files.
+### 4.1. Manifest-Driven Dependency Tracking
+Module dependency tracking and transitive closure resolution are governed directly by `.qm` manifests rather than
+Make-style `.d` object prerequisite files, capturing both Quest interface-to-module contracts and semantic metadata.
 
 ### 4.2. Quest Interface Metadata (`.qi`)
 A `.qi` file contains the complete type signature of an interface:

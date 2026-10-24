@@ -65,7 +65,7 @@ All compiler phases are named by their **Verb / Action Form**:
 - `tokenize`: Lexical analysis from source text to token stream.
 - `parse`: Syntactic parsing from token stream to untyped AST.
 - `typecheck`: Semantic typing, kind well-formedness, subtyping, and elaboration to typed AST.
-- `interpret`: Direct evaluation of typed AST via tree-walking interpreter (Step 3). Returns final phrase
+- `interpret`: Direct evaluation of typed AST via tree-walking interpreter. Returns final phrase
   `QValue`. Output is silent if `ok` (`QOk`), formatted if non-ok. Runtime I/O operations execute as direct
   side effects.
 - `ir_core`, `ir_specialized`, `ir_closed`, `ir_represented`: lowering the typed AST to the IR and the IR's passes
