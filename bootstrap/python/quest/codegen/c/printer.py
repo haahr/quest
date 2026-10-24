@@ -24,6 +24,7 @@ from quest.codegen.c.types import (
     c_string_literal,
     closure_fn_ptr_type,
     descriptor_form,
+    echo_descriptor_form,
     MissingDescriptorError,
     qtype_to_c_type,
     qval_unwrap,
@@ -178,6 +179,8 @@ class CPrinter:
         self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
         self.types: list[QType] = []
+        # The types echoed through descriptors of their own (echo_descriptor_form)
+        self.echo_types: list[QType] = []
         self.descriptors: dict[int, str] = {}
         self.descriptor_params: dict[tuple[int, int], str] = {}
         self.fs = _FunctionState(None)
@@ -1329,8 +1332,18 @@ class CPrinter:
             self.emit(f"quest_print_value({c_string_literal(prefix)}, {wrapped}, {c_string_literal(kind)}, "
                       f"{c_string_literal(suffix)});")
         else:
-            self.emit(f"quest_print_typed({c_string_literal(prefix)}, {wrapped}, {self.descriptor(t)}, "
+            self.emit(f"quest_print_typed({c_string_literal(prefix)}, {wrapped}, {self.echo_descriptor(t)}, "
                       f"{c_string_literal(suffix)});")
+
+    def echo_descriptor(self, t: QType) -> str:
+        """The descriptor echo writes a value of type t by: one of its own if t has type components (or parts that
+        do) and mentions no type parameters, so that it writes them as the interpreter does; otherwise t's."""
+        bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
+        if not self.free_type_vars(bare, lambda v: v.symbol_id in self.descriptors):
+            if (form := echo_descriptor_form(t, self.ctx)) is not None:
+                self.echo_types.append(t)
+                return form.c_expr
+        return self.descriptor(t)
 
     # Functions
 
@@ -1701,7 +1714,7 @@ class CPrinter:
         lines.extend(decl.emit_aggregate_structs(agg_types))
         lines.extend(decl.emit_evidence_dictionaries(agg_types, self.needed_dicts))
         lines.extend(decl.emit_coercion_tables(list(tuple_coercions.values()), list(variant_coercions.values())))
-        lines.extend(decl.emit_type_descriptors(agg_types, variant_types, self.descriptor, all_types))
+        lines.extend(decl.emit_type_descriptors(agg_types, variant_types, self.descriptor, all_types, self.echo_types))
         lines.extend(decl.emit_fun_type_adapters(decl.emitted_fun_types))
         return lines
 

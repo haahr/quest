@@ -9,14 +9,18 @@ from typing import Any, Callable, Optional, Sequence
 from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import _may_be_stored_as_subtype
 from quest.codegen.c.types import (
+    c_string_literal,
     closure_fn_ptr_type,
     descriptor_form,
     DescriptorForm,
+    echo_children,
+    echo_descriptor_form,
     MissingDescriptorError,
     qval_unwrap,
     qval_wrap,
     record_struct_name,
     RecordNamingContext,
+    tuple_type_components,
 )
 from quest.codegen.descriptors import fun_descriptor_tag
 from quest.codegen.layout import (
@@ -405,8 +409,10 @@ class CDeclarationEmitter:
         variant_types: list[QVariantType],
         desc_fn: Callable[[QType], str],
         all_program_types: Optional[list[QType]] = None,
+        echo_types: Sequence[QType] = (),
     ) -> list[str]:
-        """Emits a static descriptor for every type of the program that has one (see descriptor_form).
+        """Emits a static descriptor for every type of the program that has one (see descriptor_form), and the
+        descriptors that echo uses for echo_types (see echo_descriptor_form).
 
         desc_fn gives the descriptor expression of a component type, as c_type_descriptor does. A later call emits
         only descriptors (and structs) that earlier calls did not, as for the templates that function bodies need.
@@ -469,8 +475,21 @@ class CDeclarationEmitter:
                 else:
                     visit(inner)
 
+        def visit_echo(t: QType) -> None:
+            # An echo-only descriptor, and those of its parts (echo-only too where they write type components)
+            visit(t)
+            form = echo_descriptor_form(t, self.record_ctx)
+            if form is None or form.tag in seen_tags or form.tag in emitted_before:
+                return
+            seen_tags.add(form.tag)
+            forms.setdefault(form.kind, []).append(form)
+            for child in echo_children(form.display).values():
+                visit_echo(child)
+
         for _, t in agg_types:
             visit(t)
+        for t in echo_types:
+            visit_echo(t)
         for v in variant_types:
             visit(v)
         if all_program_types:
@@ -496,9 +515,10 @@ class CDeclarationEmitter:
                 defined.add(struct_name)
                 missing.append((struct_name, form.type))
         for form in forms.get("record", []):
-            if form.tag not in defined:
-                defined.add(form.tag)
-                missing.append((form.tag, form.type))
+            struct_name = form.struct or form.tag
+            if struct_name not in defined:
+                defined.add(struct_name)
+                missing.append((struct_name, form.type))
         for form in forms.get("option", []):
             struct_name = form.struct or option_struct_name(form.type)
             if struct_name not in defined:
@@ -516,6 +536,17 @@ class CDeclarationEmitter:
 
         def c_string(text: str) -> str:
             return text.replace("\\", "\\\\").replace('"', '\\"')
+
+        def part_desc(form: DescriptorForm, key: str, t: Optional[QType]) -> str:
+            # The descriptor of a part of form's type (t, keyed as echo_children keys it): for an echo-only
+            # descriptor, the part's echo-only descriptor if it has one
+            if t is None:
+                return "NULL"
+            if form.display is not None:
+                shown = echo_children(form.display).get(key)
+                if shown is not None and (shown_form := echo_descriptor_form(shown, self.record_ctx)) is not None:
+                    return shown_form.c_expr
+            return desc_fn(t)
 
         def type_descriptor(tag: str, kind: str, name: str, size: str, extra: str) -> list[str]:
             return [
@@ -678,13 +709,14 @@ class CDeclarationEmitter:
         for form in forms.get("array", []):
             tag = form.tag
             lines.append(f"static const QArrayTypeDescriptor qarr_desc_{tag} Q_UNUSED = {{")
-            lines.append(f"    .element_type = {desc_fn(form.type.element_type)},")
+            lines.append(f"    .element_type = {part_desc(form, '', form.type.element_type)},")
             lines.append("};")
             lines.extend(type_descriptor(tag, "QTYPE_KIND_ARRAY", short_type_name(form.type), "sizeof(void *)", f"&qarr_desc_{tag}"))
             lines.append("")
 
         for form in forms.get("record", []):
             tag, qtype = form.tag, form.type
+            struct_name = form.struct or tag
             sorted_fields = sorted(qtype.fields, key=lambda f: f.name)
             n = len(sorted_fields)
             if n > 0:
@@ -697,12 +729,13 @@ class CDeclarationEmitter:
                 for f in sorted_fields:
                     is_var_str = "true" if f.is_var else "false"
                     lines.append(
-                        f"        {{ .name = \"{f.name}\", .type = {desc_fn(f.type_val)}, "
-                        f".offset = offsetof(struct {tag}, qf_{f.name}), .is_var = {is_var_str} }},"
+                        f"        {{ .name = \"{f.name}\", .type = {part_desc(form, f.name, f.type_val)}, "
+                        f".offset = offsetof(struct {struct_name}, qf_{f.name}), .is_var = {is_var_str} }},"
                     )
                 lines.append("    }")
                 lines.append("};")
-                lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", short_type_name(qtype), f"sizeof(struct {tag})", f"&qrec_desc_{tag}"))
+                size = f"sizeof(struct {struct_name})"
+                lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", short_type_name(qtype), size, f"&qrec_desc_{tag}"))
             else:
                 lines.append(f"static const QRecordTypeDescriptor qrec_desc_{tag} Q_UNUSED = {{ .field_count = 0 }};")
                 lines.extend(type_descriptor(tag, "QTYPE_KIND_RECORD", "Record end", "sizeof(void *)", f"&qrec_desc_{tag}"))
@@ -713,19 +746,35 @@ class CDeclarationEmitter:
             struct_name = tuple_struct_name(qtype)
             val_fields = qtype.value_fields
             n = len(val_fields)
+            # Its type components, which only echo writes: with alias names in an echo-only descriptor
+            components = tuple_type_components(form.display if form.display is not None else qtype)
+            if components:
+                lines.append(
+                    f"static const QTupleTypeComponentDescriptor qtup_components_{tag}[{len(components)}] Q_UNUSED = {{"
+                )
+                for position, text in components:
+                    lines.append(f"    {{ .position = {position}, .text = {c_string_literal(text)} }},")
+                lines.append("};")
             lines.append("static const struct {")
+            lines.append("    size_t component_count;")
+            lines.append("    const QTupleTypeComponentDescriptor *components;")
             lines.append("    size_t element_count;")
-            lines.append(f"    const QTupleElementDescriptor elements[{n}];")
+            # (C99 has no empty arrays: a tuple of type components alone has one unused element)
+            lines.append(f"    const QTupleElementDescriptor elements[{max(n, 1)}];")
             lines.append(f"}} qtup_desc_{tag} Q_UNUSED = {{")
+            lines.append(f"    .component_count = {len(components)},")
+            lines.append(f"    .components = {f'qtup_components_{tag}' if components else 'NULL'},")
             lines.append(f"    .element_count = {n},")
             lines.append("    .elements = {")
             for i, f in enumerate(val_fields):
                 name_str = f'"{f.name}"' if getattr(f, "name", None) is not None else "NULL"
                 is_var_str = "true" if f.is_var else "false"
                 lines.append(
-                    f"        {{ .name = {name_str}, .type = {desc_fn(f.type_val)}, "
+                    f"        {{ .name = {name_str}, .type = {part_desc(form, str(i), f.type_val)}, "
                     f".offset = offsetof(struct {struct_name}, _{i}), .is_var = {is_var_str} }},"
                 )
+            if not val_fields:
+                lines.append("        { .name = NULL },")
             lines.append("    }")
             lines.append("};")
             lines.extend(type_descriptor(tag, "QTYPE_KIND_TUPLE", short_type_name(qtype), f"sizeof(struct {struct_name})", f"&qtup_desc_{tag}"))
@@ -746,7 +795,7 @@ class CDeclarationEmitter:
             lines.append(f"    .case_count = {n},")
             lines.append("    .cases = {")
             for i, (c_tag_name, p_type, is_var) in enumerate(cases):
-                p_desc = desc_fn(p_type) if p_type is not None else "NULL"
+                p_desc = part_desc(form, c_tag_name, p_type)
                 is_var_str = "true" if is_var else "false"
                 lines.append(
                     f"        {{ .name = \"{c_tag_name}\", .payload_type = {p_desc}, "

@@ -1,0 +1,30 @@
+(* Language: echo writes a tuple's type components (Let A = Int, or an existential's <Hidden>::TYPE) wherever the
+   tuple is, with their alias names, in compiled code as in the interpreter *)
+(* @echo *)
+
+let t = tuple Let A = Int let x: A = 1 end;
+let empty = tuple Let A = Bool end;
+let between = tuple let a = 1 Let B = Char let b: B = 'b' Let C = String end;
+
+(* Nested in a tuple, an array, a record, and an option case's payload *)
+let nested = tuple let a = 1 let b = tuple Let B = Bool let y: B = true end end;
+let arr = array of t t end;
+let rec1 = record f = t g = 2 end;
+Let O = Option none some with Def K = Int k: K end end;
+let opt = option some of O with Let K = Int let k: K = 2 end;
+
+(* An existential tuple, at the top level and nested *)
+Let E = Tuple A::TYPE x: A end;
+let p: E = tuple Let A = Int let x: A = 1 end;
+let inE = tuple let a = 1 let p = p end;
+
+(* Types equal but for alias names, which echo writes as written *)
+Let P = Tuple a: Int end;
+let q = tuple Let N = P let k: Int = 1 end;
+let r = tuple Let N = Tuple a: Int end let k: Int = 1 end;
+let qr = array of q r end;
+let inQ = tuple let q = q let r = r end;
+
+(* A component naming a recursive type *)
+Let Rec L = Option nil cons with h: Int t: L end end;
+let s = tuple Let M = L let l: M = option nil of L end end;

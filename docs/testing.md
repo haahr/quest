@@ -265,8 +265,9 @@ input) can specify host execution requirements via top-level comment directives:
   the interpreter does, because both format a value by its static type all the way down: a record shows the fields
   of its type (sorted by name), a function is `<fun>`, a value of an abstract type (such as `list.T(Int)` or a
   module's `T`) is `<hidden>`, and an auto value names its type component as its runtime descriptor does. Compiled
-  code writes compound values from their type descriptors (`quest_print_typed`). One difference remains: a tuple
-  with type components nested inside another value prints only its value components in compiled code.
+  code writes compound values from their type descriptors (`quest_print_typed`), including tuples' type components
+  (`Let A = Int`). One difference remains: within a recursive type, a type component's type is written with its
+  aliases expanded (see `docs/tasklist.md`).
 
 ### 2.6. Interfaces and Modules Used by Tests
 A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the

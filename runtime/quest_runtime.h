@@ -195,9 +195,18 @@ typedef struct QTupleElementDescriptor {
     bool                   is_var;
 } QTupleElementDescriptor;
 
+/* A type component of a tuple type (Let A = Int, or an existential's A::TYPE), which has no slot: only echo writes
+ * it, as text, before the value element at position (or after the last, when position is element_count) */
+typedef struct QTupleTypeComponentDescriptor {
+    size_t      position;
+    const char *text;     /* As the interpreter writes it: "Let A = Int", "<Hidden>::TYPE" */
+} QTupleTypeComponentDescriptor;
+
 typedef struct QTupleTypeDescriptor {
-    size_t                        element_count;
-    const QTupleElementDescriptor elements[];
+    size_t                               component_count; /* Type components, in order; none in descriptors */
+    const QTupleTypeComponentDescriptor *components;      /* the runtime makes */
+    size_t                               element_count;
+    const QTupleElementDescriptor        elements[];
 } QTupleTypeDescriptor;
 
 typedef struct QVariantCaseDescriptor {

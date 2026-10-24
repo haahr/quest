@@ -371,13 +371,15 @@ class TestRuntimeDescriptors(unittest.TestCase):
         static const QTypeDescriptor hole0 = {
             QTYPE_KIND_HOLE, "?0", sizeof(QVal), sizeof(void *), quest_is_subtype,
             &(const QHoleDescriptor){ .index = 0, .storage = NULL } };
-        static const struct { size_t n; QTupleElementDescriptor e[2]; } tmpl_meta = { 2, {
+        static const struct { size_t nc; const void *c; size_t n; QTupleElementDescriptor e[2]; } tmpl_meta = {
+            0, NULL, 2, {
             { "fst", &hole0, offsetof(Generic, _0), false },
             { "snd", &quest_type_Int, offsetof(Generic, _1), false } } };
         static const QTypeDescriptor tmpl = {
             QTYPE_KIND_TUPLE, "Tuple fst: ?0 snd: Int end", sizeof(Generic), sizeof(void *), quest_is_subtype,
             &tmpl_meta };
-        static const struct { size_t n; QTupleElementDescriptor e[2]; } real_meta = { 2, {
+        static const struct { size_t nc; const void *c; size_t n; QTupleElementDescriptor e[2]; } real_meta = {
+            0, NULL, 2, {
             { "fst", &quest_type_Real, offsetof(NativeReal, _0), false },
             { "snd", &quest_type_Int, offsetof(NativeReal, _1), false } } };
         static const QTypeDescriptor real_tuple = {
@@ -389,7 +391,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         static const QTypeDescriptor obj = {
             QTYPE_KIND_RECORD, "Record age: Int end", sizeof(QRecordHeader) + sizeof(QInt), sizeof(void *),
             quest_is_subtype, &obj_meta };
-        static const struct { size_t n; QTupleElementDescriptor e[2]; } rec_meta = { 2, {
+        static const struct { size_t nc; const void *c; size_t n; QTupleElementDescriptor e[2]; } rec_meta = {
+            0, NULL, 2, {
             { "fst", &obj, offsetof(NativeRecord, _0), false },
             { "snd", &quest_type_Int, offsetof(NativeRecord, _1), false } } };
         static const QTypeDescriptor rec_tuple = {

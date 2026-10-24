@@ -3,7 +3,7 @@ wrapping and unwrapping, literals, record struct and offset table names, and des
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 from quest.codegen.canonical import canonical_type
@@ -51,6 +51,8 @@ from quest.types import (
     QRecType,
     QRecordType,
     QTupleType,
+    QTupleTypeBinding,
+    QTupleTypeFormal,
     QType,
     QTypeApp,
     QTypeFun,
@@ -61,6 +63,7 @@ from quest.types import (
     resolve_record_bound,
     resolve_variant_bound,
     resolve_option_bound,
+    unalias,
 )
 
 
@@ -95,6 +98,9 @@ class DescriptorForm:
     name: str = ""
     expr: str = ""
     struct: str = ""  # the C struct laid out as `type`, when its name is not derived from `type` itself
+    # For a descriptor that only echo uses (echo_descriptor_form): the type as written, with alias names, whose type
+    # components the descriptor writes
+    display: Optional[QType] = None
 
     @property
     def c_expr(self) -> str:
@@ -386,3 +392,70 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
         param_types.append("const QTypeDescriptor *")
     sig = ", ".join(param_types)
     return f"{ret_c} (*)({sig})"
+
+
+def tuple_type_components(t: QTupleType) -> list[tuple[int, str]]:
+    """A tuple type's type components as echo writes them, as the interpreter does (_format_aggregate), each with
+    the number of value elements before it."""
+    components: list[tuple[int, str]] = []
+    position = 0
+    for comp in t.components:
+        if isinstance(comp, QTupleTypeFormal):
+            components.append((position, f"<Hidden>::{comp.bound}"))
+        elif isinstance(comp, QTupleTypeBinding):
+            components.append((position, f"Let {comp.name} = {comp.type_val}"))
+        else:
+            position += 1
+    return components
+
+
+def _echo_head(t: QType) -> QType:
+    return unalias(t.prune() if hasattr(t, "prune") else t)
+
+
+def echo_children(t: QType) -> dict[str, QType]:
+    """The types of the parts of a value of type t that echo writes through descriptors of their own, keyed as the
+    emitted descriptor of t refers to them: a tuple's value elements by index, a record's fields, options', and
+    variants' cases by name, and an array's elements by "". A recursive type or a type application has none here:
+    its unfolding is described by its shared descriptor."""
+    t = _echo_head(t)
+    if isinstance(t, QTupleType):
+        return {str(i): f.type_val for i, f in enumerate(t.value_fields)}
+    if isinstance(t, QRecordType):
+        return {f.name: f.type_val for f in t.fields}
+    if isinstance(t, QArrayType):
+        return {"": t.element_type}
+    if isinstance(t, QOptionType):
+        return {o.name: o.payload_type for o in t.options if o.payload_type is not None}
+    if isinstance(t, QVariantType):
+        return {v.name: v.type_val for v in t.variants if v.type_val is not None}
+    return {}
+
+
+def _echo_key(t: QType) -> Optional[str]:
+    """What tells apart the echo-only descriptors of t: the type components that echo writes for it and its parts,
+    with their alias names, or None if it writes none (and t's shared descriptor will do)."""
+    head = _echo_head(t)
+    own = tuple_type_components(head) if isinstance(head, QTupleType) else []
+    parts = [(name, _echo_key(child)) for name, child in echo_children(head).items()]
+    if not own and all(key is None for _, key in parts):
+        return None
+    return repr((type(head).__name__, own, parts))
+
+
+def echo_descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> Optional[DescriptorForm]:
+    """The descriptor echo writes a value of the closed type t by, when t's shared descriptor would leave out type
+    components (which only echo writes) or write them without their alias names, or None.
+
+    Descriptors are shared by types equal but for alias names (descriptor_form), but echo writes type components as
+    the interpreter does, with alias names (Let N = P, not Let N = Tuple a: Int end), so it uses descriptors of its
+    own: copies of the shared ones, laid out the same, told apart by the components' text."""
+    key = _echo_key(t)
+    if key is None:
+        return None
+    form = descriptor_form(t, ctx)
+    if form.kind not in ("tuple", "record", "array", "option", "variant"):
+        return None
+    # A record's tag names its struct too, which the copy keeps
+    struct = form.struct or (form.tag if form.kind == "record" else "")
+    return replace(form, tag=f"{form.tag}_echo_{text_digest(key)}", struct=struct, display=_echo_head(t))

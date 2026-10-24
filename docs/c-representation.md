@@ -809,7 +809,12 @@ struct QTypeDescriptor {
   (`name`, `type`, `offset`, `is_var`). Fields are canonically ordered alphabetically by field name so that index $i$
   corresponds directly to the field's position in `QRecordVal.dict`.
 - **Tuples (`QTupleTypeDescriptor`):** Holds `size_t element_count` and an array of `QTupleElementDescriptor`
-  (`name`, `type`, `offset`).
+  (`name`, `type`, `offset`), preceded by the tuple type's type components (`Let A = Int`, or an existential's
+  `A::TYPE`), which have no slots: `component_count` and an array of `QTupleTypeComponentDescriptor` (`position`, the
+  number of value elements before it, and `text`, as echo writes it, `Let A = Int` or `<Hidden>::TYPE`). Only echo
+  reads them. Descriptors are shared by types equal but for alias names, so echo writes a type whose type components
+  (or whose parts' components) would print differently with alias names by a descriptor of its own, a copy laid out
+  the same (`quest_type_<tag>_echo_<digest>`, `echo_descriptor_form`). Descriptors the runtime makes have none.
 - **Variants & Options (`QVariantTypeDescriptor`):** Holds `size_t case_count` and an array of `QVariantCaseDescriptor`
   (`name`, `payload_type`, `tag_index`, `is_var`).
 - **Arrays (`QArrayTypeDescriptor`):** Holds `const QTypeDescriptor *element_type`.

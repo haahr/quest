@@ -34,35 +34,31 @@ function at the top level after functions and closures that refer to them.
 
 ---
 
-## Compiled echo omits a tuple value's type components
+## Compiled echo expands aliases in type components within recursive types
 
-**Problem.** When compiled code echoes a tuple value whose type has manifest type components (`Let X = T` in a
-tuple, `Def X = T` in a tuple type), it leaves them out, while the interpreter prints them. Echo output differs
-between the backends for any such tuple, whether it is a top-level binding's value or nested in another value.
+**Problem.** Compiled echo writes a tuple's type components (`Let X = P`) with their alias names, as the interpreter
+does, except within a recursive type, where it writes the type with its aliases expanded and recursive types in their
+canonical form. Echo output then differs between the backends.
 
-**Reproduce.** With `tuple_echo.quest` containing
+**Reproduce.** With `rec_echo.quest` containing
 
 ```quest
-let t = tuple Let A = Int let x: A = 1 end;
-Let Rec L = Option nil cons with h: Int t: L end end;
-let s = tuple Let M = L let l: M = option nil of L end end;
+Let P = Tuple a: Int end;
+Let Rec R = Option nil cons with Def X = P h: Int t: R end end;
+let rr = option cons of R with Let X = P let h = 1 let t: R = option nil of R end end;
 ```
 
-`--echo --stop-after interpret` prints `let t:Tuple Let A::TYPE = Int x: Int end = tuple Let A = Int x=1 end` (and
-`s` with `Let M = L`), while `--echo --stop-after run_c_compiled` prints `... = tuple x=1 end`.
+`--echo --stop-after interpret` prints `... tuple Let X = P h=1 ...`, while `--echo --stop-after run_c_compiled`
+prints `... tuple Let X = Tuple a: Int end h=1 ...`.
 
-**Where to start.** The interpreter formats tuples in `_format_aggregate` (`bootstrap/python/quest/interpreter/treewalk.py`),
-writing `Let name = type` for each `QTupleTypeBinding` component. Compiled code prints non-existential values through
-their type descriptors (`echo` in `codegen/c/printer.py`, then `quest_put_tuple` and `quest_put_elements` in
-`runtime/quest_runtime.c`), and a tuple's descriptor (`QTupleTypeDescriptor`) lists only its value elements.
-Existential tuples are formatted statically instead (`_existential_tuple_display`). Recording
-manifest components in tuple descriptors (their names and printed types, in order among the elements) covers nested
-tuples too, but changes the descriptor layout, which the ABI version covers (`docs/build-process.md` §5.2); the type
-must print as the interpreter prints it (`str` of the type, with alias names).
+**Where to start.** Echo writes type components from its own descriptors (`echo_descriptor_form` in
+`codegen/c/types.py`), made from the type as written, but stops at a recursive type (`echo_children`) and uses its
+shared descriptor, whose component text comes from the canonical type. The interpreter unfolds recursive types as it
+goes (`_exposed_type` in `interpreter/treewalk.py`). Echo-only descriptors would have to unfold them too, referring
+back to a descriptor already being made where the unfolding repeats, as shared descriptors of recursive types do.
 
-**Done when.** A golden test with `@echo` (or echoed phrases) shows the same output in `interpret` and
-`run_c_compiled` for tuples with manifest type components, at the top level and nested in another tuple, record,
-or array.
+**Done when.** `language/tuple_type_component_echo` (or a test beside it) echoes a value of a recursive type with
+an aliased type component, and `interpret` and `run_c_compiled` agree.
 
 ---
 
@@ -89,6 +85,11 @@ the binding has no bound; elaborating a `Def` in a tuple type (`elaborate_tuple_
 its fields' types (`x: Int`), which is why selecting from one is fine; selecting a field of a tuple type written with
 `Def` (in `typechecker/typecheck.py`) should substitute them too. Fixing the printing changes
 goldens that show such types (`language/option_payload_components`).
+
+**Done when.** The program above prints `Let T::TYPE = Tuple Let K::TYPE = Int k: K end` (or as `Def`, if that is
+how a tuple type should print its definitions) and `let tk:Int = 2`, and a golden test covers both.
+
+---
 
 ## Subtyping between `All` types requires equal bounds
 

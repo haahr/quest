@@ -51,10 +51,12 @@ RECORD_DESC(outer_mid_desc, OuterMid, outer_mid_meta, "Record inner: Record b: I
 
 /* Tuple Big Int and Tuple Mid Int */
 typedef struct { QRecordVal _0; QInt _1; } PairBig;
-static const struct { size_t element_count; const QTupleElementDescriptor elements[2]; } pair_big_meta = { 2, {
+static const struct { size_t component_count; const void *components; size_t element_count;
+    const QTupleElementDescriptor elements[2]; } pair_big_meta = { 0, NULL, 2, {
     { .name = NULL, .type = &big_desc, .offset = offsetof(PairBig, _0) },
     { .name = NULL, .type = &quest_type_Int, .offset = offsetof(PairBig, _1) } } };
-static const struct { size_t element_count; const QTupleElementDescriptor elements[2]; } pair_mid_meta = { 2, {
+static const struct { size_t component_count; const void *components; size_t element_count;
+    const QTupleElementDescriptor elements[2]; } pair_mid_meta = { 0, NULL, 2, {
     { .name = NULL, .type = &mid_desc, .offset = offsetof(PairBig, _0) },
     { .name = NULL, .type = &quest_type_Int, .offset = offsetof(PairBig, _1) } } };
 static const QTypeDescriptor pair_big_desc = { .kind = QTYPE_KIND_TUPLE, .name = "Tuple :Big :Int end",

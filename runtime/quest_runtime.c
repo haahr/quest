@@ -1978,10 +1978,17 @@ static void quest_print_leave(void) {
 
 static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness);
 
-/* Writes the elements of a tuple-shaped block (a tuple, or an option case's payload) laid out as t */
+/* Writes the elements of a tuple-shaped block (a tuple, or an option case's payload) laid out as t, with its type
+ * components among them */
 static void quest_put_elements(const char *base, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
     const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)t->extra;
-    for (size_t i = 0; meta != NULL && i < meta->element_count; ++i) {
+    if (meta == NULL) return;
+    size_t c = 0;
+    for (size_t i = 0; i <= meta->element_count; ++i) {
+        for (; c < meta->component_count && meta->components[c].position <= i; ++c) {
+            printf(" %s", meta->components[c].text);
+        }
+        if (i == meta->element_count) break;
         const QTupleElementDescriptor *e = &meta->elements[i];
         putchar(' ');
         if (e->name != NULL && e->name[0] != '\0') printf("%s=", e->name);
