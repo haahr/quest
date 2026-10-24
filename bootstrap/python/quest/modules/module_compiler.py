@@ -19,8 +19,8 @@ from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.codegen.backend import module_file_to_c
-from quest.codegen.compiler_runner import compile_c_to_object
+from quest.codegen.c.backend import module_file_to_c
+from quest.codegen.c.compiler_runner import compile_c_to_object
 from quest.config import CompilerOptions
 from quest.diagnostics import QuestTypeError, in_unit
 from quest.modules.manifest import (

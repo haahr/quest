@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
 import quest.syntax.ast as ast
-from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
+from quest.codegen.c.types import qtype_to_c_type
+from quest.codegen.layout import type_tag
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
 from quest.types.env import Environment
 from quest.types import (
@@ -41,7 +42,7 @@ class TestRecursiveTypeOperators(unittest.TestCase):
         t2 = elaborate_test_type(b, self.env)
         self.assertTrue(is_type_equal(t1, t2, self.env), f"{a} and {b} differ")
         self.assertEqual(qtype_to_c_type(t1), qtype_to_c_type(t2))
-        self.assertEqual(type_to_c_tag(t1), type_to_c_tag(t2))
+        self.assertEqual(type_tag(t1), type_tag(t2))
 
     def test_operator_is_a_function_returning_a_recursive_type(self) -> None:
         (lst,) = self.declare("Let Rec List(A::TYPE) = Option nil cons with head: A tail: List(A) end end;")

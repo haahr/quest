@@ -101,7 +101,7 @@ from quest.diagnostics import (
     QuestTypeError,
     Severity,
 )
-from quest.modules import (
+from quest.modules.elaboration import (
     elaborate_import,
     elaborate_interface,
     elaborate_module,

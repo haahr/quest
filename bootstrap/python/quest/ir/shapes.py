@@ -5,7 +5,7 @@ stripped, applications of type operators reduced, and recursion made explicit. C
 questions of shapes, never of types: a structural test on a type (isinstance(t, QTupleType)) silently misses the
 same type reached through an alias or an operator (Box(A)), where a shape cannot.
 
-shape(t) is computed from the canonical form of t (codegen/c_types.py), in which equal recursive types, however
+shape(t) is computed from the canonical form of t (codegen/canonical.py), in which equal recursive types, however
 written, are one type; shapes are cached per canonical type, so equal types have the same shape object. A recursive
 type's shape is a cycle: the shape of List(Int) is an option whose cons payload's tail is that same shape. Shapes are
 built once and not changed afterwards.
@@ -18,7 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator, Optional
 
-from quest.codegen.c_types import _canonical_type, is_word_type, normalize_type
+from quest.codegen.canonical import canonical_type
+from quest.codegen.layout import is_word_type, normalize_type
 from quest.types import (
     QAbstractType,
     QAliasType,
@@ -167,7 +168,7 @@ def shape(t: QType) -> Shape:
     if getattr(t, "_has_meta", False):
         raise ValueError(f"the type {t} has unsolved metavariables and no shape")
     t = strip_aliases(t)
-    canonical = _canonical_type(t)
+    canonical = canonical_type(t)
     return _shape(canonical if canonical is not None else t)
 
 

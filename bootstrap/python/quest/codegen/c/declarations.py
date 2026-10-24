@@ -1,5 +1,6 @@
-"""The declarations of the C the IR's printer writes (codegen/c_printer.py) and of interfaces' C headers: aggregate
-structs, offset tables, coercion tables, type descriptors, function type adapters, and modules' exported functions."""
+"""The declarations of the C the IR's printer writes (c/printer.py) and of interfaces' C headers (c/headers.py):
+aggregate structs, offset tables, coercion tables, type descriptors, function type adapters, and modules' exported
+functions."""
 
 from __future__ import annotations
 
@@ -7,26 +8,25 @@ from typing import Any, Callable, Optional, Sequence
 
 from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import _may_be_stored_as_subtype
-from quest.codegen.c_types import (
+from quest.codegen.c.types import (
     closure_fn_ptr_type,
-    qval_unwrap,
-    qval_wrap,
+    descriptor_form,
     DescriptorForm,
     MissingDescriptorError,
-    descriptor_form,
-    fun_descriptor_tag,
-    RecordNamingContext,
-    collect_fun_quantifiers,
-    mangle_ident,
-    mangle_module_ident,
-    mangle_module_name,
-    normalize_type,
-    module_record_ident,
-    option_struct_name,
+    qval_unwrap,
+    qval_wrap,
     record_struct_name,
-    tuple_struct_name,
-    type_to_c_tag,
+    RecordNamingContext,
 )
+from quest.codegen.descriptors import fun_descriptor_tag
+from quest.codegen.layout import (
+    collect_fun_quantifiers,
+    normalize_type,
+    option_struct_name,
+    tuple_struct_name,
+    type_tag,
+)
+from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types import (
     auto_payload_type,
     is_type_equal,
@@ -384,10 +384,10 @@ class CDeclarationEmitter:
             lines.append("/* Static tag remapping tables for variant subtyping */")
             for tgt, src in sorted(
                 variant_coercions,
-                key=lambda p: (type_to_c_tag(p[0]), type_to_c_tag(p[1])),
+                key=lambda p: (type_tag(p[0]), type_tag(p[1])),
             ):
-                tgt_tag = type_to_c_tag(tgt)
-                src_tag = type_to_c_tag(src)
+                tgt_tag = type_tag(tgt)
+                src_tag = type_tag(src)
                 entries = [
                     str(next(j for j, tv in enumerate(tgt.variants) if tv.name == sv.name))
                     for sv in src.variants

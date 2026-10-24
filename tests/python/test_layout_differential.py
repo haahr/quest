@@ -25,8 +25,8 @@ os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
 import generate  # noqa: E402
 import quest.syntax.ast as ast  # noqa: E402
-from quest.codegen import compile_c_source, run_binary  # noqa: E402
-from quest.codegen.c_types import generic_layout_agrees  # noqa: E402
+from quest.codegen.c.compiler_runner import compile_c_source, run_binary
+from quest.codegen.layout import generic_layout_agrees
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group  # noqa: E402
 from quest.types.env import Environment, TypeSymbol  # noqa: E402
 from quest.config import CompilerOptions  # noqa: E402

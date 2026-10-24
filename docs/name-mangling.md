@@ -1,9 +1,11 @@
 # Quest C Name Mangling Specification
 
 This document specifies the name mangling and symbol generation rules of the C backend
-([`c_types.py`](../bootstrap/python/quest/codegen/c_types.py),
-[`c_declarations.py`](../bootstrap/python/quest/codegen/c_declarations.py), and
-[`c_printer.py`](../bootstrap/python/quest/codegen/c_printer.py)).
+([`symbols.py`](../bootstrap/python/quest/codegen/symbols.py) and
+[`layout.py`](../bootstrap/python/quest/codegen/layout.py), which every backend shares, and the C backend's
+[`c/types.py`](../bootstrap/python/quest/codegen/c/types.py),
+[`c/declarations.py`](../bootstrap/python/quest/codegen/c/declarations.py), and
+[`c/printer.py`](../bootstrap/python/quest/codegen/c/printer.py)).
 
 It serves as the definitive reference for understanding any symbol, struct, typedef, parameter, or temporary variable
 generated during Quest C code generation (`codegen_c`).
@@ -119,7 +121,7 @@ module-level bindings:
 
 ### 4.4. Module Exported Functions (`mangle_module_ident`)
 A module file exports a C function for each member of its interface that is a function or a polymorphic value, which
-importers call directly (`module_function_signature` in `c_declarations.py`):
+importers call directly (`module_function_signature` in `c/declarations.py`):
 - **Alphanumeric:** `qv_<clean_mod>_<name>`
   - E.g. `qv_calc_add`, `qv_util__path_join`
 - **Symbolic operator:** `qv_<clean_mod>_sym_<parts>`

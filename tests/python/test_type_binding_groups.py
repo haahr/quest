@@ -9,7 +9,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import quest.syntax.ast as ast
-from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
+from quest.codegen.c.types import qtype_to_c_type
+from quest.codegen.layout import type_tag
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
 from quest.types.env import Environment
 from quest.types import (
@@ -122,7 +123,7 @@ class TestTypeBindingGroupElaboration(unittest.TestCase):
     def test_member_of_a_rec_group_that_does_not_recur_is_represented_as_its_body_in_c(self) -> None:
         ints, count = self.declare("Let Rec Ints = Array(Count) and Count = Int;")
         self.assertEqual(qtype_to_c_type(count.definition), qtype_to_c_type(INT_TYPE))
-        self.assertEqual(type_to_c_tag(count.definition), type_to_c_tag(INT_TYPE))
+        self.assertEqual(type_tag(count.definition), type_tag(INT_TYPE))
         self.assertEqual(qtype_to_c_type(ints.definition), qtype_to_c_type(QArrayType(INT_TYPE)))
 
     def test_single_rec_type_that_does_not_recur_is_represented_as_its_body_in_c(self) -> None:

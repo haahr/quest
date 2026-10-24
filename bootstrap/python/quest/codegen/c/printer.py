@@ -6,7 +6,8 @@ nothing), each variable a C variable of its type's representation (globals for t
 outside loops, declared at file scope), and each structured statement a C statement: join points and loop exits are
 labels, and try regions setjmp handlers, popped on every way out. Conversions are `convert` operations, printed as
 their plans say. The declarations of the types it uses (structs, descriptors, function type adapters) are
-codegen/c_declarations.py's, and the representations c_types.py's (docs/c-representation.md). A module file's unit
+c/declarations.py's, and the representations codegen/layout.py's, spelled in C by c/types.py
+(docs/c-representation.md). A module file's unit
 exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function
 for each function or polymorphic value (`qv_<module>_<member>`), the ABI other units link against.
 """
@@ -17,35 +18,34 @@ import dataclasses
 import math
 from typing import Any, Optional
 
-from quest.codegen.c_declarations import CDeclarationEmitter, collect_aggregate_types, module_function_signature
-from quest.codegen.c_types import (
-    MissingDescriptorError,
-    RecordNamingContext,
+from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types, module_function_signature
+from quest.codegen.c.types import (
     c_char_literal,
     c_string_literal,
     closure_fn_ptr_type,
-    collect_fun_quantifiers,
     descriptor_form,
-    hole_var,
+    MissingDescriptorError,
+    qtype_to_c_type,
+    qval_unwrap,
+    qval_wrap,
+    record_struct_name,
+    RecordNamingContext,
+)
+from quest.codegen.layout import (
+    collect_fun_quantifiers,
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
     is_word_type,
-    mangle_ident,
-    mangle_module_ident,
-    mangle_module_name,
-    module_record_ident,
     normalize_type,
     option_struct_name,
-    qtype_to_c_type,
     qtype_to_name_str,
-    qval_unwrap,
-    qval_wrap,
-    record_struct_name,
     tuple_struct_name,
     type_identity_key,
-    type_to_c_tag,
+    type_tag,
 )
+from quest.codegen.descriptors import hole_var
+from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types.env import Scope
 from quest.ir import nodes as ir
 from quest.ir.represent import (
@@ -443,7 +443,7 @@ class CPrinter:
                 self.types.extend((source, target))
                 v = self.temp("QVariantVal")
                 self.emit(f"{v} = {c};")
-                tagmap = f"tagmap_{type_to_c_tag(target)}_{type_to_c_tag(source)}"
+                tagmap = f"tagmap_{type_tag(target)}_{type_tag(source)}"
                 return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
             case "cast":
                 return f"(({self.c_type(plan.target)}){c})"
@@ -1551,7 +1551,7 @@ class CPrinter:
         return out
 
     def exported_functions(self, m: ir.Module) -> list[str]:
-        """A module file's exported functions (`qv_<module>_<member>`, codegen/c_declarations.py), one for each of its
+        """A module file's exported functions (`qv_<module>_<member>`, c/declarations.py), one for each of its
         interface's functions and polymorphic values, which call its export's closure."""
         clean = mangle_module_name(m.name)
         out = []
@@ -1640,7 +1640,7 @@ class CPrinter:
             for t in tuples for s in tuples if s is not t and is_tuple_subtype(s, t)
         }
         variant_coercions = {
-            (type_to_c_tag(t), type_to_c_tag(s)): (t, s)
+            (type_tag(t), type_tag(s)): (t, s)
             for t in variant_types for s in variant_types if s is not t and is_variant_subtype(s, t)
         }
         self.needed_dicts = list(needed.values())

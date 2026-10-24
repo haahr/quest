@@ -13,15 +13,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 # Checks canonical forms, as the other tests do (see helpers.py)
 os.environ["QUEST_CHECK_CANONICAL"] = "1"
 
-from quest.codegen import c_types
-from quest.codegen.c_types import (
-    _canonical_type,
-    descriptor_form,
-    normalize_type,
-    qtype_to_c_type,
-    tuple_struct_name,
-    type_to_c_tag,
-)
+from quest.codegen import canonical
+from quest.codegen.canonical import canonical_type
+from quest.codegen.c.types import descriptor_form, qtype_to_c_type
+from quest.codegen.layout import normalize_type, tuple_struct_name, type_tag
 from quest.types import (
     BOOL_TYPE,
     INT_TYPE,
@@ -76,13 +71,13 @@ class TestRecursiveCTypes(unittest.TestCase):
         self.assertIs(normalize_type(tree), unfolded)
         self.assertEqual(qtype_to_c_type(tree), f"{tuple_struct_name(unfolded)} *")
         # The struct of the unfolding names the recursive occurrence by the recursive type's own tag
-        self.assertIn(type_to_c_tag(tree), tuple_struct_name(unfolded))
+        self.assertIn(type_tag(tree), tuple_struct_name(unfolded))
 
     def test_recursive_tags_are_alpha_invariant_and_distinct(self) -> None:
-        self.assertEqual(type_to_c_tag(_tree("Tree", 9302)), type_to_c_tag(_tree("Other", 9303)))
+        self.assertEqual(type_tag(_tree("Tree", 9302)), type_tag(_tree("Other", 9303)))
         var = QTypeVar("X", 9304, TYPE_KIND)
         plain = QTupleType((QTupleField("v", INT_TYPE), QTupleField("kids", QArrayType(var))))
-        self.assertNotEqual(type_to_c_tag(_tree("Tree", 9305)), type_to_c_tag(plain))
+        self.assertNotEqual(type_tag(_tree("Tree", 9305)), type_tag(plain))
 
     def test_nested_recursive_variables_are_distinguished(self) -> None:
         """Rec(X) Tuple Array(Rec(Y) Tuple Array(X) end) end differs from the same with Array(Y) inside."""
@@ -94,7 +89,7 @@ class TestRecursiveCTypes(unittest.TestCase):
             inner = QRecType("Y", 9312, TYPE_KIND, inner_body)
             return QRecType("X", 9311, TYPE_KIND, QTupleType((QTupleField("b", QArrayType(inner)),)))
 
-        self.assertNotEqual(type_to_c_tag(nested(True)), type_to_c_tag(nested(False)))
+        self.assertNotEqual(type_tag(nested(True)), type_tag(nested(False)))
 
     def test_mutually_recursive_tuples(self) -> None:
         p = _p_q()
@@ -104,7 +99,7 @@ class TestRecursiveCTypes(unittest.TestCase):
         self.assertEqual(qtype_to_c_type(q), f"{tuple_struct_name(q.unfold_lazily())} *")
         # P and Q differ only in their field names, so they share a struct (as non-recursive tuples do), but not
         # a descriptor
-        self.assertEqual(type_to_c_tag(p), type_to_c_tag(q))
+        self.assertEqual(type_tag(p), type_tag(q))
         self.assertNotEqual(descriptor_form(p).tag, descriptor_form(q).tag)
 
     def test_recursive_record_and_variant_resolve_to_their_unfoldings(self) -> None:
@@ -137,26 +132,26 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
     """Equal recursive types with different periods, and their unfoldings, share tags and descriptors."""
 
     def assert_same_representation(self, a, b) -> None:
-        self.assertEqual(type_to_c_tag(a), type_to_c_tag(b))
+        self.assertEqual(type_tag(a), type_tag(b))
         self.assertEqual(qtype_to_c_type(a), qtype_to_c_type(b))
         self.assertEqual(descriptor_form(a).tag, descriptor_form(b).tag)
 
     def test_periods_and_unfoldings_share_a_representation(self) -> None:
         one = _int_list(9401, 1)
-        self.assertEqual(type_to_c_tag(one), "Rec0_QOption_nil_cons_QTuple_Int_Self0_end")
+        self.assertEqual(type_tag(one), "Rec0_QOption_nil_cons_QTuple_Int_Self0_end")
         for period in (2, 3):
             self.assert_same_representation(one, _int_list(9402, period))
         self.assert_same_representation(one, _int_list(9403, 2).unfold_lazily())
 
     def test_canonical_form_is_a_fixed_point(self) -> None:
-        canonical = _canonical_type(_int_list(9411, 3))
+        canonical = canonical_type(_int_list(9411, 3))
         self.assertIsNotNone(canonical)
-        self.assertIs(_canonical_type(_int_list(9412, 2)), canonical)
-        self.assertIsNone(_canonical_type(canonical))
-        self.assertIs(_canonical_type(canonical.unfold_lazily()), canonical)
+        self.assertIs(canonical_type(_int_list(9412, 2)), canonical)
+        self.assertIsNone(canonical_type(canonical))
+        self.assertIs(canonical_type(canonical.unfold_lazily()), canonical)
 
     def test_types_without_recursion_are_their_own_canonical_forms(self) -> None:
-        self.assertIsNone(_canonical_type(QTupleType((QTupleField("a", INT_TYPE), QTupleField("b", BOOL_TYPE)))))
+        self.assertIsNone(canonical_type(QTupleType((QTupleField("a", INT_TYPE), QTupleField("b", BOOL_TYPE)))))
 
     def test_aggregates_containing_recursive_types(self) -> None:
         pair = QTupleType((QTupleField(None, INT_TYPE), QTupleField(None, _int_list(9421, 1))))
@@ -175,7 +170,7 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
 
         self.assert_same_representation(through_fun(9431, 1), through_fun(9432, 2))
         fun = through_fun(9433, 2).unfold_lazily().options[1].payload_type.value_fields[0].type_val
-        self.assertEqual(type_to_c_tag(fun), "QClosure")
+        self.assertEqual(type_tag(fun), "QClosure")
         self.assertEqual(qtype_to_c_type(fun), "QClosure *")
 
     def test_two_cycle_entries_make_a_recursive_group(self) -> None:
@@ -186,11 +181,11 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
             QTupleField(None, BOOL_TYPE), QTupleField(None, QArrayType(b)), QTupleField(None, QArrayType(a)))))
         outer = QRecType("A", 9441, TYPE_KIND, QTupleType((
             QTupleField(None, INT_TYPE), QTupleField(None, QArrayType(inner)))))
-        canonical = _canonical_type(outer)
+        canonical = canonical_type(outer)
         self.assertIsInstance(canonical, QRecGroupType)
-        self.assertIsNone(_canonical_type(canonical))
+        self.assertIsNone(canonical_type(canonical))
         self.assert_same_representation(outer, outer.unfold_lazily())
-        self.assertTrue(type_to_c_tag(outer).startswith("RecGroup0_0_"))
+        self.assertTrue(type_tag(outer).startswith("RecGroup0_0_"))
 
 
 class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
@@ -207,7 +202,7 @@ class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
     def test_recursive_function_type_is_a_closure(self) -> None:
         f = self._fun(9501, 1)
         self.assertIs(normalize_type(f), f.unfold_lazily())
-        self.assertEqual(type_to_c_tag(f), "QClosure")
+        self.assertEqual(type_tag(f), "QClosure")
         self.assertEqual(qtype_to_c_type(f), "QClosure *")
         self.assertEqual(qtype_to_c_type(f.unfold_lazily()), "QClosure *")
 
@@ -216,18 +211,18 @@ class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
             return QTupleType((QTupleField("a", INT_TYPE), QTupleField("b", t)))
 
         f = self._fun(9511, 1)
-        self.assertEqual(type_to_c_tag(holder(f)), type_to_c_tag(holder(f.unfold_lazily())))
-        self.assertEqual(type_to_c_tag(holder(f)), type_to_c_tag(holder(self._fun(9512, 2))))
+        self.assertEqual(type_tag(holder(f)), type_tag(holder(f.unfold_lazily())))
+        self.assertEqual(type_tag(holder(f)), type_tag(holder(self._fun(9512, 2))))
         # A cycle through function types alone has a recursive function type as its canonical form
-        self.assertIsInstance(_canonical_type(f.unfold_lazily()), QRecType)
+        self.assertIsInstance(canonical_type(f.unfold_lazily()), QRecType)
 
     def test_recursive_array_type_is_named_by_its_body(self) -> None:
         n = QTypeVar("N", 9521, TYPE_KIND)
         nest = QRecType("N", 9521, TYPE_KIND, QArrayType(n))
-        self.assertEqual(type_to_c_tag(nest), "Rec0_QArray_Self0")
+        self.assertEqual(type_tag(nest), "Rec0_QArray_Self0")
         self.assertEqual(qtype_to_c_type(nest), "QArray *")
-        self.assertEqual(type_to_c_tag(nest.unfold_lazily()), type_to_c_tag(nest))
-        self.assertEqual(type_to_c_tag(QArrayType(QArrayType(nest))), type_to_c_tag(nest))
+        self.assertEqual(type_tag(nest.unfold_lazily()), type_tag(nest))
+        self.assertEqual(type_tag(QArrayType(QArrayType(nest))), type_tag(nest))
 
 
 class TestCanonicalBinders(unittest.TestCase):
@@ -243,8 +238,8 @@ class TestCanonicalBinders(unittest.TestCase):
         return QAllType((QQuantifier("A", a_id, kind),), QFunType(params, a))
 
     def assert_shared(self, a, b) -> None:
-        self.assertIsNotNone(_canonical_type(a))
-        self.assertIs(_canonical_type(a), _canonical_type(b))
+        self.assertIsNotNone(canonical_type(a))
+        self.assertIs(canonical_type(a), canonical_type(b))
         self.assertEqual(descriptor_form(a).tag, descriptor_form(b).tag)
 
     def test_polymorphic_function_types(self) -> None:
@@ -254,7 +249,7 @@ class TestCanonicalBinders(unittest.TestCase):
         a = QTypeVar("A", 9741, TYPE_KIND)
         other = QAllType((QQuantifier("A", 9741, TYPE_KIND),),
                          QFunType((QParam("x", INT_TYPE), QParam("l", _int_list(9742, 1))), a))
-        self.assertIsNot(_canonical_type(other), _canonical_type(self._poly(9751, 1)))
+        self.assertIsNot(canonical_type(other), canonical_type(self._poly(9751, 1)))
 
     def test_records_of_polymorphic_functions(self) -> None:
         def holder(t) -> QRecordType:
@@ -268,7 +263,7 @@ class TestCanonicalBinders(unittest.TestCase):
             return QAutoType("X", x_id, TYPE_KIND, (QRecordField("x", x), QRecordField("l", _int_list(x_id + 1, period))))
 
         self.assert_shared(pack(9781, 1), pack(9791, 2))
-        self.assertEqual(type_to_c_tag(pack(9781, 1)), type_to_c_tag(pack(9791, 2)))
+        self.assertEqual(type_tag(pack(9781, 1)), type_tag(pack(9791, 2)))
 
     def test_recursion_through_a_binder(self) -> None:
         """Rec(F) All(A::TYPE a: A f: F) A, alpha-renamed and unrolled."""
@@ -284,16 +279,16 @@ class TestCanonicalBinders(unittest.TestCase):
         one, two = through(9801, 1), through(9811, 2)
         self.assert_shared(one, two)
         self.assertEqual(qtype_to_c_type(one), "QClosure *")
-        self.assertIsNone(_canonical_type(_canonical_type(one)))
+        self.assertIsNone(canonical_type(canonical_type(one)))
 
     def test_canonical_forms_not_equal_to_their_types_are_not_used(self) -> None:
-        with mock.patch.object(c_types, "is_type_equal", return_value=False):
+        with mock.patch.object(canonical, "is_type_equal", return_value=False):
             with self.assertRaises(AssertionError):
-                _canonical_type(self._poly(9821, 2))
+                canonical_type(self._poly(9821, 2))
             # Outside the tests, the type is named as written, with a warning
-            with mock.patch.object(c_types, "_check_canonical", return_value=False), \
-                    mock.patch.object(c_types.sys, "stderr", new_callable=io.StringIO) as stderr:
-                self.assertIsNone(_canonical_type(self._poly(9831, 2)))
+            with mock.patch.object(canonical, "_check_canonical", return_value=False), \
+                    mock.patch.object(canonical.sys, "stderr", new_callable=io.StringIO) as stderr:
+                self.assertIsNone(canonical_type(self._poly(9831, 2)))
             self.assertIn("quest: warning: internal: canonical form", stderr.getvalue())
 
 
@@ -307,8 +302,8 @@ class TestCanonicalKindsAndVariables(unittest.TestCase):
         return QTupleType((QTupleField(None, t), QTupleField(None, _int_list(9900, 1))))
 
     def assert_shared(self, a, b) -> None:
-        self.assertIsNotNone(_canonical_type(a))
-        self.assertIs(_canonical_type(a), _canonical_type(b))
+        self.assertIsNotNone(canonical_type(a))
+        self.assertIs(canonical_type(a), canonical_type(b))
         self.assertEqual(descriptor_form(a).tag, descriptor_form(b).tag)
 
     def test_free_type_variable_bounds(self) -> None:

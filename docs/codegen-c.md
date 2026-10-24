@@ -18,14 +18,14 @@ Typed AST (TypedProgram, or a module file's TypedModule)
            v  ir/lower.py: Core IR (ANF with join points)
            v  ir/specialize.py, ir/closure.py, ir/represent.py: the passes (ir.md §8)
            |
-+-----------------------+      c_types.py: QType -> C types, layouts, descriptors, mangling
-|   c_printer.py        | <--- c_declarations.py: structs, offset tables, descriptors, adapters
++-----------------------+      layout.py, canonical.py, descriptors.py, symbols.py (shared by backends)
+|   c/printer.py        | <--- c/types.py: C spellings; c/declarations.py: structs, tables, descriptors
 |   (CPrinter)          |      Prints what the passes decided: no representation decisions of its own
 +-----------------------+
            |
            v  (C99 source)
 +-----------------------+
-|   compiler_runner.py  | <--- Locates clang/gcc, auto-detects Boehm GC, adds -I runtime/
+| c/compiler_runner.py  | <--- Locates clang/gcc, auto-detects Boehm GC, adds -I runtime/
 +-----------------------+
            |
            v
@@ -33,20 +33,35 @@ Typed AST (TypedProgram, or a module file's TypedModule)
 ```
 
 ### Module Structure (`bootstrap/python/quest/codegen/`)
-- **`backend.py`:** The C backend's entry points: `program_to_c` and `module_file_to_c` (lowering, passes, printing),
-  used by `module_compiler.py` and `BuildEngine`; the pipeline runs the same steps as phases (`ir_core` ...
+What every backend shares, since a backend's units use the C runtime and link with the C backend's:
+- **`backend.py`:** The IR's passes after lowering (`run_passes`), and the modules a unit uses without importing them.
+- **`layout.py`:** How values are laid out: types' normalized forms, layout tags (which name structs and descriptors),
+  type digests and identity keys, representations (`representation`, named by the runtime's C types, and
+  `signature_representation` for calls), and whether generic code's layout agrees with the native one
+  (`generic_layout_agrees`). The IR's represent pass decides its plans from these.
+- **`canonical.py`:** Reduced types and the canonical forms of recursive types (`canonical_type`).
+- **`descriptors.py`:** Runtime descriptors' type-level forms: placeholders for bound type parameters and template
+  holes, and the canonical function and auto types that descriptors compare.
+- **`symbols.py`:** The names units link against (identifier and module mangling).
+
+The C backend (`codegen/c/`):
+- **`backend.py`:** Its entry points, `program_to_c` and `module_file_to_c` (lowering, passes, printing), used by
+  `module_compiler.py` and `BuildEngine`; the pipeline runs the same steps as phases (`ir_core` ...
   `ir_represented`, then `codegen_c`).
-- **`c_printer.py`:** `CPrinter`, printing a represented IR unit as C.
-- **`c_declarations.py`:** The declarations of the types a unit uses (structs, offset and coercion tables, type
+- **`printer.py`:** `CPrinter`, printing a represented IR unit as C.
+- **`declarations.py`:** The declarations of the types a unit uses (structs, offset and coercion tables, type
   descriptors, function type adapters), the extern declarations of imported modules' functions, and the signature of
-  the functions a module file exports (`module_function_signature`). Interfaces' C headers use it too.
-- **`c_types.py`:** C type mappings, struct and descriptor names, layouts (`generic_layout_agrees`), descriptor forms,
-  and identifier mangling.
+  the functions a module file exports (`module_function_signature`).
+- **`headers.py`:** Interfaces' C headers (`.int.h`).
+- **`types.py`:** C spellings: the C types of representations, function pointer types, `QVal` wrapping, literals,
+  record struct and offset table names, and descriptor expressions (`descriptor_form`).
 - **`compiler_runner.py`:** Discovers host compiler, auto-detects Boehm GC, compiles C source, and runs binaries.
+
+Only C compilation's drivers import `codegen/c/` (`tests/python/test_dependencies.py`).
 
 ---
 
-## 2. Type Mapping and Identifier Mangling (`c_types.py`)
+## 2. Type Mapping and Identifier Mangling (`layout.py`, `symbols.py`, `c/types.py`)
 
 ### 2.1. Scalar Type Mapping
 Quest scalar types map to native C99 types defined in `runtime/quest_runtime.h`:
@@ -84,7 +99,7 @@ and C struct member keywords, Quest applies a comprehensive, deterministic name 
 ### 3.1. A Unit's C
 The printer writes a unit's C in this order (`CPrinter.print_unit`):
 1. `#include "quest_runtime.h"`, and a module file's interface header (`<interface>.int.h`) if it has one.
-2. The declarations of the types the unit uses (`c_declarations.py`), and extern declarations of the modules it
+2. The declarations of the types the unit uses (`c/declarations.py`), and extern declarations of the modules it
    imports: their records (`qm_<module>`), initializers (`qv_mod_<module>_init`), and exported functions.
 3. The environment struct of each closure that captures values (`struct QEnv_<function>`).
 4. A prototype of each of the unit's functions (every function, lifted by closure conversion), with a static closure
@@ -548,7 +563,7 @@ and member projection (`p.v`):
 
 ---
 
-## 11. Host Compiler Runner (`compiler_runner.py`)
+## 11. Host Compiler Runner (`c/compiler_runner.py`)
 
 The compiler runner manages external C compiler toolchain discovery, Boehm GC flags, and native executable generation:
 

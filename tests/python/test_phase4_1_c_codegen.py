@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from quest.codegen import compile_c_source, run_binary
+from quest.codegen.c.compiler_runner import compile_c_source, run_binary
 from quest.config import CompilerOptions
 from quest.pipeline import compile_pipeline
 from quest_driver import run_driver

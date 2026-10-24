@@ -29,8 +29,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
-from quest.codegen import compile_c_source, run_binary  # noqa: E402
-from quest.codegen.backend import program_to_c  # noqa: E402
+from quest.codegen.c.compiler_runner import compile_c_source, run_binary
+from quest.codegen.c.backend import program_to_c
 from quest.config import CompilerOptions  # noqa: E402
 from quest.pipeline import CompilerContext, compile_pipeline, default_pipeline, link_dependencies  # noqa: E402
 from quest.testing.runner import discover_tests, parse_skipped_phases  # noqa: E402

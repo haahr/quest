@@ -32,7 +32,7 @@ from quest.pipeline import (
     link_dependencies,
 )
 from quest.build.engine import BuildEngine
-from quest.codegen import compile_c_source
+from quest.codegen.c.compiler_runner import compile_c_source
 from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import canonicalize_module_path

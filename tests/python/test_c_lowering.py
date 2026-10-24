@@ -13,16 +13,9 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import tests.python.helpers  # noqa: F401
-from quest.codegen.c_types import (
-    _PRINTED_TEXT_LIMIT,
-    _printed,
-    _type_digest,
-    descriptor_form,
-    hole_var,
-    lower_type,
-    qtype_to_c_type,
-    type_to_c_tag,
-)
+from quest.codegen.layout import lower_type, printed, PRINTED_TEXT_LIMIT, type_digest, type_tag
+from quest.codegen.c.types import descriptor_form, qtype_to_c_type
+from quest.codegen.descriptors import hole_var
 from quest.types import (
     BOOL_TYPE,
     INT_TYPE,
@@ -68,7 +61,7 @@ class TestCLowering(unittest.TestCase):
     def test_representation_is_shared_per_canonical_type(self) -> None:
         t = _pair(INT_TYPE, STRING_TYPE)
         self.assertIs(lower_type(t), lower_type(_pair(INT_TYPE, STRING_TYPE)))
-        self.assertEqual(type_to_c_tag(t), "QTuple_Int_String")
+        self.assertEqual(type_tag(t), "QTuple_Int_String")
         self.assertEqual(qtype_to_c_type(t), "QTuple_Int_String *")
 
     def test_types_with_metavariables_are_not_cached(self) -> None:
@@ -76,7 +69,7 @@ class TestCLowering(unittest.TestCase):
         t = _pair(INT_TYPE, meta)
         self.assertIsNot(lower_type(t), lower_type(t))
         meta.instance = STRING_TYPE
-        self.assertEqual(type_to_c_tag(t), "QTuple_Int_String")
+        self.assertEqual(type_tag(t), "QTuple_Int_String")
 
 
 
@@ -120,24 +113,24 @@ def _every_kind_of_node():
 class TestTypeDigests(unittest.TestCase):
     def test_short_types_are_digested_from_their_text(self) -> None:
         t = _pair(INT_TYPE, QArrayType(STRING_TYPE))
-        self.assertEqual(_type_digest(t), hashlib.sha256(str(t).encode("utf-8")).hexdigest()[:16])
+        self.assertEqual(type_digest(t), hashlib.sha256(str(t).encode("utf-8")).hexdigest()[:16])
 
     def test_printed_lengths_match_the_printer(self) -> None:
         for t in _every_kind_of_node():
             for wide in (t, _doubled(t, 6)):
-                self.assertEqual(_printed(wide)[0], len(str(wide)), str(wide)[:200])
+                self.assertEqual(printed(wide)[0], len(str(wide)), str(wide)[:200])
 
     def test_long_types_are_digested_without_printing(self) -> None:
         # Each of these prints as 2**60 copies of its leaf
         a, b = _doubled(INT_TYPE, 60), _doubled(STRING_TYPE, 60)
-        self.assertGreater(_printed(a)[0], 2**60)
-        self.assertNotEqual(_type_digest(a), _type_digest(b))
-        self.assertEqual(_type_digest(a), _type_digest(_doubled(INT_TYPE, 60)))
+        self.assertGreater(printed(a)[0], 2**60)
+        self.assertNotEqual(type_digest(a), type_digest(b))
+        self.assertEqual(type_digest(a), type_digest(_doubled(INT_TYPE, 60)))
         # One level past the text limit, a type differing deep inside still digests differently
-        depth = next(d for d in range(20) if _printed(_doubled(INT_TYPE, d))[0] > _PRINTED_TEXT_LIMIT)
+        depth = next(d for d in range(20) if printed(_doubled(INT_TYPE, d))[0] > PRINTED_TEXT_LIMIT)
         deep_a = _pair(_doubled(INT_TYPE, depth - 1), _doubled(INT_TYPE, depth - 1))
         deep_b = _pair(_doubled(INT_TYPE, depth - 1), _pair(_doubled(INT_TYPE, depth - 2), _doubled(BOOL_TYPE, depth - 2)))
-        self.assertNotEqual(_type_digest(deep_a), _type_digest(deep_b))
+        self.assertNotEqual(type_digest(deep_a), type_digest(deep_b))
 
     def test_opaque_applications_are_named_by_operator_and_keep_their_arguments(self) -> None:
         # An application of an abstract type operator is compared by the operator's name and its arguments (which
@@ -162,8 +155,8 @@ class TestTemplateTypes(unittest.TestCase):
         inner_one = QTupleType((QTupleField(None, a),))
         nested_pair = QTupleType((QTupleField(None, inner_pair),))
         nested_one = QTupleType((QTupleField(None, inner_one), QTupleField(None, INT_TYPE)))
-        self.assertEqual(type_to_c_tag(nested_pair), "QTuple_QTuple_QVal_Int_end")
-        self.assertEqual(type_to_c_tag(nested_one), "QTuple_QTuple_QVal_end_Int")
+        self.assertEqual(type_tag(nested_pair), "QTuple_QTuple_QVal_Int_end")
+        self.assertEqual(type_tag(nested_one), "QTuple_QTuple_QVal_end_Int")
 
     def test_holes_are_described_by_index_and_bound(self) -> None:
         unbounded = descriptor_form(hole_var(1, TYPE_KIND))
@@ -179,7 +172,7 @@ class TestTemplateTypes(unittest.TestCase):
         a = QTypeVar("A", 9102)
         generic = QTupleType((QTupleField("fst", a), QTupleField("snd", INT_TYPE)))
         template = generic.substitute({9102: hole_var(0, None)})
-        self.assertEqual(type_to_c_tag(template), type_to_c_tag(generic))
+        self.assertEqual(type_tag(template), type_tag(generic))
         self.assertEqual(descriptor_form(template).kind, "tuple")
         self.assertNotEqual(descriptor_form(template).tag, descriptor_form(generic).tag)
 

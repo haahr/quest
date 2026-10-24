@@ -21,9 +21,8 @@ def find_c_compiler() -> str:
 
 def get_runtime_dir() -> Path:
     """Returns absolute path to repository runtime/ directory."""
-    # Assuming bootstrap/python/quest/codegen/ -> repo_root / runtime
-    this_file = Path(__file__).resolve()
-    repo_root = this_file.parent.parent.parent.parent.parent
+    # This file is bootstrap/python/quest/codegen/c/compiler_runner.py
+    repo_root = Path(__file__).resolve().parents[5]
     runtime_dir = repo_root / "runtime"
     if not runtime_dir.exists():
         raise RuntimeError(f"Runtime directory not found at {runtime_dir}")

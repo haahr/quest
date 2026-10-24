@@ -80,7 +80,7 @@ from quest.diagnostics import (
     QuestCompilerError,
     QuestTypeError,
 )
-from quest.modules import (
+from quest.modules.elaboration import (
     elaborate_import,
     elaborate_interface,
     elaborate_module,

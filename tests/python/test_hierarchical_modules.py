@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 import quest.syntax.ast as ast
 from quest.modules.manifest import read_qm
-from quest.codegen.compiler_runner import compile_c_to_object, run_binary
+from quest.codegen.c.compiler_runner import compile_c_to_object, run_binary
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.module_compiler import compile_module_file

@@ -1,4 +1,5 @@
-"""Dependencies between the compiler's packages: compilation does not depend on the interpreters.
+"""Dependencies between the compiler's packages: compilation does not depend on the interpreters, and only the
+drivers of C compilation import the C backend (not the IR, nor what every backend shares).
 
 The import graph is read from the sources (every `import` and `from ... import`, including those inside functions,
 which run only when called), so a dependency is found whether or not the tests exercise it."""
@@ -23,6 +24,16 @@ COMPILATION = (
     "quest.values",
 )
 INTERPRETERS = ("quest.interpreter", "quest.repl")
+# What may import the C backend: itself, and what drives C compilation (the pipeline, the build engine, compiling
+# module files, and writing interfaces' C headers)
+C_BACKEND_IMPORTERS = (
+    "quest.build.engine",
+    "quest.codegen.c",
+    "quest.modules.interface_compiler",
+    "quest.modules.module_compiler",
+    "quest.pipeline",
+)
+C_BACKEND = ("quest.codegen.c",)
 
 
 def _modules() -> dict[str, Path]:
@@ -38,7 +49,7 @@ def _within(name: str, packages: tuple[str, ...]) -> bool:
 
 
 def import_graph() -> dict[str, set[str]]:
-    """Each module of the quest package, and the quest modules it imports."""
+    """Each module of the quest package, and the quest modules importing it runs."""
     modules = _modules()
 
     def resolve(name: str) -> str | None:
@@ -58,24 +69,43 @@ def import_graph() -> dict[str, set[str]]:
             else:
                 continue
             imported.update(m for m in map(resolve, candidates) if m is not None and m != name)
+        # Importing a module runs its packages' __init__ modules first
+        package = name
+        while "." in package:
+            package = package.rpartition(".")[0]
+            if package in modules and package != name:
+                imported.add(package)
         graph[name] = imported
     return graph
+
+
+def reached(graph: dict[str, set[str]], sources: tuple[str, ...], targets: tuple[str, ...]) -> list[str]:
+    """The import paths from modules within sources to modules within targets."""
+    paths = {m: [m] for m in graph if _within(m, sources)}
+    stack = list(paths)
+    while stack:
+        module = stack.pop()
+        for imported in graph[module]:
+            if imported not in paths:
+                paths[imported] = paths[module] + [imported]
+                stack.append(imported)
+    return sorted(" -> ".join(path) for m, path in paths.items() if _within(m, targets))
 
 
 class TestDependencies(unittest.TestCase):
     def test_compilation_does_not_reach_the_interpreters(self) -> None:
         graph = import_graph()
-        paths = {m: [m] for m in graph if _within(m, COMPILATION)}
-        self.assertIn("quest.codegen.c_printer", paths)
-        stack = list(paths)
-        while stack:
-            module = stack.pop()
-            for imported in graph[module]:
-                if imported not in paths:
-                    paths[imported] = paths[module] + [imported]
-                    stack.append(imported)
-        reached = sorted(" -> ".join(path) for m, path in paths.items() if _within(m, INTERPRETERS))
-        self.assertEqual(reached, [], "compilation imports the interpreters")
+        self.assertIn("quest.codegen.c.printer", graph)
+        self.assertEqual(reached(graph, COMPILATION, INTERPRETERS), [], "compilation imports the interpreters")
+
+    def test_only_c_compilation_imports_the_c_backend(self) -> None:
+        graph = import_graph()
+        self.assertIn("quest.codegen.layout", graph)
+        importers = sorted(
+            f"{m} -> {i}" for m, imported in graph.items() for i in imported
+            if _within(i, C_BACKEND) and not _within(m, C_BACKEND_IMPORTERS)
+        )
+        self.assertEqual(importers, [], "imports of the C backend from outside C compilation")
 
 
 if __name__ == "__main__":

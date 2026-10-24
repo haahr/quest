@@ -1,32 +1,31 @@
 """Representation (docs/ir.md §8.3): inserts `convert` wherever a value's representation differs from the one its use
 requires.
 
-A value's representation is its type's C representation (codegen/c_types.py): a type parameter's values are held as
-QVal words (a bounded one's viewed at its bound), and other types natively. A use requires the representation of the
+A value's representation is its type's (codegen/layout.py: the runtime's, shared by every backend): a type
+parameter's values are held as QVal words (a bounded one's viewed at its bound), and other types natively. A use requires the representation of the
 type it expects: a call's argument, its callee's parameter type (in a polymorphic callee, mentioning the callee's
 type parameters, so a QVal where the parameter is one); a call's result, its callee's result type; a component of a
 tuple, record, variant, option, or array being made or stored into, the component's type; a component read, as its
 aggregate's type gives it; a let's copy, a return, a jump's argument, and an assignment, the type of what they bind
 or assign. Where the two differ, the value is converted by the plan of the pair (`plan`).
 
-Built a slice at a time with the C printer (docs/ir.md §12, step 5): the plans so far box and unbox between QVal and
-native values, view records at supertypes, remap variants' tags, and cast or copy tuples whose components convert;
-any other change of representation is reported as not yet supported, rather than printed wrong.
+The plans box and unbox between QVal and native values, view records at supertypes, remap variants' tags, cast or
+copy aggregates whose components convert, adapt closures, and convert by descriptor at run time; any other change of
+representation is reported as unsupported, rather than printed wrong.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from quest.codegen.c_types import (
-    RecordNamingContext,
-    is_variant_subtype,
-    closure_fn_ptr_type,
+from quest.codegen.layout import (
     collect_fun_quantifiers,
     generic_layout_agrees,
     generic_layout_copies_mutable_data,
+    is_variant_subtype,
     normalize_type,
-    qtype_to_c_type,
+    representation,
+    signature_representation,
 )
 from quest.ir import nodes as ir
 from quest.ir.walk import statement_bodies
@@ -54,14 +53,7 @@ from quest.types import (
 
 
 class UnsupportedConversion(Exception):
-    """A change of representation the represent pass does not handle yet (a later slice's)."""
-
-
-_CTX = RecordNamingContext()
-
-
-def c_type(t: QType) -> str:
-    return qtype_to_c_type(t, _CTX)
+    """A change of representation the represent pass does not handle."""
 
 
 def _held(t: QType, kind, resolve) -> Optional[QType]:
@@ -135,7 +127,7 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
     instantiation, to_generic = layout
     generic_t = target if to_generic else source
     native_t = generic_t.substitute(instantiation)
-    generic_c, native_c = c_type(generic_t), c_type(native_t)
+    generic_c, native_c = representation(generic_t), representation(native_t)
     if isinstance(normalize_type(generic_t), (QFunType, QAllType)):
         return None
     is_record = generic_c == native_c == "QRecordVal"
@@ -195,7 +187,7 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
         ) + (plan(s_result, t_result, layout),)
     finally:
         _ADAPTING.discard(key)
-    if all(p is None for p in fields) and closure_fn_ptr_type(source, _CTX) == closure_fn_ptr_type(target, _CTX):
+    if all(p is None for p in fields) and signature_representation(source) == signature_representation(target):
         return None
     return ir.Plan("adapt", source, target, fields, layout)
 
@@ -205,7 +197,7 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
     set for a value passed to or returned from a polymorphic callee (see layout_plan)."""
     if source is target or strip_aliases(source) is OK_TYPE or strip_aliases(target) is OK_TYPE:
         return None
-    cs, ct = c_type(source), c_type(target)
+    cs, ct = representation(source), representation(target)
     if cs != "QVal" and ct != "QVal" and isinstance(normalize_type(source), (QFunType, QAllType)) \
             and isinstance(normalize_type(target), (QFunType, QAllType)):
         return adapt_plan(source, target, layout)
@@ -241,7 +233,8 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
             raise UnsupportedConversion(f"converting a tuple of type {source} to {target}")
         pairs = list(zip(s_tup.value_fields, t_tup.value_fields))
         fields = tuple(plan(sf.type_val, tf.type_val) for sf, tf in pairs)
-        if all(p is None for p in fields) and all(c_type(sf.type_val) == c_type(tf.type_val) for sf, tf in pairs):
+        same = all(representation(sf.type_val) == representation(tf.type_val) for sf, tf in pairs)
+        if all(p is None for p in fields) and same:
             return None if cs == ct else ir.Plan("cast", source, target)
         return ir.Plan("copy", source, target, fields)
     if cs == ct and not isinstance(normalize_type(target), (QFunType, QAllType, QOptionType, QArrayType)):
@@ -260,14 +253,15 @@ def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.
     for sig_f, sf, tf in zip(auto_t.signature, source.value_fields, target.value_fields):
         bare = strip_aliases(sig_f.type_val)
         if getattr(bare, "symbol_id", None) == auto_t.symbol_id:
-            fields.append(ir.Plan("box", sf.type_val, tf.type_val) if c_type(tf.type_val) == "QVal"
-                          and c_type(sf.type_val) != "QVal" else None)
+            fields.append(ir.Plan("box", sf.type_val, tf.type_val) if representation(tf.type_val) == "QVal"
+                          and representation(sf.type_val) != "QVal" else None)
         else:
             fields.append(plan(sf.type_val, tf.type_val))
     if all(p is None for p in fields) and all(
-        c_type(sf.type_val) == c_type(tf.type_val) for sf, tf in zip(source.value_fields, target.value_fields)
+        representation(sf.type_val) == representation(tf.type_val)
+        for sf, tf in zip(source.value_fields, target.value_fields)
     ):
-        return None if c_type(payload_t) == c_type(stored_t) else ir.Plan("cast", payload_t, stored_t)
+        return None if representation(payload_t) == representation(stored_t) else ir.Plan("cast", payload_t, stored_t)
     return ir.Plan("copy", payload_t, stored_t, tuple(fields))
 
 

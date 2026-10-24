@@ -129,7 +129,7 @@ The test runner executes each test source file across active compiler phases via
   tests are not run through them.
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).
 - `run_c_compiled`: Runs `quest_driver.py --stop-after run_c_compiled <source_file>`, which compiles the program
-  through the IR to C (`quest/codegen/c_printer.py`, [ir.md](ir.md)), links it with the modules it imports (compiled
+  through the IR to C (`quest/codegen/c/printer.py`, [ir.md](ir.md)), links it with the modules it imports (compiled
   on their own, through the IR too), and runs it (compared against `tests/golden/run/`, and the run error tests
   against their goldens).
 

@@ -98,7 +98,8 @@ end;
             self.assertIsNone(scope.types["Shape"].definition)
 
     def test_mutually_recursive_types_round_trip(self) -> None:
-        from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
+        from quest.codegen.c.types import qtype_to_c_type
+        from quest.codegen.layout import type_tag
         from quest.typechecker.elaborate_types import elaborate_type_binding_group
         from quest.types import QAliasType, QRecGroupType, is_type_equal
         from tests.python.helpers import parse_phrase
@@ -134,7 +135,7 @@ end;
             source_wood, source_tree = elaborate_type_binding_group(parse_phrase(group_src + ";"), source_env)
             self.assertTrue(is_type_equal(wood.definition, source_wood.definition))
             self.assertTrue(is_type_equal(tree.definition, source_tree.definition))
-            self.assertEqual(type_to_c_tag(wood.definition), type_to_c_tag(source_wood.definition))
+            self.assertEqual(type_tag(wood.definition), type_tag(source_wood.definition))
             param_type = scope.values["node"].type_val.params[0].type_val
             self.assertEqual(qtype_to_c_type(param_type), "QArrayWideVariant *")
             pair_fields = scope.types["Pair"].definition.fields

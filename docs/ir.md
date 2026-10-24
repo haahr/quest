@@ -71,7 +71,7 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
   **exports**: its interface's members at the interface's types, bound last in its initializer (converted from the
   members, at the abstract types' representations, by the represent pass). Its record holds them, and it exports a
   C function `qv_<module>_<member>` for each that is a function or a polymorphic value, the ABI other units call
-  (`codegen/c_declarations.py`, `module_function_signature`).
+  (`codegen/c/declarations.py`, `module_function_signature`).
 - **Main:** the program's top-level phrases, in order, as the body of an initializer, including echo (§6.6).
 - **Imports:** the units it depends on and the symbols it uses from them; interfaces (`.qi`) are unchanged.
 
@@ -100,7 +100,7 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `typevar` | a type variable: a type parameter in scope, or an abstract type of a module or interface (`m.T`); symbol, bound |
 | `abstract` | opaque: an abstract type elaborated as such, an application of an abstract operator, a path type (`x.T`) |
 | `external` | C-level opaque type |
-| `rec` | a reference into a recursive group: the canonical recursive graph of `codegen/c_types.py` |
+| `rec` | a reference into a recursive group: the canonical recursive graph of `codegen/canonical.py` |
 
 Aliases are stripped and operator applications reduced before a shape is built; recursion is explicit through
 `rec` references into the canonical graph, so that equal recursive types, however written, share one shape. The
@@ -326,7 +326,7 @@ the function and its type arguments).
 
 ### 8.3. Represent
 
-`ir/represent.py`. A binder's representation is its type's C representation (`codegen/c_types.py`), so the pass
+`ir/represent.py`. A binder's representation is its type's (`codegen/layout.py`, shared by every backend), so the pass
 inserts `convert` wherever a value's representation or layout differs from the one its use requires. This is the
 single conversion operation:
 
@@ -364,7 +364,7 @@ coinductively. A value of a type parameter bounded by a record, variant, or opti
 converts to that view whatever the layouts.
 
 Static decisions (whether layouts agree, whether a copy would lose updates) are made by `generic_layout_agrees` and
-`generic_layout_copies_mutable_data` in `codegen/c_types.py`, which a differential test checks against the runtime's
+`generic_layout_copies_mutable_data` in `codegen/layout.py`, which a differential test checks against the runtime's
 `quest_layout_equivalent` (§12, step 0). After this pass, every operation's atoms have exactly the representations
 the operation requires.
 
@@ -525,7 +525,7 @@ step 6.
   telescope, each bound seeing the quantifiers before it as bound.
 
 **Step 2: Shapes.** *Done.*
-- `ir/shapes.py`: `shape(t)` and the shape kinds of §4.1, built on the canonical forms of `codegen/c_types.py` and
+- `ir/shapes.py`: `shape(t)` and the shape kinds of §4.1, built on the canonical forms of `codegen/canonical.py` and
   cached per canonical type, with unit tests (`tests/python/test_shapes.py`: equal types share one shape, aliases
   and applications reduce, recursion is a cycle of shapes, and every type of a set of programs covering all kinds
   has a shape). Over the whole test corpus, about 12,000 types have shapes; only type operators (`Fun(A::K) T`, in
@@ -640,7 +640,7 @@ step 6.
   `c_declarations.py` (lambda environments and trampolines, the emitter's module declarations); everything left in
   `c_types.py` is still used. The printer's own helpers from the emitter moved into it (`_value_kind`, the existential
   echo) and into `c_declarations.py` (`emit_fun_type_adapters`).
-- *Module files: done.* `module_compiler.py` and `BuildEngine` compile through the IR (`codegen/backend.py`), so the
+- *Module files: done.* `module_compiler.py` and `BuildEngine` compile through the IR (`codegen/c/backend.py`), so the
   standard library is IR-compiled, and both suites pass with the emitter's programs linking against it (its ABI is
   the emitter's). Module files needed exports (§3) and externals: a function defined as `external` calls its C
   function (`call external`), and an external C function used as a value is a static closure over a thunk calling
@@ -655,6 +655,12 @@ step 6.
   Like for like, the 26 programs with no imports: 0.52x the time, 0.70x the C. Benchmark run times:
   `copied_records` 0.98x, `generic_closures` 1.01x, `generic_lists` 1.13x, all within the 20% bar.
   `tests/perf/baseline.json` stays the emitter's, for comparison.
+- *Afterwards*, for backends to come: the C backend's modules moved to `codegen/c/` (`printer.py`, `declarations.py`,
+  `types.py`, `headers.py` for interfaces' C headers, `compiler_runner.py`, `backend.py`), and what a native backend
+  would share stayed in `codegen/`: layouts and representations (`layout.py`), canonical forms (`canonical.py`),
+  descriptors' type-level forms (`descriptors.py`), linkage names (`symbols.py`), and the passes (`backend.py`). The
+  represent pass decides from representations rather than C types, and only C compilation's drivers import
+  `codegen/c/` (`tests/python/test_dependencies.py`). (The file names in the steps above are as they were then.)
 - Update [codegen-c.md](codegen-c.md) and [c-representation.md](c-representation.md) (§5.1 and §6.4 around the
   `convert` plans), and the task list: close the variant tag-map task, and note what is now in place for top-level
   rebindings (distinct globals per symbol) and for specializing local functions.

@@ -16,7 +16,7 @@ from typing import Any, Optional
 from quest.build.engine import BuildEngine, unit_module_refs
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.backend import IR_PASSES
-from quest.codegen.compiler_runner import compile_c_source, run_binary
+from quest.codegen.c.compiler_runner import compile_c_source, run_binary
 from quest.config import CompilerOptions
 
 import quest.syntax.ast as ast
@@ -453,7 +453,7 @@ class CodegenCPhase(Phase):
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
         from quest.codegen.backend import implicit_imports
-        from quest.codegen.c_printer import print_c
+        from quest.codegen.c.printer import print_c
 
         if input_data is None:
             return None

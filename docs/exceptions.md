@@ -528,7 +528,7 @@ Accordingly:
 ### Step 5: Emitting Function Tables and Link-Time Master Table (`quest/codegen/` & `quest/build/`)
 
 - **Changes:**
-  - Update `CPrinter` (`quest/codegen/c_printer.py`) to:
+  - Update `CPrinter` (`quest/codegen/c/printer.py`) to:
     - Emit `quest_raise_at(..., "file:line:col", NULL)` for explicit `ir.Raise` and `quest_reraise(...)` for
       handler re-raises.
     - Pass `"file:line:col"` to inline checked operations (`quest_int_div_at`, bounds checks, variant tag assertions).

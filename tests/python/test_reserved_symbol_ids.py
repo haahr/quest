@@ -8,14 +8,9 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.codegen.c_types import (
-    _rec_self_level,
-    _rec_self_var,
-    bound_var,
-    bound_var_index,
-    canonical_fun_type,
-    type_to_c_tag,
-)
+from quest.codegen.canonical import rec_self_level, rec_self_var
+from quest.codegen.descriptors import bound_var, bound_var_index, canonical_fun_type
+from quest.codegen.layout import type_tag
 from quest.types import (
     DYNAMIC_TYPE,
     INT_TYPE,
@@ -81,13 +76,13 @@ class TestReservedSymbolIds(unittest.TestCase):
         dynamic_param = DYNAMIC_TYPE.signature[0].type_val
         self.assertEqual(reserved_symbol_use(dynamic_param.symbol_id), (ReservedSymbolUse.DYNAMIC_PARAM, 0))
         # Dynamic's parameter once shared its id with the recursion placeholder at depth 0, and was tagged Self0
-        self.assertIsNone(_rec_self_level(dynamic_param))
-        self.assertEqual(type_to_c_tag(dynamic_param), "QVal")
+        self.assertIsNone(rec_self_level(dynamic_param))
+        self.assertEqual(type_tag(dynamic_param), "QVal")
 
         self.assertEqual(reserved_symbol_use(bound_var(3, None).symbol_id), (ReservedSymbolUse.BOUND_VAR, 3))
-        self.assertEqual(reserved_symbol_use(_rec_self_var(2).symbol_id), (ReservedSymbolUse.REC_SELF, 2))
-        self.assertIsNone(bound_var_index(_rec_self_var(2)))
-        self.assertIsNone(_rec_self_level(bound_var(2, None)))
+        self.assertEqual(reserved_symbol_use(rec_self_var(2).symbol_id), (ReservedSymbolUse.REC_SELF, 2))
+        self.assertIsNone(bound_var_index(rec_self_var(2)))
+        self.assertIsNone(rec_self_level(bound_var(2, None)))
 
         a = QTypeVar("A", 9401, TYPE_KIND)
         poly = QAllType(

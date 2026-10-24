@@ -299,14 +299,15 @@ def verify_unit(unit: ir.Unit) -> list[str]:
 
 def _representation_problems(unit: ir.Unit) -> list[str]:
     """The uses of values in another representation than their use requires, after the represent pass."""
-    from quest.ir.represent import c_type, fun_signature
+    from quest.codegen.layout import representation
+    from quest.ir.represent import fun_signature
     from quest.ir.walk import walk_statements
     from quest.types import OK_TYPE, strip_aliases
 
     problems: list[str] = []
 
     def rep(t) -> Optional[str]:
-        return None if strip_aliases(t) is OK_TYPE else c_type(t)
+        return None if strip_aliases(t) is OK_TYPE else representation(t)
 
     def atom_type(a):
         return a.type if isinstance(a, ir.Var) else a.shape.type

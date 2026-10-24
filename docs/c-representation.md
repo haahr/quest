@@ -280,7 +280,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   A closure passed to a polymorphic function, or returned from one, at a type that mentions its type parameters
   (`All(b: Box(A)) A` at `A = Bool`) gets a thunk that converts its arguments from the callee's generic layouts to
   native ones and its result back, as calls do (Polymorphic Calls, below). So does the closure that applies a
-  polymorphic function to types only (`getBox(:Bool)` used as a value, `type_app` in `codegen/c_printer.py`), which converts
+  polymorphic function to types only (`getBox(:Bool)` used as a value, `type_app` in `codegen/c/printer.py`), which converts
   native arguments to the function's generic layouts and its result back.
 
 - **Tuple Structural Coercion & Generic Returns:**
@@ -297,7 +297,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     a recursive value is not copied. When they do not, because a parameter stands for a record or a variant (16 bytes
     natively, a pointer to a boxed copy as a `QVal`), the value is copied by `quest_convert`, from and to the
     descriptor of the type laid out each way: for the callee's layout, the type's template with a hole for each of
-    the callee's type parameters, instantiated with the type arguments (`generic_layout_descriptor` in `codegen/c_printer.py`). Calls with
+    the callee's type parameters, instantiated with the type arguments (`generic_layout_descriptor` in `codegen/c/printer.py`). Calls with
     records or variants as type arguments are mostly specialized (§6.4.3), which avoids the conversion; it remains for
     first-class polymorphic values and polymorphic functions of other modules. Converted records are unboxed from the
     heap cell (`quest_record_unbox`), and variants likewise.
@@ -612,8 +612,8 @@ Equal types share one C representation, so a value moves between them with a pla
 - **Canonical forms:** A type containing recursion stands for the regular tree of its unfoldings, which any number
   of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
   period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its
-  `Rec`). Its tag (`type_to_c_tag`), descriptor (`descriptor_form`), and type digests are computed from its
-  canonical form (`_canonical_type` in `c_types.py`): the graph of its nodes is minimized by partition refinement
+  `Rec`). Its tag (`type_tag`), descriptor (`descriptor_form`), and type digests are computed from its
+  canonical form (`canonical_type` in `codegen/canonical.py`): the graph of its nodes is minimized by partition refinement
   (as the dynamic type table is, §11), and the minimal graph is written back as a type whose recursion variables
   have reserved ids and bind the targets of the back edges of a depth-first walk. Nodes are tuples (with or without
   type components), records, variants, options, arrays, `var` and `out` types, function types (polymorphic or
@@ -827,7 +827,7 @@ struct QTypeDescriptor {
 - **Exceptions (`QExceptionTypeDescriptor`):** Holds `payload_type`; subtyping is invariant in it.
 
 ##### Choosing a Descriptor (`descriptor_form`)
-Every type the program describes gets its own descriptor, chosen by `descriptor_form` (`codegen/c_types.py`), which
+Every type the program describes gets its own descriptor, chosen by `descriptor_form` (`codegen/c/types.py`), which
 both descriptor references (`c_type_descriptor`) and descriptor emission use. A type parameter in scope is described
 by the descriptor passed for it. Tags of compound types include a digest of the type's text, because C tags conflate
 types with the same representation. Recursive types (`Rec(X) ...`, recursive type operator applications) are
@@ -919,7 +919,7 @@ function passes on ([type-system.md](type-system.md) §6.11).
   A `QBool` or `QChar` component agrees with its `QVal` form because aggregates are allocated zeroed (`quest_alloc`;
   only strings use `quest_alloc_atomic`), so the bytes past the value are zero, and the target is little-endian.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
-  type arguments (`generic_layout_agrees` in `codegen/c_types.py`), conservatively: when it cannot tell, the value
+  type arguments (`generic_layout_agrees` in `codegen/layout.py`), conservatively: when it cannot tell, the value
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
@@ -1080,7 +1080,7 @@ if (setjmp(q_handler.env_jmp) == 0) {
 A local that is modified between `setjmp` and `longjmp` and is not `volatile` has an indeterminate value after the
 `longjmp` (C99 §7.13.2.1), and at `-O2` clang keeps such locals in registers, so an assignment made in the protected
 body before a raise was lost. Mutable locals (`let var`) assigned in the protected body of a `try` are therefore
-declared `volatile` (`volatile_vars` in `codegen/c_printer.py`), and the address of one passed for a
+declared `volatile` (`volatile_vars` in `codegen/c/printer.py`), and the address of one passed for a
 `var` or `out` argument is cast to a plain pointer. Named exceptions constructed locally are `volatile` for the same
 reason.
 
@@ -1135,7 +1135,7 @@ supports auto values with one component.
   statically converted copy, which is rejected with an error for signatures with `var` components, whose updates would
   be lost (for example `Auto A::TYPE with a:A var n:Int end` inspected at a record type: give the auto type a bound,
   `A<:Object`, so that records are stored unboxed). When the layouts differ, the binder is a copy converted by
-  descriptor (`auto_arm_converted` in `codegen/c_printer.py`): each component that mentions `A` is converted from its stored type,
+  descriptor (`auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored type,
   described with `A` standing for the type component (a template's instance), to its type in `S[T/A]`. For a
   signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
   types it sees.
