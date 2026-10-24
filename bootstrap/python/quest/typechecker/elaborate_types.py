@@ -342,14 +342,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 if not opt.payload_sig:
                     options.append(QOptionField(name=opt.tag, payload_type=None))
                 else:
-                    fields = tuple(
-                        QTupleField(
-                            name=f.name if f.name else None,
-                            type_val=elaborate_type(f.type_sig, env),
-                        )
-                        for f in opt.payload_sig
-                    )
-                    payload = QTupleType(fields)
+                    # A case's payload is a tuple type: it may have type components and var fields
+                    payload = elaborate_type(ast.TypeTuple(fields=opt.payload_sig, offset=opt.offset), env)
                     options.append(QOptionField(name=opt.tag, payload_type=payload))
             return QOptionType(tuple(options))
 
