@@ -75,7 +75,7 @@ from quest.env import (
     Scope,
     Environment,
 )
-from quest.elaborate_types import (
+from quest.typechecker.elaborate_types import (
     elaborate_kind,
     elaborate_type,
     elaborate_kind_binding,
@@ -83,8 +83,8 @@ from quest.elaborate_types import (
     elaborate_mutual_rec_type_group,
     elaborate_type_binding_group,
 )
-import quest.typed_ast as typed_ast
-from quest.typed_ast import (
+import quest.typechecker.typed_ast as typed_ast
+from quest.typechecker.typed_ast import (
     TypedTypeWitness,
     TypedVariantAssert,
     TypedVariantCheck,

@@ -60,7 +60,7 @@ from quest.ir.represent import (
 )
 from quest.ir.walk import global_variables, statement_binders, statement_bodies, walk_statements
 from quest.modules.elaboration import build_record_type_from_scope
-from quest.typed_ast import TypedModule
+from quest.typechecker.typed_ast import TypedModule
 from quest.types import (
     STRING_TYPE,
     QPathType,

@@ -7,7 +7,7 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.elaborate_types import (
+from quest.typechecker.elaborate_types import (
     elaborate_kind_binding,
     elaborate_mutual_rec_type_group,
     elaborate_type_binding,

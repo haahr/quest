@@ -81,7 +81,7 @@ from quest.types import (
     short_type_name,
     unfold_head,
 )
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
     TypedArrayRep,

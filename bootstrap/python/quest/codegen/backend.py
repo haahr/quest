@@ -12,7 +12,7 @@ from quest.ir.lower import lower_module_file, lower_program
 from quest.ir.represent import represent_unit
 from quest.ir.specialize import specialize_unit
 from quest.ir.verify import check_unit, ir_checks_enabled
-from quest.typed_ast import TypedImport, TypedModule, TypedProgram
+from quest.typechecker.typed_ast import TypedImport, TypedModule, TypedProgram
 
 # The IR's passes after lowering (docs/ir.md §9), in order, by the stage each produces
 IR_PASSES = (("specialized", specialize_unit), ("closed", closure_convert_unit), ("represented", represent_unit))

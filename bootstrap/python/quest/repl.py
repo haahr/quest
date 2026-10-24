@@ -31,7 +31,7 @@ from quest.values.model import QOk, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
 from quest.syntax.tokens import TokenKind
-from quest.typed_ast import TypedBinding, TypedExpr
+from quest.typechecker.typed_ast import TypedBinding, TypedExpr
 
 PROMPT_MAIN = ">>  "
 PROMPT_CONT = "    "

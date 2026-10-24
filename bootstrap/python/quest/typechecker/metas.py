@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Optional
 
-import quest.typed_ast as typed_ast_module
+from quest.typechecker.typed_ast import TypedNode
 from quest.types import QType, resolve_metas
 
 
@@ -23,7 +23,7 @@ def resolve_typed_metas(node: Any, memo: Optional[dict[int, Any]] = None) -> Any
         items = tuple(resolve_typed_metas(item, memo) for item in node)
         if any(a is not b for a, b in zip(items, node)):
             result = items
-    elif dataclasses.is_dataclass(node) and type(node).__module__ == typed_ast_module.__name__:
+    elif isinstance(node, TypedNode):
         changes = {}
         for f in dataclasses.fields(node):
             if f.init:

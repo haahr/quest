@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 import quest.syntax.ast as ast
 from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
-from quest.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
+from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
 from quest.env import Environment
 from quest.types import (
     BOOL_TYPE,

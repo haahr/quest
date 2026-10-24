@@ -22,7 +22,7 @@ import os
 from typing import Any, Iterator, Optional
 
 from quest.env import ValueSymbol
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedBlock,
     TypedCase,
     TypedFor,

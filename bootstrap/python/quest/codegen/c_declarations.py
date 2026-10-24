@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional, Sequence
 
-from quest.typed_ast import TypedLetType, TypedRecord
+from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import _may_be_stored_as_subtype
 from quest.codegen.c_types import (
     closure_fn_ptr_type,

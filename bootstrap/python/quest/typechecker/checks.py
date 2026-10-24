@@ -7,7 +7,7 @@ from typing import Any, Optional
 import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
 from quest.env import Environment
-from quest.typed_ast import TypedExpr
+from quest.typechecker.typed_ast import TypedExpr
 from quest.types import (
     KindError,
     OK_TYPE,

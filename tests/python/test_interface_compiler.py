@@ -99,7 +99,7 @@ end;
 
     def test_mutually_recursive_types_round_trip(self) -> None:
         from quest.codegen.c_types import qtype_to_c_type, type_to_c_tag
-        from quest.elaborate_types import elaborate_type_binding_group
+        from quest.typechecker.elaborate_types import elaborate_type_binding_group
         from quest.types import QAliasType, QRecGroupType, is_type_equal
         from tests.python.helpers import parse_phrase
 

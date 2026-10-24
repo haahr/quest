@@ -45,7 +45,7 @@ from quest.syntax.sources import SourceMap, display_file_name
 
 if TYPE_CHECKING:
     from quest.env import Environment, Scope
-    from quest.typed_ast import TypedModule
+    from quest.typechecker.typed_ast import TypedModule
 
 
 def load_interface(name: str, env: Environment) -> Scope:
@@ -223,7 +223,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         if name != canon_name:
             env.register_module(name, module_export_scope)
 
-        from quest.typed_ast import TypedModule
+        from quest.typechecker.typed_ast import TypedModule
         typed_mod = TypedModule(
             name=canon_name,
             interface_name=expected_interface,

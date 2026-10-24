@@ -12,10 +12,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 import quest.syntax.ast as ast
 from quest.config import CompilerOptions
-from quest.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
+from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
 from quest.env import Environment, TypeSymbol, ValueSymbol
 from quest.pipeline import default_pipeline
 from quest.ir.shapes import KINDS, shape, shapes_reachable
+from quest.typechecker.typed_ast import TypedNode
 from quest.types import TYPE_KIND, QType, QTypeFun
 from tests.python.helpers import elaborate_test_type, parse_phrase
 
@@ -42,7 +43,7 @@ def _types_in(node, seen: set[int], out: list[QType]) -> None:
     elif isinstance(node, (list, tuple)):
         for item in node:
             _types_in(item, seen, out)
-    elif dataclasses.is_dataclass(node) and type(node).__module__ == "quest.typed_ast":
+    elif isinstance(node, TypedNode):
         for f in dataclasses.fields(node):
             _types_in(getattr(node, f.name), seen, out)
 

@@ -12,7 +12,7 @@ from typing import Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.config import CompilerOptions
-from quest.typed_ast import TypedFun
+from quest.typechecker.typed_ast import TypedFun, TypedNode
 from quest.types import QAllType, QFunType
 from tests.python.helpers import run_source
 
@@ -26,7 +26,7 @@ def _typed_funs(node: Any, found: list[TypedFun], seen: set[int]) -> list[TypedF
     if isinstance(node, (tuple, list)):
         for item in node:
             _typed_funs(item, found, seen)
-    elif dataclasses.is_dataclass(node) and not isinstance(node, type) and type(node).__module__ == "quest.typed_ast":
+    elif isinstance(node, TypedNode):
         for f in dataclasses.fields(node):
             _typed_funs(getattr(node, f.name), found, seen)
     return found

@@ -114,7 +114,7 @@ def parse_type_string(type_str: str) -> QType:
 
     try:
         from quest.diagnostics import QuestCompilerError
-        from quest.elaborate_types import elaborate_type
+        from quest.typechecker.elaborate_types import elaborate_type
         from quest.env import Environment
         from quest.syntax.grammar import parse_quest_program
         from quest.syntax.tokenizer import Tokenizer

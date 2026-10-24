@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from typing import Any, Callable, Optional, Union
 
 import quest.syntax.ast as ast
-import quest.typed_ast as typed_ast_module
 from quest.types import (
     BOOL_TYPE,
     binds_module,
@@ -86,7 +85,7 @@ from quest.modules import (
     elaborate_interface,
     elaborate_module,
 )
-from quest.elaborate_types import (
+from quest.typechecker.elaborate_types import (
     elaborate_kind,
     elaborate_kind_binding,
     elaborate_mutual_rec_type_group,
@@ -96,7 +95,7 @@ from quest.elaborate_types import (
     elaborate_tuple_type_bindings,
     tuple_type_binding_members,
 )
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
     TypedArrayRep,

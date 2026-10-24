@@ -28,7 +28,7 @@ from quest.diagnostics import (
     QuestCompilerError,
     Severity,
 )
-from quest.elaborate_types import elaborate_kind, elaborate_type
+from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.env import Environment, Scope
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.treewalk import (
@@ -50,7 +50,7 @@ from quest.typechecker.typecheck import (
     elaborate_program,
     synth_expr,
 )
-from quest.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedModule, TypedProgram
+from quest.typechecker.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedModule, TypedProgram
 from quest.types import KindError, QKind, QType
 
 

@@ -5,7 +5,7 @@ import unittest
 import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
 from quest.env import Environment, ValueSymbol
-from quest.typed_ast import TypedExprStmt, TypedLetValue
+from quest.typechecker.typed_ast import TypedExprStmt, TypedLetValue
 from quest.typechecker.typecheck import TypeElaborator
 from quest.types import BOOL_TYPE, DYNAMIC_TYPE, INT_TYPE, OK_TYPE
 from tests.python.helpers import parse_expr, parse_phrase

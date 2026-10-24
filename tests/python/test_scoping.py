@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.config import CompilerOptions
 from quest.env import ValueSymbol
-from quest.typed_ast import TypedBlock, TypedFun, TypedLetValue, TypedVar
+from quest.typechecker.typed_ast import TypedBlock, TypedFun, TypedLetValue, TypedNode, TypedVar
 from quest.typechecker.scoping import check_well_scoped
 from quest.types import INT_TYPE, TYPE_KIND, QAllType, QPowerKind, QQuantifier, QTypeVar
 from tests.python.helpers import run_source
@@ -41,7 +41,7 @@ def _replace_first(node, cls, fn):
             return fn(n)
         if isinstance(n, tuple):
             return tuple(walk(x) for x in n)
-        if dataclasses.is_dataclass(n) and not isinstance(n, type) and type(n).__module__ == "quest.typed_ast":
+        if isinstance(n, TypedNode):
             return dataclasses.replace(n, **{f.name: walk(getattr(n, f.name)) for f in dataclasses.fields(n)})
         return n
 

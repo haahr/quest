@@ -19,7 +19,7 @@ from quest.config import CompilerOptions
 from quest.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
 from quest.ir.shapes import shape
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
     TypedArrayRep,

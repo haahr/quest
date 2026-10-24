@@ -283,7 +283,7 @@ class Interpreter:
                 return fn(*args)
             case QClosure():
                 from quest.interpreter.treewalk import eval_expr
-                from quest.typed_ast import TypedExternal
+                from quest.typechecker.typed_ast import TypedExternal
 
                 call_env = callee.env.push_scope()
                 call_env.bind_types(callee.type_bindings)

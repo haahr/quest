@@ -7,7 +7,7 @@ import unittest
 import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError as TypeError
 from quest.typechecker.typecheck import check_expr, synth_expr
-from quest.typed_ast import TypedFun
+from quest.typechecker.typed_ast import TypedFun
 from quest.types import (
     INT_TYPE,
     QFunType,

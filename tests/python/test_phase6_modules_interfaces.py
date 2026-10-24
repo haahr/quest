@@ -11,7 +11,7 @@ from quest.typechecker.typecheck import (
     elaborate_program,
     synth_expr,
 )
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedInterface,
     TypedModule,
     TypedProgram,

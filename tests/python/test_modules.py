@@ -15,7 +15,7 @@ from quest.modules import (
     elaborate_interface,
     elaborate_module,
 )
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedImport,
     TypedInterface,
     TypedModule,

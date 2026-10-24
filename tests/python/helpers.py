@@ -5,7 +5,7 @@ import unittest
 from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
-from quest.elaborate_types import elaborate_kind, elaborate_type
+from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
 from quest.env import Environment
@@ -18,7 +18,7 @@ from quest.pipeline import (
 )
 from quest.values.model import OK_VALUE
 from quest.typechecker.typecheck import check_expr, synth_expr
-from quest.typed_ast import TypedBinding, TypedExpr, TypedProgram
+from quest.typechecker.typed_ast import TypedBinding, TypedExpr, TypedProgram
 from quest.types import QKind, QType, is_type_equal
 
 # Patch unittest.TestCase.assertEqual so that comparisons between QType instances

@@ -7,7 +7,7 @@ from quest.syntax.ast import (
     TypeFormal,
     TypeTuple,
 )
-from quest.elaborate_types import elaborate_type
+from quest.typechecker.elaborate_types import elaborate_type
 from quest.env import Environment
 from quest.types import (
     INT_TYPE,

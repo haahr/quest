@@ -35,7 +35,7 @@ from quest.env import (
     TypeSymbol,
     ValueSymbol,
 )
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
     TypedAssign,

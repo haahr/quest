@@ -468,7 +468,7 @@ Accordingly:
 
 - **Changes:**
   - Define `SourceLoc(file, line, column)` in `quest/diagnostics.py` (or `quest/syntax/sources.py`).
-  - Add `trace_name: str = "<anon>"` to `TypedFun` in `quest/typechecker/typed_terms.py` and `QClosure` in
+  - Add `trace_name: str = "<anon>"` to `TypedFun` in `quest/typechecker/typed_ast.py` and `QClosure` in
     `quest/values/model.py`.
   - Implement a small pass `assign_trace_names(program_or_module, module_name=...)` invoked at the end of typechecking
     (`elaborate_program`, `elaborate_module`) that populates `TypedFun.trace_name` according to §2.2.

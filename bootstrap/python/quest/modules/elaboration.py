@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 import quest.syntax.ast as ast
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
-from quest.elaborate_types import (
+from quest.typechecker.elaborate_types import (
     elaborate_kind,
     elaborate_kind_binding,
     elaborate_type,
@@ -35,7 +35,7 @@ from quest.modules.paths import (
     resolve_module_file,
     resolve_object_file,
 )
-from quest.typed_ast import (
+from quest.typechecker.typed_ast import (
     TypedBinding,
     TypedImport,
     TypedImportItem,
@@ -386,7 +386,7 @@ def elaborate_module(
     env.current_scope = module_internal_scope
     typed_bindings: list[TypedBinding] = []
     if decl.imports:
-        from quest.typed_ast import TypedImportItem
+        from quest.typechecker.typed_ast import TypedImportItem
         typed_items = tuple(
             TypedImportItem(
                 names=imp.names,

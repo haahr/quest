@@ -195,7 +195,7 @@ type constructor (`Record`, `Tuple`, `Option`, `Variant`, `Fun`, `Array`, `Var`,
 
 ### 3.4. Simultaneous and Mutually Recursive Type Declarations (`and`)
 Type declarations joined by `and` (Cardelli's `TypeDecl "and" TypeDecl`) are declared together, as an
-`ast.TypeBindingGroup` elaborated by `elaborate_type_binding_group` (`elaborate_types.py`):
+`ast.TypeBindingGroup` elaborated by `elaborate_type_binding_group` (`typechecker/elaborate_types.py`):
 ```quest
 Let Rec Forest = Record trees: Array(Tree) end
 and Tree = Variant leaf: Int node: Forest end;   (* mutually recursive *)
@@ -250,8 +250,9 @@ Let PointPackage = Tuple
   distance(p1: Point, p2: Point): Real
 end;
 ```
-Signature elaboration (`bootstrap/python/quest/elaborate_types.py`) proceeds sequentially in an ordered dependent
-scope. Each type formal `X::K` introduces a `TypeSymbol` into the local scope so subsequent fields can refer to `X`.
+Signature elaboration (`bootstrap/python/quest/typechecker/elaborate_types.py`) proceeds sequentially in an ordered
+dependent scope. Each type formal `X::K` introduces a `TypeSymbol` into the local scope so subsequent fields can refer
+to `X`.
 Anonymous type formals (`::TYPE`) are prohibited; type formals must specify an identifier.
 
 Tuple values are sequential in the same way: each component's label is in scope in the components after it. Components
@@ -384,7 +385,7 @@ The typechecking environment employs a two-tier root architecture:
 
 ---
 
-## 6. Term Elaboration and Typechecking (`elaborate_types.py` and `typechecker.py`)
+## 6. Term Elaboration and Typechecking (`typechecker/elaborate_types.py` and `typechecker/typecheck.py`)
 
 Term typechecking translates syntactic AST expressions into decorated `TypedExpr` nodes:
 
