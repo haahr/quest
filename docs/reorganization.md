@@ -233,8 +233,9 @@ Independent of tracks A and B.
 writes the `.int.h` headers it needs, and `interface_compiler.py` no longer imports `codegen/c/`.
 
 **C2. One graph of program units.** Resolution, type checking, and artifacts in one structure, replacing
-`load_module_for_interpreter`, the driver's two places that dispatch on file suffixes (which fixes the
-`--stop-after` task), and the separate paths through `module_compiler` and `BuildEngine`.
+`load_module_for_interpreter`, the driver's two places that dispatch on file suffixes (default and `compile` mode),
+and the separate paths through `module_compiler` and `BuildEngine`, building on the unit-file checks
+`quest/modules/units.py` shares.
 
 **C3. The REPL and the test runner use the same graph.**
 
