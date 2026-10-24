@@ -1,6 +1,8 @@
 # Quest Module System and File Imports
 
-This document describes the Quest module system based on Luca Cardelli's *Typeful Programming* (§7.1), including interfaces, module implementations, information hiding, file-based loading conventions, search path resolution, and evaluation semantics.
+This document describes the Quest module system based on Luca Cardelli's *Typeful Programming* (§7.1), including
+interfaces, module implementations, information hiding, file-based loading conventions, search path resolution, and
+evaluation semantics.
 
 ---
 
@@ -8,13 +10,20 @@ This document describes the Quest module system based on Luca Cardelli's *Typefu
 
 Quest implements a first-order module system as described by Luca Cardelli in *Typeful Programming* (1991, §7.1):
 
-- **Interfaces (`interface ... export ... end`):** Specifications describing types, kinds, and value signatures. They define the public contract that implementation modules must satisfy.
-- **Modules (`module m: I ... export ... end`):** Implementations that provide concrete definitions matching an interface. Modules can have private local state and bindings hidden behind the interface.
+- **Interfaces (`interface ... export ... end`):** Specifications describing types, kinds, and value signatures. They
+  define the public contract that implementation modules must satisfy.
+- **Modules (`module m: I ... export ... end`):** Implementations that provide concrete definitions matching an
+  interface. Modules can have private local state and bindings hidden behind the interface.
 - **Information Hiding & Abstract Types:**
-  - An abstract type declared in an interface (`T::TYPE`) is opaque to consumers of any module implementing that interface.
-  - In the module's export scope, `T` becomes an opaque type variable unique to that module instance (`m.T`), preventing clients from depending on its internal representation.
-  - A manifest type declared in an interface (`Def T = Int` or `Let T = Int`) is transparent, and its definition is known to all clients.
-- **Singleton Module Semantics:** Modules are instantiated at most once at link time. When multiple modules or phrases import the same module (e.g. in diamond dependencies), all importers share the identical runtime record and mutable state cells.
+  - An abstract type declared in an interface (`T::TYPE`) is opaque to consumers of any module implementing that
+    interface.
+  - In the module's export scope, `T` becomes an opaque type variable unique to that module instance (`m.T`),
+    preventing clients from depending on its internal representation.
+  - A manifest type declared in an interface (`Def T = Int` or `Let T = Int`) is transparent, and its definition is
+    known to all clients.
+- **Singleton Module Semantics:** Modules are instantiated at most once at link time. When multiple modules or phrases
+  import the same module (e.g. in diamond dependencies), all importers share the identical runtime record and mutable
+  state cells.
 
 ---
 
@@ -227,7 +236,8 @@ Cardelli's module system defines modules as link-time singletons. At runtime:
         +---------------+
 ```
 
-When `clienta` invokes `store.inc()`, the mutation is immediately visible when `clientb` calls `store.get()`. Both clients interact with the exact same runtime instance.
+When `clienta` invokes `store.inc()`, the mutation is immediately visible when `clientb` calls `store.get()`. Both
+clients interact with the exact same runtime instance.
 
 ---
 
@@ -248,15 +258,11 @@ quest compile -I ./lib main.quest -o main_app
 
 ---
 
-## 7. Compilation Architecture & Implementation Roadmap
+## 7. Compilation Architecture
 
-The Quest C compiler's module support is designed in two complementary stages:
-
-### Stage 1: Whole-Program Compilation (Initial Implementation)
-In Stage 1, the compiler starts from a root source file, processes all explicit and implicit `import` declarations
-recursively, and builds a complete in-memory typed AST model of the program (`Environment.loaded_modules_ast`).
-When all imports have been resolved, typechecked, and verified, the compiler emits a single self-contained C
-translation unit (`.c` file) that compiles directly with standard C99:
+Quest compiles modules through its intermediate representation ([ir.md](ir.md)), supporting both **separate
+compilation** (the default for all file-backed modules) and **whole-program compilation** (`--whole-program` or inline
+`module` declarations in a single source file). Both modes share the same core semantic and representation invariants:
 
 1. **Acyclic Dependency Enforcement (Cardelli §7.1):**
    - As Cardelli explicitly specifies (*Typeful Programming* §7.1, p. 55): *"The import dependencies of both
@@ -265,67 +271,64 @@ translation unit (`.c` file) that compiles directly with standard C99:
    - Neither interfaces nor modules may form cycles. Topological sort order is guaranteed to be unambiguous
      and deterministic.
 2. **Module Export Representation (First-Class `QRecordVal` Fat Pointers):**
-   - Each module `m : I` compiles to a top-level C record variable `static QRecordVal qm_m;`. Module records use
+   - Each module `m : I` with mangled canonical name `<clean>` compiles to a top-level C record variable
+     `QRecordVal qm_<clean>;` (`static` in whole-program mode, `extern` in separate compilation). Module records use
      their own `qm_` prefix so that they cannot collide with a user identifier of the same name (`qv_m`).
-   - The interface `I` specifies the record struct shape `QT_I` containing function pointers, closures, and values.
-   - `qm_m` stores `.val` pointing to the allocated payload struct and `.dict` pointing to the static identity
-     evidence dictionary `&offsetdict_I_I`.
+   - The interface `I` specifies the record struct layout containing closures and values for all exported value fields.
+   - `qm_<clean>` stores `.val` pointing to the allocated payload struct and `.dict` pointing to the static identity
+     evidence dictionary for the interface record type.
 3. **Abstract Type Erasure to `QVal`:**
-   - In interface records, abstract types (`T::TYPE`) cannot have known concrete scalar representations across
-     compilation boundaries. Field signatures in the interface record use uniform 64-bit words (`QVal` / `void *`),
-     and a module file's exports convert its values to them (boxing into `QVal`, ir.md §3) before its record is made.
+   - Across compilation boundaries, abstract types (`T::TYPE`) cannot have known concrete scalar representations.
+     Interface signatures and record fields represent abstract types uniformly as 64-bit words (`QVal` / `void *`).
+   - Inside a module `m : I`, bindings are elaborated and lowered using their concrete implementation types. At the
+     module export boundary, the representation pass (`ir/represent.py`, [ir.md §3](ir.md)) converts each exported value
+     and function closure from the module's concrete representation to the interface's erased representation (boxing or
+     adapting arguments and results as needed) before populating `qm_<clean>`.
 4. **Manifest Type Erasure:**
-   - Interface records (`QT_<Interface>`) only store value components (`FieldSig`); manifest types (`Def T = ...`)
-     and kinds are erased at runtime and do not generate struct fields.
-5. **Topological Module Initialization (`_init`):**
-   - Each module emits an initialization function `static void qv_mod_<name>_init(void)` protected by an idempotent
-     boolean flag `static bool qv_mod_<name>_initialized;`.
-   - The initializer recursively calls the initializers of all its dependencies in topological order, allocates
-     the payload struct, executes the module's internal statements and `let var` bindings, and writes the exported
-     members into the module record.
-   - `main()` invokes the initializers of all top-level imported modules before executing the main script phrases.
-     This guarantees singleton semantics across diamond dependency graphs.
-6. **Identifier Mangling:**
-   - Internal module variables, lifted lambdas, and closures are prefixed with their module name
-     (`qv_<module>_<name>`), preventing name collisions in the single translation unit.
-7. **Unified Native Module Mechanism (Approach B):**
-   - All standard library modules (`writer`, `reader`, `conv`, `ascii`, `int`, `real`, `string`, `system`,
-     `arrayOp`, `dynamic`) and user-defined hybrid modules are unified under the standard `TypedModule` pipeline.
-   - Builtin functions and constants are annotated with `c_symbol`, `inline_template`, and `c_val`.
-   - Direct calls on known modules inline native calls directly without closure overhead.
-   - First-class module records populate closure trampolines (`qv_<mod>_<name>_trampoline`) and concrete evaluated
-     constants, providing full Cardelli first-class module semantics.
+   - Interface records only store value components (`FieldSig`); manifest types (`Def T = ...`) and type constructors
+     are erased at runtime and do not generate struct fields.
+5. **Topological Module Initialization (`qv_mod_<clean>_init`):**
+   - Each module emits an initialization function `void qv_mod_<clean>_init(void)` (`static` in whole-program mode,
+     external in separate compilation) protected by an idempotent boolean flag
+     `static bool qv_mod_<clean>_initialized;`.
+   - The initializer registers record offset dictionaries and abstract type descriptors, recursively calls the
+     initializers of all imported modules, executes the module's internal declarations and statements, allocates the
+     module record payload, and writes the exported values into `qm_<clean>`.
+   - `main()` invokes the initializers of all top-level imported and inline modules before executing the main program
+     phrases, guaranteeing singleton semantics across diamond dependency graphs.
 
 ---
 
-## 8. Unified Native Module Mechanism & Hybrid Quest/C Modules
+## 8. Unified Native & Hybrid Quest/C Modules
 
-Rather than treating built-in modules as ad-hoc compiler-internal special cases, Quest unifies all modules
-(pure Quest modules, standard library modules, and user-defined hybrid modules) through a single architectural pipeline:
+Rather than treating standard library modules as compiler-internal special cases, Quest unifies pure Quest modules,
+standard library modules, and hybrid Quest/C modules through a single pipeline:
 
 ### 8.1. Declarative Module Architecture
-- Standard library modules reside on disk in `lib/` as regular Quest units (`.int.quest` and `.mod.quest`)
-  or pre-compiled units (`.qi` and `.qm`), loaded through the unified module loader.
-- `BuiltinModuleRegistry` serves strictly as the runtime C symbol bridge (`EXTERNAL_SYMBOLS`), mapping external C
-  symbols to Python functions, constants, and exceptions during interpreter execution.
-- Member functions can be pure Quest functions, native functions (`TypedNativeBinding` with `c_symbol` or
-  `inline_template`), or external C values (`TypedExternal` with `c_val`).
+- Standard library modules reside on disk in `lib/` as regular Quest units (`.int.quest` and `.mod.quest`), compiled to
+  pre-built `.qi`, `.int.h`, `.mod.c`, `.o`, and `.qm` artifacts on demand.
+- `BuiltinModuleRegistry` (`quest/modules/stdlib.py`) serves as the runtime C symbol bridge (`EXTERNAL_SYMBOLS`) for the
+  tree-walking and IR interpreters, mapping external C symbol names to Python functions, constants, and exceptions.
+  Only `dynamic` (`Dynamic`) remains a purely runtime-synthesized module without a `.mod.quest` implementation file.
+- Within a `.mod.quest` file, declarations can be pure Quest bindings or `external "..."` bindings (`TypedExternal` /
+  `ir.External`) that bind directly to C runtime types, functions, or global values.
 
-### 8.2. Dual-Path Code Generation
-The C backend optimizes module member access while preserving full first-class module semantics:
+### 8.2. Direct Calls vs. First-Class Module Records
+The IR and C backend optimize module member calls while preserving Cardelli's first-class module semantics:
 1. **Direct Call Lowering:**
-   When a function is called directly on a known module (e.g. `writer.putString(w s)` or `conv.int(n)`), the compiler
-   emits the direct C function call (`quest_writer_put_string(...)`) or expands the inline template, entirely bypassing
-   closure allocation and dictionary dispatch.
+   - Within the same compilation unit (or when calling an `external` C function binding), known function calls bypass
+     closure allocation and call the underlying static IR function (`qf_<name>`) or C runtime symbol directly.
+   - Across separately compiled modules, calling an exported function or polymorphic value on an imported module
+     (`m.f(...)`) emits a direct call to the module's exported C wrapper function `qv_<clean>_<member>(...)`
+     (`ir.ImportCall`).
 2. **First-Class Concrete Value Records:**
-   When a module is referenced as a value (e.g. `let m = writer;` or passed as a parameter), the module's initializer
-   `qv_mod_<name>_init()` allocates the record payload and populates all fields with **concrete values**:
-   - Native and Quest functions are wrapped in allocated `QClosure` structures pointing to static trampolines.
-   - Native constants and evaluated `let` values are stored directly in the record fields.
-   - Once loaded, no field accesses require dynamic getter hooks; all fields are concrete values stored in the record.
+   - When a module is used as a first-class value (e.g. `let r = m;` or passed to a function expecting the interface
+     record type) or when accessing a non-function value field (`m.x`), code accesses `qm_<clean>`.
+   - During `qv_mod_<clean>_init()`, every exported function (including functions bound via `external`) is wrapped in a
+     `QClosure` at the interface's representation and stored alongside exported non-function values in `qm_<clean>`.
 
 ### 8.3. Hybrid Quest/C Modules
-Developers can write modules that seamlessly combine Quest code and C implementations:
+Modules can freely mix Quest definitions and `external` C bindings:
 ```quest
 (* fileio.int.quest *)
 interface FileIO
@@ -345,24 +348,19 @@ export
         writer.putString(h "Hello Native!\n");
 end;
 ```
-Inside `fileio`, `writeHello` is a pure Quest function that calls into the native `writer` module, while `Handle`
-and `stdout` bind directly to underlying C runtime types and symbols.
-
-### 8.4. Lazy Loading Semantics
-Following Cardelli's specification, module loading is lazy:
-- Modules initialize on first reference or at the start of the program unit.
-- Initialization is guarded by `qv_mod_<name>_initialized` to guarantee single evaluation.
-- Dependencies are resolved and initialized in topological order prior to evaluating local bindings.
+Inside `fileio`, `writeHello` is a pure Quest function that calls into `writer`, while `Handle` and `stdout` bind
+directly to C runtime types and symbols.
 
 ---
 
-## 9. Separate Compilation Architecture (Phase 4.16)
+## 9. Separate Compilation Architecture
 
-This implementation of Quest supports separate compilation of interfaces and modules, enabling modular builds and
-object linking:
+Separate compilation is the default compilation model for all file-backed interfaces and modules (both flat modules in
+`lib/` and hierarchical modules in subdirectories). See [build-process.md](build-process.md) for the build engine and
+staleness rules.
 
 ### 9.1. Interface Compilation (`.int.quest` -> `.int.h` + `.qi`)
-Compiling an interface (`quest -c counter.int.quest`) generates two complementary artifacts:
+Compiling an interface (`quest -c counter.int.quest`) generates two artifacts:
 1. **C Header (`x.int.h`):**
    - Named `x.int.h` rather than `x.h` so that an interface named like a C library header (`math`, `string`,
      `time`, ...) cannot shadow it: generated-code directories are on the C compiler's include path, and the
@@ -377,7 +375,7 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - Manifest types (`Def T = ...`) emit concrete C typedefs or struct definitions.
    - Function pointer typedefs (`typedef <Ret> (*quest_sig_X_<member>)(<Params>);`).
 2. **Type Metadata (`x.qi`):**
-   - A serialized dynamic value ([dynamic.md](dynamic.md) §2) of Quest's shadow record types (`InterfaceDesc`):
+   - A serialized dynamic value ([dynamic.md §2](dynamic.md)) of Quest's interface descriptor record types:
      ```quest
      Let InterfaceTypeDecl = Record
          group: Int
@@ -409,132 +407,107 @@ Compiling an interface (`quest -c counter.int.quest`) generates two complementar
    - Serialized via `dynamic.extern` / `jsog_encode` and deserialized via `dynamic.intern` / `jsog_decode`.
    - Allows the compiler to typecheck client code or implementing modules without the original `.int.quest` source.
 
-### 9.2. Module Compilation (`.mod.quest` -> `.mod.c` -> `.o`)
-Compiling a module implementation (`quest -c counter.mod.quest`) generates both C source and relocatable object files:
+### 9.2. Module Compilation (`.mod.quest` -> `.mod.c` + `.o` + `.qm`)
+Compiling a module implementation (`quest -c counter.mod.quest`) produces three artifacts:
 1. **C Source File (`<name>.mod.c`):**
    - Includes `#include "quest_runtime.h"` and `#include "<interface>.int.h"`.
-   - **Dual Linkage ABI:**
-     - Direct C functions: Exported interface member functions are emitted with external C linkage
-       (`qv_<mod>_<func>(...)`), allowing native C calls and optimal direct linking without closure indirection.
-     - Trampolines: Small `static` functions (`qv_<mod>_<func>_trampoline`) wrapping direct functions for closure
-       dispatch.
-     - Module record: The global module singleton `QRecordVal qm_<mod>;` is declared with external C linkage and
-       populated with closures pointing to trampolines during initialization.
-   - **Idempotent Chained Initialization:** Emits an exported initialization routine `void qv_mod_<mod>_init(void)`
-     with an internal `initialized` guard. Before executing module expressions, it automatically calls the
-     initialization functions of any imported dependency modules (`qv_mod_<dep>_init()`), ensuring all transitive
-     module state is ready before use.
+   - Emits all internal module functions as `static` C functions (`qf_<name>`) and internal module state as `static`
+     globals.
+   - **Exported C Symbols (determined solely by the module's canonical name `<clean>` and its interface):**
+     - **Module record (`QRecordVal qm_<clean>;`):** Global singleton holding the module's exported record value, with
+       all fields converted to the interface's representation by `ir/represent.py`.
+     - **Idempotent initializer (`void qv_mod_<clean>_init(void)`):** Guarded by `static bool
+       qv_mod_<clean>_initialized`. Registers offset dictionaries and abstract type descriptors, calls
+       `qv_mod_<dep>_init()` for each imported module, runs the module body, and populates `qm_<clean>`.
+     - **Exported function wrappers (`<Ret> qv_<clean>_<member>(<Params>)`):** One external C function for each
+       function or polymorphic value in the interface (`CPrinter.exported_functions` in `codegen/c_printer.py`), using
+       the signature computed by `module_function_signature` (`codegen/c_declarations.py`) from the interface's types.
+       Each wrapper invokes the corresponding exported closure stored by the module.
 2. **Relocatable Object File (`<name>.o`):**
    - Produced by invoking the host C compiler (`clang -c <name>.mod.c -o <name>.o -I runtime -I <include_paths>`).
-   - Both `<name>.mod.c` and `<name>.o` are retained on disk for debugging, inspection, and native linking.
+3. **Module Build Manifest (`<name>.qm`):**
+   - Records the module's canonical name, implemented interface, source/object paths, and direct module/interface
+     dependencies for incremental build checking and transitive linking ([build-process.md §4](build-process.md)).
 
-### 9.3. Client Compilation & Object Linking (`main.quest` + `*.o` -> Native Binary)
-Compiling client code that depends on precompiled modules links `.o` files directly into the native executable:
-1. **Invocation Syntax & Search Paths:**
-   - Explicit object files: `quest main.quest counter.o -o my_app` (or `quest compile main.quest counter.o -o my_app`).
-   - Auto-discovery: When `import counter : Counter` is processed, if `counter.o` exists in the current directory or
-     any directory specified via `-I`, the compiler automatically registers `counter` as a precompiled module and
-     queues `counter.o` for linking.
-   - Source independence: The module implementation source (`counter.mod.quest`) does not need to exist on disk;
-     typechecking and code generation rely solely on the interface (`counter.qi` or `counter.int.quest`) and the
-     precompiled object file.
-2. **Dual Linkage ABI & External Declarations:**
-   - In the emitted client C code, precompiled modules emit external declarations for both linkage forms:
-     - Direct C functions: `extern <Ret> qv_<mod>_<func>(<Params>);`
-     - Global module record: `extern QRecordVal qm_<mod>;`
-     - Initializer: `extern void qv_mod_<mod>_init(void);`
-   - Direct calls (`counter.inc(c)`) lower to fast native C calls `qv_counter_inc(c)`.
-   - Closure access (`let f = counter.inc; f(c)`) extracts closures from `qv_counter` and dispatches via trampolines.
-3. **Signature Adaptation & Abstract Type ABI:**
-   - Exported interface types define the canonical C ABI at module boundaries. Abstract types (`T::TYPE`) erase
-     uniformly to `QVal`.
-   - When a module implements an interface where concrete types differ from interface representations (e.g. `T`
-     implemented as a record `QRecordVal` vs. interface `QVal`), the module compiler emits internal implementations
-     (`_qv_<mod>_<func>_impl`) alongside exported boundary adapters (`qv_<mod>_<func>`) and trampolines that safely
-     box and unbox arguments and return values using `quest_record_box` and value unwrappers.
-4. **Binary Generation:**
-   - The pipeline compiles the client C file and invokes the host C compiler (`clang`), passing all required
-     runtime files (`quest_runtime.c`, `quest_serialization.c`), precompiled object files (`counter.o`), and GC
-     libraries to produce the final executable binary.
+### 9.3. Client Compilation, Self-Contained `extern` Declarations, and Why There Are No `.mod.h` Files
+When a client compilation unit (another `.mod.quest` or a main `.quest` program) imports a module via `import m : I;`:
+1. **Interface-Only Compile-Time Dependency:**
+   - Typechecking and C code generation for the importing unit depend **only** on the interface `I` (`.qi` /
+     `.int.quest`) and never on `m.mod.quest` having been compiled—or even existing yet.
+   - Generating a `<mod>.mod.h` header when compiling `<mod>.mod.quest` and `#include`-ing it in client `.c` files would
+     violate separate compilation: it would force every importer of `m` to wait until `m.mod.quest` is compiled before
+     the importer's C code could be compiled, and any rebuild of `m.mod.quest` could trigger unnecessary C
+     recompilations of its importers.
+   - Conversely, the interface header `<iface>.int.h` cannot hardcode `extern` declarations for a specific module
+     because an interface does not know which modules implement it (and a program may import multiple modules
+     implementing the same interface, e.g. `import m1, m2 : I;`).
+2. **Self-Contained `extern` Declarations Derived from `(module_name, interface)`:**
+   - Because a module's exported C ABI is completely determined by its mangled canonical name `<clean>` and the
+     imported interface `I`'s `Scope`, the client `.c` file (`CPrinter.import_declarations` in `codegen/c_printer.py`)
+     synthesizes exact `extern` declarations directly from `(clean, I)`:
+     - `extern QRecordVal qm_<clean>;`
+     - `extern void qv_mod_<clean>_init(void);`
+     - `extern <Ret> qv_<clean>_<member>(<Params>);` for every function and polymorphic value in `I`, using the exact
+       same `module_function_signature(clean, member, type, c_type)` helper used when compiling `<mod>.mod.c`.
+   - Direct calls `m.f(x)` lower to `ir.ImportCall` and emit `qv_<clean>_f(...)`.
+   - Non-function value fields `m.v` (and first-class uses of `m` itself) read from `qm_<clean>`; they are not exported
+     as separate C global variables.
+3. **Linking:**
+   - Only at the final link step (when producing an executable binary) does the build engine ensure that all
+     transitively imported modules are compiled to `.o` files and passed to `clang` alongside the runtime objects
+     ([build-process.md §7](build-process.md)).
+   - The `--whole-program` compiler flag overrides separate compilation, loading all imported modules from `.mod.quest`
+     source and emitting their definitions directly into a single C translation unit.
 
 ### 9.4. Hierarchical Modules and C Symbol Mangling
 When compiling hierarchical interfaces and modules:
 1. **Directory Tree Preservation:**
    When an interface or module in a subdirectory is compiled (e.g. `quest -c util/calc.mod.quest`), the compiler
-   creates matching output subdirectories in the target destination, writing `util/calc.mod.c`, `util/calc.o`,
-   and `util/calc.int.h`.
+   creates matching output subdirectories in the target destination (such as `.build/util/`), writing
+   `util/calc.mod.c`, `util/calc.o`, and `util/calc.qm`.
 2. **C Symbol Mangling:**
-   Because C identifiers cannot contain forward slashes, directory delimiters in hierarchical module names are mangled
-   to `__` (double underscore):
-   - Module record: `qv_util__calc`
+   Because C identifiers cannot contain forward slashes, directory delimiters in canonical module names are mangled
+   to `__` (double underscore) via `mangle_module_name` ([name-mangling.md §2.5](name-mangling.md)):
+   - Module record: `qm_util__calc`
    - Initializer: `qv_mod_util__calc_init`
    - Initialized flag: `qv_mod_util__calc_initialized`
-   - Direct functions: `qv_util__calc_multiply`
-   - Trampolines: `qv_util__calc_multiply_trampoline`
-   Single underscores (`_`) continue to cleanly separate module prefixes from exported function and variable names.
+   - Exported functions: `qv_util__calc_multiply`
+   Single underscores (`_`) separate the mangled module name from the exported member name.
 3. **Canonical Module Identity:**
    Both whole-program C code generation and separate compilation identify modules by their canonical names (§2.3,
-   e.g. `util/calc`), not by the paths imports name them by. When imported using local aliases (such as
-   `import c = util/calc : util/Calc`), client C code generates external references to `qv_util__calc` and
-   `qv_util__calc_multiply`, binding the local variable `qv_c` to the canonical module record. Likewise a sibling
-   import `import helper : Helper` in `util/calc.mod.quest` refers to `qm_util__helper`.
-
-### 9.5. Hierarchical Separate Compilation and On-Demand Builds
-To maintain high performance, modular boundaries, and clean test separation:
-1. **Canonical Hierarchical Identification:**
-   A module or interface is classified as hierarchical if and only if its canonical name (§2.3) contains a
-   slash `/` (e.g. `collections/vector`). Modules directly in `lib/` (`list`, `writer`, `conv`, etc.) have flat
-   canonical names and remain whole-program / direct source modules.
-2. **Phase Partitioning:**
-   - Whole-program behavior is preserved for `tokenize`, `parse`, `typecheck`, and `interpret`. The AST interpreter
-     evaluates modules directly from source.
-   - Separate compilation is always used for hierarchical modules during C phases (`codegen_c` and `run_c_compiled`).
-3. **Dependency Building & Build Directory:**
-   - In C compilation modes, typechecking only regenerates stale interface artifacts (`.qi`, `.int.h`); importers are typed
-     against interfaces. After code generation, the modules the unit needs are built to `.mod.c`, `.o`, and `.qm` by the
-     build engine, exactly as in a full application build (see [build-process.md §7.3](build-process.md)).
-   - The build output directory can be explicitly specified via `--build-dir <dir>` (such as `.build/` in test runs),
-     and defaults to `.build/`.
-   - Artifacts are only rebuilt when stale relative to `.int.quest` and `.mod.quest` source modification timestamps
-     and the interfaces recorded in `.qm` manifests.
-4. **Self-Contained Client External Declarations:**
-   - In emitted client C code, the compiler generates self-contained `extern` prototypes for functions, initializers,
-     and records of precompiled modules.
-   - *Design rationale:* Compiling (as opposed to linking) the importer's C source file does not depend on whether the
-     module implementation has already been compiled or on header include paths.
-5. **Whole-Program Override:**
-   - The `--whole-program` compiler flag overrides this default, forcing the compiler to inline all imported module
-     implementations directly into the client C translation unit.
+   e.g. `util/calc`), not by the local alias or relative path used in an `import` clause. When imported using a local
+   alias (such as `import c = util/calc : util/Calc`), client C code emits external declarations for `qm_util__calc`,
+   `qv_mod_util__calc_init`, and `qv_util__calc_multiply`. Likewise, a sibling import `import helper : Helper` inside
+   `util/calc.mod.quest` resolves to canonical name `util/helper` and refers to `qm_util__helper`.
 
 ---
 
-## 10. Module Dependency Tracking (`.deps/` and `--emit-deps`)
+## 10. Module Dependency Tracking (`.qm` Manifests)
 
-Builds track module dependencies with `.qm` manifests (see [build-process.md §4](build-process.md)). For use by
-external build tools, standalone module compilation can also record them in make-compatible `.d` files; the Quest
-build itself does not read them.
+Module and interface dependencies are tracked through `.qm` module manifests (see
+[build-process.md §4](build-process.md)):
 
-### 10.1. Emitting Dependency Files
-
-When compiling modules with `--emit-deps`:
-```bash
-quest --emit-deps -c lib/util/strutil.mod.quest
-```
-The compiler creates a `.deps/` subdirectory in the module's target output directory and writes `<stem>.d`:
-```make
-util/strutil.o: util/maybe.o util/stringbuilder.o collections/vector.o word.o
-```
-Each entry lists the target `.o` file and its immediate prerequisite module `.o` files.
-
-### 10.2. Transitive Linker Resolution
-
-When the compiler driver links a binary, the build engine follows the `imported_modules` of each module's `.qm`
-manifest from the compilation unit's direct imports to form the transitive closure of required objects, rebuilding
-stale ones, and supplies them all to clang (see [build-process.md §7](build-process.md)).
+1. **Manifest Contents (`.qm`):**
+   Each compiled module `<name>.qm` (a JSOG-encoded dynamic value of type `ModuleManifest`) records:
+   - `name`: the module's canonical name (e.g. `"util/strutil"`).
+   - `interface`: the canonical name of the interface it implements.
+   - `source` and `object`: resolved paths to `<name>.mod.quest` and `<name>.o`.
+   - `imported_modules`: the canonical names, interfaces, and source paths of all directly imported modules.
+   - `imported_interfaces`: the canonical names, source paths, and modification timestamps (`mtime`) of the module's
+     own interface and all directly imported interfaces.
+2. **Incremental Rebuild & Transitive Linker Resolution:**
+   When building or linking a program, the build engine (`quest/build/engine.py`) walks the `imported_modules` graph
+   starting from the root compilation unit's direct imports, checks whether any module's `.o` or `.qm` is missing or
+   stale relative to its `.mod.quest` source or the interfaces recorded in `imported_interfaces`, rebuilds stale units
+   in topological order, and passes the transitive closure of `.o` files to the host C linker
+   ([build-process.md §7](build-process.md)).
 
 ---
 
 ## See Also
+- [build-process.md](build-process.md): Incremental build engine, `.qi`/`.qm` manifests, and staleness rules.
+- [name-mangling.md](name-mangling.md): C identifier mangling and `qm_`/`qv_`/`qf_` namespace prefixes.
+- [ir.md](ir.md): Intermediate representation and interface boundary representation conversions (`ir/represent.py`).
 - [pipeline.md](pipeline.md): Compiler pipeline framework and CLI driver options.
 - [c-representation.md](c-representation.md): C runtime ABI, record representation, and function calling conventions.
 - [type-system.md](type-system.md): Type system, subtyping, and signature elaboration.
