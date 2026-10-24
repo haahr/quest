@@ -8,9 +8,8 @@ import dataclasses
 from typing import Any, Optional
 
 from quest.codegen.layout import type_digest
-from quest.types.canonical import normalize_type
+from quest.ir.shapes import shape
 from quest.types import (
-    strip_aliases,
     QAllType,
     QAutoType,
     QFunType,
@@ -116,7 +115,7 @@ def canonical_fun_type(t: QType) -> QType:
     type parameters of a polymorphic function type are replaced by placeholders (de Bruijn indices, counting binders
     outward from the reference; within one All, the last parameter is 0 in the body and the k-th parameter's bound
     sees the earlier ones). Nested polymorphic function types are canonicalized when they are described."""
-    t = normalize_type(strip_aliases(t.prune() if hasattr(t, "prune") else t))
+    t = shape(t).structure
     if isinstance(t, QFunType):
         return QFunType(
             params=tuple(QParam(name="", type_val=p.type_val, is_var=p.is_var, is_out=p.is_out) for p in t.params),

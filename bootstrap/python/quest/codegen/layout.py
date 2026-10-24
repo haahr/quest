@@ -33,7 +33,6 @@ from quest.types import (
     QParam,
     QPowerKind,
     QQuantifier,
-    QRecGroupType,
     QRecType,
     QRecordField,
     QRecordType,
