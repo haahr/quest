@@ -1,0 +1,65 @@
+(* Rebinding a name at the top level, or in a module, does not change what functions and closures defined earlier
+ * see through it: scoping is lexical. *)
+import writer: Writer;
+import conv: Conv;
+
+let show(n: Int): Ok =
+    begin
+        writer.putString(writer.output conv.int(n));
+        writer.putString(writer.output "\n")
+    end;
+
+(* A value rebound after a function that reads it *)
+let x = 1;
+let f(): Int = x;
+let x = 2;
+show({f() * 10} + x);
+
+(* A function rebound after a function that calls it *)
+let g(): Int = 10;
+let callsG(): Int = g();
+let g(): Int = 20;
+show(callsG() + g());
+
+(* A closure made by a function, then the name it captured rebound *)
+let y = 100;
+let makeAdder(): All(n: Int) Int = fun(n: Int): Int n + y;
+let add = makeAdder();
+let y = 200;
+show(add(1) + y);
+
+(* A recursive function rebound by another recursive function of the same name *)
+let rec count(n: Int): Int = if n is 0 then 0 else 1 + count(n - 1) end;
+let countThree(): Int = count(3);
+let rec count(n: Int): Int = if n is 0 then 0 else 2 + count(n - 1) end;
+show({countThree() * 10} + count(3));
+
+(* A mutable variable rebound: the earlier function still assigns and reads the earlier one *)
+let var v = 1;
+let bump(): Int =
+    begin
+        v := v + 1;
+        v
+    end;
+let v = 50;
+show(bump() + v);
+
+(* Rebinding inside a module's body *)
+interface Counter export
+    first(): Int
+    second(): Int
+end;
+
+module counter : Counter export
+    let base = 1;
+    let first(): Int = base;
+    let base = 2;
+    let second(): Int = base;
+end;
+show({counter.first() * 10} + counter.second());
+
+(* Simultaneous declarations rebinding names an earlier function reads *)
+let a = 1 and b = 2;
+let sumAB(): Int = a + b;
+let a = 10 and b = 20;
+show({sumAB() * 100} + a + b);

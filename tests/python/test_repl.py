@@ -129,6 +129,21 @@ class TestQuestREPL(unittest.TestCase):
         # a should still be 10, not 99
         self.assertIn(">>  a\n==  10 : Int\n", output_text)
 
+    def test_rebinding_is_lexical(self) -> None:
+        """A name rebound in a later input does not change what functions defined earlier see; a failing input that
+        rebinds a name is rolled back."""
+        stdout, _ = self._run_repl_session([
+            "let x = 1",
+            "let f(): Int = x",
+            "let x = 2",
+            "f() + x",
+            "let x = 3; 1 / 0",
+            "f() + x",
+        ])
+        output_text = "".join(stdout)
+        self.assertIn(">>  f() + x\n==  3 : Int\n", output_text)
+        self.assertNotIn("==  4 : Int\n", output_text)
+
     def test_syntax_error_recovery_without_hanging(self) -> None:
         """Reports non-EOF syntax error immediately and clears buffer without hanging."""
         stdout, stderr = self._run_repl_session(["let 123 = 4", "1 + 1"])

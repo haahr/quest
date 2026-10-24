@@ -41,10 +41,10 @@ from quest.interpreter.formatting import format_interactive_result
 from quest.interpreter.primitives import QuestRuntimeError
 from quest.interpreter.treewalk import (
     RuntimeEnvironment,
-    eval_binding,
     eval_expr,
     eval_program,
     eval_program_phrases,
+    eval_scoped_binding,
     note_frames,
 )
 from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str
@@ -313,7 +313,8 @@ class InterpretPhase(Phase):
                         if out_str:
                             sys.stdout.write(out_str + "\n")
 
-                    self._last_phrase_results = eval_program_phrases(
+                    # Later phrases (in the REPL) continue in the frame the program's last phrase was evaluated in
+                    self._last_phrase_results, ctx.runtime_env = eval_program_phrases(
                         input_data, ctx.runtime_env, on_result=echo if ctx.options.echo else None
                     )
                     return self._last_phrase_results[-1][1] if self._last_phrase_results else OK_VALUE
@@ -330,7 +331,7 @@ class InterpretPhase(Phase):
 
                 case TypedBinding():
                     self._last_final_phrase = input_data
-                    val = eval_binding(input_data, ctx.runtime_env)
+                    val, ctx.runtime_env = eval_scoped_binding(input_data, ctx.runtime_env)
                     self._last_phrase_results = [(input_data, val)]
                     if ctx.options.echo:
                         out_str = format_interactive_result(input_data, val)

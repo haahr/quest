@@ -572,25 +572,9 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         # 6. Scoped Blocks
         case TypedBlock(bindings=bindings, result=result):
             block_env = env.push_scope()
-            try:
-                for b in bindings:
-                    if isinstance(b, TypedLetValueGroup) and not b.is_rec:
-                        # The members are bound in a frame of their own, so that closures built by their values
-                        # keep the bindings the members shadow
-                        values = tuple(eval_expr(member.value, block_env) for member in b.members)
-                        block_env = block_env.push_scope()
-                        _define_members(b.members, values, block_env)
-                        continue
-                    # A binding that rebinds a name of this frame gets a frame of its own, so that closures built
-                    # earlier keep the binding they captured
-                    if any(
-                        getattr(member, "name", None) in block_env.bindings for member in binding_members(b)
-                    ):
-                        block_env = block_env.push_scope()
-                    eval_binding(b, block_env)
-                return eval_expr(result, block_env)
-            finally:
-                env = block_env.pop_scope()
+            for b in bindings:
+                _, block_env = eval_scoped_binding(b, block_env)
+            return eval_expr(result, block_env)
 
         # 7. Loops & Control Flow
         case TypedLoop(body=body):
@@ -972,12 +956,14 @@ def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
         env.call_stack.pop()
 
 
-def run_module_init(name: str, bindings, mod_env: RuntimeEnvironment) -> None:
-    """Runs a module's bindings in its frame, locating the errors they raise in the module's file (mod_env's)."""
+def run_module_init(name: str, bindings, mod_env: RuntimeEnvironment) -> RuntimeEnvironment:
+    """Runs a module's bindings in its frame, locating the errors they raise in the module's file (mod_env's), and
+    returns the frame its last binding was evaluated in, where its exports are found (eval_scoped_binding)."""
     mod_env.call_stack.append(init_frame(name))
     try:
         for b in bindings:
-            eval_binding(b, mod_env)
+            _, mod_env = eval_scoped_binding(b, mod_env)
+        return mod_env
     except QuestCompilerError as error:
         if error.source_map is None:
             error.source_map = mod_env.source_map
@@ -1030,8 +1016,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                 rec = env.evaluated_modules[mod_name]
                 env.define(mod_name, rec)
                 return rec
-            mod_env = env.push_scope()
-            run_module_init(mod_name, mod_bindings, mod_env)
+            mod_env = run_module_init(mod_name, mod_bindings, env.push_scope())
             exported_fields: dict[str, QValue] = {}
             for val_name in mod_scope.values:
                 exported_fields[val_name] = mod_env.lookup(val_name)
@@ -1064,12 +1049,28 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             raise QuestRuntimeError(f"Unhandled binding node: {binding.__class__.__name__}")
 
 
+def eval_scoped_binding(binding: TypedBinding, env: RuntimeEnvironment) -> tuple[QValue, RuntimeEnvironment]:
+    """Evaluates a binding of a block, a program, or a module in env's frame, returning its value and the frame the
+    bindings after it are evaluated in. A binding that rebinds a name of env's frame gets a frame of its own, so that
+    closures built earlier keep the binding they captured (scoping is lexical), and so do the members of a
+    simultaneous declaration, so that closures built by their values keep the bindings the members shadow."""
+    if isinstance(binding, TypedLetValueGroup) and not binding.is_rec:
+        values = tuple(eval_bound_value(member.name, member.value, env) for member in binding.members)
+        env = env.push_scope()
+        _define_members(binding.members, values, env)
+        return QTuple(values, tuple(member.name for member in binding.members)), env
+    if any(getattr(member, "name", None) in env.bindings for member in binding_members(binding)):
+        env = env.push_scope()
+    return eval_binding(binding, env), env
+
+
 def eval_program_phrases(
     program: TypedProgram,
     env: Optional[RuntimeEnvironment] = None,
     on_result: Optional[Callable[[TypedBinding | TypedExpr, QValue], None]] = None,
-) -> list[tuple[TypedBinding | TypedExpr, QValue]]:
-    """Evaluates an entire typed program sequentially, returning (phrase, value) pairs.
+) -> tuple[list[tuple[TypedBinding | TypedExpr, QValue]], RuntimeEnvironment]:
+    """Evaluates an entire typed program sequentially, returning (phrase, value) pairs, and the frame its last phrase
+    was evaluated in, which phrases evaluated after the program (in the REPL) continue in (eval_scoped_binding).
 
     on_result, if given, is called with each pair as soon as its phrase is evaluated, before later phrases can
     change the value (by assigning to a component of it) or write output of their own.
@@ -1081,7 +1082,7 @@ def eval_program_phrases(
     for phrase in program.phrases:
         match phrase:
             case TypedBinding():
-                val = eval_binding(phrase, env)
+                val, env = eval_scoped_binding(phrase, env)
                 results.append((phrase, val))
             case TypedExpr():
                 val = eval_expr(phrase, env)
@@ -1091,12 +1092,12 @@ def eval_program_phrases(
         if on_result is not None:
             on_result(*results[-1])
 
-    return results
+    return results, env
 
 
 def eval_program(program: TypedProgram, env: Optional[RuntimeEnvironment] = None) -> QValue:
     """Evaluates an entire typed program sequentially, returning the final phrase value."""
-    results = eval_program_phrases(program, env)
+    results, _ = eval_program_phrases(program, env)
     return results[-1][1] if results else OK_VALUE
 
 
@@ -1133,7 +1134,7 @@ def load_module_for_interpreter(
     if file_path is not None:
         mod_env.current_dir = file_path.parent
         mod_env.source_map = SourceMap(file_path.read_text(encoding="utf-8"), display_file_name(file_path))
-    run_module_init(typed_mod.name, typed_mod.bindings, mod_env)
+    mod_env = run_module_init(typed_mod.name, typed_mod.bindings, mod_env)
 
     exported_fields = {}
     for val_name in typed_mod.scope.values:

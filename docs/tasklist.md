@@ -5,35 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Top-level rebindings change what earlier functions see
-
-**Problem.** Rebinding a name at the top level changes the value that earlier top-level functions (and closures)
-read through it in the interpreter, so the function sees the later binding instead of the one in scope where it was
-defined. Inside blocks, the interpreter keeps the earlier binding. Compiled code, through the IR, binds each
-top-level binding's symbol to a global of its own, and gets it right.
-
-**Reproduce.** With `rebind.quest` containing
-
-```quest
-let x = 1;
-let f(): Int = x;
-let x = 2;
-{f() * 10} + x
-```
-
-`--stop-after interpret` prints `22 : Int`; lexical scoping gives `12`, which `--stop-after run_c_compiled` (and the
-IR interpreter, `--stop-after run_ir_core`) prints.
-
-**Where to start.** The interpreter evaluates top-level phrases in one `RuntimeEnvironment` frame (`pipeline.py`
-and `eval_binding` in `interpreter/treewalk.py`), and `define` overwrites a name in place; the `TypedBlock` case of
-`eval_expr` instead binds a rebound name in a new frame. The echo of a rebound name and module initializers need
-the same care.
-
-**Done when.** The program above prints `12 : Int` in both phases, and a golden test covers rebinding a value and a
-function at the top level after functions and closures that refer to them.
-
----
-
 ## Compiled echo expands aliases in type components within recursive types
 
 **Problem.** Compiled echo writes a tuple's type components (`Let X = P`) with their alias names, as the interpreter

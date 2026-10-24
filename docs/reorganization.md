@@ -151,11 +151,19 @@ beyond that, optimize before landing.
 
 Mechanical: the reduced and canonical forms of types belong with the types. Imports follow.
 
+**Done:** `types/canonical.py`.
+
 ### 0d. Share the interpreters' primitives; fix top-level rebinding
 
 Move the primitive operations the IR interpreter imports from `interpreter/treewalk.py` (`_eval_int_arithmetic` and
 the others) into a shared module, and fix the top-level rebinding task ([tasklist.md](tasklist.md)), whose cause is
 the tree-walker's environment model.
+
+**Done:** `interpreter/primitives.py` (arithmetic, comparisons, the standard library's runtime errors) and
+`interpreter/formatting.py` (printing values by their types). Blocks, programs, modules, and REPL inputs evaluate
+bindings with one rule (`eval_scoped_binding`): a binding that rebinds a name of the current frame gets a new frame,
+which later phrases continue in, so closures built earlier keep what they captured
+(`tests/source/language/top_level_rebinding.quest`).
 
 ### 0e. Bugs found while planning
 

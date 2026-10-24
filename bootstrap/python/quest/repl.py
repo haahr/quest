@@ -169,14 +169,18 @@ class QuestREPL:
 
             # Snapshot environment state before evaluation for transactional rollback on failure
             env_snap = self.context.env.snapshot()
-            runtime_snap = self.context.runtime_env.snapshot()
+            runtime_env = self.context.runtime_env
+            runtime_snap = runtime_env.snapshot()
 
             result = self.pipeline.compile_phrase(current_buffer, ctx=self.context)
 
             if result.has_errors or not result.success:
                 # Rollback environment mutations from failing phrase
                 self.context.env.restore(env_snap)
-                self.context.runtime_env.restore(runtime_snap)
+                # A phrase that rebinds a name continues in a new frame (eval_scoped_binding); go back to the
+                # frame the phrase started in
+                self.context.runtime_env = runtime_env
+                runtime_env.restore(runtime_snap)
 
                 # Render error diagnostics
                 source_map = SourceMap(current_buffer, "<repl>")
