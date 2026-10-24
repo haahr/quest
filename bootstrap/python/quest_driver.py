@@ -36,6 +36,7 @@ from quest.codegen.c.compiler_runner import compile_c_source
 from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import canonicalize_module_path
+from quest.modules.units import unit_kind
 from quest.repl import run_repl
 from quest.values.model import QOk, qvalue_to_str
 from quest.syntax.sources import SourceMap
@@ -57,6 +58,50 @@ def report_error(prog: str, error: Exception, source_file: Optional[Path] = None
             sys.stderr.write(DiagnosticRenderer.render_diagnostic(diag, source_map=source_map) + "\n")
             return
     sys.stderr.write(f"{prog}: error: {error}\n")
+
+
+def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace) -> int:
+    """Runs the phases --stop-after and --dump-after name on a unit file, compiled as the unit compilers compile it,
+    and writes their output. Writes no artifacts of the unit itself. Returns the exit status.
+
+    An interface file's phases end with typecheck, and a module file's with codegen_c: a unit does not run alone.
+    """
+    kind = unit_kind(file_path)
+    phases = compile_pipeline().phase_names()
+    if kind == "interface":
+        phases = phases[:phases.index("typecheck") + 1]
+    requested = [p for p in (parsed_args.stop_after, *parsed_args.dump_after) if p is not None]
+    for phase in requested:
+        if phase not in phases:
+            sys.stderr.write(
+                f"{prog}: error: phase '{phase}' does not apply to {kind} file '{file_path}', whose phases are "
+                f"{', '.join(phases)}\n"
+            )
+            return 1
+    last = max(requested, key=phases.index)
+
+    source_text = file_path.read_text(encoding="utf-8")
+    file_name = str(file_path)
+    options = CompilerOptions(
+        stop_after=last,
+        dump_after=set(parsed_args.dump_after),
+        include_paths=[Path(p) for p in parsed_args.include_paths],
+        show_offsets=getattr(parsed_args, "show_offsets", False),
+        show_values=getattr(parsed_args, "show_values", False),
+        # Units imported while typechecking are built here, as for a program's phases (docs/build-process.md §5.2.4)
+        build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
+        unit=kind,
+    )
+    ctx = CompilerContext.create(source_text, file_name, options=options)
+    result = compile_pipeline().execute(source_text, file_name, options=options, ctx=ctx)
+    for phase in phases:
+        if result.dump_outputs.get(phase):
+            sys.stdout.write(result.dump_outputs[phase] + "\n")
+    for diag in result.diagnostics:
+        sys.stderr.write(DiagnosticRenderer.render_diagnostic(diag, source_map=ctx.source_map) + "\n")
+    if any(d.severity == Severity.FATAL for d in result.diagnostics):
+        return 70
+    return 0 if result.success else 1
 
 
 def run_driver(args: list[str]) -> int:
@@ -222,6 +267,11 @@ def run_driver(args: list[str]) -> int:
         if not file_path.exists():
             sys.stderr.write(f"quest: error: file not found: '{file_path}'\n")
             return 1
+        if unit_kind(file_path) is not None and (parsed_args.stop_after or parsed_args.dump_after):
+            # Without --stop-after, the unit is compiled after its phases are dumped
+            status = run_unit_phases("quest", file_path, parsed_args)
+            if status != 0 or parsed_args.stop_after:
+                return status
         if file_path.name.endswith(".int.quest"):
             try:
                 include_paths = [Path(p) for p in parsed_args.include_paths]
@@ -555,6 +605,11 @@ def run_compile(args: list[str]) -> int:
         if not file_path.exists():
             sys.stderr.write(f"quest compile: error: file not found: '{file_path}'\n")
             return 1
+        if unit_kind(file_path) is not None and (parsed_args.stop_after or parsed_args.dump_after):
+            # Without --stop-after, the unit is compiled after its phases are dumped
+            status = run_unit_phases("quest compile", file_path, parsed_args)
+            if status != 0 or parsed_args.stop_after:
+                return status
         if file_path.name.endswith(".int.quest"):
             try:
                 include_paths = [Path(p) for p in parsed_args.include_paths]

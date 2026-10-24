@@ -34,24 +34,6 @@ function at the top level after functions and closures that refer to them.
 
 ---
 
-## The driver ignores `--stop-after` for interface and module files
-
-**Problem.** When an interface or module file is passed to the driver directly, it is compiled fully, writing
-`.qi`, `.qm`, `.c` and `.o` files (next to the source unless `--build-dir` is given), whatever `--stop-after` says.
-
-**Reproduce.** With `m.int.quest` containing `interface M export f(c: Bool): Ok end;` and `m.mod.quest` containing
-`module m : M export let f(c: Bool): Ok = ok; end;`, `quest --stop-after typecheck m.mod.quest` writes `m.qi`,
-`m.qm`, `m.mod.c` and `m.o` next to the source.
-
-**Where to start.** `bootstrap/python/quest_driver.py` handles `.int.quest` and `.mod.quest` files in two places,
-the default mode (around the `compile_interface_file` and `compile_module_file` calls) and `compile` mode, before
-looking at `--stop-after`.
-
-**Done when.** `--stop-after typecheck` on such a file stops after typechecking and writes no artifacts, and a test
-in `tests/python/test_quest_driver.py` covers an interface file and a module file.
-
----
-
 ## Compiled echo omits a tuple value's type components
 
 **Problem.** When compiled code echoes a tuple value whose type has manifest type components (`Let X = T` in a

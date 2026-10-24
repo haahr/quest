@@ -40,6 +40,7 @@ from quest.typechecker.elaborate_types import elaborate_kind, elaborate_rec_type
 from quest.types.env import Environment, Scope, TypeSymbol, ValueSymbol
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_interface
+from quest.modules.units import unit_declaration
 from quest.values.model import (
     FALSE_VALUE,
     TRUE_VALUE,
@@ -595,21 +596,7 @@ def _compile_interface_file(
         tokens = Tokenizer(source_text, str(file_path)).tokenize_all()
         prog = parse_quest_program(tokens, source_map)
 
-        if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
-            raise QuestTypeError(
-                f"Interface file '{file_path.name}' must contain exactly one interface declaration"
-            )
-
-        decl = prog.phrases[0]
-        if not isinstance(decl, ast.InterfaceDecl):
-            raise QuestTypeError(
-                f"Expected interface declaration in '{file_path.name}', but found {type(decl).__name__}"
-            )
-        if decl.name.lower() != file_path.name.split(".")[0].lower():
-            raise QuestTypeError(
-                f"Interface declared in '{file_path.name}' has name '{decl.name}', which does not match file name",
-                offset=decl.offset,
-            )
+        decl = unit_declaration(prog, file_path)
 
         env = Environment(builtin_registry=BuiltinModuleRegistry)
         env.include_paths = list(include_paths) if include_paths else []

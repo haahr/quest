@@ -32,6 +32,8 @@ class CompilerOptions:
     emit_deps: bool = False
     program_dir: Optional[Path] = None
     current_dir: Optional[Path] = None
+    # 'interface' or 'module' when the source is a unit file, whose phases compile it as one (quest/modules/units.py)
+    unit: Optional[str] = None
 
     @property
     def is_c_compilation_mode(self) -> bool:

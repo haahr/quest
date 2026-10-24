@@ -22,7 +22,7 @@ from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.c.backend import module_file_to_c
 from quest.codegen.c.compiler_runner import compile_c_to_object
 from quest.config import CompilerOptions
-from quest.diagnostics import QuestTypeError, in_unit
+from quest.diagnostics import in_unit
 from quest.modules.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
@@ -33,6 +33,7 @@ from quest.types.env import Environment
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_module
 from quest.modules.interface_compiler import indirect_interface_refs
+from quest.modules.units import unit_declaration
 from quest.modules.loader import load_interface
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
@@ -61,6 +62,39 @@ class ModuleCompileResult(tuple):
         obj.o_file = o_file
         obj.qm_file = qm_file
         return obj
+
+
+def header_search_dirs(output_dir: Path, env: Environment, include_paths: Optional[list[Path]]) -> list[Path]:
+    """The directories a module file's C translation is compiled with, where its interface's header is found."""
+    search_dirs = [output_dir]
+    if env.current_dir:
+        search_dirs.append(env.current_dir)
+    search_dirs.extend(include_paths or [])
+    search_dirs.append(DEFAULT_LIB_DIR)
+    search_dirs.append(DEFAULT_PROJECT_DIR)
+    return search_dirs
+
+
+def find_interface_header(
+    interface_name: str, search_dirs: list[Path], env: Environment, include_paths: Optional[list[Path]]
+) -> Optional[str]:
+    """The name a module file's C translation includes its interface's header (.int.h) by, if it has one."""
+    header_name = f"{interface_name.lower()}.int.h"
+    for s_dir in search_dirs:
+        if (s_dir / header_name).is_file():
+            return header_name
+
+    intf_file = resolve_interface_file(interface_name, env.current_dir, include_paths or [])
+    if intf_file:
+        cand_h = intf_file.parent / f"{intf_file.name.split('.')[0]}.int.h"
+        if cand_h.is_file():
+            for s_dir in search_dirs:
+                try:
+                    return str(cand_h.relative_to(s_dir))
+                except ValueError:
+                    continue
+            return cand_h.name
+    return None
 
 
 def compile_module(
@@ -161,35 +195,8 @@ def compile_module(
     typed_mod = elaborate_module(module_decl, env)
 
     # 4. Check for interface header (.int.h)
-    interface_name = module_decl.interface_name
-    header_name = f"{interface_name.lower()}.int.h"
-    interface_header: Optional[str] = None
-    search_dirs = [output_dir]
-    if env.current_dir:
-        search_dirs.append(env.current_dir)
-    search_dirs.extend(include_paths or [])
-    search_dirs.append(DEFAULT_LIB_DIR)
-    search_dirs.append(DEFAULT_PROJECT_DIR)
-
-    for s_dir in search_dirs:
-        cand = s_dir / header_name
-        if cand.is_file():
-            interface_header = header_name
-            break
-
-    if interface_header is None:
-        intf_file = resolve_interface_file(interface_name, env.current_dir, include_paths or [])
-        if intf_file:
-            cand_h = intf_file.parent / f"{intf_file.name.split('.')[0]}.int.h"
-            if cand_h.is_file():
-                rel_cand = None
-                for s_dir in search_dirs:
-                    try:
-                        rel_cand = cand_h.relative_to(s_dir)
-                        break
-                    except ValueError:
-                        continue
-                interface_header = str(rel_cand) if rel_cand is not None else cand_h.name
+    search_dirs = header_search_dirs(output_dir, env, include_paths)
+    interface_header = find_interface_header(module_decl.interface_name, search_dirs, env, include_paths)
 
     mod_name = canonical_name or module_decl.name
     if mod_name != typed_mod.name:
@@ -286,16 +293,7 @@ def compile_module_file(
         tokens = tokenizer.tokenize_all()
         prog = parse_quest_program(tokens, source_map)
 
-        if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
-            raise QuestTypeError(
-                f"Module file '{mod_path.name}' must contain exactly one module declaration"
-            )
-
-        decl = prog.phrases[0]
-        if not isinstance(decl, ast.ModuleDecl):
-            raise QuestTypeError(
-                f"Expected module declaration in '{mod_path.name}', found {type(decl).__name__}"
-            )
+        decl = unit_declaration(prog, mod_path)
 
         file_name = mod_path.name
         if file_name.endswith(".mod.quest"):

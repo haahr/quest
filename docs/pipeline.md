@@ -96,6 +96,8 @@ Encapsulates runtime configuration:
 - `output_path: Optional[Path]`: Output path for binary executable or emitted C source.
 - `nogc: bool`: Forces compilation with `-DQUEST_NOGC`, disabling Boehm GC linkage.
 - `print_result: bool`: When true, compiled binaries print Cardelli-format output for the final top-level phrase.
+- `unit: Optional[str]`: `"interface"` or `"module"` when the source is a unit file, whose phases compile it as the
+  unit compilers do (§4.3).
 
 ### 3.2. `CompilerContext`
 Maintains shared state across phases:
@@ -206,7 +208,18 @@ quest main.quest counter.o -o my_app
 
 # Compile client program with auto-discovery of .o modules in include paths:
 quest main.quest -I ./modules -o my_app
+
+# Dump a phase of a unit file, writing none of its artifacts:
+quest --stop-after typecheck counter.int.quest
+quest --stop-after codegen_c counter.mod.quest
 ```
+
+`--stop-after` and `--dump-after` run a unit file's phases as the unit compilers compile it, in both modes: an
+interface file's phases are `tokenize`, `parse` and `typecheck`, and a module file's continue through the IR's stages
+to `codegen_c`, where it is lowered as a unit with its exports (`lower_module_file`) and printed as the `.mod.c` its
+compilation writes. A unit does not run alone, so the phases that run code are errors. `--stop-after` writes none of
+the unit's artifacts (the units it imports are built in the build directory, as for a program's phases); with
+`--dump-after` alone, the unit is compiled after its phases are dumped.
 
 ### Exit Codes
 - `0`: Successful compilation / execution (or successful early dump).

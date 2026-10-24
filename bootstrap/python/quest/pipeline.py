@@ -10,12 +10,15 @@ import re
 import sys
 import tempfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
 from quest.build.engine import BuildEngine, unit_module_refs
+from quest.modules.module_compiler import find_interface_header, header_search_dirs
+from quest.modules.paths import canonicalize_module_path
 from quest.modules.stdlib import BuiltinModuleRegistry
+from quest.modules.units import unit_declaration
 from quest.codegen.backend import IR_PASSES
 from quest.codegen.c.compiler_runner import compile_c_source, run_binary
 from quest.config import CompilerOptions
@@ -127,7 +130,9 @@ class CompilerContext:
         elif environment.current_dir is None:
             cwd = Path.cwd()
             environment.current_dir = cwd
-        if environment.program_dir is None:
+        # A unit file compiled alone has no program, so units under no include root are named by their base names,
+        # as the module compiler names them (quest/modules/paths.py, canonicalize_module_path)
+        if environment.program_dir is None and opts.unit is None:
             environment.program_dir = environment.current_dir
         opts.current_dir = environment.current_dir
         opts.program_dir = environment.program_dir
@@ -251,6 +256,8 @@ class TypecheckPhase(Phase):
         try:
             match input_data:
                 case ast.Program():
+                    if ctx.options.unit is not None:
+                        unit_declaration(input_data, Path(ctx.file_name))
                     return elaborate_program(input_data, ctx.env)
                 case ast.Expr():
                     return synth_expr(input_data, ctx.env)
@@ -373,6 +380,26 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
     return engine.build_modules(ctx.imported_modules, importer=importer, program_dir=ctx.env.program_dir)
 
 
+def unit_module(prog: TypedProgram, ctx: CompilerContext) -> TypedModule:
+    """A module file's typed module, under its canonical name, as the module compiler names it."""
+    module = prog.phrases[0]
+    name = canonicalize_module_path(Path(ctx.file_name), ctx.env.include_paths, ctx.env.program_dir)
+    return replace(module, name=name)
+
+
+def unit_interface_header(ctx: CompilerContext) -> Optional[str]:
+    """The interface header a module file's C translation includes, found where the module compiler finds it."""
+    module = ctx.typed_program.phrases[0]
+    source = Path(ctx.file_name).resolve()
+    if ctx.options.build_dir is None:
+        output_dir = source.parent
+    else:
+        name = canonicalize_module_path(source, ctx.env.include_paths, ctx.env.program_dir)
+        output_dir = Path(ctx.options.build_dir).resolve() / Path(name).parent
+    search_dirs = header_search_dirs(output_dir, ctx.env, ctx.env.include_paths)
+    return find_interface_header(module.interface_name, search_dirs, ctx.env, ctx.env.include_paths)
+
+
 class IrCorePhase(Phase):
     """Lowering to the IR's Core stage (docs/ir.md), the first step of C compilation."""
     name = "ir_core"
@@ -380,15 +407,18 @@ class IrCorePhase(Phase):
     artifact_name = "ir_unit"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
-        from quest.ir.lower import lower_program
+        from quest.ir.lower import lower_module_file, lower_program
         from quest.ir.verify import check_unit, ir_checks_enabled
 
         try:
             prog = input_data if isinstance(input_data, TypedProgram) else TypedProgram(phrases=(input_data,))
             ctx.typed_program = prog
-            unit = lower_program(
-                prog, ctx.env, echo=ctx.options.echo, print_result=getattr(ctx.options, "print_result", False)
-            )
+            if ctx.options.unit == "module":
+                unit = lower_module_file(unit_module(prog, ctx), ctx.env)
+            else:
+                unit = lower_program(
+                    prog, ctx.env, echo=ctx.options.echo, print_result=getattr(ctx.options, "print_result", False)
+                )
             if ir_checks_enabled():
                 check_unit(unit)
             return unit
@@ -470,6 +500,9 @@ class CodegenCPhase(Phase):
             return None
         try:
             unit = input_data
+            if ctx.options.unit == "module":
+                # A module file's C translation, which the module compiler writes and compiles alone
+                return print_c(unit, ctx.env, unit_interface_header(ctx))
             c_code = print_c(unit, ctx.env)
         except Exception as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
