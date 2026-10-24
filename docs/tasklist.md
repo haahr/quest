@@ -306,3 +306,58 @@ from the template's with the holes replaced by the arguments' names (memoized wi
 
 **Done when.** Compiled code prints the program above as the interpreter does, and a golden test covers it.
 
+
+---
+
+## Upcasting a tuple whose components change view copies it in C
+
+**Problem.** Upcasting a tuple or option whose immutable components change representation (a record viewed at a
+supertype, a variant whose supertype numbers its cases differently) copies the aggregate in C, even without
+polymorphism. The copy does not see later updates of the original's `var` components, and is not `is` the original.
+The interpreter shares the value. This is a miscompilation; the plan is to fix it with the representation change of
+`docs/reorganization.md` (0a, step A2) rather than before.
+
+**Reproduce.**
+
+```quest
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+let t: Tuple x: Big var n: Int end = tuple let x = record a = 1 b = 2 end let var n = 0 end;
+let s: Tuple x: Small var n: Int end = t;
+t.n := 1;
+s.n
+```
+
+prints `1 : Int` interpreted and `0 : Int` with `--stop-after run_c_compiled`. A variant component
+(`Variant p: Int q: Bool end` upcast to `Variant q: Bool r: Ok p: Int end`) behaves the same. Record fields of
+records do not: records' offset tables carry stored types, and reads convert.
+
+**Where to start.** `docs/reorganization.md` §2, 0a.
+
+**Done when.** The program above prints `1 : Int` in both phases, for record and variant components, and a golden
+test covers both.
+
+---
+
+## `is` between tuples of different types does not compile in C
+
+**Problem.** `s is t`, with `s` and `t` tuples of different (subtype-related) types, prints a C comparison of
+distinct pointer types, which clang rejects with `-pedantic-errors`.
+
+**Reproduce.**
+
+```quest
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+let t: Tuple x: Big end = tuple let x = record a = 1 b = 2 end end;
+let s: Tuple x: Small end = t;
+s is t
+```
+
+fails with `comparison of distinct pointer types` under `--stop-after run_c_compiled`.
+
+**Where to start.** The `prim is` case of the C printer (`prim` in `bootstrap/python/quest/codegen/c/printer.py`):
+compare the pointers as `void *`, or have represent convert both operands to one type.
+
+**Done when.** The program compiles and prints what the interpreter prints (which after the copy is `false` in C
+until the representation change), and a golden test covers `is` on tuples, options, and arrays of different types.
