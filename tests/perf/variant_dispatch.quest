@@ -1,0 +1,41 @@
+(* Benchmark: variants in hot loops: built with scalar and aggregate payloads, dispatched on by case, upcast to a
+ * supertype that numbers their cases differently, and stored in lists *)
+import writer: Writer;
+import conv: Conv;
+
+Let Shape = Variant circle: Int square: Int rect: Tuple w: Int h: Int end end;
+Let AnyShape = Variant rect: Tuple w: Int h: Int end tri: Int circle: Int square: Int end;
+Let Rec Shapes::TYPE = Option nil cons with head: AnyShape tail: Shapes end end;
+
+let make(i: Int): Shape =
+    if {i % 3} is 0 then variant circle of Shape with i % 5 end
+    elsif {i % 3} is 1 then variant square of Shape with i % 7 end
+    else variant rect of Shape with tuple let w = i % 4 let h = 2 end end
+    end;
+
+let area(s: AnyShape): Int =
+    case s
+        when circle with r then 3 * r * r
+        when square with a then a * a
+        when rect with t then t.w * t.h
+        when tri with b then b
+    end;
+
+let var total = 0;
+for i = 1 upto 10000000 do
+    total := total + area(make(i))
+end;
+
+for round = 1 upto 6000 do
+    let var l: Shapes = option nil of Shapes end;
+    for i = 1 upto 1000 do
+        l := option cons of Shapes with make(i + round) l end
+    end;
+    let var cur = l;
+    while cur?cons do
+        total := total + area(cur!cons.head);
+        cur := cur!cons.tail
+    end
+end;
+
+writer.putString(writer.output conv.int(total) <> "\n")

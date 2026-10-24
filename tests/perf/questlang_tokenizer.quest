@@ -1,0 +1,52 @@
+(* Benchmark: a real program, the self-hosted tokenizer (questlang/syntax/tokenizer), tokenizing a fixed set of
+ * sources several times. Records and options throughout: tokens, spans, the source map, and the diagnostic bag. Run
+ * from the repository's root, which the paths below are relative to; the output is the number of tokens, which
+ * changes when the sources do. *)
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    reader : Reader
+    writer : Writer
+    conv : Conv
+;
+
+let sources = array of
+    "questlang/syntax/astprint.mod.quest"
+    "questlang/syntax/tokenizer.mod.quest"
+    "questlang/syntax/ast.mod.quest"
+    "questlang/syntax/ast.int.quest"
+    "questlang/syntax/tokens.mod.quest"
+    "lib/util/argparse.mod.quest"
+    "lib/util/strutil.mod.quest"
+    "lib/collections/hashmap.mod.quest"
+    "lib/collections/vector.mod.quest"
+    "lib/util/path.mod.quest"
+end;
+
+let readFile(name: String): String =
+    begin
+        let r = reader.file(name);
+        let b = stringBuilder.new();
+        while reader.more(r) do b.char(reader.getChar(r)) end;
+        reader.close(r);
+        b.toString()
+    end;
+
+(* The sources are read once, so that the rounds measure the tokenizer alone *)
+let texts = array of(extent sources "");
+for i = 0 upto {extent sources - 1} do texts[i] := readFile(sources[i]) end;
+
+let var count = 0;
+for round = 1 upto 40 do
+    for i = 0 upto {extent sources - 1} do
+        let sm = location.newSourceMap(sources[i] texts[i]);
+        let toks = tokenizer.tokenizeAll(tokenizer.new(sm diagbag.new()));
+        count := count + vector.length(:tokens.Token toks)
+    end
+end;
+
+writer.putString(writer.output conv.int(count) <> "\n")

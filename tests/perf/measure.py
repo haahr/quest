@@ -1,5 +1,5 @@
-"""Measures the C backend, for comparing it with the baseline taken of the emitter it replaced (docs/ir.md §12, steps 0
-and 6).
+"""Measures the C backend and the code it produces, for comparing a change with the baseline taken before it
+(docs/reorganization.md §2, 0b).
 
     python tests/perf/measure.py             # print a summary, comparing with tests/perf/baseline.json if present
     python tests/perf/measure.py --save      # also write the measurements to tests/perf/baseline.json
@@ -9,9 +9,10 @@ Two measurements:
 - C generation: for every golden test program that is compiled to C, the time spent in the C backend (lowering to the
   IR, its passes, and printing C: neither type checking nor clang) and the size of the C it produces. The program's
   own C: the modules it imports are compiled on their own (the baseline's emitter compiled some into the program).
-- Run time: for each benchmark in this directory (*.quest), the fastest of several runs of its compiled binary. The
-  benchmarks cross polymorphic boundaries heavily, so they measure what the represent pass changes: casts, copies,
-  and thunks.
+- Run time: for each benchmark in this directory (*.quest), the fastest of several runs of its compiled binary, run
+  from the repository's root (with it as an include path, for questlang/). Some benchmarks cross polymorphic
+  boundaries heavily, measuring what the represent pass changes (casts, copies, and thunks); others use records and
+  variants in hot loops, and one is a real program, the self-hosted tokenizer.
 
 Times depend on the machine, so compare measurements taken on the same one.
 """
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -68,10 +70,11 @@ def measure_generation() -> dict:
 
 def measure_benchmarks() -> dict:
     results: dict[str, dict] = {}
+    os.chdir(ROOT_DIR)
     for path in sorted(HERE.glob("*.quest")):
         with tempfile.TemporaryDirectory() as tmp:
             source = path.read_text()
-            options = CompilerOptions(build_dir=Path(tmp) / "build")
+            options = CompilerOptions(build_dir=Path(tmp) / "build", include_paths=[ROOT_DIR])
             ctx = CompilerContext.create(source_text=source, file_name=str(path), options=options)
             res = compile_pipeline().execute(source, str(path), options=options, ctx=ctx)
             if not res.success:

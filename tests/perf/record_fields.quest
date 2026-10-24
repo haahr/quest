@@ -1,0 +1,38 @@
+(* Benchmark: records in hot loops: fields read and written, records viewed at supertypes, and records stored in
+ * tuples and lists and read back *)
+import writer: Writer;
+import conv: Conv;
+
+Let Point = Record x: Int y: Int end;
+Let Point3 = Record x: Int y: Int z: Int end;
+Let Body = Record var pos: Int var vel: Int mass: Int end;
+Let Pair = Tuple a: Point b: Point end;
+Let Rec Points::TYPE = Option nil cons with head: Point tail: Points end end;
+
+(* Reads its argument's fields through the view of a supertype when called with a Point3 *)
+let norm1(p: Point): Int = p.x + p.y;
+
+let var total = 0;
+let body: Body = record var pos = 0 var vel = 1 mass = 3 end;
+for i = 1 upto 8000000 do
+    body.pos := body.pos + body.vel;
+    body.vel := {body.vel + i} % 7;
+    let p: Point3 = record x = i % 10 y = i % 3 z = 1 end;
+    total := total + norm1(p) + body.mass;
+    let pair: Pair = tuple let a = p let b = record x = 1 y = 2 end end;
+    total := total + pair.a.x + pair.b.y
+end;
+
+for round = 1 upto 2500 do
+    let var l: Points = option nil of Points end;
+    for i = 1 upto 1000 do
+        l := option cons of Points with record x = i y = round end l end
+    end;
+    let var cur = l;
+    while cur?cons do
+        total := total + cur!cons.head.x;
+        cur := cur!cons.tail
+    end
+end;
+
+writer.putString(writer.output conv.int(total + body.pos) <> "\n")
