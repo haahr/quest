@@ -2,16 +2,22 @@
 requires.
 
 A value's representation is its type's (codegen/layout.py: the runtime's, shared by every backend): a type
-parameter's values are held as QVal words (a bounded one's viewed at its bound), and other types natively. A use requires the representation of the
-type it expects: a call's argument, its callee's parameter type (in a polymorphic callee, mentioning the callee's
-type parameters, so a QVal where the parameter is one); a call's result, its callee's result type; a component of a
-tuple, record, variant, option, or array being made or stored into, the component's type; a component read, as its
-aggregate's type gives it; a let's copy, a return, a jump's argument, and an assignment, the type of what they bind
-or assign. Where the two differ, the value is converted by the plan of the pair (`plan`).
+parameter's values are held as QVal words (a bounded one's viewed at its bound), and other types natively. A use
+requires the representation of the type it expects: a call's argument, its callee's parameter type (in a polymorphic
+callee, mentioning the callee's type parameters, so a QVal where the parameter is one); a call's result, its callee's
+result type; a component of a tuple, record, variant, option, or array being made or stored into, the component's
+type; a component read, as its aggregate's type gives it; a let's copy, a return, a jump's argument, and an
+assignment, the type of what they bind or assign. Where the two differ, the value is converted by the plan of the
+pair (`plan`).
 
 The plans box and unbox between QVal and native values, view records at supertypes, remap variants' tags, cast or
 copy aggregates whose components convert, adapt closures, and convert by descriptor at run time; any other change of
 representation is reported as unsupported, rather than printed wrong.
+
+Every decision is made on shapes (ir/shapes.py). The variables the pass makes have types as written, with their alias
+names, which the IR prints (docs/ir.md §5): the types of the components of a type as written (written_structure), and
+the signatures of function types as written, whose type parameters' symbols are those the call's type arguments and
+the callee's parts refer to (a shape's are its canonical form's, named afresh).
 """
 
 from __future__ import annotations
@@ -21,33 +27,23 @@ from typing import Optional
 from quest.codegen.layout import (
     generic_layout_agrees,
     generic_layout_copies_mutable_data,
-    is_variant_subtype,
-    representation,
+    resolved_shape,
+    shape_representation,
     signature_representation,
 )
-from quest.types.canonical import collect_fun_quantifiers, normalize_type
 from quest.ir import nodes as ir
+from quest.ir.shapes import Shape, shape
 from quest.ir.walk import statement_bodies
+from quest.types.canonical import collect_fun_quantifiers, normalize_type, resolve_type_bound
 from quest.types import (
-    OK_TYPE,
-    QAllType,
-    QArrayType,
-    QExceptionType,
+    QAbstractType,
     QFunType,
-    QOptionType,
     QOutType,
-    QRecordType,
-    QTupleType,
     QType,
     QTypeVar,
-    QVariantType,
     QVarType,
     auto_payload_type,
     is_type_equal,
-    resolve_option_bound,
-    resolve_record_bound,
-    resolve_variant_bound,
-    strip_aliases,
 )
 
 
@@ -55,63 +51,64 @@ class UnsupportedConversion(Exception):
     """A change of representation the represent pass does not handle."""
 
 
-def _held(t: QType, kind, resolve) -> Optional[QType]:
-    """t as a type of the kind (QRecordType, ...), or the bound a type parameter of t's type is held viewed at."""
-    n = normalize_type(t)
-    if isinstance(n, kind):
-        return n
-    bound = resolve(n)
-    return normalize_type(bound) if bound is not None else None
+# The kinds of shapes whose values a type parameter bounded by one holds viewed at its bound
+_VIEWED_KINDS = ("record", "variant", "option")
 
 
-def record_type(t: QType) -> Optional[QRecordType]:
-    return _held(t, QRecordType, resolve_record_bound)
+def held_shape(t: QType, kind: str) -> Optional[Shape]:
+    """The shape of t's values as they are held, if it is of the kind ("record", "variant", or "option"): t's own, or
+    for a type parameter bounded by a type of the kind, its bound's, at which it is viewed."""
+    held = resolved_shape(shape(t))
+    return held if held.kind == kind else None
 
 
-def variant_type(t: QType) -> Optional[QVariantType]:
-    return _held(t, QVariantType, resolve_variant_bound)
-
-
-def option_type(t: QType) -> Optional[QOptionType]:
-    return _held(t, QOptionType, resolve_option_bound)
-
-
-def tuple_type(t: QType) -> Optional[QTupleType]:
-    n = normalize_type(t)
-    return n if isinstance(n, QTupleType) else None
+def written_structure(t: QType, kind: str) -> Optional[QType]:
+    """t as written with its outermost constructor exposed, if t's shape is of the kind ("tuple", "array",
+    "exception", or one of the kinds a type parameter is viewed at its bound at, for which it is the bound): None
+    otherwise. The types of its components, with their alias names, are the types of the variables the pass makes for
+    them, which the IR prints; a shape's components have only their canonical types."""
+    s = shape(t)
+    held = resolved_shape(s) if kind in _VIEWED_KINDS else s
+    if held.kind != kind:
+        return None
+    return normalize_type(resolve_type_bound(t) if held is not s else t)
 
 
 def array_element(t: QType) -> QType:
-    n = normalize_type(t)
-    if not isinstance(n, QArrayType):
+    """The element type, as written, of an array type."""
+    written = written_structure(t, "array")
+    if written is None:
         raise UnsupportedConversion(f"an array operation on a value of type {t}")
-    return n.element_type
+    return written.element_type
 
 
-def _may_be_stored_as_subtype(t: QType) -> bool:
-    """Whether a value of type t may be laid out as a subtype of t, and so need converting when read as t (records,
-    variants, options, nonempty tuples, and functions)."""
-    t = normalize_type(t)
-    if isinstance(t, QTupleType):
-        return bool(t.value_fields)
-    return (
-        isinstance(t, (QRecordType, QVariantType, QOptionType, QFunType, QAllType))
-        or resolve_record_bound(t) is not None
-        or resolve_variant_bound(t) is not None
-        or resolve_option_bound(t) is not None
-    )
+def may_be_stored_as_subtype(s: Shape) -> bool:
+    """Whether a value of shape s may be laid out as a subtype's value, and so need converting when read at s's type
+    (records, variants, options, nonempty tuples, and functions)."""
+    if s.kind == "tuple":
+        return bool(s.components)
+    return s.kind in ("fun", "all") or resolved_shape(s).kind in _VIEWED_KINDS
 
 
-def _bounded_view(t: QType) -> bool:
-    """Whether t is a type parameter bounded by a record, variant, or option type, held viewed at its bound."""
-    n = normalize_type(t)
-    if isinstance(n, (QRecordType, QVariantType, QOptionType)):
-        return False
-    return any(resolve(n) is not None for resolve in (resolve_record_bound, resolve_variant_bound, resolve_option_bound))
+def _bounded_view(s: Shape) -> bool:
+    """Whether s is a type parameter's bounded by a record, variant, or option type, held viewed at its bound."""
+    return s.kind not in _VIEWED_KINDS and resolved_shape(s).kind in _VIEWED_KINDS
 
 
 def _equal(a: QType, b: QType) -> bool:
     return a is b or is_type_equal(a, b)
+
+
+def _variant_subtype(s: Shape, t: Shape) -> bool:
+    """Whether every case of the variant shape s is a case of t, with an equal payload."""
+    payloads = {c.name: c.shape for c in t.cases}
+    for c in s.cases:
+        if c.name not in payloads:
+            return False
+        other = payloads[c.name]
+        if c.shape is not other and (c.shape is None or other is None or not is_type_equal(c.shape.type, other.type)):
+            return False
+    return True
 
 
 class RejectedConversion(Exception):
@@ -126,8 +123,9 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
     instantiation, to_generic = layout
     generic_t = target if to_generic else source
     native_t = generic_t.substitute(instantiation)
-    generic_c, native_c = representation(generic_t), representation(native_t)
-    if isinstance(normalize_type(generic_t), (QFunType, QAllType)):
+    generic_s, native_s = shape(generic_t), shape(native_t)
+    generic_c, native_c = shape_representation(generic_s), shape_representation(native_s)
+    if generic_s.kind in ("fun", "all"):
         return None
     is_record = generic_c == native_c == "QRecordVal"
     if not is_record and (not generic_c.endswith("*") or not native_c.endswith("*")):
@@ -144,8 +142,8 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
 
 
 def shared_signatures(source: QType, target: QType) -> tuple[tuple, QType, tuple, QType]:
-    """Two (possibly polymorphic) function types' parameters and results, target's type parameters renamed to
-    source's, so that they can be compared."""
+    """Two (possibly polymorphic) function types' parameters and results as written, target's type parameters renamed
+    to source's, so that they can be compared."""
     s_quants, s_inner = collect_fun_quantifiers(source)
     t_quants, t_inner = collect_fun_quantifiers(target)
     if s_quants and len(s_quants) == len(t_quants):
@@ -171,7 +169,7 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
     if _equal(source, target) and not (layout is not None and layout[0]):
         return None
     # Recursive function types are compared coinductively: a pair being compared needs no conversion of its own
-    key = (id(normalize_type(source)), id(normalize_type(target)), layout is not None and layout[1])
+    key = (id(shape(source)), id(shape(target)), layout is not None and layout[1])
     if key in _ADAPTING:
         return None
     s_params, s_result, t_params, t_result = shared_signatures(source, target)
@@ -194,17 +192,19 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
 def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]] = None) -> Optional[ir.Plan]:
     """How a value of type source is converted to be used at type target (None when it is used as it is). layout is
     set for a value passed to or returned from a polymorphic callee (see layout_plan)."""
-    if source is target or strip_aliases(source) is OK_TYPE or strip_aliases(target) is OK_TYPE:
+    if source is target:
         return None
-    cs, ct = representation(source), representation(target)
-    if cs != "QVal" and ct != "QVal" and isinstance(normalize_type(source), (QFunType, QAllType)) \
-            and isinstance(normalize_type(target), (QFunType, QAllType)):
+    ss, ts = shape(source), shape(target)
+    if ss.kind == "ok" or ts.kind == "ok":
+        return None
+    cs, ct = shape_representation(ss), shape_representation(ts)
+    if cs != "QVal" and ct != "QVal" and ss.kind in ("fun", "all") and ts.kind in ("fun", "all"):
         return adapt_plan(source, target, layout)
     if layout is not None and layout[0] and cs != "QVal" and ct != "QVal":
         lp = layout_plan(source, target, layout)
         # A value of a bounded type parameter is held viewed at its bound, whatever the layouts: a record or variant
         # of another type converts to the bound's view (and back), as below
-        if lp is not None or not (_bounded_view(source) or _bounded_view(target)):
+        if lp is not None or not (_bounded_view(ss) or _bounded_view(ts)):
             return lp
     # A value of a type parameter, held as a QVal word: a scalar or pointer in its bits, a record or variant boxed
     if ct == "QVal" and cs != "QVal":
@@ -213,32 +213,39 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
         return ir.Plan("unbox", source, target)
     if cs == "QVal" or _equal(source, target):
         return None
-    if (t_rec := record_type(target)) is not None and (s_rec := record_type(source)) is not None:
-        return None if _equal(s_rec, t_rec) else ir.Plan("record_view", source, target)
-    if (t_var := variant_type(target)) is not None and (s_var := variant_type(source)) is not None:
-        index = {case.name: i for i, case in enumerate(t_var.variants)}
-        if all(index.get(case.name) == i for i, case in enumerate(s_var.variants)):
+    s_held, t_held = resolved_shape(ss), resolved_shape(ts)
+    if s_held.kind == t_held.kind == "record":
+        return None if _equal(s_held.type, t_held.type) else ir.Plan("record_view", source, target)
+    if s_held.kind == t_held.kind == "variant":
+        index = {case.name: i for i, case in enumerate(t_held.cases)}
+        if all(index.get(case.name) == i for i, case in enumerate(s_held.cases)):
             return None
-        if is_variant_subtype(s_var, t_var):
+        if _variant_subtype(s_held, t_held):
             return ir.Plan("variant_tags", source, target)
         # From a bounded type parameter's view at its bound back to the type the caller holds it at: by the runtime,
         # between the two views' descriptors (no static tag map relates them)
-        return ir.Plan("view", s_var, t_var)
-    if (t_opt := option_type(target)) is not None and (s_opt := option_type(source)) is not None \
-            and (_bounded_view(source) or _bounded_view(target)) and not _equal(s_opt, t_opt):
-        return ir.Plan("view", s_opt, t_opt)
-    if (t_tup := tuple_type(target)) is not None and (s_tup := tuple_type(source)) is not None:
-        if len(s_tup.value_fields) < len(t_tup.value_fields):
+        return ir.Plan("view", s_held.structure, t_held.structure)
+    if s_held.kind == t_held.kind == "option" and (_bounded_view(ss) or _bounded_view(ts)) \
+            and not _equal(s_held.type, t_held.type):
+        return ir.Plan("view", s_held.structure, t_held.structure)
+    if ss.kind == ts.kind == "tuple":
+        if len(ss.components) < len(ts.components):
             raise UnsupportedConversion(f"converting a tuple of type {source} to {target}")
-        pairs = list(zip(s_tup.value_fields, t_tup.value_fields))
-        fields = tuple(plan(sf.type_val, tf.type_val) for sf, tf in pairs)
-        same = all(representation(sf.type_val) == representation(tf.type_val) for sf, tf in pairs)
+        pairs = list(zip(ss.components, ts.components))
+        fields = tuple(plan(sc.shape.type, tc.shape.type) for sc, tc in pairs)
+        same = all(shape_representation(sc.shape) == shape_representation(tc.shape) for sc, tc in pairs)
         if all(p is None for p in fields) and same:
             return None if cs == ct else ir.Plan("cast", source, target)
         return ir.Plan("copy", source, target, fields)
-    if cs == ct and not isinstance(normalize_type(target), (QFunType, QAllType, QOptionType, QArrayType)):
+    if cs == ct and ts.kind not in ("fun", "all", "option", "array"):
         return None
     raise UnsupportedConversion(f"converting a value of type {source} ({cs}) to {target} ({ct})")
+
+
+def is_type_variable(t: QType, symbol_id: int) -> bool:
+    """Whether t is the type variable (or abstract type) of the symbol."""
+    var = shape(t).type
+    return isinstance(var, (QTypeVar, QAbstractType)) and var.symbol_id == symbol_id
 
 
 def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.Plan]:
@@ -246,27 +253,27 @@ def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.
     type component's type keeps its own representation (a bounded parameter's value is not viewed at the bound, as
     inspect reads it by the stored type component's descriptor), boxed where the layout holds a QVal; the others
     convert to their stored types."""
-    source = tuple_type(payload_t)
-    target = tuple_type(stored_t)
+    source = shape(payload_t).components
+    target = shape(stored_t).components
     fields = []
-    for sig_f, sf, tf in zip(auto_t.signature, source.value_fields, target.value_fields):
-        bare = strip_aliases(sig_f.type_val)
-        if getattr(bare, "symbol_id", None) == auto_t.symbol_id:
-            fields.append(ir.Plan("box", sf.type_val, tf.type_val) if representation(tf.type_val) == "QVal"
-                          and representation(sf.type_val) != "QVal" else None)
+    for sig_f, sc, tc in zip(auto_t.signature, source, target):
+        if is_type_variable(sig_f.type_val, auto_t.symbol_id):
+            fields.append(ir.Plan("box", sc.shape.type, tc.shape.type) if shape_representation(tc.shape) == "QVal"
+                          and shape_representation(sc.shape) != "QVal" else None)
         else:
-            fields.append(plan(sf.type_val, tf.type_val))
+            fields.append(plan(sc.shape.type, tc.shape.type))
     if all(p is None for p in fields) and all(
-        representation(sf.type_val) == representation(tf.type_val)
-        for sf, tf in zip(source.value_fields, target.value_fields)
+        shape_representation(sc.shape) == shape_representation(tc.shape) for sc, tc in zip(source, target)
     ):
-        return None if representation(payload_t) == representation(stored_t) else ir.Plan("cast", payload_t, stored_t)
+        if shape_representation(shape(payload_t)) == shape_representation(shape(stored_t)):
+            return None
+        return ir.Plan("cast", payload_t, stored_t)
     return ir.Plan("copy", payload_t, stored_t, tuple(fields))
 
 
 def fun_signature(t: QType) -> tuple[tuple, QType]:
-    """The parameters and result type of a (possibly polymorphic) function type, its type parameters' symbols
-    standing for themselves."""
+    """The parameters and result type, as written, of a (possibly polymorphic) function type, its type parameters'
+    symbols standing for themselves."""
     _, inner = collect_fun_quantifiers(t)
     if isinstance(inner, QFunType):
         return tuple(inner.params), inner.result_type
@@ -361,8 +368,8 @@ class _Representer:
                 params = self.joins[label]
                 s.args = tuple(self.convert(a, p.type, before) for a, p in zip(args, params))
             case ir.Raise(exception=e, payload=p) if p is not None:
-                exc_t = normalize_type(_type_of(e))
-                if isinstance(exc_t, QExceptionType) and exc_t.payload_type is not None:
+                exc_t = written_structure(_type_of(e), "exception")
+                if exc_t is not None and exc_t.payload_type is not None:
                     s.payload = self.convert(p, exc_t.payload_type, before)
         return before + [s] + after
 
@@ -371,16 +378,16 @@ class _Representer:
         operation gives it (None when that is the let's own)."""
         match o:
             case ir.MakeTuple(args=args):
-                t = tuple_type(result_t)
+                t = written_structure(result_t, "tuple")
                 if t is not None:
                     o.args = tuple(self.convert(a, f.type_val, before) for a, f in zip(args, t.value_fields))
             case ir.MakeVariant(tag=tag, payload=payload) if payload is not None:
-                t = variant_type(result_t)
+                t = written_structure(result_t, "variant")
                 case = t.get_variant(tag) if t is not None else None
                 if case is not None and case.type_val is not None:
                     o.payload = self.convert(payload, case.type_val, before)
             case ir.MakeOption(tag=tag, payload=payload) if payload is not None and tag is not None:
-                t = option_type(result_t)
+                t = written_structure(result_t, "option")
                 case = t.get_option(tag) if t is not None else None
                 if case is not None and case.payload_type is not None:
                     o.payload = self.convert(payload, case.payload_type, before)
@@ -397,10 +404,10 @@ class _Representer:
                     before.append(ir.Let(stored, ir.Convert(payload, p)))
                     o.payload = stored
             case ir.TupleField(tuple=t, index=index):
-                tt = tuple_type(_type_of(t))
+                tt = written_structure(_type_of(t), "tuple")
                 return tt.value_fields[index].type_val if tt is not None else None
             case ir.RecordField(record=r, name=name):
-                rt = record_type(_type_of(r))
+                rt = written_structure(_type_of(r), "record")
                 field = next((f for f in rt.fields if f.name == name), None) if rt is not None else None
                 return field.type_val if field is not None else None
             case ir.Index(array=a):
@@ -408,7 +415,7 @@ class _Representer:
             case ir.ModuleMember(module=ir.Module() as m, member=member) if member is not None:
                 return m.members[member].type
             case ir.Payload(value=v, tag=tag):
-                vt = variant_type(_type_of(v))
+                vt = written_structure(_type_of(v), "variant")
                 if vt is not None:
                     case = vt.get_variant(tag)
                     return case.type_val if case is not None and case.type_val is not None else None
@@ -420,11 +427,11 @@ class _Representer:
             return None
         base_t = _type_of(s.base)
         if s.name is not None:
-            rt = record_type(base_t)
+            rt = written_structure(base_t, "record")
             field = next((f for f in rt.fields if f.name == s.name), None) if rt is not None else None
             return field.type_val if field is not None else None
         if isinstance(s.index, int):
-            tt = tuple_type(base_t)
+            tt = written_structure(base_t, "tuple")
             return tt.value_fields[s.index].type_val if tt is not None else None
         return array_element(base_t)
 

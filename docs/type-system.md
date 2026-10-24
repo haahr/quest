@@ -87,8 +87,8 @@ place during inference. Several parts of the type checker depend on how type obj
   to an alias, without coming from a reference to it, prints structurally. References to the builtin primitive names
   (`Int`, `Ok`, ...) elaborate to the primitives themselves (`alias_reference`). A substitution that changes an
   alias's target drops the alias node.
-- **Alias nodes never reach C code generation.** The IR's shapes are of canonical types (`ir/shapes.py`), and the C
-  printer and the codegen type functions strip aliases (`strip_aliases`). The lowering prints results from the typed
+- **Alias nodes never reach C code generation.** The IR's shapes are of canonical types (`ir/shapes.py`), and the
+  represent pass, the codegen type functions, and the C printer decide from shapes (docs/ir.md §4.1). The lowering prints results from the typed
   AST's types (`let x:T = ...`), so they show alias names exactly as the interpreter does. Types serialized by `dynamic.extern` are written without alias names, so
   that they read back on their own.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at

@@ -185,6 +185,20 @@ Sequential: each step builds on the one before. This is the critical path.
 represent, `codegen/c/declarations.py`, and the printer use shapes, not raw types. Done when no code below lowering
 calls `strip_aliases`, `normalize_type`, or `beta_reduce`, and goldens are unchanged.
 
+**Done,** with these uses of the types as written remaining, each for a reason shapes cannot serve:
+
+- the represent pass's `written_structure` and the signatures of function types (`collect_fun_quantifiers`, in
+  `types/canonical.py`) in the represent pass and the printer's thunks: the variables the pass makes are printed
+  with alias names, and the symbols of a function type's own type parameters, which call sites' type arguments and
+  descriptor parameters are keyed by, are those of the type as written (a canonical form names binders afresh);
+- echo of packages in the printer, which prints the type as written;
+- `collect_aggregate_types` in `codegen/c/declarations.py`: the order of struct declarations, which interfaces' C
+  headers pin (`tests/abi`), and record names follow the types as written (a canonical form may write the fields'
+  types differently, naming the value parameters of equal function types alike), so moving it to shapes needs an
+  `ABI_VERSION` bump.
+
+Recording the written component types on IR operations at lowering would remove the first.
+
 **A2. The representation change (0a).** Boxing in aggregates, and views on view-sensitive tuples and options, in
 `layout.py`, the represent pass's plans, the runtime (`quest_convert`, `quest_layout_equivalent`, slot reads), and the
 conversion matrix. Done when the matrix's identity column and the lost-update test pass in C, the rejected

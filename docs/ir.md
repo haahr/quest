@@ -97,12 +97,16 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `typevar` | a type variable: a type parameter in scope, or an abstract type of a module or interface (`m.T`); symbol, bound |
 | `abstract` | opaque: an abstract type elaborated as such, an application of an abstract operator, a path type (`x.T`) |
 | `external` | C-level opaque type |
+| `operator` | a type operator (`Fun(X::K) T`), passed for a higher-kinded type parameter: opaque |
 | `rec` | a reference into a recursive group: the canonical recursive graph of `types/canonical.py` |
 
 Aliases are stripped and operator applications reduced before a shape is built; recursion is explicit through
-`rec` references into the canonical graph, so that equal recursive types, however written, share one shape. The
-typed AST keeps its types (with alias names) for the interpreter and for printing; IR nodes that print types (echo,
-error messages) carry the original type alongside the shape.
+`rec` references into the canonical graph, so that equal recursive types, however written, share one shape. Each
+shape keeps its canonical type and its structure (the unfolding of a recursive type), from which descriptors and C
+names are made. A canonical form names its binders afresh, so a polymorphic function type's shape has type parameters
+(and value parameter names) of its own, not those of the type as written. The typed AST keeps its types (with alias
+names) for the interpreter and for printing; IR nodes that print types (echo, error messages) carry the original
+type alongside the shape.
 
 ### 4.2. Representations
 
@@ -316,8 +320,12 @@ parameters, which the C printer emits as a runtime instantiation call using desc
 
 ### 8.3. Represent
 
-`ir/represent.py`. A binder's representation is its type's (`codegen/layout.py`, shared by every backend), so the pass
-inserts `convert` wherever a value's representation or layout differs from the one its use requires. This is the
+`ir/represent.py`. A binder's representation is its shape's (`codegen/layout.py`, shared by every backend, which
+computes layouts from shapes and caches them per shape), so the pass inserts `convert` wherever a value's
+representation or layout differs from the one its use requires. Its decisions are made on shapes. The variables it
+makes have types as written, with their alias names, which the IR prints (§5): the types of components of a type as
+written (`written_structure`), and the signatures of function types as written, whose type parameters' symbols are
+those the call's type arguments and the callee's parts refer to (§4.1). This is the
 single conversion operation:
 
 ```

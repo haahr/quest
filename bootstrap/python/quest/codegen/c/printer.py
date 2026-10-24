@@ -18,7 +18,12 @@ import dataclasses
 import math
 from typing import Any, Optional
 
-from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types, module_function_signature
+from quest.codegen.c.declarations import (
+    CDeclarationEmitter,
+    collect_aggregate_types,
+    fun_shape_signature,
+    module_function_signature,
+)
 from quest.codegen.c.types import (
     c_char_literal,
     c_string_literal,
@@ -31,15 +36,17 @@ from quest.codegen.c.types import (
     qval_wrap,
     record_struct_name,
     RecordNamingContext,
+    shape_qval_unwrap,
+    shape_qval_wrap,
 )
-from quest.types.canonical import collect_fun_quantifiers, normalize_type
+from quest.types.canonical import collect_fun_quantifiers
 from quest.codegen.layout import (
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
-    is_word_type,
-    option_struct_name,
     qtype_to_name_str,
+    shape_representation,
+    shape_tag,
     tuple_struct_name,
     type_identity_key,
     type_tag,
@@ -49,34 +56,21 @@ from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_modu
 from quest.types.env import Scope
 from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
-from quest.ir.represent import (
-    _may_be_stored_as_subtype,
-    array_element,
-    option_type,
-    plan,
-    record_type,
-    shared_signatures,
-    tuple_type,
-    variant_type,
-)
-from quest.ir.walk import global_variables, statement_binders, statement_bodies, walk_statements
+from quest.ir.represent import held_shape, is_type_variable, may_be_stored_as_subtype, plan, shared_signatures
+from quest.ir.shapes import Shape, shape
+from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.typechecker.typed_ast import TypedModule
 from quest.types import (
-    STRING_TYPE,
     QPathType,
     QTupleField,
     QTupleTypeBinding,
     QTupleTypeFormal,
-    BOOL_TYPE,
-    CHAR_TYPE,
-    INT_TYPE,
-    OK_TYPE,
-    REAL_TYPE,
     QAbstractType,
     QAutoType,
     QAllKind,
     QPowerKind,
+    QTypeApp,
     QTypeFun,
     QTypeKind,
     auto_payload_type,
@@ -89,7 +83,6 @@ from quest.types import (
     QTupleType,
     QType,
     QTypeVar,
-    QVariantType,
     strip_aliases,
 )
 
@@ -98,23 +91,20 @@ _REAL_OPS = {"++": "quest_real_add", "--": "quest_real_sub", "**": "quest_real_m
 _REAL_RELATIONS = {"<<": "<", "<<=": "<=", ">>": ">", ">>=": ">="}
 
 
-_BASE_VALUE_KINDS = (
-    (INT_TYPE, "Int"), (REAL_TYPE, "Real"), (BOOL_TYPE, "Bool"), (CHAR_TYPE, "Char"), (STRING_TYPE, "String"),
-    (OK_TYPE, "Ok"),
-)
+_BASE_VALUE_KINDS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char", "string": "String", "ok": "Ok"}
 
 
 def _value_kind(t: QType) -> str:
     """How quest_print_value writes a value of type t, as the interpreter does (format_value_with_type), or "" if
     quest_print_typed writes it from its type descriptor."""
-    t = normalize_type(t)
-    if is_word_type(t):
+    s = shape(t)
+    if s.kind == "word":
         return "Word"
-    if isinstance(t, (QFunType, QAllType)):
+    if s.kind in ("fun", "all"):
         return "fun"
-    if isinstance(t, (QPathType, QTypeVar, QAbstractType)):
+    if s.kind == "typevar" or (s.kind == "abstract" and not isinstance(s.structure, QTypeApp)):
         return "hidden"
-    return next((kind for base, kind in _BASE_VALUE_KINDS if t is base), "")
+    return _BASE_VALUE_KINDS.get(s.kind, "")
 
 
 def _existential_tuple_display(t: QTupleType) -> str:
@@ -137,11 +127,23 @@ def _existential_tuple_display(t: QTupleType) -> str:
 
 
 def _signature(t: QType) -> tuple[tuple, tuple[QParam, ...], QType]:
-    """A function type's quantifiers, parameters, and result type."""
+    """A function type's quantifiers, parameters, and result type, as written: the symbols of its own type parameters,
+    which its parts refer to, are those the IR's type arguments and descriptors are keyed by (its shape's canonical
+    form names them afresh)."""
     quants, inner = collect_fun_quantifiers(t)
     if isinstance(inner, QFunType):
         return quants, tuple(inner.params), inner.result_type
     return quants, (), inner
+
+
+def _type_parameter_count(t: QType) -> int:
+    """The number of type parameters a (possibly polymorphic) function type takes."""
+    s = shape(t)
+    count = 0
+    while s.kind == "all":
+        count += len(s.type_params)
+        s = s.body
+    return count
 
 
 class _FunctionState:
@@ -228,22 +230,48 @@ class CPrinter:
         self.types.append(t)
         return qtype_to_c_type(t, self.ctx)
 
+    def shape_c_type(self, s: Shape) -> str:
+        self.types.append(s.structure)
+        return shape_representation(s)
+
     def var_c_type(self, var: ir.Var) -> str:
         if id(var) in self.handler_vars:
             return "QExceptionState"
         return self.c_type(var.type)
 
-    def is_ok(self, t: QType) -> bool:
-        return strip_aliases(t) is OK_TYPE
+    @staticmethod
+    def is_ok(t: QType) -> bool:
+        return shape(t).kind == "ok"
+
+    def held(self, t: QType, kind: str) -> Shape:
+        """The shape of t's values as held (see held_shape), which the IR guarantees is of the kind."""
+        s = held_shape(t, kind)
+        if s is None:
+            raise NotImplementedError(f"C printing of a {kind} operation on a value of type {t}")
+        return s
+
+    def tag_shape(self, t: QType) -> Shape:
+        """The variant or option shape of a value of type t that is switched on or tested."""
+        s = held_shape(t, "variant") or held_shape(t, "option")
+        if s is None:
+            raise NotImplementedError(f"C printing of a tag test on a value of type {t}")
+        return s
+
+    def element_shape(self, a: ir.Atom) -> Shape:
+        """The shape of the elements of an array atom."""
+        s = shape(self.atom_type(a))
+        if s.kind != "array":
+            raise NotImplementedError(f"C printing of an array operation on a value of type {self.atom_type(a)}")
+        return s.element
 
     def descriptor(self, t: QType) -> str:
         """The descriptor of a type: a type parameter's, passed to its function; a closed type's static one; or, for a
         type mentioning type parameters in scope, its template (a hole for each), instantiated with theirs."""
-        bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
-        if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in self.descriptors:
-            return self.descriptors[bare.symbol_id]
-        params = self.free_type_vars(bare, lambda v: v.symbol_id in self.descriptors)
-        return self.template_descriptor(bare, params, [self.descriptors[v.symbol_id] for v in params])
+        var = shape(t).type
+        if isinstance(var, (QTypeVar, QAbstractType)) and var.symbol_id in self.descriptors:
+            return self.descriptors[var.symbol_id]
+        params = self.free_type_vars(t, lambda v: v.symbol_id in self.descriptors)
+        return self.template_descriptor(t, params, [self.descriptors[v.symbol_id] for v in params])
 
     def template_descriptor(self, t: QType, holes: list, args: list[str]) -> str:
         """The descriptor of t with a hole for each of holes (type variables), instantiated with args."""
@@ -264,14 +292,13 @@ class CPrinter:
         """The descriptor of a polymorphic callee's type t laid out as the callee lays it out at the call's type
         arguments: its template, a hole for each of the callee's type parameters (and for each in scope), instantiated
         with the type arguments' descriptors (and theirs)."""
-        bare = strip_aliases(t)
-        params = self.free_type_vars(bare, lambda v: v.symbol_id in instantiation)
+        params = self.free_type_vars(t, lambda v: v.symbol_id in instantiation)
         in_scope = self.free_type_vars(
-            bare, lambda v: v.symbol_id in self.descriptors and v.symbol_id not in instantiation
+            t, lambda v: v.symbol_id in self.descriptors and v.symbol_id not in instantiation
         )
         args = [self.descriptor(instantiation[v.symbol_id]) for v in params]
         args.extend(self.descriptors[v.symbol_id] for v in in_scope)
-        return self.template_descriptor(bare, params + in_scope, args)
+        return self.template_descriptor(t, params + in_scope, args)
 
     @staticmethod
     def free_type_vars(t: QType, wanted) -> list:
@@ -385,13 +412,11 @@ class CPrinter:
             case ir.Load(address=a):
                 return f"(*{self.atom(a)})"
             case ir.Addr(base=base, name=name) if name is not None:
-                rt = record_type(self.atom_type(base))
-                field = next(f for f in rt.fields if f.name == name)
-                return self.record_field(self.atom(base), rt, name, field.type_val, as_ref=True)
+                return self.record_field(self.atom(base), self.held(self.atom_type(base), "record"), name, as_ref=True)
             case ir.Addr(base=base, index=index) if isinstance(index, int):
                 return f"(&({self.atom(base)}->_{index}))"
             case ir.Addr(base=base, index=index, offset=offset):
-                return self.array_slot(self.atom(base), self.atom(index), array_element(self.atom_type(base)), offset)
+                return self.array_slot(self.atom(base), self.atom(index), self.element_shape(base), offset)
             case ir.MakeTuple(args=args):
                 return self.make_tuple(result.type, [self.atom(a) for a in args])
             case ir.TupleField(tuple=t, index=index):
@@ -399,31 +424,27 @@ class CPrinter:
             case ir.MakeRecord(fields=fields):
                 return self.make_record(fields, result.type)
             case ir.RecordField(record=r, name=name):
-                rt = record_type(self.atom_type(r))
-                field = next(f for f in rt.fields if f.name == name)
-                return self.record_field(self.atom(r), rt, name, field.type_val)
+                return self.record_field(self.atom(r), self.held(self.atom_type(r), "record"), name)
             case ir.MakeVariant(tag=tag, payload=payload):
-                vt = variant_type(result.type)
-                index = self.tag_index(vt, tag)
+                vs = self.held(result.type, "variant")
+                index = self.tag_index(vs, tag)
                 if payload is None:
                     return f"((QVariantVal){{ .tag = {index}LL, .payload = Q_OK_VAL }})"
-                case = vt.get_variant(tag)
-                case_t = case.type_val if case is not None and case.type_val is not None else self.atom_type(payload)
-                return f"((QVariantVal){{ .tag = {index}LL, .payload = {qval_wrap(self.atom(payload), case_t)} }})"
+                case = vs.case(tag)
+                case_s = case.shape if case is not None and case.shape is not None else shape(self.atom_type(payload))
+                return f"((QVariantVal){{ .tag = {index}LL, .payload = {shape_qval_wrap(self.atom(payload), case_s)} }})"
             case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset):
                 return self.make_option(tag, payload, ordinal, result.type, offset)
             case ir.IsTag(value=v, tag=tag):
-                vt = self.atom_type(v)
-                if (var_t := variant_type(vt)) is not None:
-                    return f"({self.atom(v)}.tag == {self.tag_index(var_t, tag)}LL)"
-                return f"({self.atom(v)}->tag == {self.tag_index(option_type(vt), tag)}LL)"
+                ts = self.tag_shape(self.atom_type(v))
+                return f"({self.atom(v)}{'.tag' if ts.kind == 'variant' else '->tag'} == {self.tag_index(ts, tag)}LL)"
             case ir.Payload(value=v, tag=tag, offset=offset):
                 return self.payload(v, tag, result.type, offset)
             case ir.MakeArray(args=args):
-                return self.make_array(array_element(result.type), [self.atom(a) for a in args], result.type)
+                return self.make_array(shape(result.type).element, [self.atom(a) for a in args], result.type)
             case ir.ArrayRep(count=count, init=init, offset=offset):
                 n = f"quest_check_array_count_at({self.atom(count)}, {self.site(offset)})"
-                return self.array_new(n, self.atom(init), array_element(result.type))
+                return self.array_new(n, self.atom(init), shape(result.type).element)
             case ir.TypeApp():
                 return self.type_app(o, result)
             case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
@@ -431,7 +452,7 @@ class CPrinter:
             case ir.Index(array=a, index=i, offset=offset):
                 arr, idx = self.atom(a), self.atom(i)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
-                return self.array_get(arr, idx, array_element(self.atom_type(a)))
+                return self.array_get(arr, idx, self.element_shape(a))
         raise NotImplementedError(f"C printing of {type(o).__name__}")
 
     def convert(self, c: str, plan: ir.Plan) -> str:
@@ -441,13 +462,13 @@ class CPrinter:
             case "unbox":
                 return qval_unwrap(c, plan.target, self.ctx)
             case "record_view":
-                return f"quest_record_view({c}, {self.descriptor(record_type(plan.target))})"
+                return f"quest_record_view({c}, {self.descriptor(self.held(plan.target, 'record').structure)})"
             case "variant_tags":
-                source, target = variant_type(plan.source), variant_type(plan.target)
-                self.types.extend((source, target))
+                source, target = self.held(plan.source, "variant"), self.held(plan.target, "variant")
+                self.types.extend((source.structure, target.structure))
                 v = self.temp("QVariantVal")
                 self.emit(f"{v} = {c};")
-                tagmap = f"tagmap_{type_tag(target)}_{type_tag(source)}"
+                tagmap = f"tagmap_{shape_tag(target)}_{shape_tag(source)}"
                 return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
             case "cast":
                 return f"(({self.c_type(plan.target)}){c})"
@@ -474,11 +495,10 @@ class CPrinter:
                 converted = f"quest_convert({qval_wrap(c, from_t)}, {from_d}, {to_d})"
                 return qval_unwrap(converted, to_t, self.ctx)
             case "copy":
-                source, target = tuple_type(plan.source), tuple_type(plan.target)
                 src = self.temp(f"{self.c_type(plan.source)}")
                 self.emit(f"{src} = {c};")
                 fields = []
-                for i, (tf, fp) in enumerate(zip(target.value_fields, plan.fields)):
+                for i, (_, fp) in enumerate(zip(shape(plan.target).components, plan.fields)):
                     fc = f"{src}->_{i}"
                     fields.append(fc if fp is None else self.convert(fc, fp))
                 return self.make_tuple(plan.target, fields)
@@ -651,12 +671,13 @@ class CPrinter:
 
     # Aggregates (laid out as docs/c-representation.md §5 says)
 
-    def tag_index(self, t, tag: Optional[str]) -> int:
-        cases = t.variants if isinstance(t, QVariantType) else t.options
-        return next((i for i, case in enumerate(cases) if case.name == tag), 0)
+    @staticmethod
+    def tag_index(s: Shape, tag: Optional[str]) -> int:
+        """The index of a case of a variant or option shape."""
+        return next((i for i, case in enumerate(s.cases) if case.name == tag), 0)
 
     def make_tuple(self, t: QType, fields: list[str]) -> str:
-        struct = tuple_struct_name(tuple_type(t))
+        struct = shape_tag(shape(t))
         self.c_type(t)
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
@@ -668,7 +689,8 @@ class CPrinter:
         concrete = QRecordType(tuple(
             QRecordField(name=n, type_val=self.atom_type(a), is_var=is_var) for n, a, is_var in fields
         ))
-        target = record_type(t) or concrete
+        held = held_shape(t, "record")
+        target = held.structure if held is not None else concrete
         self.types.extend((concrete, target))
         struct = record_struct_name(concrete, self.ctx)
         payload = self.temp(f"{struct} *")
@@ -683,139 +705,136 @@ class CPrinter:
             dict_expr = f"quest_record_dict({self.descriptor(target)}, {self.descriptor(concrete)})"
         return f"((QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }})"
 
-    def record_field(self, rec: str, rt: QRecordType, name: str, field_t: QType, as_ref: bool = False) -> str:
-        """A record's field, through its offset table (a field the payload stores at another type, as its stored
-        types say, read as stored and converted)."""
-        self.types.append(rt)
-        c_fld = self.c_type(field_t)
-        dict_t = self.ctx.offset_dict_struct_name(rt)
+    def record_field(self, rec: str, rs: Shape, name: str, as_ref: bool = False) -> str:
+        """A field of a record of shape rs, through its offset table (a field the payload stores at another type, as
+        its stored types say, read as stored and converted)."""
+        self.types.append(rs.structure)
+        fields = rs.sorted_components()
+        index = next(i for i, f in enumerate(fields) if f.name == name)
+        field = fields[index].shape
+        c_fld = self.shape_c_type(field)
+        dict_t = self.ctx.offset_dict_struct_name(rs.structure)
         ptr = f"(({c_fld} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))"
         if as_ref:
             return ptr
-        fields = sorted(rt.fields, key=lambda f: f.name)
-        index = next(i for i, f in enumerate(fields) if f.name == name)
-        if fields[index].is_var or not (c_fld == "QVal" or _may_be_stored_as_subtype(field_t)):
+        if fields[index].is_var or not (c_fld == "QVal" or may_be_stored_as_subtype(field)):
             return f"(*{ptr})"
         val = self.temp(c_fld)
         stored = f"((const {dict_t} *){rec}.dict)->stored_types"
-        converted = qval_unwrap(
-            f"quest_convert(quest_slot_read({stored}[{index}], {ptr}), {stored}[{index}], {self.descriptor(field_t)})",
-            field_t, self.ctx,
+        converted = shape_qval_unwrap(
+            f"quest_convert(quest_slot_read({stored}[{index}], {ptr}), {stored}[{index}], "
+            f"{self.descriptor(field.type)})",
+            field,
         )
         self.emit(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
         self.emit(f"else {val} = *{ptr};")
         return val
 
     def make_option(self, tag: Optional[str], payload, ordinal, t: QType, offset: Optional[int]) -> str:
-        ot = option_type(t)
-        self.types.append(ot)
-        struct = option_struct_name(ot)
+        os = self.held(t, "option")
+        self.types.append(os.structure)
+        struct = shape_tag(os)
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
         if ordinal is not None:
-            self.emit(f"{tmp}->tag = quest_check_option_ordinal_at({self.atom(ordinal)}, {len(ot.options)}LL, "
+            self.emit(f"{tmp}->tag = quest_check_option_ordinal_at({self.atom(ordinal)}, {len(os.cases)}LL, "
                       f"{self.site(offset)});")
             # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
             # does, whose components the union overlays on the other cases' (docs/c-representation.md §5)
             n = ordinal.value if isinstance(ordinal, ir.Const) else 0
-            tag = ot.options[n].name if 0 <= n < len(ot.options) else ot.options[0].name
+            tag = os.cases[n].name if 0 <= n < len(os.cases) else os.cases[0].name
         else:
-            self.emit(f"{tmp}->tag = {self.tag_index(ot, tag)}LL;")
+            self.emit(f"{tmp}->tag = {self.tag_index(os, tag)}LL;")
         if payload is not None and tag is not None:
-            case = ot.get_option(tag)
-            pt = normalize_type(case.payload_type) if case is not None and case.payload_type is not None else None
+            case = os.case(tag)
+            pt = case.shape if case is not None else None
             p = self.atom(payload)
-            if isinstance(pt, QTupleType):
-                for i, _ in enumerate(pt.value_fields):
+            if pt is not None and pt.kind == "tuple":
+                for i, _ in enumerate(pt.components):
                     self.emit(f"{tmp}->u.{tag}._{i} = {p}->_{i};")
             else:
                 self.emit(f"{tmp}->u.{tag}.val = {p};")
         return tmp
 
-    def option_field(self, src: str, stored_payload, index: int, wanted: QType) -> str:
+    def option_field(self, src: str, stored_payload: Optional[Shape], index: int, wanted: Shape) -> str:
         """A component of an option's case, read from the case's struct, in the C type of `wanted`."""
-        if not isinstance(stored_payload, QTupleType) or index >= len(stored_payload.value_fields):
+        if stored_payload is None or stored_payload.kind != "tuple" or index >= len(stored_payload.components):
             return src
-        stored_c = self.c_type(stored_payload.value_fields[index].type_val)
-        wanted_c = self.c_type(wanted)
+        stored_c = self.shape_c_type(stored_payload.components[index].shape)
+        wanted_c = self.shape_c_type(wanted)
         if stored_c == "QVal" and wanted_c != "QVal":
-            return qval_unwrap(src, wanted, self.ctx)
+            return shape_qval_unwrap(src, wanted)
         if stored_c.endswith("*") and wanted_c.endswith("*") and stored_c != wanted_c:
             return f"({wanted_c})({src})"
         return src
 
-    def option_case_tuple(self, opt: str, ot, tag: str, tuple_t: QType, offset: int) -> str:
+    def option_case_tuple(self, opt: str, os: Shape, tag: str, tuple_t: QType, offset: int) -> str:
         """A new tuple of an option's case components (after `offset` components of tuple_t, such as the ordinal)."""
-        tt = tuple_type(tuple_t)
-        struct = tuple_struct_name(tt)
+        ts = shape(tuple_t)
+        struct = shape_tag(ts)
         self.c_type(tuple_t)
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
-        case = ot.get_option(tag)
-        pt = normalize_type(case.payload_type) if case is not None and case.payload_type is not None else None
+        case = os.case(tag)
+        pt = case.shape if case is not None else None
         if offset:
             self.emit(f"{tmp}->_0 = {opt}->tag;")
-        if isinstance(pt, QTupleType):
-            for i, _ in enumerate(pt.value_fields):
-                if i + offset < len(tt.value_fields):
-                    src = self.option_field(f"{opt}->u.{tag}._{i}", pt, i, tt.value_fields[i + offset].type_val)
+        if pt is not None and pt.kind == "tuple":
+            for i, _ in enumerate(pt.components):
+                if i + offset < len(ts.components):
+                    src = self.option_field(f"{opt}->u.{tag}._{i}", pt, i, ts.components[i + offset].shape)
                     self.emit(f"{tmp}->_{i + offset} = {src};")
         elif pt is not None:
             self.emit(f"{tmp}->_{offset} = {opt}->u.{tag}.val;")
         return tmp
 
     def payload(self, v: ir.Atom, tag: str, t: QType, offset: Optional[int]) -> str:
-        vt = self.atom_type(v)
+        ts = self.tag_shape(self.atom_type(v))
         site = self.site(offset)
-        if (var_t := variant_type(vt)) is not None:
-            index = self.tag_index(var_t, tag)
+        index = self.tag_index(ts, tag)
+        if ts.kind == "variant":
             self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error_at({site});")
-            case = var_t.get_variant(tag)
-            case_t = case.type_val if case is not None and case.type_val is not None else t
-            return qval_unwrap(f"{self.atom(v)}.payload", case_t, self.ctx)
-        ot = option_type(vt)
-        self.emit(f"if ({self.atom(v)}->tag != {self.tag_index(ot, tag)}LL) quest_raise_variant_error_at({site});")
-        return self.option_case_tuple(self.atom(v), ot, tag, t, 1)
+            case = ts.case(tag)
+            case_s = case.shape if case is not None and case.shape is not None else shape(t)
+            return shape_qval_unwrap(f"{self.atom(v)}.payload", case_s)
+        self.emit(f"if ({self.atom(v)}->tag != {index}LL) quest_raise_variant_error_at({site});")
+        return self.option_case_tuple(self.atom(v), ts, tag, t, 1)
 
-    def array_get(self, arr: str, idx: str, elem_t: QType) -> str:
-        elem = normalize_type(elem_t)
+    def array_get(self, arr: str, idx: str, elem: Shape) -> str:
         if self.wide(elem):
             return f"({arr}->data[{idx}])"
-        if self.c_type(elem) == "QVal":
+        if self.shape_c_type(elem) == "QVal":
             return f"({arr}->data[{idx}])"
-        return qval_unwrap(f"({arr}->data[{idx}])", elem, self.ctx)
+        return shape_qval_unwrap(f"({arr}->data[{idx}])", elem)
 
-    def array_slot(self, arr: str, idx: str, elem_t: QType, offset: Optional[int]) -> str:
-        elem = normalize_type(elem_t)
+    def array_slot(self, arr: str, idx: str, elem: Shape, offset: Optional[int]) -> str:
         self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
         if self.wide(elem):
             return f"(&({arr}->data[{idx}]))"
-        c_elem = self.c_type(elem)
+        c_elem = self.shape_c_type(elem)
         if c_elem == "QVal":
             return f"(&({arr}->data[{idx}]))"
-        if elem is INT_TYPE or elem is BOOL_TYPE or elem is CHAR_TYPE:
+        if elem.kind in ("int", "bool", "char"):
             return f"(&({arr}->data[{idx}].i))"
-        if elem is REAL_TYPE:
+        if elem.kind == "real":
             return f"(&({arr}->data[{idx}].r))"
         return f"(({c_elem} *)(&({arr}->data[{idx}].p)))"
 
-    def wide(self, elem: QType) -> bool:
+    def wide(self, elem: Shape) -> bool:
         """Whether an array of elem stores its elements wide (records and variants, 16 bytes each)."""
-        return self.c_type(elem) in ("QRecordVal", "QVariantVal")
+        return self.shape_c_type(elem) in ("QRecordVal", "QVariantVal")
 
-    def array_new(self, count: str, init: str, elem_t: QType) -> str:
-        elem = normalize_type(elem_t)
-        match self.c_type(elem):
+    def array_new(self, count: str, init: str, elem: Shape) -> str:
+        match self.shape_c_type(elem):
             case "QRecordVal":
                 return f"quest_array_new_wide_record({count}, {init})"
             case "QVariantVal":
                 return f"quest_array_new_wide_variant({count}, {init})"
-        return f"quest_array_new({count}, {qval_wrap(init, elem)})"
+        return f"quest_array_new({count}, {shape_qval_wrap(init, elem)})"
 
-    def make_array(self, elem_t: QType, elements: list[str], t: QType) -> str:
-        elem = normalize_type(elem_t)
+    def make_array(self, elem: Shape, elements: list[str], t: QType) -> str:
         n = len(elements)
-        c_elem = self.c_type(elem)
+        c_elem = self.shape_c_type(elem)
         arr = self.temp(self.c_type(t))
         if c_elem in ("QRecordVal", "QVariantVal"):
             struct = "QArrayWideRecord" if c_elem == "QRecordVal" else "QArrayWideVariant"
@@ -827,7 +846,7 @@ class CPrinter:
             self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({n}LL) * sizeof(QVal));")
             self.emit(f"{arr}->length = {n}LL;")
             for i, c in enumerate(elements):
-                self.emit(f"{arr}->data[{i}LL] = {qval_wrap(c, elem)};")
+                self.emit(f"{arr}->data[{i}LL] = {shape_qval_wrap(c, elem)};")
         return arr
 
     def site(self, offset: Optional[int]) -> str:
@@ -894,7 +913,10 @@ class CPrinter:
 
     @staticmethod
     def is_function(t: QType) -> bool:
-        return isinstance(collect_fun_quantifiers(strip_aliases(t))[1], QFunType)
+        s = shape(t)
+        while s.kind == "all":
+            s = s.body
+        return s.kind == "fun"
 
     @staticmethod
     def external_call(o, descs: list[str], args: list[str]) -> str:
@@ -910,7 +932,7 @@ class CPrinter:
             return f"(&{self.thunks[key]}_closure)"
         name = self.fresh_name("qx_" + mangle_ident(o.symbol).removeprefix("qv_"))
         self.thunks[key] = name
-        quants, params, result_t = _signature(t)
+        quants, params, result_t = fun_shape_signature(t)
         with self.auxiliary():
             decls, descs, names = self.thunk_params(quants, params)
             call = self.external_call(o, descs if o.pass_type_descriptors else [], names)
@@ -1018,18 +1040,16 @@ class CPrinter:
             case ir.Store(value=value, address=address) if address is not None:
                 self.emit(f"*{self.atom(address)} = {self.atom(value)};")
             case ir.Store(value=value, base=base, name=name) if name is not None:
-                rt = record_type(self.atom_type(base))
-                field = next(f for f in rt.fields if f.name == name)
-                ptr = self.record_field(self.atom(base), rt, name, field.type_val, as_ref=True)
+                ptr = self.record_field(self.atom(base), self.held(self.atom_type(base), "record"), name, as_ref=True)
                 self.emit(f"*{ptr} = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index) if isinstance(index, int):
                 self.emit(f"{self.atom(base)}->_{index} = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
-                elem = normalize_type(array_element(self.atom_type(base)))
+                elem = self.element_shape(base)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
                 c = self.atom(value)
-                self.emit(f"{arr}->data[{idx}] = {c if self.wide(elem) else qval_wrap(c, elem)};")
+                self.emit(f"{arr}->data[{idx}] = {c if self.wide(elem) else shape_qval_wrap(c, elem)};")
             case ir.Switch(value=value, cases=cases, else_body=else_body):
                 self.switch(value, cases, else_body)
             case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
@@ -1127,12 +1147,11 @@ class CPrinter:
                 raise NotImplementedError(f"C printing of {type(s).__name__}")
 
     def switch(self, value: ir.Atom, cases, else_body: Optional[ir.Body]) -> None:
-        vt = self.atom_type(value)
         v = self.atom(value)
-        var_t = variant_type(vt)
-        t = var_t if var_t is not None else option_type(vt)
-        self.types.append(t)
-        self.emit(f"switch ({v}{'.tag' if var_t is not None else '->tag'}) {{")
+        t = self.tag_shape(self.atom_type(value))
+        is_variant = t.kind == "variant"
+        self.types.append(t.structure)
+        self.emit(f"switch ({v}{'.tag' if is_variant else '->tag'}) {{")
         self.indent += 1
         for c in cases:
             for tag in c.tags:
@@ -1140,9 +1159,9 @@ class CPrinter:
             self.emit("{")
             self.indent += 1
             if c.binder is not None and not self.is_ok(c.binder.type):
-                if var_t is not None:
+                if is_variant:
                     self.assign(c.binder, qval_unwrap(f"{v}.payload", c.binder.type, self.ctx))
-                elif tuple_type(c.binder.type) is not None:
+                elif shape(c.binder.type).kind == "tuple":
                     self.assign(c.binder, self.option_case_tuple(v, t, c.tags[0], c.binder.type, 0))
                 else:
                     self.assign(c.binder, f"{v}->u.{c.tags[0]}.val")
@@ -1166,20 +1185,20 @@ class CPrinter:
     def bounded_param_in_scope(self, t: QType) -> Optional[QType]:
         """The bound B of a type parameter in scope bounded by a record, variant, or option type (A <: B), which
         generic code holds its values viewed at; None for any other type."""
-        bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
-        if not isinstance(bare, (QTypeVar, QAbstractType)) or bare.symbol_id not in self.descriptors:
+        var = shape(t).type
+        if not isinstance(var, (QTypeVar, QAbstractType)) or var.symbol_id not in self.descriptors:
             return None
-        if not isinstance(bare.bound, QPowerKind):
+        if not isinstance(var.bound, QPowerKind):
             return None
-        bound = bare.bound.bound
-        if not _may_be_stored_as_subtype(bound) or isinstance(normalize_type(bound), (QFunType, QAllType)):
+        bound = var.bound.bound
+        bound_s = shape(bound)
+        if not may_be_stored_as_subtype(bound_s) or bound_s.kind in ("fun", "all"):
             return None
         return bound
 
     @staticmethod
     def is_auto_param(auto_t: QAutoType, t: QType) -> bool:
-        bare = strip_aliases(t)
-        return isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id == auto_t.symbol_id
+        return is_type_variable(t, auto_t.symbol_id)
 
     def make_auto(self, witness: QType, auto_t: QAutoType, payload: ir.Atom) -> str:
         stored_t = auto_payload_type(auto_t)
@@ -1206,7 +1225,7 @@ class CPrinter:
         for stored_f, arm_f in zip(stored_t.value_fields, arm_t.value_fields):
             stored_c, arm_c = self.c_type(stored_f.type_val), self.c_type(arm_f.type_val)
             if stored_c == arm_c:
-                if isinstance(arm_f.type_val, (QFunType, QAllType)) and (
+                if shape(arm_f.type_val).kind in ("fun", "all") and (
                     closure_fn_ptr_type(stored_f.type_val, self.ctx) != closure_fn_ptr_type(arm_f.type_val, self.ctx)
                 ):
                     return False
@@ -1321,6 +1340,8 @@ class CPrinter:
         return a.type if isinstance(a, ir.Var) else a.shape.type
 
     def echo(self, prefix: str, value: str, t: QType, suffix: str) -> None:
+        # Echo prints the type as written (packages with their components' types as the interpreter prints them,
+        # without alias names), which only the type has: its shape's canonical form names binders afresh
         bare = strip_aliases(t)
         if prefix and isinstance(bare, QTupleType) and bare.is_existential:
             # A package's components are hidden, so the line is known statically (as the interpreter prints it)
@@ -1337,8 +1358,7 @@ class CPrinter:
     def echo_descriptor(self, t: QType) -> str:
         """The descriptor echo writes a value of type t by: one of its own if t has type components (or parts that
         do) and mentions no type parameters, so that it writes them as the interpreter does; otherwise t's."""
-        bare = strip_aliases(t.prune() if hasattr(t, "prune") else t)
-        if not self.free_type_vars(bare, lambda v: v.symbol_id in self.descriptors):
+        if not self.free_type_vars(t, lambda v: v.symbol_id in self.descriptors):
             if (form := echo_descriptor_form(t, self.ctx)) is not None:
                 self.echo_types.append(t)
                 return form.c_expr
@@ -1377,8 +1397,8 @@ class CPrinter:
         return found
 
     def function_signature(self, f: ir.Function) -> str:
-        quants, _, _ = _signature(f.var.type)
-        own = f.type_params[len(f.type_params) - len(quants):] if quants else ()
+        count = _type_parameter_count(f.var.type)
+        own = f.type_params[len(f.type_params) - count:] if count else ()
         params = ["void *_raw_env"]
         for tp in own:
             params.append(f"const QTypeDescriptor *{self.descriptor_param(f, tp)}")
@@ -1399,8 +1419,7 @@ class CPrinter:
         self.fs = _FunctionState(f)
         self.fs.volatile = self.volatile_vars(f.body)
         saved_descriptors = dict(self.descriptors)
-        quants, _, _ = _signature(f.var.type)
-        n_captured = len(f.type_params) - len(quants)
+        n_captured = len(f.type_params) - _type_parameter_count(f.var.type)
         signature = self.function_signature(f)
         prologue: list[str] = []
         for tp in f.type_params[n_captured:]:
@@ -1647,7 +1666,7 @@ class CPrinter:
 
         lines: list[str] = []
         for entry in module_abstract_types(canon):
-            rep = strip_aliases(entry.rep)
+            rep = shape(entry.rep).type
             arity = 0
             kind = entry.type_var.bound
             while isinstance(kind, QAllKind):

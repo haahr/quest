@@ -7,7 +7,9 @@ from __future__ import annotations
 from typing import Any, Callable, Optional, Sequence
 
 from quest.typechecker.typed_ast import TypedLetType, TypedRecord
-from quest.ir.represent import _may_be_stored_as_subtype
+from quest.ir.represent import may_be_stored_as_subtype
+from quest.ir.shapes import shape
+from quest.types.canonical import normalize_type
 from quest.codegen.c.types import (
     c_string_literal,
     closure_fn_ptr_type,
@@ -23,7 +25,6 @@ from quest.codegen.c.types import (
     tuple_type_components,
 )
 from quest.codegen.descriptors import fun_descriptor_tag
-from quest.types.canonical import collect_fun_quantifiers, normalize_type
 from quest.codegen.layout import (
     option_struct_name,
     tuple_struct_name,
@@ -37,6 +38,7 @@ from quest.types import (
     QRecGroupType,
     QRecType,
     short_type_name,
+    QParam,
     QPowerKind,
     QTypeApp,
     BOOL_TYPE,
@@ -57,10 +59,8 @@ from quest.types import (
     QTypeVar,
     QVariantType,
     REAL_TYPE,
-    STRING_TYPE,
     resolve_option_bound,
-    resolve_record_bound,
-    resolve_variant_bound,
+    STRING_TYPE,
 )
 
 
@@ -84,6 +84,24 @@ def module_function_signature(
             f"{c_type(p.type_val)}{' *' if p.is_out or p.is_var else ' '}qv_p_{p.name}" for p in fun_t.params
         ]
     return ret_c, mangle_module_ident(clean_mod, name), param_decls
+
+
+def fun_shape_signature(t: QType) -> tuple[tuple[Optional[QType], ...], tuple[QParam, ...], QType]:
+    """A (possibly polymorphic) function type's signature, from its shape: the POWER bounds of its type parameters
+    (None for a parameter without one), its parameters, and its result type (the types of its shape's parts). Their
+    type parameters are its canonical form's, which only descriptors (of the de Bruijn forms that name type parameters
+    by position, canonical_fun_type) and representations, which do not depend on them, read here."""
+    s = shape(t)
+    bounds: list[Optional[QType]] = []
+    while s.kind == "all":
+        bounds.extend(tp.bound.type if tp.bound is not None else None for tp in s.type_params)
+        s = s.body
+    if s.kind != "fun":
+        return tuple(bounds), (), s.type
+    params = tuple(
+        QParam(name=p.name, type_val=p.shape.type, is_var=p.mode == "var", is_out=p.mode == "out") for p in s.params
+    )
+    return tuple(bounds), params, s.result.type
 
 
 def collect_aggregate_types(
@@ -111,6 +129,10 @@ def collect_aggregate_types(
         if t_id in visited_type_ids:
             return
         visited_type_ids.add(t_id)
+        # The type as written with its outermost constructor exposed, rather than its shape's structure (the
+        # unfolding of its canonical form): the order in which the structs are declared, which interfaces' C headers
+        # pin (tests/abi), and the names of records (whose fields' types a canonical form may write differently, with
+        # the value parameters of equal function types named alike) follow the types as written
         t = normalize_type(t)
         all_types.append(t)
         if isinstance(t, QTupleType):
@@ -290,23 +312,20 @@ class CDeclarationEmitter:
                     if payload_branches:
                         lines.append("    union {")
                         for o in payload_branches:
-                            match o.payload_type:
-                                case QTupleType(value_fields=pt_fields):
-                                    lines.append(f"        struct {tag_name}_{o.name}_payload {{")
-                                    for i, f in enumerate(pt_fields):
-                                        c_f_type = self.c_type(f.type_val)
-                                        f_ident = f"_{i}" if not f.name else f"_{i}"
-                                        lines.append(f"            {c_f_type} {f_ident};")
-                                    lines.append(f"        }} {o.name};")
-                                case QRecordType(fields=pt_fields):
-                                    lines.append(f"        struct {tag_name}_{o.name}_payload {{")
-                                    for f in sorted(pt_fields, key=lambda fld: fld.name):
-                                        c_f_type = self.c_type(f.type_val)
-                                        lines.append(f"            {c_f_type} qf_{f.name};")
-                                    lines.append(f"        }} {o.name};")
-                                case pt:
-                                    c_pt = self.c_type(pt)
-                                    lines.append(f"        struct {{ {c_pt} val; }} {o.name};")
+                            # A case's payload is a tuple, whose shape gives its components (in a canonical form,
+                            # it may be written as a recursive type)
+                            payload = shape(o.payload_type)
+                            if payload.kind in ("tuple", "record"):
+                                lines.append(f"        struct {tag_name}_{o.name}_payload {{")
+                                if payload.kind == "tuple":
+                                    for i, c in enumerate(payload.components):
+                                        lines.append(f"            {self.c_type(c.shape.type)} _{i};")
+                                else:
+                                    for c in payload.sorted_components():
+                                        lines.append(f"            {self.c_type(c.shape.type)} qf_{c.name};")
+                                lines.append(f"        }} {o.name};")
+                            else:
+                                lines.append(f"        struct {{ {self.c_type(o.payload_type)} val; }} {o.name};")
                         lines.append("    } u;")
             lines.append("};")
             lines.append("#endif")
@@ -463,16 +482,12 @@ class CDeclarationEmitter:
                 for f in dt.signature:
                     visit(f.type_val)
             elif form.kind == "fun":
-                quants, inner = collect_fun_quantifiers(dt)
-                for q in quants:
-                    if isinstance(q.bound, QPowerKind):
-                        visit(q.bound.bound)
-                if isinstance(inner, QFunType):
-                    for prm in inner.params:
-                        visit(prm.type_val)
-                    visit(inner.result_type)
-                else:
-                    visit(inner)
+                bounds, params, result_t = fun_shape_signature(dt)
+                for bound in bounds:
+                    visit(bound)
+                for prm in params:
+                    visit(prm.type_val)
+                visit(result_t)
 
         def visit_echo(t: QType) -> None:
             # An echo-only descriptor, and those of its parts (echo-only too where they write type components)
@@ -620,14 +635,10 @@ class CDeclarationEmitter:
 
         for form in forms.get("fun", []):
             tag = form.tag
-            quants, inner = collect_fun_quantifiers(form.type)
-            params = inner.params if isinstance(inner, QFunType) else ()
-            result_t = inner.result_type if isinstance(inner, QFunType) else inner
+            quants, params, result_t = fun_shape_signature(form.type)
             bounds = "NULL"
             if quants:
-                bound_descs = [
-                    desc_fn(q.bound.bound) if isinstance(q.bound, QPowerKind) else "NULL" for q in quants
-                ]
+                bound_descs = [desc_fn(bound) if bound is not None else "NULL" for bound in quants]
                 lines.append(
                     f"static const QTypeDescriptor *const qfun_bounds_{tag}[{len(quants)}] Q_UNUSED = "
                     f"{{ {', '.join(bound_descs)} }};"
@@ -828,9 +839,7 @@ class CDeclarationEmitter:
         lines.append("/* Adapters for function types: thunks converting arguments and results by descriptor */")
         for tag, fun_t in fun_types:
             # A polymorphic function type takes its type parameters' descriptors first; they are passed through
-            quants, inner = collect_fun_quantifiers(fun_t)
-            params = inner.params if isinstance(inner, QFunType) else ()
-            ret_t = inner.result_type if isinstance(inner, QFunType) else inner
+            quants, params, ret_t = fun_shape_signature(fun_t)
             ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
             fn_ptr = closure_fn_ptr_type(fun_t, self.record_ctx)
             nq = len(quants)
@@ -853,7 +862,7 @@ class CDeclarationEmitter:
                     param_decls.append(f"{self.c_type(p.type_val)} {name}")
                     to_from = f"to->params[{i}].type, from->params[{i}].type"
                     uniform.append(f"{slot} = quest_convert({qval_wrap(name, p.type_val)}, {to_from});")
-                    if _may_be_stored_as_subtype(p.type_val):
+                    if may_be_stored_as_subtype(shape(p.type_val)):
                         converted = qval_unwrap(
                             f"quest_convert({qval_wrap(name, p.type_val)}, {to_from})", p.type_val, self
                         )
@@ -866,7 +875,7 @@ class CDeclarationEmitter:
                 direct.append("return;")
                 uniform.append(f"(void){invoke_expr};")
             else:
-                if _may_be_stored_as_subtype(ret_t):
+                if may_be_stored_as_subtype(shape(ret_t)):
                     direct.append(f"{ret_c} qv_result = {call_expr};")
                     converted = qval_unwrap(
                         f"quest_convert({qval_wrap('qv_result', ret_t)}, from->result_type, to->result_type)",

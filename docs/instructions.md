@@ -83,8 +83,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **Types are hash-consed and have no Python `==`** (it raises). Compare with `is_type_equal(t1, t2, env)` or
   identity (`is`), and key dictionaries by `type_identity_key` (C backend) or by canonical objects, not by types.
 - **Types reach code generation unreduced:** alias nodes, applications of type operators (`Box(A)`), and recursive
-  types. Reduce with `normalize_type` (or, after the IR's step 2, use shapes) before structural tests such as
-  `isinstance(t, QTupleType)`; a test on the unreduced type silently skips `Box(A)`.
+  types. Below lowering, ask the type's shape (`ir/shapes.py`); elsewhere, reduce with `normalize_type`
+  (`types/canonical.py`) before structural tests such as `isinstance(t, QTupleType)`; a test on the unreduced type
+  silently skips `Box(A)`.
 - **Invariant checks run in tests.** `QUEST_CHECK_CANONICAL=1` (C canonical forms), `QUEST_CHECK_SCOPES=1`
   (well-scoped typed programs), and `QUEST_CHECK_IR=1` (verified IR) are set by the test runners and the unit tests'
   helpers; production builds warn or skip. Add new internal checks the same way.
