@@ -405,13 +405,6 @@ def main() -> int:
         help="Build directory for C phases, reused across runs (default: a fresh temporary directory per run, "
         "so that results never depend on artifacts from earlier compiler versions).",
     )
-    arg_parser.add_argument(
-        "--shadow",
-        action="append",
-        default=[],
-        metavar="CHECK",
-        help="Run the compiler with --shadow-CHECK (repeatable; 'all' enables every shadow-mode cross-check).",
-    )
 
     args = arg_parser.parse_args()
 
@@ -422,7 +415,7 @@ def main() -> int:
     else:
         temp_build_dir = Path(tempfile.mkdtemp(prefix="quest-test-build-"))
         build_dir = temp_build_dir
-    driver_args = [f"--shadow-{check}" for check in args.shadow]
+    driver_args: list[str] = []
     try:
         return run_all_tests(args, available_phases, build_dir, driver_args, jobs=jobs)
     finally:
