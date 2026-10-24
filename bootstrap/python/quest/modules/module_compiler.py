@@ -21,6 +21,7 @@ import quest.syntax.ast as ast
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.c.backend import module_file_to_c
 from quest.codegen.c.compiler_runner import compile_c_to_object
+from quest.codegen.c.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
 from quest.diagnostics import in_unit
 from quest.modules.manifest import (
@@ -194,7 +195,8 @@ def compile_module(
     # 3. Elaborate module
     typed_mod = elaborate_module(module_decl, env)
 
-    # 4. Check for interface header (.int.h)
+    # 4. Bring the interface's header (.int.h), which the C translation includes, up to date, and find it
+    ensure_imported_interface_header(module_decl.interface_name, env)
     search_dirs = header_search_dirs(output_dir, env, include_paths)
     interface_header = find_interface_header(module_decl.interface_name, search_dirs, env, include_paths)
 

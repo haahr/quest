@@ -12,7 +12,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bootstrap" / "python"))
 
 from quest.codegen.c.compiler_runner import run_binary
-from quest.modules.interface_compiler import compile_interface_file
+from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.module_compiler import compile_module_file
 from quest_driver import run_compile, run_driver
 
@@ -49,7 +49,7 @@ class TestObjectLinking(unittest.TestCase):
         )
 
         # Compile interface to .h + .qi
-        self.h_file, self.qi_file = compile_interface_file(self.iface_file, output_dir=self.dir_path)
+        self.h_file, self.qi_file = compile_interface_with_header(self.iface_file, output_dir=self.dir_path)
         self.assertTrue(self.qi_file.exists())
         self.assertTrue(self.h_file.exists())
 

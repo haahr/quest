@@ -1,16 +1,16 @@
 """Quest Interface Compiler (Phase 4.16 Step 1).
 
-Compiles interface files (.int.quest) to:
-1. .qi: Portable, cycle-safe JSON/JSOG metadata encoded using shadow Quest record types
-   compatible with dynamic.extern / dynamic.intern.
-2. .int.h: C header file providing include guards, dependency includes, abstract type erasure
-   to QVal, manifest type definitions, and function signature typedefs.
+Compiles interface files (.int.quest) to .qi files: portable, cycle-safe JSON/JSOG metadata encoded using shadow
+Quest record types compatible with dynamic.extern / dynamic.intern, from which importers load interfaces, and keeps
+them up to date (docs/build-process.md §5). An interface's C header (.int.h) is the C backend's: it is written from
+the compiled interface by quest.codegen.c.headers, when C compilation needs it.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import quest.syntax.ast as ast
 from quest.config.abi import (
@@ -546,6 +546,37 @@ def indirect_interface_refs(
     return refs
 
 
+@dataclass(frozen=True)
+class CompiledInterface:
+    """An interface compiled from its source: its declaration and elaborated scope, from which the C backend writes
+    its header, and its .qi (written unless the compilation only elaborated the interface)."""
+    decl: ast.InterfaceDecl
+    scope: Scope
+    source: Path
+    source_map: SourceMap
+    qi_file: Path
+    # The search paths the interface was compiled with, from which its imports were resolved
+    include_paths: tuple[Path, ...]
+
+
+# What a caller of compile_interface_file or ensure_interface_artifacts does with each interface they compile,
+# including the interfaces compiled because it imports them (the C backend writes their headers)
+OnCompiled = Callable[[CompiledInterface], None]
+
+
+@dataclass(frozen=True)
+class InterfaceArtifacts:
+    """Where an interface's .qi is, as ensure_interface_artifacts found or rebuilt it."""
+    # The .qi, which may not exist if the interface has neither a source nor prebuilt artifacts (a builtin)
+    qi_file: Path
+    canonical_name: str
+    # The .int.quest it is built from, None without one (a binary distribution, Rule 3, or a builtin)
+    source: Optional[Path]
+    # Where the interface's artifacts are rebuilt in the build directory, and the search paths they are built with
+    target_dir: Path
+    search_paths: tuple[Path, ...]
+
+
 # The interface files being compiled, outermost first, with their canonical names. Compiling an interface first
 # compiles the interfaces it imports, each in an environment of its own, so a cycle of imports is detected here.
 _compiling_interfaces: list[tuple[Path, str]] = []
@@ -556,12 +587,14 @@ def compile_interface_file(
     output_dir: Optional[Path] = None,
     include_paths: Optional[list[Path]] = None,
     build_dir: Optional[Path] = None,
-    header: bool = True,
     program_dir: Optional[Path] = None,
-) -> tuple[Path, Path]:
-    """Compiles a .int.quest file to .qi and, unless header is False, .int.h files.
+    write_qi: bool = True,
+    on_compiled: Optional[OnCompiled] = None,
+) -> CompiledInterface:
+    """Compiles a .int.quest file to a .qi file, or with write_qi False, only elaborates it.
 
-    Only C compilation needs headers; typecheck and interpret runs build just the .qi.
+    With a build directory, the interfaces it imports are brought up to date there first. on_compiled is called
+    for each interface compiled, the interfaces it imports first and this one last.
     """
 
     key = file_path.resolve()
@@ -572,9 +605,14 @@ def compile_interface_file(
         raise QuestTypeError(f"Cyclic dependency detected in interface imports: {' -> '.join(chain)}")
     _compiling_interfaces.append((key, canon_name))
     try:
-        return _compile_interface_file(file_path, output_dir, include_paths, build_dir, header, program_dir)
+        compiled = _compile_interface_file(
+            file_path, output_dir, include_paths, build_dir, program_dir, write_qi, on_compiled
+        )
     finally:
         _compiling_interfaces.pop()
+    if on_compiled is not None:
+        on_compiled(compiled)
+    return compiled
 
 
 def _compile_interface_file(
@@ -582,9 +620,10 @@ def _compile_interface_file(
     output_dir: Optional[Path],
     include_paths: Optional[list[Path]],
     build_dir: Optional[Path],
-    header: bool,
     program_dir: Optional[Path],
-) -> tuple[Path, Path]:
+    write_qi: bool,
+    on_compiled: Optional[OnCompiled],
+) -> CompiledInterface:
     try:
         source_text = file_path.read_text(encoding="utf-8")
     except OSError as err:
@@ -612,18 +651,15 @@ def _compile_interface_file(
         env.source_map = source_map
 
         if build_dir is not None:
-            # The generated header #includes the headers of imported interfaces, so they must exist in the
-            # build directory too, including those of builtin interfaces that are never loaded from source.
+            # Every interface it imports is brought up to date in the build directory, including builtin
+            # interfaces that are never loaded from source, so that their artifacts exist beside its own.
             for imp in decl.imports:
                 with at_import(imp.offset, source_map):
                     ensure_interface_artifacts(
                         imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve(),
-                        header=header, program_dir=program_dir,
+                        program_dir=program_dir, on_compiled=on_compiled,
                     )
         typed_iface = elaborate_interface(decl, env)
-
-    deps = interface_dependencies(file_path, env.include_paths)
-    qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path, deps=deps)
 
     if build_dir is not None and output_dir is None:
         canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
@@ -640,18 +676,20 @@ def _compile_interface_file(
         stem = file_path.stem
 
     qi_path = target_dir / f"{stem.lower()}.qi"
-    h_path = target_dir / f"{stem.lower()}.int.h"
-    qi_path.parent.mkdir(parents=True, exist_ok=True)
-    h_path.parent.mkdir(parents=True, exist_ok=True)
+    if write_qi:
+        deps = interface_dependencies(file_path, env.include_paths)
+        qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path, deps=deps)
+        qi_path.parent.mkdir(parents=True, exist_ok=True)
+        qi_path.write_text(qi_content, encoding="utf-8")
 
-    qi_path.write_text(qi_content, encoding="utf-8")
-    if header:
-        canonical_name = canonicalize_interface_name(file_path, env.include_paths, decl.name)
-        from quest.codegen.c.headers import compile_interface_to_header
-
-        h_path.write_text(compile_interface_to_header(decl, typed_iface.scope, canonical_name), encoding="utf-8")
-
-    return h_path, qi_path
+    return CompiledInterface(
+        decl=decl,
+        scope=typed_iface.scope,
+        source=file_path,
+        source_map=source_map,
+        qi_file=qi_path,
+        include_paths=tuple(env.include_paths),
+    )
 
 
 def ensure_interface_artifacts(
@@ -660,14 +698,13 @@ def ensure_interface_artifacts(
     include_paths: list[Path],
     build_dir: Path,
     file_path: Optional[Path] = None,
-    header: bool = True,
     program_dir: Optional[Path] = None,
-) -> tuple[Path, Path, str]:
-    """Regenerates interface `name`'s .qi and C header under build_dir if stale (docs/build-process.md §5).
+    on_compiled: Optional[OnCompiled] = None,
+) -> InterfaceArtifacts:
+    """Rebuilds interface `name`'s .qi under build_dir if stale (docs/build-process.md §5).
 
-    file_path is the result of resolve_interface_file, when the caller already has it. Returns
-    (qi_file, h_file, canonical_name); the files may not exist if the interface has neither a source
-    nor prebuilt artifacts (e.g. builtin interfaces).
+    file_path is the result of resolve_interface_file, when the caller already has it. on_compiled is called for
+    each interface compiled (compile_interface_file).
     """
 
     if file_path is None:
@@ -680,50 +717,49 @@ def ensure_interface_artifacts(
     target_dir = build_dir / Path(canon_name).parent if "/" in canon_name else build_dir
     stem = Path(canon_name).name.lower()
     qi_file = target_dir / f"{stem}.qi"
-    h_file = target_dir / f"{stem}.int.h"
+    search_paths = list(include_paths)
+    if build_dir not in search_paths:
+        search_paths.insert(0, build_dir)
 
-    def current(qi: Path, h: Path) -> bool:
-        """Rules 1 and 2 plus the ABI version: the artifacts exist, are fresh, match this compiler, were built
-        from this source (not a same-named interface elsewhere), and none of the interfaces they depend on has
-        changed or would resolve elsewhere.
+    def artifacts(qi: Path) -> InterfaceArtifacts:
+        has_source = src is not None and src.is_file()
+        return InterfaceArtifacts(qi, canon_name, src if has_source else None, target_dir, tuple(search_paths))
 
-        The header is required only when one is wanted (C compilation).
-        """
-        if not qi.is_file() or (header and not h.is_file()) or not has_current_abi(qi):
+    def current(qi: Path) -> bool:
+        """Rules 1 and 2 plus the ABI version: the .qi exists, is fresh, matches this compiler, was built from this
+        source (not a same-named interface elsewhere), and none of the interfaces it depends on has changed or
+        would resolve elsewhere."""
+        if not qi.is_file() or not has_current_abi(qi):
             return False
         if src is None or not src.is_file():
             return True
-        artifact_mtime = min(qi.stat().st_mtime, h.stat().st_mtime) if header else qi.stat().st_mtime
+        qi_mtime = qi.stat().st_mtime
         deps = recorded_dependencies(qi)
         return (
-            src.stat().st_mtime <= artifact_mtime
+            src.stat().st_mtime <= qi_mtime
             and built_from(qi, src)
             and deps is not None
-            and dependency_change(deps, include_paths, artifact_mtime) is None
+            and dependency_change(deps, include_paths, qi_mtime) is None
         )
 
-    # Fresh artifacts found elsewhere on the search path (e.g. next to the source, from a standalone
-    # compilation) are used like those in the build directory.
-    if not current(qi_file, h_file) and file_path is not None and file_path.suffix == ".qi":
-        cand_h = file_path.with_suffix(".int.h")
-        if current(file_path, cand_h) or (src is None and not qi_file.is_file()):
-            qi_file, h_file = file_path, cand_h
+    # A fresh .qi found elsewhere on the search path (e.g. next to the source, from a standalone compilation) is
+    # used like one in the build directory.
+    if not current(qi_file) and file_path is not None and file_path.suffix == ".qi":
+        if current(file_path) or (src is None and not qi_file.is_file()):
+            qi_file = file_path
 
     # Rule 3: without a source, existing artifacts cannot be rebuilt (binary distribution).
     if src is None or not src.is_file():
         if qi_file.is_file() and not has_current_abi(qi_file):
             raise QuestTypeError(incompatible_artifact_message(qi_file))
-        return qi_file, h_file, canon_name
-    if not current(qi_file, h_file):
+        return artifacts(qi_file)
+    if not current(qi_file):
         target_dir.mkdir(parents=True, exist_ok=True)
-        search_paths = list(include_paths)
-        if build_dir not in search_paths:
-            search_paths.insert(0, build_dir)
-        h_file, qi_file = compile_interface_file(
-            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir, header=header,
-            program_dir=program_dir,
-        )
-    return qi_file, h_file, canon_name
+        qi_file = compile_interface_file(
+            src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir, program_dir=program_dir,
+            on_compiled=on_compiled,
+        ).qi_file
+    return artifacts(qi_file)
 
 
 def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:

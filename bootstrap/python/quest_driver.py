@@ -33,7 +33,7 @@ from quest.pipeline import (
 )
 from quest.build.engine import BuildEngine
 from quest.codegen.c.compiler_runner import compile_c_source
-from quest.modules.interface_compiler import compile_interface_file
+from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import canonicalize_module_path
 from quest.modules.units import unit_kind
@@ -279,7 +279,7 @@ def run_driver(args: list[str]) -> int:
                 out_dir = Path(parsed_args.output).parent if parsed_args.output else None
                 if out_dir:
                     out_dir.mkdir(parents=True, exist_ok=True)
-                compile_interface_file(
+                compile_interface_with_header(
                     file_path,
                     output_dir=out_dir,
                     include_paths=include_paths,
@@ -617,7 +617,7 @@ def run_compile(args: list[str]) -> int:
                 out_dir = Path(parsed_args.output).parent if parsed_args.output else None
                 if out_dir:
                     out_dir.mkdir(parents=True, exist_ok=True)
-                compile_interface_file(
+                compile_interface_with_header(
                     file_path,
                     output_dir=out_dir,
                     include_paths=include_paths,

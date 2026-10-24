@@ -25,7 +25,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.config.abi import ABI_VERSION  # noqa: E402
-from quest.modules.interface_compiler import compile_interface_file  # noqa: E402
+from quest.codegen.c.headers import compile_interface_with_header  # noqa: E402
 
 ABI_DIR = Path(__file__).resolve().parent
 CORPUS_DIR = ABI_DIR / "corpus"
@@ -64,7 +64,7 @@ def generate() -> dict[str, str]:
         build_dir = Path(tmp)
         include_paths = [INPUTS_DIR / "lib", INPUTS_DIR]
         for src in sorted(INPUTS_DIR.rglob("*.int.quest")):
-            compile_interface_file(src, include_paths=include_paths, build_dir=build_dir)
+            compile_interface_with_header(src, include_paths=include_paths, build_dir=build_dir)
         for artifact in sorted(build_dir.rglob("*")):
             if not artifact.is_file():
                 continue

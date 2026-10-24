@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.build.engine import BuildEngine, BuildError
 from quest.config.abi import built_from
-from quest.modules.interface_compiler import compile_interface_file, ensure_interface_artifacts
+from quest.codegen.c.headers import compile_interface_with_header, ensure_interface_header
+from quest.modules.interface_compiler import ensure_interface_artifacts
 from quest.modules.manifest import unit_staleness
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import resolve_interface_file
@@ -257,8 +258,8 @@ class TestBuildEngine(unittest.TestCase):
         intf_a.write_text("interface CycA export ping(): Int end;\n", encoding="utf-8")
         intf_b = self.root / "cycb.int.quest"
         intf_b.write_text("interface CycB export pong(): Int end;\n", encoding="utf-8")
-        compile_interface_file(intf_a, build_dir=self.build_dir, include_paths=[self.root])
-        compile_interface_file(intf_b, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_a, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_b, build_dir=self.build_dir, include_paths=[self.root])
 
         # Precompile CycA and CycB with circular manifests
         mod_a = self.root / "cyca.mod.quest"
@@ -304,8 +305,8 @@ class TestBuildEngine(unittest.TestCase):
         intf_expected.write_text("interface Expected export get(): Int end;\n", encoding="utf-8")
         intf_actual = self.root / "actual.int.quest"
         intf_actual.write_text("interface Actual export get(): Int end;\n", encoding="utf-8")
-        compile_interface_file(intf_expected, build_dir=self.build_dir, include_paths=[self.root])
-        compile_interface_file(intf_actual, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_expected, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_actual, build_dir=self.build_dir, include_paths=[self.root])
 
         mod_prov = self.root / "prov.mod.quest"
         mod_prov.write_text("module prov : Actual export let get(): Int = 42; end;\n", encoding="utf-8")
@@ -328,9 +329,9 @@ class TestBuildEngine(unittest.TestCase):
         intf_b.write_text("interface IfaceB export valB(): Int end;\n", encoding="utf-8")
         intf_c = self.root / "ifacec.int.quest"
         intf_c.write_text("interface IfaceC export valC(): Int end;\n", encoding="utf-8")
-        compile_interface_file(intf_a, build_dir=self.build_dir, include_paths=[self.root])
-        compile_interface_file(intf_b, build_dir=self.build_dir, include_paths=[self.root])
-        compile_interface_file(intf_c, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_a, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_b, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_c, build_dir=self.build_dir, include_paths=[self.root])
 
         # prov implements IfaceC
         mod_prov = self.root / "prov2.mod.quest"
@@ -364,8 +365,8 @@ class TestBuildEngine(unittest.TestCase):
         intf_gui.write_text("interface Window export show(): Int end;\n", encoding="utf-8")
         intf_os = os_dir / "window.int.quest"
         intf_os.write_text("interface Window export show(): Int end;\n", encoding="utf-8")
-        compile_interface_file(intf_gui, build_dir=self.build_dir, include_paths=[self.root])
-        compile_interface_file(intf_os, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_gui, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_os, build_dir=self.build_dir, include_paths=[self.root])
 
         mod_gui = gui_dir / "window.mod.quest"
         mod_gui.write_text("module window : Window export let show(): Int = 1; end;\n", encoding="utf-8")
@@ -387,7 +388,7 @@ class TestBuildEngine(unittest.TestCase):
 
         intf_file = util_dir / "path.int.quest"
         intf_file.write_text("interface Path export get(): Int end;\n", encoding="utf-8")
-        compile_interface_file(intf_file, build_dir=self.build_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_file, build_dir=self.build_dir, include_paths=[self.root])
 
         mod_file = util_dir / "path.mod.quest"
         mod_file.write_text("module path : Path export let get(): Int = 42; end;\n", encoding="utf-8")
@@ -480,9 +481,9 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
         self.assertIn("different source", reason)
 
     def test_interface_artifacts_check_recorded_source(self) -> None:
-        qi_a, _, _ = ensure_interface_artifacts("Counter", self.a, [], self.build_dir)
+        qi_a = ensure_interface_artifacts("Counter", self.a, [], self.build_dir).qi_file
         self.assertTrue(built_from(qi_a, self.a / "counter.int.quest"))
-        qi_b, _, _ = ensure_interface_artifacts("Counter", self.b, [], self.build_dir)
+        qi_b = ensure_interface_artifacts("Counter", self.b, [], self.build_dir).qi_file
         self.assertEqual(qi_b, qi_a)
         self.assertTrue(built_from(qi_b, self.b / "counter.int.quest"))
         self.assertIn("base", qi_b.read_text(encoding="utf-8"))
@@ -741,10 +742,10 @@ class TestIndirectlyImportedInterfaces(unittest.TestCase):
         self.assertEqual(out, "1.25")
 
     def test_interface_artifacts_rebuilt_when_an_import_changes(self) -> None:
-        qi, h, _ = ensure_interface_artifacts("Helper", self.lib, [self.lib], self.build_dir)
+        qi, h = ensure_interface_header("Helper", self.lib, [self.lib], self.build_dir)
         self.assertIn("QInt", h.read_text(encoding="utf-8"))
         self._write_base(self.lib, "Real")
-        qi, h, _ = ensure_interface_artifacts("Helper", self.lib, [self.lib], self.build_dir)
+        qi, h = ensure_interface_header("Helper", self.lib, [self.lib], self.build_dir)
         self.assertIn("QReal", h.read_text(encoding="utf-8"))
 
 

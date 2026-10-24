@@ -16,10 +16,8 @@ from pathlib import Path
 import unittest
 
 from quest.types.env import Environment
-from quest.modules.interface_compiler import (
-    compile_interface_file,
-    load_interface_from_qi_file,
-)
+from quest.codegen.c.headers import compile_interface_with_header
+from quest.modules.interface_compiler import load_interface_from_qi_file
 from quest.modules.loader import load_interface
 
 
@@ -40,7 +38,7 @@ end;
             p = Path(td) / "counter.int.quest"
             p.write_text(src, encoding="utf-8")
 
-            h_path, qi_path = compile_interface_file(p)
+            h_path, qi_path = compile_interface_with_header(p)
             self.assertTrue(h_path.exists())
             self.assertTrue(qi_path.exists())
 
@@ -82,7 +80,7 @@ end;
             p = Path(td) / "geometry.int.quest"
             p.write_text(src, encoding="utf-8")
 
-            h_path, qi_path = compile_interface_file(p)
+            h_path, qi_path = compile_interface_with_header(p)
             h_text = h_path.read_text(encoding="utf-8")
             self.assertIn("typedef struct quest_rec_Geometry_Point", h_text)
             self.assertIn("QInt x;", h_text)
@@ -116,7 +114,7 @@ end;
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "forests.int.quest"
             p.write_text(src, encoding="utf-8")
-            _, qi_path = compile_interface_file(p)
+            _, qi_path = compile_interface_with_header(p)
             qi_text = qi_path.read_text(encoding="utf-8")
             # Members record their bodies and a shared group number
             self.assertIn('"group":1', qi_text)
@@ -160,11 +158,11 @@ end;
         with tempfile.TemporaryDirectory() as td:
             p_base = Path(td) / "basecounter.int.quest"
             p_base.write_text(c_src, encoding="utf-8")
-            compile_interface_file(p_base)
+            compile_interface_with_header(p_base)
 
             p_ext = Path(td) / "extcounter.int.quest"
             p_ext.write_text(ext_src, encoding="utf-8")
-            h_ext, qi_ext = compile_interface_file(p_ext)
+            h_ext, qi_ext = compile_interface_with_header(p_ext)
 
             h_text = h_ext.read_text(encoding="utf-8")
             self.assertIn('#include "basecounter.int.h"', h_text)
@@ -187,7 +185,7 @@ end;
         with tempfile.TemporaryDirectory() as td:
             intf_file = Path(td) / "tokenizer.int.quest"
             intf_file.write_text(src, encoding="utf-8")
-            _, qi_path = compile_interface_file(intf_file)
+            _, qi_path = compile_interface_with_header(intf_file)
 
             # Delete the source interface file: only tokenizer.qi remains!
             intf_file.unlink()

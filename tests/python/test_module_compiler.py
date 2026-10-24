@@ -17,7 +17,7 @@ import tempfile
 import unittest
 
 from quest.codegen.c.compiler_runner import find_c_compiler, get_runtime_dir
-from quest.modules.interface_compiler import compile_interface_file
+from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.manifest import read_qm
 from quest.modules.module_compiler import compile_module_file
 import quest_driver
@@ -44,7 +44,7 @@ class TestModuleCompiler(unittest.TestCase):
             "end;\n",
             encoding="utf-8",
         )
-        h_file, qi_file = compile_interface_file(intf_file, output_dir=self.dir_path)
+        h_file, qi_file = compile_interface_with_header(intf_file, output_dir=self.dir_path)
         self.assertTrue(h_file.is_file())
         self.assertTrue(qi_file.is_file())
 
@@ -102,7 +102,7 @@ class TestModuleCompiler(unittest.TestCase):
             "end;\n",
             encoding="utf-8",
         )
-        compile_interface_file(base_intf, output_dir=self.dir_path)
+        compile_interface_with_header(base_intf, output_dir=self.dir_path)
 
         base_mod = self.dir_path / "base.mod.quest"
         base_mod.write_text(
@@ -121,7 +121,7 @@ class TestModuleCompiler(unittest.TestCase):
             "end;\n",
             encoding="utf-8",
         )
-        compile_interface_file(client_intf, output_dir=self.dir_path)
+        compile_interface_with_header(client_intf, output_dir=self.dir_path)
 
         client_mod = self.dir_path / "client.mod.quest"
         client_mod.write_text(
@@ -158,7 +158,7 @@ class TestModuleCompiler(unittest.TestCase):
             "end;\n",
             encoding="utf-8",
         )
-        compile_interface_file(intf_file, output_dir=self.dir_path)
+        compile_interface_with_header(intf_file, output_dir=self.dir_path)
 
         mod_file = self.dir_path / "mathops.mod.quest"
         mod_file.write_text(
@@ -336,7 +336,7 @@ class TestModuleCompiler(unittest.TestCase):
         """Tests that .qm metadata captures imported modules and interfaces."""
         intf_c = self.dir_path / "depc.int.quest"
         intf_c.write_text("interface DepC export val: Int end;\n", encoding="utf-8")
-        compile_interface_file(intf_c, output_dir=self.dir_path, include_paths=[self.dir_path])
+        compile_interface_with_header(intf_c, output_dir=self.dir_path, include_paths=[self.dir_path])
 
         mod_c = self.dir_path / "depc.mod.quest"
         mod_c.write_text("module depc: DepC export let val: Int = 10; end;\n", encoding="utf-8")
@@ -347,7 +347,7 @@ class TestModuleCompiler(unittest.TestCase):
             "interface DepB import c = depc : DepC export val: Int end;\n",
             encoding="utf-8",
         )
-        compile_interface_file(intf_b, output_dir=self.dir_path, include_paths=[self.dir_path])
+        compile_interface_with_header(intf_b, output_dir=self.dir_path, include_paths=[self.dir_path])
 
         mod_b = self.dir_path / "depb.mod.quest"
         mod_b.write_text(
@@ -375,7 +375,7 @@ class TestModuleCompiler(unittest.TestCase):
         build_dir = self.dir_path / ".build"
         intf = self.dir_path / "calc.int.quest"
         intf.write_text("interface Calc export add(a: Int b: Int): Int end;\n", encoding="utf-8")
-        compile_interface_file(intf, build_dir=build_dir, include_paths=[self.dir_path])
+        compile_interface_with_header(intf, build_dir=build_dir, include_paths=[self.dir_path])
 
         self.assertTrue((build_dir / "calc.qi").is_file())
         self.assertTrue((build_dir / "calc.int.h").is_file())

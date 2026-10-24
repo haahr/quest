@@ -1,5 +1,6 @@
-"""Dependencies between the compiler's packages: compilation does not depend on the interpreters, and only the
-drivers of C compilation import the C backend (not the IR, nor what every backend shares).
+"""Dependencies between the compiler's packages: compilation does not depend on the interpreters, and only C
+compilation reaches the C backend, directly or through other modules (not the IR, nor what every backend shares,
+nor the type checker and the loading of interfaces).
 
 The import graph is read from the sources (every `import` and `from ... import`, including those inside functions,
 which run only when called), so a dependency is found whether or not the tests exercise it."""
@@ -24,15 +25,16 @@ COMPILATION = (
     "quest.values",
 )
 INTERPRETERS = ("quest.interpreter", "quest.repl")
-# What may import the C backend: itself, and what drives C compilation (the pipeline, the build engine, compiling
-# module files, and writing interfaces' C headers)
-C_BACKEND_IMPORTERS = (
-    "quest.build.engine",
+# C compilation: the C backend (which writes interfaces' C headers too), and what drives it (the build engine,
+# compiling module files, and the pipeline, whose phases include C's). Only these may import the C backend.
+C_COMPILATION = (
+    "quest.build",
     "quest.codegen.c",
-    "quest.modules.interface_compiler",
     "quest.modules.module_compiler",
     "quest.pipeline",
 )
+# What runs the pipeline, and so reaches the C backend through it
+PIPELINE_CLIENTS = ("quest.repl", "quest.testing")
 C_BACKEND = ("quest.codegen.c",)
 
 
@@ -81,7 +83,12 @@ def import_graph() -> dict[str, set[str]]:
 
 def reached(graph: dict[str, set[str]], sources: tuple[str, ...], targets: tuple[str, ...]) -> list[str]:
     """The import paths from modules within sources to modules within targets."""
-    paths = {m: [m] for m in graph if _within(m, sources)}
+    return paths_to(graph, [m for m in graph if _within(m, sources)], targets)
+
+
+def paths_to(graph: dict[str, set[str]], starts: list[str], targets: tuple[str, ...]) -> list[str]:
+    """The import paths from the modules starts to modules within targets."""
+    paths = {m: [m] for m in starts}
     stack = list(paths)
     while stack:
         module = stack.pop()
@@ -103,9 +110,15 @@ class TestDependencies(unittest.TestCase):
         self.assertIn("quest.codegen.layout", graph)
         importers = sorted(
             f"{m} -> {i}" for m, imported in graph.items() for i in imported
-            if _within(i, C_BACKEND) and not _within(m, C_BACKEND_IMPORTERS)
+            if _within(i, C_BACKEND) and not _within(m, C_COMPILATION)
         )
         self.assertEqual(importers, [], "imports of the C backend from outside C compilation")
+
+    def test_only_c_compilation_reaches_the_c_backend(self) -> None:
+        graph = import_graph()
+        self.assertIn("quest.modules.interface_compiler", graph)
+        outside = [m for m in graph if not _within(m, C_COMPILATION + PIPELINE_CLIENTS)]
+        self.assertEqual(paths_to(graph, outside, C_BACKEND), [], "modules outside C compilation reach the C backend")
 
 
 if __name__ == "__main__":

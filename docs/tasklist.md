@@ -119,27 +119,6 @@ they may differ, and the conversion matrix's identity column checks the rule.
 
 ---
 
-## Interface loading reaches the C backend
-
-**Problem.** Interfaces' C headers (`.int.h`) are written only when compiling to C, but by the code that builds an
-interface's artifacts (`compile_interface_file` and `ensure_interface_artifacts` in
-`bootstrap/python/quest/modules/interface_compiler.py`, which imports `codegen/c/headers.py` where it writes one), and
-loading an interface builds them. So every module that loads interfaces, the type checker among them, reaches the C
-backend through its imports, and `tests/python/test_dependencies.py` can only check who imports the C backend
-directly (`C_BACKEND_IMPORTERS`), not that the IR and the code backends share never reach it.
-
-**Reproduce.** In `tests/python/test_dependencies.py`, check that nothing outside C compilation reaches
-`quest.codegen.c` transitively: it fails with paths through `quest.modules.interface_compiler`.
-
-**Where to start.** Let C compilation write the headers it needs (`module_compiler.py`, `BuildEngine`, the pipeline's
-C phases), keeping the `.qi` with the interface's artifacts; the header's staleness then becomes the C backend's
-(`docs/build-process.md` §5).
-
-**Done when.** `interface_compiler.py` does not import `codegen/c/`, and the dependency test checks that nothing
-outside C compilation reaches `quest.codegen.c`, however indirectly.
-
----
-
 ## An exception made on a branch that does not run can be named later
 
 **Problem.** A named exception made inside an expression (`exception I end`) binds its name for the rest of the

@@ -21,6 +21,7 @@ from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.modules.units import unit_declaration
 from quest.codegen.backend import IR_PASSES
 from quest.codegen.c.compiler_runner import compile_c_source, run_binary
+from quest.codegen.c.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
 
 import quest.syntax.ast as ast
@@ -389,8 +390,10 @@ def unit_module(prog: TypedProgram, ctx: CompilerContext) -> TypedModule:
 
 
 def unit_interface_header(ctx: CompilerContext) -> Optional[str]:
-    """The interface header a module file's C translation includes, found where the module compiler finds it."""
+    """The interface header a module file's C translation includes, brought up to date and found as the module
+    compiler does."""
     module = ctx.typed_program.phrases[0]
+    ensure_imported_interface_header(module.interface_name, ctx.env)
     source = Path(ctx.file_name).resolve()
     if ctx.options.build_dir is None:
         output_dir = source.parent

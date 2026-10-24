@@ -1,14 +1,33 @@
 """The C headers of interfaces (`.int.h`): for each interface, its aggregate structs, its types' C representations,
-and its members' signatures, which C that uses the interface includes (docs/build-process.md §5)."""
+and its members' signatures, which C that uses the interface includes.
+
+A header is written beside its interface's .qi, from the interface as compiled, by C compilation when it needs it:
+compiling an interface file (compile_interface_with_header), or a module, whose C translation includes its interface's
+header (ensure_imported_interface_header). A header is up to date when it is at least as new as its .qi, which is
+rebuilt whenever the interface's source or an interface it depends on changes (docs/build-process.md §5).
+"""
 
 from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types
 from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
 from quest.config.abi import header_stamp
-from quest.types.env import Scope
-from quest.modules.interface_compiler import _type_signatures, format_kind_for_qi, format_type_for_qi
+from quest.diagnostics import at_import, in_unit
+from quest.types.env import Environment, Scope
+from quest.modules.interface_compiler import (
+    CompiledInterface,
+    _type_signatures,
+    compile_interface_file,
+    ensure_interface_artifacts,
+    format_kind_for_qi,
+    format_type_for_qi,
+)
+from quest.modules.loader import interface_artifact_root
+from quest.modules.paths import canonicalize_interface_name
 from quest.types import QAllType, QFunType, QPowerKind, QRecordType, QType
 
 C_KEYWORDS = {
@@ -157,3 +176,102 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
     ])
 
     return "\n".join(lines)
+
+
+def interface_header_file(qi_file: Path) -> Path:
+    """The C header beside an interface's .qi (`util/path.qi` and `util/path.int.h`)."""
+    return qi_file.with_name(f"{qi_file.name[:-len('.qi')]}.int.h")
+
+
+def header_is_current(qi_file: Path, h_file: Path) -> bool:
+    """Whether an interface's header is up to date: it was written from the interface its .qi describes, after the
+    .qi (which is rewritten whenever the interface changes, docs/build-process.md §5)."""
+    return h_file.is_file() and qi_file.is_file() and h_file.stat().st_mtime >= qi_file.stat().st_mtime
+
+
+def write_interface_header(compiled: CompiledInterface, build_dir: Optional[Path], program_dir: Optional[Path]) -> Path:
+    """Writes a compiled interface's header beside its .qi, and returns it.
+
+    With a build directory, the headers of the interfaces it imports, which it #includes, are brought up to date
+    there first, including those of builtin interfaces that are never loaded from source.
+    """
+    if build_dir is not None:
+        build_root = Path(build_dir).resolve()
+        with in_unit(compiled.source_map):
+            for imp in compiled.decl.imports:
+                with at_import(imp.offset, compiled.source_map):
+                    ensure_interface_header(
+                        imp.effective_interface_path, compiled.source.parent, list(compiled.include_paths),
+                        build_root, program_dir=program_dir,
+                    )
+    h_file = interface_header_file(compiled.qi_file)
+    canonical_name = canonicalize_interface_name(compiled.source, list(compiled.include_paths), compiled.decl.name)
+    h_file.parent.mkdir(parents=True, exist_ok=True)
+    h_file.write_text(compile_interface_to_header(compiled.decl, compiled.scope, canonical_name), encoding="utf-8")
+    return h_file
+
+
+def compile_interface_with_header(
+    file_path: Path,
+    output_dir: Optional[Path] = None,
+    include_paths: Optional[list[Path]] = None,
+    build_dir: Optional[Path] = None,
+    program_dir: Optional[Path] = None,
+) -> tuple[Path, Path]:
+    """Compiles an interface file to its .qi and its C header, as `quest -c x.int.quest` does, writing the headers
+    of the interfaces compiled because it imports them too. Returns (header, qi)."""
+
+    def write(compiled: CompiledInterface) -> None:
+        write_interface_header(compiled, build_dir, program_dir)
+
+    compiled = compile_interface_file(
+        file_path, output_dir=output_dir, include_paths=include_paths, build_dir=build_dir, program_dir=program_dir,
+        on_compiled=write,
+    )
+    return interface_header_file(compiled.qi_file), compiled.qi_file
+
+
+def ensure_interface_header(
+    name: str,
+    current_dir: Optional[Path],
+    include_paths: list[Path],
+    build_dir: Path,
+    file_path: Optional[Path] = None,
+    program_dir: Optional[Path] = None,
+) -> tuple[Path, Path]:
+    """Brings interface `name`'s .qi and C header under build_dir up to date, with the headers it includes, and
+    returns (qi, header). The files may not exist if the interface has neither a source nor prebuilt artifacts
+    (a builtin); without a source, the header is used as found (Rule 3).
+
+    An interface rebuilt for its .qi gets its header at the same time. A header that is missing or older than a
+    fresh .qi is written from the interface elaborated again, leaving the .qi (and so whatever depends on it)
+    untouched, unless the .qi was found outside the build directory (from a standalone compilation): then both are
+    rebuilt in the build directory rather than written into the source tree.
+    """
+
+    def write(compiled: CompiledInterface) -> None:
+        write_interface_header(compiled, build_dir, program_dir)
+
+    artifacts = ensure_interface_artifacts(
+        name, current_dir, include_paths, build_dir, file_path, program_dir=program_dir, on_compiled=write,
+    )
+    h_file = interface_header_file(artifacts.qi_file)
+    if artifacts.source is None or header_is_current(artifacts.qi_file, h_file):
+        return artifacts.qi_file, h_file
+    in_build_dir = artifacts.qi_file.parent.resolve() == artifacts.target_dir.resolve()
+    artifacts.target_dir.mkdir(parents=True, exist_ok=True)
+    compiled = compile_interface_file(
+        artifacts.source, output_dir=artifacts.target_dir, include_paths=list(artifacts.search_paths),
+        build_dir=build_dir, program_dir=program_dir, write_qi=not in_build_dir,
+    )
+    return compiled.qi_file, write_interface_header(compiled, build_dir, program_dir)
+
+
+def ensure_imported_interface_header(name: str, env: Environment) -> Optional[Path]:
+    """Brings the C header of interface `name`, as env imports it from env.current_dir, up to date where env loads
+    the interface's .qi from (the build directory, or beside the source in a standalone compilation), and returns
+    it; None when env elaborates interfaces from source."""
+    root = interface_artifact_root(name, env)
+    if root is None:
+        return None
+    return ensure_interface_header(name, env.current_dir, env.include_paths, root, program_dir=env.program_dir)[1]

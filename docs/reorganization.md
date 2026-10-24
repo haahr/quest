@@ -232,6 +232,14 @@ Independent of tracks A and B.
 **C1. Interface loading without the C backend.** The existing task ([tasklist.md](tasklist.md)): C compilation
 writes the `.int.h` headers it needs, and `interface_compiler.py` no longer imports `codegen/c/`.
 
+**Done:** `codegen/c/headers.py` writes headers beside their `.qi` files: compiling an interface file writes both
+(`compile_interface_with_header`), and compiling a module brings its interface's header up to date
+(`ensure_imported_interface_header`, from `module_compiler.py` and the pipeline's `codegen_c` phase). A header is up
+to date when it is at least as new as its `.qi`; a missing or stale one is written without rewriting a fresh `.qi`
+([build-process.md](build-process.md) §5.3). Builds no longer write headers for interfaces that only a main routine
+loaded, which nothing includes. `test_dependencies.py` checks that only C compilation and the pipeline's clients reach
+`quest.codegen.c`, through any chain of imports.
+
 **C2. One graph of program units.** Resolution, type checking, and artifacts in one structure, replacing
 `load_module_for_interpreter`, the driver's two places that dispatch on file suffixes (default and `compile` mode),
 and the separate paths through `module_compiler` and `BuildEngine`, building on the unit-file checks

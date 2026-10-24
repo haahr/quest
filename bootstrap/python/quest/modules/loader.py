@@ -48,6 +48,39 @@ if TYPE_CHECKING:
     from quest.typechecker.typed_ast import TypedModule
 
 
+def interface_artifact_root(name: str, env: Environment) -> Optional[Path]:
+    """The directory under which interface `name`, imported from env.current_dir, has its artifacts when env loads it
+    from its .qi (load_interface): the build directory, or in a standalone C compilation (no build directory), the
+    search root of its source. None when env elaborates interfaces from source."""
+    file_path = resolve_interface_file(name, env.current_dir, env.include_paths)
+    int_src = resolve_interface_source_file(name, env.current_dir, env.include_paths)
+    if int_src is None and file_path is not None and file_path.name.endswith(".int.quest"):
+        int_src = file_path
+    unit_file = int_src or file_path
+    canon_name = canonicalize_module_path(unit_file, env.include_paths, env.program_dir) if unit_file else name.lower()
+    return _artifact_root(name, env, file_path, int_src, canon_name)
+
+
+def _artifact_root(
+    name: str, env: Environment, file_path: Optional[Path], int_src: Optional[Path], canon_name: str
+) -> Optional[Path]:
+    """interface_artifact_root, given the interface's resolved file, source, and canonical name."""
+    opts = getattr(env, "options", None)
+    build_dir = getattr(opts, "build_dir", None)
+    if build_dir is not None:
+        return Path(build_dir).resolve()
+    if not is_c_compilation_mode(env):
+        return None
+    if int_src is not None:
+        # Standalone compilation: artifacts go next to the source, under the search root that gives
+        # it its canonical name (adding the source's own directory as a root would change that name).
+        return int_src.parents[len(Path(canon_name).parts) - 1].resolve()
+    if file_path is not None and "/" in name:
+        rel_parts = len(Path(name.lower()).parts)
+        return file_path.parents[rel_parts - 1].resolve()
+    return (env.current_dir or Path.cwd()).resolve()
+
+
 def load_interface(name: str, env: Environment) -> Scope:
     """Loads, validates, and elaborates interface `name`, as imported from env.current_dir.
 
@@ -103,24 +136,11 @@ def load_interface(name: str, env: Environment) -> Scope:
 
     # With a build directory (every driver run) or in C compilation mode, the interface is loaded from its
     # .qi, which is rebuilt first if stale (docs/build-process.md §5).
-    opts = getattr(env, "options", None)
-    build_dir = getattr(opts, "build_dir", None)
-    if is_c_compilation_mode(env) or build_dir is not None:
-        if build_dir is not None:
-            out_root = Path(build_dir).resolve()
-        elif int_src is not None:
-            # Standalone compilation: artifacts go next to the source, under the search root that gives
-            # it its canonical name (adding the source's own directory as a root would change that name).
-            out_root = int_src.parents[len(Path(canon_name).parts) - 1].resolve()
-        elif file_path is not None and "/" in name:
-            rel_parts = len(Path(name.lower()).parts)
-            out_root = file_path.parents[rel_parts - 1].resolve()
-        else:
-            out_root = (env.current_dir or Path.cwd()).resolve()
-        qi_file, _, _ = ensure_interface_artifacts(
-            name, env.current_dir, env.include_paths, out_root, file_path, header=is_c_compilation_mode(env),
-            program_dir=env.program_dir,
-        )
+    out_root = _artifact_root(name, env, file_path, int_src, canon_name)
+    if out_root is not None:
+        qi_file = ensure_interface_artifacts(
+            name, env.current_dir, env.include_paths, out_root, file_path, program_dir=env.program_dir,
+        ).qi_file
 
         if qi_file and qi_file.is_file():
             if out_root not in env.include_paths:

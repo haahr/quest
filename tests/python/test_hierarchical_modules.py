@@ -18,8 +18,8 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 import quest.syntax.ast as ast
 from quest.modules.manifest import read_qm
 from quest.codegen.c.compiler_runner import compile_c_to_object, run_binary
+from quest.codegen.c.headers import compile_interface_with_header
 from quest.syntax.grammar import parse_quest_program
-from quest.modules.interface_compiler import compile_interface_file
 from quest.modules.module_compiler import compile_module_file
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap
@@ -147,7 +147,7 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         )
 
         # Precompile interface and module
-        compile_interface_file(intf_file, output_dir=util_dir, include_paths=[self.root])
+        compile_interface_with_header(intf_file, output_dir=util_dir, include_paths=[self.root])
         compile_module_file(mod_file, output_dir=util_dir, include_paths=[self.root])
 
         # Remove source to ensure client links against precompiled .o
@@ -192,8 +192,8 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         top_intf.write_text("interface Calc\nexport\n    combine(a: Int): Int\nend;\n", encoding="utf-8")
 
         build_dir = self.root / ".build"
-        util_h, _ = compile_interface_file(util_intf, include_paths=[self.root], build_dir=build_dir)
-        top_h, _ = compile_interface_file(top_intf, include_paths=[self.root], build_dir=build_dir)
+        util_h, _ = compile_interface_with_header(util_intf, include_paths=[self.root], build_dir=build_dir)
+        top_h, _ = compile_interface_with_header(top_intf, include_paths=[self.root], build_dir=build_dir)
         self.assertEqual(util_h, build_dir.resolve() / "util" / "calc.int.h")
         self.assertEqual(top_h, build_dir.resolve() / "calc.int.h")
         self.assertIn("#ifndef QUEST_INTF_UTIL__CALC_H", util_h.read_text(encoding="utf-8"))

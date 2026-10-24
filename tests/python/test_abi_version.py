@@ -16,8 +16,8 @@ from quest.config.abi import ABI_VERSION, PRODUCER, recorded_abi
 from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
 from quest.types.env import Environment
+from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.interface_compiler import (
-    compile_interface_file,
     ensure_interface_artifacts,
     load_interface_from_qi_file,
 )
@@ -53,7 +53,7 @@ class TestAbiVersion(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_artifacts_record_abi_and_producer(self) -> None:
-        h_file, qi_file = compile_interface_file(self.root / "calc.int.quest", output_dir=self.root)
+        h_file, qi_file = compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)
         self.assertEqual(recorded_abi(qi_file), ABI_VERSION)
         self.assertEqual(json.loads(qi_file.read_text(encoding="utf-8"))["value"]["producer"], PRODUCER)
         self.assertTrue(h_file.read_text(encoding="utf-8").startswith(f"/* quest abi {ABI_VERSION} producer"))
@@ -62,14 +62,14 @@ class TestAbiVersion(unittest.TestCase):
         self.assertEqual((qm["abi"], qm["producer"]), (ABI_VERSION, PRODUCER))
 
     def test_interface_with_other_abi_is_rebuilt(self) -> None:
-        qi_file, _, _ = ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir)
+        qi_file = ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir).qi_file
         _set_recorded_abi(qi_file, ABI_VERSION + 1)
         time.sleep(0.01)
-        qi_file, _, _ = ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir)
+        qi_file = ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir).qi_file
         self.assertEqual(recorded_abi(qi_file), ABI_VERSION)
 
     def test_precompiled_interface_with_other_abi_is_an_error(self) -> None:
-        _, qi_file = compile_interface_file(self.root / "calc.int.quest", output_dir=self.root)
+        _, qi_file = compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)
         (self.root / "calc.int.quest").unlink()
         _set_recorded_abi(qi_file, ABI_VERSION + 1)
         with self.assertRaises(QuestTypeError):
@@ -81,7 +81,7 @@ class TestAbiVersion(unittest.TestCase):
         source = (self.root / "calc.int.quest").resolve()
         self.assertEqual(resolve_interface_file("Calc", self.root, []), source)
         time.sleep(0.01)
-        _, qi_file = compile_interface_file(self.root / "calc.int.quest", output_dir=self.root)
+        _, qi_file = compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)
         self.assertEqual(resolve_interface_file("Calc", self.root, []), qi_file.resolve())
         _set_recorded_abi(qi_file, ABI_VERSION + 1)
         self.assertEqual(resolve_interface_file("Calc", self.root, []), source)
@@ -96,14 +96,14 @@ class TestAbiVersion(unittest.TestCase):
         self.assertIn("calc", self._engine().build_main(self.root / "app.quest").compiled_units)
 
     def test_fresh_artifacts_next_to_the_source_are_used(self) -> None:
-        compile_interface_file(self.root / "calc.int.quest", output_dir=self.root)
+        compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)
         compile_module_file(self.root / "calc.mod.quest", output_dir=self.root, include_paths=[self.root])
         res = self._engine().build_main(self.root / "app.quest")
         self.assertNotIn("calc", res.compiled_units)
         self.assertFalse((self.build_dir / "calc.o").exists())
 
     def test_precompiled_module_with_other_abi_is_an_error(self) -> None:
-        compile_interface_file(self.root / "calc.int.quest", output_dir=self.root)
+        compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)
         compile_module_file(self.root / "calc.mod.quest", output_dir=self.root, include_paths=[self.root])
         (self.root / "calc.mod.quest").unlink()
         _set_recorded_abi(self.root / "calc.qm", ABI_VERSION + 1)
