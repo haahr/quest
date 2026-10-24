@@ -116,37 +116,31 @@ class AggregateMixin:
                 offset=offset,
             )
 
-    def _synth_record_expr(self, expr: ast.ExprRecord, env: Environment, loop_depth: int) -> TypedRecord:
-        """Synthesizes a record constructor: record [var] x = e1 ... end."""
-        field_typeds: list[TypedRecordField] = []
-        q_fields: list[QRecordField] = []
-
-        for b in expr.fields:
-            val_typed = self.synth_expr(b.value, env, loop_depth)
-            field_typeds.append(
-                TypedRecordField(name=b.name, value=val_typed, is_var=b.is_var, offset=b.offset)
-            )
-            q_fields.append(QRecordField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))
-
-        rec_type = QRecordType(fields=tuple(q_fields))
-        return TypedRecord(fields=tuple(field_typeds), type_val=rec_type, offset=expr.offset)
-
-    def _check_record_expr(
+    def _elaborate_record_expr(
         self,
         expr: ast.ExprRecord,
-        expected_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> TypedRecord:
-        """Checks a record constructor against an expected record type."""
-        expected_lazy = expected_type.evaluate_lazily(env)
-        if not isinstance(expected_lazy, QRecordType):
-            return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Record")
+    ) -> TypedExpr:
+        """Elaborates a record constructor: record [var] x = e1 ... end.
+
+        Against an expected record type, every expected field must be given, and is checked against its type in the
+        expected type's order (a var field must be var, with exactly its type); the fields the expected type does not
+        have are then synthesized, and the record has the expected type. Against any other type, the record is
+        synthesized and must be a subtype. Synthesized, its fields are synthesized in order.
+        """
+        expected_rec: Optional[QRecordType] = None
+        if expected_type is not None:
+            expected_lazy = expected_type.evaluate_lazily(env)
+            if not isinstance(expected_lazy, QRecordType):
+                return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Record")
+            expected_rec = expected_lazy
 
         field_map = {b.name: b for b in expr.fields}
         field_typeds: list[TypedRecordField] = []
 
-        for exp_f in expected_lazy.fields:
+        for exp_f in expected_rec.fields if expected_rec is not None else ():
             if exp_f.name not in field_map:
                 raise TypeError(
                     f"Record constructor missing required field '{exp_f.name}' of type '{exp_f.type_val}'",
@@ -174,12 +168,21 @@ class AggregateMixin:
             )
 
         for b in expr.fields:
-            if expected_lazy.get_field(b.name) is None:
-                extra_val = self.synth_expr(b.value, env, loop_depth)
+            if expected_rec is None or expected_rec.get_field(b.name) is None:
+                val_typed = self.synth_expr(b.value, env, loop_depth)
                 field_typeds.append(
-                    TypedRecordField(name=b.name, value=extra_val, is_var=b.is_var, offset=b.offset)
+                    TypedRecordField(name=b.name, value=val_typed, is_var=b.is_var, offset=b.offset)
                 )
-        return TypedRecord(fields=tuple(field_typeds), type_val=expected_lazy, offset=expr.offset)
+
+        if expected_rec is not None:
+            rec_type = expected_rec
+        else:
+            rec_type = QRecordType(
+                fields=tuple(
+                    QRecordField(name=f.name, type_val=f.value.type_val, is_var=f.is_var) for f in field_typeds
+                )
+            )
+        return TypedRecord(fields=tuple(field_typeds), type_val=rec_type, offset=expr.offset)
 
     def _synth_tuple_component(self, b: ast.TupleBinding, env: Environment, loop_depth: int) -> TypedExpr:
         """Synthesizes the value of a tuple's value component, without declaring its label."""
@@ -784,99 +787,87 @@ class AggregateMixin:
                     result_type = QTupleType((ordinal_field, QTupleField(name=None, type_val=payload_lazy)))
         return TypedVariantAssert(target=target_typed, tag=expr.tag, type_val=result_type, offset=expr.offset)
 
-    def _synth_array_expr(self, expr: ast.ExprArray, env: Environment, loop_depth: int) -> TypedArray:
-        """Synthesizes an explicit array literal: array of e1 e2 ... end."""
-        if getattr(expr, "element_type", None) is not None:
-            elem_type = elaborate_type(expr.element_type, env)
-            elem_typeds = [self.check_expr(e, elem_type, env, loop_depth) for e in expr.elements]
-            return TypedArray(
-                elements=tuple(elem_typeds),
-                type_val=QArrayType(element_type=elem_type),
-                offset=expr.offset,
-            )
-
-        if not expr.elements:
-            raise TypeError(
-                "Cannot infer element type of empty array; type annotation required",
-                offset=expr.offset,
-            )
-
-        elem_typeds = [self.synth_expr(e, env, loop_depth) for e in expr.elements]
-        join_type = join_types(
-            [e.type_val for e in elem_typeds],
-            env,
-            expr.offset,
-            error_msg="Incompatible array element types '{t1}' and '{t2}'",
-        )
-
-        return TypedArray(
-            elements=tuple(elem_typeds),
-            type_val=QArrayType(element_type=join_type),
-            offset=expr.offset,
-        )
-
-    def _check_array_expr(
+    def _elaborate_array_expr(
         self,
         expr: ast.ExprArray,
-        expected_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> TypedArray:
-        """Checks an array literal against an expected array type."""
-        expected_lazy = expected_type.evaluate_lazily(env)
-        if not isinstance(expected_lazy, QArrayType):
-            return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Array")
+    ) -> TypedExpr:
+        """Elaborates an array literal: array [of :T] e1 e2 ... end.
+
+        The elements are checked against the element type the literal annotates, which must be a subtype of an
+        expected array type's, or else against the expected element type; with neither, they are synthesized and
+        the element type is the join of theirs. Against a type that is not an array type, the literal is
+        synthesized and must be a subtype.
+        """
+        expected_array: Optional[QArrayType] = None
+        if expected_type is not None:
+            expected_lazy = expected_type.evaluate_lazily(env)
+            if not isinstance(expected_lazy, QArrayType):
+                return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Array")
+            expected_array = expected_lazy
 
         if getattr(expr, "element_type", None) is not None:
-            annot_elem_type = elaborate_type(expr.element_type, env)
-            if not is_subtype(annot_elem_type, expected_lazy.element_type, env):
+            elem_type: Optional[QType] = elaborate_type(expr.element_type, env)
+            if expected_array is not None and not is_subtype(elem_type, expected_array.element_type, env):
                 raise TypeError(
-                    f"Array element type annotation '{annot_elem_type}' is not a subtype of "
-                    f"expected '{expected_lazy.element_type}'",
+                    f"Array element type annotation '{elem_type}' is not a subtype of "
+                    f"expected '{expected_array.element_type}'",
                     offset=expr.offset,
                 )
-            target_elem_type = annot_elem_type
+        elif expected_array is not None:
+            elem_type = expected_array.element_type
         else:
-            target_elem_type = expected_lazy.element_type
+            elem_type = None
 
-        elem_typeds = [
-            self.check_expr(e, target_elem_type, env, loop_depth) for e in expr.elements
-        ]
+        if elem_type is not None:
+            elem_typeds = [self.check_expr(e, elem_type, env, loop_depth) for e in expr.elements]
+        else:
+            if not expr.elements:
+                raise TypeError(
+                    "Cannot infer element type of empty array; type annotation required",
+                    offset=expr.offset,
+                )
+            elem_typeds = [self.synth_expr(e, env, loop_depth) for e in expr.elements]
+            elem_type = join_types(
+                [e.type_val for e in elem_typeds],
+                env,
+                expr.offset,
+                error_msg="Incompatible array element types '{t1}' and '{t2}'",
+            )
+
         return TypedArray(
             elements=tuple(elem_typeds),
-            type_val=QArrayType(element_type=target_elem_type),
+            type_val=QArrayType(element_type=elem_type),
             offset=expr.offset,
         )
 
-    def _synth_array_rep_expr(self, expr: ast.ExprArrayRep, env: Environment, loop_depth: int) -> TypedArrayRep:
-        """Synthesizes an array repetition: array of (count init) end."""
-        count_typed = self.check_expr(expr.count, INT_TYPE, env, loop_depth)
-        init_typed = self.synth_expr(expr.init_val, env, loop_depth)
-        return TypedArrayRep(
-            count=count_typed,
-            init_val=init_typed,
-            type_val=QArrayType(element_type=init_typed.type_val),
-            offset=expr.offset,
-        )
-
-    def _check_array_rep_expr(
+    def _elaborate_array_rep_expr(
         self,
         expr: ast.ExprArrayRep,
-        expected_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> TypedArrayRep:
-        """Checks an array repetition against an expected array type."""
-        expected_lazy = expected_type.evaluate_lazily(env)
-        if not isinstance(expected_lazy, QArrayType):
-            return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Array")
+    ) -> TypedExpr:
+        """Elaborates an array repetition: array of (count init) end. Its initial value is checked against an
+        expected array type's element type, and the array has the expected type; synthesized, its element type is
+        the initial value's. Against a type that is not an array type, it is synthesized and must be a subtype."""
+        expected_array: Optional[QArrayType] = None
+        if expected_type is not None:
+            expected_lazy = expected_type.evaluate_lazily(env)
+            if not isinstance(expected_lazy, QArrayType):
+                return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Array")
+            expected_array = expected_lazy
 
         count_typed = self.check_expr(expr.count, INT_TYPE, env, loop_depth)
-        init_typed = self.check_expr(expr.init_val, expected_lazy.element_type, env, loop_depth)
+        init_typed = self._elaborate_subexpr(
+            expr.init_val, expected_array.element_type if expected_array is not None else None, env, loop_depth
+        )
         return TypedArrayRep(
             count=count_typed,
             init_val=init_typed,
-            type_val=expected_lazy,
+            type_val=expected_array if expected_array is not None else QArrayType(element_type=init_typed.type_val),
             offset=expr.offset,
         )
 

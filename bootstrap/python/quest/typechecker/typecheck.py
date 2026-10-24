@@ -241,7 +241,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 4. Record expression: check fields against expected record type
             case ast.ExprRecord():
-                return self._check_record_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_record_expr(expr, expected_type, env, loop_depth)
 
             # 5. Tuple expression: check elements against expected tuple type
             case ast.ExprTuple():
@@ -253,10 +253,10 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 7. Array expressions: check elements against expected array element type
             case ast.ExprArray():
-                return self._check_array_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_array_expr(expr, expected_type, env, loop_depth)
 
             case ast.ExprArrayRep():
-                return self._check_array_rep_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_array_rep_expr(expr, expected_type, env, loop_depth)
 
             # 8. Phase 5: Raise expression (divergent control flow checks against any expected type)
             case ast.ExprRaise():
@@ -441,7 +441,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # --- Aggregates (Records, Tuples, Options, Variants, Arrays) ---
             case ast.ExprRecord():
-                return self._synth_record_expr(expr, env, loop_depth)
+                return self._elaborate_record_expr(expr, None, env, loop_depth)
 
             case ast.ExprTuple():
                 return self._synth_tuple_expr(expr, env, loop_depth)
@@ -465,10 +465,10 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 return self._elaborate_case_expr(expr, None, env, loop_depth)
 
             case ast.ExprArray():
-                return self._synth_array_expr(expr, env, loop_depth)
+                return self._elaborate_array_expr(expr, None, env, loop_depth)
 
             case ast.ExprArrayRep():
-                return self._synth_array_rep_expr(expr, env, loop_depth)
+                return self._elaborate_array_rep_expr(expr, None, env, loop_depth)
 
             case ast.ExprIndex():
                 return self._synth_index_expr(expr, env, loop_depth)
