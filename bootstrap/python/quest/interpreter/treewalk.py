@@ -18,7 +18,15 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
+from quest.diagnostics import (
+    MAIN_FRAME,
+    Diagnostic,
+    DiagnosticLabel,
+    QuestCompilerError,
+    Severity,
+    frame_name,
+    init_frame,
+)
 from quest.syntax.sources import SourceMap, display_file_name
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
@@ -202,6 +210,7 @@ class RuntimeEnvironment:
             self.program_dir: Optional[Path] = parent.program_dir
             self.loaded_modules_ast: dict[str, Any] = parent.loaded_modules_ast
             self.source_map: Optional[Any] = parent.source_map
+            self.call_stack: list[str] = parent.call_stack
         else:
             self.evaluated_modules: dict[str, Any] = {}
             self.include_paths: list[Path] = []
@@ -211,6 +220,8 @@ class RuntimeEnvironment:
             # The source map of the file whose code runs in this scope (the program's, or a module file's), where
             # the offsets of the errors that code raises are (docs/exceptions.md §3.2)
             self.source_map: Optional[Any] = None
+            # The frames running, outermost first, shared by every scope (docs/exceptions.md §4)
+            self.call_stack: list[str] = []
 
     def push_scope(self) -> RuntimeEnvironment:
         """Pushes a new child scope inheriting from this environment."""
@@ -608,13 +619,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     raise QuestRuntimeError("Unsupported assignment target in interpreter", offset=offset)
 
         # 3. Functions & Application
-        case TypedFun(params=params, body=body, type_param_ids=type_param_ids):
-            return QClosure(
-                params=tuple(p.name for p in params),
-                body=body,
-                env=env,
-                type_param_ids=type_param_ids,
-            )
+        case TypedFun():
+            return make_closure(expr, env)
 
         case TypedTypeApp(func=func, type_args=type_args):
             callee = eval_expr(func, env)
@@ -1084,28 +1090,77 @@ def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ..
         env.define(member.name, QRef(val) if member.symbol.is_var else val)
 
 
-def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
-    """Applies a closure to its arguments: an external's built-in implementation, or the closure's body. An error the
-    body raises is located in the file the closure was made in, unless code it called located it already."""
-    if isinstance(closure.body, TypedExternal):
-        from quest.interpreter.builtins import resolve_external_symbol
+def make_closure(fun: TypedFun, env: RuntimeEnvironment, binder: Optional[str] = None,
+                 name: Optional[str] = None) -> QClosure:
+    """The closure of fun in env, bound to binder if it is let-bound, named in tracebacks by the frame making it
+    (docs/exceptions.md §2.3). A recursive function's closure also has its name (name), which printing shows."""
+    enclosing = env.call_stack[-1] if env.call_stack else MAIN_FRAME
+    return QClosure(
+        params=tuple(p.name for p in fun.params),
+        body=fun.body,
+        env=env,
+        name=name,
+        type_param_ids=fun.type_param_ids,
+        trace_name=frame_name(enclosing, binder),
+    )
 
-        ext_val = resolve_external_symbol(closure.body.symbol)
-        if isinstance(ext_val, QBuiltinFun):
-            return ext_val.fn(*args)
-        if callable(ext_val):
-            return ext_val(*args)
-        return ext_val
-    call_env = closure.env.push_scope()
-    call_env.bind_types(closure.type_bindings)
-    for param_name, arg_val in zip(closure.params, args):
-        call_env.define(param_name, arg_val)
+
+def note_frames(error: QuestCompilerError, env: RuntimeEnvironment) -> None:
+    """Records on an error the frames running where it was raised, the first time it leaves a frame."""
+    if error.frames is None:
+        error.frames = tuple(reversed(env.call_stack))
+
+
+def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
+    """Applies a closure to its arguments, in its frame: an external's built-in implementation, or the closure's body.
+    An error raised inside is located in the file the closure was made in, unless code it called located it already,
+    and records the frames running (docs/exceptions.md §3.2, §4)."""
+    env = closure.env
+    env.call_stack.append(closure.trace_name)
     try:
+        if isinstance(closure.body, TypedExternal):
+            from quest.interpreter.builtins import resolve_external_symbol
+
+            ext_val = resolve_external_symbol(closure.body.symbol)
+            if isinstance(ext_val, QBuiltinFun):
+                return ext_val.fn(*args)
+            if callable(ext_val):
+                return ext_val(*args)
+            return ext_val
+        call_env = env.push_scope()
+        call_env.bind_types(closure.type_bindings)
+        for param_name, arg_val in zip(closure.params, args):
+            call_env.define(param_name, arg_val)
         return eval_expr(closure.body, call_env)
     except QuestCompilerError as error:
         if error.source_map is None:
-            error.source_map = closure.env.source_map
+            error.source_map = env.source_map
+        note_frames(error, env)
         raise
+    finally:
+        env.call_stack.pop()
+
+
+def run_module_init(name: str, bindings, mod_env: RuntimeEnvironment) -> None:
+    """Runs a module's bindings in its frame, locating the errors they raise in the module's file (mod_env's)."""
+    mod_env.call_stack.append(init_frame(name))
+    try:
+        for b in bindings:
+            eval_binding(b, mod_env)
+    except QuestCompilerError as error:
+        if error.source_map is None:
+            error.source_map = mod_env.source_map
+        note_frames(error, mod_env)
+        raise
+    finally:
+        mod_env.call_stack.pop()
+
+
+def eval_bound_value(name: str, value: TypedExpr, env: RuntimeEnvironment) -> QValue:
+    """The value of a let binding of name: a function's closure is bound to the name."""
+    if isinstance(value, TypedFun):
+        return make_closure(value, env, name)
+    return eval_expr(value, env)
 
 
 def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
@@ -1113,16 +1168,10 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
     match binding:
         case TypedLetValue(name=name, value=value, is_rec=is_rec, symbol=symbol):
             if is_rec and isinstance(value, TypedFun):
-                closure = QClosure(
-                    params=tuple(p.name for p in value.params),
-                    body=value.body,
-                    env=env,
-                    name=name,
-                    type_param_ids=value.type_param_ids,
-                )
+                closure = make_closure(value, env, name, name=name)
                 env.define(name, closure)
                 return closure
-            val = eval_expr(value, env)
+            val = eval_bound_value(name, value, env)
             if symbol.is_var:
                 env.define(name, QRef(val))
             else:
@@ -1137,7 +1186,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
 
         case TypedLetValueGroup(members=members):
             # Simultaneous: every value is computed before any member is bound
-            values = tuple(eval_expr(member.value, env) for member in members)
+            values = tuple(eval_bound_value(member.name, member.value, env) for member in members)
             _define_members(members, values, env)
             return QTuple(values, tuple(member.name for member in members))
 
@@ -1151,8 +1200,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                 env.define(mod_name, rec)
                 return rec
             mod_env = env.push_scope()
-            for b in mod_bindings:
-                eval_binding(b, mod_env)
+            run_module_init(mod_name, mod_bindings, mod_env)
             exported_fields: dict[str, QValue] = {}
             for val_name in mod_scope.values:
                 exported_fields[val_name] = mod_env.lookup(val_name)
@@ -1418,13 +1466,7 @@ def load_module_for_interpreter(
     if file_path is not None:
         mod_env.current_dir = file_path.parent
         mod_env.source_map = SourceMap(file_path.read_text(encoding="utf-8"), display_file_name(file_path))
-    try:
-        for b in typed_mod.bindings:
-            eval_binding(b, mod_env)
-    except QuestCompilerError as error:
-        if error.source_map is None:
-            error.source_map = mod_env.source_map
-        raise
+    run_module_init(typed_mod.name, typed_mod.bindings, mod_env)
 
     exported_fields = {}
     for val_name in typed_mod.scope.values:

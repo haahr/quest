@@ -22,6 +22,7 @@ from quest.config import CompilerOptions
 
 import quest.syntax.ast as ast
 from quest.diagnostics import (
+    MAIN_FRAME,
     diagnostic_of,
     Diagnostic,
     DiagnosticLabel,
@@ -41,6 +42,7 @@ from quest.interpreter.treewalk import (
     eval_program,
     eval_program_phrases,
     format_interactive_result,
+    note_frames,
 )
 from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str
 from quest.syntax.parser import ParserError
@@ -290,6 +292,8 @@ class InterpretPhase(Phase):
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[QValue]:
         # The program's code raises errors located in its file; a module's, in the module's (docs/exceptions.md §3.2)
         ctx.runtime_env.source_map = ctx.source_map
+        # The program's phrases run in the outermost frame (docs/exceptions.md §4)
+        ctx.runtime_env.call_stack.append(MAIN_FRAME)
         try:
             match input_data:
                 case TypedProgram():
@@ -337,8 +341,11 @@ class InterpretPhase(Phase):
                     self._last_phrase_results = []
                     return OK_VALUE
         except QuestCompilerError as error:
+            note_frames(error, ctx.runtime_env)
             ctx.sink.emit(diagnostic_of(error))
             return None
+        finally:
+            ctx.runtime_env.call_stack.pop()
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         val: QValue = output_data

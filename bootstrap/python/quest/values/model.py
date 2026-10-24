@@ -505,11 +505,14 @@ class QClosure(QValue):
         name: Optional[str] = None,
         type_param_ids: tuple[int, ...] = (),
         type_bindings: Optional[dict[int, Any]] = None,
+        trace_name: str = "<anon>",
     ):
         self.params = tuple(params)
         self.body = body
         self.env = env
         self.name = name
+        # The closure's frame in tracebacks (docs/exceptions.md §2.3)
+        self.trace_name = trace_name
         # A polymorphic function's type parameters (symbol ids), and the types bound to them by type applications
         self.type_param_ids = tuple(type_param_ids)
         self.type_bindings: dict[int, Any] = dict(type_bindings or {})
@@ -519,7 +522,7 @@ class QClosure(QValue):
         unbound = [i for i in self.type_param_ids if i not in self.type_bindings]
         bindings = dict(self.type_bindings)
         bindings.update(zip(unbound, type_args))
-        return QClosure(self.params, self.body, self.env, self.name, self.type_param_ids, bindings)
+        return QClosure(self.params, self.body, self.env, self.name, self.type_param_ids, bindings, self.trace_name)
 
     @property
     def type_name(self) -> str:

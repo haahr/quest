@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from quest.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions
 from quest.types.env import Environment, ValueSymbol
@@ -114,6 +115,8 @@ class _Lowerer:
         self.print_result = print_result
         # The source file's map, in which the offsets of the nodes that can raise are (docs/exceptions.md §3.1)
         self.source_map = getattr(env, "source_map", None)
+        # The frame of the code being lowered, which names the functions it makes (docs/exceptions.md §2.3)
+        self.frame = MAIN_FRAME
         self.body = ir.Body()
         self.loops: list[str] = []
         self.label_counts: dict[str, int] = {}
@@ -628,7 +631,9 @@ class _Lowerer:
 
     # Functions
 
-    def function(self, e: TypedFun, var: ir.Var) -> ir.Function:
+    def function(self, e: TypedFun, var: ir.Var, binder: Optional[str] = None) -> ir.Function:
+        """The function e, bound to binder if it is let-bound."""
+        trace_name = frame_name(self.frame, binder)
         t = e.type_val
         type_params: tuple[ir.TypeParam, ...] = ()
         inner = t
@@ -648,6 +653,7 @@ class _Lowerer:
             params.append((self.bind_symbol(p.symbol, param_t, mutable=mode != "value"), mode))
         body = ir.Body()
         saved_loops, self.loops = self.loops, []
+        saved_frame, self.frame = self.frame, trace_name
         with self.in_body(body):
             if isinstance(e.body, TypedExternal):
                 result = self.external_call(e.body, t, params, result_t)
@@ -658,7 +664,8 @@ class _Lowerer:
             if not self.body.terminated:
                 self.terminate(ir.Return(result))
         self.loops = saved_loops
-        return ir.Function(var, type_params, tuple(params), result_t, body)
+        self.frame = saved_frame
+        return ir.Function(var, type_params, tuple(params), result_t, body, trace_name=trace_name)
 
     def external_call(self, ext: TypedExternal, t: QType, params, result_t: QType) -> ir.Atom:
         """The body of a function defined as an external C function: a call of it."""
@@ -694,7 +701,7 @@ class _Lowerer:
             case TypedLetValue(name=name, value=value, symbol=symbol):
                 if isinstance(value, TypedFun):
                     var = self.bind_symbol(symbol)
-                    self.emit(ir.Funs((self.function(value, var),), recursive=b.is_rec))
+                    self.emit(ir.Funs((self.function(value, var, name),), recursive=b.is_rec))
                     if show:
                         self.emit(ir.EchoText(f"let {name}:{_display(symbol.type_val)} = <fun>"))
                     return
@@ -719,7 +726,7 @@ class _Lowerer:
                 self.rec_values(members, show)
             case TypedLetValueGroup(members=members, is_rec=True):
                 vars_ = [self.bind_symbol(m.symbol) for m in members]
-                functions = tuple(self.function(m.value, v) for m, v in zip(members, vars_))
+                functions = tuple(self.function(m.value, v, m.name) for m, v in zip(members, vars_))
                 self.emit(ir.Funs(functions, recursive=True))
                 if show:
                     for m in members:
@@ -764,7 +771,7 @@ class _Lowerer:
         with self.in_body(group.body):
             for m, var in zip(members, vars_):
                 if isinstance(m.value, TypedFun):
-                    self.emit(ir.Funs((self.function(m.value, var),)))
+                    self.emit(ir.Funs((self.function(m.value, var, m.name),)))
                 else:
                     self.value(m.value, var)
         if show:
@@ -810,6 +817,7 @@ class _Lowerer:
     def module(self, m: TypedModule) -> ir.Module:
         init = ir.Body()
         members: dict[str, ir.Var] = {}
+        saved_frame, self.frame = self.frame, init_frame(m.name)
         with self.in_body(init):
             for b in m.bindings:
                 match b:
@@ -825,6 +833,7 @@ class _Lowerer:
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
                             if isinstance(member, TypedLetValue):
                                 members[member.name] = self.vars[member.symbol.symbol_id]
+        self.frame = saved_frame
         module = ir.Module(m.name, m.interface_name, init, members)
         if m.symbol_id is not None:
             self.module_refs[m.symbol_id] = module

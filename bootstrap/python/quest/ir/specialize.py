@@ -218,7 +218,7 @@ class _Cloner:
         else:
             clone_t = result_t
         var = ir.Var(f"{f.var.hint}_spec", clone_t, f.var.mutable)
-        return ir.Function(var, (), params, result_t, self.copy(f.body))
+        return ir.Function(var, (), params, result_t, self.copy(f.body), trace_name=f.trace_name)
 
     def bind_all(self, body: ir.Body) -> None:
         """Makes fresh variables for every binder in body (and in the functions it binds)."""
@@ -268,7 +268,7 @@ class _Cloner:
                 return [self.copy(x) for x in node]
             case ir.Function():
                 return ir.Function(self.copy(node.var), node.type_params, self.copy(node.params),
-                                   self.type(node.result_type), self.copy(node.body))
+                                   self.type(node.result_type), self.copy(node.body), trace_name=node.trace_name)
         if is_dataclass(node) and not isinstance(node, type) and type(node).__module__ == ir.__name__:
             return type(node)(**{f.name: self.copy(getattr(node, f.name)) for f in fields(node)})
         # Constants' values, names, labels, tags, modes, shapes

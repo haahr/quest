@@ -54,6 +54,8 @@ class Diagnostic:
     # The source map of the file the labels' offsets are in, when it is not the file being compiled (an imported
     # interface or module; see in_unit)
     source_map: Optional[Any] = None
+    # For an uncaught exception, the frames active where it was raised, most recent first (docs/exceptions.md §2)
+    trace: tuple[str, ...] = ()
 
     @classmethod
     def make_error(
@@ -151,6 +153,8 @@ class QuestCompilerError(Exception):
 
     source_map: Optional[Any] = None
     import_labels: tuple[DiagnosticLabel, ...] = ()
+    # For an error raised while running a program, the frames active where it was raised, most recent first
+    frames: Optional[tuple[str, ...]] = None
 
     def __init__(
         self,
@@ -185,13 +189,51 @@ class QuestCompilerError(Exception):
 def diagnostic_of(error: QuestCompilerError) -> Diagnostic:
     """The diagnostic for error, located in the file it was raised in, with the imports that loaded that file."""
     diag = error.to_diagnostic()
-    if error.source_map is None and not error.import_labels:
+    if error.source_map is None and not error.import_labels and not error.frames:
         return diag
     return dataclasses.replace(
         diag,
         source_map=diag.source_map or error.source_map,
         secondary_labels=[*diag.secondary_labels, *error.import_labels],
+        trace=error.frames or (),
     )
+
+
+# The frames of tracebacks (docs/exceptions.md §2.3): the program's phrases, and a module's initializer
+MAIN_FRAME = "<main>"
+INIT_FRAME_SUFFIX = ".<init>"
+
+
+def init_frame(module_name: str) -> str:
+    """The frame of a module's initializer."""
+    return module_name + INIT_FRAME_SUFFIX
+
+
+def frame_name(enclosing: str, binder: Optional[str]) -> str:
+    """The name in tracebacks of a function bound to binder (None if it is not let-bound) by code running in the frame
+    enclosing: the binder, or <anon>, qualified by the module's name in a module's initializer, by the enclosing
+    function's name in a function, and not at all in the program's phrases."""
+    local = binder or "<anon>"
+    if enclosing == MAIN_FRAME:
+        return local
+    if enclosing.endswith(INIT_FRAME_SUFFIX):
+        return f"{enclosing[:-len(INIT_FRAME_SUFFIX)]}.{local}"
+    return f"{enclosing}.{local}"
+
+
+def trace_lines(frames: tuple[str, ...]) -> list[str]:
+    """The lines listing a traceback's frames, a run of the same frame shown once with its count."""
+    lines: list[str] = []
+    i = 0
+    while i < len(frames):
+        j = i
+        while j < len(frames) and frames[j] == frames[i]:
+            j += 1
+        lines.append(f"  in {frames[i]}")
+        if j - i > 1:
+            lines.append(f"  ... {frames[i]} repeated {j - i - 1} more times")
+        i = j
+    return lines
 
 
 @contextmanager
@@ -388,6 +430,7 @@ class DiagnosticRenderer:
                 lines.append(f"  = help: {diag.help_text}")
             for sugg in diag.suggestions:
                 lines.append(f"  = suggestion: {sugg.description} -> '{sugg.replacement}'")
+            lines.extend(trace_lines(diag.trace))
             return "\n".join(lines)
 
         # Primary location header
@@ -430,6 +473,7 @@ class DiagnosticRenderer:
             lines.append(f"  = help: {diag.help_text}")
         for sugg in diag.suggestions:
             lines.append(f"  = suggestion: {sugg.description} -> '{sugg.replacement}'")
+        lines.extend(trace_lines(diag.trace))
 
         return "\n".join(lines)
 

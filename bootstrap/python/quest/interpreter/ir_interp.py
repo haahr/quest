@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 from typing import Any, Optional
 
-from quest.diagnostics import QuestCompilerError
+from quest.diagnostics import MAIN_FRAME, QuestCompilerError, init_frame
 from quest.interpreter.treewalk import (
     ARRAY_OP_ERROR_EXC,
     VARIANT_ERROR_EXC,
@@ -30,6 +30,7 @@ from quest.interpreter.treewalk import (
     _eval_real_relational,
     _exposed_type,
     format_value_with_type,
+    note_frames,
     run_closure,
 )
 from quest.values.model import (
@@ -206,16 +207,38 @@ class Interpreter:
 
     def run(self, unit: ir.Unit) -> None:
         self.source_map = unit.source_map
-        for imp in unit.imports:
-            self.import_module(imp)
-        for m in unit.modules:
-            frame = _Frame(None)
-            self.run_top_level(m.init, frame)
-            self.modules[id(m)] = QRecord({name: frame.lookup(var) for name, var in m.members.items()})
-        self.run_top_level(unit.main, _Frame(None))
+        # Everything runs in the program's frame, imported modules' initializers included, as the source interpreter
+        # runs them when the program's import runs (docs/exceptions.md §4)
+        stack = self.renv.call_stack
+        stack.append(MAIN_FRAME)
+        try:
+            for imp in unit.imports:
+                self.import_module(imp)
+            for m in unit.modules:
+                frame = _Frame(None)
+                self.run_top_level(m.init, frame, init_frame(m.name))
+                self.modules[id(m)] = QRecord({name: frame.lookup(var) for name, var in m.members.items()})
+            self.run_top_level(unit.main, _Frame(None))
+        except QuestCompilerError as error:
+            note_frames(error, self.renv)
+            raise
+        finally:
+            stack.pop()
 
-    def run_top_level(self, body: ir.Body, frame: _Frame) -> None:
-        signal = self.body(body, frame)
+    def in_frame(self, name: str, body: ir.Body, frame: _Frame) -> Optional[tuple]:
+        """Runs body in the frame name, which errors raised inside record (docs/exceptions.md §4)."""
+        stack = self.renv.call_stack
+        stack.append(name)
+        try:
+            return self.body(body, frame)
+        except QuestCompilerError as error:
+            note_frames(error, self.renv)
+            raise
+        finally:
+            stack.pop()
+
+    def run_top_level(self, body: ir.Body, frame: _Frame, frame_name: Optional[str] = None) -> None:
+        signal = self.body(body, frame) if frame_name is None else self.in_frame(frame_name, body, frame)
         if signal is not None:
             raise IRInterpreterError(f"a top level ends with {signal[0]}")
 
@@ -280,7 +303,10 @@ class Interpreter:
                     frame.values[id(f.env)] = callee.env
                 for (param, _mode), arg in zip(f.params, args):
                     frame.values[id(param)] = arg
-                signal = self.body(f.body, frame)
+                if f.trace_name is None:
+                    signal = self.body(f.body, frame)
+                else:
+                    signal = self.in_frame(f.trace_name, f.body, frame)
                 if signal is None or signal[0] != "return":
                     raise IRInterpreterError(f"function '{f.var.hint}' ends without returning")
                 return signal[1]

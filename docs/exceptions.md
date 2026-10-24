@@ -4,8 +4,8 @@ This document specifies how an uncaught Quest exception is reported, with where 
 active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
 (`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`).
 
-Status: step 1 of the plan (§7), raise sites in every backend, is implemented; the frames of steps 2 and 3 are a
-design.
+Status: steps 1 and 2 of the plan (§7), raise sites in every backend and frames in the interpreters, are
+implemented; frames in compiled code (step 3) are a design.
 
 ---
 
@@ -145,23 +145,26 @@ The C printer turns an offset into a string literal `"file:line:col"`, one per r
 
 The interpreters may keep per-call state, so they keep an explicit stack of frame names.
 
-- `RuntimeEnvironment` gains `call_stack: list[str]`, shared by every scope and by both interpreters, which call each
-  other (the IR interpreter runs imported library modules with `treewalk.py`, and library functions call back into IR
+- `RuntimeEnvironment.call_stack: list[str]` is shared by every scope and by both interpreters, which call each other
+  (the IR interpreter runs imported library modules with `treewalk.py`, and library functions call back into IR
   closures).
-- Both push `<main>` while running the program's phrases, `<module>.<init>` while initializing a module, and a
-  function's name for the duration of each call (popped in a `finally`). Unnamed functions push nothing.
-- A `QuestException` gains `frames: tuple[str, ...]`, set the first time the exception passes an interpreter boundary
-  without them, to the stack reversed. A re-raise keeps them.
+- The interpret phase and the IR interpreter's `run` push `<main>` while running the program (the IR interpreter's
+  around its imports too, which the source interpreter runs when the program's import phrase runs); both push
+  `<module>.<init>` while initializing a module (`run_module_init`, `Interpreter.in_frame`); and both push a function's
+  name for the duration of each call (`run_closure` for closures, functions defined as externals included, and
+  `Interpreter.apply` for IR functions), popped in a `finally`. The functions the IR passes make push nothing.
+- `QuestCompilerError.frames: Optional[tuple[str, ...]]`, rendered as `Diagnostic.trace`, is set the first time an
+  error leaves a frame without them (`note_frames`), to the stack reversed. A re-raise keeps them. Fatal run-time
+  errors (an option ordinal out of bounds) have frames as exceptions do.
 
-Names are given by the rules of §2.3 where functions are made:
+Names are given by the rules of §2.3 where functions are made (`frame_name`, `quest/diagnostics.py`). A let-bound
+function is the value of a `TypedLetValue`, which both consumers see, so the binder needs no field of its own:
 
-- The elaborator records a let-bound function's binder on its `TypedFun` (a `binder: Optional[str]` field, set with
-  `dataclasses.replace` where the let is elaborated, since typed nodes are frozen).
-- The tree-walking interpreter qualifies it when it makes the closure: the name of the frame making the closure is the
-  name of the function lexically enclosing it (or `<main>`, which adds no prefix, or `M.<init>`, which adds `M.`).
-  `QClosure` gains `trace_name`, kept by `instantiate`.
-- `ir/lower.py` qualifies it the same way from the function being lowered, and sets `ir.Function.trace_name`.
-  Specialized clones and lifted closures keep it; functions the IR passes make (adapters, thunks) have none.
+- The tree-walking interpreter names a closure when it makes it (`make_closure`), from the binder, if any, and the
+  frame making it, which is the function lexically enclosing it (or `<main>`, or `M.<init>`). `QClosure.trace_name`
+  is kept by `instantiate`; `QClosure.name`, which printing shows, is unchanged.
+- `ir/lower.py` names a function the same way from the frame of the code being lowered (`_Lowerer.frame`), and sets
+  `ir.Function.trace_name`. Specialized clones and lifted closures keep it.
 
 The two implementations of the rule are checked against each other by the tests of §6.
 
@@ -265,9 +268,9 @@ output ends with `  ... (traceback truncated)`.
    it), a raise in a function the program passes to a module (`raise_in_callback`), and a re-raise through a `try`
    whose branches do not match (`reraise_keeps_site`). A unit test in `tests/python/test_quest_driver.py` runs a
    binary directly and checks the format of §2.2.
-3. **Interpreter frames** (step 2): for a set of traceback programs (nested and recursive calls, closures, module
-   functions, library callbacks, re-raises), the full output of `interpret` and of the four `run_ir_*` phases is
-   identical.
+3. **Interpreter frames** (step 2): `tests/python/test_tracebacks.py` checks the frames of programs with nested and
+   recursive calls, an anonymous callback, a module's functions and a callback from one, a re-raise, and a module
+   initializer that raises, and that the full output of `interpret` and of the four `run_ir_*` phases is identical.
 4. **Compiled frames** (step 3): for the same programs, `run_c_compiled` reports the same header and raise site as
    `interpret`, and its frames are a non-empty ordered subsequence of the interpreter's that ends with `<main>`.
    Separate cases cover each outcome of §5.1: an exception caught by a listed handler, by `else`, not caught, and
@@ -289,8 +292,8 @@ output ends with `  ... (traceback truncated)`.
 
 ### Step 2: Frames in the interpreters
 
-- `TypedFun.binder`; `QClosure.trace_name` and `ir.Function.trace_name`, qualified as in §4.
-- `RuntimeEnvironment.call_stack`, pushed and popped by both interpreters; `QuestException.frames`.
+- `QClosure.trace_name` and `ir.Function.trace_name`, named as in §4.
+- `RuntimeEnvironment.call_stack`, pushed and popped by both interpreters; `QuestCompilerError.frames`.
 - `Diagnostic.trace` and its rendering (§2.1).
 - **Done when:** the tests of §6.3 pass.
 

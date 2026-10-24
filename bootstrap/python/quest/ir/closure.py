@@ -77,7 +77,7 @@ class _Converter:
             _rename(f.body, renamed)
             f.body.statements = prologue + f.body.statements
         code = ir.Function(ir.Var(f.var.hint, f.var.type), type_params + f.type_params, f.params, f.result_type,
-                           f.body, env)
+                           f.body, env, f.trace_name)
         self.unit.functions.append(code)
         return code, captures
 

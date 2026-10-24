@@ -371,6 +371,8 @@ class Function:
     result_type: QType
     body: Body
     env: Optional[Var] = None
+    # The function's frame in tracebacks (docs/exceptions.md §2.3); None for the functions the passes make
+    trace_name: Optional[str] = None
 
     @property
     def result(self) -> Shape:
