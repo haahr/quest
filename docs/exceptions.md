@@ -1,42 +1,59 @@
 # Exception Tracebacks (`docs/exceptions.md`)
 
-This document specifies the design and implementation plan for reporting call-stack tracebacks when a Quest exception
-is raised and not caught, across the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
-(`quest/interpreter/ir_interp.py`), and the C backend (`quest/ir/`, `quest/codegen/`, and `runtime/`).
+This document specifies how an uncaught Quest exception is reported, with where it was raised and the Quest functions
+active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
+(`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`).
 
-Status: **design**. Nothing described here is implemented yet; §8 is the implementation plan.
-
----
-
-## 1. Goals and Constraints
-
-1. **Zero non-raising runtime cost in compiled code.** Normal function entry, execution, and return in compiled C code
-   must not push or pop shadow stack frames, maintain frame links, or store per-call source locations. Only code that
-   actually raises an exception pays the cost of walking the native call stack.
-2. **Statically built per-unit function tables.** Each compiled C unit (`.mod.c` and main `.c`) emits a `const` table
-   mapping the start addresses of its generated C functions to their Quest function names. At link time, a small
-   generated C file provides a null-terminated array pointing to every linked unit's table.
-3. **Preservation across non-matching `try ... when` handlers.** In Quest, a `try ... when` expression catches an
-   exception via `setjmp`, tests the exception value against each `when` branch in turn, and re-raises if none matches.
-   Because `longjmp` has already unwound the C stack by the time the handler runs, the raw return addresses and raise
-   site are captured at the original `raise` and preserved on compiler-generated re-raises.
-4. **Uniform output across interpreters and compiled code.** Both interpreters and compiled binaries report the
-   uncaught exception, its raise site, and the active Quest call stack (most recent call first, function names only)
-   on `stderr`, with `QUEST_TRACEBACK=0` available to suppress the traceback lines.
-5. **Inlining tolerance in compiled code.** At `-O2`, the C compiler inlines functions and optimizes tail calls into
-   jumps. Compiled tracebacks are not required to recover inlined or tail-called frames; instead, the sequence of
-   functions reported by compiled code must be an ordered subsequence of the interpreter's traceback.
+Status: **design**. Nothing described here is implemented yet; §7 is the plan. Its first step replaces the task
+"Uncaught exceptions are reported at the wrong place, or none" in `docs/tasklist.md`.
 
 ---
 
-## 2. Traceback Output Format
+## 1. Goals
 
-When an exception escapes to the top level of a program (uncaught), it is reported on `stderr`.
+1. **The raise site, exactly, everywhere.** Every backend reports the source location of the `raise`, or of the
+   checked operation (division, array index, variant tag), that raised the exception. This is the part users need
+   most, and it is cheap and exact in every backend, so it comes first (§7, step 1).
+2. **The active Quest functions, most recent first.** The interpreters report every frame. Compiled code reports an
+   ordered subsequence of them: the C compiler inlines functions and turns tail calls into jumps, and those frames are
+   lost. A frame compiled code cannot attribute with certainty is left out, never guessed.
+3. **No cost to code that does not raise, nor to raises that are caught.** Compiled function entry and return are
+   unchanged: no shadow stack, no frame links. Entering a `try` costs a few stores (§5.2). A raise walks the stack only
+   when the exception will not be caught.
+4. **One format.** The driver renders an uncaught exception like any other located error, with the source line, and
+   the frames after it; a binary run on its own prints the same information as plain lines (§2).
 
-### 2.1. Header Line and Raise Site
+---
 
-The first line preserves the existing `Exception: <name>` format (matched by `tests/golden/errors/run/*.error`),
-followed by the raise-site line when known and the stack frames (most recent call first):
+## 2. Output
+
+### 2.1. Through the Driver
+
+An uncaught exception is a diagnostic located at its raise site, followed by its frames:
+
+```text
+tests/source/errors/run/divide_by_zero.quest:4:13: error: Exception: int.error
+    let inner(n: Int): Int = n div 0;
+                             ^
+  in inner
+  in outer
+  in <main>
+```
+
+The header and source line are what the interpreter prints today. The `in` lines are new: a `trace` field on
+`Diagnostic` (`quest/diagnostics.py`), rendered after the source line and any notes. Run-error goldens
+(`tests/golden/errors/run/*.error`) match the substring `error: Exception: <name>`, which is unchanged.
+
+An exception raised inside an external C primitive (`quest_string_get_char`, say) has no raise site: the diagnostic
+has no label, and the first frame is the Quest function that called the primitive (when it was not inlined). An
+exception raised in a library module's Quest code (`raise error` in `lib/dynamic.mod.quest`) is located in that file.
+
+The interpreters format a non-`Ok` payload on the header line (`Exception: E with 42:Int`); compiled code does not
+know the payload's type and prints `Exception: E`, as now.
+
+### 2.2. From a Binary
+
+A compiled program run directly prints the same information on `stderr`, without the source line:
 
 ```text
 Exception: int.error
@@ -46,508 +63,229 @@ Exception: int.error
   in <main>
 ```
 
-When an exception carries a non-`Ok` payload, the interpreters continue to format the payload on the header line
-(`Exception: E with 42:Int`), while compiled code prints `Exception: E` (matching current runtime behavior).
+The `at` line is omitted when there is no raise site. File names are `display_file_name` (`quest/syntax/sources.py`)
+of the source file, fixed at compile time. The `run_c_compiled` phase parses this output into the diagnostic of
+§2.1, reading the named file for the source line (and rendering without it if the file cannot be read). This
+replaces today's `Diagnostic.make_error(stderr, 0)`, which places every compiled exception at `1:1`.
 
-The raise-site line has one of two forms:
+### 2.3. Frame Names
 
-- `  at <file>:<line>:<col>` when the exception is raised by an explicit `raise` expression or by a compiler-emitted /
-  inline runtime check (such as integer or word division by zero, array bounds, or variant tag mismatch) whose source
-  location is known at the raise site;
-- `  in external <c_symbol>` when the exception is raised inside an out-of-line C runtime or standard-library primitive
-  (such as `quest_writer_put_string` or `quest_string_get_sub`) that does not receive a caller source location.
+Interpreters and compiled code name frames the same way:
 
-### 2.2. Frame Naming Conventions
-
-Every Quest function and module initializer has a canonical trace name shared by the tree-walking interpreter, the IR
-interpreter, and the C printer:
-
-| Construct | Trace Name | Example |
+| Construct | Name | Example |
 | :--- | :--- | :--- |
-| Top-level function bound by `let f = fun ...` or `let rec f = ...` | `<name>` | `factorial` |
-| Function bound inside a module `M` (canonical path `util/strutil`) | `<module>.<name>` | `strutil.split`, `M.helper` |
-| Function nested inside another function `outer` | `<enclosing>.<name>` | `outer.step` |
-| Anonymous function (`fun(...) ... end` not let-bound) | `<enclosing>.<anon>` (or `<anon>`) | `map.<anon>` |
-| Module initializer body | `<module>.<init>` | `M.<init>` |
-| Program top-level phrase evaluation | `<main>` | `<main>` |
+| Function bound at the top level (`let f(x: T): U = ...`, `let rec`, `let f = fun ...`) | its binder | `factorial` |
+| Function bound in a module's body | module name `.` binder | `strutil.split`, `M.helper` |
+| Function bound inside another function `p` | `p` `.` binder | `outer.step`, `strutil.split.step` |
+| Function that is not let-bound | enclosing name `.<anon>`, or `<anon>` at the top level | `map.<anon>` |
+| Module initializer | module name `.<init>` | `strutil.<init>` |
+| The program's phrases | `<main>` | `<main>` |
 
-Internal compiler-generated helpers in C—such as closure-conversion environment wrappers, function-type subtyping
-adapters (`adapt` thunks), and `type_app` thunks—are recorded in the per-unit C function table so their code ranges are
-accounted for (preventing misattribution to an adjacent Quest function), but are flagged as **hidden** so they are
-skipped when printing the traceback.
+A module's name is the last component of its canonical path (`strutil` for `util/strutil`), or the name a program
+gives a module it declares. Compiler-generated functions (closure environments' thunks, function-type adapters,
+`type_app` thunks, module export wrappers) have no name and are never reported.
 
-### 2.3. Repeated Frames and Depth Cap
-
-- **Consecutive duplicate collapsing:** If recursive calls produce $k > 1$ consecutive identical frame names in the
-  rendered list, the first occurrence is printed as `  in <name>` followed by `  ... <name> repeated <k-1> more times`.
-- **Capture cap in compiled code:** Compiled code captures up to `Q_MAX_TRACEBACK` (64) raw return addresses. If the
-  stack exceeded `Q_MAX_TRACEBACK` before reaching `<main>`, a final line `  ... (traceback truncated)` is printed.
-- **Disabling tracebacks:** Setting `QUEST_TRACEBACK=0` in the environment suppresses the `at ...` and `in ...` lines,
-  printing only the `Exception: ...` line.
+`k > 1` consecutive frames with the same name are printed as one `in <name>` line followed by
+`  ... <name> repeated <k-1> more times`.
 
 ---
 
-## 3. Raise-Site and Function Name Attribution
+## 3. Raise Sites
 
-For the two interpreters and the C backend to agree on function names and raise sites, two pieces of metadata are
-established in the front end and carried through the IR:
+### 3.1. In the IR
 
-### 3.1. Assigning Function Trace Names (`quest/typechecker/` or pre-pass)
+`ir.Unit` gains the source map of its file, and the IR nodes that can raise gain `offset: Optional[int]`, copied from
+the typed expression they are lowered from: `ir.Raise`, `ir.Prim` (checked arithmetic, ordinal checks),
+`ir.ArrayNew`, `ir.ArrayGet`, `ir.ArraySet`, `ir.VariantAssert`, and `ir.AutoInspect`. The passes copy offsets with
+the nodes, as they copy everything else.
 
-During or immediately after typechecking (before either `interpret` or `ir_core` runs), a lightweight pass walks the
-`TypedProgram` (and any `TypedModule`) and assigns a `trace_name: str` field on every `TypedFun`:
+A try's handler raises the caught exception again when no branch matches. Today that is `ir.Raise(exception)` with
+the handler's variable, recognized in the C printer by the variable's identity (`handler_vars`). It becomes its own
+terminator, `ir.Reraise(exception)`, which keeps the original raise site (and, in compiled code, the original frames;
+§5.4). `ir.Raise` then always makes a new raise.
 
-- When a `TypedLet` or `TypedLetRec` binds a variable `x` to a `TypedFun` (possibly wrapped in `TypedTypeApp` or
-  type abstractions), the function's local name is `x`.
-- Inside a `TypedModule` with canonical path `canon`, top-level module bindings are prefixed with `canon.`.
-- Inside a `TypedFun` with `trace_name = p`, nested functions get `f"{p}.{child_name}"` (or `f"{p}.<anon>"` if not
-  directly let-bound).
+### 3.2. In the Interpreters
 
-### 3.2. Source Locations on Raising Nodes
+`QuestException` already has `offset`, and `in_unit` (`quest/diagnostics.py`) attaches an imported unit's source map
+to errors raised while elaborating it. Raise sites use the same two fields rather than a new location type:
 
-Every `TypedExpr` already carries `offset: int`. In addition, the `SourceMap` (or file name and line/column lookup) of
-each compilation unit is attached to the `TypedProgram` / `TypedModule` so offsets can be resolved to
-` SourceLoc(file: str, line: int, column: int)`:
+- The tree-walking interpreter tracks the source map of the unit whose code it is running (the program's, or a module
+  file's while running that module's code), and sets it on a `QuestException` as it sets `offset`. Today an exception
+  raised in `lib/dynamic.mod.quest` is rendered at its offset in the program's source, which can name a line past the
+  end of the program.
+- The IR interpreter sets `offset` from the raising node and the source map from the unit.
+- `ir.Reraise` and a non-matching `TypedTry` raise the original `QuestException` object, so its site is kept.
+- An exception raised by a `@qchecked` builtin backing an `external` has no offset: there is no Quest location to give
+  it (§2.1).
 
-- Display file names use `tokens.display_file_name(path)` (path relative to the repository/working root when inside
-  it), so golden outputs do not depend on the checkout path.
-- In the IR (`quest/ir/nodes.py`), `loc: Optional[SourceLoc]` is added to:
-  - `ir.Raise(exception, payload, loc=...)`
-  - `ir.Prim(op, args, type, loc=...)` (used for checked arithmetic `/`, `%`, `^^`, option ordinal checks, etc.)
-  - `ir.ArrayNew`, `ir.ArrayGet`, `ir.ArraySet` (which raise `arrayOp.error` on negative size or out-of-bounds index)
-  - `ir.VariantAssert`, `ir.AutoInspect` (when a tag or dynamic check can raise)
-  - `ir.Call` / `ir.CallClosure` / `ir.CallModule` (used by the IR interpreter when an external raises, though C uses
-    the external's own symbol for out-of-line external raises; see §3.3).
+### 3.3. In Compiled Code
 
-### 3.3. Raises Inside External / Runtime Primitives
+The C printer turns an offset into a string literal `"file:line:col"`, one per raising site.
 
-Exceptions can be raised in two ways outside explicit `raise` statements:
-
-1. **Inline compiler-emitted checks** (division/modulo by zero, negative array size, array bounds check, variant tag
-   assertion):
-   - In the interpreters and in C, these have the exact `SourceLoc` of the Quest operation (`loc`) and report
-     `  at <file>:<line>:<col>`.
-   - In C, the inline helpers in `runtime/quest_runtime.h` (`quest_int_div`, `quest_int_mod`, `quest_word_div`,
-     `quest_word_mod`, `quest_real_div`, `quest_array_bounds_check`, etc.) gain `_at(..., const char *loc)` variants
-     (or take `const char *loc` passed by `CPrinter`), passing `loc` (`"file:line:col"`) only to the cold
-     `quest_raise_*_at(loc)` call when the check fails. On the non-failing fast path, `loc` is an unused constant
-     address or literal that costs nothing if the branch is not taken (or the check is emitted as an inline macro/helper
-     whose slow path passes the literal).
-2. **Out-of-line C runtime functions** (`quest_string_get_char`, `quest_writer_put_string`, `quest_reader_get_char`,
-   etc., called via `external` declarations in `lib/`):
-   - Passing a caller source location into every `external` C function would alter the C ABI of all external primitives
-     and add an extra argument to every call even when no exception is raised.
-   - Instead, out-of-line runtime functions call `quest_raise_at(&quest_exc_..., Q_OK_VAL, NULL, __func__)`, recording
-     the C external symbol (e.g. `"quest_string_get_char"`).
-   - In the interpreters (`quest/interpreter/builtins.py`), `@qchecked` and external wrappers know the external symbol
-     name (`sym_name`) and attach `external_name=sym_name` to any `QuestException` raised within them.
-   - Both the interpreters and compiled code therefore report `  in external <c_symbol>` as the raise site, and the
-     enclosing Quest wrapper function in `lib/` (e.g. `string.get` or `writer.put`) appears as the first Quest frame if
-     not inlined.
+- `ir.Raise` prints `quest_raise_at(exc, payload, "file:line:col")`.
+- The cold helpers of checked operations (`quest_raise_int_error`, `quest_raise_array_error`,
+  `quest_raise_variant_error`, `quest_option_ordinal_error`, ...) take the location as an argument. The literal is
+  referenced only on the failing branch, so the path that does not raise is the same compare-and-branch as now.
+- Out-of-line runtime primitives raise with a null location.
+- `QExceptionState` gains `const char *loc`, so a caught exception carries its raise site into the handler, and
+  `ir.Reraise` prints `quest_reraise(state)`, which raises with the same location.
 
 ---
 
-## 4. Design for the Interpreters
+## 4. Frames in the Interpreters
 
-### 4.1. `QuestException` Representation (`quest/values/model.py`)
+The interpreters may keep per-call state, so they keep an explicit stack of frame names.
 
-`QuestException` is extended with traceback state that is populated once at the original raise and augmented as frames
-unwind:
+- `RuntimeEnvironment` gains `call_stack: list[str]`, shared by every scope and by both interpreters, which call each
+  other (the IR interpreter runs imported library modules with `treewalk.py`, and library functions call back into IR
+  closures).
+- Both push `<main>` while running the program's phrases, `<module>.<init>` while initializing a module, and a
+  function's name for the duration of each call (popped in a `finally`). Unnamed functions push nothing.
+- A `QuestException` gains `frames: tuple[str, ...]`, set the first time the exception passes an interpreter boundary
+  without them, to the stack reversed. A re-raise keeps them.
 
-```python
-@dataclass(frozen=True)
-class SourceLoc:
-    file: str
-    line: int
-    column: int
+Names are given by the rules of §2.3 where functions are made:
 
-    def format(self) -> str:
-        return f"{self.file}:{self.line}:{self.column}"
-```
+- The elaborator records a let-bound function's binder on its `TypedFun` (a `binder: Optional[str]` field, set with
+  `dataclasses.replace` where the let is elaborated, since typed nodes are frozen).
+- The tree-walking interpreter qualifies it when it makes the closure: the name of the frame making the closure is the
+  name of the function lexically enclosing it (or `<main>`, which adds no prefix, or `M.<init>`, which adds `M.`).
+  `QClosure` gains `trace_name`, kept by `instantiate`.
+- `ir/lower.py` qualifies it the same way from the function being lowered, and sets `ir.Function.trace_name`.
+  Specialized clones and lifted closures keep it; functions the IR passes make (adapters, thunks) have none.
 
-On `QuestException`:
-
-- `raise_loc: Optional[SourceLoc] = None`: The source location of the `raise` or checked primitive operation.
-- `external_name: Optional[str] = None`: The C symbol name if raised inside an external primitive (`TypedExternal`).
-- `frames: list[str]`: The list of Quest function names on the call stack from innermost (most recent) to outermost
-  (`<main>`).
-- **Capturing the stack at raise time:** `RuntimeEnvironment` maintains an explicit `call_stack: list[str]` (pushed on
-  function, module, and `<main>` entry, popped on exit) and a `source_map: Optional[SourceMap]`. At the moment a
-  `QuestException` is first constructed (or first caught at an interpreter boundary),
-  `exc.frames = list(reversed(env.call_stack))` snapshots the entire active call stack in one step.
-  Because the interpreters are allowed extra runtime parameters and state, maintaining `call_stack` on
-  `RuntimeEnvironment` (shared between `treewalk.py` and `ir_interp.py`) handles mixed calls between the IR
-  interpreter and tree-walking stdlib modules seamlessly, and guarantees that re-raising an existing `QuestException`
-  object across a non-matching `try ... when` handler preserves `exc.frames` and `exc.raise_loc` untouched.
-
-### 4.2. Tree-Walking Interpreter (`quest/interpreter/treewalk.py`)
-
-1. **`QClosure` naming:**
-   - Add `trace_name: str = "<anon>"` to `QClosure` (`quest/values/model.py`), preserved across `QClosure.instantiate`.
-   - When `eval_expr` evaluates `TypedFun`, it sets `trace_name=expr.trace_name`.
-2. **Call stack tracking in `RuntimeEnvironment`:**
-   - Add `call_stack: list[str]` and `source_map: Optional[SourceMap]` to the shared state of `RuntimeEnvironment` (so
-     `push_scope()` shares the same `call_stack` list reference, while `in_unit` / module loading updates the active
-     `SourceMap`).
-   - Push `"<main>"` around top-level program execution (`eval_program_phrases`).
-   - Push `f"{mod_name}.<init>"` around module evaluation (`TypedModule`).
-   - Push `closure.trace_name` around every `QClosure` body evaluation (both in `TypedApp` and in 0-parameter
-     `TypedTypeApp`).
-3. **Capturing at raise sites:**
-   - Explicit `TypedRaise`: resolves `expr.offset` via the current unit's `SourceMap` to a `SourceLoc`, snapshots
-     `frames = list(reversed(env.call_stack))`, and raises `QuestException(..., raise_loc=loc, frames=frames)`.
-   - Checked operations in `treewalk.py` (or helpers called from `treewalk.py`) and `@qchecked` builtins in
-     `builtins.py`: if a `QuestException` is raised without `frames` populated, the `TypedApp` / `eval_expr` boundary
-     attaches `raise_loc` (if not an external) or `external_name` (if raised from a `QBuiltinFun` backing an
-     `external`), and snapshots `frames = list(reversed(env.call_stack))`.
-   - Re-raise in `TypedTry`: when no `when` clause matches, `raise` re-raises the original `QuestException` instance,
-     which already has `raise_loc` / `external_name` and `frames` set, so they are not overwritten.
-
-### 4.3. IR Interpreter (`quest/interpreter/ir_interp.py`)
-
-1. **Function trace names on `ir.Function`:**
-   - Add `trace_name: str = "<anon>"` to `ir.Function` (`quest/ir/nodes.py`).
-   - `ir/lower.py` copies `TypedFun.trace_name` onto the lowered `ir.Function`.
-   - `ir/specialize.py` and `ir/closure.py` preserve `trace_name` when cloning specialized functions or lifting
-     closures. Adapter thunks created by `ir/represent.py` get `trace_name=""` (hidden).
-2. **Shared call stack with `RuntimeEnvironment`:**
-   - `_Interpreter` in `ir_interp.py` already receives `runtime_env: RuntimeEnvironment`.
-   - `run_unit` pushes `"<main>"` onto `runtime_env.call_stack` while executing `unit.main`, and pushes
-     `f"{m.name}.<init>"` while initializing each `ir.Module`.
-   - `_Interpreter.call` pushes `fn.trace_name` (when non-empty) onto `runtime_env.call_stack` for the duration of the
-     frame and pops it in a `finally` block.
-   - Because imported standard-library modules are executed by `treewalk.py` using the same `runtime_env`, calls from
-     IR functions into stdlib functions and callbacks from stdlib functions back into IR closures (`QBuiltinFun`
-     wrapping `_Interpreter.apply`) share one unified `runtime_env.call_stack`.
-3. **Raising and re-raising in IR:**
-   - In `ir.Raise`: if `exc` is `_Raised(raised)` and `p is None`, it is a compiler-generated re-raise from a
-     non-matching `try` handler, so `raise exc.raised` preserves the original `QuestException` and its traceback.
-   - Otherwise, `ir.Raise` constructs a fresh `QuestException` with `raise_loc=s.loc` and
-     `frames=list(reversed(self.runtime_env.call_stack))`.
-   - Checked IR primitives (`ir.Prim`, `ir.ArrayNew`, `ir.ArrayGet`, `ir.ArraySet`, `ir.VariantAssert`,
-     `ir.AutoInspect`) attach `s.loc` and snapshot `self.runtime_env.call_stack` when raising `QuestException`.
-
-### 4.4. Formatting Uncaught Exceptions in the Pipeline (`quest/pipeline.py`, `quest/diagnostics.py`)
-
-Currently, `InterpretPhase` and `RunIrPhase` catch `QuestCompilerError` (which `QuestException` subclasses) and emit it
-through `ctx.sink.emit(diagnostic_of(error))`, which renders `error: Exception: <name>`, whereas `RunCCompiledPhase`
-takes `proc.stderr.strip()` (`Exception: <name>`) and wraps it in `Diagnostic.make_error(msg, 0)`, which also renders
-`error: Exception: <name>` followed by any remaining lines of `msg`.
-
-With tracebacks enabled (`os.environ.get("QUEST_TRACEBACK") != "0"`):
-- `QuestException.format_traceback()` formats the `at <loc>` / `in external <sym>` line and the `in <func>` lines (with
-  consecutive duplicate collapsing).
-- `QuestException.to_diagnostic()` includes those lines in `Diagnostic.message` after the `Exception: <name>` header
-  line (and sets `primary_label=None` so the diagnostic renderer prints the same clean multi-line message as
-  `RunCCompiledPhase`, rather than a separate compiler source snippet).
+The two implementations of the rule are checked against each other by the tests of §6.
 
 ---
 
-## 5. Design for Compiled Code (C Backend and Runtime)
+## 5. Frames in Compiled Code
 
-### 5.1. Zero Cost on the Non-Raising Path
+### 5.1. Whether an Exception Will Be Caught
 
-In compiled C code:
-- Function prologues and epilogues are untouched: no frame pointers or function names are pushed to a side stack.
-- `try ... when` blocks still compile to a single `QExceptionHandler` linked into `quest_current_exception_handler` plus
-  `setjmp(handler.env_jmp)`.
-- Inline checks (`quest_int_div_at(a, b, "file.quest:10:5")`) test the divisor first (`if (b == 0)`); only the cold
-  branch calls the `Q_NORETURN` helper `quest_raise_int_error_at("file.quest:10:5")`. Because the string literal is
-  only referenced in the cold call, the hot path is a single conditional branch followed by hardware division.
+Compiled code finds the frames by walking the native stack, which is only possible before `longjmp` unwinds it. To
+avoid walking the stack for exceptions that are caught, a raise first asks whether a handler will catch the exception.
 
-### 5.2. Runtime Data Structures (`runtime/quest_runtime.h`)
+A `try`'s handler compares the exception with each branch's pattern, in order, with `is`; with an `else` branch it
+catches everything. A pattern is an expression, evaluated today after the exception is caught. When every pattern is
+**pure** (an immutable variable, a constant such as a built-in exception, or a field of a module record) evaluating it
+before the try's body gives the same value, so the try can record what it catches when it is entered:
+
+- `ir.Try` gains `catches`: the atoms of its patterns, evaluated before the try (`lower.py` hoists them); or `ALL`,
+  when it has an `else` branch; or `UNKNOWN`, when some pattern is not pure. The handler still tests the patterns as
+  now, against the hoisted atoms.
+- `QExceptionHandler` gains `const QException *const *catches` and `int n_catches`, with `-1` for `ALL` and `-2` for
+  `UNKNOWN`. Entering a `try` stores them, from a local array of the catch atoms that lives as long as the try's
+  block. The handler is popped on every way out of the block, as now.
+
+`quest_raise_at` walks the handler chain from the innermost handler:
+
+- a handler that catches the exception, or catches everything: it **will be caught**. Set `quest_current_exception`
+  and `longjmp`, as now.
+- a handler that does not list it: go on to the next.
+- an `UNKNOWN` handler: it **might be caught**. Capture the frames (§5.4), then `longjmp`.
+- the end of the chain: it **will not be caught**. Print the exception and its frames from the live stack (§5.3) and
+  `exit(1)`, without allocating.
+
+`quest_reraise` walks the chain the same way from the next handler out, and prints the captured frames, if any, when
+the exception will not be caught. Without captured frames (a raise that was going to be caught, re-raised from a
+handler that did not match), it prints the frames from the live stack, which start at the re-raising handler's
+function. That is accurate for that point in the program, and happens only when a handler with an `UNKNOWN` pattern
+did not match.
+
+### 5.2. Function Tables
+
+Each generated C unit (a program's `.main.c`, a module's `.mod.c`) emits a table of the C functions it defines that
+have names, with their names:
 
 ```c
-#define Q_MAX_TRACEBACK 64
-
-/* Flags for QFuncEntry.flags */
-#define Q_FUNC_VISIBLE 0u
-#define Q_FUNC_HIDDEN  1u  /* Compiler-generated adapter/thunk: skip when printing */
-#define Q_FUNC_MAIN    2u  /* Top-level <main>: stop stack walk after this frame */
-
-typedef struct QFuncEntry {
-    const void *addr;   /* Start address of the C function */
-    const char *name;   /* Quest trace name (e.g. "factorial", "strutil.split", "<main>") */
-    uint32_t    flags;  /* Q_FUNC_VISIBLE, Q_FUNC_HIDDEN, Q_FUNC_MAIN */
-} QFuncEntry;
-
-typedef struct QFuncTable {
-    const QFuncEntry *entries;
-    size_t            count;
-} QFuncTable;
-
-/* Null-terminated master list of per-unit tables, generated at link time */
-extern const QFuncTable *const quest_all_func_tables[];
-
-/* Heap-allocated traceback captured at the original raise site */
-typedef struct QTraceback {
-    const char *raise_loc;           /* "file:line:col", or NULL */
-    const char *external_fn;         /* C function name when raised in an external, or NULL */
-    int         n_pcs;               /* Number of captured return addresses */
-    void       *pcs[Q_MAX_TRACEBACK];
-} QTraceback;
-
-typedef struct QExceptionState {
-    const QException *exc;
-    QVal              payload;
-    QTraceback       *trace;         /* Captured at original raise; preserved across re-raise */
-} QExceptionState;
-```
-
-> [!NOTE]
-> Storing a `QTraceback *` pointer in `QExceptionState` (rather than embedding `void *pcs[64]` directly inside
-> `QExceptionState`) keeps `sizeof(QExceptionState)` at 24 bytes. When a `try` handler catches an exception and copies
-> `quest_current_exception` into a local variable `QExceptionState l_e = quest_current_exception;`, copying is 24 bytes
-> instead of 544 bytes, and if a `when` branch raises and catches a *nested* exception before the outer handler
-> re-raises `l_e`, `l_e.trace` still points to the outer exception's intact `QTraceback`.
-
-### 5.3. Raise and Re-raise Entry Points (`runtime/quest_runtime.c`)
-
-1. **`quest_raise_at(const QException *exc, QVal payload, const char *loc, const char *ext_fn)`**:
-   - Allocates a `QTraceback *tb = (QTraceback *)quest_alloc_atomic(sizeof(QTraceback))` (unless `QUEST_TRACEBACK=0`).
-   - Records `tb->raise_loc = loc` and `tb->external_fn = ext_fn`.
-   - Captures the native call stack into `tb->pcs` using `backtrace(tb->pcs, Q_MAX_TRACEBACK)` (see §5.4).
-   - If `quest_current_exception_handler == NULL`, prints the exception and traceback to `stderr` and calls `exit(1)`.
-   - Otherwise, sets `quest_current_exception = (QExceptionState){ exc, payload, tb }` and calls
-     `longjmp(quest_current_exception_handler->env_jmp, 1)`.
-2. **`quest_raise(const QException *exc, QVal payload)`**:
-   - Compatibility wrapper calling `quest_raise_at(exc, payload, NULL, NULL)`.
-3. **`quest_reraise(QExceptionState state)`**:
-   - Called by compiler-generated fallback branches of `try ... when` handlers when no `when` clause matches.
-   - If `quest_current_exception_handler == NULL`, prints `state.exc` and `state.trace` to `stderr` and calls
-     `exit(1)`.
-   - Otherwise, sets `quest_current_exception = state` (preserving `state.trace`) and `longjmp`s to the next handler.
-   - In the IR, a compiler-generated re-raise is already distinguished from a user `raise` because its `ir.Raise`
-     operand is the handler's `exc_var` with `payload=None`. `CPrinter` emits `quest_reraise(l_exc);` for this case and
-     `quest_raise_at(exc, payload, "file:line:col", NULL);` for an explicit `raise`.
-
-### 5.4. Stack Walking Mechanism
-
-In `runtime/quest_runtime.c`:
-
-- **Primary mechanism (`<execinfo.h>`):** On macOS (`libSystem`) and Linux (`glibc`), `#include <execinfo.h>` provides
-  `int backtrace(void **buffer, int size)`.
-  - Requires no extra compiler or linker flags on macOS (which mandates frame pointers on arm64 and x86_64 by ABI) or
-    on Linux (where `clang` and `gcc` emit `.eh_frame` unwind tables by default at `-O2`).
-- **Fallback mechanism (`__builtin_frame_address`):** On platforms without `<execinfo.h>` (guarded by
-  `#if defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__))`),
-  a small frame-pointer walker walks the `(void **)__builtin_frame_address(0)` chain while the frame pointer is
-  aligned and strictly increasing within a bounded stack window.
-
-### 5.5. Per-Unit Function Tables Emitted by `CPrinter`
-
-In every generated C unit (`.mod.c` and `.main.c`), `CPrinter` emits a `QFuncTable` at the end of the file:
-
-- Every C function emitted in the unit is included:
-  - Normal and specialized IR functions (`qf_...`): `flags = Q_FUNC_VISIBLE`, `name = "<trace_name>"`.
-  - Exported module wrapper functions (`qv_<mod>_<member>`): `flags = Q_FUNC_HIDDEN`, `name = ""`. These are 1-line
-    wrappers that forward to the underlying closure `qf_...`. Marking the wrapper `Q_FUNC_HIDDEN` ensures its code
-    range is claimed in the table without duplicating `<mod>.<member>` when `qf_...` is called out-of-line (and if
-    `qf_...` is inlined into the wrapper, omitting it is consistent with any other inlined call).
-  - Module initializer (`qv_mod_<mod>_init`): `flags = Q_FUNC_VISIBLE`, `name = "<mod>.<init>"`.
-  - Top-level program function (`main` in `.main.c`): `flags = Q_FUNC_VISIBLE | Q_FUNC_MAIN`, `name = "<main>"`.
-  - Internal helpers (`qr_register_dicts`, function-type adapters `q_adapt_...`): `flags = Q_FUNC_HIDDEN`, `name = ""`.
-- **Table naming:**
-  - For a module file whose first exported module has mangled canonical name `<clean>`:
-    `const QFuncTable qv_func_table_mod_<clean> = { ... };`
-  - For a main program unit:
-    `const QFuncTable qv_func_table_main = { ... };`
-
-```c
-static const QFuncEntry qr_func_entries[] = {
-    { (const void *)&qr_register_dicts, "", Q_FUNC_HIDDEN },
-    { (const void *)&qf_inner_1, "inner", Q_FUNC_VISIBLE },
-    { (const void *)&qf_outer_2, "outer", Q_FUNC_VISIBLE },
-    { (const void *)&main, "<main>", Q_FUNC_VISIBLE | Q_FUNC_MAIN },
-};
-const QFuncTable qv_func_table_main = {
-    qr_func_entries,
-    sizeof(qr_func_entries) / sizeof(qr_func_entries[0])
+static const QFuncEntry qr_funcs[] = {
+    { (const void *)&qf_inner_1, "inner" },
+    { (const void *)&qf_outer_2, "outer" },
+    { (const void *)&main, "<main>" },
 };
 ```
 
-### 5.6. Link-Time Master Table Generation
+Module initializers are listed as `M.<init>`. Unnamed functions are not listed, and need not be (§5.3).
 
-Because a program links one `.main.o` and zero or more module `.o` files, the linker needs a definition of
-`quest_all_func_tables`.
+Each unit registers its table where it registers its record dictionaries, in `qr_register_dicts`, which `main` and
+each exported module's initializer call before any code of the unit runs: `quest_register_funcs(qr_funcs, n)`. No
+link-time step, generated file, or naming convention for tables is needed. The runtime sorts the registered entries
+by address the first time it prints frames.
 
-In `compiler_runner.py` (`link_objects` and `compile_c_source`) and `build/engine.py`:
-- Every linked module object corresponds to a canonical module name `<clean>` (known from the build engine's module
-  closure or extracted from the `.qm` / object list, or passed as `module_names: list[str]` to `link_objects` and
-  `compile_c_source`).
-- Right before invoking the host C compiler to link the executable, `compiler_runner.py` generates a small temporary C
-  file (or writes `<stem>.tables.c` in `build_dir` when invoked via `BuildEngine`) containing:
+Taking the address of every named function means the C compiler can no longer drop unused arguments or change the
+calling conventions of those static functions. `tests/perf/measure.py` measures the cost (`docs/testing.md`) before
+this step lands.
 
-```c
-#include "quest_runtime.h"
+### 5.3. Walking and Attributing Frames
 
-extern const QFuncTable qv_func_table_main;
-extern const QFuncTable qv_func_table_mod_std__int;
-extern const QFuncTable qv_func_table_mod_util__strutil;
-extern const QFuncTable quest_runtime_func_table;
+The runtime walks the stack with the platform unwinder (`<unwind.h>`), on macOS (libSystem) and on Linux with glibc,
+where clang and gcc emit unwind tables at `-O2` by default:
 
-const QFuncTable *const quest_all_func_tables[] = {
-    &qv_func_table_main,
-    &qv_func_table_mod_std__int,
-    &qv_func_table_mod_util__strutil,
-    &quest_runtime_func_table,
-    NULL
-};
-```
+- `_Unwind_Backtrace` visits each frame; `_Unwind_GetIP` gives its return address, `ip`;
+- `_Unwind_FindEnclosingFunction(ip - 1)` gives the start of the function containing the call, from the unwind tables
+  (`ip - 1`, because a call to a `noreturn` helper may be a function's last instruction);
+- the frame is attributed to the table entry whose address is **exactly** that start, and skipped if there is none.
 
-- Notice `quest_runtime_func_table`: defined in `runtime/quest_runtime.c`, it lists key runtime entry points (with
-  `Q_FUNC_HIDDEN`). Including runtime functions in the merged address table bounds the code addresses of adjacent Quest
-  functions in the binary's `__text` / `.text` section!
+Exact matching attributes nothing by proximity. Frames in the runtime, in the C library, below `main`, and in
+compiler-generated functions match no entry and are skipped. An inlined function's code belongs to the function it
+was inlined into, as it should. Code that gcc moves to a separate cold section (`f.cold`, which holds the calls to
+raise helpers) has unwind information of its own, so it matches no entry, and the frame is lost rather than
+misattributed; the driver passes `-fno-reorder-blocks-and-partition` when the host compiler is gcc so that the
+raising function's frame is kept. On platforms without these functions the runtime prints no frames.
 
-### 5.7. Resolving Return Addresses (`pc`) to Function Names
+Frames are printed as they are walked, with repeats collapsed (§2.3), so there is no depth limit.
 
-When an uncaught exception is about to be printed:
+### 5.4. Captured Frames
 
-1. **Flatten and sort:** The runtime collects all `QFuncEntry` items from `quest_all_func_tables[]` into a single array
-   and sorts them by ascending `(uintptr_t)entry.addr`. (This happens at most once per process, right before `exit(1)`.)
-2. **Lookup for each return address `raw_pc` in `tb->pcs`:**
-   - A return address `raw_pc` points to the instruction *after* the `call` / `bl` instruction. To ensure a call at the
-     very end of a function (such as a call to a `Q_NORETURN` raise helper) resolves to the calling function and not
-     the next function in the text segment, we search using `uintptr_t query = (uintptr_t)raw_pc - 1`.
-   - Binary search the sorted `QFuncEntry` array for the last entry with `(uintptr_t)entry.addr <= query`.
-   - **Bounding false matches:** What if `query` is inside `libc` (e.g. `qsort` or `_start` below `main`) or a shared
-     library (`libgc`) at a higher address than the last Quest function?
-     - First, once the walk encounters an entry with `Q_FUNC_MAIN` (`<main>`), it records `<main>` and stops walking
-       outer frames (ignoring C startup frames `_start` / `start` below `main`).
-     - Second, we reject any match where `query - (uintptr_t)entry.addr > Q_MAX_FUNC_BYTES` (e.g. `65536` bytes) or, on
-       POSIX systems with `<dlfcn.h>` (`dladdr`), where `dli_fbase` does not match `&main`'s image base.
-   - If the matched entry has `Q_FUNC_HIDDEN`, it is skipped; if it has `Q_FUNC_VISIBLE`, its `entry.name` is emitted
-     into the frame list.
+When an exception might be caught (§5.1), the raise captures its frames before `longjmp`: the function starts of
+§5.3, already collapsed into runs, as `(start, count)` pairs, up to `Q_MAX_TRACE_RUNS` (64) runs, with a flag when
+there were more. The capture is allocated with `quest_alloc_atomic` and referenced from `QExceptionState`
+(`const QTrace *trace`), so a handler's copy of the caught exception keeps it, even if the handler raises and catches
+other exceptions before re-raising. The runs are attributed to names when they are printed. When truncated, the
+output ends with `  ... (traceback truncated)`.
 
 ---
 
-## 6. ABI and Precompiled Artifacts
+## 6. Testing
 
-Adding `qv_func_table_mod_<clean>` to every compiled module `.o` changes the set of symbols expected by the link step.
-Accordingly:
-- `ABI_VERSION` in `bootstrap/python/quest/config/abi.py` is incremented (from 26 to 27) so `BuildEngine` and test
-  runners automatically recompile any cached `.qm` / `.mod.c` / `.o` artifacts in `.build/`.
-
----
-
-## 7. Testing Strategy
-
-1. **Existing Run Error Goldens (`tests/golden/errors/run/*.error`):**
-   - `match_error_patterns` in `quest/testing/errors.py` checks that every expected pattern in `.error` appears in
-     `stderr`. Because the first line remains `error: Exception: <name>`, all existing `.error` files continue to
-     match in both `interpret` and `run_c_compiled`.
-   - `format_canonical_error_golden` (used by `--update-golden`) will preserve the first line of the diagnostic message
-     unless the test is in the dedicated traceback test suite.
-2. **Interpreter vs. IR Interpreter Traceback Equivalence:**
-   - Extend the test runner (`run_tests.py` / `tests/python/test_tracebacks.py`) so that for traceback error tests, the
-     full `stderr` output (exception line, raise site, and complete list of `in <func>` frames, including `<main>`,
-     nested functions, closures, module calls, and `try ... when` re-raises) is compared **identically** between
-     `interpret` and all four IR interpreter stages (`run_ir_core`, `run_ir_specialized`, `run_ir_closed`,
-     `run_ir_represented`).
-3. **Compiled Code (`run_c_compiled`) Subsequence Verification:**
-   - For compiled runs of traceback tests, the test harness parses the output of `interpret` and `run_c_compiled` into:
-     - `exception_header`: e.g. `Exception: CustomFailure` (comparing the exception name, since C does not format
-       arbitrary payloads)
-     - `raise_site`: `at <file>:<line>:<col>` or `in external <symbol>`
-     - `frames`: ordered list of function names `["inner", "middle", "outer", "<main>"]`
-   - It asserts that:
-     1. `compiled.exception_name == interp.exception_name`
-     2. `compiled.raise_site == interp.raise_site`
-     3. `compiled.frames` is a non-empty **ordered subsequence** (and subset) of `interp.frames` (for instance, if
-        `inner` was inlined into `middle` by `clang -O2`, `["middle", "outer", "<main>"]` is a valid subsequence of
-        `["inner", "middle", "outer", "<main>"]`).
-4. **Opt-Out Verification (`QUEST_TRACEBACK=0`):**
-   - Unit tests verify that running with `QUEST_TRACEBACK=0` in `interpret`, `run_ir_core`, and `run_c_compiled`
-     suppresses all `at ...` and `in ...` lines and prints only the `Exception: <name>` line.
+1. **Run-error goldens** (`tests/golden/errors/run/*.error`) still match: the header is unchanged.
+2. **Raise sites** (step 1): error tests whose `.error` patterns include the location, run in every phase: a `raise`
+   in the program, each checked operation, a raise inside a library module's Quest code, a raise inside an external,
+   and a re-raise through a `try` whose branches do not match. A unit test runs a binary directly and checks the
+   format of §2.2.
+3. **Interpreter frames** (step 2): for a set of traceback programs (nested and recursive calls, closures, module
+   functions, library callbacks, re-raises), the full output of `interpret` and of the four `run_ir_*` phases is
+   identical.
+4. **Compiled frames** (step 3): for the same programs, `run_c_compiled` reports the same header and raise site as
+   `interpret`, and its frames are a non-empty ordered subsequence of the interpreter's that ends with `<main>`.
+   Separate cases cover each outcome of §5.1: an exception caught by a listed handler, by `else`, not caught, and
+   re-raised through an `UNKNOWN` handler.
 
 ---
 
-## 8. Phased Implementation Plan
+## 7. Plan
 
-### Step 1: Function Trace Names and Source Locations on Typed AST
+### Step 1: Raise sites in every backend
 
-- **Changes:**
-  - Define `SourceLoc(file, line, column)` in `quest/diagnostics.py` (or `quest/syntax/sources.py`).
-  - Add `trace_name: str = "<anon>"` to `TypedFun` in `quest/typechecker/typed_ast.py` and `QClosure` in
-    `quest/values/model.py`.
-  - Implement a small pass `assign_trace_names(program_or_module, module_name=...)` invoked at the end of typechecking
-    (`elaborate_program`, `elaborate_module`) that populates `TypedFun.trace_name` according to §2.2.
-  - Attach `source_map` to `TypedProgram` and `TypedModule` so offsets can be converted to `SourceLoc` during
-    interpretation and IR lowering.
-- **Done when:** Unit tests verify `TypedFun.trace_name` for top-level functions, recursive functions, module
-  functions, nested functions, and anonymous lambdas; existing test suites pass.
+- Offsets on the raising IR nodes and the source map on `ir.Unit` (§3.1); `ir.Reraise`.
+- Interpreters: the source map of the running unit on raised exceptions; offsets from IR nodes (§3.2).
+- C: `quest_raise_at`, location arguments on the cold helpers, `loc` in `QExceptionState`, `quest_reraise` (§3.3).
+  The binary prints the `at` line (§2.2).
+- `run_c_compiled` parses the binary's output into a located diagnostic (§2.2).
+- **Done when:** the tests of §6.2 pass in every phase, the task "Uncaught exceptions are reported at the wrong place,
+  or none" is removed from `docs/tasklist.md`, and `ABI_VERSION` is bumped (the runtime's raise helpers change).
 
-### Step 2: Tracebacks in the Tree-Walking Interpreter (`treewalk.py` & `builtins.py`)
+### Step 2: Frames in the interpreters
 
-- **Changes:**
-  - Extend `QuestException` (`quest/values/model.py`) with `raise_loc: Optional[SourceLoc]`,
-    `external_name: Optional[str]`, `frames: tuple[str, ...]`, and traceback formatting (`format_traceback()`), gated on
-    `QUEST_TRACEBACK != "0"`.
-  - Add shared `call_stack: list[str]` and unit `source_map` tracking to `RuntimeEnvironment`
-    (`quest/interpreter/treewalk.py`).
-  - Push/pop `"<main>"`, `"<module>.<init>"`, and `closure.trace_name` in `treewalk.py`.
-  - Populate `raise_loc` and `frames` on explicit `TypedRaise` and checked operations (`int.error`, `real.error`,
-    `word.error`, `arrayOp.error`, `variant.tagMismatch`, `dynamic.error`), and `external_name` + `frames` in
-    `builtins.py` when an external primitive raises.
-  - Ensure `TypedTry` re-raises preserve the original `QuestException`'s `raise_loc` and `frames`.
-- **Done when:** Uncaught exceptions in `interpret` print the raise site and most-recent-first call stack; re-raising
-  through a non-matching `try ... when` preserves the original raise site and inner frames; `QUEST_TRACEBACK=0`
-  suppresses the traceback; all golden and unit tests pass.
+- `TypedFun.binder`; `QClosure.trace_name` and `ir.Function.trace_name`, qualified as in §4.
+- `RuntimeEnvironment.call_stack`, pushed and popped by both interpreters; `QuestException.frames`.
+- `Diagnostic.trace` and its rendering (§2.1).
+- **Done when:** the tests of §6.3 pass.
 
-### Step 3: Tracebacks in the IR and IR Interpreter (`quest/ir/` & `ir_interp.py`)
+### Step 3: Frames in compiled code
 
-- **Changes:**
-  - Add `trace_name: str` to `ir.Function` and `loc: Optional[SourceLoc]` to `ir.Raise`, `ir.Prim`, `ir.ArrayNew`,
-    `ir.ArrayGet`, `ir.ArraySet`, `ir.VariantAssert`, and `ir.AutoInspect` (`quest/ir/nodes.py`).
-  - Update `ir/lower.py` to populate `trace_name` on functions and `loc` on raising nodes from the unit's `SourceMap`.
-  - Update `ir/specialize.py`, `ir/closure.py`, and `ir/represent.py` to propagate `trace_name` and `loc` through all
-    IR transformations (marking generated adapter thunks with `trace_name=""`).
-  - Update `ir_interp.py` to push/pop `fn.trace_name`, `"<module>.<init>"`, and `"<main>"` on
-    `runtime_env.call_stack`, and attach `loc` and `frames` when raising `QuestException` (preserving them on
-    `_Raised` re-raises).
-- **Done when:** For a suite of traceback test programs (covering nested calls, closures, modules, stdlib calls,
-  checked ops, and `try ... when` re-raises), `interpret`, `run_ir_core`, `run_ir_specialized`, `run_ir_closed`, and
-  `run_ir_represented` produce identical traceback output.
-
-### Step 4: C Runtime Traceback Capture, Symbol Resolution, and Printing (`runtime/`)
-
-- **Changes:**
-  - Define `QFuncEntry`, `QFuncTable`, `QTraceback`, and updated `QExceptionState` in `runtime/quest_runtime.h`
-    (updating the `static_assert` on `sizeof(QExceptionState)`).
-  - Implement `quest_raise_at`, `quest_reraise`, and `_at` variants of the runtime error helpers
-    (`quest_raise_int_error_at`, `quest_raise_array_error_at`, `quest_raise_variant_error_at`, etc.) in
-    `runtime/quest_runtime.c` and `runtime/quest_runtime.h`.
-  - Update out-of-line runtime primitives in `runtime/quest_runtime.c` and `runtime/quest_serialization.c` to pass
-    `__func__` as `ext_fn` when raising.
-  - Implement `backtrace()` capture (with `__builtin_frame_address` fallback), lazy merging/sorting of
-    `quest_all_func_tables[]`, `pc - 1` binary search with `<main>` termination and address-range validation,
-    consecutive-duplicate collapsing, and `QUEST_TRACEBACK=0` checking in `runtime/quest_runtime.c`.
-  - Define `quest_runtime_func_table` in `runtime/quest_runtime.c`.
-- **Done when:** C runtime compiles cleanly under `-std=c99 -pedantic-errors -Wall -Wextra -O2`.
-
-### Step 5: Emitting Function Tables and Link-Time Master Table (`quest/codegen/` & `quest/build/`)
-
-- **Changes:**
-  - Update `CPrinter` (`quest/codegen/c/printer.py`) to:
-    - Emit `quest_raise_at(..., "file:line:col", NULL)` for explicit `ir.Raise` and `quest_reraise(...)` for
-      handler re-raises.
-    - Pass `"file:line:col"` to inline checked operations (`quest_int_div_at`, bounds checks, variant tag assertions).
-    - Emit `qv_func_table_main` (in main units) or `qv_func_table_mod_<clean>` (in module units) containing all
-      emitted C functions with their `trace_name` and `Q_FUNC_*` flags.
-  - Update `compiler_runner.py` and `build/engine.py` to generate and compile the link-time table file defining
-    `quest_all_func_tables[]` for all linked units plus `quest_runtime_func_table`.
-  - Bump `ABI_VERSION` in `quest/config/abi.py`.
-- **Done when:** All compiled golden and error tests build, link, and pass with `ABI_VERSION` bumped.
-
-### Step 6: Traceback Test Suite and Documentation Updates
-
-- **Changes:**
-  - Add dedicated traceback tests in `tests/python/test_tracebacks.py` (and/or `tests/source/errors/run/`) verifying:
-    - Exact traceback match between `interpret` and `run_ir_*`.
-    - Exception name match, raise-site match, and frame subsequence match for `run_c_compiled`.
-    - Preservation of original traceback across non-matching `try ... when` blocks in both interpreters and compiled C.
-    - Recursive frame collapsing (`repeated N more times`).
-    - Suppression via `QUEST_TRACEBACK=0`.
-  - Update `docs/codegen-c.md` and `docs/runtime-design.md` to reference `docs/exceptions.md`.
-- **Done when:** `python3.11 run_tests.py --phase all` and `python3.11 -m unittest discover -s tests/python` both pass
-  with zero failures.
+- Measure with `tests/perf/measure.py` with function tables emitted and registered (§5.2), before going further.
+- `ir.Try.catches`, with pure patterns hoisted in `lower.py`; the handler fields and the chain walk of §5.1.
+- Stack walking and exact attribution (§5.3), captured frames (§5.4), and `-fno-reorder-blocks-and-partition` for gcc.
+- **Done when:** the tests of §6.4 pass, and `docs/c-representation.md` and `docs/runtime-design.md` describe the
+  handler fields, the function tables, and frame printing.

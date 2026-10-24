@@ -336,13 +336,7 @@ let n = dynamic.be(:Int d);
 
 the interpreter reports `dynamic.error` at `6:1` in a five-line file.
 
-**Where to start.** In C, `quest_raise` and the uncaught-exception handler in `runtime/quest_runtime.c` (near
-`fprintf(stderr, "Exception: %s\n", name)`) have no source position; the generated code could pass one to raises
-(and to the run-time checks that raise, such as integer overflow), or keep the position of the outermost phrase
-being run, and print `file:line:col`. The run phase (`run_c_compiled` in `bootstrap/python/quest/pipeline.py`)
-should then parse that, or report without a location rather than at offset 0. In the interpreter, a
-`QuestException` raised while running a module's code should carry that unit's source map (as `in_unit` in
-`diagnostics.py` does for compile-time errors), or be relocated to the call in the program it escaped through.
+**Where to start.** Step 1 of `docs/exceptions.md`, which gives raise sites in every backend.
 
 **Done when.** Both programs above report a correct location (in the program, or in the library module with its
 file name) in the interpreter and in compiled code, a binary run directly prints the location, and error tests
