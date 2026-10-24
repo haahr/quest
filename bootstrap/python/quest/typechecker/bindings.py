@@ -37,6 +37,7 @@ from quest.typechecker.elaborate_types import (
 from quest.typechecker.typed_ast import (
     TypedBinding,
     TypedDefKind,
+    TypedExpr,
     TypedExprStmt,
     TypedExternal,
     TypedFun,
@@ -103,34 +104,68 @@ class BindingMixin:
             q_params.append(QParam(name=p.name, type_val=p_type, is_var=is_var, is_out=is_out))
         return tuple(formal_params), tuple(q_params)
 
-    def _synth_fun_expr(self, expr: ast.ExprFun, env: Environment, loop_depth: int) -> TypedFun:
-        """Synthesizes a function abstraction: fun(params): RetType Body."""
+    def _elaborate_fun_expr(
+        self,
+        expr: ast.ExprFun,
+        expected_type: Optional[QType],
+        env: Environment,
+        loop_depth: int,
+    ) -> TypedExpr:
+        """Elaborates a function abstraction: fun[(type params)](params): RetType Body.
+
+        Against an expected function type, parameters without annotations take the expected parameters' types, and
+        the body is checked against the expected result type, which is the function's; the function's own type
+        parameters and result type annotation are not consulted. Against an expected polymorphic type, see
+        `_check_polymorphic_fun_expr`; against any other type, the function is synthesized and must be a subtype.
+        Synthesized, every parameter needs an annotation, the body is checked against the result type annotation if
+        there is one, and the result type may not mention the function's parameters.
+        """
+        expected_fun: Optional[QFunType] = None
+        if expected_type is not None:
+            expected_lazy = expected_type.evaluate_lazily(env)
+            if isinstance(expected_lazy, QAllType):
+                return self._check_polymorphic_fun_expr(expr, expected_type, expected_lazy, env, loop_depth)
+            if not isinstance(expected_lazy, QFunType):
+                return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Function")
+            if len(expr.params) != len(expected_lazy.params):
+                raise TypeError(
+                    f"Function arity mismatch: expected {len(expected_lazy.params)} parameters, "
+                    f"got {len(expr.params)}",
+                    offset=expr.offset,
+                )
+            expected_fun = expected_lazy
+
         with env.scoped("fun"):
             quants: list[QQuantifier] = []
-            for tp in getattr(expr, "type_params", ()):
-                bound_kind = elaborate_kind(tp.bound, env)
-                sym_id = env.fresh_symbol_id()
-                env.current_scope.declare_type(
-                    TypeSymbol(name=tp.name, symbol_id=sym_id, kind=bound_kind)
-                )
-                self._type_param_ids.add(sym_id)
-                quants.append(QQuantifier(name=tp.name, symbol_id=sym_id, bound=bound_kind))
+            if expected_fun is None:
+                for tp in getattr(expr, "type_params", ()):
+                    bound_kind = elaborate_kind(tp.bound, env)
+                    sym_id = env.fresh_symbol_id()
+                    env.current_scope.declare_type(
+                        TypeSymbol(name=tp.name, symbol_id=sym_id, kind=bound_kind)
+                    )
+                    self._type_param_ids.add(sym_id)
+                    quants.append(QQuantifier(name=tp.name, symbol_id=sym_id, bound=bound_kind))
 
-            formal_params, q_params = self._declare_fun_params(expr.params, None, env)
+            formal_params, q_params = self._declare_fun_params(
+                expr.params, expected_fun.params if expected_fun is not None else None, env
+            )
 
             with self.in_function():
-                expected_ret = (
-                    elaborate_type(expr.return_type, env)
-                    if expr.return_type is not None
-                    else None
-                )
+                if expected_fun is not None:
+                    expected_ret: Optional[QType] = expected_fun.result_type
+                elif expr.return_type is not None:
+                    expected_ret = elaborate_type(expr.return_type, env)
+                else:
+                    expected_ret = None
                 body_typed = self._elaborate_subexpr(
                     expr.body, expected_ret, env, loop_depth=self.loop_depth
                 )
                 ret_type = expected_ret if expected_ret is not None else body_typed.type_val
 
-            local_symbol_ids = {sym.symbol_id for sym in env.current_scope.values.values()}
-            check_no_escaping_path_types(ret_type, local_symbol_ids, "function scope", expr.offset)
+            if expected_fun is None:
+                local_symbol_ids = {sym.symbol_id for sym in env.current_scope.values.values()}
+                check_no_escaping_path_types(ret_type, local_symbol_ids, "function scope", expr.offset)
 
             if quants:
                 if q_params:
@@ -151,101 +186,70 @@ class BindingMixin:
                 offset=expr.offset,
             )
 
-    def _check_fun_expr(
+    def _check_polymorphic_fun_expr(
         self,
         expr: ast.ExprFun,
         expected_type: QType,
+        expected_lazy: QAllType,
         env: Environment,
         loop_depth: int,
     ) -> TypedFun:
-        """Checks a function abstraction against an expected function type.
+        """Checks a function abstraction against an expected polymorphic type All(X::K ...) T.
 
-        Against a polymorphic type All(X::K ...) T, the function's type parameters are the expected quantifiers renamed
-        by position, with fresh symbols (the expected type's own may be in scope), the names the function gives them
-        (or the expected names, if it writes none), and the expected bounds, with earlier quantifiers renamed. A bound
-        the function writes may be weaker than the expected one, as for subtyping in Cardelli's Quest ([TIncl Pi]),
-        and the body is checked under the expected bound. The function's type is the renamed one, so that its
-        parameters and body refer to its own quantifiers.
+        The function's type parameters are the expected quantifiers renamed by position, with fresh symbols (the
+        expected type's own may be in scope), the names the function gives them (or the expected names, if it writes
+        none), and the expected bounds, with earlier quantifiers renamed. A bound the function writes may be weaker
+        than the expected one, as for subtyping in Cardelli's Quest ([TIncl Pi]), and the body is checked under the
+        expected bound. The function's type is the renamed one, so that its parameters and body refer to its own
+        quantifiers.
         """
-        expected_lazy = expected_type.evaluate_lazily(env)
-        if isinstance(expected_lazy, QAllType):
-            written = tuple(getattr(expr, "type_params", ()))
-            if written and len(written) != len(expected_lazy.quantifiers):
-                raise TypeError(
-                    f"Function has {len(written)} type parameters, but its expected type '{expected_type}' has "
-                    f"{len(expected_lazy.quantifiers)}",
-                    offset=expr.offset,
-                )
-            with env.scoped("poly_fun"):
-                meta_map: dict[int, QType] = {}
-                quants: list[QQuantifier] = []
-                for idx, q in enumerate(expected_lazy.quantifiers):
-                    bound = q.bound.substitute_types(meta_map)
-                    name = written[idx].name if written else q.name
-                    if written:
-                        written_bound = elaborate_kind(written[idx].bound, env)
-                        if not is_subkind(bound, written_bound, env):
-                            raise TypeError(
-                                f"Type parameter '{name}' is declared '{QQuantifier(name, 0, written_bound)}', which "
-                                f"does not include the expected '{QQuantifier(name, 0, bound)}'",
-                                offset=written[idx].offset,
-                            )
-                    sym_id = env.fresh_symbol_id()
-                    env.current_scope.declare_type(TypeSymbol(name=name, symbol_id=sym_id, kind=bound))
-                    self._type_param_ids.add(sym_id)
-                    meta_map[q.symbol_id] = QTypeVar(name=name, symbol_id=sym_id, bound=bound)
-                    quants.append(QQuantifier(name=name, symbol_id=sym_id, bound=bound))
-                inner_exp = expected_lazy.body.substitute(meta_map)
-                if written:
-                    if expr.params:
-                        inner_expr = ast.ExprFun(
-                            params=expr.params,
-                            return_type=expr.return_type,
-                            body=expr.body,
-                            type_params=(),
-                            offset=expr.offset,
-                        )
-                    else:
-                        inner_expr = expr.body
-                else:
-                    inner_expr = expr
-                inner_typed = self.check_expr(inner_expr, inner_exp, env, loop_depth)
-                inner_t = inner_typed.type_val if isinstance(inner_typed, TypedFun) else inner_exp
-                return TypedFun(
-                    params=inner_typed.params if isinstance(inner_typed, TypedFun) else (),
-                    body=inner_typed.body if isinstance(inner_typed, TypedFun) else inner_typed,
-                    type_val=QAllType(quantifiers=tuple(quants), body=inner_t),
-                    type_param_ids=tuple(q.symbol_id for q in quants),
-                    offset=expr.offset,
-                )
-
-        if not isinstance(expected_lazy, QFunType):
-            return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Function")
-
-        if len(expr.params) != len(expected_lazy.params):
+        written = tuple(getattr(expr, "type_params", ()))
+        if written and len(written) != len(expected_lazy.quantifiers):
             raise TypeError(
-                f"Function arity mismatch: expected {len(expected_lazy.params)} parameters, "
-                f"got {len(expr.params)}",
+                f"Function has {len(written)} type parameters, but its expected type '{expected_type}' has "
+                f"{len(expected_lazy.quantifiers)}",
                 offset=expr.offset,
             )
-
-        with env.scoped("fun"):
-            formal_params, q_params = self._declare_fun_params(
-                expr.params, expected_lazy.params, env
-            )
-
-            with self.in_function():
-                body_typed = self.check_expr(
-                    expr.body,
-                    expected_lazy.result_type,
-                    env,
-                    loop_depth=self.loop_depth,
-                )
-            fun_type = QFunType(params=tuple(q_params), result_type=expected_lazy.result_type)
+        with env.scoped("poly_fun"):
+            meta_map: dict[int, QType] = {}
+            quants: list[QQuantifier] = []
+            for idx, q in enumerate(expected_lazy.quantifiers):
+                bound = q.bound.substitute_types(meta_map)
+                name = written[idx].name if written else q.name
+                if written:
+                    written_bound = elaborate_kind(written[idx].bound, env)
+                    if not is_subkind(bound, written_bound, env):
+                        raise TypeError(
+                            f"Type parameter '{name}' is declared '{QQuantifier(name, 0, written_bound)}', which "
+                            f"does not include the expected '{QQuantifier(name, 0, bound)}'",
+                            offset=written[idx].offset,
+                        )
+                sym_id = env.fresh_symbol_id()
+                env.current_scope.declare_type(TypeSymbol(name=name, symbol_id=sym_id, kind=bound))
+                self._type_param_ids.add(sym_id)
+                meta_map[q.symbol_id] = QTypeVar(name=name, symbol_id=sym_id, bound=bound)
+                quants.append(QQuantifier(name=name, symbol_id=sym_id, bound=bound))
+            inner_exp = expected_lazy.body.substitute(meta_map)
+            if written:
+                if expr.params:
+                    inner_expr = ast.ExprFun(
+                        params=expr.params,
+                        return_type=expr.return_type,
+                        body=expr.body,
+                        type_params=(),
+                        offset=expr.offset,
+                    )
+                else:
+                    inner_expr = expr.body
+            else:
+                inner_expr = expr
+            inner_typed = self.check_expr(inner_expr, inner_exp, env, loop_depth)
+            inner_t = inner_typed.type_val if isinstance(inner_typed, TypedFun) else inner_exp
             return TypedFun(
-                params=tuple(formal_params),
-                body=body_typed,
-                type_val=fun_type,
+                params=inner_typed.params if isinstance(inner_typed, TypedFun) else (),
+                body=inner_typed.body if isinstance(inner_typed, TypedFun) else inner_typed,
+                type_val=QAllType(quantifiers=tuple(quants), body=inner_t),
+                type_param_ids=tuple(q.symbol_id for q in quants),
                 offset=expr.offset,
             )
 

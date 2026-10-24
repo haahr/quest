@@ -237,7 +237,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 3. Function abstraction: check against expected function type
             case ast.ExprFun():
-                return self._check_fun_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_fun_expr(expr, expected_type, env, loop_depth)
 
             # 4. Record expression: check fields against expected record type
             case ast.ExprRecord():
@@ -434,7 +434,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # --- Functions and Applications ---
             case ast.ExprFun():
-                return self._synth_fun_expr(expr, env, loop_depth)
+                return self._elaborate_fun_expr(expr, None, env, loop_depth)
 
             case ast.ExprApp():
                 return self._synth_app_expr(expr, env, loop_depth)
