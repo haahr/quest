@@ -322,13 +322,9 @@ class ControlMixin:
                 )
                 return TypedAssign(target=target_select, value=rhs_typed, offset=expr.offset)
 
-            # Target 3: Array indexing (a[idx] := rhs)
-            case ast.ExprIndex(target=target, index=index):
-                return self._synth_index_assign_expr(
-                    ast.ExprIndexAssign(target=target, index=index, value=expr.right, offset=expr.offset),
-                    env,
-                    loop_depth,
-                )
+            # Desugaring has made an assignment to an array element (a[idx] := rhs) an ExprIndexAssign
+            case ast.ExprIndex():
+                raise not_desugared(expr)
 
             case _:
                 raise TypeError("Assignment target must be a mutable variable or field", offset=expr.left.offset)

@@ -137,10 +137,10 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(typed_check.type_val, INT_TYPE)
 
     def test_array_index_assignment_delegation(self) -> None:
-        """arr[i] := val in infix assignment delegates properly to index assignment."""
+        """arr[i] := val, which desugaring makes an ExprIndexAssign, elaborates as an index assignment."""
         el = TypeElaborator()
         el.elaborate_phrase(parse_phrase("let arr = array of 10 20 30 end"))
-        expr = parse_expr("arr[1] := 99")
+        expr = parse_core_expr("arr[1] := 99")
         typed_assign = el.synth(expr)
         self.assertEqual(typed_assign.type_val, OK_TYPE)
 

@@ -64,6 +64,8 @@ def _rewrite(node: ast.ASTNode) -> ast.ASTNode:
             return ast.ExprIf(cond=left, then_branch=right, else_branch=ast.ExprBool(value=False, offset=off), offset=off)
         case ast.ExprInfix(left=left, op="orif", right=right, offset=off):
             return ast.ExprIf(cond=left, then_branch=ast.ExprBool(value=True, offset=off), else_branch=right, offset=off)
+        case ast.ExprInfix(left=ast.ExprIndex(target=target, index=index), op=":=", right=right, offset=off):
+            return ast.ExprIndexAssign(target=target, index=index, value=right, offset=off)
         case ast.ExprInfix(left=left, op=op, right=right, offset=off) if op not in BUILTIN_INFIX_OPERATORS:
             return ast.ExprApp(func=ast.ExprId(name=op, offset=off), args=(left, right), offset=off)
         case ast.ExprIf(elsifs=elsifs) if elsifs:

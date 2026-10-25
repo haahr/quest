@@ -79,6 +79,18 @@ class TestDesugar(unittest.TestCase):
             expr = parse_expr(f"a {op} b")
             self.assertIs(desugar(expr), expr, op)
 
+    def test_index_assignment(self) -> None:
+        expr = desugar(parse_expr("a[i] := v"))
+        self.assertEqual(
+            expr,
+            ast.ExprIndexAssign(
+                target=ast.ExprId(name="a", offset=0),
+                index=ast.ExprId(name="i", offset=2),
+                value=ast.ExprId(name="v", offset=8),
+                offset=0,
+            ),
+        )
+
     def test_nested_sugar_is_desugared(self) -> None:
         program = desugar(parse_phrase("let f = fun(): Int if a then 1 elsif b then 2 else 3 end;", target="program"))
         fun = program.phrases[0].value
