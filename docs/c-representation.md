@@ -287,18 +287,19 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     assigned to abstract slots are boxed via `qval_wrap`, and extracted abstract values are unboxed via `qval_unwrap`.
   - Bounded type variables and path-types (`A::POWER(T)`, `p.T` where `p.T <: T`) resolve directly to the bound's
     native C type (e.g. `A <: Int` resolves to `QInt`, `A <: Real` to `QReal`), enabling unboxed, zero-overhead access.
-  - **Own views.** Generic code holds a value of a type parameter bounded by a record, variant, or option type at its
-    own view, its type argument's, in the bound's representation (a record with its own offset table, a variant with
-    its own tags, an option as it is), as the caller holds it: nothing is converted when it is passed to or returned
+  - **Own views.** Generic code holds a value of a type parameter bounded by a record, variant, option, or tuple type
+    at its own view, its type argument's, in the bound's representation (a record with its own offset table, a variant
+    with its own tags, an option or tuple as it is, perhaps a proxy), as the caller holds it: nothing is converted when it is passed to or returned
     from generic code, so mutable data holding such values (arrays, `var` components and cells) is shared as it is.
     Generic code reads such a value through the bound by a **view map** (`QViewMap`, `quest_view_map(actual,
     bound)`, memoized per pair), which a function fetches where it begins for each type parameter whose values its
     body reads so (`ir.Function.view_maps`): for a record, the index in the type argument's offset table of each of
     the bound's fields; for a variant or option, the bound's tag for each of the type argument's; and the descriptors
-    to convert a part from, where the type argument's type for it differs from the bound's (a field, payload, or
-    option component at a subtype's view). A field is read through the map, as stored and converted
-    (`quest_view_record_field`), or addressed through it (`quest_view_record_slot`, for `var` fields), a tag mapped
-    (`quest_view_option_tag`), and a payload or option component converted (`quest_view_part`,
+    to convert a part from, where the type argument's type for it differs from the bound's (a field, tuple component,
+    payload, or option component at a subtype's view). A field is read through the map, as stored and converted
+    (`quest_view_record_field`), or addressed through it (`quest_view_record_slot`, for `var` fields), a tuple's
+    component likewise (`quest_view_tuple_element`, `quest_view_tuple_slot`, through a proxy if the value is one), a
+    tag mapped (`quest_view_option_tag`), and a payload or option component converted (`quest_view_part`,
     `quest_view_option_component`). Used at another type (its bound, say), such a value is converted by the runtime
     between the two descriptors (a `view` plan). A module's abstract type with a bound is held viewed at its bound
     outside the module, as before (§6.10).
@@ -534,14 +535,12 @@ static_assert(offsetof(QVariantVal, payload) == 8, qvariantval_payload_at_offset
   remapping first, so values read from aggregates dispatch on their tags directly.
 - **Polymorphic Contexts:** When passed to unbounded polymorphic functions (`All(A::TYPE)`), `QVariantVal` is
   boxed via `quest_variant_box(v)` into `QVal.p` and unboxed via `(*((QVariantVal *)qval.p))`.
-- **Bounded Specialization for Variants (`V <: Variant`):**
+- **Bounded Type Parameters (`V <: Variant`):**
   - **Descriptor Retention:** Bounded variant functions retain `const QTypeDescriptor *descriptor_V` in their C
     function signature.
-  - **Call-Site Tag Alignment:** When invoking a function expecting `V <: BoundVariant`, the caller aligns the
-    variant's tag to `BoundVariant`'s tag space via the static `tagmap_Bound_Actual[]` table using an unboxed compound
-    literal `(QVariantVal){ .tag = tagmap[v.tag], .payload = v.payload }`.
-  - **Zero-Allocation Callee Dispatch:** Because tags are pre-aligned at call sites, the callee evaluates `case`, `?`,
-    and `!` directly on `v.tag` without runtime tag translation, dictionary lookups, or heap allocations.
+  - **Own Views:** The caller passes a variant as it holds it, its tag in its own type's numbering (§5.1, Own views).
+    The callee evaluates `case`, `?`, and `!` on the tag mapped through its view map (`view->index[v.tag]`, an array
+    lookup, the map fetched once per call), and converts a payload whose type the type argument narrows.
 - **Specialization:** Eliminated entirely when the variant type is statically known.
 
 ### 5.4. Arrays

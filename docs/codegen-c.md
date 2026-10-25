@@ -462,14 +462,16 @@ Cardelli's structural subtyping is lowered to explicit conversion plans (`ir.Con
 - **Runtime Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_<T>`
   parameters in their C signatures to facilitate separate compilation, runtime reflection, and view-map lookup.
 - **Own Views at Call Sites:** Callers pass and receive values of a bounded type parameter (`A <: B` where `B` is a
-  record, variant, or option type) at their **own view**—their type argument's view—in the bound's representation
-  (`QRecordVal`, `QVariantVal`, or option pointer), with zero conversion on entry or return.
+  record, variant, option, or tuple type) at their **own view**—their type argument's view—in the bound's
+  representation (`QRecordVal`, `QVariantVal`, or a pointer), with zero conversion on entry or return.
 - **Reading Through a View Map (`QViewMap`):** For each bounded type parameter whose values the function body accesses
   through its bound (`ir.Function.view_maps`), the function prologue fetches a memoized view map via
   `quest_view_map(descriptor_A, &quest_type_Bound)`. Record fields are read or addressed through the view map
-  (`quest_view_record_field`, `quest_view_record_slot` for `var` fields), variant and option tags are mapped via
-  `quest_view_option_tag`, and payloads or option components whose stored types narrow by depth subtyping are converted
-  via `quest_view_part` / `quest_view_option_component` ([c-representation.md §5.1](c-representation.md)).
+  (`quest_view_record_field`, `quest_view_record_slot` for `var` fields), tuple components likewise
+  (`quest_view_tuple_element`, `quest_view_tuple_slot`), variant and option tags are mapped (through the map's index,
+  `quest_view_option_tag`) for `case`, `?`, `!`, and `ordinal`, and payloads or option components whose stored types
+  narrow by depth subtyping are converted via `quest_view_part` / `quest_view_option_component`
+  ([c-representation.md §5.1](c-representation.md)).
 
 ### 10.5. Call-Site Specialization for Unbounded Quantifiers
 When unbounded polymorphic functions (`All(A::TYPE)`) are invoked at call sites with concrete `Record` or `Variant`

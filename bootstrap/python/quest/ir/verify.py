@@ -420,7 +420,7 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
                 case ir.Store(value=a, address=p) if p is not None:
                     slot(a, located(p), f"{where}: a store")
                 case ir.Store(value=a, base=b, index=i) if isinstance(i, int):
-                    slot(a, shape(atom_type(b)).components[i].shape, f"{where}: a store")
+                    slot(a, resolved_shape(shape(atom_type(b))).components[i].shape, f"{where}: a store")
                 case ir.Store(value=a, base=b, name=None):
                     slot(a, shape(atom_type(b)).element, f"{where}: a store")
                 case ir.VarDecl(var=var, init=init) if init is not None:

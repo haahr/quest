@@ -5,30 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Values of type parameters bounded by option or tuple types can be used only through upcasts
-
-**Problem.** The type checker accepts `case`, `?`, and `!` on a value of a type parameter bounded by a variant type,
-and field selection on one bounded by a record type, but rejects `case`, `?`, and `!` on one bounded by an option type
-(only `ordinal` is accepted), and selection on one bounded by a tuple type. The backends read such values through the
-bound already (a view map for options, `docs/c-representation.md` §5.1; tuples' components would be read as through a
-proxy).
-
-**Reproduce.** `let get(A <: Option none some with x: Int end end o: A): Int = case o when some with p then p.x
-when none then 0 end;` reports `Case target must have Option or Variant type, got 'A'`; `o!some` reports `Variant
-assertion '!' requires Variant or Option target`; and `let f(A <: Tuple x: Int end t: A): Int = t.x;` reports `Cannot
-select field 'x' from non-record/tuple type 'A'`.
-
-**Where to start.** The case, query, and extraction elaboration in `bootstrap/python/quest/typechecker/control.py` and
-`aggregates.py`, which resolve a variant bound (`resolve_option_bound` exists, and `ordinal` uses it) but not an
-option's, and `_synth_select_expr` in `typechecker/aggregates.py` for tuples. The C printer reads an option through a
-view map already (`view_payload` in `codegen/c/printer.py`); a tuple bound needs the same (or the value upcast to
-its bound, through a proxy).
-
-**Done when.** The programs above type-check and run with the same results in every backend, and
-`language/bounded_parameters_own_view` covers them.
-
----
-
 ## Specialization's tuple trigger depends on how a tuple type is written
 
 **Problem.** A polymorphic function is specialized when a parameter or its result is a tuple type over its type

@@ -2175,6 +2175,21 @@ static void quest_fill_view_map(QViewMap *m) {
         m->to = to;
         return;
     }
+    if (a->kind == QTYPE_KIND_TUPLE && b->kind == QTYPE_KIND_TUPLE) {
+        /* A tuple's components, by position: the actual's are a prefix-compatible extension of the bound's */
+        const QTupleTypeDescriptor *ta = (const QTupleTypeDescriptor *)a->extra;
+        const QTupleTypeDescriptor *tb = (const QTupleTypeDescriptor *)b->extra;
+        size_t n = tb != NULL ? tb->element_count : 0;
+        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (n ? n : 1));
+        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (n ? n : 1));
+        for (size_t k = 0; k < n; ++k) {
+            to[k] = tb->elements[k].type;
+            from[k] = ta != NULL && k < ta->element_count ? quest_view_from(ta->elements[k].type, to[k]) : NULL;
+        }
+        m->from = from;
+        m->to = to;
+        return;
+    }
     if ((a->kind == QTYPE_KIND_VARIANT || a->kind == QTYPE_KIND_OPTION) && b->kind == a->kind) {
         const QVariantTypeDescriptor *va = (const QVariantTypeDescriptor *)a->extra;
         const QVariantTypeDescriptor *vb = (const QVariantTypeDescriptor *)b->extra;

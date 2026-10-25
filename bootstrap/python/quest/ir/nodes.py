@@ -330,6 +330,9 @@ class TupleField:
     tuple: Atom
     index: int
     access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a tuple type: the view map it is read
+    # through the bound by (the component is then a value, converted to the bound's type for it)
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)

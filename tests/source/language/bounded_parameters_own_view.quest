@@ -1,6 +1,6 @@
 (* Language: generic code holds a value of a bounded type parameter (A <: B) at its own view, its type argument's,
-   and reads it through the bound (c-representation.md §5.1): record fields, a variant's or option's case, and their
-   payloads, converted to the bound's types where the type argument's differ. Nothing is converted when such values
+   and reads it through the bound (c-representation.md §5.1): record fields, tuple components, a variant's or option's
+   case, and their payloads, converted to the bound's types where the type argument's differ. Nothing is converted when such values
    are passed to or returned from generic code, so they may be inside mutable data (arrays, var components and
    cells), whose updates both sides share. The polymorphic functions are called through first-class values, so that
    compiled code runs their generic versions rather than clones specialized at the type arguments. *)
@@ -58,14 +58,21 @@ let pick0(A <: V vs: Array(A) i: Int): Int = sizeOf(:A vs[i]);
 let pick: All(A <: V vs: Array(A) i: Int) Int = pick0;
 printInt(pick(:Variant a: Big b: Int end array of wa variant b of Variant a: Big b: Int end with 11 end end 1));
 
-(* 5. Options: an ordinal through the bound, whose numbering differs from the type argument's *)
+(* 5. Options: case, query, extraction, and ordinal through the bound, whose numbering differs from the type
+   argument's, with a payload at a subtype's view *)
 Let O = Option none some with x: Small end end;
+let get0(A <: O o: A): Int = case o when some with p then p.x.a when none then 0 end;
+let get: All(A <: O o: A) Int = get0;
 let ord0(A <: O o: A): Int = ordinal(o);
 let ord: All(A <: O o: A) Int = ord0;
+let extract0(A <: O o: A): Int = if o?some then o!some.x.a else 0 end;
+let extract: All(A <: O o: A) Int = extract0;
 (* The type argument has only the case some, which it numbers 0, the bound 1 *)
 Let S = Option some with x: Big end end;
 let qs: S = option some of S with record a = 12 b = 13 end end;
+printInt(get(:S qs));
 printInt(ord(:S qs));
+printInt(extract(:S qs));
 
 (* 6. Generic code passing its values on to other generic code, and upcasting them to the bound *)
 let viaBound0(A <: P x: A): Int = begin let p: P = x; p.s.a + bump(:A x) end;
@@ -103,3 +110,15 @@ let reset: All(A <: Small c: Cell v: A) Ok = reset0;
 let c = cell(:Big record a = 40 b = 41 end);
 reset(:Big c record a = 42 b = 43 end);
 printInt(inspect c when Tuple y: Big end with t then t.a.y.b else 0 end);
+
+(* 8. Tuples: components read through the bound, one at a subtype's view, and a var component written *)
+Let T = Tuple s: Small var n: Int end;
+let tick0(A <: T t: A): Int = begin t.n := t.n + 1; t.s.a + t.n end;
+let tick: All(A <: T t: A) Int = tick0;
+let tb: Tuple s: Big var n: Int extra: Bool end = tuple let s = record a = 50 b = 51 end let var n = 1 let extra = true end;
+printInt(tick(:Tuple s: Big var n: Int extra: Bool end tb));
+printInt(tb.n);
+let bumpIn(var n: Int): Ok = n := n + 100;
+let tickVar0(A <: T t: A): Int = begin bumpIn(@t.n); t.n end;
+let tickVar: All(A <: T t: A) Int = tickVar0;
+printInt(tickVar(:Tuple s: Big var n: Int extra: Bool end tb));

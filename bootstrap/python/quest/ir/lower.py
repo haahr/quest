@@ -20,6 +20,7 @@ from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY
 from quest.config import CompilerOptions
 from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
+from quest.codegen.layout import resolved_shape
 from quest.ir.shapes import shape
 from quest.types.canonical import collect_fun_quantifiers, option_case_names
 from quest.typechecker.typed_ast import (
@@ -409,7 +410,8 @@ class _Lowerer:
         return self.value(a)
 
     def tuple_index(self, tuple_type: QType, index: int, fld: Optional[str]) -> int:
-        s = shape(tuple_type)
+        # A type parameter bounded by a tuple type is indexed as its bound
+        s = resolved_shape(shape(tuple_type))
         if s.kind != "tuple":
             raise LoweringError(f"tuple component of a {s.kind}")
         if fld is not None:
@@ -424,7 +426,7 @@ class _Lowerer:
         if (module := self.module_ref(target)) is not None:
             return self.let(ir.ModuleMember(module, fld), e.type_val, into)
         base = self.value(target)
-        s = shape(target.type_val)
+        s = resolved_shape(shape(target.type_val))
         if s.kind == "tuple":
             return self.let(ir.TupleField(base, self.tuple_index(target.type_val, -1, fld)), e.type_val, into)
         return self.let(ir.RecordField(base, fld), e.type_val, into)
@@ -553,7 +555,7 @@ class _Lowerer:
             case TypedSelect(target=base_e, field=fld):
                 base = self.value(base_e)
                 v = self.value(value)
-                s = shape(base_e.type_val)
+                s = resolved_shape(shape(base_e.type_val))
                 if s.kind == "tuple":
                     self.emit(ir.Store(v, base=base, index=self.tuple_index(base_e.type_val, -1, fld)))
                 else:

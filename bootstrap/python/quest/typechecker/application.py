@@ -25,6 +25,7 @@ from quest.types import (
     is_subtype,
     resolve_record_bound,
     resolve_option_bound,
+    resolve_tuple_bound,
 )
 from quest.types.env import Environment
 from quest.diagnostics import QuestTypeError
@@ -208,6 +209,9 @@ class ApplicationMixin:
         if isinstance(target, ast.ExprSelect):
             rec_typed = self.synth_expr(target.target, env, loop_depth)
             rec_type = rec_typed.type_val.evaluate_lazily(env)
+            if not isinstance(rec_type, QTupleType) and resolve_record_bound(rec_type, env) is None:
+                # A type parameter bounded by a tuple type: its components are its bound's
+                rec_type = resolve_tuple_bound(rec_type, env) or rec_type
 
             # Check for mutable tuple component: @t.f or @t.1
             if isinstance(rec_type, QTupleType):

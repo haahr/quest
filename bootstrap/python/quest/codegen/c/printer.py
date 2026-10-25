@@ -54,6 +54,7 @@ from quest.codegen.c.types import (
 )
 from quest.codegen.layout import (
     qtype_to_name_str,
+    resolved_shape,
     shape_location_representation,
     shape_representation,
     shape_slot_representation,
@@ -499,6 +500,10 @@ class CPrinter:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
                                               o.view_map)
                 return self.slot_address(ptr, field)
+            case ir.Addr(base=base, index=index, view_map=vm) if isinstance(index, int) and vm is not None:
+                component = resolved_shape(shape(self.atom_type(base))).components[index].shape
+                slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(vm)}, {index})"
+                return self.slot_address(f"(({self.slot_c_type(component)} *){slot})", component)
             case ir.Addr(base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
@@ -515,6 +520,10 @@ class CPrinter:
             case ir.MakeTuple(args=args, embedded=embedded):
                 shapes = [c.shape for c in shape(result.type).components]
                 return self.make_tuple(result.type, self.slot_fields(args, shapes, embedded))
+            case ir.TupleField(tuple=t, index=index, view_map=vm) if vm is not None:
+                # A tuple-bounded type parameter's value: through the view map, converted to the bound's type
+                comp = resolved_shape(shape(self.atom_type(t))).components[index].shape
+                return shape_qval_unwrap(f"quest_view_tuple_element({self.atom(t)}, {self.name(vm)}, {index})", comp)
             case ir.TupleField(tuple=t, index=index, access=access):
                 return self.tuple_component(self.atom(t), shape(self.atom_type(t)), index, access)
             case ir.MakeRecord():
@@ -1172,6 +1181,10 @@ class CPrinter:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
                                               s.view_map)
                 self.emit(f"*{ptr} = {self.atom(value)};")
+            case ir.Store(value=value, base=base, index=index) if isinstance(index, int) and s.view_map is not None:
+                component = resolved_shape(shape(self.atom_type(base))).components[index].shape
+                slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(s.view_map)}, {index})"
+                self.emit(f"*(({self.slot_c_type(component)} *){slot}) = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape

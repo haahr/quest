@@ -113,6 +113,8 @@ from quest.types.kinds import (
     check_kind_well_formed,
     resolve_option_bound,
     resolve_record_bound,
+    resolve_sum_bound,
+    resolve_tuple_bound,
     resolve_variant_bound,
     synth_kind,
     unfold_head,

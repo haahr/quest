@@ -785,12 +785,14 @@ typedef struct QViewMap {
     const QTypeDescriptor *actual;  /* the type argument, as its values are held */
     const QTypeDescriptor *bound;
     /* A record's: for each field of the bound (in name order), the field's index among the actual's (in name order).
-     * A variant's or option's: for each tag of the actual, the bound's tag for its case. */
+     * A variant's or option's: for each tag of the actual, the bound's tag for its case. A tuple's: none (its
+     * components are the bound's, by position). */
     const int64_t         *index;
     /* The types parts read through the bound are converted from: a record's, for each field of the bound, the
-     * actual's type for it; a variant's, for each case of the bound, the actual's payload type; an option's, for each
-     * component of each case of the bound (from component_start), the actual's. NULL where the actual's agrees with
-     * the bound's (nothing to convert). `to` holds the bound's. */
+     * actual's type for it; a tuple's, for each component of the bound, the actual's type for it; a variant's, for
+     * each case of the bound, the actual's payload type; an option's, for each component of each case of the bound
+     * (from component_start), the actual's. NULL where the actual's agrees with the bound's (nothing to convert).
+     * `to` holds the bound's. */
     const QTypeDescriptor *const *from;
     const QTypeDescriptor *const *to;
     const size_t          *component_start;  /* an option's: for each case of the bound, its first component's index */
@@ -817,6 +819,17 @@ static inline QVal quest_view_record_field(QRecordVal rec, const QViewMap *m, si
     QRecordStoredTypes stored = quest_record_stored_types(rec, field_count);
     if (stored != NULL && stored[j] != NULL) return quest_convert(v, stored[j], m->to[k]);
     return quest_view_part(m, k, v);
+}
+
+/* Through a view map of a tuple type: component i of a tuple at the actual's view (or a proxy of one), converted to
+ * the bound's type for it, and the slot of a var component (the original's, through a proxy) */
+static inline QVal quest_view_tuple_element(const void *tup, const QViewMap *m, size_t i) {
+    return quest_view_part(m, i, quest_tuple_element(tup, m->actual, i));
+}
+
+static inline void *quest_view_tuple_slot(const void *tup, const QViewMap *m, size_t i) {
+    if (quest_is_proxy(tup)) return quest_proxy_slot(tup, i);
+    return (char *)tup + ((const QTupleTypeDescriptor *)m->actual->extra)->elements[i].offset;
 }
 
 /* Through a view map of a variant or option type: a value's tag in the bound's numbering, and component j of the

@@ -32,7 +32,8 @@ from quest.types import (
     is_subtype,
     is_type_equal,
     resolve_record_bound,
-    resolve_variant_bound,
+    resolve_sum_bound,
+    resolve_tuple_bound,
 )
 from quest.types.env import (
     Environment,
@@ -114,7 +115,7 @@ class AggregateMixin:
                     offset=offset,
                 )
             return opt.payload_type, True
-        elif (var_bound := resolve_variant_bound(target_type, env)) is not None:
+        elif isinstance(var_bound := resolve_sum_bound(target_type, env), QVariantType):
             field = var_bound.get_variant(tag)
             if field is None:
                 raise TypeError(
@@ -122,6 +123,14 @@ class AggregateMixin:
                     offset=offset,
                 )
             return field.type_val, False
+        elif isinstance(var_bound, QOptionType):
+            opt = var_bound.get_option(tag)
+            if opt is None:
+                raise TypeError(
+                    f"Tag '{tag}' is not a valid option of bound '{var_bound}'",
+                    offset=offset,
+                )
+            return opt.payload_type, True
         else:
             raise TypeError(
                 f"{op_desc} requires Variant or Option target, got '{target_type}'",
@@ -549,6 +558,9 @@ class AggregateMixin:
         target_typed = self.synth_expr(expr.target, env, loop_depth)
         target_type = target_typed.type_val.evaluate_lazily(env)
 
+        if not isinstance(target_type, (QRecordType, QTupleType)) and resolve_record_bound(target_type, env) is None:
+            # A type parameter bounded by a tuple type: selected from as from its bound
+            target_type = resolve_tuple_bound(target_type, env) or target_type
         match target_type:
             case QRecordType():
                 rec_f = target_type.get_field(expr.field)

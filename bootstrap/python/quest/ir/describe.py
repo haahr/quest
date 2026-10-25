@@ -304,10 +304,10 @@ class _Describer:
 
     def view_map(self, a: ir.Atom) -> Optional[ir.Var]:
         """The view map a value is read through its type's bound by, if its type is a type parameter in scope bounded by
-        a record, variant, or option type (held at its own view); made for the function on first use."""
+        a record, variant, option, or tuple type (held at its own view); made for the function on first use."""
         s = shape(_type_of(a))
         held = resolved_shape(s)
-        if not own_view(s) or held.kind not in ("record", "variant", "option") or s.symbol_id not in self.scope:
+        if not own_view(s) or held.kind not in ("record", "variant", "option", "tuple") or s.symbol_id not in self.scope:
             return None
         param = self.view_maps.get(s.symbol_id)
         if param is None:
@@ -319,8 +319,8 @@ class _Describer:
 
     def operation(self, o, result: Optional[ir.Var]) -> None:
         match o:
-            case ir.RecordField(record=a) | ir.Addr(base=a) | ir.IsTag(value=a) | ir.Payload(value=a) | \
-                    ir.Ordinal(value=a) if a is not None:
+            case ir.RecordField(record=a) | ir.TupleField(tuple=a) | ir.Addr(base=a) | ir.IsTag(value=a) | \
+                    ir.Payload(value=a) | ir.Ordinal(value=a) if a is not None:
                 o.view_map = self.view_map(a)
         match o:
             case ir.Prim(op="is" | "isnot", args=args):

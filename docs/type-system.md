@@ -608,8 +608,12 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
 - **Bounded Record Type Variables:** When $A <: \text{Record}$, selecting a field `p.x` where $p: A$ succeeds if the
   bound record type declares $x$, synthesizing $x$'s field type. Assigning to a mutable field `p.x := v` is permitted
   when $x$ is declared `var`.
-- **Bounded Variant Type Variables:** When $V <: \text{Variant}$, checking `v?tag`, extracting `v!tag`, and pattern
-  matching `case v ... end` inspect the bound variant type to validate variant tags and payload types.
+- **Bounded Variant and Option Type Variables:** When $V <: \text{Variant}$ or $V <: \text{Option}$, checking
+  `v?tag`, extracting `v!tag`, pattern matching `case v ... end`, and (for options) `ordinal(v)` inspect the bound to
+  validate tags and payload types (`resolve_sum_bound` in `types/kinds.py`).
+- **Bounded Tuple Type Variables:** When $A <: \text{Tuple}$, selecting a component `t.x` where $t: A$ succeeds if the
+  bound tuple type declares $x$, synthesizing its type; assigning to it (`t.x := v`) or passing it by address
+  (`@t.x`) is permitted when it is declared `var` (`resolve_tuple_bound`).
 - **Subkinding and Type Argument Inference:** When instantiating a bounded quantifier implicitly or explicitly, type
   arguments are validated against the upper bound via `is_subkind(POWER(Actual), POWER(Bound)) <=> Actual <: Bound`.
 - **Implicit Type Arguments (Cardelli, *The Quest Language and System* §4):** Type applications may be omitted when

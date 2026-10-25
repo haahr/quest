@@ -281,6 +281,20 @@
             ))
         )))
     (TypedLetType 'O' :kind TYPE)
+    (TypedLetValue 'get0' :type All(A <: O) Fun(o: A): Int
+      :value (TypedFun :params (('o' : A)) :type All(A <: O) Fun(o: A): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'o' :type A)
+          :branches (
+            (TypedCaseBranch tags=(some) :binder 'p'
+              :body (TypedSelect 'a' :type Int
+                :target (TypedSelect 'x' :type Small
+                  :target (TypedVar 'p' :type Tuple x: Small end))))
+            (TypedCaseBranch tags=(none)
+              :body (TypedInt 0 :type Int))
+          ))))
+    (TypedLetValue 'get' :type All(A <: O) Fun(o: A): Int
+      :value (TypedVar 'get0' :type All(A <: O) Fun(o: A): Int))
     (TypedLetValue 'ord0' :type All(A <: O) Fun(o: A): Int
       :value (TypedFun :params (('o' : A)) :type All(A <: O) Fun(o: A): Int
         :body (TypedApp :type Int
@@ -290,6 +304,18 @@
           ))))
     (TypedLetValue 'ord' :type All(A <: O) Fun(o: A): Int
       :value (TypedVar 'ord0' :type All(A <: O) Fun(o: A): Int))
+    (TypedLetValue 'extract0' :type All(A <: O) Fun(o: A): Int
+      :value (TypedFun :params (('o' : A)) :type All(A <: O) Fun(o: A): Int
+        :body (TypedIf :type Int
+          :cond (TypedVariantCheck 'some' :type Bool
+            :target (TypedVar 'o' :type A))
+          :then (TypedSelect 'a' :type Int
+            :target (TypedSelect 'x' :type Small
+              :target (TypedVariantAssert 'some' :type Tuple Int x: Small end
+                :target (TypedVar 'o' :type A))))
+          :else (TypedInt 0 :type Int))))
+    (TypedLetValue 'extract' :type All(A <: O) Fun(o: A): Int
+      :value (TypedVar 'extract0' :type All(A <: O) Fun(o: A): Int))
     (TypedLetType 'S' :kind TYPE)
     (TypedLetValue 'qs' :type S
       :value (TypedOption 'some' :type S
@@ -309,7 +335,29 @@
         :args (
           (TypedApp :type Int
             :func (TypedTypeApp [S] :type Fun(o: S): Int
+              :func (TypedVar 'get' :type All(A <: O) Fun(o: A): Int))
+            :args (
+              (TypedVar 'qs' :type S)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [S] :type Fun(o: S): Int
               :func (TypedVar 'ord' :type All(A <: O) Fun(o: A): Int))
+            :args (
+              (TypedVar 'qs' :type S)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [S] :type Fun(o: S): Int
+              :func (TypedVar 'extract' :type All(A <: O) Fun(o: A): Int))
             :args (
               (TypedVar 'qs' :type S)
             ))
@@ -576,5 +624,93 @@
                       :target (TypedVar 't' :type Tuple var a: Tuple y: Big end end)))))
             )
             :else (TypedInt 0 :type Int))
+        )))
+    (TypedLetType 'T' :kind TYPE)
+    (TypedLetValue 'tick0' :type All(A <: T) Fun(t: A): Int
+      :value (TypedFun :params (('t' : A)) :type All(A <: T) Fun(t: A): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedSelect 'n' :type Int
+                  :target (TypedVar 't' :type A))
+                :value (TypedInfix '+' :type Int
+                  :left (TypedSelect 'n' :type Int
+                    :target (TypedVar 't' :type A))
+                  :right (TypedInt 1 :type Int))))
+          )
+          :result (TypedInfix '+' :type Int
+            :left (TypedSelect 'a' :type Int
+              :target (TypedSelect 's' :type Small
+                :target (TypedVar 't' :type A)))
+            :right (TypedSelect 'n' :type Int
+              :target (TypedVar 't' :type A))))))
+    (TypedLetValue 'tick' :type All(A <: T) Fun(t: A): Int
+      :value (TypedVar 'tick0' :type All(A <: T) Fun(t: A): Int))
+    (TypedLetValue 'tb' :type Tuple s: Big var n: Int extra: Bool end
+      :value (TypedTuple :type Tuple s: Big var n: Int extra: Bool end
+        :elements (
+          (TypedRecord :type Record a: Int b: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 50 :type Int))
+              (TypedRecordField 'b'
+                :value (TypedInt 51 :type Int))
+            ))
+          (TypedInt 1 :type Int)
+          (TypedBool true)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Tuple s: Big var n: Int extra: Bool end] :type Fun(t: Tuple s: Big var n: Int extra: Bool end): Int
+              :func (TypedVar 'tick' :type All(A <: T) Fun(t: A): Int))
+            :args (
+              (TypedVar 'tb' :type Tuple s: Big var n: Int extra: Bool end)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedSelect 'n' :type Int
+            :target (TypedVar 'tb' :type Tuple s: Big var n: Int extra: Bool end))
+        )))
+    (TypedLetValue 'bumpIn' :type Fun(var n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(var n: Int): Ok
+        :body (TypedAssign
+          :target (TypedVar 'n' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'n' :type Var(Int)))
+            :right (TypedInt 100 :type Int)))))
+    (TypedLetValue 'tickVar0' :type All(A <: T) Fun(t: A): Int
+      :value (TypedFun :params (('t' : A)) :type All(A <: T) Fun(t: A): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'bumpIn' :type Fun(var n: Int): Ok)
+                :args (
+                  (TypedTupleSelectRef .n (ref) :type Var(Int)
+                    :target (TypedVar 't' :type A))
+                )))
+          )
+          :result (TypedSelect 'n' :type Int
+            :target (TypedVar 't' :type A)))))
+    (TypedLetValue 'tickVar' :type All(A <: T) Fun(t: A): Int
+      :value (TypedVar 'tickVar0' :type All(A <: T) Fun(t: A): Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Tuple s: Big var n: Int extra: Bool end] :type Fun(t: Tuple s: Big var n: Int extra: Bool end): Int
+              :func (TypedVar 'tickVar' :type All(A <: T) Fun(t: A): Int))
+            :args (
+              (TypedVar 'tb' :type Tuple s: Big var n: Int extra: Bool end)
+            ))
         )))
   ))

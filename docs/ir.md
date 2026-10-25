@@ -477,8 +477,8 @@ plans, nested ones included (a copy's view fields, an adapter's fields). A thunk
 only its own type parameters' descriptors: a type there that mentions a type parameter of the enclosing function is
 rejected (`UnsupportedDescriptor`; no program does).
 
-A function whose body reads values of a type parameter bounded by a record, variant, or option type through the
-bound (a field, a tag, a payload) gets a view map for it (`ir.ViewMapParam` in `Function.view_maps`, printed as
+A function whose body reads values of a type parameter bounded by a record, variant, option, or tuple type through
+the bound (a field, a component, a tag, a payload) gets a view map for it (`ir.ViewMapParam` in `Function.view_maps`, printed as
 `view_map` lines at the function's start: the type argument's view map at the bound, from the parameter's descriptor
 and the bound's), and each such operation the view map it reads through (`view_map`, printed `through ...`), since
 generic code holds those values at their own view ([c-representation.md](c-representation.md) §5.1).

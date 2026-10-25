@@ -168,6 +168,11 @@ class _Slots:
                 rs = _held(_type_of(base), "record")
                 field = next((f.shape for f in rs.sorted_components() if f.name == name), None) if rs else None
                 s.value = self.slot_if_boxed(s.value, field, before)
+            case ir.Store(base=base, index=index) if isinstance(index, int) and own_view(shape(_type_of(base))):
+                # Into a tuple-bounded type parameter's value, through the view map (a var component's type is the
+                # bound's)
+                ts = resolved_shape(shape(_type_of(base)))
+                s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
             case ir.Store(base=base, index=index) if isinstance(index, int):
                 ts = shape(_type_of(base))
                 s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
@@ -251,6 +256,9 @@ class _Slots:
         added to before); returns whether it yields a record or variant in its slot form, which the let binding it
         then binds to a boxed variable."""
         match o:
+            case ir.TupleField(tuple=t) if own_view(shape(_type_of(t))):
+                # A tuple-bounded type parameter's value: read through the view map, converted, as a value
+                return False
             case ir.TupleField(tuple=t, index=index):
                 ts = shape(_type_of(t))
                 o.access = tuple_access(ts, index, self.is_fresh(t))
@@ -355,7 +363,7 @@ class _Slots:
                 o.init = self.slot_if_boxed(init, shape(var.type).element, before)
             case ir.Addr(cell=cell) if cell is not None:
                 o.cell = self.slot_if_boxed(cell, shape(_type_of(cell)), before)
-            case ir.Addr(base=base, index=index) if isinstance(index, int):
+            case ir.Addr(base=base, index=index) if isinstance(index, int) and not own_view(shape(_type_of(base))):
                 o.access = tuple_access(shape(_type_of(base)), index)
             case ir.Prim(op="is" | "isnot", args=(a, b)):
                 t, t2 = _type_of(a), _type_of(b)

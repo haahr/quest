@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from quest.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
 from quest.types.model import (
@@ -442,14 +442,15 @@ def unfold_head(t: QType) -> Optional[QType]:
 _unfold_head = unfold_head
 
 
-def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecordType]:
-    """Resolves upper bound for a type variable or path type if bounded by a record type; unfolds recursive types."""
+def _resolve_bound(t: QType, env: Optional[Any], wanted: tuple[type, ...]) -> Optional[QType]:
+    """t, or the upper bound of a type variable or path type (through bounds that are themselves bounded type
+    variables), if it is a type of one of the wanted classes; unfolds recursive types."""
     curr = t
     visited = set()
     unfolded: list[QType] = []
     while True:
         curr_lazy = curr.evaluate_lazily(env) if env is not None else unalias(curr)
-        if isinstance(curr_lazy, QRecordType):
+        if isinstance(curr_lazy, wanted):
             return curr_lazy
         if isinstance(curr_lazy, (QRecType, QRecGroupType, QTypeApp)):
             if any(curr_lazy is seen for seen in unfolded):
@@ -471,37 +472,27 @@ def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecor
             curr = curr_lazy.bound.bound
         else:
             return None
+
+
+def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecordType]:
+    """Resolves upper bound for a type variable or path type if bounded by a record type; unfolds recursive types."""
+    return _resolve_bound(t, env, (QRecordType,))
 
 
 def resolve_variant_bound(t: QType, env: Optional[Any] = None) -> Optional[QVariantType]:
     """Resolves upper bound for a type variable or path type if bounded by a variant type; unfolds recursive types."""
-    curr = t
-    visited = set()
-    unfolded: list[QType] = []
-    while True:
-        curr_lazy = curr.evaluate_lazily(env) if env is not None else unalias(curr)
-        if isinstance(curr_lazy, QVariantType):
-            return curr_lazy
-        if isinstance(curr_lazy, (QRecType, QRecGroupType, QTypeApp)):
-            if any(curr_lazy is seen for seen in unfolded):
-                return None
-            unfolded.append(curr_lazy)
-            step = unfold_head(curr_lazy)
-            if step is None:
-                return None
-            curr = step
-            continue
-        if (
-            isinstance(curr_lazy, (QTypeVar, QAbstractType, QPathType))
-            and isinstance(curr_lazy.bound, QPowerKind)
-        ):
-            sym_id = getattr(curr_lazy, "symbol_id", id(curr_lazy))
-            if sym_id in visited:
-                return None
-            visited.add(sym_id)
-            curr = curr_lazy.bound.bound
-        else:
-            return None
+    return _resolve_bound(t, env, (QVariantType,))
+
+
+def resolve_sum_bound(t: QType, env: Optional[Any] = None) -> Optional[Union[QVariantType, QOptionType]]:
+    """Resolves upper bound for a type variable or path type if bounded by a variant or option type; unfolds recursive
+    types."""
+    return _resolve_bound(t, env, (QVariantType, QOptionType))
+
+
+def resolve_tuple_bound(t: QType, env: Optional[Any] = None) -> Optional[QTupleType]:
+    """Resolves upper bound for a type variable or path type if bounded by a tuple type; unfolds recursive types."""
+    return _resolve_bound(t, env, (QTupleType,))
 
 
 def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptionType]:
