@@ -80,6 +80,15 @@ original and an access note `original`, or a known proxy, and read components th
 microbenchmark is within 10% of reads of a tuple that cannot be proxied, and the conversion matrix and proxy tests
 pass.
 
+**Done (no change needed).** Measured by compiling a program's C as printed and with every proxy check replaced by
+a direct read (user CPU, interleaved, `-O2`): reading `t.p.a + t.q.b` from tuples of tuples taken from an array
+in a loop costs 1.03 to 1.06 times the direct reads, within the bar. The check is one bit test, the same on every
+iteration of a loop. The large ratios come only from loop-invariant reads: with direct reads clang hoists them, or
+folds a loop that sums them into a closed form (over 100 times faster here), while the call on the check's proxy
+branch keeps it from doing either. Resolving a value once where it is bound cannot avoid a check per read without
+duplicating loops (which clang does not do at `-O2`), and declaring the runtime's proxy readers `pure`, which lets
+clang treat them as loads, gained nothing measurable (1.06 to 1.04), so neither is done.
+
 ---
 
 ## 2. Phase 2: Types as Written, Recorded at Lowering
