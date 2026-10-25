@@ -20,6 +20,7 @@ from quest.config import CompilerOptions
 from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
 from quest.ir.shapes import shape
+from quest.types.canonical import collect_fun_quantifiers
 from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
@@ -95,6 +96,17 @@ from quest.types import (
     QOutType,
     binds_module,
 )
+
+def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QType]]:
+    """The parameter types of a function's variable's type (var_t), as written, for a function of count parameters
+    and type fun_t that takes no type parameters; None when they are not known."""
+    if isinstance(fun_t, QAllType):
+        return None
+    quants, inner = collect_fun_quantifiers(var_t)
+    if quants or not isinstance(inner, QFunType) or len(inner.params) != count:
+        return None
+    return [param.type_val for param in inner.params]
+
 
 _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent", "ordinal"}
 # The standard library's array operations, which are lowered to the IR's (array_op)
@@ -653,7 +665,10 @@ class _Lowerer:
     # Functions
 
     def function(self, e: TypedFun, var: ir.Var, binder: Optional[str] = None) -> ir.Function:
-        """The function e, bound to binder if it is let-bound."""
+        """The function e, bound to binder if it is let-bound. A function checked against its variable's type may
+        annotate a value parameter with a supertype of the type's (contravariance): its parameter has the variable's
+        type's, which callers pass, and a let at its entry binds the annotation's (which the represent pass
+        converts)."""
         trace_name = frame_name(self.frame, binder)
         t = e.type_val
         type_params: tuple[ir.TypeParam, ...] = ()
@@ -665,14 +680,24 @@ class _Lowerer:
             )
             inner = t.body
         result_t = inner.result_type if isinstance(inner, QFunType) else inner
+        expected = _expected_params(var.type, t, len(e.params))
         params = []
-        for p in e.params:
+        entry = []
+        for i, p in enumerate(e.params):
             mode = "var" if p.is_var else "out" if p.is_out else "value"
             param_t = p.type_val
             if isinstance(param_t, (QVarType, QOutType)):
                 param_t = param_t.element_type
+            expected_t = expected[i] if expected is not None else None
+            if isinstance(expected_t, (QVarType, QOutType)):
+                expected_t = expected_t.element_type
+            if mode == "value" and expected_t is not None and not is_type_equal(expected_t, param_t):
+                param = self.fresh(p.symbol.name, expected_t)
+                entry.append(ir.Let(self.bind_symbol(p.symbol, param_t), param))
+                params.append((param, mode))
+                continue
             params.append((self.bind_symbol(p.symbol, param_t, mutable=mode != "value"), mode))
-        body = ir.Body()
+        body = ir.Body(entry)
         saved_loops, self.loops = self.loops, []
         saved_frame, self.frame = self.frame, trace_name
         with self.in_body(body):

@@ -269,32 +269,3 @@ mapping indices through the static type.
 
 **Done when.** Both programs compile and print the same in both phases, and golden tests cover them.
 
----
-
-## A function whose parameter annotation is a proper supertype of its expected type miscompiles in C
-
-**Problem.** A function checked against a function type may annotate a value parameter with a supertype of the
-expected parameter type (contravariance). Its symbol has the expected type, so callers pass the argument in the
-expected type's representation, but the function's body is compiled for the written one, and nothing converts
-between them: the body reads the wrong field. Binding the same function to a variable first, and then to the
-annotated name, converts correctly. The interpreter is right.
-
-**Reproduce.**
-
-```quest
-let k: All(r: Record a: Int b: Int end) Int = fun(r: Record b: Int end): Int r.b;
-k(record a = 5 b = 6 end)
-```
-
-prints `6 : Int` interpreted and `5 : Int` with `--stop-after run_c_compiled`; with
-`let g = fun(r: Record b: Int end): Int r.b; let k: All(r: Record a: Int b: Int end) Int = g;` both print 6. A
-function component of a tuple checked against a tuple type is compiled correctly, and so is a result annotation that
-is a proper subtype: the function's type has the expected result type, and its return converts.
-
-**Where to start.** `function` and the `TypedLetValue` case of `binding` in `bootstrap/python/quest/ir/lower.py`: the
-function's IR parameters take the written types (`TypedParam.type_val`) while its variable takes the symbol's type.
-Either give the IR parameter the expected type and bind the written one with a converting `let` at entry, or lower
-the function into a variable of its own type and copy it into the symbol's (which represent converts).
-
-**Done when.** The program above prints `6 : Int` in both phases, and a golden test covers parameters of record and
-variant types.

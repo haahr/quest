@@ -370,7 +370,7 @@ of the expected result, which the body is then checked against; a function with 
 polymorphic function without value parameters has its result annotation checked too. A raise's `as` clause is
 elaborated under an expected type, and a tuple rejects a phrase it cannot hold before matching an expected type. New
 error tests cover each case; no golden output changed. A C miscompilation of a contravariant parameter annotation,
-which predates the fix, is in [tasklist.md](tasklist.md).
+which predates the fix, was fixed in A3 (§3).
 
 ---
 

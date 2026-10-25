@@ -1,0 +1,109 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun k(r: Record a: Int b: Int end): Int {
+      let r.1: Record b: Int end = r
+      let %4: Int = record_field(r.1, b)
+      return %4
+    }
+  }
+  let %5: Record a: Int b: Int end = record(a = 5, b = 6)
+  let %6: Int = call k(%5)
+  let %7: String = call conv.int(%6)
+  let %8: String = prim <>("record: ", %7)
+  do call print(%8)
+  funs {
+    fun v(x: Variant q: Bool p: Int end): Int {
+      let x.1: Big = x
+      join k1(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(x.1) {
+          case p (n: Int): {
+            jump k1(n)
+          }
+          case q (b: Bool): {
+            join k2(r.3: Int) {
+              jump k1(r.3)
+            } in {
+              if b {
+                jump k2(1)
+              } else {
+                jump k2(0)
+              }
+            }
+          }
+          else: {
+            jump k1(2)
+          }
+        }
+      }
+    }
+  }
+  let %9: Small = variant(p, 7)
+  let %10: Int = call v(%9)
+  let %11: String = call conv.int(%10)
+  let %12: Small = variant(q, true)
+  let %13: Int = call v(%12)
+  let %14: String = call conv.int(%13)
+  let %15: String = prim <>(" ", %14)
+  let %16: String = prim <>(%11, %15)
+  let %17: String = prim <>("variant: ", %16)
+  do call print(%17)
+  funs {
+    fun outer(n.1: Int): Int {
+      funs {
+        fun f(r.4: Record a: Int b: Int end, i: Int, s.1: Variant q: Bool p: Int end): Int {
+          let r.5: Record b: Int end = r.4
+          let s.2: Big = s.1
+          let %18: Int = record_field(r.5, b)
+          join k3(r.6: Int) {
+            let %19: Int = prim +(i, r.6)
+            let %20: Int = prim +(%18, %19)
+            return %20
+          } in {
+            switch tag(s.2) {
+              case p (m: Int): {
+                jump k3(m)
+              }
+              else: {
+                jump k3(0)
+              }
+            }
+          }
+        }
+      }
+      let %21: Record a: Int b: Int end = record(a = 1, b = n.1)
+      let %22: Small = variant(p, 100)
+      let %23: Int = call f(%21, 10, %22)
+      return %23
+    }
+  }
+  let %24: Int = call outer(3)
+  let %25: String = call conv.int(%24)
+  let %26: String = prim <>("local: ", %25)
+  do call print(%26)
+  funs {
+    fun g(r.7: Record b: Int end): Int {
+      let %27: Int = record_field(r.7, b)
+      return %27
+    }
+  }
+  let t: Tuple g: Fun(r: Record a: Int b: Int end): Int end = tuple(g)
+  let %28: Fun(r: Record a: Int b: Int end): Int = tuple_field(t, 0)
+  let %29: Record a: Int b: Int end = record(a = 8, b = 9)
+  let %30: Int = call %28(%29)
+  let %31: String = call conv.int(%30)
+  let %32: String = prim <>("in a tuple: ", %31)
+  do call print(%32)
+}
+

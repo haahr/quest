@@ -1,0 +1,28 @@
+(* A function checked against a function type may annotate a value parameter with a supertype of the expected
+   parameter type (contravariance): callers pass the expected type, which the body uses at the annotation (C: the
+   function's parameter has the expected type, converted at entry to the annotation's) *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* Records: the body reads the field through the annotation's view *)
+let k: All(r: Record a: Int b: Int end) Int = fun(r: Record b: Int end): Int r.b;
+print("record: " <> conv.int(k(record a = 5 b = 6 end)));
+
+(* Variants: the body tags the case in the annotation's numbering *)
+Let Small = Variant q: Bool p: Int end;
+Let Big = Variant p: Int r: String q: Bool end;
+let v: All(x: Small) Int = fun(x: Big): Int case x when p with n then n when q with b then if b then 1 else 0 end else 2 end;
+print("variant: " <> conv.int(v(variant p of Small with 7 end)) <> " " <> conv.int(v(variant q of Small with true end)));
+
+(* Several parameters, only some of them annotated with supertypes, in a local function *)
+let outer(n: Int): Int = begin
+  let f: All(r: Record a: Int b: Int end i: Int s: Small) Int =
+    fun(r: Record b: Int end i: Int s: Big): Int r.b + i + case s when p with m then m else 0 end;
+  f(record a = 1 b = n end 10 variant p of Small with 100 end)
+end;
+print("local: " <> conv.int(outer(3)));
+
+(* As a tuple's component, which was already right *)
+let t: Tuple g: All(r: Record a: Int b: Int end) Int end = tuple let g = fun(r: Record b: Int end): Int r.b end;
+print("in a tuple: " <> conv.int(t.g(record a = 8 b = 9 end)));
