@@ -91,9 +91,10 @@ a human-readable `type_name` and a `to_str(visited)` method supporting cycle det
 - **`QList(elements: tuple[QValue, ...])`:**
   - Represents immutable linear lists.
   - Formats as `list of 1 2 3 end` (or `list of end` for empty lists).
-- **`QVariant(tag, payload)` & `QOption(tag, payload, ordinal=0)`:**
+- **`QVariant(tag, payload)` & `QOption(tag, payload)`:**
   - Represent tagged sum types with optional payloads.
-  - `QOption` tracks the zero-based declaration index `ordinal` of the tag, accessible via the `ordinal` operator.
+  - The `ordinal` operator and `opt!tag` compute the zero-based declaration index of `tag` in the static `Option` type
+    as written at the use site ([type-system.md §6.8](type-system.md)).
   - Formats as `variant red with 42 end` or `option none end`.
 
 ### 2.3. Closures, Functions, and Mutability
@@ -178,11 +179,12 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - `TypedAssign`: Extends to record field mutation `r.field := v`.
 - **Variants, Options, and Pattern Matching:**
   - `TypedVariant`: Injects tag with optional evaluated payload into `QVariant`.
-  - `TypedOption`: Injects tag with optional evaluated payload and branch `ordinal`. Supports runtime ordinal
-    expressions (`option ordinal(n) of T ...`), determining tag dynamically from index `n`.
+  - `TypedOption`: Injects tag with optional evaluated payload into `QOption`. Supports runtime ordinal expressions
+    (`option ordinal(n) of T ...`), determining the tag dynamically from index `n` in `T`'s written case order.
   - `TypedVariantCheck`: Evaluates `target?tag`, returning `true` on match.
-  - `TypedVariantAssert`: Evaluates `target!tag`. On `QOption`, returns a `QTuple` with 0-based ordinal as element 0
-    followed by the payload components (e.g. `tuple 1 let x=true end`). On `QVariant`, returns the payload directly.
+  - `TypedVariantAssert`: Evaluates `target!tag`. On `QOption`, returns a `QTuple` with the case's 0-based ordinal in
+    the static type of `target` as element 0 followed by the payload components (e.g. `tuple 1 let x=true end`). On
+    `QVariant`, returns the payload directly.
   - `TypedCase`: Evaluates target, matches `target.tag` against branch tags, binds payload to `binder` in child
     scope, and executes branch body. Evaluates `else_branch` if no tag matches.
 - **Functions & Recursion:**

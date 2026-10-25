@@ -24,8 +24,8 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **Report faithfully.** Say what you found, not just what you did: failures with their output, steps skipped,
   bugs found in passing, and anything that surprised you enough to change a plan. A claim of done means tested.
 - **Plans live in documents.** Larger work gets a written plan with numbered steps and a "done when" for each (for
-  example [ir.md](ir.md) §12). Each step is a commit (or a few), and the plan is updated as steps finish and as
-  surprises change it.
+  example [reorganization.md](reorganization.md)). Each step is a commit (or a few), and the plan is updated as steps
+  finish and as surprises change it.
 - **The task list** ([tasklist.md](tasklist.md)) records known problems and planned work nobody has started: each
   task has **Problem**, **Reproduce**, **Where to start**, and **Done when**. Add a task for a bug you find but do not
   fix (with the owner's agreement), verify its reproduction before writing it down, and remove the task in the
@@ -143,10 +143,10 @@ See [testing.md](testing.md) for the framework. In practice:
 ## 7. Documentation
 
 - **The documents are the specification;** keep them true. Update them in the same commit as the change they
-  describe: [type-system.md](type-system.md) (types and checking), [c-representation.md](c-representation.md) (the C
-  ABI), [codegen-c.md](codegen-c.md) (the C backend), [modules.md](modules.md), [testing.md](testing.md),
-  [ir.md](ir.md) (the planned IR), [tasklist.md](tasklist.md), and others as they apply. Add new documents to the
-  list in [README.md](../README.md).
+  describe: [type-system.md](type-system.md) (types and checking), [runtime-design.md](runtime-design.md) (the compiled
+  runtime architecture), [c-representation.md](c-representation.md) (the C ABI), [codegen-c.md](codegen-c.md) (the C
+  backend), [ir.md](ir.md) (the IR and its passes), [modules.md](modules.md), [testing.md](testing.md),
+  [tasklist.md](tasklist.md), and others as they apply. Add new documents to the list in [README.md](../README.md).
 - **Describe the system as it is,** with the decisions and limitations that shaped it and the reasons for them;
   history belongs in commit messages. A limitation accepted for now is documented where the behavior is, and gets a
   task.
@@ -167,12 +167,15 @@ See [testing.md](testing.md) for the framework. In practice:
 
 ## 9. Current Direction
 
-- The C backend is being rebuilt on an intermediate representation ([ir.md](ir.md)): ANF with join points, one IR
-  refined by passes, with representations and conversions decided by one pass. Its §12 lists the steps and their
-  status. Until step 5, fixes to the current emitter are fine; from step 5 on, it is frozen except for fixes needed
-  to keep tests passing.
-- C keeps the dual representation (native layouts for known types, uniform `QVal` words for type parameters) for now
-  ([c-representation.md](c-representation.md) §1, §5.1); converting between them is the source of most C-backend
-  subtlety.
-- The bootstrap compiler will compile the self-hosted compiler ([roadmap.md](roadmap.md) step 5), so correctness of
-  the bootstrap matters for a long time; prefer clarity over cleverness, since the code will be ported to Quest.
+- The C backend lowers typed ASTs through the five-pass intermediate representation ([ir.md](ir.md)): ANF with
+  structured control flow and join points (`ir_core` $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented`
+  $\to$ `ir_described`), with representations, 1-word slot boxing, and tagged proxies decided by `ir/represent.py` and
+  runtime descriptors materialized by `ir/describe.py`.
+- Compiled code uses native representations in locals/parameters/returns (including 16-byte `QRecordVal` and
+  `QVariantVal`), uniform 1-word boxed slots (`slot_representation`) in all aggregates, own views with `QViewMap` for
+  bounded type parameters, and tagged `QProxy` views for depth-upcast tuples and options
+  ([runtime-design.md](runtime-design.md), [c-representation.md](c-representation.md)).
+- Open bugs and planned follow-up work for the compiler are tracked in [tasklist.md](tasklist.md).
+- The bootstrap compiler will compile the self-hosted compiler ([roadmap.md](roadmap.md) step 5,
+  [compiler-organization.md](compiler-organization.md)), so correctness of the bootstrap matters for a long time; prefer
+  clarity over cleverness, since the code will be ported to Quest.

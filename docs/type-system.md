@@ -88,9 +88,22 @@ place during inference. Several parts of the type checker depend on how type obj
   (`Int`, `Ok`, ...) elaborate to the primitives themselves (`alias_reference`). A substitution that changes an
   alias's target drops the alias node.
 - **Alias nodes never reach C code generation.** The IR's shapes are of canonical types (`ir/shapes.py`), and the
-  represent pass, the codegen type functions, and the C printer decide from shapes (docs/ir.md §4.1). The lowering prints results from the typed
-  AST's types (`let x:T = ...`), so they show alias names exactly as the interpreter does. Types serialized by `dynamic.extern` are written without alias names, so
-  that they read back on their own.
+  represent pass, the codegen type functions, and the C printer decide from shapes ([ir.md §4.1](ir.md)). The lowering
+  prints results from the typed AST's types (`let x:T = ...`), so they show alias names exactly as the interpreter does.
+  Types serialized by `dynamic.extern` are written without alias names, so that they read back on their own.
+- **Why front-end types keep written names while backend shapes canonicalize (`types/canonical.py`):**
+  It can be tempting in an equi-recursive typechecker to canonicalize every recursive type to a minimal de Bruijn
+  regular tree at construction time so that type equality is object identity (`is`). In Quest, front-end `QType` nodes
+  deliberately do **not** do this:
+  1. Front-end consumers (`.qi` interface files, diagnostic messages, `--echo` and `typecheck` dumps) must display the
+     exact binder names, alias names (`QAliasType`), and record/variant declaration structure written in the source, and
+     elaboration keys function type parameters by their `symbol_id`.
+  2. Coinductive subtyping (`is_subtype`) already handles equi-recursive types and higher-order type operators directly
+     via the trail $\Sigma$ in a few milliseconds; running partition-refinement canonicalization on every type
+     constructed during elaboration would add substantial overhead on non-recursive code.
+  Instead, `canonicalize_type` (`quest/types/canonical.py`) and `shape_of` (`quest/ir/shapes.py`) compute canonical
+  minimal regular trees on demand (and cache them per type) when lowering to the IR and C backend, where equivalent
+  recursive types must map to a single C struct and runtime type descriptor.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at
   construction (`__post_init__`) its free variables, `_fv`: the symbol ids a substitution could replace inside it,
   following exactly the binder rules of its `_substitute_full` method. It also records `_has_meta`, whether it contains
@@ -792,7 +805,7 @@ one finds it.
 | **Dependent Signatures** | Fields depend on earlier type parameters | Ordered `Scope` incremental elaboration |
 | **Extended Subsignatures** | Prefix & name matching, manifest types | Subsignature rule in `is_subtype` |
 | **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_elaborate_tuple_expr` |
-| **Auto Types** | Run-time type discrimination stays sound | Types closed up to enclosing type parameters (bounded ones not in mutable data); subtype matching only for covariant signatures |
+| **Auto Types** | Run-time type discrimination stays sound | Closed up to type params; covariant subtype matching |
 | **Path-Dependent Types** | Abstract identity tied to bindings | `QPathType` with `root_symbol_id` |
 | **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker/escape.py` |
 | **Type $\lambda$-Calculus** | $\beta$-reduction & variable capture | Lazy eval + `QTypeVar` symbol IDs |
@@ -804,8 +817,11 @@ one finds it.
 
 ## See Also
 - [README.md](../README.md): Project overview and quickstart.
-- [syntax.md](syntax.md): Lexer, parser, and untyped AST.
+- [syntax.md](syntax.md): Lexer, parser, untyped AST, and syntactic desugaring.
 - [pipeline.md](pipeline.md): Compiler pipeline framework and CLI driver.
+- [runtime-design.md](runtime-design.md): How $F_{<:}^\omega$ types, subtyping, and `Auto` map to runtime
+  representations.
+- [ir.md](ir.md): Intermediate representation, canonical `Shape`s, and representation passes.
 - [testing.md](testing.md): Testing framework and golden outputs.
 - [TheQuestLanguageAndSystem.md](TheQuestLanguageAndSystem.md): Cardelli (1990) language manual.
 - [ASemanticBasisForQuest.md](ASemanticBasisForQuest.md): Cardelli & Longo (1991) formal semantics.

@@ -1,214 +1,271 @@
-# Quest Runtime Architecture and Object Representation
+# Quest Compiled Runtime Architecture (`runtime-design.md`)
 
-This document details the object representation model, subtyping evidence mechanics, calling conventions, and garbage
-collection strategy for compiled Quest code (targeting Step 4 C transpilation and Step 6 native AArch64 emission).
+This document explains the runtime representation and object model used by the Quest compiler—both in the current C99
+backend ([c-representation.md](c-representation.md)) and in the planned native AArch64 backend ([roadmap.md](roadmap.md)
+Steps 6–7).
 
----
-
-## 1. The Core Architectural Decision: Record & Subtyping Representation
-
-Quest features structural subtyping with multiple inheritance on records:
-```quest
-let r: Record x:Int y:Real z:Bool end = record x=1 y=2.0 z=true end;
-let p: Record x:Int end = r;  (* Subsumption: dropping y and z *)
-```
-Under single inheritance, fields share fixed offsets across subtypes. Under multiple inheritance and structural
-subtyping, field offsets cannot be assigned globally without conflict.
-
-### Uniform Fat Pointer Representation (`QRecordVal`)
-
-```
-+-----------------------------------------------------------------------------------------+
-| Uniform Fat Pointer Representation (Plan of Record)                                     |
-|                                                                                         |
-|  Caller & Callee: Passes and returns 16-byte struct { void *val; const void *dict; }    |
-|  Under AAPCS64: Mapped directly to register pair (x0, x1) without stack or heap alloc.  |
-|                                                                                         |
-|    QRecordVal (16 bytes: 2 words)   Static Dictionary (ROData)      Heap Record Payload |
-|    +--------------------+          +-----------------------+       +-------------------+|
-|    | val: void*         |--------->|                       |       | field 0: x = 1    ||
-|    | dict: const void*  |--------->| offset of 'x' = 0     |       | field 1: y = 2.0  ||
-|    +--------------------+          | offset of 'y' = 8     |       | field 2: z = true ||
-|                                    +-----------------------+       +-------------------+|
-|                                                                                         |
-|  • Upcasting cost: Zero heap allocation (attaches pointer to static constant dict)     |
-|  • Register ABI: 2 registers (x0, x1) under AAPCS64 for parameters and returns          |
-|  • Aggregates: one-word slots holding pointers to immutable 16-byte boxes              |
-|  • Arrays: Boxed into 8-byte heap pointer (QRecordVal *) for uniform 1-word QVal slots  |
-+-----------------------------------------------------------------------------------------+
-```
-
-### Variant Representation & Subtyping in Aggregates
-
-Variants are represented uniformly as unboxed 16-byte value structures (`QVariantVal`):
-```c
-typedef struct QVariantVal {
-    int64_t tag;        /* 0-based branch discriminant */
-    QVal    payload;    /* Branch payload (or Q_OK_VAL) */
-} QVariantVal;
-```
-- **Zero-Allocation Construction & Tag Remapping:** Variant creation, pattern matching (`case`), checks (`v?x`),
-  and assertions (`v!x`) operate directly on `QVariantVal` with **zero heap allocations**. Upcasting across
-  subtyped variant boundaries generates a static lookup table (`static const int64_t tagmap_<Target>_<Source>[]`)
-  in `.rodata` and constructs an unboxed compound literal with remapped tag and copied payload.
-- **Aggregate Storage:** When a subtyped variant is stored into an aggregate (`Array(SuperVariant)` or
-  `Tuple ... SuperVariant ...`), the compiler coerces the variant at insertion time using the static tag table.
-  Aggregates (tuples, records, options, arrays) store a pointer to an immutable boxed `QVariantVal` in each one-word
-  slot, as a `QVal` holds it.
-  Extracting from aggregates accesses values whose tags are pre-aligned to the supertype's tag space, allowing
-  direct `switch (v.tag)` matching without runtime descriptor overhead.
-
-### Bounded Specialization for Records & Variants (`A <: Record`, `V <: Variant`)
-
-- **Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_<T>` parameters in
-  their C signatures to support separate compilation and uniform reflection across translation units.
-- **Bounded Records (`A <: Record`):** Functions take `QRecordVal` fat pointers directly. When passing a subtype
-  $S <: T$, the caller pairs the payload with the subtyping offset dictionary (`&offsetdict_T_S`). Inside the callee,
-  field accesses dynamically evaluate offsets from `p.dict`. When returning a bounded type variable $A$, the caller
-  restores the dictionary (`Option A: Caller Restores Dictionary`), attaching the concrete subtype's identity dictionary
-  `&offsetdict_S_S` to the returned `.val`.
-- **Bounded Variants (`V <: Variant`):** Functions take unboxed `QVariantVal` directly. Callers perform call-site tag
-  alignment to the bound variant type using static `.rodata` tag tables. Callees dispatch directly on `v.tag` without
-  runtime translation or heap allocation.
+If you are familiar with compiling either ML-family languages (which have parametric polymorphism and algebraic data
+types, but no subtyping) or object-oriented languages (which have nominal subtyping and method tables, but usually not
+higher-order structural subtyping), Quest sits at a fascinating intersection. Understanding how its runtime
+representations fit together is the key to understanding the compiler's backend.
 
 ---
 
-## 2. Architecture & Design Tradeoffs
+## 1. The Compilation Puzzle: Why Quest Is Subtle
 
-| Dimension | `QRecordVal` Fat Pointer | Raw Pointers + Side-Channel Dicts |
+Quest combines five language features that pull data representations in different directions:
+
+1. **Higher-Order Parametric Polymorphism ($F_{<:}^\omega$):** A polymorphic function `All(A::TYPE) ...` or type
+   operator `Fun(A::TYPE) ...` is compiled once without knowing what `A` will be. In generic code, values of type `A`
+   must have a uniform representation so they can be passed in registers, stored in tuples or arrays, and returned.
+2. **Structural Width and Depth Subtyping:**
+   - A record `{x: Int, y: Real, z: String}` is a subtype of `{x: Int, z: String}` (**width**) and `{x: Super}`
+     (**depth**), even though the two record types have completely different field layouts in memory. Looking up `.z` at
+     a statically unknown offset cannot use a fixed struct displacement.
+   - A tuple `Tuple Int Record x: Int y: Int end end` is a subtype of `Tuple Int Record x: Int end end`.
+   - A variant `Variant b: Int c: String end` is a subtype of `Variant a: Bool b: Int c: String end`, and an option
+     `Option b c end` is a subtype of `Option a b c end`. Because variant and option types are equal regardless of the
+     order in which their cases are written ([type-system.md §6.8](type-system.md)), canonical shapes order cases
+     alphabetically by name; upcasting to a supertype that inserts earlier case names shifts tag indices, while
+     `ordinal(o)` counts in the declaration order of the static option type at the use site.
+   - Function types `All(x: S) T` are contravariant in parameters and covariant in results.
+3. **Mutable State (`var`) and Object Identity (`is`):**
+   - Records, tuples, and local scopes can have mutable `var` fields or components (`r.x := 10`, `t.a := 20`), and can
+     pass mutable locations by reference (`:var` and `:out` parameters).
+   - Cardelli's identity operator `is` tests whether two non-scalar values (strings, records, tuples, variants, options,
+     arrays, closures) are the **same memory location** (*Typeful Programming* §3.1).
+   - Together, `var` and `is` forbid the classic functional-language trick of implementing depth subtyping by
+     *allocating a converted copy* on upcast: if you copy a tuple or record when coercing it to a supertype, `sub is
+     sup` becomes `false`, and mutating a `var` field through the supertype view fails to update the original object!
+4. **Bounded Quantification (`A <: B`):** A function `All(A <: Point) All(p: A) A` knows that `A` is *some* subtype of
+   `Point`, so inside the body it can project `p.x` as a `Point`, yet it must return the original `A` intact.
+5. **Intensional Type Analysis (`auto`, `inspect`, `Dynamic`):** Programs can package a value with its runtime type
+   (`auto :T with v end` or `dynamic.new(:T v)`) and later branch on full structural subtyping at runtime (`inspect`),
+   or serialize and deserialize cyclic object graphs (`dynamic.extern` / `dynamic.intern`).
+
+---
+
+## 2. The Four Pillars of the Runtime Representation
+
+Quest resolves the tension between fast monomorphic code, uniform polymorphic code, structural subtyping, and mutable
+object identity through four cooperating mechanisms. The representation pass (`quest/ir/represent.py`,
+[ir.md §8.4](ir.md)) and descriptor pass (`quest/ir/describe.py`, [ir.md §8.5](ir.md)) make all four explicit before
+code emission:
+
+| Mechanism | Size | Role |
 | :--- | :--- | :--- |
-| **Record Values** | **Uniform 2 words (`val, dict`)** | Fragmented: 1 word in some places, 2 in others |
-| **Function ABI** | Clean 1-to-1 parameter mapping (AAPCS64 `x0, x1`) | Companion synthetic dict parameters |
-| **Collections** | Boxed (`QRecordVal *`) in every aggregate slot | Subtyped records in aggregates disallowed |
-| **Subsumption** | **Zero Allocation:** Pairs data with static dict | Requires synthetic variables or thunks |
-| **Garbage Collection** | `dict` points to `.rodata`; `val` traced | Traced as normal pointer |
-| **Coercions** | Supported directly via attached dictionary | Fragile side-channel dictionary propagation |
+| **1. Evidence-Passing** (`QRecordVal`, `QVariantVal`) | 16B (2 regs) | $O(1)$ record offset dicts; unboxed variants. |
+| **2. Uniform 1-Word Slots** (`slot_representation`) | 8B (1 word) | Native & `QVal` layouts match; zero-copy casts. |
+| **3. Tagged `QProxy` Views** (`QUEST_PROXY_TAG = 1`) | 8B tagged ptr | Upcast tuples/options keep `is` & `var`. |
+| **4. `QTypeDescriptor`s** (`ir_described`) | 8B pointer | Runtime subtyping (`inspect`) & serialization. |
+
+Let's look at how each piece works and why it was chosen over the alternatives.
 
 ---
 
-## 3. Differences from the Original Paper (Inline Caching + Hash Fallback)
+### 2.1. Evidence Passing for Records and Variants (16-Byte Register Pairs)
 
-In *Typeful Programming* (Section 6.3), Luca Cardelli proposed:
-1. Attempting fixed offsets for single-inheritance hierarchies.
-2. An **inline cache** at field selection call-sites: caching the last observed offset.
-3. On cache miss: falling back to dynamic hash-table lookup by field name string.
+In registers, local variables, function parameters, and return values, most Quest types occupy a single 64-bit word:
+- Scalars (`Int`, `Real`, `Bool`, `Char`, `Ok`, `Word.T`) sit directly in a register.
+- Heap aggregates (`Tuple`, `Option`, `Array`, `String`, `QClosure *`, `QAutoVal *`) are 64-bit heap pointers.
 
-### Why Evidence Passing Was Chosen Over Inline Caching:
-1. **Deterministic Execution:** Evidence dictionary lookup is $O(1)$ constant time (a single static offset load),
-   completely immune to polymorphic cache trashing.
-2. **Predictable Code Generation:** Avoids generating self-modifying inline cache code (which requires costly
-   instruction cache flushes on modern AArch64 cores).
-3. **Ahead-of-Time Type Erasure:** At compile time, the compiler knows the source record type and the target record
-   type. It emits a static offset mapping table in `.rodata` once per upcast site.
+**Records** (`QRecordVal`) and **Variants** (`QVariantVal`), however, are represented in value positions as **16-byte
+two-word structs** passed and returned in two registers (`x0` and `x1` on AArch64):
+
+1. **Records as Fat Pointers (`QRecordVal = { void *val, const void *dict }`):**
+   - `val` points to the heap-allocated record struct (whose first word is a `QRecordHeader` pointing to the record's
+     creation-time `QTypeDescriptor`, followed by one 8-byte slot per field).
+   - `dict` points to a compile-time **offset dictionary** (`OffsetDict_<RecordType>`) containing `size_t` byte offsets
+     for every field visible in the static record type.
+   - **Width subtyping** (`{x: Int, y: Int, z: Int} <: {x: Int, z: Int}`) simply pairs the *same* `val` pointer with a
+     new static `dict` containing the offsets of `x` and `z` inside the 3-field struct. The heap object is never copied,
+     `is` compares `r1.val == r2.val`, and `var` field writes (`*(T *)((char *)r.val + r.dict->offset_x) = v`) mutate
+     the original struct in $O(1)$ time.
+2. **Variants as Unboxed Tagged Values (`QVariantVal = { int64_t tag, QVal payload }`):**
+   - `tag` holds the 0-based alphabetical index of the active case in the current static `Variant` type; `payload` holds
+     the 8-byte boxed slot for the case payload.
+   - **Variant subtyping** (`Variant a: Int b: String end <: Variant a: Int b: String c: Bool end`) remaps `tag` in
+     $O(1)$ time via a static lookup table `tagmap_<Target>_<Source>[v.tag]`, and converts `payload` if the active
+     branch's payload type also narrows by depth subtyping.
 
 ---
 
-## 4. Register Conventions and AAPCS64 ABI (Step 6)
+### 2.2. Uniform 1-Word Aggregate Slots (`slot_representation`)
 
-For native AArch64 code generation, 16-byte structs like `QRecordVal` are passed and returned in consecutive argument
-registers per AAPCS64:
+What happens when a 16-byte `QRecordVal` or `QVariantVal` is placed *inside* another data structure—as a tuple
+component, a record field, an option payload, or an array element—or passed as a generic type parameter `A::TYPE` where
+`A` is erased to the 8-byte `QVal` union?
 
+If native aggregates embedded 16-byte `QRecordVal` structs inline while generic aggregates (`Tuple A Int end`) used
+8-byte `QVal` slots, then `Tuple Record x: Int end Int end` (24 bytes) and `Tuple A Int end` (16 bytes) would have
+incompatible memory layouts. Passing an array or tuple of records to a polymorphic function would require allocating a
+deep copy on entry and copying back on exit—and for a mutable `Array(R)` or a tuple with a `var` field, copying breaks
+aliasing and mutability!
+
+Quest solves this cleanly with **uniform 1-word aggregate slots** (`slot_representation` in `quest/codegen/layout.py`):
+- **Every aggregate slot is one 64-bit word (8 bytes).**
+  - In a native aggregate slot, a record has C type `QRecordVal *` and a variant has C type `QVariantVal *`—a pointer to
+    an immutable 16-byte heap box (`quest_box_record` / `quest_box_variant`).
+  - `Bool` and `Char` use 64-bit `QBoolSlot` (`uint64_t`) and `QCharSlot` (`uint64_t`) in aggregate slots and `var`
+    locations so that taking the address of a mutable slot (`:var Bool`) yields the same 8-byte cell width as `QVal *`.
+  - In a generic (`QVal`) slot, a record or variant is that exact same pointer stored in `qval.p`, and a `Bool` or
+    `Char` sits in the same 64-bit word.
+- **Why this is a huge win:**
+  - **Locals, parameters, and return values stay unboxed** (`QRecordVal` and `QVariantVal` in register pairs), so
+    ordinary code that creates, passes, or returns records and variants does not heap-box them.
+  - **Every aggregate has identical memory layout in native and generic views.** A `Tuple Int Record x: Int end end` is
+    two 8-byte words (`{ int64_t _0; QRecordVal *_1; }`), which has the exact same size and field offsets as
+    `Tuple A B end` (`{ QVal _0; QVal _1; }`).
+  - **Polymorphic boundary crossings for both unbounded (`A::TYPE`) and bounded (`A <: B`) type parameters are
+    zero-cost!** Generic code holds values of bounded type parameters at their own view (their type argument's view)
+    in the bound's representation and reads their bound's fields or cases through a memoized `QViewMap`
+    (`quest_view_map(descriptor_A, &quest_type_B)`). Passing a `Tuple(R)`, `Option(R)`, `Record`, or `Array(R)` to
+    polymorphic code requires no element-by-element copying and preserves `var` aliasing and `is` identity directly.
+  - Even when allocating an aggregate with `N` boxed record/variant slots, `ir/represent.py` coalesces the struct and
+    its `N` 16-byte boxes into a **single contiguous allocation** (`embedded` boxes), avoiding extra allocator calls.
+
+---
+
+### 2.3. Tagged `QProxy` Views on Tuples and Options
+
+Uniform 1-word slots make generic/native conversions free, and `QRecordVal`'s `.dict` pointer handles record width
+subtyping. But what about **depth subtyping** when an aggregate's component changes representation?
+
+Consider:
+```quest
+Let SubRec = Record x: Int y: Int end;
+Let SupRec = Record x: Int end;
+let tSub: Tuple var r: SubRec end = tuple let var r = record x = 1 y = 2 end end;
+let tSup: Tuple r: SupRec end = tSub;   (* depth + mutability forgetting upcast *)
 ```
-AAPCS64 Register Assignment for Record Values:
-  x0: Record payload pointer (void *val)
-  x1: Evidence dictionary pointer (const void *dict -> static .rodata table)
-  x2-x7: Subsequent parameters
-  x19-x28: Callee-saved registers
-  x29 (FP) / x30 (LR): Frame pointer and link register
-```
+Here `tSub._0` holds a `QRecordVal *` whose `.dict` is the 2-field dictionary for `SubRec`, whereas code reading
+`tSup._0` expects a `QRecordVal *` whose `.dict` is the 1-field dictionary for `SupRec`. Even more importantly:
+- `tSup is tSub` **must evaluate to `true`** (it is the same tuple!).
+- If someone mutates `tSub.r := record x = 99 y = 100 end`, reading `tSup.r.x` **must see `99`!**
 
-Record return values are returned in `x0` and `x1` without stack-spill or hidden return buffer.
+The same issue arises when a tuple or option component undergoes:
+- record depth subtyping (new `.dict`),
+- variant or option tag remapping (when a supertype inserts earlier alphabetical case names),
+- tuple or option depth subtyping, or
+- function contravariant/covariant adaptation (wrapping a `QClosure *` in an adapter closure).
 
----
+Why not make every tuple and option a 16-byte fat pointer like `QRecordVal`? Because a record's `.dict` only maps field
+names to byte offsets; a tuple's fields are already at fixed offsets `_0`, `_1`, ... unless a component *itself* needs a
+conversion function. Turning every tuple and option into a 16-byte fat pointer would double the register pressure of
+every tuple and `maybe.T(A)` option in the language just for the rare case of a depth-upcast tuple/option.
 
-## 5. Memory Management and Garbage Collection
+Instead, Quest keeps tuples and options as **single 8-byte pointers**, and uses a **low-bit pointer tag
+(`QUEST_PROXY_TAG = 1`)** when a view-changing upcast occurs (`QProxy` in `runtime/quest_runtime.h`):
 
-- **Boehm GC (`libgc`):** Used across Step 4 (C transpiler) and Step 6 (native AArch64).
-- **Uniform 1-Word `QVal`:** Primitive words, pointers, closures, and boxed aggregates (`QRecordVal *`) fit into 8-byte
-  slots, allowing simple GC scanning.
-- **Tuples & Records:** Inlined multi-word slots in stack frames and aggregate structs are directly traversed.
-- **Static Dictionaries:** Evidence dictionaries reside in read-only data sections (`.rodata`) and are never traced or
-  collected by the GC.
-
----
-
-## 6. Dynamic Subtyping & Runtime Type Descriptors
-
-Auto values (Cardelli's `auto :T with ... end`), including dynamic values (`Dynamic.T` is
-`Auto A::TYPE with a:A end`), pair a `const QTypeDescriptor *` for the type component with the components:
 ```c
-typedef struct QAuto {
-    const QTypeDescriptor *type_desc;
-    QVal                   payload;
-} QAuto;
+#define QUEST_PROXY_TAG ((uintptr_t)1)
+
+typedef struct QProxy {
+    void *orig;                  /* Root unproxied heap tuple or option (for `is`, hash, and var writes) */
+    void *stored;                /* Immediate wrapped tuple/option at the representation `view` expects */
+    QVal (*view)(void *stored, int64_t index, const void *tags);  /* Per-component view converter */
+    const void *tags;            /* Optional tag-remap table for variant components */
+    QVal *cache;                 /* Memoized converted values for immutable components */
+    uint8_t *cached;             /* Per-slot memoization flags */
+} QProxy;
 ```
-`inspect` matches branch types against `type_desc` with `quest_is_subtype` and converts components with
-`quest_convert`. See [c-representation.md](c-representation.md) §8.
 
-### 1. Hybrid Descriptor Architecture
-- **Compile-time Static Descriptors (.rodata):** Closed types generated during compilation are emitted as
-  `static const QTypeDescriptor quest_type_<tag> Q_UNUSED` with static payload structs (`qrec_desc_*`, `qtup_desc_*`,
-  `qvar_desc_*`, `qarr_desc_*`). Forward declarations allow mutual and self-referential descriptor links without
-  dynamic allocation.
-- **Runtime Descriptors with Hash-Interning:** Dynamic constructor functions (`quest_make_record_descriptor`,
-  `quest_make_tuple_descriptor`, `quest_make_variant_descriptor`, etc.) provide runtime type synthesis interned via
-  hash table buckets to guarantee canonical pointer equality ($T_1 \equiv T_2 \iff \text{desc}_1 == \text{desc}_2$).
+How `QProxy` works across the runtime:
+1. **Creation (`quest_make_tuple_proxy` / `quest_make_option_proxy` / `quest_convert`):**
+   When a `Convert` in `ir/represent.py` upcasts a tuple or option and at least one component changes view or an option
+   case's index shifts (or when a value of a bounded type parameter `A <: B` is explicitly upcast to its bound `B` via
+   `quest_convert`), it allocates a `QProxy` and returns `(T *)((uintptr_t)proxy | QUEST_PROXY_TAG)`.
+   - `proxy->orig` always chases through any inner proxy to point directly to the underlying concrete heap object.
+   - Pure width subtyping on a tuple (dropping trailing components where all kept components have identical
+     representations) or an option upcast where all subtype cases keep their indices and payload views (e.g.
+     `Option a b end <: Option a b c end`) does **not** allocate a proxy—it is a plain C pointer cast!
+2. **Reading (`via proxy` vs. `direct`):**
+   - If a tuple/option type can never hold a proxy (`type_may_be_proxied(T)` is false—e.g., `Tuple Int String end`,
+     whose components have no subtypes), `ir/represent.py` marks every `Field` and `Tag` access as **`direct`**: a
+     single C struct load `p->_0` with zero tag checks!
+   - If `type_may_be_proxied(T)` is true, `Field` and `Tag` are marked **`proxy`**:
+     - Fast path (`!quest_is_proxy(p)`): a single low-bit test (`((uintptr_t)p & 1) == 0`, ~3–6% overhead in tight
+       loops) followed by a direct load `p->_0`.
+     - Slow path (`quest_is_proxy(p)`): calls `quest_proxy_field(p, i, is_mutable)` (or `quest_option_tag(p)`). For an
+       **immutable** component, the converted view is computed once by `proxy->view` and memoized in `proxy->cache[i]`
+       (so repeated projections return the identical converted pointer, preserving `t.f is t.f`). For a **mutable**
+       (`var`) component, `view` re-reads the live slot from `stored` every time so mutations are immediately visible!
+3. **Writing (`quest_proxy_store`) and `@t.f` (`via original`):**
+   - Because Quest's `Var(T)` is invariant in `T`, a `var` component can only be *written* or taken by reference
+     (`@t.f`) at its exact original type `T` (mutable fields can only be forgotten to read-only fields on depth upcast,
+     never widened mutably).
+   - Therefore, any write or `@t.f` address calculation simply strips the proxy via `quest_unproxy(p)` (`proxy->orig`)
+     and accesses the root struct at offset `_i` (`via original`)!
+4. **Object Identity (`is` and `hash.identityHash`):**
+   - Pointer equality (`quest_val_is`) and `quest_identity_hash` call `quest_unproxy(p)` on both operands before
+     comparing addresses. Thus `tSup is tSub` is always `true` in $O(1)$ time.
 
-### 2. Structural Subtyping Algorithm (`quest_is_subtype`)
-Subtyping checks are unified under `quest_is_subtype`:
-- **Records:** Width subtyping (all supertype fields present in subtype), permutation subtyping (order independent),
-  depth subtyping on immutable fields ($T_{\text{sub}} <: T_{\text{super}}$), and invariance on mutable `var` fields.
-- **Tuples:** Prefix subtyping with covariant element types (so `Tuple end` is a supertype of tuples only).
-- **Variants:** Branch set inclusion with covariant immutable payloads.
-- **Functions:** Contravariant value parameters, invariant `var` parameters, covariant `out` parameters and result;
-  polymorphic function types need the same number of type parameters with equal bounds.
-- **Exceptions:** Invariant payload type.
-  A closure used at a function supertype is wrapped by the target type's adapter (see
-  [c-representation.md](c-representation.md)).
-- **Coinductive Cycle Detection:** Recursive type subtyping cycles are guarded using an active cycle trail
-  (`quest_subtyping_trail`) to ensure terminating coinductive subtyping checks.
+---
 
-### 3. Dynamic Value Adaptation (`quest_record_view` & `quest_variant_adapt`)
-When `dynamic.be` or `inspect` succeeds on a structural subtype:
-- For records: `quest_record_view` keeps the payload and takes the offset table for (target type, the payload's own
-  layout, from its header) from the global offset table map; see [c-representation.md](c-representation.md) §5.2.
-- For variants: `quest_variant_adapt` remaps source variant tags to target tag indices and adapts payloads via a
-  memoized tag-mapping adapter cache.
+### 2.4. Runtime Type Descriptors (`QTypeDescriptor`)
 
-### 4. Dynamic Graph Serialization (`dynamic.extern` & `dynamic.intern`)
-- **Type Table and Value:** A serialized dynamic value is one JSON document holding a table of the types it
-  mentions and the value ([dynamic.md](dynamic.md) §2). Shared records, tuples, and arrays are written once with an
-  integer `@id` and then as `{"@ref": n}`, so cyclic and DAG data structures round-trip. The output is identical to
-  the interpreter's (`dynamic_json.py`), because both make the table canonical (equivalent nodes merged, the rest
-  numbered depth-first from the roots).
-- **Streaming Single-Value Parser:** Deserialization (`dynamic.intern`) parses exactly one JSON value from `QReader`,
-  skipping leading whitespace and leaving trailing stream characters unread, allowing multiple objects to be read
-  sequentially.
-- **Descriptors from the Table:** The writer builds the table from the value's type descriptors; the reader builds a
-  fresh descriptor for each table entry (allocating them all first, so recursive types become cyclic descriptors)
-  and decodes the value against them. `dynamic.be` compares descriptors structurally, so read descriptors need not be
-  the program's own. Descriptor names are only display labels.
-- **Single-Pass Decoding:** Every `@id` precedes its `@ref`s in the document, so a record, tuple, or array is allocated
-  and registered under its `@id` before its components are read, and references inside it resolve to it.
-- **Struct Layout:** Dynamically interned records and tuples lay out one 8-byte slot per field, as compiled structs
-  do (records and variants boxed in their slots).
+For `auto` values, `dynamic.T`, `inspect` typecase, and existential tuple witnesses, the compiler reifies static types
+into runtime `QTypeDescriptor` graphs (`runtime/quest_runtime.h`, materialized by `quest/ir/describe.py`):
+- **Closed types** become `static const QTypeDescriptor` globals emitted once per compilation unit.
+- **Polymorphic functions** that construct descriptors mentioning a type parameter `A` receive an implicit
+  `const QTypeDescriptor *descriptor_A` argument (or closure environment field) and instantiate a parameterized
+  descriptor template at runtime (`quest_instantiate_descriptor`), memoized by argument descriptors.
+- **Amadio–Cardelli Coinductive Runtime Subtyping:** `quest_is_subtype(sub, sup)` runs the full coinductive subtyping
+  algorithm at runtime over `QTypeDescriptor` graphs, handling recursive types, type operators, record width/depth,
+  tuple width/depth, variant/option subsets, and function variance ([dynamic.md §1](dynamic.md)).
 
-## 7. Uncaught Exceptions and Tracebacks
+---
 
-An uncaught exception is reported with the site it was raised at and the Quest functions running there, most recent
-first ([exceptions.md](exceptions.md)). Generated code passes each raise's site to the runtime (`quest_raise_at` and
-the `_at` checked operations), and each `try` records in its `QExceptionHandler` what it catches. A raise that no
-handler will catch prints the exception, its site, and the frames of the live stack, walked with the platform
-unwinder (`<unwind.h>`) and named from the function tables each unit registers (`quest_register_funcs`), matching
-functions by their exact starts; a raise that a handler might catch and raise again captures the frames first
-(`QTrace`, in `QExceptionState`). Code that does not raise pays nothing: no shadow stack, no frame links. The price
-is that functions the C compiler inlines or tail-calls leave no frames, so compiled code lists fewer of them than
-the interpreters, which is accepted ([exceptions.md](exceptions.md) §2.4).
+## 3. Memory Management
+
+Quest is a garbage-collected language with mutable references (`var`) and cyclic data structures (such as recursive
+functions, doubly-linked structures, and self-referential records).
+
+1. **Primary Collector: Boehm-Demers-Weiser Conservative GC (`libgc`)**
+   - Pointer allocations (`quest_alloc(size)`) route to `GC_MALLOC(size)`, which zero-initializes memory and scans it
+     for outgoing pointers.
+   - Pointer-free leaf allocations (`quest_alloc_atomic(size)`—used for `String` character buffers, primitive arrays
+     `Array(Int)` / `Array(Real)` / `Array(Bool)` / `Array(Char)`, and captured exception stack traces) route to
+     `GC_MALLOC_ATOMIC(size)`, avoiding conservative pointer scanning inside binary/string payloads.
+2. **Fallback Mode (`--nogc`):**
+   - Compiling with `--nogc` defines `-DQUEST_NOGC`, routing `quest_alloc` and `quest_alloc_atomic` to standard
+     `calloc(1, size)` so binaries can be built and tested on hosts without `libgc` installed.
+
+---
+
+## 4. Target ABI & AArch64 Register Mapping
+
+Both the C99 backend (via the platform C compiler) and the planned native AArch64 backend (Steps 6–7) follow the
+standard ARM64 **AAPCS64** calling convention:
+
+| Register(s) | AAPCS64 Role | Quest Runtime Usage |
+| :--- | :--- | :--- |
+| `x0` – `x7` | Argument & Return | Closure `env` in `x0`, then descriptors & value args; returns in `x0`/`(x0, x1)`. |
+| `d0` – `d7` | FP Arg & Return | Unboxed `Real` (`double`) args & results; boxed only at polymorphic boundaries. |
+| `x8` | Indirect Result | Unused for Quest types, since all Quest values and fat pointers are $\le 16$ bytes. |
+| `x9` – `x15` | Caller-Saved Temps | Expression evaluation scratch registers and offset dictionary lookups. |
+| `x16`, `x17` | Scratch (`IP0`/`IP1`) | Linker veneers and indirect call trampolines. |
+| `x18` | Platform Register | Reserved by macOS / OS ABI (**never touched** by generated code). |
+| `x19` – `x28` | Callee-Saved Regs | Live-across-call locals allocated by the graph-coloring register allocator. |
+| `x29` (`fp`) | Frame Pointer | Frame link; kept on every stack frame for unwinding ([exceptions.md](exceptions.md)). |
+| `x30` (`lr`) | Link Register | Return address. |
+| `sp` | Stack Pointer | 16-byte aligned at all call boundaries. |
+
+### 4.1. Uniform Closure Calling Convention
+Every first-class Quest function (`QClosure = { void *fn, void *env }`) is invoked by passing `closure->env` as the
+first argument (`x0`), followed by any runtime type descriptors (`const QTypeDescriptor *`) for `All(A::TYPE)`
+quantifiers, followed by the value parameters:
+```c
+((RetType (*)(void *, ...))closure->fn)(closure->env, descriptor_A, arg1, arg2);
+```
+Top-level and non-capturing functions use a static closure struct `{ (void *)qf_foo, NULL }` so that first-class
+function values require zero heap allocation when they capture no local variables.
 
 ---
 
 ## See Also
-- [README.md](../README.md): Project overview.
-- [roadmap.md](roadmap.md): 7-stage implementation roadmap.
-- [type-system.md](type-system.md): Semantic type system and subtyping rules.
-- [pipeline.md](pipeline.md): Compiler pipeline framework and CLI driver.
+- [ir.md](ir.md): How the IR lowers, specializes, closure-converts, represents, and describes Quest programs.
+- [c-representation.md](c-representation.md): Concrete C99 struct definitions, conversion plans, and runtime APIs.
+- [codegen-c.md](codegen-c.md): How the C printer emits C99 from the `ir_described` stage.
+- [dynamic.md](dynamic.md): Runtime type descriptors, `auto`/`inspect`, and cyclic JSOG serialization.
+- [exceptions.md](exceptions.md): Zero-overhead exception handling and native stack tracebacks.

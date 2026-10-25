@@ -75,7 +75,9 @@ Use the unified compiler driver script `./quest`:
 # Compile and stop after a specific phase to inspect canonical output:
 ./quest --stop-after tokenize program.quest          # Dumps token stream
 ./quest --stop-after parse program.quest             # Dumps untyped S-expression AST
+./quest --stop-after desugar program.quest           # Dumps desugared S-expression AST
 ./quest --stop-after typecheck program.quest         # Dumps typed S-expression AST
+./quest compile --stop-after ir_core program.quest   # Dumps lowered ANF IR
 ./quest compile --stop-after codegen_c program.quest # Dumps emitted C99 source
 
 # Dump intermediate representations while continuing:
@@ -137,9 +139,13 @@ runtime additions, see [docs/extensions.md](docs/extensions.md).
 
 ## Documentation Index
 
-Comprehensive documentation for the language, formal semantics, and compiler subsystems is organized in `docs/`:
+The documentation in `docs/` is organized to take you from Quest's language foundations through the front end, type
+system, intermediate representation, and native runtime design. If you are new to the compiler, start with
+[docs/walkthrough.md](docs/walkthrough.md), [docs/pipeline.md](docs/pipeline.md),
+[docs/type-system.md](docs/type-system.md), [docs/runtime-design.md](docs/runtime-design.md), and
+[docs/ir.md](docs/ir.md).
 
-### Foundational Literature & Language Specification
+### 1. Foundational Literature & Language Specification
 - [docs/TypefulProgramming.md](docs/TypefulProgramming.md): Luca Cardelli's foundational treatise on Quest and typeful
   programming (1989/1993).
 - [docs/ASemanticBasisForQuest.md](docs/ASemanticBasisForQuest.md): Cardelli & Longo (1991) formal semantic foundation
@@ -147,41 +153,63 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
 - [docs/TheQuestLanguageAndSystem.md](docs/TheQuestLanguageAndSystem.md): System architecture and original bytecode
   interpreter design (1994).
 - [docs/grammar.txt](docs/grammar.txt): Canonical EBNF grammar specification.
-- [docs/extensions.md](docs/extensions.md): Core language extensions, `System` OS interface, and native `external`
-  syntax.
+- [docs/extensions.md](docs/extensions.md): Core language extensions (`System`, `Word`, hierarchical modules, and native
+  `external` bindings).
+- [docs/new-libraries.md](docs/new-libraries.md): Extended standard libraries (`collections/vector`,
+  `collections/hashMap`, `collections/hashSet`, `util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`,
+  `util/argParse`, `util/hash`).
+- [docs/converting-python-to-quest.md](docs/converting-python-to-quest.md): Idiomatic translation patterns from Python
+  to Quest.
 
-### Compiler Architecture & Subsystems
-- [docs/instructions.md](docs/instructions.md): Instructions for models (and people) working on the project: working with
-  its owner, commands, method, code, test, documentation, and commit conventions, and Quest's syntax traps.
-- [docs/walkthrough.md](docs/walkthrough.md): The Life of argmax, a walk through every compiler phase with one small
-  program ([examples/argmax/](examples/argmax/)), for readers new to compilers.
-- [docs/pipeline.md](docs/pipeline.md): The compiler phase pipeline framework, dual-pipeline architecture (interpreter
-  vs. C compilation), and CLI driver interface.
-- [docs/codegen-c.md](docs/codegen-c.md): C code generator architecture, IR C printer, and host compiler runner.
-- [docs/c-representation.md](docs/c-representation.md): C representation, uniform 64-bit `QVal` ABI, static assertions,
-  and runtime library design.
-- [docs/ir.md](docs/ir.md): Intermediate representation between the typed AST and the C backend (ANF with join points,
-  refined by passes).
-- [docs/syntax.md](docs/syntax.md): Lexical scanning, character offset tracking, PEG parser combinators, and untyped
-  AST structure.
-- [docs/type-system.md](docs/type-system.md): Higher-order type system, subkinding, equi-recursive coinductive
-  subtyping, recursive contractiveness ($C \succ X$), and bidirectional term typing.
-- [docs/interpreter.md](docs/interpreter.md): Bootstrap tree-walking interpreter, runtime value hierarchy, scoped
-  environment, Cardelli identity semantics, and operational evaluation engine.
-- [docs/modules.md](docs/modules.md): Cardelli module system, interfaces, information hiding, file-based loading
-  conventions (.int.quest / .mod.quest), and singleton evaluation semantics.
-- [docs/build-process.md](docs/build-process.md): Incremental separate compilation engine, `.qi`/`.qm` metadata, and
-  transitive linking.
-- [docs/diagnostics.md](docs/diagnostics.md): Structured diagnostic error reporting, severity levels, and caret
-  rendering.
-- [docs/runtime-design.md](docs/runtime-design.md): Compiled runtime architecture, evidence passing vs. fat pointers,
-  AAPCS64 ABI, and garbage collection.
-- [docs/testing.md](docs/testing.md): Test harness architecture: golden files, inline comment error tests, precursor
-  validation, and bidirectional matching.
+### 2. Compiler Architecture, Front-End, & Type System
+- [docs/walkthrough.md](docs/walkthrough.md): *The Life of `argmax`*: a guided walk through every compiler phase with
+  one small program ([examples/argmax/](examples/argmax/)).
+- [docs/pipeline.md](docs/pipeline.md): The phase pipeline (`tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
+  $\to$ IR passes $\to$ `codegen_c` $\to$ `run_c_compiled`), interpreter pipeline, and CLI driver.
+- [docs/syntax.md](docs/syntax.md): Lexical scanning, character offset tracking, packrat PEG parser combinators,
+  untyped AST structure, and syntactic desugaring (`quest/syntax/desugar.py`).
+- [docs/type-system.md](docs/type-system.md): Higher-order $F_{<:}^\omega$ type system, subkinding, Amadio–Cardelli
+  coinductive subtyping, recursive contractiveness ($C \succ X$), bidirectional elaboration, and how static types bridge
+  to canonical runtime shapes.
+- [docs/modules.md](docs/modules.md): Cardelli's first-order module system, interfaces, abstract vs. manifest types,
+  canonical module names, and separate compilation contracts.
+- [docs/build-process.md](docs/build-process.md): Incremental separate compilation engine, the unified `UnitGraph`
+  (`quest/modules/graph.py`), `.qi`/`.qm` manifests, ABI versioning, and transitive linking.
 
-### Implementation Plans
-- [docs/roadmap.md](docs/roadmap.md): Seven-stage implementation roadmap.
-- [docs/compiler-organization.md](docs/compiler-organization.md): Organization and milestones for the self-hosted
-  Quest compiler and interpreter (`questlang`).
-- [docs/quest-self-hosting-prerequisites.md](docs/quest-self-hosting-prerequisites.md): Architectural prerequisites,
-  runtime libraries, and subsystem capabilities required for self-hosting.
+### 3. IR, Runtime Representation, & C Code Generation
+- [docs/runtime-design.md](docs/runtime-design.md): **Start here for the backend:** why compiling $F_{<:}^\omega$ with
+  structural subtyping and mutable state is subtle, and how 16-byte evidence-passing structs (`QRecordVal`,
+  `QVariantVal`), uniform 1-word boxed aggregate slots, tagged `QProxy` views, and runtime `QTypeDescriptor`s fit
+  together.
+- [docs/ir.md](docs/ir.md): The A-normal form (ANF) intermediate representation with structured control flow and join
+  points, canonical `Shape`s (`ir/shapes.py`), and the five nanopasses (`lower` $\to$ `specialize` $\to$ `closure`
+  $\to$ `represent` $\to$ `describe`).
+- [docs/c-representation.md](docs/c-representation.md): Reference specification for the C99 runtime ABI, `QVal` and
+  slot representations, proxy conversions, closures, arrays, and runtime helpers.
+- [docs/codegen-c.md](docs/codegen-c.md): How the C printer (`codegen/c/printer.py`) spells the described IR as portable
+  C99 and invokes the host C toolchain.
+- [docs/name-mangling.md](docs/name-mangling.md): C identifier mangling rules and symbol namespaces (`g_`, `l_`, `qf_`,
+  `qm_`, `qv_`).
+- [docs/dynamic.md](docs/dynamic.md): Dynamic type packaging (`auto`, `dynamic.T`), runtime subtyping (`inspect`,
+  `dynamic.be`), and cyclic JSOG serialization (`dynamic.extern` / `dynamic.intern`).
+- [docs/exceptions.md](docs/exceptions.md): Zero-cost stack-unwinding exception tracebacks and raise-site reporting in
+  interpreters and compiled code.
+- [docs/interpreter.md](docs/interpreter.md): Bootstrap tree-walking interpreter, runtime `QValue` model, and
+  operational evaluation rules.
+- [docs/repl.md](docs/repl.md): Interactive REPL, multi-line continuation heuristics, and transactional error rollback.
+
+### 4. Testing, Diagnostics, & Contributor Guide
+- [docs/testing.md](docs/testing.md): Test harness architecture: golden files, inline comment error tests, IR phase
+  evaluators, conversion matrices, and performance benchmarks.
+- [docs/diagnostics.md](docs/diagnostics.md): Structured diagnostic error reporting, severity levels, and multi-file
+  import traces.
+- [docs/instructions.md](docs/instructions.md): Guide for contributors and models working on Quest: workflow, commands,
+  invariants, code and documentation conventions, and Quest syntax traps.
+
+### 5. Roadmap & Self-Hosting Plans
+- [docs/roadmap.md](docs/roadmap.md): Seven-stage implementation roadmap from Python bootstrap to native AArch64 JIT.
+- [docs/compiler-organization.md](docs/compiler-organization.md): Module architecture and milestones for the
+  self-hosted Quest compiler (`questlang/`).
+- [docs/quest-self-hosting-prerequisites.md](docs/quest-self-hosting-prerequisites.md): Library and runtime
+  prerequisites for self-hosting.
+- [docs/tasklist.md](docs/tasklist.md): Open bugs and planned tasks.

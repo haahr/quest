@@ -52,17 +52,20 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   character offset from the input start.
 - **Parser:** PEG / recursive descent parser handling Quest grammar (uniform right-associative infix operators,
   initial/final keyword blocks, whitespace separation).
-- **Abstract Syntax Tree (AST):** Immutable functional AST definitions using `@dataclass(frozen=True)`, directly
-  mirroring Quest's `Tuple` and `Option` algebraic data structures.
+- **Abstract Syntax Tree (AST) & Desugaring (`quest/syntax/`):** Immutable functional AST definitions using
+  `@dataclass(frozen=True)` and a syntactic desugaring pass (`desugar.py`) that rewrites derived forms (`andif`/`orif`,
+  `elsif` chains, user infix operators, `a[i] := v`, and non-recursive `let f(S): T = e`) into core AST nodes before
+  typechecking.
 
 ### Step 2: Bootstrap Typechecker & Evaluator (Python) — *Complete*
-- **Three-Level Environment:** Kinds (Level 2), Types/Operators (Level 1), and Values (Level 0).
-- **Bidirectional Typechecker:** Term-level checking ($\Gamma \vdash e \Leftarrow T$) and synthesis
-  ($\Gamma \vdash e \Rightarrow T$) following Dunfield & Krishnaswami, propagating contextual type information without
-  global constraint solving.
+- **Three-Level Environment:** Kinds (Level 2), Types/Operators (Level 1), and Values (Level 0), with a unified
+  `UnitGraph` (`quest/modules/graph.py`) tracking resolved imports and loaded interfaces/modules across all phases.
+- **Bidirectional Typechecker (`quest/typechecker/`):** Term-level checking ($\Gamma \vdash e \Leftarrow T$) and
+  synthesis ($\Gamma \vdash e \Rightarrow T$) following Dunfield & Krishnaswami, propagating contextual type
+  information without global constraint solving.
 - **Type Evaluator:** Normal-order typed $\lambda$-calculus evaluator for compile-time type operators (`Fun(S)A`).
 - **Subtyping Engine (Kernel $F_{<:}^\omega$):**
-  - Quantifier subtyping with invariant bounds to guarantee decidability and strong normalization in polynomial time.
+  - Quantifier subtyping with contravariant bounds (`All(A <: S1) B1 <: All(A <: S2) B2` when `S2 <: S1`).
   - Structural subtyping for tuples (width/depth), records (evidence dictionary), variants, options, and contravariant/
     covariant functions.
   - Subtyping and implicit dereferencing of `Var` (read-write conjunction / coercion to value type), `Out`
@@ -79,26 +82,30 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   (`QRef`), auto/dynamic envelopes (`QAutoVal`), Cardelli object identity (`is` / `isnot`), and deep structural
   equality.
 - **Evaluator (`quest/interpreter/`):** Scoped lexical frames (`RuntimeEnvironment`), tree-walking evaluator
-  (`treewalk.py`), IR interpreter (`ir_interp.py`), exceptions (`try...when...else`, `raise`), `auto` / `inspect`
-  dynamic type reflection, and Cardelli standard library bridges (`builtins.py`).
-- **Interactive REPL (`quest/repl.py`):** Persistent multi-line REPL and batch `--echo` / `-i` modes.
+  (`treewalk.py`), IR interpreter (`ir_interp.py`), shared primitive operations (`primitives.py`) and formatting
+  (`formatting.py`), exceptions (`try...when...else`, `raise`), `auto` / `inspect` dynamic type reflection, and
+  Cardelli standard library bridges (`builtins.py`).
+- **Interactive REPL (`quest/repl.py`):** Persistent multi-line REPL with transactional `UnitGraph` rollback on error
+  and batch `--echo` / `-i` modes.
 - Interpreter architecture in [interpreter.md](interpreter.md); REPL guide in [repl.md](repl.md).
 
 ### Step 4: Bootstrap C Compiler (Python) — *Complete*
 - **Intermediate Representation & Passes (`quest/ir/`):** A-normal form with structured control flow and join points
-  (`ir/lower.py`), call-site specialization (`ir/specialize.py`), closure conversion and lambda lifting
-  (`ir/closure.py`), and representation & boundary conversion insertion (`ir/represent.py`).
-- **C Code Generation (`quest/codegen/`):** Uniform 64-bit `QVal` ABI, 16-byte `QRecordVal` fat pointers with static
-  offset dictionaries, 16-byte unboxed `QVariantVal` values with static tag remapping, flat stride wide arrays,
-  native pointer lowering (`T *`) for `var`/`out` parameters, existential tuples, runtime type descriptors
-  (`QTypeDescriptor`), shared layout/canonical/descriptor/symbol modules (`codegen/`), and portable C99 emission
-  (`codegen/c/`).
+  (`ir/lower.py`), canonical type shapes (`ir/shapes.py`), call-site specialization (`ir/specialize.py`), closure
+  conversion and lambda lifting (`ir/closure.py`), representation, slot boxing, and proxy conversion insertion
+  (`ir/represent.py`, `ir/slots.py`), and runtime type descriptor materialization (`ir/describe.py`).
+- **Runtime Representation & C Code Generation (`quest/codegen/`):** Uniform 64-bit `QVal` ABI, 16-byte `QRecordVal`
+  fat pointers with static offset dictionaries, 16-byte unboxed `QVariantVal` values with static tag remapping, uniform
+  1-word boxed aggregate slots (`slot_representation`), tagged `QProxy` views on depth-upcast tuples and options,
+  native pointer lowering (`T *`) for `var`/`out` parameters, runtime type descriptors (`QTypeDescriptor`), and
+  portable C99 emission (`codegen/c/`).
 - **Runtime & Separate Compilation (`runtime/`, `quest/modules/`, `quest/build/`):** C99 runtime linked with Boehm GC
-  (`libgc`) or libc (`--nogc`), `setjmp`/`longjmp` exceptions, JSOG dynamic graph serialization (`dynamic.extern` /
-  `dynamic.intern`), separate compilation of interfaces (`.int.h`, `.qi`) and modules (`.mod.c`, `.o`, `.qm`), and
-  incremental build/dependency resolution (`BuildEngine`).
-- Specifications: [ir.md](ir.md), [codegen-c.md](codegen-c.md), [c-representation.md](c-representation.md),
-  [modules.md](modules.md), [build-process.md](build-process.md), and [extensions.md](extensions.md).
+  (`libgc`) or libc (`--nogc`), `setjmp`/`longjmp` exceptions with `<unwind.h>` native stack tracebacks, JSOG dynamic
+  graph serialization (`dynamic.extern` / `dynamic.intern`), separate compilation of interfaces (`.int.h`, `.qi`) and
+  modules (`.mod.c`, `.o`, `.qm`), and incremental build/dependency resolution (`BuildEngine`).
+- Specifications: [runtime-design.md](runtime-design.md), [ir.md](ir.md), [c-representation.md](c-representation.md),
+  [codegen-c.md](codegen-c.md), [modules.md](modules.md), [build-process.md](build-process.md), and
+  [extensions.md](extensions.md).
 
 ### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest) — *In Progress*
 - Port the compiler and interpreter into idiomatic, modular Quest under `questlang/` (see

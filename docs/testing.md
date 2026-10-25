@@ -193,7 +193,7 @@ repository, in about a minute.
 compiled code converts values between representations (polymorphic calls, first-class polymorphic values, type
 applications, closures, shapes as type arguments, dynamic values, subsumption, stores, identity), each exercising
 every shape over a type parameter (tuples, options, records, variants, arrays, closures, recursive types) at scalar,
-record, variant, and tuple type arguments ([ir.md](ir.md) §12, step 0). Goldens come from the interpreter. Cells
+record, variant, and tuple type arguments ([ir.md](ir.md) §8.4). Goldens come from the interpreter. Cells
 listed in the generator's `KNOWN_FAILURES` go into `*_known_failures.quest`, which skips the compiled phase, each
 with its reason; cells in `REJECTED` are compile-time errors of C generation, checked by
 `tests/python/test_conversion_rejections.py`. After changing the generator, run `python tests/conversions/generate.py`
@@ -281,8 +281,7 @@ input) can specify host execution requirements via top-level comment directives:
   of its type (sorted by name), a function is `<fun>`, a value of an abstract type (such as `list.T(Int)` or a
   module's `T`) is `<hidden>`, and an auto value names its type component as its runtime descriptor does. Compiled
   code writes compound values from their type descriptors (`quest_print_typed`), including tuples' type components
-  (`Let A = Int`). One difference remains: within a recursive type, a type component's type is written with its
-  aliases expanded (see `docs/tasklist.md`).
+  (`Let A = Int`).
 
 ### 2.6. Interfaces and Modules Used by Tests
 A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the

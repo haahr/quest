@@ -4,15 +4,13 @@ This document specifies how an uncaught Quest exception is reported, with where 
 active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
 (`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`).
 
-Status: implemented (§7, steps 1 to 3).
-
 ---
 
 ## 1. Goals
 
 1. **The raise site, exactly, everywhere.** Every backend reports the source location of the `raise`, or of the
    checked operation (division, array index, variant tag), that raised the exception. This is the part users need
-   most, and it is cheap and exact in every backend, so it comes first (§7, step 1).
+   most, and it is cheap and exact in every backend.
 2. **The active Quest functions, most recent first.** The interpreters report every frame. Compiled code reports an
    ordered subsequence of them: the C compiler inlines functions and turns tail calls into jumps, and those frames are
    lost. A frame compiled code cannot attribute with certainty is left out, never guessed. Fewer frames from compiled
@@ -249,8 +247,8 @@ by address the first time it prints frames.
 
 Taking the address of every named function means the C compiler can no longer drop unused arguments or change the
 calling conventions of those static functions. (The printer already makes a static closure of every function, which
-takes its address, though one that is not used is dropped.) `tests/perf/measure.py` (`docs/testing.md`) found no
-difference in the benchmarks' run times with the tables (§7, step 3).
+takes its address, though one that is not used is dropped.) `tests/perf/measure.py` ([testing.md](testing.md)) shows no
+measurable difference in the benchmarks' run times with the tables.
 
 ### 5.3. Walking and Attributing Frames
 
@@ -293,48 +291,17 @@ output ends with `  ... (traceback truncated)`.
 
 1. **Run-error goldens** (`tests/golden/errors/run/*.error`) remain only for errors with no site (raised inside an
    external, or a layout conversion error), and match the unchanged header.
-2. **Raise sites** (step 1): the run error tests (`tests/errors/run`) run in every phase that runs programs, the four
+2. **Raise sites:** the run error tests (`tests/errors/run`) run in every phase that runs programs, the four
    `run_ir_*` phases included, and their `(* ERROR *)` comments check the line of the site: a `raise` in the
    program, each checked operation, a raise in a module's function (`raise_in_module`, in `raiser.mod.quest` beside
    it), a raise in a function the program passes to a module (`raise_in_callback`), and a re-raise through a `try`
    whose branches do not match (`reraise_keeps_site`). A unit test in `tests/python/test_quest_driver.py` runs a
    binary directly and checks the format of §2.2.
-3. **Interpreter frames** (step 2): `tests/python/test_tracebacks.py` checks the frames of programs with nested and
+3. **Interpreter frames:** `tests/python/test_tracebacks.py` checks the frames of programs with nested and
    recursive calls, an anonymous callback, a module's functions and a callback from one, a re-raise, and a module
    initializer that raises, and that the full output of `interpret` and of the four `run_ir_*` phases is identical.
-4. **Compiled frames** (step 3): for the same programs, `run_c_compiled` reports the same header and raise site as
+4. **Compiled frames:** for the same programs, `run_c_compiled` reports the same header and raise site as
    `interpret`, and its frames are a non-empty ordered subsequence of the interpreter's that ends with `<main>`
    (not the same frames, §2.4).
    Separate cases cover each outcome of §5.1: an exception caught by a listed handler, by `else`, not caught, and
    re-raised through an `UNKNOWN` handler.
-
----
-
-## 7. Plan
-
-### Step 1: Raise sites in every backend
-
-- Offsets on the raising IR nodes and the source map on `ir.Unit` (§3.1); `ir.Reraise`.
-- Interpreters: the source map of the running unit on raised exceptions; offsets from IR nodes (§3.2).
-- C: `quest_raise_at`, location arguments on the cold helpers, `loc` in `QExceptionState`, `quest_reraise` (§3.3).
-  The binary prints the `at` line (§2.2).
-- `run_c_compiled` parses the binary's output into a located diagnostic (§2.2).
-- **Done when:** the tests of §6.2 pass in every phase, the task "Uncaught exceptions are reported at the wrong place,
-  or none" is removed from `docs/tasklist.md`, and `ABI_VERSION` is bumped (the runtime's raise helpers change).
-
-### Step 2: Frames in the interpreters
-
-- `QClosure.trace_name` and `ir.Function.trace_name`, named as in §4.
-- `RuntimeEnvironment.call_stack`, pushed and popped by both interpreters; `QuestCompilerError.frames`.
-- `Diagnostic.trace` and its rendering (§2.1).
-- **Done when:** the tests of §6.3 pass.
-
-### Step 3: Frames in compiled code
-
-- Measure with `tests/perf/measure.py` with function tables emitted and registered (§5.2), before going further.
-  Measured: the benchmarks' run times were the same with the tables as without (0.435s, 0.32s, and 0.50s, within
-  run-to-run noise), C generation took as long, and the C grew by 0.5%.
-- `ir.Try.catches`, with pure patterns hoisted in `lower.py`; the handler fields and the chain walk of §5.1.
-- Stack walking and exact attribution (§5.3), captured frames (§5.4), and `-fno-reorder-blocks-and-partition` for gcc.
-- **Done when:** the tests of §6.4 pass, and `docs/c-representation.md` and `docs/runtime-design.md` describe the
-  handler fields, the function tables, and frame printing.

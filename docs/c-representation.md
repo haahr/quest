@@ -97,16 +97,18 @@ Standard scalar constants are defined for `Ok` and boolean values:
 ```
 
 ### 3.2. String Representation (`QString`)
-Quest strings are immutable byte sequences with explicit length and trailing null byte:
+Quest strings are heap-allocated, length-prefixed UTF-8 byte buffers supporting $O(1)$ length queries and in-place
+character/substring mutation (`string.setChar`, `string.setSub`, §5.5):
 ```c
 typedef struct QString {
-    size_t length;
-    char   chars[];
+    int64_t length;
+    int64_t capacity;
+    char   *data;
 } QString;
 ```
-- Strings are allocated via `quest_alloc_atomic(sizeof(QString) + length + 1)`.
+- The header and character buffer (`length + 1` bytes with a trailing NUL byte) are allocated via `quest_string_new`.
 - Runtime functions `quest_string_new(const char *data, size_t len)`, `quest_string_concat(s1, s2)`, and
-  `quest_string_equal(s1, s2)` provide safe string manipulation.
+  `quest_string_equal(s1, s2)` provide safe string creation, concatenation, and content comparison.
 
 ### 3.3. Opaque C Data Structures (`QExternalType`)
 Quest allows native C pointer and handle types to be declared directly in source code using the `external` keyword
@@ -120,19 +122,22 @@ Quest allows native C pointer and handle types to be declared directly in source
   `quest_make_opaque_descriptor("Handle")`.
 
 ### 3.4. Word Representation (`Word.T` / `QWord`)
-Quest provides a standard `Word` module for 64-bit unsigned machine operations:
-- **Concrete Representation**: `Word.T` maps to C `uint64_t` (`typedef uint64_t QWord;`).
+Quest provides a standard `Word` module (`lib/word.mod.quest`) for 64-bit unsigned machine operations:
+- **Concrete Representation**: `Word.T` is declared in `lib/word.mod.quest` as `Let T = external "uint64_t";`
+  (`typedef uint64_t QWord;` in `runtime/quest_runtime.h`).
 - **Universal Word Boxing (`QVal`)**: When boxed into `QVal`, `Word.T` occupies `uint64_t u;`:
   `((QVal){ .u = (uint64_t)(expr) })` and is unboxed via `((expr).u)`.
-- **Expression Inlining**: Operations like `andBits`, `orBits`, `xorBits`, `notBits`, `add`, `sub`, `mul`, `lt`,
-  `le`, `gt`, and `ge` are inlined directly to C expressions (`&`, `|`, `^`, `~`, `+`, `-`, `*`, `<`, `<=`, `>`, `>=`).
-- **Float and Integer Bit-Casts**: `toReal` and `fromReal` perform zero-copy type punning directly through `QVal`
-  compound literals (`(((QVal){ .u = (w) }).r)` and `(((QVal){ .r = (r) }).u)`), compiling to register moves (`movq`).
-- **Safety Wrappers & Bit Helpers**: `shift`, `rotate`, `extract`, `replace`, `popCount`, `countLeadingZeros`,
-  `countTrailingZeros`, `div`, and `mod` use inline runtime helpers (`quest_word_shift`, `quest_word_rotate`,
-  `quest_word_extract`, `quest_word_replace`, `quest_word_pop_count`, `quest_word_count_leading_zeros`,
-  `quest_word_count_trailing_zeros`, `quest_word_div`, `quest_word_mod`) ensuring well-defined bounds and
-  raising `word.error` on zero divisors.
+- **Inline C Runtime Helpers**: Operations in `lib/word.mod.quest` bind via `external` to `static inline` helpers in
+  `runtime/quest_runtime.h`:
+  - Bitwise and arithmetic: `quest_word_not_bits`, `quest_word_and_bits`, `quest_word_or_bits`, `quest_word_xor_bits`,
+    `quest_word_add`, `quest_word_sub`, `quest_word_mul`, `quest_word_lt`, `quest_word_le`, `quest_word_gt`,
+    `quest_word_ge`.
+  - Checked division and modulo: `quest_word_div_val` and `quest_word_mod_val`, raising `word.error` on zero divisors.
+  - Shifts, rotations, bitfields, and bit counts: `quest_word_shift_val`, `quest_word_rotate_val`,
+    `quest_word_extract_val`, `quest_word_replace_val`, `quest_word_pop_count_val`,
+    `quest_word_count_leading_zeros_val`, and `quest_word_count_trailing_zeros_val`.
+  - Integer and float bit-casts: `quest_word_to_int`, `quest_word_from_int`, `quest_word_to_real_val` (raising
+    `word.error` on a NaN bit pattern; [type-system.md](type-system.md) §6.3.1), and `quest_word_from_real_val`.
 - **Quest-Implemented Operations**: Single-bit operations `getBit`, `setBit`, and `clearBit` are implemented in Quest
   within `lib/word.mod.quest` utilizing `shift`, `andBits`, `orBits`, and `notBits`.
 - **Word Size Constant**: `word.bits` provides the word width `64`.
@@ -167,20 +172,18 @@ evaluated:
 ## 4. Identifier Mapping and Operator Mangling
 
 ### 4.1. Namespace Prefixes
-All Quest identifiers map to C identifiers using explicit namespace prefixes:
-- **`qv_` for Quest Values and Functions:**
-  - `fib` $\rightarrow$ `qv_fib`
-  - `factorial` $\rightarrow$ `qv_factorial`
-  - `x` $\rightarrow$ `qv_x`
-  - `int` $\rightarrow$ `qv_int` *(safely avoids collision with C `int`)*
-  - `default` $\rightarrow$ `qv_default` *(safely avoids collision with C `default`)*
-- **`QT_` for Quest Types:**
-  - `Int` $\rightarrow$ `QT_Int`
-  - `Real` $\rightarrow$ `QT_Real`
-  - `List` $\rightarrow$ `QT_List`
-- **`QK_` for Quest Kinds:**
-  - `TYPE` $\rightarrow$ `QK_TYPE`
-  - `POWER` $\rightarrow$ `QK_POWER`
+All Quest identifiers map to C identifiers using explicit namespace prefixes (specified in full in
+[name-mangling.md](name-mangling.md)):
+- **`g_` for Global Variables and `l_` for Local Variables:**
+  - `let x = 1` (top level) $\rightarrow$ `g_x`
+  - `let default = true` (local) $\rightarrow$ `l_default` *(safely avoids collision with C `default`)*
+- **`qf_` for Static IR Functions and Record Struct Fields:**
+  - `let fib(n: Int): Int = ...` $\rightarrow$ `qf_fib`
+  - `record return = 1 end` $\rightarrow$ `.qf_return`
+- **`qm_` for Module Record Instances and `qv_` for Module Exports & Initializers:**
+  - `module util/path` $\rightarrow$ `qm_util__path`, `qv_mod_util__path_init`, `qv_util__path_join`
+- **`QT_` for Record Struct Tags:**
+  - `Let Point = Record ... end` $\rightarrow$ `struct QT_Point_<digest>`
 
 ### 4.2. Operator and Symbol Name Mangling
 Quest supports arbitrary symbolic operator names. Symbolic characters map to human-readable names prefixed by `qv_sym_`:
@@ -274,9 +277,10 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
 
 - **Existential Tuples & Erasure of Type Formals:**
   In existential tuple types (`Tuple A::TYPE a: A end`, `Tuple T::POWER(Int) value: T end`), type formal components
-  are erased from the physical C struct in static compilation. Only value components occupy struct fields
-  (`_0`, `_1`, etc.). Runtime type descriptors for existential witnesses will be incorporated when `Dynamic.intern`
-  and `Dynamic.extern` serialization is implemented.
+  are erased from the physical C struct (`struct QTuple`), so only value components occupy struct fields (`_0`, `_1`,
+  etc.). In runtime type descriptors (`QTupleTypeDescriptor`), abstract type components are recorded with opaque
+  witness descriptors (`QTYPE_KIND_OPAQUE`) so that `dynamic.extern` and `dynamic.intern` preserve existential type
+  boundaries (§11).
 
 - **Unbounded vs. Bounded Path-Type Lowering:**
   - Unbounded type variables and path-types (`A::TYPE`, `p.T`) map to uniform 64-bit `QVal`. Concrete scalar values
@@ -413,14 +417,14 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    auto component) is a pointer to an immutable box holding its `QRecordVal`, viewed at the slot's type (§5.1, Slots).
    Reading it reads the box; storing it makes a box, or reuses the one it was read from. Subtyping coercion (attaching
    the target's offset table) is applied before it is stored.
- 6. **Bounded Type Parameters (`A <: Record`):**
-    - **Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_A` in their
-      C function signatures to support separate compilation and uniform reflection.
-    - **Own Views:** Parameters of bounded type `p: A` are passed as unboxed 16-byte `QRecordVal` structs at their own
-      view, the type argument's: the caller passes its value as it is, and a result is the caller's as it is.
-    - **Field Access Through a View Map:** Field access `p.x` inside the bounded function reads the type argument's
-      offset table at the index the function's view map gives for `x` (§5.1, Own views), and converts an immutable
-      field from the type the payload stores it at (or the type argument's type for it) to the bound's.
+7. **Bounded Type Parameters (`A <: Record`):**
+   - **Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_A` in their
+     C function signatures to support separate compilation and uniform reflection.
+   - **Own Views:** Parameters of bounded type `p: A` are passed as unboxed 16-byte `QRecordVal` structs at their own
+     view, the type argument's: the caller passes its value as it is, and a result is the caller's as it is.
+   - **Field Access Through a View Map:** Field access `p.x` inside the bounded function reads the type argument's
+     offset table at the index the function's view map gives for `x` (§5.1, Own views), and converts an immutable
+     field from the type the payload stores it at (or the type argument's type for it) to the bound's.
 
 ### 5.3. Options and Variants (Sums)
 
@@ -767,23 +771,23 @@ While monomorphic functions pass values directly, polymorphic functions (`All(A:
 - Existential Packages (Weak Sums):
   In static compilation, type formal components `X::K` are erased from runtime tuple structs (`struct QTuple`),
   allocating only for value fields. Path-types `p.X` resolve to `QVal` (if unbounded) or to the native C type of
-  `K`'s bound (if `K = POWER(T)`). Full runtime type descriptors for existential witnesses will be incorporated
-  when `Dynamic.intern` and `Dynamic.extern` are implemented.
+  `K`'s bound (if `K = POWER(T)`).
 
 #### 2. Types of Polymorphic Instantiation Call Sites
-In Cardelli's formal terminology (*Typeful Programming* §3 & §5), applying a polymorphic value to a type argument is **polymorphic instantiation** (or **type application**):
+In Cardelli's formal terminology (*Typeful Programming* §3 & §5), applying a polymorphic value to a type argument is
+**polymorphic instantiation** (or **type application**):
 1. **Closed / Ground Type Instantiation** (*static monomorphic instantiation* in C++/Rust):
-   The type argument is a closed ground type (`Int`, `String`). The compiler passes the static global descriptor directly:
-   `qv_id(&quest_type_Int, (QVal){.i = 42LL});`.
+   The type argument is a closed ground type (`Int`, `String`). The compiler passes the static global descriptor
+   directly: `qf_id(NULL, &quest_type_Int, (QVal){.i = 42LL});`.
 2. **Type Variable Instantiation / Forwarding** (*generic call forwarding* in modern generic languages):
-   Inside a polymorphic function with a bound type variable in scope, the type parameter is forwarded as the runtime descriptor:
-   Inside `foo(X::TYPE x:X)` calling `id(:X x)`: `qv_id(descriptor_X, qv_x);`.
+   Inside a polymorphic function with a bound type variable in scope, the type parameter is forwarded as the runtime
+   descriptor: inside `foo(X::TYPE x:X)` calling `id(:X x)`: `qf_id(NULL, descriptor_X, l_x);`.
 3. **Compound Type Instantiation:**
    When the type argument is a compound type (`Array(Int)`, `Tuple x: X end`):
    - Closed compounds use their statically initialized descriptor (`&quest_type_array_<digest>`).
    - Open compounds, which mention type parameters in scope, use their template, instantiated at run time with the
      parameters' descriptors (§6.4.5):
-     `quest_instantiate_descriptor(&quest_type_QTuple_QVal_<digest>, 1, (const QTypeDescriptor *const[]){ descriptor_X })`.
+     `quest_instantiate_descriptor(&quest_type_QTuple_QVal_<digest>, 1, ...)`
 
 #### 3. Call-Site Specialization for Unbounded Quantifiers (`A::TYPE`)
 While the uniform quantifier rule guarantees modular separate compilation with uniform 8-byte `QVal` representations,
@@ -792,7 +796,7 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
 - **Selective Trigger**: Specialization is only synthesized when at least one concrete type argument involves a
   `Record`, `Variant`, or aggregate containing them. Calls with standard 8-byte types (`Int`, `Bool`, `String`)
   continue executing via the canonical uniform `QVal` implementation without code bloat.
-- **IR Cloning & Type Substitution**: When the specialize pass (`ir/specialize.py`, [ir.md](ir.md) §8.1) meets a call
+- **IR Cloning & Type Substitution**: When the specialize pass (`ir/specialize.py`, [ir.md](ir.md) §8.2) meets a call
   `f(:Point p)` of a function the unit defines, it clones the function with the type parameter `A` (the quantifier
   of the function's own type, which its parameters and body refer to) substituted by `Point`, in the same `funs`
   statement as the original (a module's clone is also its member `<name>_spec<n>`). The clone's local functions are
@@ -801,10 +805,10 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
   function, parameter, or tuple of the same name is a different function. Local polymorphic functions are
   specialized like top-level and module ones; a call through a first-class value is not specialized, and runs the
   generic function.
-- **Layout Alignment & Zero-Boxing**: Inside the specialized clone, any generic tuple (e.g. `Tuple item: A end`)
-  allocates a concrete specialized struct (`struct QTuple_QRecord_x_Int_end` with a 16-byte `QRecordVal` slot) matching the
-  exact struct and layout expected by the caller. Arguments and return values are passed unboxed in register pairs
-  `(x0, x1)` without heap allocation (`quest_record_box` and `quest_variant_box` eliminated).
+- **Unboxed Register Passing**: Inside the specialized clone, parameters, locals, and return values of type `A` use
+  the concrete `QRecordVal` or `QVariantVal` representation directly in register pairs `(x0, x1)` rather than boxing
+  them into `QVal` across the call boundary, while aggregate slots (`Tuple item: Point end`) use their typed 1-word
+  slot representation (`QRecordVal *`).
 - **First-Class Fallback**: The canonical boxed (`QVal`) version of any generic function is always emitted to serve
   indirect closure calls and first-class function values. Calls of it convert tuples and options over the type
   parameters between native and generic layouts (§5.1, Polymorphic Calls).
@@ -1264,12 +1268,10 @@ All heap allocations route through two runtime allocator functions:
 The runtime files are located at the repository root and shared with future native code backends:
 ```
 runtime/
-├── quest_runtime.h         /* Core ABI, QVal union, layout assertions, allocator macros */
-├── quest_runtime.c         /* String primitives, math helpers, panic handlers, printing */
+├── quest_runtime.h         /* Core ABI, QVal, QProxy, QTypeDescriptor, inline helpers */
+├── quest_runtime.c         /* Strings, I/O streams, subtyping, proxies, exceptions, stack unwinding */
 ├── quest_serialization.h   /* Dynamic serialization & deserialization API */
-├── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
-├── quest_io.c              /* Future: C implementation of Writer and Reader stream modules */
-└── quest_conv.c            /* Future: C implementation of Conv, Ascii, IntOp, RealOp, StringOp */
+└── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
 ```
 
 ### 10.1. Implemented Runtime Functions (`runtime/quest_runtime.c`)

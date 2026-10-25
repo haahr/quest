@@ -227,47 +227,62 @@ pointer-based field access.
       QReal _1;
   };
   ```
-- **Canonical Alphabetized Record Structs:** Records are unordered product types with structural equivalence. To ensure
-  structurally identical record types share the same C struct definition, record struct members are sorted
-  alphabetically by field name, prefixed with `qf_` (to avoid C keyword collisions):
+- **Canonical Alphabetized Record Structs:** Records are unordered product types with structural equivalence. Record
+  struct members begin with `QRecordHeader header;` (pointing to the creation-time `QTypeDescriptor`) followed by fields
+  sorted alphabetically by field name and prefixed with `qf_` (to avoid C keyword collisions), using each field's
+  8-byte slot representation (`slot_representation`):
   ```c
   /* record x = 10, y = 20.0 end */
-  typedef struct QRecord_x_Int_y_Real QRecord_x_Int_y_Real;
+  typedef struct QT_record_<digest> QT_record_<digest>;
 
-  struct QRecord_x_Int_y_Real {
-      QInt qf_x;
-      QReal qf_y;
+  struct QT_record_<digest> {
+      QRecordHeader header;
+      QInt          qf_x;
+      QReal         qf_y;
   };
   ```
-- **Forward Typedef Hoisting:** The printer discovers all `QTupleType` and `QRecordType` instances
-  across the AST and emits forward declarations (`typedef struct Tag Tag;`) before any struct bodies, static variables,
+- **Forward Typedef Hoisting:** The declaration collector (`codegen/c/declarations.py`) discovers all aggregate types in
+  `Unit.static_data` and emits forward declarations (`typedef struct Tag Tag;`) before struct bodies, static variables,
   or function prototypes. This guarantees that mutually referencing or nested aggregate types compile cleanly without
   ordering dependencies.
 
-### 6.2. Heap Allocation & Member Initialization
-Tuples and records are heap-allocated via `quest_alloc(sizeof(StructTag))` (managed by Boehm GC or standard `calloc`
-in `--nogc` mode):
+### 6.2. Heap Allocation, Embedded Boxes, & Member Initialization
+Tuples and records (`ir.MakeTuple`, `ir.MakeRecord`) are heap-allocated via `quest_alloc` (managed by Boehm GC or
+standard `calloc` in `--nogc` mode):
 ```c
 /* origin = tuple let x = 0 let y = 0.0 end */
-qv_origin = (QTuple_Int_Real *)quest_alloc(sizeof(QTuple_Int_Real));
-qv_origin->_0 = 0LL;
-qv_origin->_1 = 0.0;
+g_origin = (QTuple_Int_Real *)quest_alloc(sizeof(QTuple_Int_Real));
+g_origin->_0 = 0LL;
+g_origin->_1 = 0.0;
 ```
-When an aggregate expression appears in a value context (e.g. passed directly to a function call or returned from an
-expression), a local temporary pointer is allocated and returned.
+- **Records Allocated in Their Box:** Every record value in a local or parameter is an unboxed 16-byte `QRecordVal`
+  (`{ val, dict }`), whereas a record stored in an aggregate slot is a `QRecordVal *` box pointer. `ir.MakeRecord`
+  allocates `sizeof(QRecordVal) + sizeof(struct QT_...)` in a single block so that boxing the newly created record into
+  a slot (`ir.SlotBox` with `embedded`) reuses that prefix box without a second allocation.
+- **Embedded Slot Boxes:** When an aggregate constructor stores newly boxed records or variants (`embedded = (True,
+  ...)` from `ir/represent.py`), `CPrinter.embedded_boxes` appends `k * sizeof(QRecordVal)` bytes to the aggregate
+  allocation and slices embedded boxes directly from the trailing space.
 
-### 6.3. Field Selection & Mutable Field Assignment
-- **Selection (`TypedSelect`):**
-  - For tuples: Named fields are mapped to their 0-based value component index at compile-time (`p.x` -> `qv_p->_0`).
-    Unnamed fields accessed by index also map directly (`t._0` -> `qv_t->_0`).
-  - For records: Field accesses map directly to the mangled field name (`r.x` -> `qv_r->qf_x`).
-- **Mutable Assignment (`TypedAssign`):**
-  - When the target of `TypedAssign` is a `TypedSelect` expression on a mutable record field (`var y = ...`), the
-    target expression is evaluated as an lvalue pointer dereference, storing the value directly into the heap struct:
-  ```c
-  /* r.y := 42; */
-  qv_r->qf_y = 42LL;
-  ```
+### 6.3. Field Selection, Proxy Access Modes, & Mutable Assignment
+All aggregate slots are 8-byte words (`slot_representation`). The representation pass (`ir/represent.py`) annotates each
+`ir.Field`, `ir.Tag`, `ir.Addr`, and `ir.Store` with how the aggregate is accessed:
+- **Tuple and Option Selection (`ir.Field`):**
+  - **`direct`** (the static type cannot hold a `QProxy`, e.g. `Tuple Int Real end`): emits a direct struct member read
+    `l_p->_0`.
+  - **`original`** (reading through a `var` location where invariance guarantees no conversion on the component): strips
+    any proxy tag via `((TupleStruct *)quest_unproxy(l_p))->_0`.
+  - **`proxy`** (the tuple or option type may hold a `QProxy` from a depth upcast,
+    [runtime-design.md §2.3](runtime-design.md)): tests `quest_is_proxy(l_p)` first; on the fast path reads `l_p->_0`
+    directly, and on the proxy path calls `quest_proxy_field(l_p, 0, is_mutable)` to convert on demand (memoizing
+    immutable components in `proxy->cache`).
+- **Record Selection (`ir.Field` on `QRecordVal`):**
+  - Looks up the byte offset in the fat pointer's `.dict` (`((const OffsetDict_Target *)l_r.dict)->offset_x`). If the
+    field's type could differ by depth subtyping, checks `dict->stored_types` via `quest_record_field_value`.
+- **Mutable Field Assignment (`ir.Store`):**
+  - Assigning to a mutable record field writes through the offset dictionary:
+    `*((QInt *)((char *)l_r.val + ((const OffsetDict_Target *)l_r.dict)->offset_y)) = 42LL;`.
+  - Assigning to a mutable tuple component writes to the unproxied root tuple (`quest_unproxy(l_t)`) via
+    `quest_proxy_store(l_t, index, val_word)` when the tuple type may be proxied, or `l_t->_0 = val` when direct.
 
 ---
 
@@ -289,8 +304,8 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 ```
 
 ### 7.2. Closures
-Closure conversion (ir.md §8.2) decides what each closure captures: the values it uses from enclosing functions (the
-top levels' variables are globals, which it uses instead), and the descriptors of the enclosing functions' type
+Closure conversion ([ir.md §8.3](ir.md)) decides what each closure captures: the values it uses from enclosing functions
+(the top levels' variables are globals, which it uses instead), and the descriptors of the enclosing functions' type
 parameters its types mention.
 - **Capturing closures** get an environment struct, allocated with the closure where the closure is made:
   ```c
@@ -306,11 +321,11 @@ parameters its types mention.
   a `let rec`, and the captures of the group's members are stored in the environments once every member has been
   made.
 
-### 7.4. Indirect Closure Invocations
-When calling an indirect target (such as a closure parameter or returned function), the call site casts `fn` to the
-expected C function pointer signature and passes `env` as the first argument:
+### 7.3. Indirect Closure Invocations
+When calling an indirect target (`ir.Call` with a closure callee), the call site casts `fn` to the expected C function
+pointer signature and passes `env` as the first argument:
 ```c
-((QInt (*)(void *, QInt))(qv_f->fn))(qv_f->env, qv_x)
+((QInt (*)(void *, QInt))(l_f->fn))(l_f->env, l_x)
 ```
 
 ---
@@ -329,37 +344,43 @@ static_assert(offsetof(QArray, data) == 8, qarray_data_at_offset_8);
 ```
 
 ### 8.2. Allocation and Construction
-- **Explicit Element Lists (`TypedArray`):**
-  Allocates the structure and populates each element wrapped as a `QVal`:
+- **Explicit Element Lists (`ir.MakeArray`):**
+  Allocates the structure (`quest_alloc_atomic` for scalar elements, `quest_alloc` for pointer/boxed elements) and
+  populates each 8-byte slot:
   ```c
-  QArray *qv_arr = (QArray *)quest_alloc(sizeof(QArray) + (size_t)(4LL) * sizeof(QVal));
-  qv_arr->length = 4LL;
-  qv_arr->data[0LL] = ((QVal){ .i = (int64_t)(10LL) });
+  l_arr = (QArray *)quest_alloc_atomic(sizeof(QArray) + (size_t)(4LL) * sizeof(QVal));
+  l_arr->length = 4LL;
+  ((QInt *)l_arr->data)[0LL] = 10LL;
   ...
   ```
-- **Repetition (`TypedArrayRep`):**
-  Invokes `quest_array_new(length, init_val)` which verifies $N \ge 0$ and initializes all elements.
+- **Repetition (`ir.ArrayRep`):**
+  Checks `quest_check_array_count_at(count, "file:line:col")` and initializes all `count` slots with the evaluated
+  initial value.
 
 ### 8.3. Indexing and Mutation
-Array indexing (`a[i]`) and mutation (`a[i] := v`) emit inline bounds checking followed by direct access into `data[]`:
+Array indexing (`ir.Index`) and mutation (`ir.Store` to an array element) emit inline bounds checking with source
+location (`quest_check_array_bounds_at`) followed by direct slot access:
 ```c
-quest_check_array_bounds(qv_arr, qv_i);
-QInt elem = qv_arr->data[qv_i].i;
+quest_check_array_bounds_at(l_arr, l_i, "file.quest:12:5");
+l_elem = ((QInt *)l_arr->data)[l_i];
 
-quest_check_array_bounds(qv_arr, qv_i);
-qv_arr->data[qv_i] = ((QVal){ .i = (int64_t)(99LL) });
+quest_check_array_bounds_at(l_arr, l_i, "file.quest:13:5");
+((QInt *)l_arr->data)[l_i] = 99LL;
 ```
-Out-of-bounds indices and negative sizes trigger `quest_raise_array_error()`, printing `Exception: arrayOp.error\n`
-and terminating with exit code 1.
+Out-of-bounds indices and negative sizes call `quest_raise_array_error_at(loc)`, reporting the raise site and active
+call frames ([exceptions.md](exceptions.md)).
 
 ---
 
 ## 9. Options and Variants (Sums)
 
 ### 9.1. Option Types
-Option types are ordered sums with inline union payloads. Each unique `QOptionType` synthesizes:
-- A tag enumeration: `QTAG_<Option>_<branch> = <index>`.
-- A C struct containing `int64_t tag` and an inline union of branch structs for branches carrying components:
+Option types are ordered sums with inline union payloads (`QOption_<tags>`):
+- Because option types with the same cases in different orders are equal ([type-system.md §6.8](type-system.md)),
+  canonical shapes order option cases alphabetically by name (`cases_by_name` in `ir/shapes.py`), so equal option types
+  share one C struct and tag numbering (`0, 1, ...` in alphabetical order).
+- A C struct containing `int64_t tag` and an inline union of branch structs for branches carrying components, where
+  each component uses its 8-byte `slot_representation`:
   ```c
   typedef struct QOption_... {
       int64_t tag;
@@ -371,73 +392,61 @@ Option types are ordered sums with inline union payloads. Each unique `QOptionTy
   ```
 
 ### 9.2. Variant Types
-Variant types are unordered sums with a single 64-bit payload word, represented as first-class 16-byte values:
+Variant types are sums with a single 64-bit payload slot (also ordered by case name in shapes), represented in locals,
+parameters, and return values as first-class 16-byte structs (`QVariantVal`), and in aggregate slots as `QVariantVal *`
+box pointers:
 ```c
 typedef struct QVariantVal {
     int64_t tag;
     QVal    payload;
 } QVariantVal;
-
-static_assert(sizeof(QVariantVal) == 16, qvariantval_must_be_16_bytes);
-static_assert(offsetof(QVariantVal, tag) == 0, qvariantval_tag_at_offset_0);
-static_assert(offsetof(QVariantVal, payload) == 8, qvariantval_payload_at_offset_8);
 ```
 
-### 9.3. Injections, Tag Queries, Extractions, and Pattern Matching
-- **Injection:** `option b of T with payload end` allocates and populates the union branch; `variant b of T with v end`
-  constructs an unboxed `QVariantVal` compound literal directly with zero heap allocations.
-- **Tag Query (`target?tag`):** Checks `target.tag == EXPECTED_TAG` on variants (or `target->tag == EXPECTED_TAG`
-  on options).
-- **Tag Assertion (`target!tag`):** Asserts tag match (panics with `Exception: variant.tagMismatch\n` on failure).
-  Returns `payload` for variants, or a `QTuple` prepending the ordinal for options.
-- **Pattern Matching (`case`):** Lowers to standard C `switch (target.tag)` (or `target->tag` for options) with
-  branch payload binders.
+### 9.3. Injections, Tag Queries, Extractions, Ordinals, and Pattern Matching
+- **Injection:** `ir.MakeOption` allocates and populates the union branch; `ir.MakeVariant` constructs an unboxed
+  `QVariantVal` compound literal directly with zero heap allocations. For `option ordinal(n) of T end`, if `T` as
+  written lists its cases in an order other than alphabetical, `CPrinter` maps `n` through a constant permutation table
+  from the written order to the struct's alphabetical tag order.
+- **Tag Extraction (`ir.Tag`) and `ordinal(o)`:** Reads `v.tag` on variants, or `p->tag` (or `quest_option_tag(p)` when
+  `via proxy`) on options. For `ordinal(o)`, if the static option type as written lists its cases in a non-alphabetical
+  order (recorded in `ir.Prim.cases`), `CPrinter` maps the alphabetical tag to the case's 0-based index in the static
+  type via a constant table.
+- **Tag Assertion (`ir.Payload`):** Asserts tag match (raising `variant.tagMismatch` at `node.offset` on failure) and
+  extracts the payload (`v.payload` for variants, or the branch tuple prepending the static type's case ordinal
+  `ir.Payload.ordinal` for options).
+- **Pattern Matching (`ir.Case`):** Emits a C `switch` over the extracted tag with each arm jumping to its join point or
+  returning.
 
 ---
 
-## 10. Structural Subtyping & Dynamic Dispatch
+## 10. Structural Subtyping, Proxies, & Specialization
 
-Cardelli's structural subtyping is supported across tuples, records, and variants:
+Cardelli's structural subtyping is lowered to explicit conversion plans (`ir.Convert`) by `ir/represent.py`
+([ir.md §8.4](ir.md)):
 
-### 10.1. Prefix Tuple Subtyping
-- **Direct Pointer Coercion:** A wider tuple pointer `QT_Triple *` is cast directly to a prefix tuple `(QT_Pair *)`.
-- **Memoized Compile-Time Layout Verification:**
-  ```c
-  static_assert(offsetof(QT_Triple, _0) == offsetof(QT_Pair, _0), tuple_subtyping_offset_match_0);
-  static_assert(offsetof(QT_Triple, _1) == offsetof(QT_Pair, _1), tuple_subtyping_offset_match_1);
-  ```
+### 10.1. Tuple & Option Subtyping (`cast` vs. `view` / `proxy_tuple`)
+- **Prefix Tuple & Index-Preserving Option Subtyping (`cast`):** When a wider tuple is coerced to a prefix tuple and all
+  kept components have the same representation, or when an option is coerced to a supertype option where every subtype
+  case keeps the same alphabetical tag index and payload representation (e.g. `Option a b end <: Option a b c end`),
+  `ir.Convert` uses a direct pointer `cast` `(TargetStruct *)l_src`, accompanied by memoized `static_assert` checks on
+  tuple field offsets.
+- **View-Changing Upcasts via Tagged Proxies (`view` / `proxy_tuple` / `proxy_option`):** When a tuple or option is
+  upcast to a supertype where a component changes representation (e.g. a record component gets a narrower offset
+  dictionary, a variant component remaps tags, or a closure component is wrapped in an adapter thunk) or where an
+  option's alphabetical tag indices shift (e.g. `Option b c end <: Option a b c end`), copying the aggregate would break
+  object identity (`is`) and disconnect mutable `var` components. Instead, the value is wrapped in a tagged `QProxy`
+  ([runtime-design.md §2.3](runtime-design.md)) via `quest_make_tuple_proxy`, `quest_make_option_proxy`, or
+  `quest_convert`.
 
-### 10.2. Evidence-Passing Record Subtyping
+### 10.2. Evidence-Passing Record Subtyping (`record_dict` / `record_view`)
 - **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0, set at
   allocation to the descriptor of the record's layout (`header.descriptor = &quest_type_QT_Point;`).
-- **Polymorphic Call Arguments:** For a call with type arguments, each argument is first coerced to its parameter's
-  type with the type arguments substituted (so `f(:Small big)` passes a `Small` view), then to the generic
-  representation of the parameter.
-- **Offset Table Map:** `main` registers each static `offsetdict_<Target>_<Source>` of the unit's static data
-  (its record literals' tables, ir.md §8.4) whose types are closed with
-  `quest_register_record_dict(&quest_type_<Target>, &quest_type_<Source>, &offsetdict_<Target>_<Source>)`; tables
-  for other (view, layout) pairs are built by the runtime on demand (`quest_record_dict`).
-- **First-Class Fat Pointers (`QRecordVal`):** All records are represented uniformly as a 16-byte struct:
-  ```c
-  typedef struct QRecordVal {
-      void       *val;   /* Pointer to heap-allocated QT_<Record> payload */
-      const void *dict;  /* Pointer to static OffsetDict_<Record> */
-  } QRecordVal;
-  ```
-- **Function Parameters & Returns:** Functions take `QRecordVal` directly and return `QRecordVal` directly
-  (passed in `x0, x1` under AAPCS64), eliminating companion dictionary arguments.
-- **Dictionary Naming:** Uses the alias name when available (`OffsetDict_<Alias>_<digest>`), or
-  `OffsetDict_record_<digest>`, where the digest is of the record's field names and types (docs/name-mangling.md §6.1).
-- **Field Selection:** Dynamic dispatch reads fields via byte offsets from embedded dictionaries:
-  ```c
-  (*((QInt *)((char *)qv_pt.val + ((const OffsetDict_Point2D *)qv_pt.dict)->offset_x)))
-  ```
-- **Aggregate Storage:** Every slot of an aggregate (tuple, option payload, record, array, auto payload, module
-  record) is one word: records and variants are pointers to immutable 16-byte boxes (`QRecordVal *`, `QVariantVal *`,
-  made by `quest_record_box` and `quest_variant_box`), `Bool`s and `Char`s words of their own (`QBoolSlot`,
-  `QCharSlot`) (c-representation.md §5.1, Slots). Reading a slot reads the box; storing makes one, or reuses the box
-  the value was read from. Subtyped variants apply static tag remapping (`tagmap_<Target>_<Source>`) before they are
-  stored.
+- **Static vs. Dynamic Dictionary Attachment:** Coercing a freshly constructed record literal with statically known
+  layout attaches `&offsetdict_<Target>_<Source>` (`record_dict`); coercing an arbitrary record value looks up or builds
+  the offset dictionary from `r.val`'s header descriptor via `quest_record_view(r, &quest_type_<Target>)`.
+- **Aggregate Storage:** Inside any aggregate slot, a record or variant is stored as an immutable 16-byte heap box
+  pointer (`QRecordVal *`, `QVariantVal *`). Reading a slot unboxes (`ir.SlotUnbox`) or forwards the box pointer
+  directly (`ir/slots.py`); storing a subtyped record or variant updates its `.dict` or `tag` before boxing.
 
 ### 10.3. Variant Subtyping & Static Tag Remapping
 - **First-Class Value Representation:** `QVariantVal` is a 16-byte value type (`int64_t tag; QVal payload;`).
@@ -449,18 +458,18 @@ Cardelli's structural subtyping is supported across tuples, records, and variant
 - **Zero-Allocation Upcast:** Coercion emits an unboxed compound literal:
   `((QVariantVal){ .tag = tagmap_Large_Small[src.tag], .payload = src.payload })`.
 
-### 10.4. Bounded Specialization for Records and Variants
+### 10.4. Bounded Type Parameters: Own Views and View Maps
 - **Runtime Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_<T>`
-  parameters in their C signatures to facilitate separate compilation and uniform reflection.
-- **Bounded Record Parameters & Field Selection:** Functions expecting `A <: Record` receive `QRecordVal` directly.
-  Field selection `p.x` dynamically indexes through the passed-in dictionary:
-  `((const OffsetDict_Bound *)p.dict)->offset_x`.
-- **Caller Dictionary Restoration on Return:** When returning a bounded type variable `A <: Record`, the caller
-  restores the dictionary (`Option A: Caller Restores Dictionary`), attaching the identity dictionary `&offsetdict_T_T`
-  of the concrete type argument `T` to the returned `.val`.
-- **Bounded Variant Parameters & Call-Site Tag Alignment:** Callers align variant tags to the bound variant type using
-  static `.rodata` tag tables into an unboxed compound literal, allowing callees to switch directly on `v.tag` without
-  runtime translation or heap allocation.
+  parameters in their C signatures to facilitate separate compilation, runtime reflection, and view-map lookup.
+- **Own Views at Call Sites:** Callers pass and receive values of a bounded type parameter (`A <: B` where `B` is a
+  record, variant, or option type) at their **own view**—their type argument's view—in the bound's representation
+  (`QRecordVal`, `QVariantVal`, or option pointer), with zero conversion on entry or return.
+- **Reading Through a View Map (`QViewMap`):** For each bounded type parameter whose values the function body accesses
+  through its bound (`ir.Function.view_maps`), the function prologue fetches a memoized view map via
+  `quest_view_map(descriptor_A, &quest_type_Bound)`. Record fields are read or addressed through the view map
+  (`quest_view_record_field`, `quest_view_record_slot` for `var` fields), variant and option tags are mapped via
+  `quest_view_option_tag`, and payloads or option components whose stored types narrow by depth subtyping are converted
+  via `quest_view_part` / `quest_view_option_component` ([c-representation.md §5.1](c-representation.md)).
 
 ### 10.5. Call-Site Specialization for Unbounded Quantifiers
 When unbounded polymorphic functions (`All(A::TYPE)`) are invoked at call sites with concrete `Record` or `Variant`
