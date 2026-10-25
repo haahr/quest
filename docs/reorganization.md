@@ -317,6 +317,51 @@ about 10% slower. The subtyping cache stays either way: it records proofs betwee
 forms do not decide (equal types become identical, so it gains hits). After 0c and B1 to B3, since it touches
 `types/model.py` and subtyping.
 
+**Done (not adopted):** the prototype is on the branch `b4-prototype` (+85/−10 lines in `types/`). It fails both
+parts of the criterion.
+
+- *What it removes.* Only a design that keeps types as written can leave golden output and errors unchanged: each
+  new interned type node gets its canonical form when it is made (a hook in `_InternedNode`, stored on the node as
+  `_canon`), and `is_type_equal` returns early when two types' canonical forms are one object. That replaces the
+  memo table of `canonical_type` with an attribute and nothing more. The guard stays, because computing canonical
+  forms earlier does not make merging binders any safer. Shapes still need both forms: the canonical one for tags
+  and descriptors, and the written one for the binder symbols that `collect_fun_quantifiers`, `written_structure`,
+  and call-site type arguments are keyed by. `normalize_type` and its memo table are unchanged. The early return in
+  `is_type_equal` hits on 245 of 23,780 calls over the corpus.
+- *Making types canonical in place* (variant `QUEST_B4_STRONG=1`: a recursive type is replaced by its canonical
+  form when it is made) breaks 26 typecheck goldens and 2 error tests. Recursion variables print as `Rec.0`.
+  Members of recursive groups lose their names (`Array(Tree)` becomes `Array(Variant leaf: Int node: Forest end)`).
+  Record fields are sorted, so record literals are elaborated in a different field order. `.qi` files no longer read
+  back, because `Rec.0` does not parse. Making types canonical in place also conflicts with the type checker's
+  invariants. Canonical binder ids are numbered by depth, so nested quantifiers that are open at the same time would
+  share ids, which breaks substitution without renaming (§2.2 of [type-system.md](type-system.md)). Types with
+  metavariables cannot be canonical until they are solved. And equality depends on definitions supplied after
+  construction: inside a module, an abstract type equals its witness, and an auto value's type component equals
+  its witness. So type equality cannot become identity in the type checker.
+- *Cost.* Measured as CPU time (`time.process_time`; the machine's load average ran from 13 to over 400), over
+  `--stop-after typecheck` of the 170 golden programs plus `tests/perf/*.quest` (which type-check the questlang
+  modules), and `tests/perf/measure.py`'s C generation over 163 programs, with main and the branch run back to back:
+
+  | | main | prototype |
+  |---|---|---|
+  | type checking | 13.0 s | 21.7 s (+67%) |
+  | type checking, guard off | | ~+48% |
+  | C generation | 7.0 s | 4.6 s |
+  | both | 20.0 s | 26.3 s (+31%) |
+
+  The C output is unchanged. Today the type checker computes no canonical forms, so all of this cost is new. Most of
+  it is building canonical graphs: every new node that reaches a recursive type (5,179 of 58,006 new nodes) walks
+  its whole graph again, such as every type that mentions the questlang AST's recursive group. The first version,
+  which also treated every application of a type operator and every alias as possibly recursive, was +65% even
+  with wall-clock timing. A cheap version would need an incremental algorithm: look up a new node by its shape and
+  its children's canonical forms, and minimize only where a `Rec` is introduced. Binders' scope edges make open
+  parts context-dependent, so this is new design work. Even then, it would not meet the first part of the
+  criterion.
+
+The plan's premise, that canonical forms at construction would make type equality identity and remove the
+backend's second view of types, does not hold while types keep the names they were written with, which goldens,
+errors, `.qi` files, and the IR's keying by binder symbols all rely on.
+
 **The `fun` annotation soundness hole** (§7), after B3 as its own step.
 
 **Done:** a function checked against a function type has its annotations checked as synthesis and subsumption would
@@ -419,6 +464,6 @@ Stale docstrings and comments are fixed by whichever step touches their files.
 | `collect_aggregate_types` on shapes (left from A1) | In A2, under its `ABI_VERSION` bump |
 | Performance bar for A2 | At most 10% slower on any benchmark |
 | Desugaring before type checking (B3) | Yes; typecheck dumps may change, and errors may change for a logical reason if they still point clearly at the source |
-| Canonical types at construction (B4) | Experiment; adopt if it removes the guard and on-demand canonicalization at most ~10% slower |
+| Canonical types at construction (B4) | Experiment; adopt if it removes the guard and on-demand canonicalization at most ~10% slower. Not adopted: it removes neither, and type checking was 67% slower (§4) |
 | Fix the `fun` annotation soundness hole | After B3, as its own step |
 | Execution | Tracks in parallel worktrees after phase 0 |
