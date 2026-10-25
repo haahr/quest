@@ -22,7 +22,8 @@ fun same_spec(x.2: Big): Big {
 }
 main {
   let p.1: Fun(n: Int): Ok = closure p {}
-  let huge: Huge = record(a = 1, b = 2, c = 3, d = 4)
+  let huge_box: box(Huge) = record(a = 1, b = 2, c = 3, d = 4)
+  let huge: Huge = convert(huge_box, slot_unbox)
   let huge.1: Big = convert(huge, record_view)
   let big: Big = huge.1
   let big.1: Mid = convert(big, record_view)
@@ -40,26 +41,28 @@ main {
   let mid.2: A = convert(mid, box)
   let d: T = call dynamic.new [Mid](mid.2)
   let viaDynamic: A = call dynamic.be [Small](d)
-  let viaDynamic.1: Small = convert(viaDynamic, unbox)
+  let viaDynamic_box: box(Small) = convert(viaDynamic, unbox)
+  let viaDynamic.1: Small = convert(viaDynamic_box, slot_unbox)
   let viaDynamic.2: Small = viaDynamic.1
   let %4: Int = record_field(viaDynamic.2, d)
   do call p.1(%4)
   join k1(r: Int) {
     do call p.1(r)
     let a: Big = big
-    let %5: Tuple a: Big end = tuple(a)
+    let %5: Tuple a: Big end = tuple(box a)
     let payload: Tuple a: A end = convert(%5, cast)
     let anyMid: AnyMid = auto[Big](payload)
     join k2(r.1: Int) {
       do call p.1(r.1)
       let r.2: Big = big
       let n: Int = 5
-      let bigTuple: Tuple r: Big n: Int end = tuple(r.2, n)
+      let bigTuple: Tuple r: Big n: Int end = tuple(box r.2, n)
       let bigTuple.1: Tuple r: Mid n: Int end = convert(bigTuple, view)
       let midTuple: Tuple r: Mid n: Int end = bigTuple.1
-      let %6: Mid = tuple_field(midTuple, 0)
+      let box: box(Mid) = tuple_field(midTuple, 0) via proxy
+      let %6: Mid = convert(box, slot_unbox)
       let %7: Int = record_field(%6, c)
-      let %8: Int = tuple_field(midTuple, 1)
+      let %8: Int = tuple_field(midTuple, 1) via original
       let %9: Int = prim +(%7, %8)
       do call p.1(%9)
       let same.1: All(A <: Mid) Fun(x: A): A = closure same {}
@@ -74,9 +77,11 @@ main {
     } in {
       inspect anyMid {
         case Mid (x: Tuple a: Mid end): {
-          let %13: Mid = tuple_field(x, 0)
+          let box.1: box(Mid) = tuple_field(x, 0) via proxy
+          let %13: Mid = convert(box.1, slot_unbox)
           let %14: Int = record_field(%13, c)
-          let %15: Mid = tuple_field(x, 0)
+          let box.2: box(Mid) = tuple_field(x, 0) via proxy
+          let %15: Mid = convert(box.2, slot_unbox)
           let %16: Int = record_field(%15, d)
           let %17: Int = prim +(10, %16)
           let %18: Int = prim *(%14, %17)
@@ -90,7 +95,8 @@ main {
   } in {
     inspect d {
       case Small (s: Tuple a: Small end): {
-        let %19: Small = tuple_field(s, 0)
+        let box.3: box(Small) = tuple_field(s, 0) via proxy
+        let %19: Small = convert(box.3, slot_unbox)
         let %20: Int = record_field(%19, d)
         jump k1(%20)
       }

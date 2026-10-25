@@ -36,13 +36,26 @@ def represent(source: str) -> ir.Unit:
     return unit
 
 
-def plans(unit: ir.Unit) -> list[str]:
-    """The kinds of the unit's conversions, in order."""
+def plans(unit: ir.Unit, slots: bool = False) -> list[str]:
+    """The kinds of the unit's conversions, in order (with slots, also its records' and variants' boxing at slots)."""
     found = []
     for body in [unit.main, *(f.body for f in unit.functions)]:
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Let) and isinstance(s.value, ir.Convert):
-                found.append(s.value.plan.kind)
+                if slots or s.value.plan.kind not in ("slot_box", "slot_unbox"):
+                    found.append(s.value.plan.kind)
+    return found
+
+
+def operations(unit: ir.Unit, kind: type) -> list:
+    """The unit's operations of a kind, in order."""
+    found = []
+    for body in [unit.main, *(f.body for f in unit.functions)]:
+        for s in walk_statements(body, into_functions=False):
+            if isinstance(s, (ir.Let, ir.Do)) and isinstance(s.value, kind):
+                found.append(s.value)
+            elif isinstance(s, kind):
+                found.append(s)
     return found
 
 
@@ -117,6 +130,55 @@ class TestRepresent(unittest.TestCase):
                 "let first(A <: P xs: Array(A)): A = xs[0]; "
                 "let f: All(A <: P xs: Array(A)) A = first; f(:Q array of record a = 1 b = 2 end end).b"
             )
+
+    def test_records_read_from_slots_keep_their_boxes(self) -> None:
+        # The record read from one tuple is stored into another in the box it was read from
+        unit = represent(
+            "Let P = Record a: Int end; let t = tuple let x = record a = 1 end end; "
+            "let u = tuple let y = t.x end; u.y.a"
+        )
+        reads = [s for s in walk_statements(unit.main, into_functions=False)
+                 if isinstance(s, ir.Let) and isinstance(s.value, ir.TupleField)]
+        self.assertTrue(reads[0].var.boxed)
+        made = operations(unit, ir.MakeTuple)
+        self.assertIs(made[1].args[0], reads[0].var)
+        self.assertEqual(made[1].embedded, ())
+        self.assertNotIn("slot_box", plans(unit, slots=True))
+
+    def test_records_not_read_from_slots_are_boxed_in_the_allocation(self) -> None:
+        unit = represent("Let P = Record a: Int end; let p: P = record a = 1 end; let f(q: P): Int = "
+                         "{tuple let x = q end}.x.a; f(p)")
+        self.assertEqual([m.embedded for m in operations(unit, ir.MakeTuple)], [(0,)])
+
+    def test_located_records_are_boxed(self) -> None:
+        unit = represent(
+            "Let P = Record a: Int end; let set(var r: P): Ok = r := record a = 2 end; "
+            "let f(): Int = begin let var p: P = record a = 1 end; set(@p); p.a end; f()"
+        )
+        decls = [s.var for f in unit.functions for s in walk_statements(f.body, into_functions=False)
+                 if isinstance(s, ir.VarDecl)]
+        self.assertTrue(all(v.boxed for v in decls if v.hint == "p"))
+        self.assertTrue(any(v.boxed for f in unit.functions for v, mode in f.params if mode == "var"))
+
+    def test_reads_of_tuples_that_may_be_proxies(self) -> None:
+        unit = represent(
+            "Let Big = Record a: Int b: Int end; Let Small = Record a: Int end; "
+            "let get(s: Tuple x: Small n: Int end): Int = s.x.a + s.n; "
+            "let t = tuple let x = record a = 1 b = 2 end let n = 3 end; get(t) + t.n"
+        )
+        access = {(f.index, f.access) for f in operations(unit, ir.TupleField)}
+        # Through a proxy for the record, from the original for the Int; the tuple made here, directly
+        self.assertIn((0, ir.PROXY), access)
+        self.assertIn((1, ir.ORIGINAL), access)
+        self.assertIn((1, ir.DIRECT), access)
+
+    def test_casts_to_types_that_cannot_be_proxies_unproxy(self) -> None:
+        unit = represent(
+            "Let Big = Record a: Int b: Int end; let t = tuple let x = record a = 1 b = 2 end let n = 3 end; "
+            "let u: Tuple end = t; u is t"
+        )
+        self.assertIn("unproxy", plans(unit))
+        self.assertEqual([p.access for p in operations(unit, ir.Prim) if p.op == "is"], [ir.ORIGINAL])
 
 
 if __name__ == "__main__":

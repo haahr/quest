@@ -13,10 +13,10 @@ fun sum(x.2: IntList): Int {
   join k1(r.2: Int) {
     return r.2
   } in {
-    switch tag(x.2) {
-      case cons (c: Tuple head: Int tail: IntList end): {
-        let %46: Int = tuple_field(c, 0)
-        let %47: IntList = tuple_field(c, 1)
+    switch tag(x.2) via proxy {
+      case cons (c: Tuple head: Int tail: IntList end) via (original, proxy): {
+        let %46: Int = tuple_field(c, 0) via original
+        let %47: IntList = tuple_field(c, 1) via proxy
         let %48: Int = call sum.1(%47)
         let %49: Int = prim +(%46, %48)
         jump k1(%49)
@@ -105,7 +105,7 @@ main {
     let %28: A = call dynamic.be [Holder2](%27)
     let %29: Holder2 = convert(%28, unbox)
     let %30: Holder2 = %29
-    let %31: Int = tuple_field(%30, 0)
+    let %31: Int = tuple_field(%30, 0) via original
     do call printInt.1(%31)
     join k3(r.1: Int) {
       do call printInt.1(r.1)
@@ -117,7 +117,7 @@ main {
       let %35: Pack = %34
       inspect %35 {
         case Int (i: Tuple x: Int l: IntList end): {
-          let %36: Int = tuple_field(i, 0)
+          let %36: Int = tuple_field(i, 0) via original
           jump k3(%36)
         }
         else: {
@@ -129,8 +129,8 @@ main {
     let %37: Pack = tuple_field(packs2, 1)
     inspect %37 {
       case Int (i.1: Tuple x: Int l: IntList end): {
-        let %38: Int = tuple_field(i.1, 0)
-        let %39: IntList = tuple_field(i.1, 1)
+        let %38: Int = tuple_field(i.1, 0) via original
+        let %39: IntList = tuple_field(i.1, 1) via proxy
         let %40: Int = call sum.1(%39)
         let %41: Int = prim +(%38, %40)
         jump k2(%41)

@@ -303,10 +303,14 @@ def verify_unit(unit: ir.Unit) -> list[str]:
 
 
 def _representation_problems(unit: ir.Unit) -> list[str]:
-    """The uses of values in another representation than their use requires, after the represent pass."""
-    from quest.codegen.layout import representation
+    """The uses of values in another representation than their use requires, after the represent pass: a value's
+    representation is its type's, or for a boxed value its slot representation (a boxed mutable variable reads its
+    value, and is assigned its box); and the slots of aggregates (components being made or stored, locations, cells)
+    take records and variants boxed."""
+    from quest.codegen.layout import is_boxed_in_slots, representation, slot_representation
     from quest.ir.represent import fun_signature
-    from quest.ir.walk import walk_statements
+    from quest.ir.shapes import shape
+    from quest.ir.walk import statement_binders, walk_statements
     from quest.types import OK_TYPE, strip_aliases
 
     problems: list[str] = []
@@ -317,10 +321,33 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
     def atom_type(a):
         return a.type if isinstance(a, ir.Var) else a.shape.type
 
-    def expect(a, t, where: str) -> None:
-        have, want = rep(atom_type(a)), rep(t)
-        if have is not None and want is not None and have != want:
-            problems.append(f"{where}: a {have} used as a {want}")
+    def is_box(a) -> bool:
+        """Whether an atom is a box (a boxed value; a boxed mutable variable's use reads the value)."""
+        return isinstance(a, ir.Var) and a.boxed and not a.mutable
+
+    def have(a) -> Optional[str]:
+        return slot_representation(a.type) if is_box(a) else rep(atom_type(a))
+
+    def target(var: ir.Var) -> Optional[str]:
+        return slot_representation(var.type) if var.boxed else rep(var.type)
+
+    def expect(a, want: Optional[str], where: str) -> None:
+        had = have(a)
+        if had is not None and want is not None and had != want:
+            problems.append(f"{where}: a {had} used as a {want}")
+
+    def slot(a, s, where: str, embedded: bool = False) -> None:
+        """a, stored into a slot of shape s (embedded: boxed in the aggregate's allocation)."""
+        if s is None or s.kind == "ok":
+            return
+        if is_boxed_in_slots(s) and not embedded and not is_box(a):
+            problems.append(f"{where}: a record or variant stored into a slot unboxed")
+        elif (not is_boxed_in_slots(s) or embedded) and is_box(a):
+            problems.append(f"{where}: a box stored into a slot that does not take one")
+
+    def located(a):
+        s = shape(atom_type(a))
+        return s.element if s.kind in ("cell", "out") else s
 
     def callee_type(call: ir.Call):
         if call.callee is not None:
@@ -334,28 +361,50 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
         where = f"function '{function.var.hint}'" if function is not None else "a top level"
         joins: dict[str, tuple] = {}
         for s in walk_statements(body, into_functions=False):
+            for v in statement_binders(s):
+                if v.boxed and not is_boxed_in_slots(shape(v.type)):
+                    problems.append(f"{where}: variable '{v.hint}' is boxed, but not of a record or variant type")
             match s:
                 case ir.Join(label=label, params=params):
                     joins[label] = params
                 case ir.Let(var=var, value=ir.Var() | ir.Const() as a):
-                    expect(a, var.type, f"{where}: let {var.hint}")
+                    expect(a, target(var), f"{where}: let {var.hint}")
                 case ir.Let(value=ir.Call() as call) | ir.Do(value=ir.Call() as call):
                     params, result_t = fun_signature(callee_type(call))
                     for p, a in zip(params, call.args):
                         if not (p.is_var or p.is_out):
-                            expect(a, p.type_val, f"{where}: an argument of {p.name}")
+                            expect(a, rep(p.type_val), f"{where}: an argument of {p.name}")
                     if isinstance(s, ir.Let):
-                        expect(s.var, result_t, f"{where}: the result of a call")
+                        expect(s.var, rep(result_t), f"{where}: the result of a call")
+                case ir.Let(var=var, value=ir.MakeTuple(args=args, embedded=embedded)):
+                    for i, (a, c) in enumerate(zip(args, shape(var.type).components)):
+                        slot(a, c.shape, f"{where}: component {i} of {var.hint}", i in embedded)
+                case ir.Let(var=var, value=ir.MakeRecord(fields=fields, embedded=embedded)):
+                    for i, (n, a, _) in enumerate(fields):
+                        slot(a, shape(atom_type(a)), f"{where}: field {n} of {var.hint}", i in embedded)
+                case ir.Let(var=var, value=ir.MakeArray(args=args)):
+                    for a in args:
+                        slot(a, shape(var.type).element, f"{where}: an element of {var.hint}")
+                case ir.Let(var=var, value=ir.ArrayRep(init=a)):
+                    slot(a, shape(var.type).element, f"{where}: the element of {var.hint}")
+                case ir.Let(value=ir.Addr(cell=a)) if a is not None:
+                    slot(a, shape(atom_type(a)), f"{where}: a cell")
+                case ir.Store(value=a, address=p) if p is not None:
+                    slot(a, located(p), f"{where}: a store")
+                case ir.Store(value=a, base=b, index=i) if isinstance(i, int):
+                    slot(a, shape(atom_type(b)).components[i].shape, f"{where}: a store")
+                case ir.Store(value=a, base=b, name=None):
+                    slot(a, shape(atom_type(b)).element, f"{where}: a store")
                 case ir.VarDecl(var=var, init=init) if init is not None:
-                    expect(init, var.type, f"{where}: var {var.hint}")
+                    expect(init, target(var), f"{where}: var {var.hint}")
                 case ir.Assign(var=var, value=value):
-                    expect(value, var.type, f"{where}: {var.hint} :=")
+                    expect(value, target(var), f"{where}: {var.hint} :=")
                 case ir.Return(value=value) if function is not None:
-                    expect(value, function.result_type, f"{where}: return")
+                    expect(value, rep(function.result_type), f"{where}: return")
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Jump) and s.label in joins:
                 for p, a in zip(joins[s.label], s.args):
-                    expect(a, p.type, f"{where}: jump {s.label}")
+                    expect(a, target(p), f"{where}: jump {s.label}")
     return problems
 
 

@@ -65,7 +65,30 @@ class _Printer:
         return f" [{' '.join(self.type(t) for t in types)}]" if types else ""
 
     def decl(self, var: ir.Var) -> str:
-        return f"{self.bind(var)}: {self.type(var.type)}"
+        # A boxed variable (after the represent pass) holds its record or variant boxed
+        t = self.type(var.type)
+        return f"{self.bind(var)}: {f'box({t})' if var.boxed else t}"
+
+    @staticmethod
+    def access(access: str) -> str:
+        """How a component of a tuple or option is read, after the represent pass: nothing for DIRECT."""
+        return "" if access == ir.DIRECT else f" via {access}"
+
+    @staticmethod
+    def accesses(accesses: tuple[str, ...]) -> str:
+        """How the components of a tuple or option are read, after the represent pass: nothing if all are DIRECT."""
+        if all(a == ir.DIRECT for a in accesses):
+            return ""
+        return f" via ({', '.join(accesses)})"
+
+    def boxed_atoms(self, atoms, embedded: tuple[int, ...]) -> str:
+        """Atoms, those the represent pass boxes in the aggregate's allocation marked `box`."""
+        return ", ".join(f"box {self.atom(a)}" if i in embedded else self.atom(a) for i, a in enumerate(atoms))
+
+    def plan(self, plan: Optional[ir.Plan]) -> str:
+        if plan is None:
+            return "none"
+        return plan.kind + self.accesses(plan.access)
 
     # Operations
 
@@ -76,12 +99,13 @@ class _Printer:
         match o:
             case ir.Var() | ir.Const():
                 return self.atom(o)
-            case ir.Prim(op=op, args=args):
-                return f"prim {op}({self.atoms(args)})"
+            case ir.Prim(op=op, args=args, access=access):
+                return f"prim {op}({self.atoms(args)}){self.access(access)}"
             case ir.Call(callee=callee, type_args=type_args, args=args, module=module, member=member):
                 return f"call {self.callee(callee, module, member)}{self.type_args(type_args)}({self.atoms(args)})"
-            case ir.TypeApp(callee=callee, type_args=type_args, module=module, member=member):
-                return f"type_app {self.callee(callee, module, member)}{self.type_args(type_args)}"
+            case ir.TypeApp(callee=callee, type_args=type_args, module=module, member=member, plans=plans):
+                converting = f" converting ({', '.join(self.plan(p) for p in plans)})" if any(plans) else ""
+                return f"type_app {self.callee(callee, module, member)}{self.type_args(type_args)}{converting}"
             case ir.ModuleMember(module=module, member=member):
                 return f"member {module.name}.{member}" if member is not None else f"module {module.name}"
             case ir.Builtin(name=name):
@@ -95,29 +119,31 @@ class _Printer:
             case ir.EnvField(env=env, index=index):
                 return f"env_field({self.atom(env)}, {index})"
             case ir.Convert(value=v, plan=plan):
-                return f"convert({self.atom(v)}, {plan.kind})"
-            case ir.MakeTuple(args=args, type_components=type_components):
+                return f"convert({self.atom(v)}, {self.plan(plan)})"
+            case ir.MakeTuple(args=args, type_components=type_components, embedded=embedded):
                 types = "".join(f"Let {n} = {self.type(t)} " for n, t in type_components)
-                return f"tuple({types}{self.atoms(args)})"
-            case ir.TupleField(tuple=t, index=index):
-                return f"tuple_field({self.atom(t)}, {index})"
-            case ir.MakeRecord(fields=fields):
+                return f"tuple({types}{self.boxed_atoms(args, embedded)})"
+            case ir.TupleField(tuple=t, index=index, access=access):
+                return f"tuple_field({self.atom(t)}, {index}){self.access(access)}"
+            case ir.MakeRecord(fields=fields, embedded=embedded, runtime_offsets=runtime_offsets):
                 return "record(" + ", ".join(
-                    f"{'var ' if is_var else ''}{n} = {self.atom(a)}" for n, a, is_var in fields
-                ) + ")"
-            case ir.RecordField(record=r, name=name):
-                return f"record_field({self.atom(r)}, {name})"
+                    f"{'var ' if is_var else ''}{n} = {'box ' if i in embedded else ''}{self.atom(a)}"
+                    for i, (n, a, is_var) in enumerate(fields)
+                ) + ")" + (" with runtime offsets" if runtime_offsets else "")
+            case ir.RecordField(record=r, name=name, stored=stored):
+                return f"record_field({self.atom(r)}, {name}){' via stored types' if stored else ''}"
             case ir.MakeVariant(tag=tag, payload=payload):
                 return f"variant({tag}{', ' + self.atom(payload) if payload is not None else ''})"
-            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal):
+            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, access=access):
                 head = tag if ordinal is None else f"#{self.atom(ordinal)}"
-                return f"option({head}{', ' + self.atom(payload) if payload is not None else ''})"
-            case ir.IsTag(value=v, tag=tag):
-                return f"is_tag({self.atom(v)}, {tag})"
-            case ir.Payload(value=v, tag=tag):
-                return f"payload({self.atom(v)}, {tag})"
-            case ir.Ordinal(value=v):
-                return f"ordinal({self.atom(v)})"
+                payload_text = f", {self.atom(payload)}{self.accesses(access)}" if payload is not None else ""
+                return f"option({head}{payload_text})"
+            case ir.IsTag(value=v, tag=tag, access=access):
+                return f"is_tag({self.atom(v)}, {tag}){self.access(access)}"
+            case ir.Payload(value=v, tag=tag, access=access, components=components):
+                return f"payload({self.atom(v)}, {tag}){self.access(access)}{self.accesses(components)}"
+            case ir.Ordinal(value=v, access=access):
+                return f"ordinal({self.atom(v)}){self.access(access)}"
             case ir.MakeArray(args=args):
                 return f"array({self.atoms(args)})"
             case ir.ArrayRep(count=count, init=init):
@@ -139,12 +165,25 @@ class _Printer:
                 if name is not None:
                     return f"addr {self.atom(base)}.{name}"
                 if isinstance(index, int):
-                    return f"addr {self.atom(base)}.#{index}"
+                    return f"addr {self.atom(base)}.#{index}{self.access(o.access)}"
                 return f"addr {self.atom(base)}[{self.atom(index)}]"
             case ir.Load(address=a):
                 return f"load {self.atom(a)}"
             case _:
                 raise TypeError(f"not an IR operation: {o!r}")
+
+    def arm(self, arm: Optional[ir.InspectArm]) -> str:
+        """How an inspect case's components are obtained, after the represent pass (ir.InspectArm)."""
+        if arm is None:
+            return ""
+        parts = [f"converting ({', '.join(c or 'none' for c in arm.converted)})"]
+        if arm.bound is not None:
+            parts.append(f"from bound {self.type(arm.bound)}")
+        if arm.exact:
+            parts.append("if equivalent shared" if arm.shared else f"if equivalent {self.plan(arm.plan)}")
+        if arm.layout_error:
+            parts.append("or layout error")
+        return " " + " ".join(parts)
 
     # Statements
 
@@ -190,7 +229,7 @@ class _Printer:
                     target = f"{self.atom(base)}.#{index}"
                 else:
                     target = f"{self.atom(base)}[{self.atom(index)}]"
-                self.emit(depth, f"store {target} := {self.atom(value)}")
+                self.emit(depth, f"store {target} := {self.atom(value)}{self.access(s.access)}")
             case ir.Do(value=value):
                 self.emit(depth, f"do {self.op(value)}")
             case ir.Funs(functions=functions, recursive=recursive):
@@ -214,10 +253,10 @@ class _Printer:
                     self.emit(depth, "} else {")
                     self.body(else_body, depth + 1)
                 self.emit(depth, "}")
-            case ir.Switch(value=value, cases=cases, else_body=else_body):
-                self.emit(depth, f"switch tag({self.atom(value)}) {{")
+            case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
+                self.emit(depth, f"switch tag({self.atom(value)}){self.access(access)} {{")
                 for c in cases:
-                    binder = f" ({self.decl(c.binder)})" if c.binder is not None else ""
+                    binder = f" ({self.decl(c.binder)}){self.accesses(c.components)}" if c.binder is not None else ""
                     self.block(f"case {', '.join(c.tags)}{binder}:", c.body, depth + 1)
                 if else_body is not None:
                     self.block("else:", else_body, depth + 1)
@@ -227,7 +266,8 @@ class _Printer:
                 for c in cases:
                     binders = ", ".join(self.decl(b) for b in c.binders)
                     exact = " exact" if c.exact else ""
-                    self.block(f"case {self.type(c.match_type)}{exact} ({binders}):", c.body, depth + 1)
+                    self.block(f"case {self.type(c.match_type)}{exact} ({binders}){self.arm(c.arm)}:", c.body,
+                               depth + 1)
                 if else_body is not None:
                     self.block("else:", else_body, depth + 1)
                 self.emit(depth, "}")

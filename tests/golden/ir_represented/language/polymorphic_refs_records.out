@@ -2,8 +2,9 @@ fun updatePoint [A::TYPE](out dest: A, src: A): Ok {
   dest := src
   return ok
 }
-fun updatePoint_spec(out dest.1: Point, src.1: Point): Ok {
-  dest.1 := src.1
+fun updatePoint_spec(out dest.1: box(Point), src.1: Point): Ok {
+  let box.12: box(Point) = convert(src.1, slot_box)
+  dest.1 := box.12
   return ok
 }
 fun swapPoly [A::TYPE](var a: A, var b: A): Ok {
@@ -12,10 +13,12 @@ fun swapPoly [A::TYPE](var a: A, var b: A): Ok {
   b := tmp
   return ok
 }
-fun swapPoly_spec(var a.1: Point, var b.1: Point): Ok {
+fun swapPoly_spec(var a.1: box(Point), var b.1: box(Point)): Ok {
   let tmp.1: Point = a.1
-  a.1 := b.1
-  b.1 := tmp.1
+  let box.13: box(Point) = convert(b.1, slot_box)
+  a.1 := box.13
+  let box.14: box(Point) = convert(tmp.1, slot_box)
+  b.1 := box.14
   return ok
 }
 fun makePair [A::TYPE B::TYPE](a.2: A, b.2: B): Tuple first: A second: B end {
@@ -27,45 +30,53 @@ fun makePair [A::TYPE B::TYPE](a.2: A, b.2: B): Tuple first: A second: B end {
 fun makePair_spec(a.3: Point, b.3: String): Tuple first: Point second: String end {
   let first.1: Point = a.3
   let second.1: String = b.3
-  let %24: Tuple first: Point second: String end = tuple(first.1, second.1)
+  let %24: Tuple first: Point second: String end = tuple(box first.1, second.1)
   return %24
 }
 main {
   let updatePoint.1: All(A :: TYPE) Fun(out dest: A src: A): Ok = closure updatePoint {}
   let updatePoint_spec.1: Fun(out dest: Point src: Point): Ok = closure updatePoint_spec {}
-  let %1: Record x: Int y: Int end = record(x = 10, y = 20)
-  var p1: Record x: Int y: Int end = %1
-  let p2: Record x: Int y: Int end = record(x = 30, y = 40)
+  let box: box(Record x: Int y: Int end) = record(x = 10, y = 20)
+  let %1: Record x: Int y: Int end = convert(box, slot_unbox)
+  var p1: box(Record x: Int y: Int end) = box
+  let p2_box: box(Record x: Int y: Int end) = record(x = 30, y = 40)
+  let p2: Record x: Int y: Int end = convert(p2_box, slot_unbox)
   let %2: Var(Record x: Int y: Int end) = addr p1
   do call updatePoint_spec.1(%2, p2)
   let p1x: Int = record_field(p1, x)
   let p1y: Int = record_field(p1, y)
   let swapPoly.1: All(A :: TYPE) Fun(var a: A var b: A): Ok = closure swapPoly {}
   let swapPoly_spec.1: Fun(var a: Point var b: Point): Ok = closure swapPoly_spec {}
-  let %3: Record x: Int y: Int end = record(x = 1, y = 2)
-  var r1: Record x: Int y: Int end = %3
-  let %4: Record x: Int y: Int end = record(x = 8, y = 9)
-  var r2: Record x: Int y: Int end = %4
+  let box.1: box(Record x: Int y: Int end) = record(x = 1, y = 2)
+  let %3: Record x: Int y: Int end = convert(box.1, slot_unbox)
+  var r1: box(Record x: Int y: Int end) = box.1
+  let box.2: box(Record x: Int y: Int end) = record(x = 8, y = 9)
+  let %4: Record x: Int y: Int end = convert(box.2, slot_unbox)
+  var r2: box(Record x: Int y: Int end) = box.2
   let %5: Var(Record x: Int y: Int end) = addr r1
   let %6: Var(Record x: Int y: Int end) = addr r2
   do call swapPoly_spec.1(%5, %6)
   let r1x: Int = record_field(r1, x)
   let r2x: Int = record_field(r2, x)
   let assignClosure: All(A :: TYPE) Fun(out dest: A src: A): Ok = updatePoint.1
-  let %7: Record x: Int y: Int end = record(x = 100, y = 200)
-  var p3: Record x: Int y: Int end = %7
-  let p4: Record x: Int y: Int end = record(x = 500, y = 600)
+  let box.3: box(Record x: Int y: Int end) = record(x = 100, y = 200)
+  let %7: Record x: Int y: Int end = convert(box.3, slot_unbox)
+  var p3: box(Record x: Int y: Int end) = box.3
+  let p4_box: box(Record x: Int y: Int end) = record(x = 500, y = 600)
+  let p4: Record x: Int y: Int end = convert(p4_box, slot_unbox)
   let %8: Var(Record x: Int y: Int end) = addr p3
   let %9: Out(A) = convert(%8, cast)
-  let p4.1: A = convert(p4, box)
+  let p4.1: A = convert(p4_box, box)
   do call assignClosure [Point](%9, p4.1)
   let p3x: Int = record_field(p3, x)
   let p3y: Int = record_field(p3, y)
   let swapClosure: All(A :: TYPE) Fun(var a: A var b: A): Ok = swapPoly.1
-  let %10: Record x: Int y: Int end = record(x = 111, y = 222)
-  var s1: Record x: Int y: Int end = %10
-  let %11: Record x: Int y: Int end = record(x = 333, y = 444)
-  var s2: Record x: Int y: Int end = %11
+  let box.4: box(Record x: Int y: Int end) = record(x = 111, y = 222)
+  let %10: Record x: Int y: Int end = convert(box.4, slot_unbox)
+  var s1: box(Record x: Int y: Int end) = box.4
+  let box.5: box(Record x: Int y: Int end) = record(x = 333, y = 444)
+  let %11: Record x: Int y: Int end = convert(box.5, slot_unbox)
+  var s2: box(Record x: Int y: Int end) = box.5
   let %12: Var(Record x: Int y: Int end) = addr s1
   let %13: Var(Record x: Int y: Int end) = addr s2
   let %14: Var(A) = convert(%12, cast)
@@ -75,35 +86,44 @@ main {
   let s2x: Int = record_field(s2, x)
   let makePair.1: All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple first: A second: B end = closure makePair {}
   let makePair_spec.1: Fun(a: Point b: String): Tuple first: Point second: String end = closure makePair_spec {}
-  let pt1: Record x: Int y: Int end = record(x = 77, y = 88)
+  let pt1_box: box(Record x: Int y: Int end) = record(x = 77, y = 88)
+  let pt1: Record x: Int y: Int end = convert(pt1_box, slot_unbox)
   let directPair: Tuple first: Point second: String end = call makePair_spec.1(pt1, "hello")
-  let %16: Point = tuple_field(directPair, 0)
+  let box.6: box(Point) = tuple_field(directPair, 0) via proxy
+  let %16: Point = convert(box.6, slot_unbox)
   let dpx: Int = record_field(%16, x)
-  let %17: Point = tuple_field(directPair, 0)
+  let box.7: box(Point) = tuple_field(directPair, 0) via proxy
+  let %17: Point = convert(box.7, slot_unbox)
   let dpy: Int = record_field(%17, y)
-  let dps: String = tuple_field(directPair, 1)
+  let dps: String = tuple_field(directPair, 1) via original
   let pairClosure: All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple first: A second: B end = makePair.1
-  let pt2: Record x: Int y: Int end = record(x = 99, y = 101)
-  let pt2.1: A = convert(pt2, box)
+  let pt2_box: box(Record x: Int y: Int end) = record(x = 99, y = 101)
+  let pt2: Record x: Int y: Int end = convert(pt2_box, slot_unbox)
+  let pt2.1: A = convert(pt2_box, box)
   let %18: B = convert(42, box)
   let closPair: Tuple first: A second: B end = call pairClosure [Point Int](pt2.1, %18)
   let closPair.1: Tuple first: Point second: Int end = convert(closPair, cast)
   let closPair.2: Tuple first: Point second: Int end = closPair.1
-  let %19: Point = tuple_field(closPair.2, 0)
+  let box.8: box(Point) = tuple_field(closPair.2, 0) via proxy
+  let %19: Point = convert(box.8, slot_unbox)
   let cpx: Int = record_field(%19, x)
-  let %20: Point = tuple_field(closPair.2, 0)
+  let box.9: box(Point) = tuple_field(closPair.2, 0) via proxy
+  let %20: Point = convert(box.9, slot_unbox)
   let cpy: Int = record_field(%20, y)
-  let cpi: Int = tuple_field(closPair.2, 1)
-  let p3d: Record x: Int y: Int z: Int end = record(x = 1, y = 2, z = 3)
+  let cpi: Int = tuple_field(closPair.2, 1) via original
+  let p3d_box: box(Record x: Int y: Int z: Int end) = record(x = 1, y = 2, z = 3)
+  let p3d: Record x: Int y: Int z: Int end = convert(p3d_box, slot_unbox)
   let pt: Record x: Int y: Int z: Int end = p3d
   let tag: String = "3D"
-  let t3d: Tuple pt: Point3D tag: String end = tuple(pt, tag)
+  let t3d: Tuple pt: Point3D tag: String end = tuple(p3d_box, tag)
   let t3d.1: Tuple pt: Point tag: String end = convert(t3d, view)
   let t2d: Tuple pt: Point tag: String end = t3d.1
-  let %21: Point = tuple_field(t2d, 0)
+  let box.10: box(Point) = tuple_field(t2d, 0) via proxy
+  let %21: Point = convert(box.10, slot_unbox)
   let t2dx: Int = record_field(%21, x)
-  let %22: Point = tuple_field(t2d, 0)
+  let box.11: box(Point) = tuple_field(t2d, 0) via proxy
+  let %22: Point = convert(box.11, slot_unbox)
   let t2dy: Int = record_field(%22, y)
-  let t2dtag: String = tuple_field(t2d, 1)
+  let t2dtag: String = tuple_field(t2d, 1) via original
 }
 

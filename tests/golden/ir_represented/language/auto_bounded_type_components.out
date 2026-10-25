@@ -27,7 +27,7 @@ fun show(x: Big): String {
 }
 fun mk0 [A::<: Big](x.1: A): AnyBig {
   let a.1: A = x.1
-  let %71: Tuple a: A end = tuple(a.1)
+  let %71: Tuple a: A end = tuple(box a.1)
   let %72: AnyBig = auto[A](%71)
   return %72
 }
@@ -37,7 +37,8 @@ fun unbox0 [A::<: Big](b: AnyBig, default: A): A {
   } in {
     inspect b {
       case A (x.2: Tuple a: A end): {
-        let %73: A = tuple_field(x.2, 0)
+        let box.5: box(A) = tuple_field(x.2, 0) via proxy
+        let %73: A = convert(box.5, slot_unbox)
         jump k4(%73)
       }
       else: {
@@ -53,7 +54,7 @@ fun roundTrip0 [A::<: Big](x.3: A): A {
 }
 fun mkObj0 [A::<: Object](x.4: A): AnyObject {
   let a.2: A = x.4
-  let %76: Tuple a: A end = tuple(a.2)
+  let %76: Tuple a: A end = tuple(box a.2)
   let %77: AnyObject = auto[A](%76)
   return %77
 }
@@ -63,7 +64,8 @@ fun unboxObj0 [A::<: Object](b.1: AnyObject, default.1: A): A {
   } in {
     inspect b.1 {
       case A (x.5: Tuple a: A end): {
-        let %78: A = tuple_field(x.5, 0)
+        let box.6: box(A) = tuple_field(x.5, 0) via proxy
+        let %78: A = convert(box.6, slot_unbox)
         jump k6(%78)
       }
       else: {
@@ -114,7 +116,7 @@ main {
       let unbox0.1: All(A <: Big) Fun(b: AnyBig default: A): A = closure unbox0 {}
       let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = unbox0.1
       let a: Small = small
-      let %1: Tuple a: Small end = tuple(a)
+      let %1: Tuple a: Small end = tuple(box a)
       let payload: Tuple a: A end = convert(%1, cast)
       let direct: AnyBig = auto[Small](payload)
       let other.1: A = convert(other, variant_tags)
@@ -155,14 +157,16 @@ main {
       do call s.1(%25)
       let mkObj0.1: All(A <: Object) Fun(x: A): AnyObject = closure mkObj0 {}
       let mkObj: All(A <: Object) Fun(x: A): AnyObject = mkObj0.1
-      let car: Car = record(age = 3, fuel = "diesel")
+      let car_box: box(Car) = record(age = 3, fuel = "diesel")
+      let car: Car = convert(car_box, slot_unbox)
       join k5(r.2: String) {
         do call s.1(r.2)
         let unboxObj0.1: All(A <: Object) Fun(b: AnyObject default: A): A = closure unboxObj0 {}
         let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = unboxObj0.1
         let car.1: A = convert(car, runtime)
         let %26: AnyObject = call mkObj [Car](car.1)
-        let %27: Record age: Int fuel: String end = record(age = 0, fuel = "none")
+        let box: box(Record age: Int fuel: String end) = record(age = 0, fuel = "none")
+        let %27: Record age: Int fuel: String end = convert(box, slot_unbox)
         let %28: A = convert(%27, runtime)
         let %29: A = call unboxObj [Car](%26, %28)
         let %30: Car = convert(%29, runtime)
@@ -171,7 +175,8 @@ main {
         do call s.1(%32)
         let car.2: A = convert(car, runtime)
         let %33: AnyObject = call mkObj [Car](car.2)
-        let %34: Record age: Int end = record(age = 0)
+        let box.1: box(Record age: Int end) = record(age = 0)
+        let %34: Record age: Int end = convert(box.1, slot_unbox)
         let %35: A = convert(%34, runtime)
         let %36: A = call unboxObj [Object](%33, %35)
         let %37: Object = convert(%36, runtime)
@@ -213,7 +218,8 @@ main {
         let %56: AnyObject = call mkObj [Car](car.4)
         inspect %56 {
           case Car (t: Tuple a: Car end): {
-            let %57: Car = tuple_field(t, 0)
+            let box.2: box(Car) = tuple_field(t, 0) via proxy
+            let %57: Car = convert(box.2, slot_unbox)
             let %58: String = record_field(%57, fuel)
             jump k5(%58)
           }
@@ -227,7 +233,8 @@ main {
       let %59: AnyBig = call mk [Small](small.4)
       inspect %59 {
         case Big (t.1: Tuple a: Big end): {
-          let %60: Big = tuple_field(t.1, 0)
+          let box.3: box(Big) = tuple_field(t.1, 0) via proxy
+          let %60: Big = convert(box.3, slot_unbox)
           let %61: String = call show.1(%60)
           jump k3(%61)
         }
@@ -241,7 +248,8 @@ main {
     let %62: AnyBig = call mk [Small](small.5)
     inspect %62 {
       case Small (t.2: Tuple a: Small end): {
-        let %63: Small = tuple_field(t.2, 0)
+        let box.4: box(Small) = tuple_field(t.2, 0) via proxy
+        let %63: Small = convert(box.4, slot_unbox)
         let %64: Variant a: Int b: String c: Bool end = convert(%63, variant_tags)
         let %65: String = call show.1(%64)
         jump k2(%65)

@@ -33,10 +33,10 @@ fun sum(xs.1: OtherList): Int {
   join k4(r.5: Int) {
     return r.5
   } in {
-    switch tag(xs.1) {
-      case cons (c: Tuple head: Int tail: OtherList end): {
-        let %57: Int = tuple_field(c, 0)
-        let %58: OtherList = tuple_field(c, 1)
+    switch tag(xs.1) via proxy {
+      case cons (c: Tuple head: Int tail: OtherList end) via (original, proxy): {
+        let %57: Int = tuple_field(c, 0) via original
+        let %58: OtherList = tuple_field(c, 1) via proxy
         let %59: Int = call sum.1(%58)
         let %60: Int = prim +(%57, %59)
         jump k4(%60)
@@ -71,8 +71,9 @@ main {
   let %6: T = call dynamic.new [Int](%5)
   let %7: String = call whatIs.1(%6)
   do call s.1(%7)
-  let %8: Record x: Int end = record(x = 1)
-  let %9: A = convert(%8, box)
+  let box: box(Record x: Int end) = record(x = 1)
+  let %8: Record x: Int end = convert(box, slot_unbox)
+  let %9: A = convert(box, box)
   let %10: T = call dynamic.new [Record x: Int end](%9)
   let %11: String = call whatIs.1(%10)
   do call s.1(%11)
@@ -111,7 +112,8 @@ main {
           let dFun: T = call dynamic.new [Fun(n: Int): Int](f.2)
           join k7(r.3: Int) {
             do call p.1(r.3)
-            let big: Big = record(a = 1, b = 2, c = 3)
+            let big_box: box(Big) = record(a = 1, b = 2, c = 3)
+            let big: Big = convert(big_box, slot_unbox)
             let mk.1: All(A :: TYPE) Fun(x: A): Big = closure mk {}
             let mk.2: All(B :: TYPE) Fun(y: B): Small = convert(mk.1, adapt)
             let mkSmall: All(B :: TYPE) Fun(y: B): Small = mk.2
@@ -128,10 +130,11 @@ main {
             let %24: Small = call fromDynamic.2 [String](%23)
             let %25: Int = record_field(%24, c)
             do call p.1(%25)
-            let hasMk: HasMk = record(f = mk.1)
+            let hasMk_box: box(HasMk) = record(f = mk.1)
+            let hasMk: HasMk = convert(hasMk_box, slot_unbox)
             let hasMk.1: HasMkSmall = convert(hasMk, record_view)
             let hasMkSmall: HasMkSmall = hasMk.1
-            let %26: All(B :: TYPE) Fun(y: B): Small = record_field(hasMkSmall, f)
+            let %26: All(B :: TYPE) Fun(y: B): Small = record_field(hasMkSmall, f) via stored types
             let %27: B = convert(true, box)
             let %28: Small = call %26 [Bool](%27)
             let %29: Int = record_field(%28, c)
@@ -170,7 +173,7 @@ main {
               jump k6(0)
             }
             case list.T(Int) (x.2: Tuple a: list.T(Int) end): {
-              let %41: list.T(Int) = tuple_field(x.2, 0)
+              let %41: list.T(Int) = tuple_field(x.2, 0) via proxy
               let %42: A = call list.head [Int](%41)
               let %43: Int = convert(%42, unbox)
               let %44: Int = %43

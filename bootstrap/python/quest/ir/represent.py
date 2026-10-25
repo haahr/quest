@@ -30,6 +30,7 @@ from quest.codegen.layout import (
     generic_layout_agrees,
     is_boxed_in_slots,
     generic_layout_copies_mutable_data,
+    may_be_proxied,
     resolved_shape,
     shape_representation,
     shape_slot_representation,
@@ -37,6 +38,7 @@ from quest.codegen.layout import (
 )
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
+from quest.ir.slots import decide_slots, tuple_access
 from quest.ir.walk import statement_bodies
 from quest.types.canonical import collect_fun_quantifiers, normalize_type, resolve_type_bound
 from quest.types import (
@@ -208,9 +210,20 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
         return None
     _PLANNING.add(key)
     try:
-        return _plan(source, target, layout)
+        return _unproxied(_plan(source, target, layout))
     finally:
         _PLANNING.discard(key)
+
+
+def _unproxied(p: Optional[ir.Plan]) -> Optional[ir.Plan]:
+    """p, or for a cast from a tuple or option type that may be proxied to one that may not, an `unproxy` plan: a value
+    of the target type is never a proxy, and its components do not change view, so the original serves."""
+    if p is None or p.kind != "cast":
+        return p
+    source_s, target_s = shape(p.source), shape(p.target)
+    if target_s.kind in ("tuple", "option") and may_be_proxied(source_s) and not may_be_proxied(target_s):
+        return ir.Plan("unproxy", p.source, p.target)
+    return p
 
 
 def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]]) -> Optional[ir.Plan]:
@@ -279,7 +292,7 @@ def _option_cases_agree(s: Shape, t: Shape) -> bool:
             return False
         if case.shape is not None:
             p = plan(case.shape.type, tc.shape.type)
-            if p is not None and p.kind != "cast":
+            if p is not None and p.kind not in ("cast", "unproxy"):
                 return False
     return True
 
@@ -313,8 +326,10 @@ def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.
     if all(p is None for p in fields) and all(_slots_agree(sc.shape, tc.shape) for sc, tc in zip(source, target)):
         if shape_representation(shape(payload_t)) == shape_representation(shape(stored_t)):
             return None
-        return ir.Plan("cast", payload_t, stored_t)
-    return ir.Plan("copy", payload_t, stored_t, tuple(fields))
+        return _unproxied(ir.Plan("cast", payload_t, stored_t))
+    payload_s = shape(payload_t)
+    access = tuple(tuple_access(payload_s, i) for i in range(len(fields)))
+    return ir.Plan("copy", payload_t, stored_t, tuple(fields), access=access)
 
 
 def fun_signature(t: QType) -> tuple[tuple, QType]:
@@ -570,5 +585,6 @@ class _Representer:
 def represent_unit(unit: ir.Unit) -> ir.Unit:
     """Inserts the unit's conversions, in place, returning it."""
     _Representer(unit).run()
+    decide_slots(unit)
     unit.stage = "represented"
     return unit

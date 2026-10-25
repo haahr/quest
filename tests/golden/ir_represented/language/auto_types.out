@@ -95,13 +95,15 @@ fun classify(x.4: AnyObject): String {
   } in {
     inspect x.4 {
       case Car (c: Tuple a: Car end): {
-        let %53: Car = tuple_field(c, 0)
+        let box.2: box(Car) = tuple_field(c, 0) via proxy
+        let %53: Car = convert(box.2, slot_unbox)
         let %54: String = record_field(%53, fuel)
         let %55: String = prim <>("car using ", %54)
         jump k6(%55)
       }
       case Vehicle (v.1: Tuple a: Vehicle end): {
-        let %56: Vehicle = tuple_field(v.1, 0)
+        let box.3: box(Vehicle) = tuple_field(v.1, 0) via proxy
+        let %56: Vehicle = convert(box.3, slot_unbox)
         let %57: Int = record_field(%56, speed)
         let %58: String = call conv.int(%57)
         let %59: String = prim <>("vehicle at ", %58)
@@ -115,7 +117,8 @@ fun classify(x.4: AnyObject): String {
         } in {
           inspect x.4 {
             case Object (o: Tuple a: Object end): {
-              let %62: Object = tuple_field(o, 0)
+              let box.4: box(Object) = tuple_field(o, 0) via proxy
+              let %62: Object = convert(box.4, slot_unbox)
               let %63: Int = record_field(%62, age)
               jump k7(%63)
             }
@@ -162,16 +165,17 @@ fun showIt(s.2: Showable): String {
 fun bump(c.1: Counter): Ok {
   inspect c.1 {
     case Car exact (x.5: Tuple a: Car var count: Int end): {
-      let %75: Int = tuple_field(x.5, 1)
-      let %76: Car = tuple_field(x.5, 0)
+      let %75: Int = tuple_field(x.5, 1) via original
+      let box.5: box(Car) = tuple_field(x.5, 0) via proxy
+      let %76: Car = convert(box.5, slot_unbox)
       let %77: Int = record_field(%76, age)
       let %78: Int = prim +(%75, %77)
-      store x.5.#1 := %78
+      store x.5.#1 := %78 via original
     }
     case Object exact (x.6: Tuple a: Object var count: Int end): {
-      let %79: Int = tuple_field(x.6, 1)
+      let %79: Int = tuple_field(x.6, 1) via original
       let %80: Int = prim +(%79, 1)
-      store x.6.#1 := %80
+      store x.6.#1 := %80 via original
     }
   }
   return ok
@@ -210,17 +214,20 @@ main {
   let safeTruthy.1: Fun(b: UniformPair): String = closure safeTruthy {}
   let %9: String = call safeTruthy.1(r)
   do call printStr.1(%9)
-  let myCar: Car = record(age = 3, speed = 120, fuel = "diesel")
+  let myCar_box: box(Car) = record(age = 3, speed = 120, fuel = "diesel")
+  let myCar: Car = convert(myCar_box, slot_unbox)
   let a: Car = myCar
-  let %10: Tuple a: Car end = tuple(a)
+  let %10: Tuple a: Car end = tuple(myCar_box)
   let payload.3: Tuple a: A end = convert(%10, cast)
   let aCar: AnyObject = auto[Car](payload.3)
-  let a.1: Record age: Int speed: Int end = record(age = 1, speed = 50)
-  let %11: Tuple a: Vehicle end = tuple(a.1)
+  let a_box: box(Record age: Int speed: Int end) = record(age = 1, speed = 50)
+  let a.1: Record age: Int speed: Int end = convert(a_box, slot_unbox)
+  let %11: Tuple a: Vehicle end = tuple(a_box)
   let payload.4: Tuple a: A end = convert(%11, cast)
   let aVehicle: AnyObject = auto[Vehicle](payload.4)
-  let a.2: Record age: Int end = record(age = 9)
-  let %12: Tuple a: Object end = tuple(a.2)
+  let a_box.1: box(Record age: Int end) = record(age = 9)
+  let a.2: Record age: Int end = convert(a_box.1, slot_unbox)
+  let %12: Tuple a: Object end = tuple(a_box.1)
   let anObject: AnyObject = auto[Object](%12)
   let classify.1: Fun(x: AnyObject): String = closure classify {}
   let %13: String = call classify.1(aCar)
@@ -246,7 +253,7 @@ main {
   do call printStr.1(%19)
   let a.3: Car = myCar
   let spare: Car = myCar
-  let %20: Tuple a: Car spare: Car end = tuple(a.3, spare)
+  let %20: Tuple a: Car spare: Car end = tuple(myCar_box, myCar_box)
   let carWithSpare: AnyCar = auto[Car](%20)
   let objectWithSpare: AnyObjectWithSpare = carWithSpare
   join k9(r.1: String) {
@@ -261,7 +268,7 @@ main {
       do call printStr.1(r.2)
       let a.5: Car = myCar
       let count: Int = 0
-      let %22: Tuple a: Car var count: Int end = tuple(a.5, count)
+      let %22: Tuple a: Car var count: Int end = tuple(myCar_box, count)
       let payload.8: Tuple a: A var count: Int end = convert(%22, cast)
       let counter: Counter = auto[Car](payload.8)
       let bump.1: Fun(c: Counter): Ok = closure bump {}
@@ -272,7 +279,7 @@ main {
       } in {
         inspect counter {
           case Car exact (x.3: Tuple a: Car var count: Int end): {
-            let %23: Int = tuple_field(x.3, 1)
+            let %23: Int = tuple_field(x.3, 1) via original
             let %24: String = call conv.int(%23)
             jump k11(%24)
           }
@@ -297,9 +304,11 @@ main {
   } in {
     inspect objectWithSpare {
       case Vehicle (v: Tuple a: Vehicle spare: Object end): {
-        let %28: Vehicle = tuple_field(v, 0)
+        let box: box(Vehicle) = tuple_field(v, 0) via proxy
+        let %28: Vehicle = convert(box, slot_unbox)
         let %29: Int = record_field(%28, speed)
-        let %30: Object = tuple_field(v, 1)
+        let box.1: box(Object) = tuple_field(v, 1) via proxy
+        let %30: Object = convert(box.1, slot_unbox)
         let %31: Int = record_field(%30, age)
         let %32: Int = prim +(%29, %31)
         let %33: String = call conv.int(%32)

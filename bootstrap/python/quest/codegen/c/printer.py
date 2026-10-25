@@ -49,9 +49,6 @@ from quest.codegen.c.types import (
 )
 from quest.types.canonical import collect_fun_quantifiers
 from quest.codegen.layout import (
-    changes_view,
-    is_boxed_in_slots,
-    may_be_proxied,
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
@@ -87,7 +84,6 @@ from quest.types import (
     QTypeFun,
     QTypeKind,
     auto_payload_type,
-    is_type_equal,
     QAllType,
     QFunType,
     QParam,
@@ -180,11 +176,6 @@ class _FunctionState:
         self.label_depth: dict[str, int] = {}
         self.join_params: dict[str, tuple[ir.Var, ...]] = {}
         self.volatile: set[int] = set()
-        # The boxes of the records and variants bound by lets that read them from slots (by variable): a box is
-        # immutable, so storing the value into another slot reuses it rather than allocating another
-        self.boxes: dict[int, str] = {}
-        # The tuples and options bound by lets that make them, which are never proxies
-        self.fresh: set[int] = set()
 
 
 class CPrinter:
@@ -205,9 +196,6 @@ class CPrinter:
         # External C functions bound by lets (by variable), which are called directly
         self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
-        # The variables of record or variant types whose addresses are taken, held boxed (in their locations'
-        # representation, location_representation), so that a var or out parameter can point to them as to a slot
-        self.located: set[int] = set()
         self.types: list[QType] = []
         # The types echoed through descriptors of their own (echo_descriptor_form)
         self.echo_types: list[QType] = []
@@ -268,71 +256,51 @@ class CPrinter:
         self.types.append(s.structure)
         return shape_slot_representation(s)
 
-    def load_slot(self, slot: str, s: Shape) -> tuple[str, Optional[str]]:
-        """The value of shape s in a slot, and for a record or variant the temporary holding its box (which an
-        operation reading a slot leaves in pending_box, for the let binding its value)."""
-        if not is_boxed_in_slots(s):
-            return slot, None
-        box = self.temp(self.slot_c_type(s))
-        self.emit(f"{box} = {slot};")
-        return f"(*{box})", box
-
-    def slot_value(self, a: ir.Atom, s: Shape) -> str:
-        """An atom of shape s in the form a slot holds it: a record or variant boxed, in the box it was read from if it
-        was read from a slot."""
-        if is_boxed_in_slots(s) and isinstance(a, ir.Var) and id(a) in self.fs.boxes:
-            return self.fs.boxes[id(a)]
-        return shape_slot_store(self.atom(a), s)
-
     # Proxies (docs/c-representation.md §5.8): a value of a tuple or option type that may be proxied may be a view of
-    # an object of a subtype, whose components are read (and var components written) through the runtime
+    # an object of a subtype, whose components are read (and var components written) through the runtime, as the
+    # represent pass decided (ir.DIRECT, ir.ORIGINAL, ir.PROXY)
 
-    def is_fresh(self, a: ir.Atom) -> bool:
-        """Whether an atom is a tuple or option the function made itself, which is not a proxy."""
-        return isinstance(a, ir.Var) and id(a) in self.fs.fresh
-
-    def tuple_component(self, t: str, ts: Shape, i: int, fresh: bool = False) -> str:
-        """The slot form of component i of the tuple t (an atom's C expression) of shape ts, through a proxy if t may
-        be one (and is not fresh, made by the function)."""
-        if fresh or not may_be_proxied(ts):
+    def tuple_component(self, t: str, ts: Shape, i: int, access: str) -> str:
+        """The slot form of component i of the tuple t (an atom's C expression) of shape ts, read as access says."""
+        if access == ir.DIRECT:
             return f"({t})->_{i}"
-        comp = ts.components[i].shape
-        if not changes_view(comp):
+        if access == ir.ORIGINAL:
             # Read from the original as it is (its slot at the same offset)
             return f"(({self.c_type(ts.type)})quest_unproxy({t}))->_{i}"
+        comp = ts.components[i].shape
         tmp = self.temp(self.slot_c_type(comp))
         through = shape_qval_to_slot(f"quest_proxy_element({t}, {i})", comp)
         self.emit(f"{tmp} = quest_is_proxy({t}) ? {through} : ({t})->_{i};")
         return tmp
 
-    def option_tag(self, v: str, os: Shape, fresh: bool = False) -> str:
-        """The tag of the option v of shape os, in os's numbering (through a proxy if v may be one)."""
-        if fresh or not may_be_proxied(os):
+    @staticmethod
+    def option_tag(v: str, access: str) -> str:
+        """The tag of the option v, in its type's numbering, read as access says (through a proxy if it may be one)."""
+        if access == ir.DIRECT:
             return f"(({v})->tag)"
         return f"(quest_is_proxy({v}) ? quest_proxy_tag({v}) : ({v})->tag)"
 
-    def option_component(self, v: str, os: Shape, tag: str, i: Optional[int]) -> str:
+    def option_component(self, v: str, os: Shape, tag: str, i: Optional[int], access: str) -> str:
         """The slot form of component i (None: the payload, when it is not a tuple) of the payload of case tag of
-        the option v of shape os, through a proxy if v may be one."""
+        the option v of shape os, read as access says."""
         raw = f"{v}->u.{tag}.val" if i is None else f"{v}->u.{tag}._{i}"
-        if not may_be_proxied(os):
+        if access == ir.DIRECT:
             return raw
-        case = os.case(tag)
-        comp = case.shape if i is None else case.shape.components[i].shape
-        if not changes_view(comp):
+        if access == ir.ORIGINAL:
             unproxied = f"(({shape_representation(os)})quest_unproxy({v}))"
             return f"{unproxied}->u.{tag}.val" if i is None else f"{unproxied}->u.{tag}._{i}"
+        case = os.case(tag)
+        comp = case.shape if i is None else case.shape.components[i].shape
         tmp = self.temp(self.slot_c_type(comp))
         through = shape_qval_to_slot(f"quest_proxy_option_element({v}, {i or 0})", comp)
         self.emit(f"{tmp} = quest_is_proxy({v}) ? {through} : {raw};")
         return tmp
 
-    def slot_field(self, a: ir.Atom, s: Shape):
-        """An atom of shape s as a field of an aggregate being made holds it: its slot form, or for a record or variant
-        not read from a slot, a _FreshBox, which the aggregate's allocation makes room for (embedded_boxes)."""
-        if is_boxed_in_slots(s) and not (isinstance(a, ir.Var) and id(a) in self.fs.boxes):
-            return _FreshBox(self.atom(a), s)
-        return self.slot_value(a, s)
+    def slot_fields(self, args, shapes: list[Shape], embedded: tuple[int, ...]) -> list:
+        """The fields of an aggregate being made: the atoms' C expressions (their slot forms), or for those the
+        represent pass embedded, _FreshBoxes, which the aggregate's allocation makes room for (embedded_boxes)."""
+        return [_FreshBox(self.atom(a), s) if i in embedded else self.atom(a)
+                for i, (a, s) in enumerate(zip(args, shapes))]
 
     def embedded_boxes(self, block: str, size: str, fields: list) -> tuple[str, list[str]]:
         """The size of an aggregate's allocation with room after it (size, at block) for the boxes of its fields that
@@ -394,8 +362,8 @@ class CPrinter:
     def var_c_type(self, var: ir.Var) -> str:
         if id(var) in self.handler_vars:
             return "QExceptionState"
-        if id(var) in self.located:
-            return self.location_c_type(var.type)
+        if var.boxed:
+            return self.slot_c_type(shape(var.type))
         return self.c_type(var.type)
 
     @staticmethod
@@ -500,18 +468,15 @@ class CPrinter:
         if id(a) in self.handler_vars:
             return f"{name}.exc"
         if a.mutable and self.is_pointer_param(a):
-            return f"(*(*{name}))" if self.is_boxed(a) else f"(*{name})"
-        if id(a) in self.located:
+            return f"(*(*{name}))" if a.boxed else f"(*{name})"
+        if a.boxed and a.mutable:
+            # A boxed mutable variable holds its location's box (a boxed value is the box itself)
             return f"(*{name})"
         return name
 
     def is_pointer_param(self, var: ir.Var) -> bool:
         f = self.fs.function
         return f is not None and any(v is var and mode != "value" for v, mode in f.params)
-
-    @staticmethod
-    def is_boxed(var: ir.Var) -> bool:
-        return is_boxed_in_slots(shape(var.type))
 
     def location_c_type(self, t: QType) -> str:
         """The C type of a location of a value of t (location_representation): a record or variant boxed."""
@@ -542,10 +507,10 @@ class CPrinter:
         match o:
             case ir.Var() | ir.Const():
                 return self.atom(o)
-            case ir.Prim(op=op, args=args, offset=offset):
-                return self.prim(op, args, offset)
-            case ir.Ordinal(value=v):
-                return self.option_tag(self.atom(v), self.tag_shape(self.atom_type(v)))
+            case ir.Prim(op=op, args=args, offset=offset, access=access):
+                return self.prim(op, args, offset, access)
+            case ir.Ordinal(value=v, access=access):
+                return self.option_tag(self.atom(v), access)
             case ir.Call():
                 return self.call(o)
             case ir.ModuleMember(module=module, member=member):
@@ -564,13 +529,12 @@ class CPrinter:
             case ir.EnvField(env=env, index=index):
                 return f"{self.name(env)}->c{index}"
             case ir.Convert(value=v, plan=plan):
-                if plan.kind == "unbox" and is_boxed_in_slots(shape(plan.target)):
-                    # A QVal word holds a record or variant as its box, which a slot can reuse
-                    target_s = shape(plan.target)
-                    box = self.temp(self.slot_c_type(target_s))
-                    self.emit(f"{box} = {shape_qval_to_slot(self.atom(v), target_s)};")
-                    self.pending_box = box
-                    return f"(*{box})"
+                if plan.kind == "unbox" and result is not None and result.boxed:
+                    # A QVal word holds a record or variant as its box
+                    return shape_qval_to_slot(self.atom(v), shape(plan.target))
+                if plan.kind == "box" and isinstance(v, ir.Var) and v.boxed and not v.mutable:
+                    # A box is a record's or variant's QVal word
+                    return shape_slot_to_qval(self.atom(v), shape(plan.source))
                 return self.convert(self.atom(v), plan)
             case ir.MakeException(name=name):
                 return f"quest_alloc_exception({c_string_literal(name)})"
@@ -583,42 +547,36 @@ class CPrinter:
                     return f"(({self.location_c_type(var.type)} *)&{self.name(var)})"
                 return f"(&{self.name(var)})"
             case ir.Addr(cell=cell) if cell is not None:
-                cell_t = self.atom_type(cell)
-                cell_c = self.temp(self.location_c_type(cell_t))
-                self.emit(f"{cell_c} = {self.slot_value(cell, shape(cell_t))};")
+                cell_c = self.temp(self.location_c_type(self.atom_type(cell)))
+                self.emit(f"{cell_c} = {self.atom(cell)};")
                 return f"(&{cell_c})"
             case ir.Load(address=a):
-                return shape_slot_load(f"(*{self.atom(a)})", self.located_shape(a))
+                return f"(*{self.atom(a)})"
             case ir.Addr(base=base, name=name) if name is not None:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
                 return self.slot_address(ptr, field)
-            case ir.Addr(base=base, index=index) if isinstance(index, int):
+            case ir.Addr(base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
-                address = self.slot_address(f"(&({self.atom(base)}->_{index}))", component)
-                if not may_be_proxied(ts):
-                    return address
                 b = self.atom(base)
-                if not changes_view(component):
+                address = self.slot_address(f"(&({b}->_{index}))", component)
+                if access == ir.DIRECT:
+                    return address
+                if access == ir.ORIGINAL:
                     return self.slot_address(f"(&((({self.c_type(ts.type)})quest_unproxy({b}))->_{index}))", component)
                 through = f"(({shape_location_representation(component)} *)quest_proxy_slot({b}, {index}))"
                 return f"(quest_is_proxy({b}) ? {through} : {address})"
             case ir.Addr(base=base, index=index, offset=offset):
                 return self.array_slot(self.atom(base), self.atom(index), self.element_shape(base), offset)
-            case ir.MakeTuple(args=args):
-                components = shape(result.type).components
-                return self.make_tuple(result.type, [self.slot_field(a, c.shape) for a, c in zip(args, components)])
-            case ir.TupleField(tuple=t, index=index):
-                ts = shape(self.atom_type(t))
-                component = ts.components[index].shape
-                value, self.pending_box = self.load_slot(
-                    self.tuple_component(self.atom(t), ts, index, self.is_fresh(t)), component
-                )
-                return value
-            case ir.MakeRecord(fields=fields):
-                return self.make_record(fields, result.type)
-            case ir.RecordField(record=r, name=name):
-                return self.record_field(self.atom(r), self.held(self.atom_type(r), "record"), name)
+            case ir.MakeTuple(args=args, embedded=embedded):
+                shapes = [c.shape for c in shape(result.type).components]
+                return self.make_tuple(result.type, self.slot_fields(args, shapes, embedded))
+            case ir.TupleField(tuple=t, index=index, access=access):
+                return self.tuple_component(self.atom(t), shape(self.atom_type(t)), index, access)
+            case ir.MakeRecord():
+                return self.make_record(o, result)
+            case ir.RecordField(record=r, name=name, stored=stored):
+                return self.record_field(self.atom(r), self.held(self.atom_type(r), "record"), name, stored)
             case ir.MakeVariant(tag=tag, payload=payload):
                 vs = self.held(result.type, "variant")
                 index = self.tag_index(vs, tag)
@@ -627,14 +585,14 @@ class CPrinter:
                 case = vs.case(tag)
                 case_s = case.shape if case is not None and case.shape is not None else shape(self.atom_type(payload))
                 return f"((QVariantVal){{ .tag = {index}LL, .payload = {shape_qval_wrap(self.atom(payload), case_s)} }})"
-            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset):
-                return self.make_option(tag, payload, ordinal, result.type, offset)
-            case ir.IsTag(value=v, tag=tag):
+            case ir.MakeOption():
+                return self.make_option(o, result.type)
+            case ir.IsTag(value=v, tag=tag, access=access):
                 ts = self.tag_shape(self.atom_type(v))
-                tag_c = f"{self.atom(v)}.tag" if ts.kind == "variant" else self.option_tag(self.atom(v), ts)
+                tag_c = f"{self.atom(v)}.tag" if ts.kind == "variant" else self.option_tag(self.atom(v), access)
                 return f"({tag_c} == {self.tag_index(ts, tag)}LL)"
-            case ir.Payload(value=v, tag=tag, offset=offset):
-                return self.payload(v, tag, result.type, offset)
+            case ir.Payload():
+                return self.payload(o, result.type)
             case ir.MakeArray(args=args):
                 elem = shape(result.type).element
                 return self.make_array([self.array_element(a, elem) for a in args], result.type)
@@ -649,11 +607,9 @@ class CPrinter:
                 arr, idx = self.atom(a), self.atom(i)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
                 elem = self.element_shape(a)
-                if is_boxed_in_slots(elem):
-                    box = self.temp(self.slot_c_type(elem))
-                    self.emit(f"{box} = {shape_qval_to_slot(f'({arr}->data[{idx}])', elem)};")
-                    self.pending_box = box
-                    return f"(*{box})"
+                if result is not None and result.boxed:
+                    # A record or variant in its slot form, its box
+                    return shape_qval_to_slot(f"({arr}->data[{idx}])", elem)
                 return self.array_get(arr, idx, elem)
         raise NotImplementedError(f"C printing of {type(o).__name__}")
 
@@ -673,12 +629,13 @@ class CPrinter:
                 tagmap = f"tagmap_{shape_tag(target)}_{shape_tag(source)}"
                 return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
             case "cast":
-                source_s, target_s = shape(plan.source), shape(plan.target)
-                if target_s.kind in ("tuple", "option") and may_be_proxied(source_s) and not may_be_proxied(target_s):
-                    # A value of the target type is never a proxy: its components do not change view, so the
-                    # original serves
-                    return f"(({self.c_type(plan.target)})quest_unproxy({c}))"
                 return f"(({self.c_type(plan.target)}){c})"
+            case "unproxy":
+                return f"(({self.c_type(plan.target)})quest_unproxy({c}))"
+            case "slot_box":
+                return shape_slot_store(c, shape(plan.source))
+            case "slot_unbox":
+                return f"(*{c})"
             case "view":
                 converted = f"quest_convert({qval_wrap(c, plan.source)}, {self.descriptor(plan.source)}, " \
                             f"{self.descriptor(plan.target)})"
@@ -708,8 +665,13 @@ class CPrinter:
                 source_s, target_s = shape(plan.source), shape(plan.target)
                 for i, (tc, fp) in enumerate(zip(target_s.components, plan.fields)):
                     sc = source_s.components[i].shape
-                    fc = self.tuple_component(src, source_s, i)
-                    if fp is not None:
+                    fc = self.tuple_component(src, source_s, i, plan.access[i])
+                    if fp is not None and fp.kind == "view":
+                        # Converted by descriptor, from the slot's QVal form to the target slot's
+                        converted = (f"quest_convert({shape_slot_to_qval(fc, sc)}, {self.descriptor(fp.source)}, "
+                                     f"{self.descriptor(fp.target)})")
+                        fields.append(shape_qval_to_slot(converted, tc.shape))
+                    elif fp is not None:
                         fields.append(shape_slot_store(self.convert(shape_slot_load(fc, sc), fp), tc.shape))
                     elif self.slot_c_type(sc) == self.slot_c_type(tc.shape):
                         fields.append(fc)
@@ -904,34 +866,35 @@ class CPrinter:
             self.emit(f"{tmp}->_{i} = {c};")
         return tmp
 
-    def make_record(self, fields, t: QType) -> str:
+    def make_record(self, o: ir.MakeRecord, result: ir.Var) -> str:
+        """A new record, made in its box (the payload following it in one allocation): the box, for a boxed variable,
+        or the record."""
+        fields = o.fields
         concrete = QRecordType(tuple(
             QRecordField(name=n, type_val=self.atom_type(a), is_var=is_var) for n, a, is_var in fields
         ))
-        held = held_shape(t, "record")
+        held = held_shape(result.type, "record")
         target = held.structure if held is not None else concrete
         self.types.extend((concrete, target))
         struct = record_struct_name(concrete, self.ctx)
-        # The record is made in its box, the payload following it in one allocation: storing it into a slot
-        # reuses the box
         box = self.temp("QRecordVal *")
         payload = self.temp(f"{struct} *")
-        stored = [(n, a) for n, a, _ in fields if not self.is_ok(self.atom_type(a))]
+        stored = [(i, n, a) for i, (n, a, _) in enumerate(fields) if not self.is_ok(self.atom_type(a))]
         size, values = self.embedded_boxes(
-            payload, f"sizeof(QRecordVal) + sizeof({struct})", [self.slot_field(a, shape(self.atom_type(a))) for _, a in stored]
+            payload, f"sizeof(QRecordVal) + sizeof({struct})",
+            [_FreshBox(self.atom(a), shape(self.atom_type(a))) if i in o.embedded else self.atom(a) for i, _, a in stored],
         )
         self.emit(f"{box} = (QRecordVal *)quest_alloc({size});")
         self.emit(f"{payload} = ({struct} *)({box} + 1);")
         self.emit(f"{payload}->header.descriptor = {self.descriptor(concrete)};")
-        for (n, _), value in zip(stored, self.fill_embedded(values)):
+        for (_, n, _), value in zip(stored, self.fill_embedded(values)):
             self.emit(f"{payload}->qf_{n} = {value};")
-        if is_type_equal(target, concrete) or is_record_subtype(concrete, target):
-            dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(target, concrete)}"
-        else:
+        if o.runtime_offsets:
             dict_expr = f"quest_record_dict({self.descriptor(target)}, {self.descriptor(concrete)})"
+        else:
+            dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(target, concrete)}"
         self.emit(f"*{box} = (QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }};")
-        self.pending_box = box
-        return f"(*{box})"
+        return box if result.boxed else f"(*{box})"
 
     def record_slot(self, rec: str, rs: Shape, name: str) -> tuple[str, Shape]:
         """The address of the slot of a field of a record of shape rs, through its offset table, and the field's
@@ -942,16 +905,15 @@ class CPrinter:
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
         return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))", field
 
-    def record_field(self, rec: str, rs: Shape, name: str) -> str:
-        """A field of a record of shape rs, through its offset table (a field the payload stores at another type, as
-        its stored types say, read as stored and converted)."""
+    def record_field(self, rec: str, rs: Shape, name: str, stored: bool) -> str:
+        """A field of a record of shape rs, through its offset table: its slot form, or when stored (a field the
+        payload may store at another type, as its stored types say) read as stored and converted."""
         ptr, field = self.record_slot(rec, rs, name)
+        if not stored:
+            return f"(*{ptr})"
         fields = rs.sorted_components()
         index = next(i for i, f in enumerate(fields) if f.name == name)
         c_fld = self.shape_c_type(field)
-        if fields[index].is_var or not (c_fld == "QVal" or may_be_stored_as_subtype(field)):
-            value, self.pending_box = self.load_slot(f"(*{ptr})", field)
-            return value
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
         val = self.temp(c_fld)
         stored = f"((const {dict_t} *){rec}.dict)->stored_types"
@@ -963,7 +925,10 @@ class CPrinter:
         self.emit(f"else {val} = {shape_slot_load(f'*{ptr}', field)};")
         return val
 
-    def make_option(self, tag: Optional[str], payload, ordinal, t: QType, offset: Optional[int]) -> str:
+    def make_option(self, o: ir.MakeOption, t: QType) -> str:
+        """A new option: its tag, and its payload's components (a tuple's read as the represent pass decided, a
+        payload that is not a tuple in its slot form)."""
+        tag, payload, ordinal, offset = o.tag, o.payload, o.ordinal, o.offset
         os = self.held(t, "option")
         self.types.append(os.structure)
         struct = shape_tag(os)
@@ -985,10 +950,9 @@ class CPrinter:
             if pt is not None and pt.kind == "tuple":
                 ps = shape(self.atom_type(payload))
                 for i, _ in enumerate(pt.components):
-                    self.emit(f"{tmp}->u.{tag}._{i} = {self.tuple_component(p, ps, i, self.is_fresh(payload))};")
+                    self.emit(f"{tmp}->u.{tag}._{i} = {self.tuple_component(p, ps, i, o.access[i])};")
             else:
-                value = self.slot_value(payload, pt) if pt is not None else p
-                self.emit(f"{tmp}->u.{tag}.val = {value};")
+                self.emit(f"{tmp}->u.{tag}.val = {p};")
         return tmp
 
     def option_field(self, src: str, stored_payload: Optional[Shape], index: int, wanted: Shape) -> str:
@@ -1003,8 +967,10 @@ class CPrinter:
             return f"({wanted_c})({src})"
         return src
 
-    def option_case_tuple(self, opt: str, os: Shape, tag: str, tuple_t: QType, offset: int) -> str:
-        """A new tuple of an option's case components (after `offset` components of tuple_t, such as the ordinal)."""
+    def option_case_tuple(self, opt: str, os: Shape, tag: str, tuple_t: QType, offset: int, tag_access: str,
+                          access: tuple[str, ...]) -> str:
+        """A new tuple of an option's case components (after `offset` components of tuple_t, such as the ordinal),
+        read as access says."""
         ts = shape(tuple_t)
         struct = shape_tag(ts)
         self.c_type(tuple_t)
@@ -1013,17 +979,19 @@ class CPrinter:
         case = os.case(tag)
         pt = case.shape if case is not None else None
         if offset:
-            self.emit(f"{tmp}->_0 = {self.option_tag(opt, os)};")
+            self.emit(f"{tmp}->_0 = {self.option_tag(opt, tag_access)};")
         if pt is not None and pt.kind == "tuple":
             for i, _ in enumerate(pt.components):
                 if i + offset < len(ts.components):
-                    src = self.option_field(self.option_component(opt, os, tag, i), pt, i, ts.components[i + offset].shape)
+                    src = self.option_field(self.option_component(opt, os, tag, i, access[i]), pt, i,
+                                            ts.components[i + offset].shape)
                     self.emit(f"{tmp}->_{i + offset} = {src};")
         elif pt is not None:
-            self.emit(f"{tmp}->_{offset} = {self.option_component(opt, os, tag, None)};")
+            self.emit(f"{tmp}->_{offset} = {self.option_component(opt, os, tag, None, access[0])};")
         return tmp
 
-    def payload(self, v: ir.Atom, tag: str, t: QType, offset: Optional[int]) -> str:
+    def payload(self, o: ir.Payload, t: QType) -> str:
+        v, tag, offset = o.value, o.tag, o.offset
         ts = self.tag_shape(self.atom_type(v))
         site = self.site(offset)
         index = self.tag_index(ts, tag)
@@ -1032,8 +1000,8 @@ class CPrinter:
             case = ts.case(tag)
             case_s = case.shape if case is not None and case.shape is not None else shape(t)
             return shape_qval_unwrap(f"{self.atom(v)}.payload", case_s)
-        self.emit(f"if ({self.option_tag(self.atom(v), ts)} != {index}LL) quest_raise_variant_error_at({site});")
-        return self.option_case_tuple(self.atom(v), ts, tag, t, 1)
+        self.emit(f"if ({self.option_tag(self.atom(v), o.access)} != {index}LL) quest_raise_variant_error_at({site});")
+        return self.option_case_tuple(self.atom(v), ts, tag, t, 1, o.access, o.components)
 
     def array_get(self, arr: str, idx: str, elem: Shape) -> str:
         """An element of an array (its QVal form) as a value of its type (a record or variant read from its box)."""
@@ -1042,8 +1010,8 @@ class CPrinter:
         return shape_qval_unwrap(f"({arr}->data[{idx}])", elem)
 
     def array_element(self, a: ir.Atom, elem: Shape) -> str:
-        """An atom as an array element of shape elem holds it: its QVal form (a record or variant boxed)."""
-        return shape_slot_to_qval(self.slot_value(a, elem), elem)
+        """An atom (in its slot form) as an array element of shape elem holds it: its QVal form."""
+        return shape_slot_to_qval(self.atom(a), elem)
 
     def array_slot(self, arr: str, idx: str, elem: Shape, offset: Optional[int]) -> str:
         self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
@@ -1075,7 +1043,7 @@ class CPrinter:
         loc = source_map.locate(offset)
         return c_string_literal(f"{loc.file_name}:{loc.line}:{loc.column}")
 
-    def prim(self, op: str, args: tuple[ir.Atom, ...], offset: Optional[int] = None) -> str:
+    def prim(self, op: str, args: tuple[ir.Atom, ...], offset: Optional[int] = None, access: str = ir.DIRECT) -> str:
         cs = [self.atom(a) for a in args]
         if op == "not":
             return f"(!({cs[0]}))"
@@ -1100,7 +1068,7 @@ class CPrinter:
                 negate = "" if op == "is" else "!"
                 return f"({negate}quest_val_is({self.descriptor(t)}, {left}, {right}))"
             t2 = self.atom_type(args[1]) if t is not None else None
-            if t is not None and (may_be_proxied(shape(t)) or may_be_proxied(shape(t2))):
+            if access == ir.ORIGINAL:
                 # A proxy is the object it views
                 left, right = f"quest_unproxy({left})", f"quest_unproxy({right})"
             elif t2 is not None and self.c_type(t) != self.c_type(t2) and self.c_type(t).endswith("*"):
@@ -1198,8 +1166,8 @@ class CPrinter:
         field_s = shape(field.type_val)
         c_fld = self.slot_c_type(field_s)
         dict_t = self.ctx.offset_dict_struct_name(rec_t)
-        slot = f"(*(({c_fld} *)((char *){record}.val + ((const {dict_t} *){record}.dict)->offset_{member})))"
-        return shape_slot_load(slot, field_s)
+        # In its slot form (a record or variant, for a boxed variable)
+        return f"(*(({c_fld} *)((char *){record}.val + ((const {dict_t} *){record}.dict)->offset_{member})))"
 
     def make_closure(self, o: ir.MakeClosure, result: Optional[ir.Var]) -> str:
         code = self.code_name(o.code)
@@ -1223,9 +1191,6 @@ class CPrinter:
 
     deferred: Optional[tuple[set[int], list]] = None
 
-    # The box of a record or variant that the operation being printed read from a slot (see load_slot)
-    pending_box: Optional[str] = None
-
     # Statements
 
     def body(self, body: ir.Body) -> None:
@@ -1237,15 +1202,14 @@ class CPrinter:
         self.body(body)
         self.indent -= 1
 
-    def assign(self, var: ir.Var, value: str, atom: Optional[ir.Atom] = None) -> None:
-        """Assigns a variable (atom: the value's atom, if it is one); a variable held in a location boxes it."""
+    def assign(self, var: ir.Var, value: str) -> None:
+        """Assigns a variable (a boxed one, its box: a var or out parameter's location, or a boxed mutable variable's
+        own)."""
         if self.is_ok(var.type):
             if value != "Q_OK_VAL":
                 self.emit(f"(void)({value});")
             return
         pointer = var.mutable and self.is_pointer_param(var)
-        if (pointer or id(var) in self.located) and self.is_boxed(var):
-            value = self.slot_value(atom, shape(var.type)) if atom is not None else shape_slot_store(value, shape(var.type))
         target = f"(*{self.name(var)})" if pointer else self.name(var)
         self.emit(f"{target} = {value};")
 
@@ -1259,40 +1223,30 @@ class CPrinter:
             case ir.Let(var=var, value=value):
                 if isinstance(value, ir.MakeClosure):
                     self.closures[id(var)] = value
-                self.pending_box = None
-                if isinstance(value, (ir.MakeTuple, ir.MakeOption)) or (
-                    isinstance(value, ir.Var) and id(value) in self.fs.fresh
-                ):
-                    self.fs.fresh.add(id(var))
-                c = self.operation(value, var)
-                box = self.fs.boxes.get(id(value)) if isinstance(value, ir.Var) else self.pending_box
-                self.pending_box = None
-                if box is not None and not var.mutable:
-                    self.fs.boxes[id(var)] = box
-                self.assign(var, c)
+                self.assign(var, self.operation(value, var))
             case ir.Do(value=value):
                 c = self.operation(value, None)
                 self.emit(f"{c};")
             case ir.VarDecl(var=var, init=init):
                 if init is not None:
-                    self.assign(var, self.atom(init), init)
+                    self.assign(var, self.atom(init))
             case ir.Declare():
                 pass
             case ir.Assign(var=var, value=value):
-                self.assign(var, self.atom(value), value)
+                self.assign(var, self.atom(value))
             case ir.Store(value=value, address=address) if address is not None:
-                self.emit(f"*{self.atom(address)} = {self.slot_value(value, self.located_shape(address))};")
+                self.emit(f"*{self.atom(address)} = {self.atom(value)};")
             case ir.Store(value=value, base=base, name=name) if name is not None:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
-                self.emit(f"*{ptr} = {self.slot_value(value, field)};")
-            case ir.Store(value=value, base=base, index=index) if isinstance(index, int):
+                self.emit(f"*{ptr} = {self.atom(value)};")
+            case ir.Store(value=value, base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
-                b, v = self.atom(base), self.slot_value(value, component)
-                if may_be_proxied(ts) and not changes_view(component):
+                b, v = self.atom(base), self.atom(value)
+                if access == ir.ORIGINAL:
                     # Stored into the original as it is
                     self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{index} = {v};")
-                elif may_be_proxied(ts):
+                elif access == ir.PROXY:
                     # A var component of a proxy is the original's
                     self.emit(f"if (quest_is_proxy({b})) quest_proxy_store({b}, {index}, "
                               f"{shape_slot_to_qval(v, component)});")
@@ -1304,8 +1258,8 @@ class CPrinter:
                 elem = self.element_shape(base)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
                 self.emit(f"{arr}->data[{idx}] = {self.array_element(value, elem)};")
-            case ir.Switch(value=value, cases=cases, else_body=else_body):
-                self.switch(value, cases, else_body)
+            case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
+                self.switch(value, cases, else_body, access)
             case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
                 self.inspect(value, cases, else_body, auto_t, offset)
             case ir.LetRec(vars=vars_, body=body):
@@ -1400,12 +1354,12 @@ class CPrinter:
             case _:
                 raise NotImplementedError(f"C printing of {type(s).__name__}")
 
-    def switch(self, value: ir.Atom, cases, else_body: Optional[ir.Body]) -> None:
+    def switch(self, value: ir.Atom, cases, else_body: Optional[ir.Body], access: str) -> None:
         v = self.atom(value)
         t = self.tag_shape(self.atom_type(value))
         is_variant = t.kind == "variant"
         self.types.append(t.structure)
-        self.emit(f"switch ({f'{v}.tag' if is_variant else self.option_tag(v, t)}) {{")
+        self.emit(f"switch ({f'{v}.tag' if is_variant else self.option_tag(v, access)}) {{")
         self.indent += 1
         for c in cases:
             for tag in c.tags:
@@ -1416,11 +1370,11 @@ class CPrinter:
                 if is_variant:
                     self.assign(c.binder, qval_unwrap(f"{v}.payload", c.binder.type, self.ctx))
                 elif shape(c.binder.type).kind == "tuple":
-                    self.assign(c.binder, self.option_case_tuple(v, t, c.tags[0], c.binder.type, 0))
+                    self.assign(c.binder, self.option_case_tuple(v, t, c.tags[0], c.binder.type, 0, access,
+                                                                 c.components))
                 else:
-                    case_s = t.case(c.tags[0])
-                    payload_s = case_s.shape if case_s is not None and case_s.shape is not None else shape(c.binder.type)
-                    self.assign(c.binder, shape_slot_load(self.option_component(v, t, c.tags[0], None), payload_s))
+                    # In its slot form (a record or variant, for a boxed variable)
+                    self.assign(c.binder, self.option_component(v, t, c.tags[0], None, c.components[0]))
             self.body(c.body)
             self.emit("break;")
             self.indent -= 1
@@ -1745,14 +1699,6 @@ class CPrinter:
                     # Called directly
                     self.externals[id(s.var)] = s.value
 
-        for body in [self.unit.main, *(m.init for m in self.unit.modules), *(f.body for f in self.unit.functions)]:
-            for s in walk_statements(body, into_functions=False):
-                if isinstance(s, ir.Let) and isinstance(s.value, ir.Addr) and s.value.var is not None \
-                        and self.is_boxed(s.value.var):
-                    self.located.add(id(s.value.var))
-        for f in self.unit.functions:
-            # A var or out parameter is a pointer to its location already
-            self.located.difference_update(id(v) for v, mode in f.params if mode != "value")
         functions = []
         for f in self.unit.functions:
             functions.extend(self.function(f))

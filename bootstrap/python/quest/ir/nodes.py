@@ -38,6 +38,11 @@ class Var:
     hint: str
     type: QType
     mutable: bool = False
+    # Set by the represent pass for a variable of a record or variant type held boxed, in its slot representation
+    # (docs/ir.md §4.2): a value bound by a let is the box itself (read from a slot, or made to be stored into one),
+    # which slots take as it is; a mutable variable whose address is taken, or a var or out parameter, holds its
+    # location's box, and a use of it reads the value from the box
+    boxed: bool = False
 
     @property
     def shape(self) -> Shape:
@@ -70,12 +75,21 @@ class TypeParam:
 # Operations (the right-hand sides of let)
 # ============================================================================
 
+# How an operation reads (or writes) a component of a tuple or option, as the represent pass decides
+# (docs/c-representation.md §5.8): DIRECT, the value is not a proxy (its type cannot be one, or the function made it);
+# ORIGINAL, it may be a proxy, but the component reads the same from the proxy's original (its slot, or for `is`, the
+# object compared); PROXY, it may be a proxy at which the component changes view, so the read checks, and converts
+# through the proxy
+DIRECT, ORIGINAL, PROXY = "direct", "original", "proxy"
+
 @dataclass(eq=False)
 class Prim:
     """A primitive operation on scalars and strings: arithmetic, comparison, logic, concatenation, identity (`is`)."""
     op: str
     args: tuple[Atom, ...]
     offset: Optional[int] = None
+    # For `is` of tuples or options that may be proxies, ORIGINAL: their originals are compared
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
@@ -99,6 +113,11 @@ class TypeApp:
     module: Optional[ModuleRef] = None
     member: Optional[str] = None
     callee_type: Optional[QType] = None
+    # Set by the represent pass: for a polymorphic value of no parameters, the plan of its value at the type
+    # arguments to the let's type; for a function, the instance is a closure converting its arguments from the let's
+    # parameter types to the function's generic ones at the type arguments, and its result back: the parameters'
+    # plans (None for var and out parameters), then the result's
+    plans: tuple[Optional[Plan], ...] = ()
 
 
 @dataclass(eq=False)
@@ -156,9 +175,12 @@ class Plan:
     """How `convert` changes a value's representation (docs/ir.md §8.3), from `source`'s to `target`'s: `box` (a
     native value to a QVal word, as generic code holds it) or `unbox` (back); `record_view` (a record viewed at a
     supertype, with that type's offset table); `variant_tags` (a variant's tag remapped to a supertype's); `cast` (a
-    pointer viewed through another struct, whose layout agrees); `copy` (a new tuple, each component converted by its
-    plan in `fields`, None where it is used as it is: an auto value's payload, stored in its witness-independent
-    layout); `runtime` (converted by the runtime, between the descriptors of
+    pointer viewed through another struct, whose layout agrees); `unproxy` (a cast to a tuple or option type that
+    cannot be a proxy, from one that may be: the original serves, as no component changes view); `slot_box` (a record
+    or variant put in a new box, to be stored into a slot) and `slot_unbox` (read from its box, a boxed variable);
+    `copy` (a new tuple, each component converted by its plan in `fields`, None where it is used as it is, and read as
+    `access` says: an auto value's payload, stored in its witness-independent layout; a `view` field converts the
+    slot's QVal form); `runtime` (converted by the runtime, between the descriptors of
     the two layouts, for a value passed to or returned from a polymorphic callee that lays it out generically: the
     callee's type parameters' instantiation, and whether the value goes to the generic layout, are `layout`); `adapt`
     (a closure wrapped in a thunk of the target's C signature converting arguments and result: `fields` are the
@@ -170,6 +192,8 @@ class Plan:
     target: QType
     fields: tuple[Optional[Plan], ...] = ()
     layout: Optional[tuple[dict[int, QType], bool]] = None
+    # A copy's reads of the source tuple's components (DIRECT, ORIGINAL, PROXY)
+    access: tuple[str, ...] = ()
 
 
 @dataclass(eq=False)
@@ -185,24 +209,37 @@ class MakeTuple:
     components (erased from the layout), for printing."""
     args: tuple[Atom, ...]
     type_components: tuple[tuple[str, QType], ...] = ()
+    # The positions of the records and variants (unboxed) that the represent pass boxes in the tuple's own allocation
+    # (a box is immutable, so it may share it); the other components are atoms in their slot forms
+    embedded: tuple[int, ...] = ()
 
 
 @dataclass(eq=False)
 class TupleField:
+    """A tuple's component, in its slot form (a record or variant read into a boxed variable), read as `access` says."""
     tuple: Atom
     index: int
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
 class MakeRecord:
-    """A record of named fields (`var` fields marked)."""
+    """A record of named fields (`var` fields marked), made in its box (so bound to a boxed variable after the represent
+    pass). `embedded` (positions in `fields`) and the fields' atoms are as a tuple's; `runtime_offsets` is set when the
+    offset table of the let's view of it is not known statically (the view is not a supertype by width alone), and is
+    found at run time."""
     fields: tuple[tuple[str, Atom, bool], ...]
+    embedded: tuple[int, ...] = ()
+    runtime_offsets: bool = False
 
 
 @dataclass(eq=False)
 class RecordField:
+    """A record's field: in its slot form, or when `stored` (an immutable field of a type a subtype's payload may store
+    it at, docs/c-representation.md §5.2) read through the offset table's stored types and converted."""
     record: Atom
     name: str
+    stored: bool = False
 
 
 @dataclass(eq=False)
@@ -219,27 +256,36 @@ class MakeOption:
     payload: Optional[Atom] = None
     ordinal: Optional[Atom] = None
     offset: Optional[int] = None
+    # How the components of a tuple payload are read (DIRECT, ORIGINAL, PROXY); a payload that is not a tuple is in
+    # its slot form
+    access: tuple[str, ...] = ()
 
 
 @dataclass(eq=False)
 class IsTag:
-    """Whether a variant or option is of the case (`v?tag`)."""
+    """Whether a variant or option is of the case (`v?tag`); an option's tag is read as `access` says (DIRECT or
+    PROXY)."""
     value: Atom
     tag: str
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
 class Payload:
-    """A variant's payload, or an option's payload as a tuple, for the case (`v!tag`, raising if it is another)."""
+    """A variant's payload, or an option's payload as a tuple, for the case (`v!tag`, raising if it is another): an
+    option's tag is read as `access` says, and its components as `components` do."""
     value: Atom
     tag: str
     offset: Optional[int] = None
+    access: str = DIRECT
+    components: tuple[str, ...] = ()
 
 
 @dataclass(eq=False)
 class Ordinal:
-    """An option's ordinal."""
+    """An option's ordinal, read as `access` says."""
     value: Atom
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
@@ -288,18 +334,20 @@ class ExceptionPayload:
 class Addr:
     """The address of a location, for a var or out argument (`@x`, `@r.f`, `@t.f`, `@a[i]`): a mutable variable
     (`var`), a record's or tuple's var component (`base` and `name` or `index`), or an array element (`base`, `index`).
-    A fresh cell holding `init` when `cell` is set (`var(e)`)."""
+    A fresh cell holding `init` when `cell` is set (`var(e)`, in its slot form). A tuple's component is reached as
+    `access` says (through a proxy, the original's slot)."""
     var: Optional[Var] = None
     base: Optional[Atom] = None
     name: Optional[str] = None
     index: Optional[Union[int, Atom]] = None
     cell: Optional[Atom] = None
     offset: Optional[int] = None
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
 class Load:
-    """The value at an address."""
+    """The value at an address, in its slot form (a location holds a record or variant boxed)."""
     address: Atom
 
 
@@ -347,13 +395,15 @@ class Assign:
 
 @dataclass(eq=False)
 class Store:
-    """A store into a record's or tuple's var component, an array element, or the location at an address."""
+    """A store into a record's or tuple's var component, an array element, or the location at an address, of a value
+    in its slot form; a tuple's component is written as `access` says (through a proxy, into the original)."""
     value: Atom
     base: Optional[Atom] = None
     name: Optional[str] = None
     index: Optional[Union[int, Atom]] = None
     address: Optional[Atom] = None
     offset: Optional[int] = None
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
@@ -407,18 +457,21 @@ class If:
 
 @dataclass(eq=False)
 class Case:
-    """A case of a switch: the tags it matches, the variable bound to the payload (if any), and its body."""
+    """A case of a switch: the tags it matches, the variable bound to the payload (if any), and its body. An option's
+    payload is read as `components` say (a payload that is not a tuple, in its slot form)."""
     tags: tuple[str, ...]
     body: Body
     binder: Optional[Var] = None
+    components: tuple[str, ...] = ()
 
 
 @dataclass(eq=False)
 class Switch:
-    """A switch on a variant's or option's tag."""
+    """A switch on a variant's or option's tag (an option's read as `access` says)."""
     value: Atom
     cases: tuple[Case, ...]
     else_body: Optional[Body] = None
+    access: str = DIRECT
 
 
 @dataclass(eq=False)
@@ -429,6 +482,29 @@ class InspectCase:
     binders: tuple[Var, ...]
     body: Body
     exact: bool = False
+    # How the binders' components are obtained from the auto value's stored payload, decided by the represent pass
+    arm: Optional[InspectArm] = None
+
+
+@dataclass(eq=False)
+class InspectArm:
+    """How an inspect case of an auto value obtains its components from the payload, stored in the auto type's
+    witness-independent layout (docs/c-representation.md §8), decided by the represent pass. `converted` says, per
+    component, how a new tuple of the case's components gets it: None, copied; "component", the type component's
+    value itself, converted by descriptor from the value's type component to the case's type (or to `bound`); or
+    "mentions", a component whose type mentions the type component, converted by descriptor from its stored type at
+    the value's type component. For an exact case (`exact`), the runtime checks whether the stored layout is the
+    case's (quest_layout_equivalent): if so the stored payload serves, shared (`shared`, the layouts agree statically,
+    so var components are shared too) or converted by `plan`; if not, the components are converted as for any case,
+    after raising a layout error when the auto type has var components (`layout_error`). `bound` is set when the
+    case's type is a type parameter in scope bounded by a record, variant, or option type, whose values generic code
+    holds viewed at the bound."""
+    converted: tuple[Optional[str], ...]
+    exact: bool = False
+    shared: bool = False
+    plan: Optional[Plan] = None
+    layout_error: bool = False
+    bound: Optional[QType] = None
 
 
 @dataclass(eq=False)
