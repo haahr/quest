@@ -129,7 +129,8 @@ def run_driver(args: list[str]) -> int:
         return run_compile(args[1:])
 
     all_phases = [
-        "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled",
+        "tokenize", "parse", "desugar", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c",
+        "run_c_compiled",
     ]
 
     if "--" in args:

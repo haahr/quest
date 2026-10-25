@@ -26,14 +26,14 @@ class TestPipeline(unittest.TestCase):
         """Verifies phase registration and automatic precursor computation."""
         self.assertEqual(
             self.pipeline.phase_names(),
-            ["tokenize", "parse", "typecheck", "interpret"],
+            ["tokenize", "parse", "desugar", "typecheck", "interpret"],
         )
         self.assertEqual(self.pipeline.precursors_of("tokenize"), [])
         self.assertEqual(self.pipeline.precursors_of("parse"), ["tokenize"])
-        self.assertEqual(self.pipeline.precursors_of("typecheck"), ["tokenize", "parse"])
+        self.assertEqual(self.pipeline.precursors_of("typecheck"), ["tokenize", "parse", "desugar"])
         self.assertEqual(
             self.pipeline.precursors_of("interpret"),
-            ["tokenize", "parse", "typecheck"],
+            ["tokenize", "parse", "desugar", "typecheck"],
         )
 
         with self.assertRaises(ValueError):

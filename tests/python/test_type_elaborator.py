@@ -8,7 +8,7 @@ from quest.types.env import Environment, ValueSymbol
 from quest.typechecker.typed_ast import TypedExprStmt, TypedLetValue
 from quest.typechecker.typecheck import TypeElaborator
 from quest.types import BOOL_TYPE, DYNAMIC_TYPE, INT_TYPE, OK_TYPE
-from tests.python.helpers import parse_expr, parse_phrase
+from tests.python.helpers import parse_core_expr, parse_expr, parse_phrase
 
 
 class TestTypeElaborator(unittest.TestCase):
@@ -94,9 +94,9 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(len(typed_prog.phrases), 3)
 
     def test_if_check_and_synth(self) -> None:
-        """if expressions with elsif desugaring elaborate correctly in synth and check modes."""
+        """if expressions with elsif branches (nested by desugaring) elaborate correctly in synth and check modes."""
         el = TypeElaborator()
-        expr = parse_expr("if true then 1 elsif false then 2 else 3 end")
+        expr = parse_core_expr("if true then 1 elsif false then 2 else 3 end")
         typed_synth = el.synth(expr)
         self.assertEqual(typed_synth.type_val, INT_TYPE)
 

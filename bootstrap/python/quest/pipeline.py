@@ -1,7 +1,7 @@
 """Quest Compiler Phase Pipeline Framework.
 
 Provides uniform lifecycle management, execution, and artifact inspection
-across compiler phases (tokenize, parse, typecheck, interpret, codegen).
+across compiler phases (tokenize, parse, desugar, typecheck, interpret, codegen).
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from quest.diagnostics import (
 )
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.types.env import Environment, Scope
+from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.formatting import format_interactive_result
 from quest.interpreter.primitives import QuestRuntimeError
@@ -240,6 +241,21 @@ class ParsePhase(Phase):
         except (ValueError, TypeError) as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None
+
+    def dump(self, output_data: Any, ctx: CompilerContext) -> str:
+        if isinstance(output_data, ast.ASTNode):
+            return ast.ast_dump(output_data, show_offsets=ctx.options.show_offsets)
+        return str(output_data)
+
+
+class DesugarPhase(Phase):
+    """Desugaring phase: rewrites the untyped AST's syntactic sugar into core forms (quest/syntax/desugar.py)."""
+    name = "desugar"
+    description = "Rewrite syntactic sugar in the untyped AST into core forms"
+    artifact_name = "core_ast"
+
+    def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
+        return desugar(input_data)
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         if isinstance(output_data, ast.ASTNode):
@@ -736,6 +752,7 @@ def default_pipeline() -> PhasePipeline:
     pipeline = PhasePipeline()
     pipeline.register(TokenizePhase())
     pipeline.register(ParsePhase())
+    pipeline.register(DesugarPhase())
     pipeline.register(TypecheckPhase())
     pipeline.register(InterpretPhase())
     return pipeline
@@ -749,12 +766,13 @@ IR_RUN_PHASES = tuple(f"run_ir_{stage}" for stage in IR_STAGES)
 
 def ir_pipeline(stage: str = "core") -> PhasePipeline:
     """Returns the pipeline lowering to IR and running its passes up to the given stage (Tokenize -> Parse ->
-    Typecheck -> IrCore -> ...)."""
+    Desugar -> Typecheck -> IrCore -> ...)."""
     if stage not in IR_STAGES:
         raise ValueError(f"no IR stage '{stage}'")
     pipeline = PhasePipeline()
     pipeline.register(TokenizePhase())
     pipeline.register(ParsePhase())
+    pipeline.register(DesugarPhase())
     pipeline.register(TypecheckPhase())
     pipeline.register(IrCorePhase())
     for pass_stage, run_pass in IR_PASSES[:IR_STAGES.index(stage)]:
@@ -771,8 +789,8 @@ def ir_run_pipeline(stage: str) -> PhasePipeline:
 
 
 def compile_pipeline() -> PhasePipeline:
-    """Returns the C compilation pipeline: through the IR's passes to C (Tokenize -> Parse -> Typecheck -> IrCore ->
-    the IR passes -> CodegenC)."""
+    """Returns the C compilation pipeline: through the IR's passes to C (Tokenize -> Parse -> Desugar -> Typecheck ->
+    IrCore -> the IR passes -> CodegenC)."""
     pipeline = ir_pipeline(IR_STAGES[-1])
     pipeline.register(CodegenCPhase())
     return pipeline

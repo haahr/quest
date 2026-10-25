@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.diagnostics import QuestCompilerError, QuestTypeError
 from quest.types.env import Environment
 from quest.typechecker.typed_ast import TypedExpr
 from quest.types import (
@@ -92,3 +92,11 @@ def require_subtype(
             offset=expr.offset,
         )
     return typed
+
+
+def not_desugared(node: ast.ASTNode) -> QuestCompilerError:
+    """The internal error for syntactic sugar that reached the type checker: every path that parses a unit and checks
+    it desugars it first (quest/syntax/desugar.py)."""
+    return QuestCompilerError(
+        f"internal: {type(node).__name__} reached the type checker without desugaring", offset=node.offset
+    )

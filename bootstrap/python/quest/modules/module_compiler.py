@@ -31,6 +31,7 @@ from quest.modules.manifest import (
     write_qm,
 )
 from quest.types.env import Environment
+from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_module
 from quest.modules.interface_compiler import indirect_interface_refs
@@ -289,7 +290,7 @@ def compile_module_file(
     with in_unit(source_map):
         tokenizer = Tokenizer(source_text, str(mod_path))
         tokens = tokenizer.tokenize_all()
-        prog = parse_quest_program(tokens, source_map)
+        prog = desugar(parse_quest_program(tokens, source_map))
 
         decl = unit_declaration(prog, mod_path)
 

@@ -42,7 +42,7 @@ from quest.typechecker.typed_ast import (
     TypedSelect,
     TypedVar,
 )
-from quest.typechecker.checks import join_types
+from quest.typechecker.checks import join_types, not_desugared
 from quest.typechecker.escape import check_no_escaping_path_types
 
 # Internal convenience alias for typechecking error raises
@@ -359,19 +359,6 @@ class ControlMixin:
             case _:
                 raise TypeError("Assignment target must be a mutable variable or field", offset=expr.left.offset)
 
-    def _desugar_if_else(self, expr: ast.ExprIf) -> ast.Expr:
-        """Desugars elsif chains and optional else branch into a nested else AST expression."""
-        desugared_else: ast.Expr = expr.else_branch if expr.else_branch else ast.ExprOk(offset=expr.offset)
-        for elsif_cond, elsif_then in reversed(expr.elsifs):
-            desugared_else = ast.ExprIf(
-                cond=elsif_cond,
-                then_branch=elsif_then,
-                elsifs=(),
-                else_branch=desugared_else,
-                offset=elsif_cond.offset,
-            )
-        return desugared_else
-
     def _elaborate_if_expr(
         self,
         expr: ast.ExprIf,
@@ -379,16 +366,18 @@ class ControlMixin:
         env: Environment,
         loop_depth: int,
     ) -> TypedIf:
-        """Elaborates a conditional; elsif branches become conditionals nested in the else branch.
+        """Elaborates a conditional, whose elsif branches desugaring has nested in its else branch.
 
         Against an expected type, both branches are checked against it (check_expr does so only for a conditional
         with an else branch, and checks the others by synthesis and subsumption). Synthesized, its type is the join
-        of its branches' types, with a missing else branch Ok, except that a conditional with neither elsif nor else
-        branches is a statement: its then branch is evaluated for its effect, and its type is Ok.
+        of its branches' types, except that a conditional without an else branch is a statement: its then branch is
+        evaluated for its effect, and its type is Ok.
         """
+        if expr.elsifs:
+            raise not_desugared(expr)
         cond_typed = self.check_expr(expr.cond, BOOL_TYPE, env, loop_depth)
 
-        if expected_type is None and expr.else_branch is None and not expr.elsifs:
+        if expected_type is None and expr.else_branch is None:
             then_typed = self.synth_expr(expr.then_branch, env, loop_depth)
             then_body = TypedBlock(
                 bindings=(TypedExprStmt(expr=then_typed, offset=then_typed.offset),),
@@ -404,9 +393,9 @@ class ControlMixin:
                 offset=expr.offset,
             )
 
-        desugared_else = self._desugar_if_else(expr)
+        assert expr.else_branch is not None
         then_typed = self._elaborate_subexpr(expr.then_branch, expected_type, env, loop_depth)
-        else_typed = self._elaborate_subexpr(desugared_else, expected_type, env, loop_depth)
+        else_typed = self._elaborate_subexpr(expr.else_branch, expected_type, env, loop_depth)
 
         if expected_type is not None:
             result_type = expected_type

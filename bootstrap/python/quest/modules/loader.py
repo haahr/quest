@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
+from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import (
     create_module_export_scope,
@@ -166,7 +167,7 @@ def load_interface(name: str, env: Environment) -> Scope:
     with env.unit_source(source_map):
         tokenizer = Tokenizer(source_text, str(file_path))
         tokens = tokenizer.tokenize_all()
-        prog = parse_quest_program(tokens, source_map)
+        prog = desugar(parse_quest_program(tokens, source_map))
 
         if not isinstance(prog, ast.Program):
             raise QuestTypeError(f"Malformed parse result in '{file_path}'")
@@ -299,7 +300,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
     with env.unit_source(source_map):
         tokenizer = Tokenizer(source_text, str(file_path))
         tokens = tokenizer.tokenize_all()
-        prog = parse_quest_program(tokens, source_map)
+        prog = desugar(parse_quest_program(tokens, source_map))
 
         if not isinstance(prog, ast.Program):
             raise QuestTypeError(f"Malformed parse result in '{file_path}'")

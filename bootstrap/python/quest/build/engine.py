@@ -24,6 +24,7 @@ from quest.codegen.c.compiler_runner import compile_c_to_object, link_objects
 from quest.codegen.backend import implicit_imports
 from quest.codegen.c.backend import program_to_c
 from quest.types.env import Environment
+from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.interface_compiler import indirect_interface_refs
 from quest.modules.graph import (
@@ -260,7 +261,7 @@ class BuildEngine:
         source_text = main_file.read_text(encoding="utf-8")
         source_map = SourceMap(source_text, display_file_name(main_file))
         tokens = Tokenizer(source_text, str(main_file)).tokenize_all()
-        ast_prog = parse_quest_program(tokens, source_map)
+        ast_prog = desugar(parse_quest_program(tokens, source_map))
 
         if not isinstance(ast_prog, ast.Program):
             raise BuildError(f"File '{main_file}' is not a Quest program")

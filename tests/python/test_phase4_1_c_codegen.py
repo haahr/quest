@@ -40,7 +40,10 @@ class TestPhase41Codegen(unittest.TestCase):
         p = compile_pipeline()
         self.assertEqual(
             p.phase_names(),
-            ["tokenize", "parse", "typecheck", "ir_core", "ir_specialized", "ir_closed", "ir_represented", "codegen_c"],
+            [
+                "tokenize", "parse", "desugar", "typecheck", "ir_core", "ir_specialized", "ir_closed", "ir_represented",
+                "codegen_c",
+            ],
         )
 
     def test_nogc_compilation(self):

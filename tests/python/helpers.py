@@ -5,6 +5,7 @@ import unittest
 from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
+from quest.syntax.desugar import desugar
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
@@ -90,6 +91,11 @@ def parse_expr(expr_source: str) -> ast.Expr:
     return parse_phrase(expr_source, target="expr")
 
 
+def parse_core_expr(expr_source: str) -> ast.Expr:
+    """Parse and desugar a value expression, as the pipeline does before type checking it."""
+    return desugar(parse_expr(expr_source))
+
+
 def elaborate_test_type(source: str, env: Optional[Environment] = None) -> QType:
     """Parse and elaborate a type expression into a semantic QType."""
     if env is None:
@@ -108,7 +114,7 @@ def synth_test_expr(source: str, env: Optional[Environment] = None) -> Any:
     """Parse and type-synthesize an expression AST node."""
     if env is None:
         env = Environment(builtin_registry=BuiltinModuleRegistry)
-    return synth_expr(parse_expr(source), env)
+    return synth_expr(parse_core_expr(source), env)
 
 
 def check_test_expr(
@@ -119,7 +125,7 @@ def check_test_expr(
     """Parse and type-check an expression AST node against an expected type."""
     if env is None:
         env = Environment(builtin_registry=BuiltinModuleRegistry)
-    return check_expr(parse_expr(source), expected_type, env)
+    return check_expr(parse_core_expr(source), expected_type, env)
 
 
 def eval_test_source(
