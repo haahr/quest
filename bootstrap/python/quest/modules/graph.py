@@ -45,6 +45,7 @@ from quest.modules.paths import (
     resolve_interface_source_file,
     resolve_module_file,
     same_source,
+    strip_unit_suffix,
 )
 from quest.modules.units import unit_kind
 
@@ -178,6 +179,17 @@ class Resolver:
             self._memo[key] = found
         return found
 
+    def file(self, file: Path, roots: Roots) -> Resolved:
+        """The unit in a file given directly (to the driver, or by a build that found it), rather than imported:
+        its kind is the file's (file_unit_kind), and its canonical name is that of the file below its root."""
+        key = ("file", file, roots)
+        found = self._memo.get(key)
+        if found is None:
+            kind = file_unit_kind(file)
+            found = Resolved(kind, strip_unit_suffix(file.name), file.parent, roots, file)
+            self._memo[key] = found
+        return found
+
     def interface_source(self, path: str, from_dir: Optional[Path], search_paths: Any) -> Optional[Path]:
         """The .int.quest interface path `path` imported from from_dir resolves to, or None."""
         return self.interface(path, from_dir, Roots.of(search_paths, None)).source
@@ -297,6 +309,10 @@ class ModuleArtifacts:
     def under(cls, build_dir: Path, canonical_name: str) -> ModuleArtifacts:
         """The artifacts of the module named canonical_name under build_dir."""
         return cls.in_dir(unit_artifact_dir(build_dir, canonical_name), artifact_stem(canonical_name))
+
+    def paths(self) -> tuple[Path, Path, Path]:
+        """The .qm, .mod.c, and .o."""
+        return (self.qm, self.c, self.o)
 
 
 def import_resolution_change(

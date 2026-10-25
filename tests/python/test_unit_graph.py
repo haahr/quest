@@ -104,6 +104,27 @@ class TestUnitGraph(unittest.TestCase):
         self.assertEqual([(d.path, d.dir, d.source) for d in deps],
                          [("Base", str(self.util), str(self.util / "base.int.quest"))])
 
+    def test_file_given_directly(self) -> None:
+        resolver = Resolver()
+        unit = resolver.file(self.util / "counter.mod.quest", self.roots)
+        self.assertEqual((unit.kind, unit.canonical_name), (UnitKind.MODULE, "util/counter"))
+        self.assertIs(resolver.file(self.util / "counter.mod.quest", self.roots), unit)
+        self.assertEqual(resolver.file(self.util / "counter.int.quest", self.roots).canonical_name, "util/counter")
+
+    def test_build_records_imports_as_its_resolver_resolved_them(self) -> None:
+        from types import SimpleNamespace
+
+        from quest.build.engine import unit_module_refs
+
+        resolver = Resolver()
+        item = SimpleNamespace(
+            effective_interface_path="util/Counter", names=("counter",), effective_module_paths=("util/counter",)
+        )
+        refs = unit_module_refs([item], [], self.prog, [self.lib], self.prog, resolver)
+        module = resolver.module("util/counter", self.prog, Roots.of([self.lib], self.prog))
+        self.assertEqual([(r.name, r.interface, r.source, r.path) for r in refs],
+                         [("util/counter", "util/Counter", str(module.source), "util/counter")])
+
     # 2. Artifacts
 
     def test_artifact_paths(self) -> None:

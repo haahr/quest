@@ -36,17 +36,8 @@ from quest.modules.elaboration import elaborate_module
 from quest.modules.interface_compiler import indirect_interface_refs
 from quest.modules.units import unit_declaration
 from quest.modules.loader import load_interface
-from quest.modules.paths import (
-    DEFAULT_LIB_DIR,
-    DEFAULT_PROJECT_DIR,
-    canonicalize_interface_name,
-    canonicalize_module_name,
-    canonicalize_module_path,
-    resolve_interface_file,
-    resolve_interface_source_file,
-    resolve_module_file,
-    resolve_object_file,
-)
+from quest.modules.graph import Resolver, Roots, UnitGraph, resolve_interface, resolve_module, unit_artifact_dir
+from quest.modules.paths import DEFAULT_LIB_DIR, DEFAULT_PROJECT_DIR, resolve_object_file
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap, display_file_name
 
@@ -76,18 +67,20 @@ def header_search_dirs(output_dir: Path, env: Environment, include_paths: Option
     return search_dirs
 
 
-def find_interface_header(
-    interface_name: str, search_dirs: list[Path], env: Environment, include_paths: Optional[list[Path]]
-) -> Optional[str]:
-    """The name a module file's C translation includes its interface's header (.int.h) by, if it has one."""
+def find_interface_header(interface_name: str, search_dirs: list[Path], header: Optional[Path]) -> Optional[str]:
+    """The name a module file's C translation includes its interface's header (.int.h) by, if it has one.
+
+    The interface path as written names the header if the C compiler finds one by that name on its include path;
+    otherwise header, the interface's header as C compilation brought it up to date (ensure_imported_interface_header),
+    is named relative to the include path.
+    """
     header_name = f"{interface_name.lower()}.int.h"
     for s_dir in search_dirs:
         if (s_dir / header_name).is_file():
             return header_name
 
-    intf_file = resolve_interface_file(interface_name, env.current_dir, include_paths or [])
-    if intf_file:
-        cand_h = intf_file.parent / f"{intf_file.name.split('.')[0]}.int.h"
+    if header is not None:
+        cand_h = header
         if cand_h.is_file():
             for s_dir in search_dirs:
                 try:
@@ -135,7 +128,8 @@ def compile_module(
             env.options.program_dir = env.program_dir
 
     if canonical_name is None and source_file is not None:
-        canonical_name = canonicalize_module_path(source_file, env.include_paths, env.program_dir)
+        roots = Roots.of(env.include_paths, env.program_dir)
+        canonical_name = env.units.resolver.file(source_file, roots).canonical_name
 
     imported_modules: list[ImportedModuleRef] = []
     imported_interfaces: list[ImportedInterfaceRef] = []
@@ -145,12 +139,10 @@ def compile_module(
     if target_interface_scope is None:
         target_interface_scope = load_interface(module_decl.interface_name, env)
 
-    tgt_src = resolve_interface_source_file(
-        module_decl.interface_name, env.current_dir, env.include_paths
-    )
-    canon_target_interface = canonicalize_interface_name(
-        tgt_src, env.include_paths, module_decl.interface_name, env.program_dir
-    )
+    # The manifest records each import as the unit graph resolved it (docs/build-process.md §2.1, §4.3)
+    target = resolve_interface(module_decl.interface_name, env)
+    tgt_src = target.source
+    canon_target_interface = target.interface_name
     tgt_mtime = tgt_src.stat().st_mtime if tgt_src and tgt_src.is_file() else 0.0
     imported_interfaces.append(
         ImportedInterfaceRef(
@@ -167,8 +159,9 @@ def compile_module(
         if env.lookup_interface(iface_path) is None and env.lookup_interface(imp.interface_name) is None:
             load_interface(iface_path, env)
 
-        imp_src = resolve_interface_source_file(iface_path, env.current_dir, env.include_paths)
-        canon_imp_iface = canonicalize_interface_name(imp_src, env.include_paths, iface_path, env.program_dir)
+        imported = resolve_interface(iface_path, env)
+        imp_src = imported.source
+        canon_imp_iface = imported.interface_name
         imp_mtime = imp_src.stat().st_mtime if imp_src and imp_src.is_file() else 0.0
         imported_interfaces.append(
             ImportedInterfaceRef(
@@ -181,11 +174,11 @@ def compile_module(
 
         for iname, mpath in zip(imp.names, imp.effective_module_paths):
             mod_ref = mpath if mpath else iname
-            mod_src = resolve_module_file(mod_ref, env.current_dir, env.include_paths)
-            canon_mod_ref = canonicalize_module_name(mod_src, env.include_paths, mod_ref, env.program_dir)
+            module = resolve_module(mod_ref, env)
+            mod_src = module.source
             imported_modules.append(
                 ImportedModuleRef(
-                    name=canon_mod_ref,
+                    name=module.canonical_name,
                     interface=canon_imp_iface,
                     source=str(mod_src) if mod_src else "",
                     path=mod_ref,
@@ -196,9 +189,9 @@ def compile_module(
     typed_mod = elaborate_module(module_decl, env)
 
     # 4. Bring the interface's header (.int.h), which the C translation includes, up to date, and find it
-    ensure_imported_interface_header(module_decl.interface_name, env)
+    header = ensure_imported_interface_header(module_decl.interface_name, env)
     search_dirs = header_search_dirs(output_dir, env, include_paths)
-    interface_header = find_interface_header(module_decl.interface_name, search_dirs, env, include_paths)
+    interface_header = find_interface_header(module_decl.interface_name, search_dirs, header)
 
     mod_name = canonical_name or module_decl.name
     if mod_name != typed_mod.name:
@@ -231,8 +224,9 @@ def compile_module(
         for imp in module_decl.imports:
             for iname, mpath in zip(imp.names, imp.effective_module_paths):
                 mod_ref = mpath if mpath else iname
-                f_path = resolve_module_file(mod_ref, env.current_dir, env.include_paths)
-                canon = canonicalize_module_path(f_path, env.include_paths, env.program_dir) if f_path else mod_ref
+                module = resolve_module(mod_ref, env)
+                f_path = module.source
+                canon = module.canonical_name
                 if "/" in canon:
                     obj_rel = f"{canon.lower()}.o"
                     if obj_rel not in dep_objects:
@@ -260,7 +254,7 @@ def compile_module(
         object=str(o_file.resolve()),
         imported_modules=imported_modules,
         imported_interfaces=imported_interfaces
-        + indirect_interface_refs(imported_interfaces, env.include_paths, env.program_dir),
+        + indirect_interface_refs(imported_interfaces, env.include_paths, env.program_dir, env.units.resolver),
     )
     write_qm(manifest, qm_file)
 
@@ -277,11 +271,13 @@ def compile_module_file(
     emit_deps: bool = False,
     build_dir: Optional[Path] = None,
     program_dir: Optional[Path] = None,
+    resolver: Optional[Resolver] = None,
 ) -> ModuleCompileResult:
     """Compiles a Quest module file (.mod.quest) into .mod.c, .o, and .qm files.
 
     program_dir is the directory of the program the module is built for, which names units under no include root
-    (docs/modules.md §2.3).
+    (docs/modules.md §2.3). The module is elaborated in an environment of its own, whose imports resolver resolves
+    (the build's, or a new one if None).
     """
     mod_path = Path(mod_path).resolve()
     if not mod_path.is_file():
@@ -306,6 +302,7 @@ def compile_module_file(
             stem = mod_path.stem
 
         env = Environment(builtin_registry=BuiltinModuleRegistry)
+        env.units = UnitGraph(resolver=resolver or Resolver())
         env.current_dir = mod_path.parent
         env.include_paths = list(include_paths) if include_paths else []
         env.program_dir = program_dir
@@ -315,13 +312,10 @@ def compile_module_file(
             if b_dir not in env.include_paths:
                 env.include_paths.insert(0, b_dir)
 
-        canon_name = canonicalize_module_path(mod_path, env.include_paths, program_dir)
+        canon_name = env.units.resolver.file(mod_path, Roots.of(env.include_paths, program_dir)).canonical_name
 
         if build_dir is not None and output_dir is None:
-            target_sub = Path(build_dir).resolve()
-            if "/" in canon_name:
-                target_sub = target_sub / Path(canon_name).parent
-            output_dir = target_sub
+            output_dir = unit_artifact_dir(Path(build_dir).resolve(), canon_name)
         elif output_dir is None:
             output_dir = mod_path.parent
         else:

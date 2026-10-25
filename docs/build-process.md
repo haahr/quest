@@ -111,8 +111,11 @@ resolving imports and placing artifacts in its own way:
   interface's canonical name as importers record it, with the declared base name, `util/Path`), and `artifact_name`
   (where an interface's artifacts are placed). Every consumer of an import receives that one result. Resolution
   depends only on which source files exist, which a compilation never changes; artifacts, which it does write, are
-  looked up when needed (`fresh_interface_qi`, a fresh `.qi` on the search path). A session is a driver run, a build,
-  or one REPL input (the REPL calls `Resolver.forget` before each, so that files created since are found).
+  looked up when needed (`fresh_interface_qi`, a fresh `.qi` on the search path). A file given directly rather than
+  imported (the unit file the driver compiles, a module source the build engine found) is named by `Resolver.file`.
+  A session is a driver run, a build, or one REPL input (the REPL calls `Resolver.forget` before each, so that files
+  created since are found). A build (`BuildEngine`) has one resolver, which the units it compiles share, and the
+  pipeline's C phases hand theirs to the build that links the program's modules.
 - **Edges.** A unit's imports are its edges: an interface's are the interface paths it imports
   (`interface_import_paths`), each resolved from its directory; `Resolver.interface_dependencies` follows them
   transitively, for the `.qi` dependencies (§4.2) and the indirect entries of `.qm` manifests (§7.2).
@@ -283,6 +286,7 @@ A `.qm` file records the build manifest for an implementation module or main rou
   absent or empty and the path is resolved from the unit's directory.
 
 The recorded paths let a later build check that each import still resolves to the recorded source (§7.1, rule 4).
+Every entry is written from the unit graph's resolution of the import (§2.1), the one its compilation used.
 
 ### 4.4. Builtin Runtime Modules (`BUILTIN_RUNTIME_MODULES`)
 Certain core modules are implemented directly in the native C runtime (`runtime/quest_runtime.c`, with
@@ -492,8 +496,9 @@ it needs, beside their `.qi` files:
   header, and with a build directory, the headers of the interfaces it imports.
 - **Compiling a module** (`module_compiler.compile_module`, and the pipeline's `codegen_c` phase on a module file,
   `unit_interface_header`) brings the header of the interface it implements up to date before generating C, since
-  the module's C `#include`s it (`ensure_imported_interface_header`). A main routine's C includes no interface
-  header, so compiling one writes none.
+  the module's C `#include`s it (`ensure_imported_interface_header`), and includes it by the interface path as
+  written if that finds a header on the C include path, else by that header's path relative to the include path
+  (`find_interface_header`). A main routine's C includes no interface header, so compiling one writes none.
 - **A header `#include`s the headers of the interfaces its interface imports,** so writing one first brings those
   up to date in the build directory, including those of builtin interfaces that are never loaded from source.
 

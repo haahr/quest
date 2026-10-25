@@ -34,7 +34,6 @@ from quest.modules.graph import (
 )
 from quest.modules.paths import (
     InterfaceDependency,
-    canonicalize_module_path,
     dependency_change,
     recorded_dependencies,
 )
@@ -551,7 +550,8 @@ def compile_interface_file(
     """
 
     key = file_path.resolve()
-    canon_name = canonicalize_module_path(file_path, list(include_paths or []), program_dir)
+    resolver = resolver or Resolver()
+    canon_name = resolver.file(key, Roots.of(include_paths, program_dir)).canonical_name
     compiling = [path for path, _ in _compiling_interfaces]
     if key in compiling:
         chain = [name for _, name in _compiling_interfaces[compiling.index(key):]] + [canon_name]
@@ -559,7 +559,7 @@ def compile_interface_file(
     _compiling_interfaces.append((key, canon_name))
     try:
         compiled = _compile_interface_file(
-            file_path, output_dir, include_paths, build_dir, program_dir, write_qi, on_compiled, resolver or Resolver()
+            file_path, output_dir, include_paths, build_dir, program_dir, write_qi, on_compiled, resolver
         )
     finally:
         _compiling_interfaces.pop()
@@ -618,7 +618,7 @@ def _compile_interface_file(
         typed_iface = elaborate_interface(decl, env)
 
     if build_dir is not None and output_dir is None:
-        canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
+        canon_name = resolver.file(file_path.resolve(), Roots.of(env.include_paths, program_dir)).canonical_name
         target_dir = unit_artifact_dir(Path(build_dir).resolve(), canon_name)
     else:
         target_dir = output_dir if output_dir is not None else file_path.parent

@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 from quest.build.engine import BuildEngine, unit_module_refs
 from quest.modules.module_compiler import find_interface_header, header_search_dirs
-from quest.modules.paths import canonicalize_module_path
+from quest.modules.graph import Roots, unit_artifact_dir
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.modules.units import unit_declaration
 from quest.codegen.backend import IR_PASSES
@@ -377,31 +377,34 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
         include_paths=list(opts.include_paths),
         nogc=opts.nogc,
         extra_objects=list(opts.extra_objects),
+        resolver=ctx.env.units.resolver,
     )
     importer = Path(ctx.file_name).stem if not ctx.file_name.startswith("<") else ctx.file_name
     return engine.build_modules(ctx.imported_modules, importer=importer, program_dir=ctx.env.program_dir)
 
 
+def unit_file_name(ctx: CompilerContext) -> str:
+    """The canonical name of the unit file being compiled, as the module compiler names it."""
+    roots = Roots.of(ctx.env.include_paths, ctx.env.program_dir)
+    return ctx.env.units.resolver.file(Path(ctx.file_name).resolve(), roots).canonical_name
+
+
 def unit_module(prog: TypedProgram, ctx: CompilerContext) -> TypedModule:
     """A module file's typed module, under its canonical name, as the module compiler names it."""
-    module = prog.phrases[0]
-    name = canonicalize_module_path(Path(ctx.file_name), ctx.env.include_paths, ctx.env.program_dir)
-    return replace(module, name=name)
+    return replace(prog.phrases[0], name=unit_file_name(ctx))
 
 
 def unit_interface_header(ctx: CompilerContext) -> Optional[str]:
     """The interface header a module file's C translation includes, brought up to date and found as the module
     compiler does."""
     module = ctx.typed_program.phrases[0]
-    ensure_imported_interface_header(module.interface_name, ctx.env)
-    source = Path(ctx.file_name).resolve()
+    header = ensure_imported_interface_header(module.interface_name, ctx.env)
     if ctx.options.build_dir is None:
-        output_dir = source.parent
+        output_dir = Path(ctx.file_name).resolve().parent
     else:
-        name = canonicalize_module_path(source, ctx.env.include_paths, ctx.env.program_dir)
-        output_dir = Path(ctx.options.build_dir).resolve() / Path(name).parent
+        output_dir = unit_artifact_dir(Path(ctx.options.build_dir).resolve(), unit_file_name(ctx))
     search_dirs = header_search_dirs(output_dir, ctx.env, ctx.env.include_paths)
-    return find_interface_header(module.interface_name, search_dirs, ctx.env, ctx.env.include_paths)
+    return find_interface_header(module.interface_name, search_dirs, header)
 
 
 class IrCorePhase(Phase):
@@ -515,7 +518,7 @@ class CodegenCPhase(Phase):
         import_items = [it for phrase in prog.phrases if isinstance(phrase, TypedImport) for it in phrase.items]
         ctx.imported_modules = unit_module_refs(
             import_items, implicit_imports(unit, prog), ctx.env.current_dir, ctx.env.include_paths,
-            ctx.env.program_dir,
+            ctx.env.program_dir, ctx.env.units.resolver,
         )
         return c_code
 
