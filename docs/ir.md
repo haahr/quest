@@ -333,7 +333,8 @@ are closed (they mention no type parameter of the functions enclosing the call, 
 descriptor; the enclosing function's own clones specialize the call in turn), and the selective trigger of
 [c-representation.md](c-representation.md) §6.4.3 holds: a type argument that is or holds (in tuples, options,
 arrays, or cells) a record or variant, decided on its shape; or a `var` or `out` parameter, or a tuple parameter or
-result, over the function's type parameters.
+result, over the function's type parameters, also decided on its shape (so a tuple type written through an alias or
+a type operator's application, `Box(A)`, counts as one written out).
 
 The clone has fresh binders throughout and is bound by the same `funs` statement as the original, so it is in scope
 wherever the original is and sees the same free variables (a local function's clone captures what the original

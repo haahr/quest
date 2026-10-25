@@ -793,8 +793,13 @@ While the uniform quantifier rule guarantees modular separate compilation with u
 unbounded generic functions called with 16-byte record fat pointers (`QRecordVal`) or 16-byte unboxed variants
 (`QVariantVal`) undergo **Selective Call-Site Specialization**:
 - **Selective Trigger**: Specialization is only synthesized when at least one concrete type argument involves a
-  `Record`, `Variant`, or aggregate containing them. Calls with standard 8-byte types (`Int`, `Bool`, `String`)
-  continue executing via the canonical uniform `QVal` implementation without code bloat.
+  `Record`, `Variant`, or aggregate containing them, or when the function has a `var` or `out` parameter, or a tuple
+  parameter or result, over its type parameters (`should_specialize`). Such a tuple's generic layout agrees with the
+  native one in memory, but a closure among its components may have another C signature, so the generic function
+  converts it at every call (`generic_closures` runs 2.5 times as fast specialized); the tuple is recognized by its
+  shape, however its type is written (`Box(A)` for `Let Box = Fun(A::TYPE) Tuple x: A end`, at a cost of 0.1% more
+  C over the test programs). Other calls with standard 8-byte types (`Int`, `Bool`, `String`) continue executing via
+  the canonical uniform `QVal` implementation without code bloat.
 - **IR Cloning & Type Substitution**: When the specialize pass (`ir/specialize.py`, [ir.md](ir.md) §8.2) meets a call
   `f(:Point p)` of a function the unit defines, it clones the function with the type parameter `A` (the quantifier
   of the function's own type, which its parameters and body refer to) substituted by `Point`, in the same `funs`

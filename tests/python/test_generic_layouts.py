@@ -131,7 +131,10 @@ class TestPolymorphicCallsInC(unittest.TestCase):
         return res.artifacts["codegen_c"]
 
     def test_agreeing_layouts_are_cast(self) -> None:
-        main = self.c_code("let b: Box(Bool) = mkBox(:Bool true); getBox(:Bool b)").split(MAIN_DEFINITION)[1]
+        # Through first-class values, which run the generic functions
+        main = self.c_code(
+            "let getB: All(A::TYPE b: Box(A)) A = getBox; let b: Box(Bool) = mkB(:Bool true); getB(:Bool b)"
+        ).split(MAIN_DEFINITION)[1]
         self.assertIn("((QTuple_Bool *)", main)
         self.assertIn("((QTuple_QVal *)", main)
         self.assertNotIn("quest_convert(", main)
@@ -140,6 +143,12 @@ class TestPolymorphicCallsInC(unittest.TestCase):
         # A record in a slot is boxed, as a QVal holds it
         main = self.c_code("let b: Box(P) = mkB(:P record a = 1 end); b.x.a").split(MAIN_DEFINITION)[1]
         self.assertNotIn("quest_convert(", main)
+
+    def test_tuples_over_type_parameters_are_specialized(self) -> None:
+        # A tuple parameter or result over the type parameters, however written (Box(A) is one), specializes a call
+        main = self.c_code("let b: Box(Bool) = mkBox(:Bool true); getBox(:Bool b)").split(MAIN_DEFINITION)[1]
+        self.assertIn("qf_mkBox_spec(", main)
+        self.assertIn("qf_getBox_spec(", main)
 
     def test_bounded_parameters_are_not_converted(self) -> None:
         # Generic code holds a bounded parameter's values at their own view, as the caller does

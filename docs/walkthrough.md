@@ -579,8 +579,8 @@ the particular types a call supplies, in which `E` and `K` are replaced by those
 copy. Python has nothing like this, since it never compiles to machine code; C++ templates and Rust generics are
 always specialized this way.
 
-Quest specializes selectively, where it helps most. One of its rules is that a function returning a tuple that
-involves its type parameters is specialized, since a tuple's layout in memory depends on the types of its
+Quest specializes selectively, where it helps most. One of its rules is that a function taking or returning a
+tuple that involves its type parameters is specialized (however the tuple's type is written), since a tuple's layout in memory depends on the types of its
 components. `argmax` returns `Tuple index: Int element: E end`, so both calls get copies:
 
 <!-- excerpt: examples/argmax/argmax.quest ir_specialized -->

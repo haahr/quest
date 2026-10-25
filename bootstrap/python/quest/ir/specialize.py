@@ -20,7 +20,7 @@ from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import statement_bodies
 from quest.ir.written import is_type_operator, quantified
-from quest.types import QFunType, QParam, QTupleType, QType
+from quest.types import QFunType, QParam, QType
 
 # The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion (a function of
 # A calling itself at List(A)) would otherwise specialize without end, each clone calling for the next
@@ -51,8 +51,10 @@ def holds_record_or_variant(s: Shape, seen: Optional[set[int]] = None) -> bool:
 
 def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
     """The selective trigger (docs/c-representation.md §6.4.3): a type argument that is or holds a record or
-    variant, which generic code would box; or a var or out parameter, or a tuple parameter or result, over the
-    function's type parameters, whose generic layout differs from the caller's."""
+    variant, which generic code would box; or a var or out parameter, or a tuple parameter or result (however its
+    type is written: through an alias or a type operator's application too), over the function's type parameters,
+    whose generic layout may differ from the caller's (a closure among its components whose C signature changes, a
+    location of another representation), and so convert at every call."""
     # A type operator (the argument of a higher-kinded type parameter) is not the type of values, and has no shape
     if any(not is_type_operator(t) and holds_record_or_variant(shape(t)) for t in type_args):
         return True
@@ -61,13 +63,12 @@ def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
     def mentions(t: QType) -> bool:
         return bool(t._fv & ids)
 
-    # A tuple written as such, not through an alias or a type operator's application (docs/tasklist.md)
     for var, mode in f.params:
         if mode != "value" and mentions(var.type):
             return True
-        if isinstance(var.type, QTupleType) and mentions(var.type):
+        if shape(var.type).kind == "tuple" and mentions(var.type):
             return True
-    return isinstance(f.result_type, QTupleType) and mentions(f.result_type)
+    return shape(f.result_type).kind == "tuple" and mentions(f.result_type)
 
 
 class _Definition:
