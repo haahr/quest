@@ -1,0 +1,47 @@
+import arrayOp = "arrayOp" : ArrayOp
+import string = "string" : StringOp
+fun argmax [E::TYPE K::TYPE](a: Array(E), key: Fun(e: E): K, isGreater: Fun(x: K y: K): Bool): E {
+  let n: Int = prim extent(a)
+  let %5: Bool = prim is(n, 0)
+  if %5 {
+    raise empty
+  }
+  var best: Int = 0
+  let %6: E = index(a, 0)
+  let %7: K = call key(%6)
+  var bestKey: K = %7
+  let %8: Int = prim -(n, 1)
+  var i: Int = 1
+  loop L1 {
+    let %9: Bool = prim <=(i, %8)
+    if %9 {
+      let i.1: Int = i
+      let %10: E = index(a, i.1)
+      let k: K = call key(%10)
+      let %11: Bool = call isGreater(k, bestKey)
+      if %11 {
+        best := i.1
+        bestKey := k
+      }
+      let %12: Int = prim +(i, 1)
+      i := %12
+    } else {
+      break L1
+    }
+  }
+  let %13: E = index(a, best)
+  return %13
+}
+main {
+  let empty: Exception = exception empty
+  let argmax.1: All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): E = closure argmax {}
+  let words: Array(String) = array("pear", "fig", "banana", "kiwi")
+  let %1: Fun(string: String): Int = member string.length
+  let %2: Fun(a: Int b: Int): Bool = builtin >
+  let %3: Fun(e: E): K = convert(%1, adapt)
+  let %4: Fun(x: K y: K): Bool = convert(%2, adapt)
+  let longest: E = call argmax.1 [String Int](words, %3, %4)
+  let longest.1: String = convert(longest, unbox)
+  let longest.2: String = longest.1
+}
+

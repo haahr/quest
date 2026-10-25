@@ -153,6 +153,8 @@ Comprehensive documentation for the language, formal semantics, and compiler sub
 ### Compiler Architecture & Subsystems
 - [docs/instructions.md](docs/instructions.md): Instructions for models (and people) working on the project: working with
   its owner, commands, method, code, test, documentation, and commit conventions, and Quest's syntax traps.
+- [docs/walkthrough.md](docs/walkthrough.md): The Life of argmax, a walk through every compiler phase with one small
+  program ([examples/argmax/](examples/argmax/)), for readers new to compilers.
 - [docs/pipeline.md](docs/pipeline.md): The compiler phase pipeline framework, dual-pipeline architecture (interpreter
   vs. C compilation), and CLI driver interface.
 - [docs/codegen-c.md](docs/codegen-c.md): C code generator architecture, IR C printer, and host compiler runner.

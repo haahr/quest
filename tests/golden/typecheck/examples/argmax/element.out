@@ -1,0 +1,112 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('arrayOp') : 'ArrayOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('string') : 'StringOp')
+      ))
+    (TypedExprStmt
+      :expr (TypedException 'empty' :type Exception))
+    (TypedLetValue 'argmax' :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): E
+      :value (TypedFun :params (('a' : Array(E)) ('key' : Fun(e: E): K) ('isGreater' : Fun(x: K y: K): Bool)) :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): E
+        :body (TypedBlock :type E
+          :bindings (
+            (TypedLetValue 'n' :type Int
+              :value (TypedApp :type Int
+                :func (TypedTypeApp [E] :type Fun(a: Array(E)): Int
+                  :func (TypedSelect 'size' :type All(A :: TYPE) Fun(a: Array(A)): Int
+                    :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+                :args (
+                  (TypedVar 'a' :type Array(E))
+                )))
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedInfix 'is' :type Bool
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 0 :type Int))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedRaise :type Ok
+                        :exc (TypedVar 'empty' :type Exception)))
+                  )
+                  :result (TypedOk))
+                :else (TypedOk)))
+            (TypedLetValue 'best' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedLetValue 'bestKey' :type K
+              :value (TypedApp :type K
+                :func (TypedVar 'key' :type Fun(e: E): K)
+                :args (
+                  (TypedIndex :type E
+                    :target (TypedVar 'a' :type Array(E))
+                    :index (TypedInt 0 :type Int))
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 1 :type Int))
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'k' :type K
+                      :value (TypedApp :type K
+                        :func (TypedVar 'key' :type Fun(e: E): K)
+                        :args (
+                          (TypedIndex :type E
+                            :target (TypedVar 'a' :type Array(E))
+                            :index (TypedVar 'i' :type Int))
+                        )))
+                  )
+                  :result (TypedIf :type Ok
+                    :cond (TypedApp :type Bool
+                      :func (TypedVar 'isGreater' :type Fun(x: K y: K): Bool)
+                      :args (
+                        (TypedVar 'k' :type K)
+                        (TypedDerefCell :type K
+                          :target (TypedVar 'bestKey' :type Var(K)))
+                      ))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedBlock :type Ok
+                            :bindings (
+                              (TypedExprStmt
+                                :expr (TypedAssign
+                                  :target (TypedVar 'best' :type Var(Int))
+                                  :value (TypedVar 'i' :type Int)))
+                            )
+                            :result (TypedAssign
+                              :target (TypedVar 'bestKey' :type Var(K))
+                              :value (TypedVar 'k' :type K))))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))))
+          )
+          :result (TypedIndex :type E
+            :target (TypedVar 'a' :type Array(E))
+            :index (TypedDerefCell :type Int
+              :target (TypedVar 'best' :type Var(Int)))))))
+    (TypedLetValue 'words' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'pear' :type String)
+          (TypedString 'fig' :type String)
+          (TypedString 'banana' :type String)
+          (TypedString 'kiwi' :type String)
+        )))
+    (TypedLetValue 'longest' :type String
+      :value (TypedApp :type String
+        :func (TypedTypeApp [String Int] :type Fun(a: Array(String) key: Fun(e: String): Int isGreater: Fun(x: Int y: Int): Bool): String
+          :func (TypedVar 'argmax' :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): E))
+        :args (
+          (TypedVar 'words' :type Array(String))
+          (TypedSelect 'length' :type Fun(string: String): Int
+            :target (TypedVar 'string' :type Module 'string'))
+          (TypedVar '>' :type Fun(a: Int b: Int): Bool)
+        )))
+  ))

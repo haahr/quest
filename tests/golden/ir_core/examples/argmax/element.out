@@ -1,0 +1,44 @@
+import arrayOp = "arrayOp" : ArrayOp
+import string = "string" : StringOp
+main {
+  let empty: Exception = exception empty
+  funs {
+    fun argmax [E::TYPE K::TYPE](a: Array(E), key: Fun(e: E): K, isGreater: Fun(x: K y: K): Bool): E {
+      let n: Int = prim extent(a)
+      let %1: Bool = prim is(n, 0)
+      if %1 {
+        raise empty
+      }
+      var best: Int = 0
+      let %2: E = index(a, 0)
+      let %3: K = call key(%2)
+      var bestKey: K = %3
+      let %4: Int = prim -(n, 1)
+      var i: Int = 1
+      loop L1 {
+        let %5: Bool = prim <=(i, %4)
+        if %5 {
+          let i.1: Int = i
+          let %6: E = index(a, i.1)
+          let k: K = call key(%6)
+          let %7: Bool = call isGreater(k, bestKey)
+          if %7 {
+            best := i.1
+            bestKey := k
+          }
+          let %8: Int = prim +(i, 1)
+          i := %8
+        } else {
+          break L1
+        }
+      }
+      let %9: E = index(a, best)
+      return %9
+    }
+  }
+  let words: Array(String) = array("pear", "fig", "banana", "kiwi")
+  let %10: Fun(string: String): Int = member string.length
+  let %11: Fun(a: Int b: Int): Bool = builtin >
+  let longest: String = call argmax [String Int](words, %10, %11)
+}
+

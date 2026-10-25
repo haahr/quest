@@ -1,0 +1,295 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('arrayOp') 'ArrayOp')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('string') 'StringOp')
+      )
+    )
+    (ExprStmt
+      :expr (ExprException
+        :name 'empty'
+        :type_annot (TypePath ('Ok'))
+      )
+    )
+    (LetValueBinding
+      :name 'argmax'
+      :value (ExprFun
+        :body (ExprFun
+          :params (
+            (FormalParam
+              :name 'a'
+              :type_annot (TypeArray
+                :element_type (TypePath ('E'))
+              )
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'key'
+              :type_annot (TypeAll
+                :quantifiers (
+                  (Quantifier
+                    :name 'e'
+                    :bound (KindPower
+                      :bound (TypePath ('E'))
+                    )
+                    :mode VALUE
+                  )
+                )
+                :result_type (TypePath ('K'))
+              )
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'isGreater'
+              :type_annot (TypeAll
+                :quantifiers (
+                  (Quantifier
+                    :name 'x'
+                    :bound (KindPower
+                      :bound (TypePath ('K'))
+                    )
+                    :mode VALUE
+                  )
+                  (Quantifier
+                    :name 'y'
+                    :bound (KindPower
+                      :bound (TypePath ('K'))
+                    )
+                    :mode VALUE
+                  )
+                )
+                :result_type (TypePath ('Bool'))
+              )
+              :mode VALUE
+            )
+          )
+          :return_type (TypePath ('E'))
+          :body (ExprBlock
+            :bindings (
+              (LetValueBinding
+                :name 'n'
+                :value (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'arrayOp')
+                    :field 'size'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('E'))
+                    )
+                    (ExprId 'a')
+                  )
+                )
+              )
+              (ExprStmt
+                :expr (ExprIf
+                  :cond (ExprInfix
+                    :left (ExprId 'n')
+                    :op 'is'
+                    :right (ExprInt 0 '0')
+                  )
+                  :then_branch (ExprRaise
+                    :exc (ExprId 'empty')
+                  )
+                )
+              )
+              (LetValueBinding
+                :name 'best'
+                :value (ExprInt 0 '0')
+                :is_var True
+              )
+              (LetValueBinding
+                :name 'bestKey'
+                :value (ExprApp
+                  :func (ExprId 'key')
+                  :args (
+                    (ExprIndex
+                      :target (ExprId 'a')
+                      :index (ExprInt 0 '0')
+                    )
+                  )
+                )
+                :is_var True
+              )
+              (ExprStmt
+                :expr (ExprFor
+                  :var_name 'i'
+                  :start (ExprInt 1 '1')
+                  :stop (ExprInfix
+                    :left (ExprId 'n')
+                    :op '-'
+                    :right (ExprInt 1 '1')
+                  )
+                  :body (ExprBlock
+                    :bindings (
+                      (LetValueBinding
+                        :name 'k'
+                        :value (ExprApp
+                          :func (ExprId 'key')
+                          :args (
+                            (ExprIndex
+                              :target (ExprId 'a')
+                              :index (ExprId 'i')
+                            )
+                          )
+                        )
+                      )
+                      (ExprStmt
+                        :expr (ExprIf
+                          :cond (ExprApp
+                            :func (ExprId 'isGreater')
+                            :args (
+                              (ExprId 'k')
+                              (ExprId 'bestKey')
+                            )
+                          )
+                          :then_branch (ExprBlock
+                            :bindings (
+                              (ExprStmt
+                                :expr (ExprInfix
+                                  :left (ExprId 'best')
+                                  :op ':='
+                                  :right (ExprId 'i')
+                                )
+                              )
+                              (ExprStmt
+                                :expr (ExprInfix
+                                  :left (ExprId 'bestKey')
+                                  :op ':='
+                                  :right (ExprId 'k')
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              (ExprStmt
+                :expr (ExprIndex
+                  :target (ExprId 'a')
+                  :index (ExprId 'best')
+                )
+              )
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'E'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'K'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'E'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'K'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeAll
+          :quantifiers (
+            (Quantifier
+              :name 'a'
+              :bound (KindPower
+                :bound (TypeArray
+                  :element_type (TypePath ('E'))
+                )
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'key'
+              :bound (KindPower
+                :bound (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'e'
+                      :bound (KindPower
+                        :bound (TypePath ('E'))
+                      )
+                      :mode VALUE
+                    )
+                  )
+                  :result_type (TypePath ('K'))
+                )
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'isGreater'
+              :bound (KindPower
+                :bound (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'x'
+                      :bound (KindPower
+                        :bound (TypePath ('K'))
+                      )
+                      :mode VALUE
+                    )
+                    (Quantifier
+                      :name 'y'
+                      :bound (KindPower
+                        :bound (TypePath ('K'))
+                      )
+                      :mode VALUE
+                    )
+                  )
+                  :result_type (TypePath ('Bool'))
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :result_type (TypePath ('E'))
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'words'
+      :value (ExprArray
+        :elements (
+          (ExprString 'pear' '"pear"')
+          (ExprString 'fig' '"fig"')
+          (ExprString 'banana' '"banana"')
+          (ExprString 'kiwi' '"kiwi"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'longest'
+      :value (ExprApp
+        :func (ExprId 'argmax')
+        :args (
+          (ExprId 'words')
+          (ExprSelect
+            :target (ExprId 'string')
+            :field 'length'
+          )
+          (ExprId '>')
+        )
+      )
+    )
+  )
+)
