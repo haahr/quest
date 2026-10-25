@@ -125,6 +125,16 @@ class TestUnitGraph(unittest.TestCase):
         self.assertEqual([(r.name, r.interface, r.source, r.path) for r in refs],
                          [("util/counter", "util/Counter", str(module.source), "util/counter")])
 
+    def test_unit_files_are_compiled_by_kind(self) -> None:
+        from quest.build.engine import compile_unit_file
+
+        build = self.root / ".build"
+        compile_unit_file(self.util / "counter.int.quest", [self.lib], build_dir=build)
+        self.assertTrue((build / "util" / "counter.qi").is_file())
+        self.assertTrue((build / "util" / "counter.int.h").is_file())
+        with self.assertRaises(ValueError):
+            compile_unit_file(self.prog / "main.quest", [self.lib], build_dir=build)
+
     # 2. Artifacts
 
     def test_artifact_paths(self) -> None:

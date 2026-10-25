@@ -31,13 +31,10 @@ from quest.pipeline import (
     full_pipeline,
     link_dependencies,
 )
-from quest.build.engine import BuildEngine
+from quest.build.engine import BuildEngine, compile_unit_file
 from quest.codegen.c.compiler_runner import compile_c_source
-from quest.codegen.c.headers import compile_interface_with_header
-from quest.modules.module_compiler import compile_module_file
-from quest.modules.graph import UnitKind
+from quest.modules.graph import UnitKind, file_unit_kind
 from quest.modules.paths import canonicalize_module_path
-from quest.modules.units import unit_kind
 from quest.repl import run_repl
 from quest.values.model import QOk, qvalue_to_str
 from quest.syntax.sources import SourceMap
@@ -67,7 +64,7 @@ def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace)
 
     An interface file's phases end with typecheck, and a module file's with codegen_c: a unit does not run alone.
     """
-    kind = unit_kind(file_path)
+    kind = file_unit_kind(file_path).value
     phases = compile_pipeline().phase_names()
     if kind == "interface":
         phases = phases[:phases.index("typecheck") + 1]
@@ -103,6 +100,28 @@ def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace)
     if any(d.severity == Severity.FATAL for d in result.diagnostics):
         return 70
     return 0 if result.success else 1
+
+
+def run_unit_file(prog: str, file_path: Path, parsed_args: argparse.Namespace) -> int:
+    """Runs the driver, in either mode, on a unit file (an interface or module file): dumps the phases --stop-after
+    and --dump-after name (run_unit_phases), then, without --stop-after, compiles the unit alone
+    (compile_unit_file), reporting any error. Returns the exit status."""
+    if parsed_args.stop_after or parsed_args.dump_after:
+        status = run_unit_phases(prog, file_path, parsed_args)
+        if status != 0 or parsed_args.stop_after:
+            return status
+    try:
+        compile_unit_file(
+            file_path,
+            include_paths=[Path(p) for p in parsed_args.include_paths],
+            build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else None,
+            output=Path(parsed_args.output) if parsed_args.output else None,
+            emit_deps=parsed_args.emit_deps,
+        )
+        return 0
+    except Exception as err:
+        report_error(prog, err, file_path)
+        return 1
 
 
 def run_driver(args: list[str]) -> int:
@@ -268,46 +287,8 @@ def run_driver(args: list[str]) -> int:
         if not file_path.exists():
             sys.stderr.write(f"quest: error: file not found: '{file_path}'\n")
             return 1
-        if unit_kind(file_path) is not None and (parsed_args.stop_after or parsed_args.dump_after):
-            # Without --stop-after, the unit is compiled after its phases are dumped
-            status = run_unit_phases("quest", file_path, parsed_args)
-            if status != 0 or parsed_args.stop_after:
-                return status
-        if file_path.name.endswith(".int.quest"):
-            try:
-                include_paths = [Path(p) for p in parsed_args.include_paths]
-                build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
-                out_dir = Path(parsed_args.output).parent if parsed_args.output else None
-                if out_dir:
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                compile_interface_with_header(
-                    file_path,
-                    output_dir=out_dir,
-                    include_paths=include_paths,
-                    build_dir=build_dir,
-                )
-                return 0
-            except Exception as err:
-                report_error("quest", err, file_path)
-                return 1
-        if file_path.name.endswith(".mod.quest"):
-            try:
-                include_paths = [Path(p) for p in parsed_args.include_paths]
-                build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
-                out_dir = Path(parsed_args.output).parent if parsed_args.output else None
-                if out_dir:
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                compile_module_file(
-                    file_path,
-                    output_dir=out_dir,
-                    include_paths=include_paths,
-                    emit_deps=parsed_args.emit_deps,
-                    build_dir=build_dir,
-                )
-                return 0
-            except Exception as err:
-                report_error("quest", err, file_path)
-                return 1
+        if file_unit_kind(file_path) != UnitKind.PROGRAM:
+            return run_unit_file("quest", file_path, parsed_args)
         try:
             source_text = file_path.read_text(encoding="utf-8")
             file_name = str(file_path)
@@ -606,46 +587,8 @@ def run_compile(args: list[str]) -> int:
         if not file_path.exists():
             sys.stderr.write(f"quest compile: error: file not found: '{file_path}'\n")
             return 1
-        if unit_kind(file_path) is not None and (parsed_args.stop_after or parsed_args.dump_after):
-            # Without --stop-after, the unit is compiled after its phases are dumped
-            status = run_unit_phases("quest compile", file_path, parsed_args)
-            if status != 0 or parsed_args.stop_after:
-                return status
-        if file_path.name.endswith(".int.quest"):
-            try:
-                include_paths = [Path(p) for p in parsed_args.include_paths]
-                build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
-                out_dir = Path(parsed_args.output).parent if parsed_args.output else None
-                if out_dir:
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                compile_interface_with_header(
-                    file_path,
-                    output_dir=out_dir,
-                    include_paths=include_paths,
-                    build_dir=build_dir,
-                )
-                return 0
-            except Exception as err:
-                report_error("quest compile", err, file_path)
-                return 1
-        if file_path.name.endswith(".mod.quest"):
-            try:
-                include_paths = [Path(p) for p in parsed_args.include_paths]
-                build_dir = Path(parsed_args.build_dir) if parsed_args.build_dir else None
-                out_dir = Path(parsed_args.output).parent if parsed_args.output else None
-                if out_dir:
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                compile_module_file(
-                    file_path,
-                    output_dir=out_dir,
-                    include_paths=include_paths,
-                    emit_deps=parsed_args.emit_deps,
-                    build_dir=build_dir,
-                )
-                return 0
-            except Exception as err:
-                report_error("quest compile", err, file_path)
-                return 1
+        if file_unit_kind(file_path) != UnitKind.PROGRAM:
+            return run_unit_file("quest compile", file_path, parsed_args)
         try:
             source_text = file_path.read_text(encoding="utf-8")
             file_name = str(file_path)

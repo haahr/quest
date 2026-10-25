@@ -249,6 +249,19 @@ loaded, which nothing includes. `test_dependencies.py` checks that only C compil
 and the separate paths through `module_compiler` and `BuildEngine`, building on the unit-file checks
 `quest/modules/units.py` shares.
 
+**Done:** `quest/modules/graph.py` ([build-process.md](build-process.md) §2.1). A `Resolver` resolves each import
+(path, directory, roots) once per session to a `Resolved` (source, prebuilt `.qi`, canonical, interface, and artifact
+names); a `UnitGraph` (`env.units`) holds an environment's loaded units by kind and canonical name with their typed
+forms, replacing `loaded_interfaces`, `loaded_modules_ast`, `module_export_scopes`, and `precompiled_modules`; the
+graph also names artifact paths and holds the checks that resolve imports again. The type checker's loading, the
+interface compiler (`ensure_resolved_interface_artifacts`), C headers, the module compiler's manifests and
+`find_interface_header`, `unit_module_refs`, `BuildEngine` (one resolver per build), the pipeline, and
+`load_module_for_interpreter` use it; the driver's two suffix dispatches are one (`run_unit_file`,
+`compile_unit_file`). Left as they were: the build engine's queue keeps its own bookkeeping of modules (by lowercased
+canonical name, from manifests), and `find_canonical_module_source` still finds the source of a manifest entry
+recorded without one. Typed forms stay per environment (nested compilations elaborate their imports again), since
+sharing them would change which symbols units are elaborated with.
+
 **C3. The REPL and the test runner use the same graph.**
 
 ---

@@ -31,12 +31,15 @@ from quest.modules.graph import (
     Resolver,
     Roots,
     UnitGraph,
+    UnitKind,
     artifact_stem,
+    file_unit_kind,
     import_resolution_change,
     resolve_interface,
     unit_artifact_dir,
 )
 from quest.modules.loader import load_interface
+from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
@@ -138,6 +141,31 @@ def unit_module_refs(
         _add(module.canonical_name, canon_iface, module.source, mod_name)
 
     return refs
+
+
+def compile_unit_file(
+    file_path: Path,
+    include_paths: list[Path],
+    build_dir: Optional[Path] = None,
+    output: Optional[Path] = None,
+    emit_deps: bool = False,
+) -> None:
+    """Compiles a unit file alone, as `quest -c` does: an interface file to its .qi and C header, a module file to its
+    .qm, .mod.c, and .o (docs/build-process.md §2). Its artifacts go in build_dir, else beside output, else beside the
+    file (§3.1).
+    """
+    kind = file_unit_kind(file_path)
+    out_dir = output.parent if output is not None else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    if kind == UnitKind.INTERFACE:
+        compile_interface_with_header(file_path, output_dir=out_dir, include_paths=include_paths, build_dir=build_dir)
+    elif kind == UnitKind.MODULE:
+        compile_module_file(
+            file_path, output_dir=out_dir, include_paths=include_paths, emit_deps=emit_deps, build_dir=build_dir
+        )
+    else:
+        raise ValueError(f"'{file_path}' is a program, not a unit file")
 
 
 def _manifest_name(qm_path: Path) -> Optional[str]:

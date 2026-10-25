@@ -219,7 +219,9 @@ interface file's phases are `tokenize`, `parse` and `typecheck`, and a module fi
 to `codegen_c`, where it is lowered as a unit with its exports (`lower_module_file`) and printed as the `.mod.c` its
 compilation writes. A unit does not run alone, so the phases that run code are errors. `--stop-after` writes none of
 the unit's artifacts (the units it imports are built in the build directory, as for a program's phases); with
-`--dump-after` alone, the unit is compiled after its phases are dumped.
+`--dump-after` alone, the unit is compiled after its phases are dumped. Both modes handle a unit file in one place
+(`run_unit_file` in `quest_driver.py`), classifying the file by its kind in the unit graph (`file_unit_kind`,
+[build-process.md §2.1](build-process.md)) and compiling it with `compile_unit_file` (`build/engine.py`).
 
 ### Exit Codes
 - `0`: Successful compilation / execution (or successful early dump).
