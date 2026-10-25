@@ -5,6 +5,31 @@ that C is compiled through the IR ([ir.md](ir.md)). It separates the complexity 
 complexity that comes from design choices and from the compiler's organization, and orders the work that reduces the
 latter: a preparatory phase, then three tracks that can proceed in parallel.
 
+**Status: complete** (October 2026). Every step landed except B4, which was tried and not adopted. Each step's
+**Done** note below says what it did and what remains. In summary:
+
+- **Track A.** Representations come from shapes. Records and variants are boxed in aggregate slots, so polymorphic
+  calls cast instead of copying. V1's views are proxy objects (§2, 0a), so upcasts keep identity and see later
+  updates. The represent pass decides every conversion, and a describe pass gives every run-time use of a type its
+  descriptor (the `ir_described` stage). The C printer only spells the IR in C. Every benchmark is within the bar.
+- **Track B.** The type checker is split by construct family, with one elaboration method per construct, and
+  desugaring is a pass before it. B4 was not adopted. A soundness hole found on the way (function annotations
+  checked against an expected type) is fixed.
+- **Track C.** One graph of units: the type checker, the compilers, the build engine, the driver, the interpreter,
+  and the REPL all resolve and load through it.
+
+**Left undone:**
+
+- Types as written are still read below lowering: represent's `written_structure` and function types' quantifiers,
+  echo's package text and alias names, `build_record_type_from_scope` for imported modules' records, and
+  `module_function_signature`.
+- The printer still wraps payloads as QVal words, and collects struct declarations as it prints.
+- Descriptor operands are small expressions rather than let-bound values, which departs from strict ANF.
+- Reads of a tuple that holds tuples check for a proxy on every read, about 1.6x in a microbenchmark that does only
+  such reads. No benchmark is affected, and checking once per value would remove the cost.
+- Unifying types as written with canonical types would take a change to how types are represented (§4, B4), not a
+  step of this plan.
+
 ---
 
 ## 1. Where the Complexity Comes From
