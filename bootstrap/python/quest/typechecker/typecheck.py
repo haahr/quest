@@ -222,7 +222,12 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         env: Optional[Environment] = None,
         loop_depth: int = 0,
     ) -> TypedExpr:
-        """Checks an AST expression against an expected QType (Gamma |- e <= T)."""
+        """Checks an AST expression against an expected QType (Gamma |- e <= T).
+
+        The constructs the expected type propagates into have one elaboration method each, `_elaborate_X_expr`,
+        taking an optional expected type, which synth_expr calls with None; every other expression is synthesized
+        and must be a subtype of the expected type.
+        """
         if env is None:
             env = self.env
 
@@ -281,7 +286,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
             # 13. Application: the type required by the context can determine implicit type arguments
             #     (Cardelli, The Quest Language and System §4: cons(3 nil()))
             case ast.ExprApp():
-                typed = self._synth_app_expr(expr, env, loop_depth, expected_type=expected_type)
+                typed = self._elaborate_app_expr(expr, expected_type, env, loop_depth)
                 return require_subtype(expr, typed, expected_type, env)
 
             # 14. Subsumption: synthesize minimal type and check subtyping (S <= T)
@@ -437,7 +442,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 return self._elaborate_fun_expr(expr, None, env, loop_depth)
 
             case ast.ExprApp():
-                return self._synth_app_expr(expr, env, loop_depth)
+                return self._elaborate_app_expr(expr, None, env, loop_depth)
 
             # --- Aggregates (Records, Tuples, Options, Variants, Arrays) ---
             case ast.ExprRecord():

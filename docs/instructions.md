@@ -150,7 +150,7 @@ See [testing.md](testing.md) for the framework. In practice:
   history belongs in commit messages. A limitation accepted for now is documented where the behavior is, and gets a
   task.
 - **Style:** prose and bullets at 120 columns, numbered sections (`### 5.1.`), relative links, code and names in
-  backticks. Refer to code by file and function (`_check_fun_expr` in `typechecker/bindings.py`), and check that
+  backticks. Refer to code by file and function (`_elaborate_fun_expr` in `typechecker/bindings.py`), and check that
   the names exist. Cite Cardelli's papers (in `docs/`) by title and section when following or departing from them.
 
 ## 8. Commits

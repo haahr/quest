@@ -219,6 +219,15 @@ and `auto_values.py`.
 **B2. Merge check and synthesis pairs** construct by construct, where checking is synthesis followed by subsumption
 except for what the expected type propagates into.
 
+**Done:** each construct the expected type flows into has one method, `_elaborate_X_expr` with an optional
+expected type, which `check_expr` and `synth_expr` both call: if, block, fun, record, tuple, array, array
+repetition, case, raise, try, inspect, auto values, and applications (`_elaborate_app_expr`); every other
+expression is checked by synthesis and subsumption ([type-system.md](type-system.md) §6.1). Checking against a
+polymorphic type stays separate (`_check_polymorphic_fun_expr`), since it renames the expected quantifiers. The
+closure capture check is one helper (`_check_capturable`). No golden or error output changed; where the modes
+differed visibly (the order of errors, the minting order of symbol ids, the escape checks that only synthesis
+makes) the merged methods keep the difference.
+
 **B3. A desugaring pass** between parsing and type checking: `andif`/`orif`, user infix operators as calls, `elsif`
 chains. Typecheck dumps may change; error messages must still point at and name the source syntax.
 

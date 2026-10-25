@@ -304,7 +304,7 @@ end;
   Existential packages require explicit type ascription (e.g. `let p: PointPackage = tuple ... end`).
   Unannotated tuple constructors synthesize transparent tuples containing `QTupleTypeBinding`, which coerce
   to existential signatures via subtyping.
-- **Witness Checking (`_check_tuple_expr`):**
+- **Witness Checking (`_elaborate_tuple_expr`):**
   When checking a tuple against an existential tuple type:
   1. Witness type bindings (`Let X::K = W`) are matched against expected type formals (`X::K`).
   2. Witness kinds are validated: $\Gamma \vdash W :: K$.
@@ -398,6 +398,16 @@ blocks), `exceptions.py` (exceptions, raise, try), and `auto_values.py` (auto va
 - **Checking Mode ($\Gamma \vdash e \Leftarrow T$):** Pushes expected type $T$ down into expression $e$. Enables
   local inference for numeric constants, record upcasts, existential tuple packing, and function bodies.
 - **Synthesis Mode ($\Gamma \vdash e \Rightarrow T$):** Infers minimal type $T$ from $e$ upward.
+- **One elaboration per construct:** checking is synthesis followed by subsumption (`_check_subsumption`), except
+  for the constructs the expected type flows into. Each of those has one method, `_elaborate_X_expr(expr,
+  expected_type, env, loop_depth)` with `expected_type: Optional[QType]`, which `check_expr` calls with the expected
+  type and `synth_expr` with `None`: conditionals, blocks, functions, records, tuples, arrays and array
+  repetitions, case, raise, try, inspect, auto values (which cannot be synthesized), and applications (whose
+  expected type only helps infer implicit type arguments, after which `check_expr` requires a subtype). Against an
+  expected type, a construct passes it, or its components (a tuple's or record's fields, a function's parameter
+  and result types, an array's element type), into its parts and has that type; a record, tuple, function, or
+  array checked against a type of another form is synthesized and must be a subtype. Synthesized, the parts'
+  types are joined or assembled. `check_expr` checks a conditional without an else branch by synthesis.
 
 ### 6.2. Mutability, Assignment, and Reference Parameters
 Mutable locations are declared with `var`:
@@ -555,7 +565,7 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   Metavariables never escape the outermost call.
 - **Checking Polymorphic Functions:** A function checked against an expected type `All(X::K ...) T` (a
   let-function's header, as in `let f(A::TYPE x: A): A = x`, or an annotation, as in `let f: All(B::TYPE x: B) B =
-  fun(A::TYPE x: A): A x`) gets the expected quantifiers renamed by position (`_check_fun_expr`): fresh symbols,
+  fun(A::TYPE x: A): A x`) gets the expected quantifiers renamed by position (`_check_polymorphic_fun_expr`): fresh symbols,
   since the expected type's own may be in scope; the names the function writes (or the expected names, if it writes
   no type parameters); and the expected bounds, with earlier quantifiers renamed (`B <: A` refers to the function's
   `A`). The function's type is the renamed type, so its parameters and body refer to its own quantifiers. A bound
@@ -645,7 +655,7 @@ when Int with arm then {arm.fst * arm.snd} isnot 0
 end
 ```
 
-- **Construction (`_check_auto_expr`):** `auto [let A [HasKind] =] :T with Binding end` is checked against an
+- **Construction (`_elaborate_auto_expr`):** `auto [let A [HasKind] =] :T with Binding end` is checked against an
   expected auto type; its type is never synthesized, since nothing in the value says which components vary with
   `T`. `T` must be closed and have the auto type's kind (`T <: Object` for `Auto A<:Object ...`), and the binding is
   checked as a tuple against `Tuple S[T/A] end`. A named type component (`auto let A<:Car = :Car with ... end`) is a
@@ -725,7 +735,7 @@ The `StringOp` interface and `string` module provide substring comparison:
 | **Recursive Subtyping** | Infinite expansion loops & polarity flips | Lazy eval + coinductive trail $\Sigma$ |
 | **Dependent Signatures** | Fields depend on earlier type parameters | Ordered `Scope` incremental elaboration |
 | **Extended Subsignatures** | Prefix & name matching, manifest types | Subsignature rule in `is_subtype` |
-| **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_check_tuple_expr` |
+| **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_elaborate_tuple_expr` |
 | **Auto Types** | Run-time type discrimination stays sound | Types closed up to enclosing type parameters (not in mutable data); subtype matching only for covariant signatures |
 | **Path-Dependent Types** | Abstract identity tied to bindings | `QPathType` with `root_symbol_id` |
 | **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker/escape.py` |

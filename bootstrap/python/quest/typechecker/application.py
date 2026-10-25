@@ -79,14 +79,18 @@ class ApplicationMixin:
                 typed_args.append(self.check_expr(arg, param.type_val, env, loop_depth))
         return typed_args
 
-    def _synth_app_expr(
+    def _elaborate_app_expr(
         self,
         expr: ast.ExprApp,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-        expected_type: Optional[QType] = None,
     ) -> TypedExpr:
-        """Synthesizes a function application, handling polymorphic type inference, var, and out params."""
+        """Elaborates a function application, handling polymorphic type inference, var, and out params.
+
+        The expected type, if there is one, can determine the implicit type arguments of a polymorphic call; the
+        application's type is still synthesized, and check_expr requires it to be a subtype of the expected type.
+        """
         # Special built-in monadic operator: ordinal (Cardelli §4.5)
         if isinstance(expr.func, ast.ExprId) and expr.func.name == "ordinal":
             if len(expr.args) != 1:
