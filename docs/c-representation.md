@@ -977,9 +977,10 @@ function passes on ([type-system.md](type-system.md) §6.11).
   bound), and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker. Arrays, exceptions,
   and tuples with `var` components that would have to be copied cannot be without losing updates: converting one
   whose layout differs is a fatal run-time error (`quest_layout_conversion_error`). At a polymorphic call, where both layouts are known,
-  the compiler reports it instead (§5.1, Polymorphic Calls). The type checker rejects types that
-  mention type parameters inside mutable data where they are used at run time, so this happens only when such a
-  type reaches run time as an ordinary type argument.
+  the compiler reports it instead (§5.1, Polymorphic Calls). Only a bounded type parameter's values (held
+  viewed at the bound) make such layouts differ; the type checker rejects types that mention bounded type
+  parameters inside mutable data where they are used at run time, so this happens only when such a type reaches run
+  time as an ordinary type argument.
 - **Where values are converted:** where a value is used at a particular type: an `inspect` branch converts the
   components (§8.1), `dynamic.be` converts its result, and record field reads convert fields stored differently
   (§5.2). Values are never converted when made: `auto :Tuple fst: A snd: Int end with ... end` stores its components

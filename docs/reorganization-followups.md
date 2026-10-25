@@ -37,6 +37,12 @@ become golden tests (or are replaced by golden tests of the same forms with unbo
 show the restriction on bounded ones, §6.11 states the narrower rule, and the two tasks are rewritten to cover only
 bounded parameters (phase 4).
 
+**Done:** the type checker tracks the type parameters declared with a bound (`_bounded_type_param_ids`), and both
+checks apply only to them. `language/auto_type_parameters_in_mutable_data` uses all three forms with unbounded
+parameters (an array in a dynamic value, a var witness component updated through inspect by generic code, and a
+compound witness of an auto type with a var component), with updates shared in every backend. The four error tests
+are now about bounded parameters (`*_bounded_type_parameter_*`), and the two tasks are one, for phase 4.
+
 **1b. Options whose cases are listed in different orders** (the third [tasklist.md](tasklist.md) task). Option types
 are equal regardless of case order, but C lays them out and numbers their tags in the order written, so a variable of
 `Option b a end` holding an `Option a b end` fails to compile, and `ordinal` after an upcast to a reordered supertype

@@ -160,32 +160,35 @@ class AutoValueMixin:
         """Checks a type that is used at run time (Cardelli §4.6 requires it to be closed).
 
         A type that mentions type parameters of enclosing polymorphic functions is allowed: their run-time type
-        arguments are known when the function runs. But inside generic code such a type's values are laid out
-        generically, so using them at a particular type argument may convert them, and for now the parameters
-        may not occur inside mutable data (arrays, var components and fields, var and out parameters), whose
-        conversion would be a copy that loses updates, nor may an auto type with var components (`auto_type`)
-        have such a type component, since its binders must share those components. An abstract type projected
-        from a package value (t.A) has no run-time identity.
+        arguments are known when the function runs. Inside generic code such a type's values are laid out
+        generically, which agrees with the native layout at any type argument (every slot holds one word), except
+        where generic code holds a value of a bounded type parameter (A <: T) viewed at its bound. Using such a
+        value at a particular type argument converts it, so for now a bounded parameter may not occur inside
+        mutable data (arrays, var components and fields, var and out parameters), whose conversion would be a copy
+        that loses updates, nor in a larger type component of an auto type with var components (`auto_type`),
+        since its binders must share those components. An abstract type projected from a package value (t.A) has
+        no run-time identity.
         """
         check_no_package_types(t, what, offset)
-        free = set(t._fv) & self._type_param_ids
+        free = set(t._fv) & self._bounded_type_param_ids
         if not free:
             return
         bare = unalias(t)
-        if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in self._type_param_ids:
+        if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in free:
             return
         mutable = sorted({v.name for v in mutable_type_vars_with_ids(strip_aliases(t), free)})
         if mutable:
             raise TypeError(
-                f"{what} cannot yet mention a type parameter of an enclosing function inside mutable data (an "
-                f"array, a var component or field, or a var or out parameter): '{t}' mentions {', '.join(mutable)}",
+                f"{what} cannot yet mention a bounded type parameter of an enclosing function inside mutable data "
+                f"(an array, a var component or field, or a var or out parameter): '{t}' mentions "
+                f"{', '.join(mutable)}",
                 offset=offset,
             )
         if auto_type is not None and any(f.is_var for f in auto_type.signature):
             names = sorted({v.name for v in type_vars_with_ids(strip_aliases(t), free)})
             raise TypeError(
-                f"{what} cannot yet mention a type parameter of an enclosing function inside a larger type when "
-                f"the auto type has var components: '{t}' mentions {', '.join(names)}",
+                f"{what} cannot yet mention a bounded type parameter of an enclosing function inside a larger type "
+                f"when the auto type has var components: '{t}' mentions {', '.join(names)}",
                 offset=offset,
             )
 

@@ -1,0 +1,45 @@
+(* Language: types used at run time (auto witnesses, inspect when clauses, and dynamic values' types) may mention
+   unbounded type parameters of enclosing functions inside mutable data, and in larger type components of auto
+   types with var components. Generic code lays out such values as native code does (every slot holds one word),
+   so nothing is converted, and updates through either are shared (type-system.md §6.11). *)
+
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+
+let wOut = writer.output;
+let printInt(n: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(n));
+        writer.putString(wOut "\n")
+    end;
+
+(* 1. An array of a type parameter's values in a dynamic value, updated through the array read back *)
+let pack(A::TYPE x:A): Dynamic = dynamic.new(:Array(A) array of(1 x));
+let d = pack(:Tuple a: Int b: Bool end tuple 1 true end);
+let arr = dynamic.be(:Array(Tuple a: Int b: Bool end) d);
+arr[0] := tuple 5 false end;
+printInt(dynamic.be(:Array(Tuple a: Int b: Bool end) d)[0].a);
+
+(* 2. An auto witness with a var component of a type parameter, updated by generic code through inspect *)
+Let Boxed = Auto A::TYPE with a:A end;
+let box(A::TYPE x:A):Boxed = auto :Tuple var y: A end with tuple let var y = x end end;
+let set(A::TYPE b:Boxed v:A): Bool =
+    inspect b
+    when Tuple var y: A end with t then begin t.a.y := v; true end
+    else false
+    end;
+let get(b: Boxed): Int =
+    inspect b when Tuple var y: Int end with t then t.a.y else 0 end;
+let b = box(:Int 3);
+set(:Int b 7);
+printInt(get(b));
+
+(* 3. A compound witness of a type parameter for an auto type with a var component, updated through inspect *)
+Let Cell = Auto A::TYPE with var a:A end;
+let cell(A::TYPE x:A):Cell = auto :Tuple y: A end with let var a = tuple x end end;
+let reset(A::TYPE c:Cell v:A): Ok =
+    inspect c when Tuple y: A end with t then t.a := tuple v end else ok end;
+let c = cell(:Int 3);
+reset(:Int c 9);
+printInt(inspect c when Tuple y: Int end with v then v.a.y else 0 end);

@@ -707,18 +707,21 @@ end
   call, which both backends know at run time (the C backend passes descriptors for type parameters, §6.10.1; the
   interpreter binds run-time type arguments, below). The same holds for the type argument of a function shaped like
   `dynamic.new` or `dynamic.be`. Inside generic code, a value of a type that mentions a type parameter is laid out
-  generically (an `A` component is a `QVal`, a closure taking an `A` takes a `QVal`), unlike the same type at a
-  particular `A`; the C backend describes such a type by a template instantiated at run time and converts the value
-  when it is used at a particular type ([c-representation.md](c-representation.md) §6.4.5). Conversion copies, so for
-  now `_check_closed_type` rejects:
-  - a type that mentions a type parameter inside mutable data: an array's elements, a `var` component or field, or a
-    `var` or `out` parameter (`auto :Array(A) with ... end`), since a copy would not share updates;
-  - a larger type that mentions a type parameter as the type component or `when` type of an auto type with `var`
-    components, whose binders must share those components;
+  generically (an `A` component is a `QVal`, a closure taking an `A` takes a `QVal`); the C backend describes such
+  a type by a template instantiated at run time ([c-representation.md](c-representation.md) §6.4.5). Every
+  aggregate slot holds one word, so the generic layout agrees with the native one at any type argument, and
+  updates through either are shared (`language/auto_type_parameters_in_mutable_data`), except where generic code
+  holds a value of a bounded type parameter (`A <: T`) viewed at its bound, which is converted when used at a
+  particular type. Conversion copies, so for now `_check_closed_type` rejects:
+  - a type that mentions a bounded type parameter inside mutable data: an array's elements, a `var` component or
+    field, or a `var` or `out` parameter (`auto :Array(A) with ... end` for `A <: Record a: Int end`), since a copy
+    would not share updates;
+  - a larger type that mentions a bounded type parameter as the type component or `when` type of an auto type with
+    `var` components, whose binders must share those components;
   - an abstract type projected from a package value (`t.A`, a `QPathType`), which has no run-time identity.
 
-  Such a type can still reach run time as an ordinary type argument (`pack(:Array(Tuple v: A end) ...)` for a
-  `pack(B::TYPE x: B n: Int)` that calls `dynamic.new(:B x)`); compiled code then stops with a run-time error if
+  Such a type can still reach run time as an ordinary type argument (`pack(:Array(Tuple v: A end) ...)`, with `A`
+  bounded, for a `pack(B::TYPE x: B n: Int)` that calls `dynamic.new(:B x)`); compiled code then stops with a run-time error if
   the value must be converted, and the interpreter, which has no layouts, runs it. Types exported abstractly by
   modules, such as `writer.T`, are fine: they denote the same type throughout a program.
 - **Run-time type arguments (interpreter):** a closure records the symbol ids of its type parameters
@@ -793,7 +796,7 @@ one finds it.
 | **Dependent Signatures** | Fields depend on earlier type parameters | Ordered `Scope` incremental elaboration |
 | **Extended Subsignatures** | Prefix & name matching, manifest types | Subsignature rule in `is_subtype` |
 | **Existential Packing** | Witness kind checking & field substitution | Bidirectional `_elaborate_tuple_expr` |
-| **Auto Types** | Run-time type discrimination stays sound | Types closed up to enclosing type parameters (not in mutable data); subtype matching only for covariant signatures |
+| **Auto Types** | Run-time type discrimination stays sound | Types closed up to enclosing type parameters (bounded ones not in mutable data); subtype matching only for covariant signatures |
 | **Path-Dependent Types** | Abstract identity tied to bindings | `QPathType` with `root_symbol_id` |
 | **Scope Extrusion** | Local package types escaping scope | Escape checker in `typechecker/escape.py` |
 | **Type $\lambda$-Calculus** | $\beta$-reduction & variable capture | Lazy eval + `QTypeVar` symbol IDs |

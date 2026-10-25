@@ -5,54 +5,28 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Auto types may not mention type parameters inside mutable data
+## Bounded type parameters inside mutable data in types used at run time
 
-**Problem.** Generic code lays out values of types that mention its type parameters generically, and a value used
-at a particular type argument is converted between layouts by copying (`quest_convert`, `docs/c-representation.md`
-§6.4.5). A copy of mutable data would not share its updates, so the type checker rejects a type parameter inside
-mutable data (arrays, var components and fields, var and out parameters) in an auto value's witness, in the types
-of inspect's when clauses, and in the type arguments of `dynamic.new` and `dynamic.be`
+**Problem.** Generic code holds a value of a bounded type parameter (`A <: T`) viewed at its bound, so a value
+mentioning one is converted when used at a particular type argument (`quest_convert`, `docs/c-representation.md`
+§6.4.5), and a conversion of mutable data would be a copy that does not share updates. The type checker rejects a
+bounded type parameter inside mutable data (arrays, var components and fields, var and out parameters) in an auto
+value's witness, in the types of inspect's when clauses, and in the type arguments of `dynamic.new` and
+`dynamic.be`, and a larger type mentioning one as the witness or when type of an auto type with var components
 (`docs/type-system.md` §6.11). Where it cannot see the type, as when one reaches `dynamic.new` as an ordinary type
 argument, compiled code stops with a run-time error. The interpreter has no layouts and runs such programs.
+Unbounded type parameters are not restricted: generic and native layouts agree for them.
 
-**Reproduce.** `tests/errors/typecheck/auto/{witness,inspect,dynamic}_type_parameter_in_mutable_data.quest` are
-rejected, and `tests/errors/run/layout_conversion_mutable_data.quest` runs interpreted but fails compiled
-with `a value used at type Array(Tuple v: Record age: Int fuel: String end end) was laid out by generic code, and
-converting it would copy mutable data`.
+**Reproduce.** `tests/errors/typecheck/auto/*_bounded_type_parameter_*.quest` are rejected, and
+`tests/errors/run/layout_conversion_mutable_data.quest` runs interpreted but fails compiled with `a value used at type
+Array(Tuple v: Record age: Int fuel: String end end) was laid out by generic code, and converting it would copy
+mutable data`.
 
-**Where to start.** `_check_closed_type` in `bootstrap/python/quest/typechecker/auto_values.py` makes the static
-check; `quest_convert` and `quest_layout_conversion_error` in `runtime/quest_runtime.c` the run-time one. Lifting
-the restriction needs conversion without copying: converting array elements and var slots lazily, through a view
-that reads and writes the original's layout, or a uniform layout for type-parameter positions inside mutable data
-(compare "Conversions that copy change object identity in C" above). With the IR (`docs/ir.md`), either is a
-change to the represent pass.
+**Where to start.** Phase 4 of [reorganization-followups.md](reorganization-followups.md), decided as (B): generic
+code holds bounded type parameters' values at their own view, so layouts agree and nothing converts.
 
-**Done when.** The four tests above run (the error tests becoming golden tests) with the same results interpreted
+**Done when.** The five tests above run (the error tests becoming golden tests) with the same results interpreted
 and compiled.
-
----
-
-## Auto types with var components may not have witnesses that mention type parameters
-
-**Problem.** The type component of an auto value whose auto type has var components may be a type parameter of an
-enclosing function, but not a larger type that mentions one: the binders of an inspect share the var components,
-so converting them from the generic layout would lose updates. The type checker rejects such witnesses, open
-compound types in when clauses for such auto types, and such type arguments of the dynamic operations.
-
-**Reproduce.** `tests/errors/typecheck/auto/witness_type_parameter_with_var_components.quest`:
-
-```quest
-Let Cell = Auto A::TYPE with var a:A end;
-let cell(A::TYPE x:A):Cell = auto :Tuple y: A end with tuple x end end;
-```
-
-**Where to start.** The `auto_type` check in `_check_closed_type` in
-`bootstrap/python/quest/typechecker/auto_values.py`, and `inspect` in
-`bootstrap/python/quest/codegen/c/printer.py`. Shares a solution with the task above: var components converted
-without copying.
-
-**Done when.** The test above becomes a golden test where an inspect updates a var component and the update is
-seen through the auto value, in all backends.
 
 ---
 

@@ -1,0 +1,123 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+main {
+  let wOut: writer.T = member writer.output
+  funs {
+    fun printInt(n: Int): Ok {
+      let %1: String = call conv.int(n)
+      do call writer.putString(wOut, %1)
+      let %2: Ok = call writer.putString(wOut, "\n")
+      return %2
+    }
+  }
+  funs {
+    fun pack [A::TYPE](x: A): Dynamic {
+      let %3: Array(A) = array_rep(1, x)
+      let %4: T = call dynamic.new [Array(A)](%3)
+      return %4
+    }
+  }
+  let a: Int = 1
+  let b: Bool = true
+  let %5: Tuple a: Int b: Bool end = tuple(a, b)
+  let d: Dynamic = call pack [Tuple a: Int b: Bool end](%5)
+  let arr: Array(Tuple a: Int b: Bool end) = call dynamic.be [Array(Tuple a: Int b: Bool end)](d)
+  let a.1: Int = 5
+  let b.1: Bool = false
+  let %6: Tuple a: Int b: Bool end = tuple(a.1, b.1)
+  store arr[0] := %6
+  let %7: Array(Tuple a: Int b: Bool end) = call dynamic.be [Array(Tuple a: Int b: Bool end)](d)
+  let %8: Tuple a: Int b: Bool end = index(%7, 0)
+  let %9: Int = tuple_field(%8, 0)
+  do call printInt(%9)
+  funs {
+    fun box [A::TYPE](x.1: A): Boxed {
+      let y: A = x.1
+      let a.2: Tuple var y: A end = tuple(y)
+      let %10: Tuple a: Tuple var y: A end end = tuple(a.2)
+      let %11: Boxed = auto[Tuple var y: A end](%10)
+      return %11
+    }
+  }
+  funs {
+    fun set [A::TYPE](b.2: Boxed, v: A): Bool {
+      join k1(r: Bool) {
+        return r
+      } in {
+        inspect b.2 {
+          case Tuple var y: A end (t: Tuple a: Tuple var y: A end end): {
+            let %12: Tuple var y: A end = tuple_field(t, 0)
+            store %12.#0 := v
+            jump k1(true)
+          }
+          else: {
+            jump k1(false)
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun get(b.3: Boxed): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        inspect b.3 {
+          case Tuple var y: Int end (t.1: Tuple a: Tuple var y: Int end end): {
+            let %13: Tuple var y: Int end = tuple_field(t.1, 0)
+            let %14: Int = tuple_field(%13, 0)
+            jump k2(%14)
+          }
+          else: {
+            jump k2(0)
+          }
+        }
+      }
+    }
+  }
+  let b.4: Boxed = call box [Int](3)
+  let %15: Bool = call set [Int](b.4, 7)
+  let %16: Int = call get(b.4)
+  do call printInt(%16)
+  funs {
+    fun cell [A::TYPE](x.2: A): Cell {
+      let y.1: A = x.2
+      let a.3: Tuple y: A end = tuple(y.1)
+      let %17: Tuple var a: Tuple y: A end end = tuple(a.3)
+      let %18: Cell = auto[Tuple y: A end](%17)
+      return %18
+    }
+  }
+  funs {
+    fun reset [A::TYPE](c: Cell, v.1: A): Ok {
+      inspect c {
+        case Tuple y: A end exact (t.2: Tuple var a: Tuple y: A end end): {
+          let y.2: A = v.1
+          let %19: Tuple y: A end = tuple(y.2)
+          store t.2.#0 := %19
+        }
+        else: {
+        }
+      }
+      return ok
+    }
+  }
+  let c.1: Cell = call cell [Int](3)
+  do call reset [Int](c.1, 9)
+  join k3(r.2: Int) {
+    do call printInt(r.2)
+  } in {
+    inspect c.1 {
+      case Tuple y: Int end exact (v.2: Tuple var a: Tuple y: Int end end): {
+        let %20: Tuple y: Int end = tuple_field(v.2, 0)
+        let %21: Int = tuple_field(%20, 0)
+        jump k3(%21)
+      }
+      else: {
+        jump k3(0)
+      }
+    }
+  }
+}
+

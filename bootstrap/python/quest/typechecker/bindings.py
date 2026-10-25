@@ -13,6 +13,7 @@ from quest.types import (
     QAllType,
     QFunType,
     QParam,
+    QPowerKind,
     QQuantifier,
     QType,
     QTypeVar,
@@ -190,6 +191,8 @@ class BindingMixin:
                     TypeSymbol(name=tp.name, symbol_id=sym_id, kind=bound_kind)
                 )
                 self._type_param_ids.add(sym_id)
+                if isinstance(bound_kind, QPowerKind):
+                    self._bounded_type_param_ids.add(sym_id)
                 quants.append(QQuantifier(name=tp.name, symbol_id=sym_id, bound=bound_kind))
 
             formal_params, q_params = self._declare_fun_params(
@@ -286,6 +289,8 @@ class BindingMixin:
                 sym_id = env.fresh_symbol_id()
                 env.current_scope.declare_type(TypeSymbol(name=name, symbol_id=sym_id, kind=bound))
                 self._type_param_ids.add(sym_id)
+                if isinstance(bound, QPowerKind):
+                    self._bounded_type_param_ids.add(sym_id)
                 meta_map[q.symbol_id] = QTypeVar(name=name, symbol_id=sym_id, bound=bound)
                 quants.append(QQuantifier(name=name, symbol_id=sym_id, bound=bound))
             inner_exp = expected_lazy.body.substitute(meta_map)
