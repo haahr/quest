@@ -20,6 +20,7 @@ from quest.types import (
     QTupleType,
     QTupleTypeBinding,
     QTupleTypeFormal,
+    QKind,
     QPathType,
     type_mentions_symbol_ids,
     QType,
@@ -49,6 +50,7 @@ from quest.typechecker.typed_ast import (
     TypedExpr,
     TypedIndex,
     TypedIndexAssign,
+    TypedLetValue,
     binding_members,
     TypedOption,
     TypedRecord,
@@ -190,248 +192,228 @@ class AggregateMixin:
             return self.check_expr(b.value, elaborate_type(b.type_annot, env), env, loop_depth)
         return self.synth_expr(b.value, env, loop_depth)
 
-    def _declare_tuple_label(
-        self, name: Optional[str], type_val: QType, is_var: bool, env: Environment
-    ) -> Optional[ValueSymbol]:
-        """Declares the label of a tuple's value component, for the components after it, returning its symbol."""
-        if name is None:
-            return None
-        return env.current_scope.declare_value(
-            ValueSymbol(name=name, type_val=type_val, is_var=is_var, function_depth=self.function_depth)
-        )
+    def _new_tuple_label(self, name: str, type_val: QType, is_var: bool) -> ValueSymbol:
+        """Makes the symbol of the label of a tuple's value component."""
+        return ValueSymbol(name=name, type_val=type_val, is_var=is_var, function_depth=self.function_depth)
 
-    def _synth_tuple_expr(self, expr: ast.ExprTuple, env: Environment, loop_depth: int) -> TypedTuple:
-        """Synthesizes a tuple constructor: tuple ... end."""
-        with env.scoped("tuple_synth"):
-            elem_typeds: list[TypedExpr] = []
-            q_fields: list[QTupleComponent] = []
-            rec_groups: list[tuple[int, ...]] = []
-            simultaneous_groups: list[tuple[int, ...]] = []
-            labels: dict[int, ValueSymbol] = {}
-
-            for b in expr.fields:
-                if isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
-                    # The members of a group are elaborated together, then declared together
-                    for member, symbol, bound in elaborate_tuple_type_bindings(b, env):
-                        k_bound = bound or TYPE_KIND
-                        env.current_scope.declare_type(symbol)
-                        elem_typeds.append(
-                            TypedTypeWitness(
-                                name=member.name,
-                                witness_type=symbol.definition,
-                                bound=k_bound,
-                                offset=member.offset,
-                            )
-                        )
-                        q_fields.append(QTupleTypeBinding(name=member.name, type_val=symbol.definition, bound=k_bound))
-                elif isinstance(b, ast.TupleBinding):
-                    val_typed = self._synth_tuple_component(b, env, loop_depth)
-                    elem_typeds.append(val_typed)
-                    q_fields.append(QTupleField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))
-                    if (label := self._declare_tuple_label(b.name, val_typed.type_val, b.is_var, env)) is not None:
-                        labels[len(elem_typeds) - 1] = label
-                elif isinstance(b, ast.TupleBindingGroup):
-                    # Simultaneous: every member's value is elaborated before any label is declared
-                    check_distinct_names(b.bindings)
-                    members = [(m, self._synth_tuple_component(m, env, loop_depth)) for m in b.bindings]
-                    first = len(elem_typeds)
-                    simultaneous_groups.append(tuple(range(first, first + len(members))))
-                    for m, val_typed in members:
-                        elem_typeds.append(val_typed)
-                        q_fields.append(QTupleField(name=m.name, type_val=val_typed.type_val, is_var=m.is_var))
-                    for k, (m, val_typed) in enumerate(members):
-                        if (label := self._declare_tuple_label(m.name, val_typed.type_val, m.is_var, env)) is not None:
-                            labels[first + k] = label
-                elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
-                    # Recursive: let rec, alone or joined by and, declares its members before checking their values
-                    typed_binding = self._elaborate_binding(b, env, loop_depth)
-                    members = binding_members(typed_binding)
-                    rec_groups.append(tuple(range(len(elem_typeds), len(elem_typeds) + len(members))))
-                    for member in members:
-                        labels[len(elem_typeds)] = member.symbol
-                        elem_typeds.append(member.value)
-                        q_fields.append(
-                            QTupleField(name=member.name, type_val=member.symbol.type_val, is_var=member.symbol.is_var)
-                        )
-                elif isinstance(b, ast.DefKindBinding):
-                    # A manifest kind names a kind for the later components; it is not a component itself
-                    elaborate_kind_binding(b, env)
-                else:
-                    raise TypeError(
-                        f"Unsupported tuple component '{b}'",
-                        offset=getattr(b, "offset", expr.offset),
-                    )
-
-            tuple_type = QTupleType(tuple(q_fields))
-            return TypedTuple(
-                elements=tuple(elem_typeds),
-                type_val=tuple_type,
-                rec_groups=tuple(rec_groups),
-                simultaneous_groups=tuple(simultaneous_groups),
-                labels=tuple(labels.get(i) for i in range(len(elem_typeds))),
-                offset=expr.offset,
-            )
-
-    def _check_tuple_expr(
+    def _elaborate_tuple_expr(
         self,
         expr: ast.ExprTuple,
-        expected_type: QType,
+        expected_type: Optional[QType],
         env: Environment,
         loop_depth: int,
-    ) -> TypedTuple:
-        """Checks a tuple constructor against an expected tuple type."""
-        expected_lazy = expected_type.evaluate_lazily(env)
-        if not isinstance(expected_lazy, QTupleType):
-            return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
+    ) -> TypedExpr:
+        """Elaborates a tuple constructor: tuple ... end.
 
-        # Each member of a group is a component of its own. A manifest kind is not a component: it is declared
-        # just before the component that follows it (kinds_before[i] precedes fields[i]).
+        Each member of a group is a component of its own, and a manifest kind is not a component: it names a kind
+        for the components after it. Components are elaborated in order, and each value component's label is
+        declared for the ones after it; a simultaneous declaration's labels are declared after its last member, and
+        a recursive declaration's members before any of their values.
+
+        Against an expected tuple type, the components must match its fields one for one: a type formal takes a
+        type witness, which must have the formal's bound (with earlier witnesses substituted) and is substituted into
+        the later fields; a manifest type binding takes a type binding equal to it; and a value field takes a value
+        component of its name (if both have one), checked against its type (a var field must be var, with exactly
+        its type; a component's type annotation must be a subtype). Labels then have the expected fields' names and
+        types, and the tuple has the expected type. Against any other type, the tuple is synthesized and must be a
+        subtype. Synthesized, its type is made of its components' types.
+        """
+        expected_tuple: Optional[QTupleType] = None
+        if expected_type is not None:
+            expected_lazy = expected_type.evaluate_lazily(env)
+            if not isinstance(expected_lazy, QTupleType):
+                return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Tuple")
+            expected_tuple = expected_lazy
+        checking = expected_tuple is not None
+
+        # The components, with the manifest kinds declared just before the component that follows them
+        # (kinds_before[i] precedes fields[i]). Against an expected type, the names in groups are checked here,
+        # before the arity; synthesized, as each group is reached.
         fields: list[ast.BindingNode] = []
-        # The type binding or group each type member comes from, and the members of the recursive (let rec) and
-        # simultaneous (let ... and ...) value declarations each value member belongs to
+        # The type binding or group each type member comes from, and the recursive (let rec) and simultaneous
+        # (let ... and ...) value declarations each value member belongs to, with their members
         type_bindings: dict[int, ast.TypeBinding | ast.TypeBindingGroup] = {}
-        rec_members: dict[int, tuple[ast.LetValueBinding, ...]] = {}
+        rec_members: dict[int, tuple[ast.BindingNode, tuple[ast.LetValueBinding, ...]]] = {}
         simultaneous_members: dict[int, tuple[ast.TupleBinding, ...]] = {}
         kinds_before: dict[int, list[ast.DefKindBinding]] = {}
         for b in expr.fields:
             if isinstance(b, ast.DefKindBinding):
                 kinds_before.setdefault(len(fields), []).append(b)
             elif isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
-                members = tuple_type_binding_members(b)
+                if checking:
+                    members = tuple_type_binding_members(b)
+                else:
+                    members = b.bindings if isinstance(b, ast.TypeBindingGroup) else (b,)
                 fields.extend(members)
                 type_bindings.update((id(member), b) for member in members)
             elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
                 value_members = b.bindings if isinstance(b, ast.LetValueBindingGroup) else (b,)
-                check_distinct_names(value_members)
+                if checking:
+                    check_distinct_names(value_members)
                 fields.extend(value_members)
-                rec_members.update((id(member), value_members) for member in value_members)
+                rec_members.update((id(member), (b, value_members)) for member in value_members)
             elif isinstance(b, ast.TupleBindingGroup):
-                check_distinct_names(b.bindings)
+                if checking:
+                    check_distinct_names(b.bindings)
                 fields.extend(b.bindings)
                 simultaneous_members.update((id(member), b.bindings) for member in b.bindings)
             else:
                 fields.append(b)
-        if len(fields) != len(expected_lazy.fields):
+        if expected_tuple is not None and len(fields) != len(expected_tuple.fields):
             raise TypeError(
-                f"Tuple arity mismatch: expected {len(expected_lazy.fields)} components, got {len(fields)}",
+                f"Tuple arity mismatch: expected {len(expected_tuple.fields)} components, got {len(fields)}",
                 offset=expr.offset,
             )
 
-        with env.scoped("tuple_check"):
+        with env.scoped("tuple_check" if checking else "tuple_synth"):
             witness_subst: dict[int, QType] = {}
             elem_typeds: list[TypedExpr] = []
-            witnesses: dict[int, QType] = {}
-            # The symbols of recursive value members, declared once the first member of their declaration is reached
+            # The components of a synthesized tuple's type
+            q_fields: list[QTupleComponent] = []
+            witnesses: dict[int, tuple[TypeSymbol, Optional[QKind]]] = {}
+            # The symbols of recursive value members, declared once the first member of their declaration is
+            # reached (checking), or their typed declarations, elaborated then (synthesizing)
             rec_symbols: dict[int, ValueSymbol] = {}
+            rec_typed: dict[int, TypedLetValue] = {}
             rec_groups: list[tuple[int, ...]] = []
             simultaneous_groups: list[tuple[int, ...]] = []
-            # The labels of a simultaneous declaration's members, declared once its last member has been checked
-            pending_labels: list[ValueSymbol] = []
+            # The labels of a simultaneous declaration's members, declared once its last member has been elaborated,
+            # as (element index, name, type, is_var, symbol); a synthesized label's symbol is made when it is declared
+            pending_labels: list[tuple[int, str, QType, bool, Optional[ValueSymbol]]] = []
             # The symbol of each labeled element's label, by element index
-            check_labels: dict[int, ValueSymbol] = {}
+            labels: dict[int, ValueSymbol] = {}
             group_indices: list[int] = []
 
-            def witness_of(binding: ast.TypeBinding) -> QType:
-                """Elaborates a type binding's witness; the members of a group are elaborated together, before any
-                of them is declared."""
+            def witness_of(binding: ast.TypeBinding) -> tuple[TypeSymbol, Optional[QKind]]:
+                """Elaborates a type binding's witness, with its declared bound if any; the members of a group are
+                elaborated together, before any of them is declared."""
                 if id(binding) not in witnesses:
-                    for member, symbol, _ in elaborate_tuple_type_bindings(type_bindings[id(binding)], env):
-                        witnesses[id(member)] = symbol.definition
+                    for member, symbol, bound in elaborate_tuple_type_bindings(type_bindings[id(binding)], env):
+                        witnesses[id(member)] = (symbol, bound)
                 return witnesses[id(binding)]
 
-            for index, (b, exp_f) in enumerate(zip(fields, expected_lazy.fields)):
+            for index, b in enumerate(fields):
                 for kind_binding in kinds_before.get(index, ()):
                     elaborate_kind_binding(kind_binding, env)
-                match exp_f:
-                    case QTupleTypeFormal(name=formal_name, symbol_id=formal_sym_id, bound=formal_bound):
-                        if not isinstance(b, ast.TypeBinding):
-                            raise TypeError(
-                                f"Expected type witness for type formal '{formal_name}', got value component",
-                                offset=getattr(b, "offset", expr.offset),
-                            )
-                        if b.name != formal_name:
-                            raise TypeError(
-                                f"Tuple type formal name mismatch: expected '{formal_name}', got '{b.name}'",
-                                offset=b.offset,
-                            )
-                        witness_type = witness_of(b)
-                        expected_bound = formal_bound.substitute(witness_subst)
-                        check_kind(witness_type, expected_bound, env)
-                        witness_subst[formal_sym_id] = witness_type
-                        env.current_scope.declare_type(
-                            TypeSymbol(
-                                name=formal_name,
-                                symbol_id=formal_sym_id,
-                                kind=expected_bound,
-                                definition=witness_type,
-                            )
-                        )
-                        elem_typeds.append(
-                            TypedTypeWitness(
-                                name=formal_name,
-                                witness_type=witness_type,
-                                bound=expected_bound,
-                                offset=b.offset,
-                            )
-                        )
+                exp_f = expected_tuple.fields[index] if expected_tuple is not None else None
 
-                    case QTupleTypeBinding(name=bind_name, type_val=bind_type, bound=bind_bound):
-                        if not isinstance(b, ast.TypeBinding):
-                            raise TypeError(
-                                f"Expected type binding for '{bind_name}', got value component",
-                                offset=getattr(b, "offset", expr.offset),
-                            )
-                        if b.name != bind_name:
-                            raise TypeError(
-                                f"Tuple type binding name mismatch: expected '{bind_name}', got '{b.name}'",
-                                offset=b.offset,
-                            )
-                        witness_type = witness_of(b)
-                        expected_type_val = bind_type.substitute(witness_subst)
-                        if not is_type_equal(witness_type, expected_type_val, env):
-                            raise TypeError(
-                                f"Type binding '{bind_name}' must match manifest type '{expected_type_val}', "
-                                f"got '{witness_type}'",
-                                offset=b.offset,
-                            )
-                        env.current_scope.declare_type(
-                            TypeSymbol(
-                                name=bind_name,
-                                symbol_id=env.fresh_symbol_id(),
-                                kind=bind_bound or TYPE_KIND,
-                                definition=witness_type,
-                            )
+                if isinstance(exp_f, QTupleTypeFormal):
+                    if not isinstance(b, ast.TypeBinding):
+                        raise TypeError(
+                            f"Expected type witness for type formal '{exp_f.name}', got value component",
+                            offset=getattr(b, "offset", expr.offset),
                         )
-                        elem_typeds.append(
-                            TypedTypeWitness(
-                                name=bind_name,
-                                witness_type=witness_type,
-                                bound=bind_bound,
-                                offset=b.offset,
-                            )
+                    if b.name != exp_f.name:
+                        raise TypeError(
+                            f"Tuple type formal name mismatch: expected '{exp_f.name}', got '{b.name}'",
+                            offset=b.offset,
                         )
+                    witness_type = witness_of(b)[0].definition
+                    expected_bound = exp_f.bound.substitute(witness_subst)
+                    check_kind(witness_type, expected_bound, env)
+                    witness_subst[exp_f.symbol_id] = witness_type
+                    env.current_scope.declare_type(
+                        TypeSymbol(
+                            name=exp_f.name,
+                            symbol_id=exp_f.symbol_id,
+                            kind=expected_bound,
+                            definition=witness_type,
+                        )
+                    )
+                    elem_typeds.append(
+                        TypedTypeWitness(
+                            name=exp_f.name,
+                            witness_type=witness_type,
+                            bound=expected_bound,
+                            offset=b.offset,
+                        )
+                    )
 
-                    case QTupleField(name=field_name, type_val=field_type, is_var=exp_is_var):
-                        if isinstance(b, ast.TypeBinding):
+                elif isinstance(exp_f, QTupleTypeBinding):
+                    if not isinstance(b, ast.TypeBinding):
+                        raise TypeError(
+                            f"Expected type binding for '{exp_f.name}', got value component",
+                            offset=getattr(b, "offset", expr.offset),
+                        )
+                    if b.name != exp_f.name:
+                        raise TypeError(
+                            f"Tuple type binding name mismatch: expected '{exp_f.name}', got '{b.name}'",
+                            offset=b.offset,
+                        )
+                    witness_type = witness_of(b)[0].definition
+                    expected_type_val = exp_f.type_val.substitute(witness_subst)
+                    if not is_type_equal(witness_type, expected_type_val, env):
+                        raise TypeError(
+                            f"Type binding '{exp_f.name}' must match manifest type '{expected_type_val}', "
+                            f"got '{witness_type}'",
+                            offset=b.offset,
+                        )
+                    env.current_scope.declare_type(
+                        TypeSymbol(
+                            name=exp_f.name,
+                            symbol_id=env.fresh_symbol_id(),
+                            kind=exp_f.bound or TYPE_KIND,
+                            definition=witness_type,
+                        )
+                    )
+                    elem_typeds.append(
+                        TypedTypeWitness(
+                            name=exp_f.name,
+                            witness_type=witness_type,
+                            bound=exp_f.bound,
+                            offset=b.offset,
+                        )
+                    )
+
+                elif isinstance(b, ast.TypeBinding):
+                    if exp_f is not None:
+                        raise TypeError(
+                            f"Unexpected type binding '{b.name}' for value field '{exp_f.name}'",
+                            offset=b.offset,
+                        )
+                    symbol, bound = witness_of(b)
+                    k_bound = bound or TYPE_KIND
+                    env.current_scope.declare_type(symbol)
+                    elem_typeds.append(
+                        TypedTypeWitness(
+                            name=b.name,
+                            witness_type=symbol.definition,
+                            bound=k_bound,
+                            offset=b.offset,
+                        )
+                    )
+                    q_fields.append(QTupleTypeBinding(name=b.name, type_val=symbol.definition, bound=k_bound))
+
+                else:
+                    if exp_f is not None:
+                        assert isinstance(exp_f, QTupleField)
+                        if exp_f.name is not None and b.name is not None and b.name != exp_f.name:
                             raise TypeError(
-                                f"Unexpected type binding '{b.name}' for value field '{field_name}'",
+                                f"Tuple field name mismatch: expected '{exp_f.name}', got '{b.name}'",
                                 offset=b.offset,
                             )
-                        if field_name is not None and b.name is not None and b.name != field_name:
-                            raise TypeError(
-                                f"Tuple field name mismatch: expected '{field_name}', got '{b.name}'",
-                                offset=b.offset,
-                            )
-                        expected_field_type = field_type.substitute(witness_subst)
-                        b_is_var = getattr(b, "is_var", False)
-                        if id(b) in rec_members:
-                            group = rec_members[id(b)]
-                            if b is group[0]:
+                        expected_field_type = exp_f.type_val.substitute(witness_subst)
+
+                    if id(b) in rec_members:
+                        binding, group = rec_members[id(b)]
+                        if b is group[0]:
+                            group_indices = []
+                            if exp_f is None:
+                                typed_binding = self._elaborate_binding(binding, env, loop_depth)
+                                rec_typed.update(zip((id(m) for m in group), binding_members(typed_binding)))
+                            else:
                                 rec_symbols.update((id(m), self._declare_rec_value(m, env)) for m in group)
+                        if exp_f is None:
+                            typed_member = rec_typed[id(b)]
+                            rec_sym = typed_member.symbol
+                            q_fields.append(
+                                QTupleField(name=typed_member.name, type_val=rec_sym.type_val, is_var=rec_sym.is_var)
+                            )
+                        else:
                             rec_sym = rec_symbols[id(b)]
-                            if exp_is_var:
+                            if exp_f.is_var:
                                 raise TypeError(
-                                    f"Tuple field '{field_name or ''}' must be declared mutable (var)",
+                                    f"Tuple field '{exp_f.name or ''}' must be declared mutable (var)",
                                     offset=b.offset,
                                 )
                             if not is_subtype(rec_sym.type_val, expected_field_type, env):
@@ -440,24 +422,36 @@ class AggregateMixin:
                                     f"of expected field type '{expected_field_type}'",
                                     offset=b.offset,
                                 )
-                            if b is group[0]:
-                                group_indices = []
-                            group_indices.append(len(elem_typeds))
-                            check_labels[len(elem_typeds)] = rec_sym
-                            elem_typeds.append(self._check_rec_value(b, rec_sym, env, loop_depth).value)
-                            if b is group[-1]:
-                                rec_groups.append(tuple(group_indices))
-                            continue
-                        if exp_is_var:
-                            if not b_is_var:
+                            typed_member = self._check_rec_value(b, rec_sym, env, loop_depth)
+                        group_indices.append(len(elem_typeds))
+                        labels[len(elem_typeds)] = rec_sym
+                        elem_typeds.append(typed_member.value)
+                        if b is group[-1]:
+                            rec_groups.append(tuple(group_indices))
+                        continue
+
+                    if not checking and id(b) in simultaneous_members and b is simultaneous_members[id(b)][0]:
+                        check_distinct_names(simultaneous_members[id(b)])
+                    if exp_f is None:
+                        if not isinstance(b, ast.TupleBinding):
+                            raise TypeError(
+                                f"Unsupported tuple component '{b}'",
+                                offset=getattr(b, "offset", expr.offset),
+                            )
+                        val_typed = self._synth_tuple_component(b, env, loop_depth)
+                        q_fields.append(QTupleField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))
+                        label_name, label_type, label_is_var = b.name, val_typed.type_val, b.is_var
+                    else:
+                        if exp_f.is_var:
+                            if not getattr(b, "is_var", False):
                                 raise TypeError(
-                                    f"Tuple field '{field_name or ''}' must be declared mutable (var)",
+                                    f"Tuple field '{exp_f.name or ''}' must be declared mutable (var)",
                                     offset=getattr(b, "offset", expr.offset),
                                 )
                             val_typed = self.check_expr(b.value, expected_field_type, env, loop_depth)
                             if not is_type_equal(val_typed.type_val, expected_field_type, env):
                                 raise TypeError(
-                                    f"Mutable tuple field '{field_name or ''}' is invariant; "
+                                    f"Mutable tuple field '{exp_f.name or ''}' is invariant; "
                                     f"expected '{expected_field_type}', got '{val_typed.type_val}'",
                                     offset=getattr(b, "offset", expr.offset),
                                 )
@@ -472,34 +466,29 @@ class AggregateMixin:
                             val_typed = self.check_expr(b.value, annot_type, env, loop_depth)
                         else:
                             val_typed = self.check_expr(b.value, expected_field_type, env, loop_depth)
-                        label = None
-                        if field_name is not None:
-                            label = ValueSymbol(
-                                name=field_name,
-                                type_val=expected_field_type,
-                                is_var=exp_is_var,
-                                function_depth=self.function_depth,
-                            )
-                        if id(b) in simultaneous_members:
-                            # The labels of a simultaneous declaration are declared after its last member
-                            group = simultaneous_members[id(b)]
-                            if b is group[0]:
-                                group_indices = []
-                            group_indices.append(len(elem_typeds))
-                            if label is not None:
-                                check_labels[len(elem_typeds)] = label
-                                pending_labels.append(label)
-                            elem_typeds.append(val_typed)
-                            if b is group[-1]:
-                                simultaneous_groups.append(tuple(group_indices))
-                                for pending in pending_labels:
-                                    env.current_scope.declare_value(pending)
-                                pending_labels = []
-                            continue
-                        if label is not None:
-                            check_labels[len(elem_typeds)] = label
-                            env.current_scope.declare_value(label)
-                        elem_typeds.append(val_typed)
+                        label_name, label_type, label_is_var = exp_f.name, expected_field_type, exp_f.is_var
+
+                    element_index = len(elem_typeds)
+                    elem_typeds.append(val_typed)
+                    if id(b) in simultaneous_members:
+                        group = simultaneous_members[id(b)]
+                        if b is group[0]:
+                            group_indices = []
+                        group_indices.append(element_index)
+                        if label_name is not None:
+                            label = self._new_tuple_label(label_name, label_type, label_is_var) if checking else None
+                            pending_labels.append((element_index, label_name, label_type, label_is_var, label))
+                        if b is group[-1]:
+                            simultaneous_groups.append(tuple(group_indices))
+                            for pending_index, name, type_val, is_var, pending_label in pending_labels:
+                                labels[pending_index] = env.current_scope.declare_value(
+                                    pending_label or self._new_tuple_label(name, type_val, is_var)
+                                )
+                            pending_labels = []
+                    elif label_name is not None:
+                        labels[element_index] = env.current_scope.declare_value(
+                            self._new_tuple_label(label_name, label_type, label_is_var)
+                        )
 
             # Trailing manifest kinds name nothing, but are still checked
             for kind_binding in kinds_before.get(len(fields), ()):
@@ -507,10 +496,10 @@ class AggregateMixin:
 
             return TypedTuple(
                 elements=tuple(elem_typeds),
-                type_val=expected_lazy,
+                type_val=expected_tuple if expected_tuple is not None else QTupleType(tuple(q_fields)),
                 rec_groups=tuple(rec_groups),
                 simultaneous_groups=tuple(simultaneous_groups),
-                labels=tuple(check_labels.get(i) for i in range(len(elem_typeds))),
+                labels=tuple(labels.get(i) for i in range(len(elem_typeds))),
                 offset=expr.offset,
             )
 

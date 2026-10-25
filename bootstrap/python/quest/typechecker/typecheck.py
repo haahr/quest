@@ -245,7 +245,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 5. Tuple expression: check elements against expected tuple type
             case ast.ExprTuple():
-                return self._check_tuple_expr(expr, expected_type, env, loop_depth)
+                return self._elaborate_tuple_expr(expr, expected_type, env, loop_depth)
 
             # 6. Case expression: check all branches against expected_type
             case ast.ExprCase():
@@ -444,7 +444,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 return self._elaborate_record_expr(expr, None, env, loop_depth)
 
             case ast.ExprTuple():
-                return self._synth_tuple_expr(expr, env, loop_depth)
+                return self._elaborate_tuple_expr(expr, None, env, loop_depth)
 
             case ast.ExprSelect():
                 return self._synth_select_expr(expr, env, loop_depth)
