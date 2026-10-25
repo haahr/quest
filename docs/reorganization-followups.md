@@ -42,8 +42,8 @@ are equal regardless of case order, but C lays them out and numbers their tags i
 `Option b a end` holding an `Option a b end` fails to compile, and `ordinal` after an upcast to a reordered supertype
 differs between the backends.
 
-*Decision needed:* what `ordinal` means. The task proposes the case's index in the static type of the argument, which
-is the only reading under which equal types give equal results. Then shapes (`ir/shapes.py`, with canonical forms in
+*Decided:* an ordinal is the case's index in the static type of the argument, the only reading under which equal
+types give equal results. Then shapes (`ir/shapes.py`, with canonical forms in
 `types/canonical.py`) order an option's cases canonically, so equal option types have one layout, one struct, and one
 tag numbering; `ordinal`, the ordinal component of an extraction (`opt!tag`), and construction by ordinal
 (`option ordinal(e) of T end`) map indices through the static type (a table per type, made at compile time). Option
@@ -122,7 +122,7 @@ After 1a, the remaining restriction is a value of a bounded type parameter, held
 data: an `Array(Tuple v: A end)` with `A <: Record age: Int end`, whose elements a `Car` array holds at the `Car`
 view. Converting it would copy, losing updates (`tests/errors/run/layout_conversion_mutable_data.quest`).
 
-*Decision needed,* prototyped and measured as V1 was ([reorganization.md](reorganization.md) §2, 0a):
+*Decided:* (B). The alternative was (A):
 
 - **(A) Proxies for arrays and cells.** Extend proxies to arrays and `Var` cells, reading and writing the original's
   elements and converting each between the two views. This reuses the V1 machinery (descriptors, tag maps, caches),
@@ -133,6 +133,7 @@ view. Converting it would copy, losing updates (`tests/errors/run/layout_convers
   polymorphic calls with bounded parameters, but changes field access in generic code and every bounded call
   ([c-representation.md](c-representation.md) §5.1), and needs an `ABI_VERSION` bump.
 
+(B) is a representation change on the scale of A2, so it is prototyped and measured against the bar before it lands.
 Done when the error test above becomes a golden test with the same results in every backend, the remaining
 restrictions in §6.11 and both tasks in [tasklist.md](tasklist.md) are gone, and the benchmarks are within the bar.
 
@@ -141,6 +142,6 @@ restrictions in §6.11 and both tasks in [tasklist.md](tasklist.md) are gone, an
 ## 5. Order
 
 Phase 1's steps can start at once, in parallel with phase 2. Phase 3 follows 2c (and 3b follows 1b). Phase 4 follows
-1a, and its decision can be prototyped while phases 2 and 3 proceed. Each step updates the documents it changes
+1a. Each step updates the documents it changes
 ([ir.md](ir.md), [c-representation.md](c-representation.md), [type-system.md](type-system.md),
 [tasklist.md](tasklist.md)) and records its outcome here as the reorganization did, with a **Done** note.
