@@ -15,6 +15,7 @@ from typing import Optional
 import quest.syntax.ast as ast
 from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types
 from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
+from quest.codegen.layout import slot_representation
 from quest.config.abi import header_stamp
 from quest.diagnostics import at_import, in_unit
 from quest.types.env import Environment, Scope
@@ -119,8 +120,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
             if isinstance(concrete_t, QRecordType):
                 lines.append(f"typedef struct quest_rec_{c_name}_{sig.name} {{")
                 for f in concrete_t.fields:
-                    f_c_type = qtype_to_c_type(f.type_val)
-                    lines.append(f"    {f_c_type} {f.name};")
+                    lines.append(f"    {slot_representation(f.type_val)} {f.name};")
                 lines.append(f"}} quest_rec_{c_name}_{sig.name};")
                 lines.append(f"typedef QRecordVal quest_type_{c_name}_{sig.name};")
             else:

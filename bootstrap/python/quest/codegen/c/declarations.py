@@ -27,6 +27,7 @@ from quest.codegen.c.types import (
 from quest.codegen.descriptors import fun_descriptor_tag
 from quest.codegen.layout import (
     option_struct_name,
+    slot_representation,
     tuple_struct_name,
     type_tag,
 )
@@ -296,16 +297,14 @@ class CDeclarationEmitter:
                         lines.append("    char _unused;")
                     else:
                         for i, f in enumerate(value_fields):
-                            c_type = self.c_type(f.type_val)
-                            lines.append(f"    {c_type} _{i};")
+                            lines.append(f"    {slot_representation(f.type_val)} _{i};")
                 case QRecordType(fields=fields):
                     lines.append("    QRecordHeader header;")
                     if not fields:
                         lines.append("    char _unused;")
                     else:
                         for f in sorted(fields, key=lambda fld: fld.name):
-                            c_type = self.c_type(f.type_val)
-                            lines.append(f"    {c_type} qf_{f.name};")
+                            lines.append(f"    {slot_representation(f.type_val)} qf_{f.name};")
                 case QOptionType(options=options):
                     lines.append("    int64_t tag;")
                     payload_branches = [o for o in options if o.payload_type is not None]
@@ -319,13 +318,13 @@ class CDeclarationEmitter:
                                 lines.append(f"        struct {tag_name}_{o.name}_payload {{")
                                 if payload.kind == "tuple":
                                     for i, c in enumerate(payload.components):
-                                        lines.append(f"            {self.c_type(c.shape.type)} _{i};")
+                                        lines.append(f"            {slot_representation(c.shape.type)} _{i};")
                                 else:
                                     for c in payload.sorted_components():
-                                        lines.append(f"            {self.c_type(c.shape.type)} qf_{c.name};")
+                                        lines.append(f"            {slot_representation(c.shape.type)} qf_{c.name};")
                                 lines.append(f"        }} {o.name};")
                             else:
-                                lines.append(f"        struct {{ {self.c_type(o.payload_type)} val; }} {o.name};")
+                                lines.append(f"        struct {{ {slot_representation(o.payload_type)} val; }} {o.name};")
                         lines.append("    } u;")
             lines.append("};")
             lines.append("#endif")
@@ -694,13 +693,10 @@ class CDeclarationEmitter:
             lines.append(f"    .payload_size = {payload_size},")
             lines.append(f"    .component_count = {n},")
             lines.append("    .components = {")
-            for i, (sig_f, stored_f) in enumerate(zip(auto_t.signature, payload_t.value_fields)):
-                # Records and variants are stored inline (16 bytes); any other component's 8 bytes are its QVal form
-                inline = self.c_type(stored_f.type_val) in ("QRecordVal", "QVariantVal")
-                storage = desc_fn(stored_f.type_val) if inline else "NULL"
+            for i, sig_f in enumerate(auto_t.signature):
                 is_var = "true" if sig_f.is_var else "false"
                 lines.append(
-                    f"        {{ .name = \"{sig_f.name}\", .type = {desc_fn(sig_f.type_val)}, .storage = {storage}, "
+                    f"        {{ .name = \"{sig_f.name}\", .type = {desc_fn(sig_f.type_val)}, "
                     f".offset = offsetof(struct {struct_name}, _{i}), .is_var = {is_var} }},"
                 )
             lines.append("    }")

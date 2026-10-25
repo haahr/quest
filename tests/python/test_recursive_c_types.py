@@ -16,7 +16,7 @@ os.environ["QUEST_CHECK_CANONICAL"] = "1"
 from quest.types import canonical
 from quest.types.canonical import canonical_type, normalize_type
 from quest.codegen.c.types import descriptor_form, qtype_to_c_type
-from quest.codegen.layout import tuple_struct_name, type_tag
+from quest.codegen.layout import slot_representation, tuple_struct_name, type_tag
 from quest.types import (
     BOOL_TYPE,
     INT_TYPE,
@@ -108,14 +108,17 @@ class TestRecursiveCTypes(unittest.TestCase):
         node = QRecType("N", 9321, TYPE_KIND, node_body)
         self.assertIs(resolve_record_bound(node), node.unfold_lazily())
         self.assertEqual(qtype_to_c_type(node), "QRecordVal")
-        self.assertEqual(qtype_to_c_type(QArrayType(node)), "QArrayWideRecord *")
+        self.assertEqual(qtype_to_c_type(QArrayType(node)), "QArray *")
+        # In a slot, boxed
+        self.assertEqual(slot_representation(node), "QRecordVal *")
 
         e = QTypeVar("E", 9322, TYPE_KIND)
         expr_body = QVariantType((QVariantField("num", INT_TYPE), QVariantField("neg", e)))
         expr = QRecType("E", 9322, TYPE_KIND, expr_body)
         self.assertIs(resolve_variant_bound(expr), expr.unfold_lazily())
         self.assertEqual(qtype_to_c_type(expr), "QVariantVal")
-        self.assertEqual(qtype_to_c_type(QArrayType(expr)), "QArrayWideVariant *")
+        self.assertEqual(qtype_to_c_type(QArrayType(expr)), "QArray *")
+        self.assertEqual(slot_representation(expr), "QVariantVal *")
 
 
 def _int_list(symbol_id: int, period: int) -> QRecType:

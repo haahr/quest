@@ -1,9 +1,12 @@
 """How values are laid out, for every backend (docs/c-representation.md), computed from shapes (ir/shapes.py) and
 cached per shape: each type's layout tag (which names its struct and descriptor), digests and identity keys of types,
 and its representation, the runtime's (runtime/quest_runtime.h): a scalar, a QVal word, a 16-byte record or variant
-value, or a pointer (to a tuple's or option's struct, a closure, an array, ...). Representations are named by the
-runtime's C types, which a native backend lays out as C does, to share the runtime and link with C units. Also
-whether generic code's layout of a type agrees with the native one (generic_layout_agrees)."""
+value, or a pointer (to a tuple's or option's struct, a closure, an array, ...), and its slot representation, as an
+aggregate slot or a QVal word holds it (slot_representation): a record or variant as a pointer to an immutable
+16-byte box, a Bool or Char in a word of its own, and anything else as its representation, so that every slot is one
+word and native and generic layouts agree in memory. Representations are named by the runtime's C types, which a
+native backend lays out as C does, to share the runtime and link with C units. Also whether generic code's layout of
+a type agrees with the native one (generic_layout_agrees)."""
 
 from __future__ import annotations
 
@@ -67,11 +70,11 @@ _UNSET = object()
 class Layout:
     """The layout of one shape; each part is computed on first use."""
 
-    __slots__ = ("shape", "_tag", "_representation")
+    __slots__ = ("shape", "_tag", "_representation", "_slot")
 
     def __init__(self, s: Shape) -> None:
         self.shape = s
-        self._tag = self._representation = _UNSET
+        self._tag = self._representation = self._slot = _UNSET
 
     @property
     def tag(self) -> str:
@@ -88,6 +91,12 @@ class Layout:
         if self._representation is _UNSET:
             self._representation = _shape_representation(self.shape)
         return self._representation
+
+    @property
+    def slot(self) -> str:
+        if self._slot is _UNSET:
+            self._slot = _SLOT_REPRESENTATIONS.get(self.representation, self.representation)
+        return self._slot
 
 
 # Layouts by the id of their shape (shapes are kept for the whole process, so ids are not reused)
@@ -124,6 +133,26 @@ def representation(t: QType) -> str:
     return layout_of(shape(t)).representation
 
 
+def slot_representation(t: QType) -> str:
+    """The C type of a value of t in an aggregate slot (a tuple component, option payload, record field, array element,
+    or auto payload) or a QVal word: a record or variant is a pointer to an immutable 16-byte box (QRecordVal *,
+    QVariantVal *), a Bool or Char a word of its own (QBoolSlot, QCharSlot), and any other value as it is
+    (docs/c-representation.md §5). Every slot is one word, so a slot of a type parameter (a QVal) agrees in memory with
+    a slot of its type argument."""
+    return layout_of(shape(t)).slot
+
+
+def shape_slot_representation(s: Shape) -> str:
+    """The slot representation of the values of shape s (see slot_representation)."""
+    return layout_of(s).slot
+
+
+def is_boxed_in_slots(s: Shape) -> bool:
+    """Whether a slot holds values of shape s boxed: records and variants (a bounded type parameter's, viewed at its
+    bound, among them)."""
+    return layout_of(s).representation in ("QRecordVal", "QVariantVal")
+
+
 def type_tag(t: QType) -> str:
     """Produces a deterministic, valid C identifier component for a QType."""
     return layout_of(shape(t)).tag
@@ -138,6 +167,10 @@ def shape_representation(s: Shape) -> str:
     """The representation of the values of shape s (see representation)."""
     return layout_of(s).representation
 
+
+_SLOT_REPRESENTATIONS = {
+    "QRecordVal": "QRecordVal *", "QVariantVal": "QVariantVal *", "QBool": "QBoolSlot", "QChar": "QCharSlot",
+}
 
 _SCALAR_TAGS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char", "string": "String", "ok": "Ok"}
 _SCALAR_REPRESENTATIONS = {
@@ -249,11 +282,6 @@ def _shape_representation(s: Shape) -> str:
     if kind in ("fun", "all"):
         return "QClosure *"
     if kind == "array":
-        elem = resolved_shape(s.element).kind
-        if elem == "record":
-            return "QArrayWideRecord *"
-        if elem == "variant":
-            return "QArrayWideVariant *"
         return "QArray *"
     if kind == "variant":
         return "QVariantVal"
@@ -413,12 +441,19 @@ def option_struct_name(t: QType) -> str:
     return type_tag(t)
 
 
-# The C types of values that a QVal holds in its own bits (pointers aside): stored as generic code stores a type
-# parameter's value, they agree in memory with the native value, and in registers only for integers
+# The C types of scalar values, which a slot holds in a word of its own: stored as a bounded type parameter's value
+# (of the same scalar bound), they agree with the native value in memory, and in registers only for integers
 _WORD_SCALARS = frozenset({"QInt", "QReal", "QBool", "QChar", "QVal", "void"})
 
 
 _REGISTER_WORDS = frozenset({"QInt", "QVal"})
+
+# The C types of native values that a QVal cell holds in the same eight bytes (a var or out parameter points to one)
+_CELL_WORDS = frozenset({"QInt", "QReal", "QVal", "uint64_t"})
+
+# Where a value is held: in an aggregate slot, in a register (a function's parameter or result), or in a cell that a
+# var or out parameter points to (a local variable natively, of its representation)
+_SLOT, _REGISTER, _CELL = "slot", "register", "cell"
 
 
 def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
@@ -427,14 +462,17 @@ def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
     pointer cast, and a value made there can be used natively.
 
     Generic code stores a value of an unbounded type parameter as a QVal, and one of a bounded parameter as a value of
-    the bound. A QVal agrees with a native scalar or pointer in memory, but not with a 16-byte record or variant, and
-    in registers (function parameters and results) only with integers and pointers. Aggregates agree when their
-    components do; recursive types are compared coinductively. This mirrors quest_layout_equivalent in the runtime,
-    conservatively: False means only that the value may need converting.
+    the bound. Every slot is one word (slot_representation), so in memory a QVal agrees with any native value: a
+    scalar or pointer in its bits, a record or variant boxed. In registers (function parameters and results) it agrees
+    only with integers and pointers, and in the cell a var or out parameter points to (natively a variable of the
+    value's representation) only with eight-byte scalars and pointers. A value of a bounded parameter is held viewed at its bound, which agrees with a
+    native value only when both are the same scalar. Aggregates agree when their components do; recursive types are
+    compared coinductively. This mirrors quest_layout_equivalent in the runtime, conservatively: False means only that
+    the value may need converting.
     """
     if not subst:
         return True
-    return _generic_layout_agrees(shape(t), subst, False, set())
+    return _generic_layout_agrees(shape(t), subst, _SLOT, set())
 
 
 def _mentions(s: Shape, subst: dict[int, QType]) -> bool:
@@ -443,19 +481,19 @@ def _mentions(s: Shape, subst: dict[int, QType]) -> bool:
     return bool((getattr(s.type, "_fv", None) or frozenset()) & subst.keys())
 
 
-def _stored_value_agrees(var: Shape, arg: QType, in_register: bool) -> bool:
-    """Whether a native value of arg agrees with a value of the type parameter of shape var as generic code stores
-    it."""
+def _stored_value_agrees(var: Shape, arg: QType, place: str) -> bool:
+    """Whether a native value of arg agrees with a value of the type parameter of shape var as generic code holds it
+    in the place (_SLOT, _REGISTER, or _CELL)."""
     arg_c = representation(arg)
     if var.bound is not None:
-        # Stored as a value of the bound, which agrees with one of arg only when both are the same scalar
+        # Held as a value of the bound, which agrees with one of arg only when both are the same scalar
         return arg_c == shape_representation(var.bound) and arg_c in _WORD_SCALARS and (
-            not in_register or arg_c in _REGISTER_WORDS
+            place != _REGISTER or arg_c in _REGISTER_WORDS
         )
-    if arg_c in ("QRecordVal", "QVariantVal"):
-        return False
-    if in_register:
+    if place == _REGISTER:
         return arg_c in _REGISTER_WORDS or arg_c.endswith("*")
+    if place == _CELL:
+        return arg_c in _CELL_WORDS or arg_c.endswith("*")
     return True
 
 
@@ -465,18 +503,18 @@ def _type_parameter(s: Shape) -> Optional[int]:
     return s.type.symbol_id if isinstance(s.type, QTypeVar) else None
 
 
-def _generic_layout_agrees(s: Shape, subst: dict[int, QType], in_register: bool, seen: set[int]) -> bool:
+def _generic_layout_agrees(s: Shape, subst: dict[int, QType], place: str, seen: set[int]) -> bool:
     if not _mentions(s, subst):
         return True
     if (symbol := _type_parameter(s)) is not None:
-        return _stored_value_agrees(s, subst[symbol], in_register) if symbol in subst else True
+        return _stored_value_agrees(s, subst[symbol], place) if symbol in subst else True
     if s.is_recursive:
         if id(s) in seen:
             return True
         seen.add(id(s))
 
     def slot(component: Shape) -> bool:
-        return _generic_layout_agrees(component, subst, False, seen)
+        return _generic_layout_agrees(component, subst, _SLOT, seen)
 
     kind = s.kind
     if kind == "abstract" and isinstance(s.type, QTypeApp):
@@ -486,14 +524,16 @@ def _generic_layout_agrees(s: Shape, subst: dict[int, QType], in_register: bool,
         return all(slot(c.shape) for c in s.components)
     if kind in ("variant", "option"):
         return all(c.shape is None or slot(c.shape) for c in s.cases)
-    if kind in ("array", "cell", "out"):
+    if kind == "array":
         return slot(s.element)
+    if kind in ("cell", "out"):
+        return _generic_layout_agrees(s.element, subst, _CELL, seen)
     if kind == "fun":
         return all(
-            _generic_layout_agrees(p.shape, subst, p.mode == "value", seen) for p in s.params
-        ) and _generic_layout_agrees(s.result, subst, True, seen)
+            _generic_layout_agrees(p.shape, subst, _REGISTER if p.mode == "value" else _CELL, seen) for p in s.params
+        ) and _generic_layout_agrees(s.result, subst, _REGISTER, seen)
     if kind == "all":
-        return _generic_layout_agrees(s.body, subst, in_register, seen)
+        return _generic_layout_agrees(s.body, subst, place, seen)
     # Anything else that mentions a type parameter (auto types, exception types, path types) may differ
     return False
 
@@ -504,8 +544,8 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
     holding a value that does not agree. The copy would not share the original's updates."""
     seen: set[int] = set()
 
-    def disagrees(component: Shape) -> bool:
-        return not _generic_layout_agrees(component, subst, False, set())
+    def disagrees(component: Shape, place: str = _SLOT) -> bool:
+        return not _generic_layout_agrees(component, subst, place, set())
 
     def visit(s: Shape) -> bool:
         if not _mentions(s, subst):
@@ -515,8 +555,10 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
                 return False
             seen.add(id(s))
         kind = s.kind
-        if kind in ("array", "cell", "out"):
+        if kind == "array":
             return disagrees(s.element) or visit(s.element)
+        if kind in ("cell", "out"):
+            return disagrees(s.element, _CELL) or visit(s.element)
         if kind in ("tuple", "record"):
             return any((c.is_var and disagrees(c.shape)) or visit(c.shape) for c in s.components)
         if kind == "variant":

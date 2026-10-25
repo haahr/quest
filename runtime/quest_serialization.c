@@ -88,7 +88,7 @@ static const struct {
     .bound = NULL,
     .payload_size = sizeof(QVal),
     .component_count = 1,
-    .components = { { .name = "a", .type = &quest_type_bound_vars[0], .storage = NULL, .offset = 0, .is_var = false } },
+    .components = { { .name = "a", .type = &quest_type_bound_vars[0], .offset = 0, .is_var = false } },
 };
 
 static const QTypeDescriptor quest_type_Dynamic_read = {
@@ -642,19 +642,9 @@ static void quest_write_type_table(QWriter *wr, const QTypeGraph *g) {
 /* Writing: Sharing Scan (Pass 1) and Emission (Pass 2)                      */
 /* ------------------------------------------------------------------------- */
 
-/* The component values of an array (records and variants are stored inline in their own array layouts) */
+/* The component values of an array: each element is its QVal form (records and variants boxed) */
 static QVal quest_array_element(const QArray *arr, const QTypeDescriptor *elem_desc, int64_t i) {
-    if (elem_desc != NULL && elem_desc->kind == QTYPE_KIND_STORED) {
-        /* Elements stored as a type parameter: QVal forms, or values of the parameter's bound */
-        elem_desc = ((const QStoredDescriptor *)elem_desc->extra)->storage;
-        if (elem_desc == NULL) return arr->data[i];
-    }
-    if (elem_desc != NULL && elem_desc->kind == QTYPE_KIND_RECORD) {
-        return (QVal){ .p = (void *)quest_record_box(((const QArrayWideRecord *)arr)->data[i]) };
-    }
-    if (elem_desc != NULL && elem_desc->kind == QTYPE_KIND_VARIANT) {
-        return (QVal){ .p = (void *)quest_variant_box(((const QArrayWideVariant *)arr)->data[i]) };
-    }
+    (void)elem_desc;
     return arr->data[i];
 }
 
@@ -755,7 +745,7 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             if (quest_ptr_insert_or_inc(table, tup)->count > 1) return;
             for (size_t i = 0; i < meta->element_count; ++i) {
                 const QTupleElementDescriptor *elem = &meta->elements[i];
-                quest_scan_value(elem->type, quest_slot_read(elem->type, (const char *)tup + elem->offset), table, g);
+                quest_scan_value(elem->type, quest_slot_read((const char *)tup + elem->offset), table, g);
             }
             break;
         }
@@ -772,7 +762,7 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             const QTupleTypeDescriptor *payload = (const QTupleTypeDescriptor *)c->payload_type->extra;
             for (size_t i = 0; i < payload->element_count; ++i) {
                 const QTupleElementDescriptor *elem = &payload->elements[i];
-                QVal elem_val = quest_slot_read(elem->type, quest_option_components(val.p) + elem->offset);
+                QVal elem_val = quest_slot_read(quest_option_components(val.p) + elem->offset);
                 quest_scan_value(elem->type, elem_val, table, g);
             }
             break;
@@ -905,7 +895,7 @@ static void quest_emit_value(
                 for (size_t i = 0; i < tup_meta->element_count; ++i) {
                     const QTupleElementDescriptor *elem = &tup_meta->elements[i];
                     if (i > 0) quest_writer_put_char(wr, ',');
-                    QVal elem_val = quest_slot_read(elem->type, (const char *)val.p + elem->offset);
+                    QVal elem_val = quest_slot_read((const char *)val.p + elem->offset);
                     quest_emit_value(elem->type, elem_val, table, g, next_id, wr);
                 }
             }
@@ -933,7 +923,7 @@ static void quest_emit_value(
                 for (size_t i = 0; i < payload->element_count; ++i) {
                     const QTupleElementDescriptor *elem = &payload->elements[i];
                     if (i > 0) quest_writer_put_char(wr, ',');
-                    QVal elem_val = quest_slot_read(elem->type, quest_option_components(val.p) + elem->offset);
+                    QVal elem_val = quest_slot_read(quest_option_components(val.p) + elem->offset);
                     quest_emit_value(elem->type, elem_val, table, g, next_id, wr);
                 }
                 quest_writer_put_char(wr, ']');
@@ -1352,11 +1342,6 @@ static const QTypeDescriptor *quest_table_ref(const QTypeTable *t, const QJsonVa
     return NULL;
 }
 
-/* Records and variants are stored inline (16 bytes, 16-aligned); every other value in 8 bytes */
-static size_t quest_slot_size(const QTypeDescriptor *t) {
-    return (t->kind == QTYPE_KIND_RECORD || t->kind == QTYPE_KIND_VARIANT) ? 16 : 8;
-}
-
 static void quest_fill_record_desc(const QTypeTable *t, QTypeDescriptor *desc, QJsonValue *body) {
     if (body->kind != QJSON_OBJECT) quest_raise_dynamic_error();
     size_t n = body->u.o.count;
@@ -1376,19 +1361,11 @@ static void quest_fill_record_desc(const QTypeTable *t, QTypeDescriptor *desc, Q
         }
         fields[j] = f;
     }
-    /* Fields follow the record header, as in compiled record structs */
-    size_t offset = sizeof(QRecordHeader);
-    size_t max_align = sizeof(void *);
-    for (size_t i = 0; i < n; ++i) {
-        size_t sz = quest_slot_size(fields[i].type);
-        if (sz > max_align) max_align = sz;
-        offset = (offset + sz - 1) & ~(sz - 1);
-        fields[i].offset = offset;
-        offset += sz;
-    }
+    /* Fields follow the record header, one slot (a word) each, as in compiled record structs */
+    for (size_t i = 0; i < n; ++i) fields[i].offset = sizeof(QRecordHeader) + i * sizeof(QVal);
     meta->field_count = n;
-    desc->size = (offset + max_align - 1) & ~(max_align - 1);
-    desc->alignment = max_align;
+    desc->size = sizeof(QRecordHeader) + n * sizeof(QVal);
+    desc->alignment = sizeof(void *);
     desc->extra = meta;
 }
 
@@ -1398,8 +1375,6 @@ static void quest_fill_tuple_desc(const QTypeTable *t, QTypeDescriptor *desc, QJ
     QTupleTypeDescriptor *meta =
         (QTupleTypeDescriptor *)quest_alloc(sizeof(QTupleTypeDescriptor) + sizeof(QTupleElementDescriptor) * n);
     QTupleElementDescriptor *elems = (QTupleElementDescriptor *)meta->elements;
-    size_t offset = 0;
-    size_t max_align = sizeof(void *);
     for (size_t i = 0; i < n; ++i) {
         QJsonValue *pair = body->u.a.items[i];
         if (pair->kind != QJSON_ARRAY || pair->u.a.count != 2 || pair->u.a.items[0]->kind != QJSON_STRING) {
@@ -1410,15 +1385,12 @@ static void quest_fill_tuple_desc(const QTypeTable *t, QTypeDescriptor *desc, QJ
         elems[i].name = name[0] ? name : NULL;
         elems[i].is_var = is_var;
         elems[i].type = quest_table_ref(t, pair->u.a.items[1]);
-        size_t sz = quest_slot_size(elems[i].type);
-        if (sz > max_align) max_align = sz;
-        offset = (offset + sz - 1) & ~(sz - 1);
-        elems[i].offset = offset;
-        offset += sz;
+        /* One slot (a word) each, as in compiled tuple structs */
+        elems[i].offset = i * sizeof(QVal);
     }
     meta->element_count = n;
-    desc->size = n ? (offset + max_align - 1) & ~(max_align - 1) : sizeof(void *);
-    desc->alignment = max_align;
+    desc->size = n ? n * sizeof(QVal) : sizeof(void *);
+    desc->alignment = sizeof(void *);
     desc->extra = meta;
 }
 
@@ -1646,10 +1618,8 @@ static QIdEntry *quest_read_ref(QReadContext *cx, const QJsonValue *node) {
     return entry;
 }
 
-static void *quest_alloc_array(const QTypeDescriptor *elem_t, int64_t len) {
-    size_t elem_size = (elem_t->kind == QTYPE_KIND_RECORD) ? sizeof(QRecordVal)
-                     : (elem_t->kind == QTYPE_KIND_VARIANT) ? sizeof(QVariantVal) : sizeof(QVal);
-    QArray *arr = (QArray *)quest_alloc(sizeof(int64_t) + elem_size * (size_t)(len > 0 ? len : 1));
+static void *quest_alloc_array(int64_t len) {
+    QArray *arr = (QArray *)quest_alloc(sizeof(int64_t) + sizeof(QVal) * (size_t)(len > 0 ? len : 1));
     arr->length = len;
     return arr;
 }
@@ -1745,7 +1715,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                 const QRecordFieldDescriptor *f = &meta->fields[i];
                 QJsonValue *f_node = quest_json_obj_get(node, f->name);
                 if (f_node == NULL) quest_raise_dynamic_error();
-                quest_slot_write(f->type, (char *)buf + f->offset, quest_read_value(cx, f_node, f->type));
+                quest_slot_write((char *)buf + f->offset, quest_read_value(cx, f_node, f->type));
             }
             QRecordVal rec = { .val = buf, .dict = dict };
             return (QVal){ .p = quest_record_box(rec) };
@@ -1766,17 +1736,10 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             if (desc->kind == QTYPE_KIND_ARRAY) {
                 const QTypeDescriptor *elem_t = ((const QArrayTypeDescriptor *)desc->extra)->element_type;
                 int64_t len = (int64_t)items->u.a.count;
-                QArray *arr = (QArray *)quest_alloc_array(elem_t, len);
+                QArray *arr = (QArray *)quest_alloc_array(len);
                 if (id_val != NULL) quest_id_insert(cx, id_val, arr, NULL);
                 for (int64_t i = 0; i < len; ++i) {
-                    QVal elem = quest_read_value(cx, items->u.a.items[i], elem_t);
-                    if (elem_t->kind == QTYPE_KIND_RECORD) {
-                        ((QArrayWideRecord *)arr)->data[i] = *(const QRecordVal *)elem.p;
-                    } else if (elem_t->kind == QTYPE_KIND_VARIANT) {
-                        ((QArrayWideVariant *)arr)->data[i] = *(const QVariantVal *)elem.p;
-                    } else {
-                        arr->data[i] = elem;
-                    }
+                    arr->data[i] = quest_read_value(cx, items->u.a.items[i], elem_t);
                 }
                 return (QVal){ .p = (void *)arr };
             }
@@ -1787,7 +1750,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             if (id_val != NULL) quest_id_insert(cx, id_val, tup, NULL);
             for (size_t i = 0; i < n; ++i) {
                 const QTupleElementDescriptor *elem = &meta->elements[i];
-                quest_slot_write(elem->type, (char *)tup + elem->offset, quest_read_value(cx, items->u.a.items[i], elem->type));
+                quest_slot_write((char *)tup + elem->offset, quest_read_value(cx, items->u.a.items[i], elem->type));
             }
             return (QVal){ .p = tup };
         }
@@ -1833,7 +1796,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                     for (size_t k = 0; k < n; ++k) {
                         const QTupleElementDescriptor *elem = &comps->elements[k];
                         QVal elem_val = quest_read_value(cx, payload->u.a.items[k], elem->type);
-                        quest_slot_write(elem->type, opt + sizeof(int64_t) + elem->offset, elem_val);
+                        quest_slot_write(opt + sizeof(int64_t) + elem->offset, elem_val);
                     }
                 }
                 return (QVal){ .p = opt };

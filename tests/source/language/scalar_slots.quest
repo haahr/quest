@@ -1,0 +1,17 @@
+(* Booleans and characters in aggregates: each slot is a word of its own, so generic code (which stores a type
+   parameter's value as a QVal word) and the runtime (which reads a slot by descriptor) agree with native code *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let pair(A::TYPE B::TYPE a: A b: B): Tuple a: A b: B end = tuple let a = a let b = b end;
+let pairF: All(A::TYPE B::TYPE a: A b: B) Tuple a: A b: B end = pair;
+let p = pairF(:Bool :Bool true true);
+print(conv.bool(p.a) <> " " <> conv.bool(p.b));
+let q = pairF(:Char :Char 'x' 'y');
+print(conv.char(q.a) <> " " <> conv.char(q.b));
+let r = record a = false b = true c = 'z' end;
+let t: Tuple var a: Bool b: Bool r: Record a: Bool b: Bool c: Char end end =
+  tuple let var a = false let b = true let r = r end;
+let flip(var x: Bool): Ok = x := true;
+flip(@t.a);
+t;

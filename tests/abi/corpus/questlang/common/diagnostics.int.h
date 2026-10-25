@@ -39,7 +39,7 @@ struct QTuple_String_Int_Int {
 struct QTuple_QTuple_String_Int_Int_end_String_Bool {
     QTuple_String_Int_Int * _0;
     QString * _1;
-    QBool _2;
+    QBoolSlot _2;
 };
 #endif
 typedef QOption_fatal_error_warning_info * quest_type_questlang__common__Diagnostics_Severity;

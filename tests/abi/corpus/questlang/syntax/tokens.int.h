@@ -59,7 +59,7 @@ struct QTuple_Real {
 #ifndef QUEST_TYPE_QTuple_Char_DEFINED
 #define QUEST_TYPE_QTuple_Char_DEFINED
 struct QTuple_Char {
-    QChar _0;
+    QCharSlot _0;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_String_DEFINED
@@ -80,7 +80,7 @@ struct QOption_none_intVal_QTup_46cb69bccc676af2 {
             QReal _0;
         } realVal;
         struct QOption_none_intVal_QTup_46cb69bccc676af2_charVal_payload {
-            QChar _0;
+            QCharSlot _0;
         } charVal;
         struct QOption_none_intVal_QTup_46cb69bccc676af2_stringVal_payload {
             QString * _0;

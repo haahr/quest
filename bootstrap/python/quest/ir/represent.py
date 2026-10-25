@@ -26,9 +26,11 @@ from typing import Optional
 
 from quest.codegen.layout import (
     generic_layout_agrees,
+    is_boxed_in_slots,
     generic_layout_copies_mutable_data,
     resolved_shape,
     shape_representation,
+    shape_slot_representation,
     signature_representation,
 )
 from quest.ir import nodes as ir
@@ -233,7 +235,7 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
             raise UnsupportedConversion(f"converting a tuple of type {source} to {target}")
         pairs = list(zip(ss.components, ts.components))
         fields = tuple(plan(sc.shape.type, tc.shape.type) for sc, tc in pairs)
-        same = all(shape_representation(sc.shape) == shape_representation(tc.shape) for sc, tc in pairs)
+        same = all(shape_slot_representation(sc.shape) == shape_slot_representation(tc.shape) for sc, tc in pairs)
         if all(p is None for p in fields) and same:
             return None if cs == ct else ir.Plan("cast", source, target)
         return ir.Plan("copy", source, target, fields)
@@ -248,23 +250,27 @@ def is_type_variable(t: QType, symbol_id: int) -> bool:
     return isinstance(var, (QTypeVar, QAbstractType)) and var.symbol_id == symbol_id
 
 
+def _slots_agree(source: Shape, target: Shape) -> bool:
+    """Whether a slot of shape source holds its value as a slot of shape target does: the same slot representation,
+    or a QVal word (a value's QVal form, which every slot holds)."""
+    s_c, t_c = shape_slot_representation(source), shape_slot_representation(target)
+    return s_c == t_c or (t_c == "QVal" and s_c != "void")
+
+
 def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.Plan]:
     """How an auto value's components are stored, in the auto type's witness-independent layout: a component of the
     type component's type keeps its own representation (a bounded parameter's value is not viewed at the bound, as
-    inspect reads it by the stored type component's descriptor), boxed where the layout holds a QVal; the others
-    convert to their stored types."""
+    inspect reads it by the stored type component's descriptor), in its QVal form where the layout holds a QVal,
+    which its slot already holds; the others convert to their stored types."""
     source = shape(payload_t).components
     target = shape(stored_t).components
     fields = []
     for sig_f, sc, tc in zip(auto_t.signature, source, target):
-        if is_type_variable(sig_f.type_val, auto_t.symbol_id):
-            fields.append(ir.Plan("box", sc.shape.type, tc.shape.type) if shape_representation(tc.shape) == "QVal"
-                          and shape_representation(sc.shape) != "QVal" else None)
+        if is_type_variable(sig_f.type_val, auto_t.symbol_id) and _slots_agree(sc.shape, tc.shape):
+            fields.append(None)
         else:
             fields.append(plan(sc.shape.type, tc.shape.type))
-    if all(p is None for p in fields) and all(
-        shape_representation(sc.shape) == shape_representation(tc.shape) for sc, tc in zip(source, target)
-    ):
+    if all(p is None for p in fields) and all(_slots_agree(sc.shape, tc.shape) for sc, tc in zip(source, target)):
         if shape_representation(shape(payload_t)) == shape_representation(shape(stored_t)):
             return None
         return ir.Plan("cast", payload_t, stored_t)
@@ -289,6 +295,11 @@ class _Representer:
         self.unit = unit
         self.joins: dict[str, tuple[ir.Var, ...]] = {}
         self.generic_results: list[tuple[QType, QType, dict]] = []
+        # The addresses of slots holding records or variants boxed (by variable), which have no address of the
+        # value's representation: a var or out argument of one is a temporary, read from and stored back into the
+        # slot (slot_argument), and its let is removed
+        self.slot_addresses: dict[int, tuple[ir.Let, ir.Addr]] = {}
+        self.removed: set[int] = set()
 
     def convert(self, a: ir.Atom, target: QType, before: list, layout=None) -> ir.Atom:
         """a, converted to be used at target (by a let added to before), or a itself."""
@@ -307,7 +318,7 @@ class _Representer:
             for b in statement_bodies(s):
                 self.body(b, function)
             statements.extend(self.statement(s, function))
-        body.statements = statements
+        body.statements = [s for s in statements if id(s) not in self.removed]
 
     def result(self, s: ir.Let, result_t: QType, after: list) -> None:
         """Converts the result of s's operation, of type result_t, to s's variable's type."""
@@ -322,6 +333,10 @@ class _Representer:
         before: list = []
         after: list = []
         match s:
+            case ir.Let(var=var, value=ir.Addr(base=base) as addr) if base is not None and isinstance(
+                var.type, (QVarType, QOutType)
+            ) and is_boxed_in_slots(shape(var.type.element_type)):
+                self.slot_addresses[id(var)] = (s, addr)
             case ir.Let(var=var, value=ir.Var() | ir.Const() as a):
                 s.value = self.convert(a, var.type, before)
             case ir.Let(var=var, value=ir.Call() as call):
@@ -473,7 +488,8 @@ class _Representer:
         """The address passed for a var or out argument: the location's own, or that of a temporary of the
         parameter's representation (a shadow cell of a generic parameter's QVal, or a cell of an out parameter's type
         where the location's is a supertype laid out differently), copied in from the location (for var) and out to
-        it after the call."""
+        it after the call. A slot holding a record or variant boxed has no address of the record's or variant's
+        representation, so its argument is always such a temporary, read from the slot and stored back into it."""
         location_t = _type_of(address)
         if isinstance(location_t, (QVarType, QOutType)):
             location_t = location_t.element_type
@@ -481,14 +497,26 @@ class _Representer:
         layout_out = (instantiation, False) if instantiation else None
         p_out = plan(param_t, location_t, layout_out)
         p_in = None if param.is_out else plan(location_t, param_t, (instantiation, True) if instantiation else None)
-        if p_out is None and p_in is None:
+        slot = self.slot_addresses.get(id(address)) if isinstance(address, ir.Var) else None
+        if p_out is None and p_in is None and slot is None:
             return address
+        if slot is not None:
+            # A slot holding a record or variant boxed: read from and stored back into the slot itself
+            self.removed.add(id(slot[0]))
+            addr = slot[1]
+            if addr.name is not None:
+                read, store = ir.RecordField(addr.base, addr.name), dict(base=addr.base, name=addr.name)
+            elif isinstance(addr.index, int):
+                read, store = ir.TupleField(addr.base, addr.index), dict(base=addr.base, index=addr.index)
+            else:
+                read = ir.Index(addr.base, addr.index, addr.offset)
+                store = dict(base=addr.base, index=addr.index, offset=addr.offset)
         temp = ir.Var("cell", param_t, mutable=True)
         temp_address = ir.Var("", QOutType(element_type=param_t) if param.is_out else QVarType(element_type=param_t))
         init = None
         if not param.is_out:
             current = ir.Var("", location_t)
-            before.append(ir.Let(current, ir.Load(address)))
+            before.append(ir.Let(current, read if slot is not None else ir.Load(address)))
             init = current
             if p_in is not None:
                 init = ir.Var("", param_t)
@@ -501,7 +529,7 @@ class _Representer:
             converted = ir.Var("", location_t)
             after.append(ir.Let(converted, ir.Convert(written, p_out)))
             written = converted
-        after.append(ir.Store(written, address=address))
+        after.append(ir.Store(written, **store) if slot is not None else ir.Store(written, address=address))
         return temp_address
 
     def run(self) -> None:

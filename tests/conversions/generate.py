@@ -329,22 +329,15 @@ CONTEXTS = (
     ),
 )
 
-COPIES_CHANGE_IDENTITY = "the task Conversions that copy change object identity in C"
-
 # (context, shape, argument) -> why compiled code behaves differently (a docs/tasklist.md task where there is one)
-KNOWN_FAILURES: dict[tuple[str, str, str], str] = {
-    ("identity", shape, arg): f"a copy through the first-class value ({COPIES_CHANGE_IDENTITY})"
-    for shape in ("Box", "Wide", "Maybe", "List", "Nest")
-    for arg in ("P", "V")
-}
+KNOWN_FAILURES: dict[tuple[str, str, str], str] = {}
 
 # (context, shape, argument) -> the compile-time error of C generation: unspecialized calls that would have to copy
-# mutable data laid out differently (an array of records or variants; an array of closures returning a value that
-# a register holds differently from a QVal)
+# mutable data laid out differently (an array of closures returning a value that a register holds differently from a
+# QVal; every slot holds one word, records and variants boxed, so slots agree)
 MUTABLE_DATA_ERROR = "would copy mutable data"
 REJECTED: dict[tuple[str, str, str], str] = {
-    **{(ctx, "Arr", arg): MUTABLE_DATA_ERROR for ctx in ("first_class", "type_application", "identity") for arg in ("P", "V")},
-    **{("stores", "Thunk", arg): MUTABLE_DATA_ERROR for arg in ("Bool", "Real", "Char")},
+    ("stores", "Thunk", arg): MUTABLE_DATA_ERROR for arg in ("Bool", "Real", "Char")
 }
 
 

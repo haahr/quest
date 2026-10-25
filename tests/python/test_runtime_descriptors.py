@@ -366,7 +366,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
         /* Tuple fst: A snd: Int end as generic code lays it out, and Tuple fst: Real snd: Int end natively */
         typedef struct { QVal _0; QInt _1; } Generic;
         typedef struct { QReal _0; QInt _1; } NativeReal;
-        typedef struct { QRecordVal _0; QInt _1; } NativeRecord;
+        typedef struct { QRecordVal *_0; QInt _1; } NativeRecord;
 
         static const QTypeDescriptor hole0 = {
             QTYPE_KIND_HOLE, "?0", sizeof(QVal), sizeof(void *), quest_is_subtype,
@@ -422,10 +422,10 @@ class TestRuntimeDescriptors(unittest.TestCase):
             assert(same.p == g);
             assert(((NativeReal *)same.p)->_0 == 2.5);
 
-            /* A record stored as a QVal (a boxed QRecordVal) is not: the tuple is copied, the record unboxed */
+            /* So is a record stored as a QVal (a boxed QRecordVal), as a native slot holds it */
             const QTypeDescriptor *args_obj[1] = { &obj };
             const QTypeDescriptor *at_obj = quest_instantiate_descriptor(&tmpl, 1, args_obj);
-            assert(!quest_layout_equivalent(at_obj, &rec_tuple));
+            assert(quest_layout_equivalent(at_obj, &rec_tuple));
             void *payload = quest_alloc(sizeof(QRecordHeader) + sizeof(QInt));
             ((QRecordHeader *)payload)->descriptor = &obj;
             *(QInt *)((char *)payload + sizeof(QRecordHeader)) = 42;
@@ -434,10 +434,10 @@ class TestRuntimeDescriptors(unittest.TestCase):
             h->_0 = (QVal){ .p = quest_record_box(r) };
             h->_1 = 3;
             QVal native = quest_convert((QVal){ .p = h }, at_obj, &rec_tuple);
-            assert(native.p != h);
+            assert(native.p == h);
             NativeRecord *n = (NativeRecord *)native.p;
             assert(n->_1 == 3);
-            assert(*(QInt *)((char *)n->_0.val + quest_record_field_offset(n->_0, 0)) == 42);
+            assert(*(QInt *)((char *)n->_0->val + quest_record_field_offset(*n->_0, 0)) == 42);
 
             printf("OK\\n");
             return 0;

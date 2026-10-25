@@ -91,19 +91,31 @@ class TestRepresent(unittest.TestCase):
         )
         self.assertIn("cast", plans(unit))
 
-    def test_layouts_that_disagree_convert_at_run_time(self) -> None:
+    def test_records_in_slots_agree_with_generic_slots(self) -> None:
+        # Slots hold records boxed, as a QVal does
         unit = represent(
             "Let P = Record a: Int end; Let Box = Fun(A::TYPE) Tuple x: A end; "
             "let get(A::TYPE b: Box(A)): A = b.x; let f: All(A::TYPE b: Box(A)) A = get; "
             "f(:P tuple let x = record a = 5 end end).a"
+        )
+        self.assertIn("cast", plans(unit))
+        self.assertNotIn("runtime", plans(unit))
+
+    def test_layouts_that_disagree_convert_at_run_time(self) -> None:
+        # Generic code views a bounded type parameter's values at the bound
+        unit = represent(
+            "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; Let Box = Fun(A::TYPE) Tuple x: A end; "
+            "let get(A <: P b: Box(A)): A = b.x; let f: All(A <: P b: Box(A)) A = get; "
+            "f(:Q tuple let x = record a = 5 b = 6 end end).b"
         )
         self.assertIn("runtime", plans(unit))
 
     def test_copying_mutable_data_is_rejected(self) -> None:
         with self.assertRaises(RejectedConversion):
             represent(
-                "Let P = Record a: Int end; let first(A::TYPE xs: Array(A)): A = xs[0]; "
-                "let f: All(A::TYPE xs: Array(A)) A = first; f(:P array of record a = 1 end end).a"
+                "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; "
+                "let first(A <: P xs: Array(A)): A = xs[0]; "
+                "let f: All(A <: P xs: Array(A)) A = first; f(:Q array of record a = 1 b = 2 end end).b"
             )
 
 

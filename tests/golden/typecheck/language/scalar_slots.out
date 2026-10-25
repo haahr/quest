@@ -1,0 +1,123 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'pair' :type All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple a: A b: B end
+      :value (TypedFun :params (('a' : A) ('b' : B)) :type All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple a: A b: B end
+        :body (TypedTuple :type Tuple a: A b: B end
+          :elements (
+            (TypedVar 'a' :type A)
+            (TypedVar 'b' :type B)
+          ))))
+    (TypedLetValue 'pairF' :type All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple a: A b: B end
+      :value (TypedVar 'pair' :type All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple a: A b: B end))
+    (TypedLetValue 'p' :type Tuple a: Bool b: Bool end
+      :value (TypedApp :type Tuple a: Bool b: Bool end
+        :func (TypedTypeApp [Bool Bool] :type Fun(a: Bool b: Bool): Tuple a: Bool b: Bool end
+          :func (TypedVar 'pairF' :type All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple a: A b: B end))
+        :args (
+          (TypedBool true)
+          (TypedBool true)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'a' :type Bool
+                  :target (TypedVar 'p' :type Tuple a: Bool b: Bool end))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'b' :type Bool
+                    :target (TypedVar 'p' :type Tuple a: Bool b: Bool end))
+                ))))
+        )))
+    (TypedLetValue 'q' :type Tuple a: Char b: Char end
+      :value (TypedApp :type Tuple a: Char b: Char end
+        :func (TypedTypeApp [Char Char] :type Fun(a: Char b: Char): Tuple a: Char b: Char end
+          :func (TypedVar 'pairF' :type All(A :: TYPE B :: TYPE) Fun(a: A b: B): Tuple a: A b: B end))
+        :args (
+          (TypedChar 'x' :type Char)
+          (TypedChar 'y' :type Char)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'char' :type Fun(c: Char): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'a' :type Char
+                  :target (TypedVar 'q' :type Tuple a: Char b: Char end))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'char' :type Fun(c: Char): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'b' :type Char
+                    :target (TypedVar 'q' :type Tuple a: Char b: Char end))
+                ))))
+        )))
+    (TypedLetValue 'r' :type Record a: Bool b: Bool c: Char end
+      :value (TypedRecord :type Record a: Bool b: Bool c: Char end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedBool false))
+          (TypedRecordField 'b'
+            :value (TypedBool true))
+          (TypedRecordField 'c'
+            :value (TypedChar 'z' :type Char))
+        )))
+    (TypedLetValue 't' :type Tuple var a: Bool b: Bool r: Record a: Bool b: Bool c: Char end end
+      :value (TypedTuple :type Tuple var a: Bool b: Bool r: Record a: Bool b: Bool c: Char end end
+        :elements (
+          (TypedBool false)
+          (TypedBool true)
+          (TypedVar 'r' :type Record a: Bool b: Bool c: Char end)
+        )))
+    (TypedLetValue 'flip' :type Fun(var x: Bool): Ok
+      :value (TypedFun :params (('x' : Bool)) :type Fun(var x: Bool): Ok
+        :body (TypedAssign
+          :target (TypedVar 'x' :type Var(Bool))
+          :value (TypedBool true))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'flip' :type Fun(var x: Bool): Ok)
+        :args (
+          (TypedTupleSelectRef .a (ref) :type Var(Bool)
+            :target (TypedVar 't' :type Tuple var a: Bool b: Bool r: Record a: Bool b: Bool c: Char end end))
+        )))
+    (TypedExprStmt
+      :expr (TypedVar 't' :type Tuple var a: Bool b: Bool r: Record a: Bool b: Bool c: Char end end))
+  ))

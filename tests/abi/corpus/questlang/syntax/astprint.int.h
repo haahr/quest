@@ -510,14 +510,14 @@ struct QTuple_Real_String {
 #ifndef QUEST_TYPE_QTuple_Char_String_DEFINED
 #define QUEST_TYPE_QTuple_Char_String_DEFINED
 struct QTuple_Char_String {
-    QChar _0;
+    QCharSlot _0;
     QString * _1;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_Bool_DEFINED
 #define QUEST_TYPE_QTuple_Bool_DEFINED
 struct QTuple_Bool {
-    QBool _0;
+    QBoolSlot _0;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2_DEFINED
@@ -559,7 +559,7 @@ struct RecGroup0_0_QTuple_Self1_75dab429a38434fd {
 struct RecGroup0_0_QTuple_Strin_79ad1f78a84cd642 {
     QString * _0;
     Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _1;
-    QBool _2;
+    QBoolSlot _2;
     Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _3;
     Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _4;
 };
@@ -628,7 +628,7 @@ struct RecGroup0_0_QTuple_QVal__0d68360de3411f7a {
 struct RecGroup0_0_QTuple_Strin_23883f6d91343a6c {
     QString * _0;
     Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * _1;
-    QBool _2;
+    QBoolSlot _2;
     QVal _3;
 };
 #endif
@@ -734,8 +734,8 @@ struct RecGroup0_0_QTuple_Strin_eb14858355c059f7 {
     Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _1;
     QVal _2;
     QVal _3;
-    QBool _4;
-    QBool _5;
+    QBoolSlot _4;
+    QBoolSlot _5;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_String_Rec0_QTupl_af5c3802d6575478_DEFINED
@@ -745,7 +745,7 @@ struct QTuple_String_Rec0_QTupl_af5c3802d6575478 {
     Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * _1;
     QVal _2;
     QVal _3;
-    QBool _4;
+    QBoolSlot _4;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_String_Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2_DEFINED
@@ -775,7 +775,7 @@ struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 {
             QString * _1;
         } exprReal;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprChar_payload {
-            QChar _0;
+            QCharSlot _0;
             QString * _1;
         } exprChar;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprString_payload {
@@ -783,7 +783,7 @@ struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 {
             QString * _1;
         } exprString;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprBool_payload {
-            QBool _0;
+            QBoolSlot _0;
         } exprBool;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprId_payload {
             QString * _0;
@@ -816,7 +816,7 @@ struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 {
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprFor_payload {
             QString * _0;
             Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _1;
-            QBool _2;
+            QBoolSlot _2;
             Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _3;
             Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _4;
         } exprFor;
@@ -858,7 +858,7 @@ struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 {
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprVariant_payload {
             QString * _0;
             Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * _1;
-            QBool _2;
+            QBoolSlot _2;
             QVal _3;
         } exprVariant;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_exprAuto_payload {
@@ -926,22 +926,22 @@ struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1 {
             Rec0_QTuple_QTuple_String_Int_a20d3b973ed606b3 * _1;
             QVal _2;
             QVal _3;
-            QBool _4;
-            QBool _5;
+            QBoolSlot _4;
+            QBoolSlot _5;
         } declLetVal;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_declLetType_payload {
             QString * _0;
             Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * _1;
             QVal _2;
             QVal _3;
-            QBool _4;
+            QBoolSlot _4;
         } declLetType;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_declDefType_payload {
             QString * _0;
             Rec0_QTuple_QTuple_String_Int_e1a8f2413afa8de2 * _1;
             QVal _2;
             QVal _3;
-            QBool _4;
+            QBoolSlot _4;
         } declDefType;
         struct Rec0_QOption_exprInt_QTuple_I_acec3382f9d87ff1_declDefKind_payload {
             QString * _0;
@@ -972,7 +972,7 @@ struct QTuple_String_QVal_QVal_Bool {
     QString * _0;
     QVal _1;
     QVal _2;
-    QBool _3;
+    QBoolSlot _3;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_QTuple_String_QVal_QVal_Bool_end_DEFINED
@@ -988,7 +988,7 @@ struct QTuple_String_String_QVal_QVal_Bool {
     QString * _1;
     QVal _2;
     QVal _3;
-    QBool _4;
+    QBoolSlot _4;
 };
 #endif
 #ifndef QUEST_TYPE_QTuple_QTuple_String_String_QVal_QVal_Bool_end_DEFINED

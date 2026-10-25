@@ -38,8 +38,8 @@ RECORD_DESC(mid_desc, Mid, mid_meta, "Record b: Int c: Int end");
 RECORD_DESC(other_desc, Other, other_meta, "Record x: Int end");
 
 /* OuterBig = {inner: Big n: Int}, OuterMid = {inner: Mid n: Int}: depth subtypes */
-typedef struct { QRecordHeader header; QRecordVal qf_inner; QInt qf_n; } OuterBig;
-typedef struct { QRecordHeader header; QRecordVal qf_inner; QInt qf_n; } OuterMid;
+typedef struct { QRecordHeader header; QRecordVal *qf_inner; QInt qf_n; } OuterBig;
+typedef struct { QRecordHeader header; QRecordVal *qf_inner; QInt qf_n; } OuterMid;
 static const struct { size_t field_count; const QRecordFieldDescriptor fields[2]; } outer_big_meta = { 2, {
     { .name = "inner", .type = &big_desc, .offset = offsetof(OuterBig, qf_inner), .is_var = false },
     FIELD(OuterBig, n) } };
@@ -50,7 +50,8 @@ RECORD_DESC(outer_big_desc, OuterBig, outer_big_meta, "Record inner: Record a: I
 RECORD_DESC(outer_mid_desc, OuterMid, outer_mid_meta, "Record inner: Record b: Int c: Int end n: Int end");
 
 /* Tuple Big Int and Tuple Mid Int */
-typedef struct { QRecordVal _0; QInt _1; } PairBig;
+/* A record in a slot is boxed */
+typedef struct { QRecordVal *_0; QInt _1; } PairBig;
 static const struct { size_t component_count; const void *components; size_t element_count;
     const QTupleElementDescriptor elements[2]; } pair_big_meta = { 0, NULL, 2, {
     { .name = NULL, .type = &big_desc, .offset = offsetof(PairBig, _0) },
@@ -146,7 +147,7 @@ class TestRecordDicts(unittest.TestCase):
     /* OuterMid viewing an OuterBig payload: field inner (index 0) is stored as Big */
     OuterBig *o = (OuterBig *)quest_alloc(sizeof(OuterBig));
     o->header.descriptor = &outer_big_desc;
-    o->qf_inner = (QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) };
+    o->qf_inner = quest_record_box((QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) });
     o->qf_n = 7;
     QRecordVal viewed = quest_record_view(
         (QRecordVal){ .val = o, .dict = quest_record_dict(&outer_big_desc, &outer_big_desc) }, &outer_mid_desc);
@@ -161,11 +162,11 @@ class TestRecordDicts(unittest.TestCase):
     def test_convert_copies_tuples_with_converted_elements(self) -> None:
         self.assertIn("OK", self.run_c(r"""
     PairBig *pair = (PairBig *)quest_alloc(sizeof(PairBig));
-    pair->_0 = (QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) };
+    pair->_0 = quest_record_box((QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) });
     pair->_1 = 5;
     PairBig *converted = (PairBig *)quest_convert((QVal){ .p = pair }, &pair_big_desc, &pair_mid_desc).p;
     assert(converted != pair && converted->_1 == 5);
-    assert(converted->_0.dict == quest_record_dict(&mid_desc, &big_desc));
+    assert(converted->_0->dict == quest_record_dict(&mid_desc, &big_desc));
     /* Converting between equal descriptors leaves the value alone */
     assert(quest_convert((QVal){ .p = pair }, &pair_big_desc, &pair_big_desc).p == pair);
 """))

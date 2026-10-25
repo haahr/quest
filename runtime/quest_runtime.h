@@ -52,6 +52,11 @@ typedef bool     QBool;
 typedef char     QChar;
 typedef uint64_t QWord;
 
+/* A Bool or Char in an aggregate slot (a tuple component, option payload, record field, or auto payload): a word of
+ * its own, as in a QVal (.i), so that every slot is one word and generic code's slots (QVal) agree with native ones */
+typedef int64_t  QBoolSlot;
+typedef int64_t  QCharSlot;
+
 typedef union QVal {
     void    *p;   /* Heap pointers: strings, arrays, records, tuples, closures */
     QInt     i;   /* 64-bit signed two's complement integer */
@@ -94,17 +99,6 @@ typedef struct QVariantVal {
     int64_t tag;
     QVal    payload;
 } QVariantVal;
-
-/* Wide array representations: length-prefixed buffers of 16-byte elements */
-typedef struct QArrayWideRecord {
-    int64_t    length;
-    QRecordVal data[];
-} QArrayWideRecord;
-
-typedef struct QArrayWideVariant {
-    int64_t     length;
-    QVariantVal data[];
-} QArrayWideVariant;
 
 /* Standard I/O sink and source representations */
 typedef struct QWriter {
@@ -274,7 +268,7 @@ typedef struct QHoleDescriptor {
 } QHoleDescriptor;
 
 /* A value of type `type` stored in the representation of a type parameter: as its QVal form when `storage` is NULL,
- * and otherwise as a value of type `storage`, the type parameter's bound (a record or variant inline, viewed at the
+ * and otherwise as a value of type `storage`, the type parameter's bound (a record or variant boxed, viewed at the
  * bound, as generic code views values of a bounded type parameter) */
 typedef struct QStoredDescriptor {
     const QTypeDescriptor *type;
@@ -297,13 +291,11 @@ typedef struct QExceptionTypeDescriptor {
 } QExceptionTypeDescriptor;
 
 /* Auto types (Cardelli §4.6): Auto A HasKind with S end. A component's type refers to the type parameter A as
- * quest_type_bound_vars[0]. Components are stored in the layout of Tuple S end with A abstract: a record or variant
- * is stored inline, and `storage` is a descriptor of its kind; any other component is stored in 8 bytes that are its
- * QVal form, and `storage` is NULL. Dynamic values are auto values of type Auto A::TYPE with a:A end. */
+ * quest_type_bound_vars[0]. Components are stored in the layout of Tuple S end with A abstract, each in a slot (its
+ * QVal form, a record or variant boxed). Dynamic values are auto values of type Auto A::TYPE with a:A end. */
 typedef struct QAutoComponentDescriptor {
     const char            *name;
     const QTypeDescriptor *type;
-    const QTypeDescriptor *storage;
     size_t                 offset;
     bool                   is_var;
 } QAutoComponentDescriptor;
@@ -407,8 +399,6 @@ static_assert(sizeof(QException)    == 8, qexception_must_be_8_bytes);
 static_assert(sizeof(QExceptionState) == 32, qexception_state_must_be_32_bytes);
 static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 static_assert(offsetof(QArray, data)  == 8, qarray_data_at_offset_8);
-static_assert(offsetof(QArrayWideRecord, data)  == 8, qarray_wide_rec_data_at_offset_8);
-static_assert(offsetof(QArrayWideVariant, data) == 8, qarray_wide_var_data_at_offset_8);
 static_assert(offsetof(QVariant, tag)     == 8, qvariant_tag_at_offset_8);
 static_assert(offsetof(QVariant, payload) == 16, qvariant_payload_at_offset_16);
 static_assert(offsetof(QOptionHeader, fields) == 8, qoptionheader_fields_at_offset_8);
@@ -452,8 +442,6 @@ bool     quest_string_precedes_sub(const QString *s1, int64_t st1, int64_t sz1,
                                    const QString *s2, int64_t st2, int64_t sz2);
 
 QArray  *quest_array_new(int64_t len, QVal init_val);
-QArrayWideRecord  *quest_array_new_wide_record(int64_t len, QRecordVal init_val);
-QArrayWideVariant *quest_array_new_wide_variant(int64_t len, QVariantVal init_val);
 int64_t  quest_array_size(const QArray *a);
 double   quest_real_pow(double base, double exp);
 const QException *quest_alloc_exception(const char *name);
@@ -703,11 +691,16 @@ static inline QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_
     return *(const QRecordStoredTypes *)((const size_t *)rec.dict + (field_count > 0 ? field_count : 1));
 }
 
-/* Values in aggregate slots (record fields, tuple elements, option payloads), in their QVal form: records and
- * variants boxed, scalars and pointers as they are, and a value stored as a type parameter (QTYPE_KIND_STORED) as
- * generic code stores it */
-QVal                   quest_slot_read(const QTypeDescriptor *t, const void *slot);
-void                   quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v);
+/* Values in aggregate slots (record fields, tuple elements, option payloads, array elements, auto payloads): every
+ * slot is one word holding the value's QVal form (records and variants as pointers to immutable boxes, scalars in
+ * their bits, pointers as they are), whatever the slot's type, and generic code's slots (QVal) alike */
+static inline QVal quest_slot_read(const void *slot) {
+    return *(const QVal *)slot;
+}
+
+static inline void quest_slot_write(void *slot, QVal v) {
+    *(QVal *)slot = v;
+}
 
 /* Converts v, the QVal form of a value laid out as `from` describes, to its subtype view laid out as `to` describes:
  * records get the offset table for the view, variants and options their tags in `to`, tuples and auto values are

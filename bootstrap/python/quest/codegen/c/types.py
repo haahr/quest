@@ -15,6 +15,8 @@ from quest.codegen.descriptors import (
 )
 from quest.codegen.layout import (
     PRINTED_TEXT_LIMIT,
+    is_boxed_in_slots,
+    shape_slot_representation,
     option_struct_name,
     printed,
     representation,
@@ -340,6 +342,42 @@ def shape_qval_unwrap(qval_expr: str, s: Shape) -> str:
     if kind == "ok":
         return "((void)0)"
     return f"(({c_t})({qval_expr}.p))"
+
+
+def shape_slot_load(slot_expr: str, s: Shape) -> str:
+    """The value of shape s held in a slot (slot_representation): a record or variant read from its box, a Bool or
+    Char narrowed from its word (implicitly), anything else as it is."""
+    if is_boxed_in_slots(s):
+        return f"(*({slot_expr}))"
+    return slot_expr
+
+
+def shape_slot_store(expr: str, s: Shape) -> str:
+    """A value of shape s in the form a slot holds it: a record or variant in a new box."""
+    if is_boxed_in_slots(s):
+        box = "quest_record_box" if shape_representation(s) == "QRecordVal" else "quest_variant_box"
+        return f"{box}({expr})"
+    return expr
+
+
+def shape_slot_to_qval(slot_expr: str, s: Shape) -> str:
+    """The QVal form of the slot contents of a value of shape s (a box is its QVal form)."""
+    slot_c = shape_slot_representation(s)
+    if slot_c == "QVal":
+        return slot_expr
+    if is_boxed_in_slots(s):
+        return f"((QVal){{ .p = (void *)({slot_expr}) }})"
+    return shape_qval_wrap(slot_expr, s)
+
+
+def shape_qval_to_slot(qval_expr: str, s: Shape) -> str:
+    """The slot contents of a value of shape s from its QVal form (a box is its QVal form)."""
+    slot_c = shape_slot_representation(s)
+    if slot_c == "QVal":
+        return qval_expr
+    if is_boxed_in_slots(s):
+        return f"(({slot_c})({qval_expr}.p))"
+    return shape_qval_unwrap(qval_expr, s)
 
 
 def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = None) -> str:

@@ -135,7 +135,7 @@ end;
             self.assertTrue(is_type_equal(tree.definition, source_tree.definition))
             self.assertEqual(type_tag(wood.definition), type_tag(source_wood.definition))
             param_type = scope.values["node"].type_val.params[0].type_val
-            self.assertEqual(qtype_to_c_type(param_type), "QArrayWideVariant *")
+            self.assertEqual(qtype_to_c_type(param_type), "QArray *")
             pair_fields = scope.types["Pair"].definition.fields
             self.assertIsInstance(pair_fields[1].type_val, QAliasType)
             self.assertIs(pair_fields[1].type_val.target, tree.definition)

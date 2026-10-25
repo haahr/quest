@@ -187,34 +187,6 @@ QArray *quest_array_new(int64_t len, QVal init_val) {
     return arr;
 }
 
-QArrayWideRecord *quest_array_new_wide_record(int64_t len, QRecordVal init_val) {
-    if (len < 0) {
-        quest_raise_array_error();
-    }
-    QArrayWideRecord *arr = (QArrayWideRecord *)quest_alloc(
-        sizeof(QArrayWideRecord) + (size_t)len * sizeof(QRecordVal)
-    );
-    arr->length = len;
-    for (int64_t i = 0; i < len; ++i) {
-        arr->data[i] = init_val;
-    }
-    return arr;
-}
-
-QArrayWideVariant *quest_array_new_wide_variant(int64_t len, QVariantVal init_val) {
-    if (len < 0) {
-        quest_raise_array_error();
-    }
-    QArrayWideVariant *arr = (QArrayWideVariant *)quest_alloc(
-        sizeof(QArrayWideVariant) + (size_t)len * sizeof(QVariantVal)
-    );
-    arr->length = len;
-    for (int64_t i = 0; i < len; ++i) {
-        arr->data[i] = init_val;
-    }
-    return arr;
-}
-
 int64_t quest_array_size(const QArray *a) {
     if (a == NULL) return 0;
     return a->length;
@@ -1227,60 +1199,6 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
     return dict;
 }
 
-QVal quest_slot_read(const QTypeDescriptor *t, const void *slot) {
-    if (t == NULL || slot == NULL) return (QVal){ .p = NULL };
-    if (t->kind == QTYPE_KIND_STORED) {
-        const QStoredDescriptor *st = (const QStoredDescriptor *)t->extra;
-        if (st->storage == NULL) return *(const QVal *)slot;
-        t = st->storage;
-    }
-    switch (t->kind) {
-        case QTYPE_KIND_INT:
-        case QTYPE_KIND_BOOL:
-        case QTYPE_KIND_CHAR:
-            return (QVal){ .i = *(const int64_t *)slot };
-        case QTYPE_KIND_REAL:
-            return (QVal){ .r = *(const double *)slot };
-        case QTYPE_KIND_RECORD:
-            return (QVal){ .p = (void *)quest_record_box(*(const QRecordVal *)slot) };
-        case QTYPE_KIND_VARIANT:
-            return (QVal){ .p = (void *)quest_variant_box(*(const QVariantVal *)slot) };
-        default:
-            return (QVal){ .p = *(void * const *)slot };
-    }
-}
-
-void quest_slot_write(const QTypeDescriptor *t, void *slot, QVal v) {
-    if (t == NULL || slot == NULL) return;
-    if (t->kind == QTYPE_KIND_STORED) {
-        const QStoredDescriptor *st = (const QStoredDescriptor *)t->extra;
-        if (st->storage == NULL) {
-            *(QVal *)slot = v;
-            return;
-        }
-        t = st->storage;
-    }
-    switch (t->kind) {
-        case QTYPE_KIND_INT:
-        case QTYPE_KIND_BOOL:
-        case QTYPE_KIND_CHAR:
-            *(int64_t *)slot = v.i;
-            break;
-        case QTYPE_KIND_REAL:
-            *(double *)slot = v.r;
-            break;
-        case QTYPE_KIND_RECORD:
-            *(QRecordVal *)slot = *(const QRecordVal *)v.p;
-            break;
-        case QTYPE_KIND_VARIANT:
-            *(QVariantVal *)slot = *(const QVariantVal *)v.p;
-            break;
-        default:
-            *(void **)slot = v.p;
-            break;
-    }
-}
-
 /* Copies the elements of a tuple-shaped block (a tuple, or an option case's payload) from `from` to `to` layout */
 static void quest_convert_elements(const void *src, const QTypeDescriptor *from, void *dst, const QTypeDescriptor *to) {
     const QTupleTypeDescriptor *f_meta = (const QTupleTypeDescriptor *)from->extra;
@@ -1289,8 +1207,8 @@ static void quest_convert_elements(const void *src, const QTypeDescriptor *from,
     for (size_t i = 0; i < t_meta->element_count && i < f_meta->element_count; ++i) {
         const QTupleElementDescriptor *fe = &f_meta->elements[i];
         const QTupleElementDescriptor *te = &t_meta->elements[i];
-        QVal v = quest_slot_read(fe->type, (const char *)src + fe->offset);
-        quest_slot_write(te->type, (char *)dst + te->offset, quest_convert(v, fe->type, te->type));
+        QVal v = quest_slot_read((const char *)src + fe->offset);
+        quest_slot_write((char *)dst + te->offset, quest_convert(v, fe->type, te->type));
     }
 }
 
@@ -1298,8 +1216,7 @@ static void quest_convert_elements(const void *src, const QTypeDescriptor *from,
 typedef struct QOptionLayout {
     int64_t tag;
     union {
-        QRecordVal r;
-        QVal       v;
+        QVal v;
     } u;
 } QOptionLayout;
 
@@ -1326,8 +1243,8 @@ static QVal quest_convert_option(QVal v, const QTypeDescriptor *from, const QTyp
         if (fc->payload_type->kind == QTYPE_KIND_TUPLE && tc->payload_type->kind == QTYPE_KIND_TUPLE) {
             quest_convert_elements(src + payload_offset, fc->payload_type, dst + payload_offset, tc->payload_type);
         } else {
-            QVal p = quest_slot_read(fc->payload_type, src + payload_offset);
-            quest_slot_write(tc->payload_type, dst + payload_offset, quest_convert(p, fc->payload_type, tc->payload_type));
+            QVal p = quest_slot_read(src + payload_offset);
+            quest_slot_write(dst + payload_offset, quest_convert(p, fc->payload_type, tc->payload_type));
         }
     }
     return (QVal){ .p = dst };
@@ -1344,14 +1261,11 @@ static bool quest_tuple_has_var(const QTypeDescriptor *d) {
 
 /* Reads and writes an auto value's component in its payload (see QAutoComponentDescriptor) */
 static QVal quest_auto_component_read(const QAutoComponentDescriptor *c, const char *payload) {
-    const void *slot = payload + c->offset;
-    return c->storage != NULL ? quest_slot_read(c->storage, slot) : *(const QVal *)slot;
+    return quest_slot_read(payload + c->offset);
 }
 
 static void quest_auto_component_write(const QAutoComponentDescriptor *c, char *payload, QVal v) {
-    void *slot = payload + c->offset;
-    if (c->storage != NULL) quest_slot_write(c->storage, slot, v);
-    else *(QVal *)slot = v;
+    quest_slot_write(payload + c->offset, v);
 }
 
 /* Re-stores an auto value's components in the layout of auto type `to` (keeping its type component) */
@@ -1450,10 +1364,10 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
 /* ------------------------------------------------------------------------- */
 
 /* Descriptors of the same type describe the same layout unless one stores a type parameter generically (as a QVal,
- * QTYPE_KIND_STORED) where the other stores the type argument's own representation. The two agree in memory for
- * scalars and pointers, but not for records and variants (16 bytes inline, or a pointer to a boxed copy); in
- * registers (function parameters and results) only integers and pointers agree. Recursive descriptors are compared
- * coinductively. */
+ * QTYPE_KIND_STORED) where the other stores the type argument's own representation. Every slot is one word holding a
+ * value's QVal form (records and variants boxed), so the two agree in memory; in registers (function parameters and
+ * results) only integers and pointers agree. A value stored as a bounded type parameter is viewed at the bound, which
+ * agrees only with the bound's own layout. Recursive descriptors are compared coinductively. */
 
 #define Q_EQUIV_TRAIL_MAX 64
 static Q_THREAD_LOCAL QSubtypePair quest_equiv_trail[Q_EQUIV_TRAIL_MAX];
@@ -1461,19 +1375,23 @@ static Q_THREAD_LOCAL size_t quest_equiv_trail_len = 0;
 
 static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescriptor *b);
 
-/* Whether a slot or a parameter holding a value stored generically (`st`) holds it as `other` does. Stored as the
- * type parameter's bound, a value has the bound's representation and is viewed at the bound. */
-static bool quest_stored_equivalent(const QStoredDescriptor *st, const QTypeDescriptor *other, bool in_register) {
+/* Where a value is held: in an aggregate slot (a word holding its QVal form), in a register (a function's parameter or
+ * result), or in the cell a var or out parameter points to (natively, a variable of the value's representation) */
+typedef enum QPlace { QPLACE_SLOT, QPLACE_REGISTER, QPLACE_CELL } QPlace;
+
+/* Whether a place holding a value stored generically (`st`) holds it as `other` does. Stored as the type parameter's
+ * bound, a value has the bound's representation and is viewed at the bound. */
+static bool quest_stored_equivalent(const QStoredDescriptor *st, const QTypeDescriptor *other, QPlace place) {
     if (st->storage != NULL) return quest_layout_equiv_rec(st->storage, other);
     switch (other->kind) {
+        case QTYPE_KIND_REAL:
+            return place != QPLACE_REGISTER;
         case QTYPE_KIND_RECORD:
         case QTYPE_KIND_VARIANT:
-            return false;
-        case QTYPE_KIND_REAL:
         case QTYPE_KIND_BOOL:
         case QTYPE_KIND_CHAR:
         case QTYPE_KIND_OK:
-            return !in_register;
+            return place == QPLACE_SLOT;
         case QTYPE_KIND_INT:
         case QTYPE_KIND_STRING:
         case QTYPE_KIND_OPAQUE:
@@ -1484,7 +1402,7 @@ static bool quest_stored_equivalent(const QStoredDescriptor *st, const QTypeDesc
     }
 }
 
-static bool quest_place_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b, bool in_register) {
+static bool quest_place_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b, QPlace place) {
     if (a == b) return true;
     if (a == NULL || b == NULL) return false;
     bool a_stored = a->kind == QTYPE_KIND_STORED, b_stored = b->kind == QTYPE_KIND_STORED;
@@ -1495,19 +1413,19 @@ static bool quest_place_equivalent(const QTypeDescriptor *a, const QTypeDescript
         return sa->storage != NULL ? quest_layout_equiv_rec(sa->storage, sb->storage)
                                    : quest_layout_equiv_rec(sa->type, sb->type);
     }
-    if (a_stored) return quest_stored_equivalent((const QStoredDescriptor *)a->extra, b, in_register);
-    if (b_stored) return quest_stored_equivalent((const QStoredDescriptor *)b->extra, a, in_register);
+    if (a_stored) return quest_stored_equivalent((const QStoredDescriptor *)a->extra, b, place);
+    if (b_stored) return quest_stored_equivalent((const QStoredDescriptor *)b->extra, a, place);
     return quest_layout_equiv_rec(a, b);
 }
 
 bool quest_slot_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b) {
-    return quest_place_equivalent(a, b, false);
+    return quest_place_equivalent(a, b, QPLACE_SLOT);
 }
 
 static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescriptor *b) {
     if (a == b) return true;
     if (a == NULL || b == NULL) return false;
-    if (a->kind == QTYPE_KIND_STORED || b->kind == QTYPE_KIND_STORED) return quest_place_equivalent(a, b, false);
+    if (a->kind == QTYPE_KIND_STORED || b->kind == QTYPE_KIND_STORED) return quest_place_equivalent(a, b, QPLACE_SLOT);
     if (a->kind != b->kind) return false;
     for (size_t i = 0; i < quest_equiv_trail_len; ++i) {
         if (quest_equiv_trail[i].sub == a && quest_equiv_trail[i].super_type == b) return true;
@@ -1525,7 +1443,7 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
             result = na >= nb;
             for (size_t i = 0; result && i < nb; ++i) {
                 result = sa->elements[i].offset == sb->elements[i].offset &&
-                         quest_place_equivalent(sa->elements[i].type, sb->elements[i].type, false);
+                         quest_place_equivalent(sa->elements[i].type, sb->elements[i].type, QPLACE_SLOT);
             }
             break;
         }
@@ -1538,7 +1456,7 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
             for (size_t i = 0; result && i < nb; ++i) {
                 result = strcmp(ra->fields[i].name, rb->fields[i].name) == 0 &&
                          ra->fields[i].is_var == rb->fields[i].is_var &&
-                         quest_place_equivalent(ra->fields[i].type, rb->fields[i].type, false);
+                         quest_place_equivalent(ra->fields[i].type, rb->fields[i].type, QPLACE_SLOT);
             }
             break;
         }
@@ -1552,14 +1470,14 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
                 const QVariantCaseDescriptor *ca = &va->cases[i], *cb = &vb->cases[i];
                 result = strcmp(ca->name, cb->name) == 0 && ca->tag_index == cb->tag_index &&
                          (ca->payload_type == NULL) == (cb->payload_type == NULL) &&
-                         (ca->payload_type == NULL || quest_place_equivalent(ca->payload_type, cb->payload_type, false));
+                         (ca->payload_type == NULL || quest_place_equivalent(ca->payload_type, cb->payload_type, QPLACE_SLOT));
             }
             break;
         }
         case QTYPE_KIND_ARRAY: {
             const QArrayTypeDescriptor *ea = (const QArrayTypeDescriptor *)a->extra;
             const QArrayTypeDescriptor *eb = (const QArrayTypeDescriptor *)b->extra;
-            result = ea != NULL && eb != NULL && quest_place_equivalent(ea->element_type, eb->element_type, false);
+            result = ea != NULL && eb != NULL && quest_place_equivalent(ea->element_type, eb->element_type, QPLACE_SLOT);
             break;
         }
         case QTYPE_KIND_FUN: {
@@ -1569,11 +1487,12 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
                      fa->quantifier_count == fb->quantifier_count;
             for (size_t i = 0; result && i < fb->param_count; ++i) {
                 const QFunParamDescriptor *pa = &fa->params[i], *pb = &fb->params[i];
-                /* var and out parameters are pointers to slots */
+                /* var and out parameters are pointers to cells */
                 result = pa->is_var == pb->is_var && pa->is_out == pb->is_out &&
-                         quest_place_equivalent(pa->type, pb->type, !(pa->is_var || pa->is_out));
+                         quest_place_equivalent(pa->type, pb->type,
+                                                pa->is_var || pa->is_out ? QPLACE_CELL : QPLACE_REGISTER);
             }
-            if (result) result = quest_place_equivalent(fa->result_type, fb->result_type, true);
+            if (result) result = quest_place_equivalent(fa->result_type, fb->result_type, QPLACE_REGISTER);
             break;
         }
         case QTYPE_KIND_AUTO: {
@@ -1582,16 +1501,14 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
             result = aa != NULL && ab != NULL && aa->component_count >= ab->component_count;
             for (size_t i = 0; result && i < ab->component_count; ++i) {
                 const QAutoComponentDescriptor *ca = &aa->components[i], *cb = &ab->components[i];
-                result = ca->offset == cb->offset && (ca->storage == NULL) == (cb->storage == NULL) &&
-                         (ca->storage == NULL || quest_layout_equiv_rec(ca->storage, cb->storage)) &&
-                         quest_place_equivalent(ca->type, cb->type, false);
+                result = ca->offset == cb->offset && quest_place_equivalent(ca->type, cb->type, QPLACE_SLOT);
             }
             break;
         }
         case QTYPE_KIND_EXCEPTION: {
             const QExceptionTypeDescriptor *xa = (const QExceptionTypeDescriptor *)a->extra;
             const QExceptionTypeDescriptor *xb = (const QExceptionTypeDescriptor *)b->extra;
-            result = xa != NULL && xb != NULL && quest_place_equivalent(xa->payload_type, xb->payload_type, false);
+            result = xa != NULL && xb != NULL && quest_place_equivalent(xa->payload_type, xb->payload_type, QPLACE_SLOT);
             break;
         }
         default:
@@ -1603,7 +1520,7 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
 }
 
 bool quest_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b) {
-    return quest_place_equivalent(a, b, false);
+    return quest_place_equivalent(a, b, QPLACE_SLOT);
 }
 
 /* How a parameter or result of type d is passed: integers and pointers alike, other scalars, records, and variants
@@ -1701,7 +1618,6 @@ static void quest_desc_children(const QTypeDescriptor *d, void (*f)(void *cx, co
             f(cx, m->bound);
             for (size_t i = 0; i < m->component_count; ++i) {
                 f(cx, m->components[i].type);
-                f(cx, m->components[i].storage);
             }
             break;
         }
@@ -1836,7 +1752,6 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             for (size_t i = 0; i < m->component_count; ++i) {
                 QAutoComponentDescriptor *comp = (QAutoComponentDescriptor *)&c->components[i];
                 comp->type = quest_inst_of(cx, m->components[i].type);
-                comp->storage = quest_inst_of(cx, m->components[i].storage);
             }
             out->extra = c;
             break;
@@ -1865,7 +1780,7 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             c->storage = quest_inst_of(cx, h->storage);
             out->kind = QTYPE_KIND_STORED;
             out->name = c->type != NULL ? c->type->name : d->name;
-            out->size = c->storage != NULL ? c->storage->size : sizeof(QVal);
+            out->size = sizeof(QVal);
             out->extra = c;
             break;
         }
@@ -1941,8 +1856,8 @@ QVal quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_
     const QTypeDescriptor *field_type = meta->fields[i].type;
     const void *slot = (const char *)rec.val + quest_record_field_offset(rec, i);
     QRecordStoredTypes stored = quest_record_stored_types(rec, meta->field_count);
-    if (stored != NULL && stored[i] != NULL) return quest_convert(quest_slot_read(stored[i], slot), stored[i], field_type);
-    return quest_slot_read(field_type, slot);
+    if (stored != NULL && stored[i] != NULL) return quest_convert(quest_slot_read(slot), stored[i], field_type);
+    return quest_slot_read(slot);
 }
 
 /* Writes a string literal, escaped as the interpreter does */
@@ -1992,7 +1907,7 @@ static void quest_put_elements(const char *base, const QTypeDescriptor *t, const
         const QTupleElementDescriptor *e = &meta->elements[i];
         putchar(' ');
         if (e->name != NULL && e->name[0] != '\0') printf("%s=", e->name);
-        quest_put_value(quest_slot_read(e->type, base + e->offset), e->type, witness);
+        quest_put_value(quest_slot_read(base + e->offset), e->type, witness);
     }
 }
 
@@ -2082,7 +1997,7 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                     if (payload_type->kind == QTYPE_KIND_TUPLE) {
                         quest_put_tuple(payload, payload_type, witness);
                     } else {
-                        quest_put_value(quest_slot_read(payload_type, payload), payload_type, witness);
+                        quest_put_value(quest_slot_read(payload), payload_type, witness);
                     }
                 }
             }
@@ -2096,19 +2011,11 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                 return;
             }
             if (!quest_print_enter(v.p, "array of")) return;
-            /* Records and variants are stored in wide arrays, any other element as its QVal form */
+            /* Each element is its QVal form (records and variants boxed) */
             int64_t length = ((const QArray *)v.p)->length;
             for (int64_t i = 0; i < length; ++i) {
-                QVal e;
-                if (elem != NULL && elem->kind == QTYPE_KIND_RECORD) {
-                    e = (QVal){ .p = &((QArrayWideRecord *)v.p)->data[i] };
-                } else if (elem != NULL && elem->kind == QTYPE_KIND_VARIANT) {
-                    e = (QVal){ .p = &((QArrayWideVariant *)v.p)->data[i] };
-                } else {
-                    e = ((const QArray *)v.p)->data[i];
-                }
                 putchar(' ');
-                quest_put_value(e, elem, witness);
+                quest_put_value(((const QArray *)v.p)->data[i], elem, witness);
             }
             fputs(" end", stdout);
             quest_print_leave();
@@ -2125,9 +2032,7 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             const char *payload = (const char *)a->payload.p;
             for (size_t i = 0; payload != NULL && i < meta->component_count; ++i) {
                 const QAutoComponentDescriptor *c = &meta->components[i];
-                /* Records and variants are stored inline, any other component as its QVal form */
-                QVal cv = c->storage != NULL ? quest_slot_read(c->storage, payload + c->offset)
-                                              : *(const QVal *)(payload + c->offset);
+                QVal cv = quest_slot_read(payload + c->offset);
                 printf(" %s=", c->name);
                 quest_put_value(cv, c->type, a->type_desc);
             }
