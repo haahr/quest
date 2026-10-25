@@ -34,7 +34,6 @@ from quest.pipeline import (
 from quest.build.engine import BuildEngine, compile_unit_file
 from quest.codegen.c.compiler_runner import compile_c_source
 from quest.modules.graph import UnitKind, file_unit_kind
-from quest.modules.paths import canonicalize_module_path
 from quest.repl import run_repl
 from quest.values.model import QOk, qvalue_to_str
 from quest.syntax.sources import SourceMap
@@ -376,11 +375,7 @@ def run_driver(args: list[str]) -> int:
     # Execute pipeline
     try:
         ctx = CompilerContext.create(source_text, file_name, options=options)
-        for obj in extra_objects:
-            canon_mod = canonicalize_module_path(obj, options.include_paths)
-            mod_name = obj.name.split(".")[0]
-            ctx.env.units.unit(UnitKind.MODULE, canon_mod).precompiled = True
-            ctx.env.units.unit(UnitKind.MODULE, mod_name).precompiled = True
+        ctx.env.units.add_prebuilt_objects(extra_objects, options.include_paths)
         result = pipeline.execute(source_text, file_name, options=options, ctx=ctx)
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
@@ -648,11 +643,7 @@ def run_compile(args: list[str]) -> int:
     )
 
     ctx = CompilerContext.create(source_text, file_name, options=options)
-    for obj in extra_objects:
-        canon_mod = canonicalize_module_path(obj, options.include_paths)
-        mod_name = obj.name.split(".")[0]
-        ctx.env.units.unit(UnitKind.MODULE, canon_mod).precompiled = True
-        ctx.env.units.unit(UnitKind.MODULE, mod_name).precompiled = True
+    ctx.env.units.add_prebuilt_objects(extra_objects, options.include_paths)
     result = pipeline.execute(source_text, file_name, options=options, ctx=ctx)
 
     for phase_name in available_phases:

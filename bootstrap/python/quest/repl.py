@@ -5,7 +5,7 @@ Implements Phase 3.6 of the Quest bootstrap compiler:
 - Semicolon-optional multi-line input buffering with unexpected-EOF continuation detection.
 - 4-column visual alignment: '>>  ' (main), '    ' (continuation), '==  ' (response).
 - History persistence to ~/.quest_history with terminal escape sequence safety (dumb/emacs detection).
-- Clean rollback of environment state on typecheck error or runtime exception.
+- Clean rollback of environment state, units included, on typecheck error or runtime exception (QuestREPL.evaluate).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.formatting import format_interactive_result
 from quest.syntax.parser import ParserError
 from quest.config import CompilerOptions
-from quest.pipeline import CompilerContext, default_pipeline
+from quest.pipeline import CompilerContext, PipelineResult, default_pipeline
 from quest.values.model import QOk, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
@@ -133,6 +133,33 @@ class QuestREPL:
         cont_lines = [f"{PROMPT_CONT}{line}" for line in lines[1:]]
         return "\n".join([first_line] + cont_lines)
 
+    def evaluate(self, text: str) -> PipelineResult:
+        """Compiles and runs one input as a transaction: an input that fails leaves the session as it found it.
+
+        Each input is a compilation session of its own on the context's unit graph (UnitGraph.new_session), so that
+        its imports find files created since the last input; units loaded by earlier inputs stay loaded. When the
+        input fails, in type checking or at run time, the type checker's environment is restored, units and all
+        (the units it loaded are forgotten, typed forms and values alike, so that importing them again elaborates
+        and runs them again), and so is the runtime environment: its bindings, and the frame it continues in. The
+        runtime environment holds the type checker's unit graph itself, which restoring changes in place
+        (docs/repl.md §5).
+        """
+        ctx = self.context
+        env_snap = ctx.env.snapshot()
+        runtime_env = ctx.runtime_env
+        runtime_snap = runtime_env.snapshot()
+
+        ctx.env.units.new_session()
+        result = self.pipeline.compile_phrase(text, ctx=ctx)
+
+        if result.has_errors or not result.success:
+            ctx.env.restore(env_snap)
+            # A phrase that rebinds a name continues in a new frame (eval_scoped_binding); go back to the frame the
+            # phrase started in
+            ctx.runtime_env = runtime_env
+            runtime_env.restore(runtime_snap)
+        return result
+
     def run(self) -> int:
         """Executes the main interactive REPL loop until EOF (Ctrl-D) or exit."""
         history_path = Path.home() / HISTORY_FILE_NAME
@@ -167,23 +194,9 @@ class QuestREPL:
             if not current_buffer.strip():
                 continue
 
-            # Snapshot environment state before evaluation for transactional rollback on failure
-            env_snap = self.context.env.snapshot()
-            runtime_env = self.context.runtime_env
-            runtime_snap = runtime_env.snapshot()
-
-            # Each input is a compilation of its own: its imports find files created since the last one
-            self.context.env.units.resolver.forget()
-            result = self.pipeline.compile_phrase(current_buffer, ctx=self.context)
+            result = self.evaluate(current_buffer)
 
             if result.has_errors or not result.success:
-                # Rollback environment mutations from failing phrase
-                self.context.env.restore(env_snap)
-                # A phrase that rebinds a name continues in a new frame (eval_scoped_binding); go back to the
-                # frame the phrase started in
-                self.context.runtime_env = runtime_env
-                runtime_env.restore(runtime_snap)
-
                 # Render error diagnostics
                 source_map = SourceMap(current_buffer, "<repl>")
                 for diag in result.diagnostics:

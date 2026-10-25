@@ -1,4 +1,10 @@
-"""Quest Bootstrap Compiler Test Runner."""
+"""Quest Bootstrap Compiler Test Runner.
+
+Each test is a driver run of its own (quest_driver.py, in a subprocess), and so a compilation session of its own,
+with its own unit graph and resolver (docs/build-process.md §2.1): a test's builds never see another's resolutions
+or typed units, only the artifacts in the worker's build directory, whose staleness rules decide whether they are
+reused (docs/testing.md §2.2).
+"""
 
 import argparse
 import concurrent.futures
@@ -28,6 +34,7 @@ from quest.pipeline import (
     ir_pipeline,
     ir_run_pipeline,
 )
+from quest.modules.graph import UnitKind, file_unit_kind
 from quest.testing.errors import run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
@@ -50,9 +57,6 @@ def record_telemetry(total_duration: float, tests_run: int, workers_used: int) -
     except OSError as err:
         print(f"Warning: could not write telemetry to {TELEMETRY_LOG_PATH}: {err}", file=sys.stderr)
 
-
-# Interfaces and modules beside the tests are imported by them, not run as tests (docs/testing.md §2.6).
-UNIT_SUFFIXES = (".int.quest", ".mod.quest")
 
 SKIP_PHASE_PATTERN = re.compile(r"\(\*\s*@skip-phase:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 ARGS_PATTERN = re.compile(r"\(\*\s*@args:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
@@ -134,8 +138,9 @@ def parse_skipped_phases(source_file: Path) -> set[str]:
 
 
 def discover_tests(directory: Path) -> list[Path]:
-    """Returns the test programs under directory: every .quest file except interfaces and modules."""
-    return sorted(p for p in directory.rglob("*.quest") if not p.name.endswith(UNIT_SUFFIXES))
+    """Returns the test programs under directory: every .quest file holding a program. Interfaces and modules beside
+    the tests are imported by them, not run as tests (docs/testing.md §2.6)."""
+    return sorted(p for p in directory.rglob("*.quest") if file_unit_kind(p) == UnitKind.PROGRAM)
 
 
 # The IR's stages after Core are dumped (and compared with goldens) for a subset of the programs, chosen to exercise

@@ -14,9 +14,10 @@ This module holds what every consumer of units shares, so that each computes it 
   depends only on which source files exist, which a compilation never changes; artifacts, which it does write, are
   looked up when needed (`fresh_interface_qi`).
 - **Units** (`Unit`) and their **type-checked forms**: the interfaces and modules an environment has loaded, by kind
-  and canonical name, with their elaborated scopes and typed modules (`UnitGraph`). Typed forms belong to one
-  elaboration (they hold the symbols it minted), so each type-checking Environment has its own graph; the graphs of
-  one session share a resolver.
+  and canonical name, with their elaborated scopes and typed modules, and the values of the modules the interpreter
+  has run (`UnitGraph`). Typed forms belong to one elaboration (they hold the symbols it minted), so each
+  type-checking Environment has its own graph; the graphs of one session share a resolver. The REPL keeps one graph
+  across its inputs, each a session, and rolls it back when an input fails.
 - **Edges** (`interface_import_paths`, `interface_dependencies`): the interfaces an interface imports, resolved from
   its directory, and those they import in turn.
 - **Artifacts** (`unit_artifact_dir`, `ModuleArtifacts`, `interface_qi_file`): where a unit's .qi, .qm, .mod.c, and
@@ -143,8 +144,8 @@ class Resolved:
 class Resolver:
     """Resolves import paths to units, each (path, directory, roots) once.
 
-    A resolver lives for one compilation session (a driver run, a pipeline execution, a build), during which the
-    set of source files does not change; forget() starts a new one (the REPL does, for each input).
+    A resolver lives for one compilation session (a driver run, a pipeline execution, a build, one REPL input),
+    during which the set of source files does not change; forget() starts a new one (UnitGraph.new_session).
     """
 
     def __init__(self) -> None:
@@ -391,7 +392,8 @@ class Unit:
     An interface has its scope once elaborated (from source or from its .qi). A module has its typed module once
     elaborated or synthesized from its interface, and an export scope when it is known only through its interface
     (separate compilation); precompiled marks a module typed through its interface alone (a prebuilt object, a
-    module built separately, or one with fresh artifacts in a typecheck-only run).
+    module built separately, or one with fresh artifacts in a typecheck-only run). A module the interpreter has
+    run has its value: the record of its members, made once per program (load_module_for_interpreter).
     """
     kind: UnitKind
     canonical_name: str
@@ -399,9 +401,10 @@ class Unit:
     typed_module: Optional[Any] = None
     export_scope: Optional[Scope] = None
     precompiled: bool = False
+    value: Optional[Any] = None
 
     def state(self) -> tuple[Any, ...]:
-        return (self.scope, self.typed_module, self.export_scope, self.precompiled)
+        return (self.scope, self.typed_module, self.export_scope, self.precompiled, self.value)
 
 
 @dataclass
@@ -410,11 +413,22 @@ class UnitGraph:
     resolves its imports.
 
     Loaded units are shared by canonical name (docs/modules.md §2.3): every importer of a file, through any path,
-    gets the same unit, and so the same interface scope, export scope (with the same abstract types), and typed
-    module.
+    gets the same unit, and so the same interface scope, export scope (with the same abstract types), typed module,
+    and, once the interpreter has run it, value. The interpreter's RuntimeEnvironment holds the graph of the
+    Environment that type checked its program (CompilerContext.runtime_env), the same object, so that the two never
+    disagree about which units are loaded: restore changes the graph in place.
+
+    A graph outlives a session when the REPL keeps it from one input to the next. Each input is a session of its
+    own (new_session), and one that fails is rolled back (snapshot, restore), forgetting the units it loaded, typed
+    forms and values alike, so that importing them again elaborates and runs them again.
     """
     resolver: Resolver = field(default_factory=Resolver)
     _units: dict[tuple[UnitKind, str], Unit] = field(default_factory=dict)
+
+    def new_session(self) -> None:
+        """Starts a new compilation session on this graph: imports are resolved again, so that files created since
+        are found. Units already loaded stay loaded, as they were elaborated (the REPL starts one for each input)."""
+        self.resolver.forget()
 
     def unit(self, kind: UnitKind, canonical_name: str) -> Unit:
         """The unit of this kind named canonical_name, added if not yet known."""
@@ -465,13 +479,18 @@ class UnitGraph:
         for name, scope in export_scopes.items():
             self.unit(UnitKind.MODULE, name).export_scope = scope
 
+    def add_prebuilt_objects(self, objects: list[Path], include_paths: Any) -> None:
+        """Marks the modules of prebuilt object files given to the driver as typed through their interfaces alone,
+        by their canonical names (against include_paths) and by their base names."""
+        for obj in objects:
+            self.unit(UnitKind.MODULE, canonicalize_module_path(obj, list(include_paths or ()))).precompiled = True
+            self.unit(UnitKind.MODULE, obj.name.split(".")[0]).precompiled = True
+
     def snapshot(self) -> dict[tuple[UnitKind, str], tuple[Any, ...]]:
-        """The units' typed forms, for restore (the REPL rolls back an input that failed)."""
+        """The units' typed forms and values, for restore (the REPL rolls back an input that failed)."""
         return {key: u.state() for key, u in self._units.items()}
 
     def restore(self, snap: dict[tuple[UnitKind, str], tuple[Any, ...]]) -> None:
-        """Puts the units' typed forms back as snapshot found them, forgetting units loaded since."""
-        units: dict[tuple[UnitKind, str], Unit] = {}
-        for key, (scope, typed_module, export_scope, precompiled) in snap.items():
-            units[key] = Unit(key[0], key[1], scope, typed_module, export_scope, precompiled)
-        self._units = units
+        """Puts the units' typed forms and values back as snapshot found them, forgetting units loaded since. The
+        graph is changed in place, so every holder of it (the interpreter's RuntimeEnvironment) sees the change."""
+        self._units = {key: Unit(key[0], key[1], *state) for key, state in snap.items()}

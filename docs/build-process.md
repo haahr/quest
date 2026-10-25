@@ -113,9 +113,10 @@ resolving imports and placing artifacts in its own way:
   depends only on which source files exist, which a compilation never changes; artifacts, which it does write, are
   looked up when needed (`fresh_interface_qi`, a fresh `.qi` on the search path). A file given directly rather than
   imported (the unit file the driver compiles, a module source the build engine found) is named by `Resolver.file`.
-  A session is a driver run, a build, or one REPL input (the REPL calls `Resolver.forget` before each, so that files
-  created since are found). A build (`BuildEngine`) has one resolver, which the units it compiles share, and the
-  pipeline's C phases hand theirs to the build that links the program's modules.
+  A session is a driver run (so each test the test runner runs; [testing.md §2.3](testing.md)), a build, or one REPL
+  input (`UnitGraph.new_session` forgets the resolutions before each, so that files created since are found). A build
+  (`BuildEngine`) has one resolver, which the units it compiles share, and the pipeline's C phases hand theirs to the
+  build that links the program's modules.
 - **Edges.** A unit's imports are its edges: an interface's are the interface paths it imports
   (`interface_import_paths`), each resolved from its directory; `Resolver.interface_dependencies` follows them
   transitively, for the `.qi` dependencies (§4.2) and the indirect entries of `.qm` manifests (§7.2).
@@ -123,8 +124,14 @@ resolving imports and placing artifacts in its own way:
   with its elaborated forms: an interface's scope, a module's typed module, the export scope of a module known only
   through its interface, and whether a module is typed through its interface alone (precompiled). Typed forms hold
   the symbols one elaboration minted, so each Environment has its own graph; the graphs of one session (an
-  interface compiled for an importer, a module the interpreter elaborates on demand) share its resolver. The REPL
-  rolls a graph back with `snapshot` and `restore` when an input fails.
+  interface compiled for an importer, a module the interpreter elaborates on demand) share its resolver. A module the
+  interpreter has run also has its value, the record of its members, so each module is run once per program. The
+  interpreter's runtime environment holds the graph of the Environment that type checked its program, the same
+  object. Prebuilt objects given to the driver mark their modules precompiled (`add_prebuilt_objects`).
+- **The REPL's graph.** The REPL keeps one graph across its inputs ([repl.md §5](repl.md)). Each input is a session
+  (`new_session`); units loaded by earlier inputs stay loaded. An input that fails is rolled back with `snapshot` and
+  `restore`, which forget the units it loaded, typed forms and values alike, and change the graph in place, so the
+  runtime environment, holding the same graph, is rolled back with it.
 - **Artifacts.** A unit's artifacts are named by its canonical name under a build directory (§3.2):
   `unit_artifact_dir`, `interface_qi_file`, and `ModuleArtifacts` (`.qm`, `.mod.c`, `.o`). Their staleness rules
   are §5 (interfaces, `ensure_resolved_interface_artifacts`), §5.3 (headers), and §7.1 (modules and main routines,

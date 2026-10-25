@@ -146,7 +146,6 @@ class RuntimeEnvironment:
         # functions being executed, for the operations that use types at run time
         self.type_bindings: dict[int, QType] = {}
         if parent is not None:
-            self.evaluated_modules: dict[str, Any] = parent.evaluated_modules
             self.include_paths: list[Path] = parent.include_paths
             self.current_dir: Optional[Path] = parent.current_dir
             self.program_dir: Optional[Path] = parent.program_dir
@@ -154,12 +153,12 @@ class RuntimeEnvironment:
             self.source_map: Optional[Any] = parent.source_map
             self.call_stack: list[str] = parent.call_stack
         else:
-            self.evaluated_modules: dict[str, Any] = {}
             self.include_paths: list[Path] = []
             self.current_dir: Optional[Path] = None
             self.program_dir: Optional[Path] = None
-            # The program's units (docs/build-process.md §2.1), whose typed modules the interpreter evaluates; the
-            # type checker's, when the program was type checked by a pipeline (CompilerContext.runtime_env)
+            # The program's units (docs/build-process.md §2.1), whose typed modules the interpreter evaluates, and
+            # which hold the values of the modules it has run; the type checker's graph itself, when the program was
+            # type checked by a pipeline (CompilerContext.runtime_env)
             self.units: UnitGraph = UnitGraph()
             # The source map of the file whose code runs in this scope (the program's, or a module file's), where
             # the offsets of the errors that code raises are (docs/exceptions.md §3.2)
@@ -1015,16 +1014,13 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             return OK_VALUE
 
         case TypedModule(name=mod_name, bindings=mod_bindings, scope=mod_scope):
-            if mod_name in env.evaluated_modules:
-                rec = env.evaluated_modules[mod_name]
-                env.define(mod_name, rec)
-                return rec
+            # A module declared in the program is run where it is declared, each time (a REPL input that declares a
+            # module again gets the new one); modules in files are run once (load_module_for_interpreter)
             mod_env = run_module_init(mod_name, mod_bindings, env.push_scope())
             exported_fields: dict[str, QValue] = {}
             for val_name in mod_scope.values:
                 exported_fields[val_name] = mod_env.lookup(val_name)
             rec = QRecord(exported_fields)
-            env.evaluated_modules[mod_name] = rec
             env.define(mod_name, rec)
             return rec
 
@@ -1035,12 +1031,7 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
                 for local_name, mod_path, canon in zip(
                     item.names, item.effective_module_paths, item.effective_canonical_module_paths
                 ):
-                    if canon in env.evaluated_modules:
-                        mod_val = env.evaluated_modules[canon]
-                    else:
-                        mod_val = load_module_for_interpreter(mod_path, item.effective_interface_path, env)
-                        if mod_val is not None:
-                            env.evaluated_modules[canon] = mod_val
+                    mod_val = load_module_for_interpreter(mod_path, item.effective_interface_path, env, canon)
                     if mod_val is not None:
                         env.define(local_name, mod_val)
             return OK_VALUE
@@ -1108,23 +1099,31 @@ def load_module_for_interpreter(
     name: str,
     expected_interface: str,
     r_env: RuntimeEnvironment,
+    canonical_name: Optional[str] = None,
 ) -> Optional[QValue]:
     """Loads and evaluates module `name`, as imported from r_env.current_dir, for the interpreter.
 
     The module is the unit r_env.units resolves the import to; it is evaluated from that unit's typed module, which
     the type checker elaborated, or which is elaborated here in an environment of its own (a module the program
-    uses without importing it, such as a standard library module named in an expression). Evaluated modules are
-    shared by canonical name (docs/modules.md §2.3), so each is evaluated once.
+    uses without importing it, such as a standard library module named in an expression). Its value is kept in the
+    unit, so each module is evaluated once, whatever path imports it (docs/modules.md §2.3), until a REPL input
+    that loaded it is rolled back (UnitGraph.restore). An import that knows the module's canonical name (from the
+    type checker) passes it, and a module already run is found by it without resolving the import again.
     """
     from quest.types.env import Environment
     from quest.modules.loader import load_module
 
     graph = r_env.units
+    if canonical_name is not None:
+        known = graph.find(UnitKind.MODULE, canonical_name)
+        if known is not None and known.value is not None:
+            return known.value
     resolved = graph.resolver.module(name, r_env.current_dir, Roots.of(r_env.include_paths, r_env.program_dir))
     file_path = resolved.source
     canon_name = resolved.canonical_name
-    if canon_name in r_env.evaluated_modules:
-        return r_env.evaluated_modules[canon_name]
+    loaded = graph.find(UnitKind.MODULE, canon_name)
+    if loaded is not None and loaded.value is not None:
+        return loaded.value
 
     typed_mod = graph.typed_module(canon_name)
     if typed_mod is None:
@@ -1148,5 +1147,5 @@ def load_module_for_interpreter(
         exported_fields[val_name] = mod_env.lookup(val_name)
 
     rec = QRecord(exported_fields)
-    r_env.evaluated_modules[canon_name] = rec
+    graph.unit(UnitKind.MODULE, canon_name).value = rec
     return rec

@@ -160,6 +160,12 @@ that run and deleted afterwards), so results never depend on artifacts left by e
 Pass `--build-dir <dir>` to reuse a build directory across runs for speed. Unit tests that invoke the driver give it
 a build directory inside their own temporary directory, so no test writes into the repository.
 
+**One session per test:** each test is a driver run of its own, and so a compilation session of its own, with its own
+unit graph and resolver (`docs/build-process.md` §2.1). Tests share only the artifacts in their worker's build
+directory, which the staleness rules decide whether to reuse; no test sees another's resolutions or typed units. The
+runner itself classifies files (§2.6) and follows error tests' imports (§3.3) through the same graph: `file_unit_kind`
+and a `Resolver` of each error test's own.
+
 **ABI corpus:** `tests/python/test_abi_corpus.py` fails when the generated interface artifacts (`.qi` files and C
 headers for a frozen snapshot of the library's interfaces) change without a bump of `ABI_VERSION`
 (`docs/build-process.md` §5.2.3). After an intended contract change, bump the version and run
@@ -334,7 +340,8 @@ the diagnostic is expected:
 A test may import interfaces and modules beside it (§2.6), and an expectation may be placed in one of those files, on
 the line of that file where the diagnostic is expected: an error in an imported interface or module is reported in its
 own file (`docs/diagnostics.md` §4.4). The runner collects the expectations of the test and of every unit beside it that
-the test imports, directly or through other units, and matches each only by a diagnostic in its own file. A unit's
+the test imports, directly or through other units (each import resolved from its importer's directory as compiling
+it resolves it, keeping the units found there), and matches each only by a diagnostic in its own file. A unit's
 expectations apply to every test that imports it, so a unit with an error should be imported by one test.
 
 #### Examples

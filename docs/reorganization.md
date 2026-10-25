@@ -292,6 +292,21 @@ sharing them would change which symbols units are elaborated with.
 
 **C3. The REPL and the test runner use the same graph.**
 
+**Done:** The REPL keeps one `UnitGraph` across its inputs ([build-process.md](build-process.md) §2.1,
+[repl.md](repl.md) §5). Each input is a session (`UnitGraph.new_session`, in `QuestREPL.evaluate`, which replaces the
+loop's hook into the resolver), and an input that fails is rolled back with the graph's `snapshot` and `restore`. The
+values of modules the interpreter has run moved from the runtime environment's `evaluated_modules` into the graph's
+units (`Unit.value`), so a rollback forgets a module's typed form and value together; before, a failed input that
+imported a module left its value behind, to be reused with the next import's new elaboration. The runtime environment
+keeps holding the type checker's graph by reference, which is correct because `restore` changes the graph in place.
+A module declared in the program is now run where it is declared, without the cache by name it shared with imported
+modules, which made a REPL input that declared a module again get the old one, and a declaration that was rolled back
+be remembered. The test runner's builds are driver runs, one session per test, so there is no graph to share across
+tests; what the runner resolves itself now goes through the graph (discovering tests by `file_unit_kind`, following
+error tests' imports with a `Resolver`). The driver's two copies of marking prebuilt objects precompiled are
+`UnitGraph.add_prebuilt_objects`. Left as they were: the build engine's queue bookkeeping by lowercased canonical
+name, `find_canonical_module_source`, and nested compilations elaborating imports in fresh Environments.
+
 ---
 
 ## 6. Order, Parallelism, and Conflicts

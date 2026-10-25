@@ -174,10 +174,38 @@ class TestUnitGraph(unittest.TestCase):
         snap = env.units.snapshot()
         load_interface("util/Counter", env)
         env.units.unit(UnitKind.MODULE, "prebuilt").precompiled = True
+        env.units.unit(UnitKind.MODULE, "run").value = object()
+        graph = env.units
         env.units.restore(snap)
+        self.assertIs(env.units, graph)
         self.assertIsNotNone(env.units.interface_scope("util/base"))
         self.assertIsNone(env.units.interface_scope("util/counter"))
         self.assertFalse(env.units.is_precompiled("prebuilt"))
+        self.assertIsNone(env.units.find(UnitKind.MODULE, "run"))
+
+    def test_restore_keeps_values_of_units_loaded_before(self) -> None:
+        graph = UnitGraph()
+        value = object()
+        graph.unit(UnitKind.MODULE, "util/counter").value = value
+        snap = graph.snapshot()
+        graph.unit(UnitKind.MODULE, "util/counter").value = None
+        graph.restore(snap)
+        self.assertIs(graph.find(UnitKind.MODULE, "util/counter").value, value)
+
+    def test_new_session_resolves_again(self) -> None:
+        graph = UnitGraph()
+        roots = Roots.of([self.lib], None)
+        first = graph.resolver.module("util/counter", self.lib, roots)
+        graph.unit(UnitKind.MODULE, first.canonical_name)
+        graph.new_session()
+        self.assertIsNot(graph.resolver.module("util/counter", self.lib, roots), first)
+        self.assertIsNotNone(graph.find(UnitKind.MODULE, first.canonical_name))
+
+    def test_prebuilt_objects_are_precompiled(self) -> None:
+        graph = UnitGraph()
+        graph.add_prebuilt_objects([self.util / "counter.o"], [self.lib])
+        self.assertTrue(graph.is_precompiled("util/counter"))
+        self.assertTrue(graph.is_precompiled("counter"))
 
     def test_graphs_of_one_session_share_a_resolver(self) -> None:
         resolver = Resolver()

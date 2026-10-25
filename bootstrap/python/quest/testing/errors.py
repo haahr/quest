@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import quest.syntax.ast as ast
+from quest.modules.graph import Resolver, Roots
 from quest.syntax.grammar import parse_quest_program
 from quest.syntax.sources import SourceMap
 from quest.syntax.tokenizer import Tokenizer
@@ -62,9 +63,10 @@ def extract_expected_diagnostics(source_text: str, file: Optional[Path] = None) 
     return expectations
 
 
-def _unit_imports(path: Path) -> list[Path]:
-    """The interface and module files beside path (found from its directory) that the unit or program in it imports,
-    including a module's own interface; none if it does not parse."""
+def _unit_imports(path: Path, resolver: Resolver) -> list[Path]:
+    """The interface and module files beside path (found from its directory, as compiling it resolves them, but
+    without search paths) that the unit or program in it imports, including a module's own interface; none if it
+    does not parse. Units found elsewhere (the standard library's) are not beside it."""
     try:
         text = path.read_text(encoding="utf-8")
         prog = parse_quest_program(Tokenizer(text, str(path)).tokenize_all(), SourceMap(text, str(path)))
@@ -85,17 +87,22 @@ def _unit_imports(path: Path) -> list[Path]:
         for item in items:
             interfaces.append(item.effective_interface_path)
             modules.extend(item.effective_module_paths)
-    candidates = [path.parent / f"{name.lower()}.int.quest" for name in interfaces]
-    candidates += [path.parent / f"{name.lower()}.mod.quest" for name in modules]
-    return [c for c in candidates if c.is_file()]
+    roots = Roots.of((), None)
+    here = path.parent.resolve()
+    found = [resolver.interface(name, path.parent, roots).source for name in interfaces]
+    found += [resolver.module(name, path.parent, roots).source for name in modules]
+    return [f for f in found if f is not None and f.is_relative_to(here)]
 
 
 def imported_unit_files(source_file: Path) -> list[Path]:
-    """The interface and module files beside an error test that it imports, directly or through other such units."""
+    """The interface and module files beside an error test that it imports, directly or through other such units.
+
+    The imports are resolved by a resolver of the test's own (docs/build-process.md §2.1), each once."""
+    resolver = Resolver()
     found: list[Path] = []
     queue = [source_file]
     while queue:
-        for unit in _unit_imports(queue.pop(0)):
+        for unit in _unit_imports(queue.pop(0), resolver):
             unit = unit.resolve()
             if unit not in found and unit != source_file.resolve():
                 found.append(unit)

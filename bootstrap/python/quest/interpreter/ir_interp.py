@@ -246,13 +246,8 @@ class Interpreter:
     def import_module(self, imp: ir.Import) -> None:
         from quest.interpreter.treewalk import load_module_for_interpreter
 
-        evaluated = self.renv.evaluated_modules
-        if imp.canonical_path in evaluated:
-            value = evaluated[imp.canonical_path]
-        else:
-            value = load_module_for_interpreter(imp.module_path, imp.interface_path, self.renv)
-            if value is not None:
-                evaluated[imp.canonical_path] = value
+        # Run once per program, and kept in its unit (as the source interpreter's imports are)
+        value = load_module_for_interpreter(imp.module_path, imp.interface_path, self.renv, imp.canonical_path)
         if value is None:
             raise IRInterpreterError(f"module '{imp.module_path}' could not be loaded")
         self.modules[id(imp)] = value
