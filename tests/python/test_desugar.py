@@ -47,6 +47,7 @@ class TestDesugar(unittest.TestCase):
                 cond=ast.ExprId(name="a", offset=0),
                 then_branch=ast.ExprId(name="b", offset=8),
                 else_branch=ast.ExprBool(value=False, offset=0),
+                short_circuit=True,
                 offset=0,
             ),
         )
@@ -59,6 +60,7 @@ class TestDesugar(unittest.TestCase):
                 cond=ast.ExprId(name="a", offset=0),
                 then_branch=ast.ExprBool(value=True, offset=0),
                 else_branch=ast.ExprId(name="b", offset=7),
+                short_circuit=True,
                 offset=0,
             ),
         )

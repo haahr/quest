@@ -342,10 +342,13 @@ class ControlMixin:
         Against an expected type, both branches are checked against it (check_expr does so only for a conditional
         with an else branch, and checks the others by synthesis and subsumption). Synthesized, its type is the join
         of its branches' types, except that a conditional without an else branch is a statement: its then branch is
-        evaluated for its effect, and its type is Ok.
+        evaluated for its effect, and its type is Ok. A short-circuit operator (andif, orif) has Bool branches: its
+        operands are checked against Bool, and its type is Bool (check_expr checks it by subsumption).
         """
         if expr.elsifs:
             raise not_desugared(expr)
+        if expr.short_circuit:
+            expected_type = BOOL_TYPE
         cond_typed = self.check_expr(expr.cond, BOOL_TYPE, env, loop_depth)
 
         if expected_type is None and expr.else_branch is None:

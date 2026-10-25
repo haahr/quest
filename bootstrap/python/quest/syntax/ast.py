@@ -323,11 +323,16 @@ class ExprBlock(Expr):
 
 @dataclass(frozen=True)
 class ExprIf(Expr):
-    """if cond then e1 elsif cond2 then e2 else e3 end"""
+    """if cond then e1 elsif cond2 then e2 else e3 end
+
+    short_circuit marks a conditional desugared from andif or orif (quest/syntax/desugar.py), whose operands are
+    checked against Bool, so that errors name the operand rather than the conditional's branches.
+    """
     cond: Expr
     then_branch: Expr
     elsifs: tuple[tuple[Expr, Expr], ...] = ()
     else_branch: Optional[Expr] = None
+    short_circuit: bool = False
 
 
 @dataclass(frozen=True)

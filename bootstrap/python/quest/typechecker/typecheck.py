@@ -232,8 +232,9 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
             env = self.env
 
         match expr:
-            # 1. Conditionals with else branch: check both branches against expected_type
-            case ast.ExprIf(else_branch=else_br) if else_br is not None:
+            # 1. Conditionals with else branch: check both branches against expected_type (a short-circuit operator
+            #    is Bool, and is checked by subsumption)
+            case ast.ExprIf(else_branch=else_br, short_circuit=False) if else_br is not None:
                 return self._elaborate_if_expr(expr, expected_type, env, loop_depth)
 
             # 2. Block expression: check final result against expected_type

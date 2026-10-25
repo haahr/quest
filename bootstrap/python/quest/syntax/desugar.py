@@ -5,7 +5,8 @@ unit and checks it), so that the type checker never rewrites syntax. It is purel
 nor scopes, and it keeps the offsets of the syntax it replaces, so that errors point at the source as written
 (docs/syntax.md §5, docs/pipeline.md §2).
 
-- `a andif b` becomes `if a then b else false end`, and `a orif b` becomes `if a then true else b end`.
+- `a andif b` becomes `if a then b else false end`, and `a orif b` becomes `if a then true else b end`, marked
+  short_circuit: the type checker checks their operands against Bool and gives them type Bool.
 - An infix operator that is not built in, `a op b`, becomes the call `op(a, b)`.
 - `a[i] := v` becomes `ExprIndexAssign` (other assignments stay infix: their targets are told apart by scope).
 - `if c1 then e1 elsif c2 then e2 ... [else e] end` becomes conditionals nested in the else branches, each at its
@@ -62,10 +63,10 @@ def _rewrite(node: ast.ASTNode) -> ast.ASTNode:
     match node:
         case ast.ExprInfix(left=left, op="andif", right=right, offset=off):
             false = ast.ExprBool(value=False, offset=off)
-            return ast.ExprIf(cond=left, then_branch=right, else_branch=false, offset=off)
+            return ast.ExprIf(cond=left, then_branch=right, else_branch=false, short_circuit=True, offset=off)
         case ast.ExprInfix(left=left, op="orif", right=right, offset=off):
             true = ast.ExprBool(value=True, offset=off)
-            return ast.ExprIf(cond=left, then_branch=true, else_branch=right, offset=off)
+            return ast.ExprIf(cond=left, then_branch=true, else_branch=right, short_circuit=True, offset=off)
         case ast.ExprInfix(left=ast.ExprIndex(target=target, index=index), op=":=", right=right, offset=off):
             return ast.ExprIndexAssign(target=target, index=index, value=right, offset=off)
         case ast.ExprInfix(left=left, op=op, right=right, offset=off) if op not in BUILTIN_INFIX_OPERATORS:
