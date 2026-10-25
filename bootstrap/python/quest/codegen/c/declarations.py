@@ -88,6 +88,18 @@ def module_function_signature(
     return ret_c, mangle_module_ident(clean_mod, name), param_decls
 
 
+def module_function_arguments(type_val: QType) -> list[str]:
+    """The names of the parameters module_function_signature declares, in order."""
+    if isinstance(type_val, QAllType):
+        quants, fun_t = type_val.quantifiers, type_val.body
+    else:
+        quants, fun_t = (), type_val
+    names = [f"descriptor_{q.name}" for q in quants]
+    if isinstance(fun_t, QFunType):
+        names += [f"qv_p_{p.name}" for p in fun_t.params]
+    return names
+
+
 def fun_shape_signature(t: QType) -> tuple[tuple[Optional[QType], ...], tuple[QParam, ...], QType]:
     """A (possibly polymorphic) function type's signature, from its shape: the POWER bounds of its type parameters
     (None for a parameter without one), its parameters, and its result type (the types of its shape's parts). Their
@@ -418,17 +430,16 @@ class CDeclarationEmitter:
 
     def emit_type_descriptors(
         self,
-        agg_types: list[tuple[str, QType]],
-        variant_types: list[QVariantType],
+        types: Sequence[QType],
         desc_fn: Callable[[QType], str],
-        all_program_types: Optional[list[QType]] = None,
         echo_types: Sequence[QType] = (),
+        defined_structs: Sequence[str] = (),
     ) -> list[str]:
-        """Emits a static descriptor for every type of the program that has one (see descriptor_form), and the
-        descriptors that echo uses for echo_types (see echo_descriptor_form).
+        """Emits the static descriptors of types (see descriptor_form; templates among them) and those that echo uses
+        for echo_types (see echo_descriptor_form), each with the descriptors of its parts, for those that have one.
 
-        desc_fn gives the descriptor expression of a component type, as c_type_descriptor does. A later call emits
-        only descriptors (and structs) that earlier calls did not, as for the templates that function bodies need.
+        desc_fn gives the static descriptor expression of a part's type. A later call emits only descriptors (and
+        structs) that earlier calls did not; defined_structs are the structs already defined.
         """
         lines: list[str] = []
         forms: dict[str, list[DescriptorForm]] = {}
@@ -495,15 +506,10 @@ class CDeclarationEmitter:
             for child in echo_children(form.display).values():
                 visit_echo(child)
 
-        for _, t in agg_types:
+        for t in types:
             visit(t)
         for t in echo_types:
             visit_echo(t)
-        for v in variant_types:
-            visit(v)
-        if all_program_types:
-            for t in all_program_types:
-                visit(t)
 
         funs = [(f.tag, f.type) for f in forms.get("fun", [])]
         self.emitted_fun_types = funs
@@ -516,7 +522,7 @@ class CDeclarationEmitter:
         # as the argument of an opaque type has no values in the program); their layouts are the same, but the
         # structs must be defined for offsetof and sizeof
         defined: set[str] = self.__dict__.setdefault("_defined_struct_names", set())
-        defined.update(name for name, _ in agg_types)
+        defined.update(defined_structs)
         missing: list[tuple[str, QType]] = []
         for form in forms.get("tuple", []):
             struct_name = tuple_struct_name(form.type)

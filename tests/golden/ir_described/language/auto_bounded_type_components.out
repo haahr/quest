@@ -1,0 +1,273 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+static descriptor(Small)
+static descriptor(Variant a: Int b: String c: Bool end)
+static descriptor(Record age: Int fuel: String end)
+static descriptor(?0)
+static descriptor(Record age: Int end)
+static offsets(Record age: Int fuel: String end <- Record age: Int fuel: String end) registered
+static offsets(Record age: Int end <- Record age: Int end) registered
+static tag_map(Variant a: Int b: String c: Bool end <- Variant b: String c: Bool end)
+fun s(text: String): Ok {
+  let %66: writer.T = member writer.output
+  let %67: String = prim <>(text, "\n")
+  let %68: Ok = call writer.putString(%66, %67)
+  return %68
+}
+fun show(x: Big): String {
+  join k1(r.3: String) {
+    return r.3
+  } in {
+    switch tag(x) {
+      case a (n: Int): {
+        let %69: String = call conv.int(n)
+        jump k1(%69)
+      }
+      case b (t.3: String): {
+        jump k1(t.3)
+      }
+      case c (f: Bool): {
+        let %70: String = call conv.bool(f)
+        jump k1(%70)
+      }
+    }
+  }
+}
+fun mk0 [A::<: Big](descriptor_A: descriptor, x.1: A): AnyBig {
+  let a.1: A = x.1
+  let %71: Tuple a: A end = tuple(box a.1)
+  let payload.1: Tuple a: A end = convert(%71, copy {view(descriptor(Variant a: Int b: String c: Bool end), descriptor_A)})
+  let %72: AnyBig = auto[A](payload.1) of descriptor_A
+  return %72
+}
+fun unbox0 [A::<: Big](descriptor_A.1: descriptor, b: AnyBig, default: A): A {
+  join k4(r.4: A) {
+    return r.4
+  } in {
+    inspect b (witness: descriptor) {
+      case A of descriptor_A.1 (x.2: Tuple a: A end) converting (component(witness, descriptor(Variant a: Int b: String c: Bool end))) from bound Variant a: Int b: String c: Bool end: {
+        let box.5: box(A) = tuple_field(x.2, 0) via proxy
+        let %73: A = convert(box.5, slot_unbox)
+        jump k4(%73)
+      }
+      else: {
+        jump k4(default)
+      }
+    }
+  }
+}
+fun roundTrip0 [A::<: Big](descriptor_A.2: descriptor, x.3: A): A {
+  let %74: AnyBig = call mk [descriptor_A.2](x.3)
+  let %75: A = call unbox [descriptor_A.2](%74, x.3)
+  return %75
+}
+fun mkObj0 [A::<: Object](descriptor_A.3: descriptor, x.4: A): AnyObject {
+  let a.2: A = x.4
+  let %76: Tuple a: A end = tuple(box a.2)
+  let payload.2: Tuple a: A end = convert(%76, copy {view(descriptor(Record age: Int end), descriptor_A.3)})
+  let %77: AnyObject = auto[A](payload.2) of descriptor_A.3
+  return %77
+}
+fun unboxObj0 [A::<: Object](descriptor_A.4: descriptor, b.1: AnyObject, default.1: A): A {
+  join k6(r.5: A) {
+    return r.5
+  } in {
+    inspect b.1 (witness.1: descriptor) {
+      case A of descriptor_A.4 (x.5: Tuple a: A end) converting (component(witness.1, descriptor(Record age: Int end))) from bound Record age: Int end: {
+        let box.6: box(A) = tuple_field(x.5, 0) via proxy
+        let %78: A = convert(box.6, slot_unbox)
+        jump k6(%78)
+      }
+      else: {
+        jump k6(default.1)
+      }
+    }
+  }
+}
+fun id0 [A::<: Big](descriptor_A.5: descriptor, x.6: A): A {
+  return x.6
+}
+fun showSmall(x.7: Small): String {
+  join k7(r.6: String) {
+    return r.6
+  } in {
+    switch tag(x.7) {
+      case b (t.4: String): {
+        jump k7(t.4)
+      }
+      case c (f.1: Bool): {
+        let %79: String = call conv.bool(f.1)
+        jump k7(%79)
+      }
+    }
+  }
+}
+fun same0 [A::<: Object](descriptor_A.6: descriptor, x.8: A): A {
+  return x.8
+}
+fun viaGeneric0 [B::<: Small](descriptor_B: descriptor, y: B): B {
+  let y.1: A = convert(y, variant_tags)
+  let %80: A = call id [descriptor_B](y.1)
+  let %81: B = convert(%80, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+  let %82: B = %81
+  return %82
+}
+main {
+  let s.1: Fun(text: String): Ok = closure s {}
+  let show.1: Fun(x: Big): String = closure show {}
+  let small: Small = variant(c, true)
+  let other: Small = variant(b, "other")
+  let mk0.1: All(A <: Big) Fun(x: A): AnyBig = closure mk0 {}
+  let mk: All(A <: Big) Fun(x: A): AnyBig = mk0.1
+  join k2(r: String) {
+    do call s.1(r)
+    join k3(r.1: String) {
+      do call s.1(r.1)
+      let unbox0.1: All(A <: Big) Fun(b: AnyBig default: A): A = closure unbox0 {}
+      let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = unbox0.1
+      let a: Small = small
+      let %1: Tuple a: Small end = tuple(box a)
+      let payload: Tuple a: A end = convert(%1, cast)
+      let direct: AnyBig = auto[Small](payload) of descriptor(Small)
+      let other.1: A = convert(other, variant_tags)
+      let %2: A = call unbox [descriptor(Small)](direct, other.1)
+      let %3: Small = convert(%2, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+      let %4: Small = %3
+      let %5: Variant a: Int b: String c: Bool end = convert(%4, variant_tags)
+      let %6: String = call show.1(%5)
+      do call s.1(%6)
+      let %7: Big = variant(a, 0)
+      let %8: Big = call unbox [descriptor(Big)](direct, %7)
+      let %9: String = call show.1(%8)
+      do call s.1(%9)
+      let small.1: A = convert(small, variant_tags)
+      let %10: AnyBig = call mk [descriptor(Small)](small.1)
+      let other.2: A = convert(other, variant_tags)
+      let %11: A = call unbox [descriptor(Small)](%10, other.2)
+      let %12: Small = convert(%11, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+      let %13: Small = %12
+      let %14: Variant a: Int b: String c: Bool end = convert(%13, variant_tags)
+      let %15: String = call show.1(%14)
+      do call s.1(%15)
+      let roundTrip0.1: All(A <: Big) Fun(x: A): A = closure roundTrip0 {}
+      let roundTrip: All(A <: Big) Fun(x: A): A = roundTrip0.1
+      let small.2: A = convert(small, variant_tags)
+      let %16: A = call roundTrip [descriptor(Small)](small.2)
+      let %17: Small = convert(%16, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+      let %18: Small = %17
+      let %19: Variant a: Int b: String c: Bool end = convert(%18, variant_tags)
+      let %20: String = call show.1(%19)
+      do call s.1(%20)
+      let other.3: A = convert(other, variant_tags)
+      let %21: A = call roundTrip [descriptor(Small)](other.3)
+      let %22: Small = convert(%21, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+      let %23: Small = %22
+      let %24: Variant a: Int b: String c: Bool end = convert(%23, variant_tags)
+      let %25: String = call show.1(%24)
+      do call s.1(%25)
+      let mkObj0.1: All(A <: Object) Fun(x: A): AnyObject = closure mkObj0 {}
+      let mkObj: All(A <: Object) Fun(x: A): AnyObject = mkObj0.1
+      let car_box: box(Car) = record(age = 3, fuel = "diesel") with offsets(Record age: Int fuel: String end <- Record age: Int fuel: String end) of descriptor(Record age: Int fuel: String end)
+      let car: Car = convert(car_box, slot_unbox)
+      join k5(r.2: String) {
+        do call s.1(r.2)
+        let unboxObj0.1: All(A <: Object) Fun(b: AnyObject default: A): A = closure unboxObj0 {}
+        let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = unboxObj0.1
+        let car.1: A = convert(car, runtime(descriptor(Car), instantiate(?0, descriptor(Car))))
+        let %26: AnyObject = call mkObj [descriptor(Car)](car.1)
+        let box: box(Record age: Int fuel: String end) = record(age = 0, fuel = "none") with offsets(Record age: Int fuel: String end <- Record age: Int fuel: String end) of descriptor(Record age: Int fuel: String end)
+        let %27: Record age: Int fuel: String end = convert(box, slot_unbox)
+        let %28: A = convert(%27, runtime(descriptor(Car), instantiate(?0, descriptor(Car))))
+        let %29: A = call unboxObj [descriptor(Car)](%26, %28)
+        let %30: Car = convert(%29, runtime(instantiate(?0, descriptor(Car)), descriptor(Car)))
+        let %31: Car = %30
+        let %32: String = record_field(%31, fuel)
+        do call s.1(%32)
+        let car.2: A = convert(car, runtime(descriptor(Car), instantiate(?0, descriptor(Car))))
+        let %33: AnyObject = call mkObj [descriptor(Car)](car.2)
+        let box.1: box(Record age: Int end) = record(age = 0) with offsets(Record age: Int end <- Record age: Int end) of descriptor(Record age: Int end)
+        let %34: Record age: Int end = convert(box.1, slot_unbox)
+        let %35: A = convert(%34, runtime(descriptor(Object), instantiate(?0, descriptor(Object))))
+        let %36: A = call unboxObj [descriptor(Object)](%33, %35)
+        let %37: Object = convert(%36, runtime(instantiate(?0, descriptor(Object)), descriptor(Object)))
+        let %38: Object = %37
+        let %39: Int = record_field(%38, age)
+        let %40: String = call conv.int(%39)
+        do call s.1(%40)
+        let id0.1: All(A <: Big) Fun(x: A): A = closure id0 {}
+        let id: All(A <: Big) Fun(x: A): A = id0.1
+        let showSmall.1: Fun(x: Small): String = closure showSmall {}
+        let small.3: A = convert(small, variant_tags)
+        let %41: A = call id [descriptor(Small)](small.3)
+        let %42: Small = convert(%41, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+        let %43: Small = %42
+        let %44: String = call showSmall.1(%43)
+        do call s.1(%44)
+        let other.4: A = convert(other, variant_tags)
+        let %45: A = call id [descriptor(Small)](other.4)
+        let %46: Small = convert(%45, view(descriptor(Variant a: Int b: String c: Bool end), descriptor(Variant b: String c: Bool end)))
+        let %47: Small = %46
+        let %48: Variant a: Int b: String c: Bool end = convert(%47, variant_tags)
+        let %49: String = call show.1(%48)
+        do call s.1(%49)
+        let same0.1: All(A <: Object) Fun(x: A): A = closure same0 {}
+        let same: All(A <: Object) Fun(x: A): A = same0.1
+        let car.3: A = convert(car, runtime(descriptor(Car), instantiate(?0, descriptor(Car))))
+        let %50: A = call same [descriptor(Car)](car.3)
+        let %51: Car = convert(%50, runtime(instantiate(?0, descriptor(Car)), descriptor(Car)))
+        let %52: Car = %51
+        let %53: String = record_field(%52, fuel)
+        do call s.1(%53)
+        let viaGeneric0.1: All(B <: Small) Fun(y: B): B = closure viaGeneric0 {}
+        let viaGeneric: All(B <: Small) Fun(y: B): B = viaGeneric0.1
+        let %54: Small = call viaGeneric [descriptor(Small)](small)
+        let %55: String = call showSmall.1(%54)
+        do call s.1(%55)
+      } in {
+        let car.4: A = convert(car, runtime(descriptor(Car), instantiate(?0, descriptor(Car))))
+        let %56: AnyObject = call mkObj [descriptor(Car)](car.4)
+        inspect %56 (witness.2: descriptor) {
+          case Car of descriptor(Car) (t: Tuple a: Car end) converting (component(witness.2, descriptor(Car))): {
+            let box.2: box(Car) = tuple_field(t, 0) via proxy
+            let %57: Car = convert(box.2, slot_unbox)
+            let %58: String = record_field(%57, fuel)
+            jump k5(%58)
+          }
+          else: {
+            jump k5("no")
+          }
+        }
+      }
+    } in {
+      let small.4: A = convert(small, variant_tags)
+      let %59: AnyBig = call mk [descriptor(Small)](small.4)
+      inspect %59 (witness.3: descriptor) {
+        case Big of descriptor(Big) (t.1: Tuple a: Big end) converting (component(witness.3, descriptor(Big))): {
+          let box.3: box(Big) = tuple_field(t.1, 0) via proxy
+          let %60: Big = convert(box.3, slot_unbox)
+          let %61: String = call show.1(%60)
+          jump k3(%61)
+        }
+        else: {
+          jump k3("no")
+        }
+      }
+    }
+  } in {
+    let small.5: A = convert(small, variant_tags)
+    let %62: AnyBig = call mk [descriptor(Small)](small.5)
+    inspect %62 (witness.4: descriptor) {
+      case Small of descriptor(Small) (t.2: Tuple a: Small end) converting (component(witness.4, descriptor(Small))): {
+        let box.4: box(Small) = tuple_field(t.2, 0) via proxy
+        let %63: Small = convert(box.4, slot_unbox)
+        let %64: Variant a: Int b: String c: Bool end = convert(%63, variant_tags)
+        let %65: String = call show.1(%64)
+        jump k2(%65)
+      }
+      else: {
+        jump k2("no")
+      }
+    }
+  }
+}
+

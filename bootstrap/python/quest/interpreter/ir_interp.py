@@ -11,6 +11,11 @@ made in, and a frame per loop iteration, so that a closure made in one iteration
 mutable variable holds a cell (QRef), which `addr x` yields and a var or out parameter receives. Statements return
 None when they fall through, or the terminator's signal (return, jump, break, continue); a raise is a Python
 exception (QuestException), as in the source interpreter.
+
+From the described stage on, operations carry descriptor operands (ir/describe.py), which a run evaluates to the types
+they describe and checks against the types they stand for (type arguments, auto values' witnesses, and inspect cases'
+types), so that a descriptor made wrong fails here too: a descriptor variable is its type parameter's type argument, a
+static descriptor its type, and an instantiated template its type with the holes replaced by the arguments'.
 """
 
 from __future__ import annotations
@@ -203,11 +208,14 @@ class Interpreter:
         self.fixups: list[list[tuple[list[QValue], int, ir.Var, _Frame]]] = []
         # The source map of the unit's file, where its nodes' offsets are
         self.source_map: Optional[Any] = None
+        # The symbols of the type parameters the unit's functions' descriptor variables describe (by variable)
+        self.descriptor_symbols: dict[int, int] = {}
 
     # Units
 
     def run(self, unit: ir.Unit) -> None:
         self.source_map = unit.source_map
+        self.descriptor_symbols = {id(p.var): p.symbols[0] for f in unit.functions for p in f.descriptor_params}
         # Everything runs in the program's frame, imported modules' initializers included, as the source interpreter
         # runs them when the program's import runs (docs/exceptions.md §4)
         stack = self.renv.call_stack
@@ -357,11 +365,13 @@ class Interpreter:
                 except QuestCompilerError as error:
                     raise self.located(error, offset)
             case ir.Call(callee=callee, type_args=type_args, args=args, module=module, member=member):
+                self.check_descriptors(o.descriptors, type_args, frame)
                 f = self.callee(callee, module, member, frame)
                 if type_args:
                     f = self.type_apply(f, tuple(frame.resolve(t) for t in type_args))
                 return self.apply(f, self.atoms(args, frame))
             case ir.TypeApp(callee=callee, type_args=type_args, module=module, member=member):
+                self.check_descriptors(o.descriptors, type_args, frame)
                 f = self.callee(callee, module, member, frame)
                 return self.type_apply(f, tuple(frame.resolve(t) for t in type_args))
             case ir.ModuleMember(module=module, member=None):
@@ -371,6 +381,7 @@ class Interpreter:
             case ir.Builtin(name=name):
                 return self.root.lookup(name)
             case ir.MakeClosure(code=code, captures=captures, type_args=type_args):
+                self.check_descriptors(o.descriptors, type_args, frame)
                 return self.make_closure(code, captures, type_args, frame)
             case ir.EnvField(env=env, index=index):
                 return self.atom(env, frame)[index]
@@ -437,6 +448,8 @@ class Interpreter:
                     raise self.raising(ARRAY_OP_ERROR_EXC, offset)
                 return arr.get(idx)
             case ir.MakeAuto(witness=witness, payload=p):
+                if o.descriptor is not None:
+                    self.check_descriptors((o.descriptor,), (witness,), frame)
                 return QAutoVal(self.atom(p, frame), frame.resolve(witness))
             case ir.MakeException(name=name):
                 return QExceptionVal(name=name)
@@ -476,6 +489,26 @@ class Interpreter:
         if op == "\\/":
             return TRUE_VALUE if (a.value or b.value) else FALSE_VALUE
         raise IRInterpreterError(f"primitive '{op}'")
+
+    def described(self, d: ir.Descriptor, frame: _Frame) -> QType:
+        """The type a descriptor operand describes in the frame."""
+        if isinstance(d, ir.Var):
+            t = frame.lookup_type(self.descriptor_symbols.get(id(d), -1))
+            if t is None:
+                raise IRInterpreterError(f"descriptor variable '{d.hint}' describes no type here")
+            return t
+        if isinstance(d, ir.StaticDescriptor):
+            return frame.resolve(d.type)
+        from quest.codegen.descriptors import hole_var
+
+        args = {hole_var(i, None).symbol_id: self.described(a, frame) for i, a in enumerate(d.args)}
+        return frame.resolve(d.template).substitute(args)
+
+    def check_descriptors(self, descriptors, types, frame: _Frame) -> None:
+        """Checks that descriptor operands describe the types they stand for (after the describe pass)."""
+        for d, t in zip(descriptors, types):
+            if not is_type_equal(self.described(d, frame), frame.resolve(t)):
+                raise IRInterpreterError(f"a descriptor of {self.described(d, frame)} stands for {frame.resolve(t)}")
 
     def make_closure(self, code: ir.Function, captures, type_args, frame: _Frame) -> _Closure:
         """A closure of a lifted function, whose frames see only the globals of the top level that makes it."""
@@ -631,6 +664,8 @@ class Interpreter:
                 if not isinstance(v, QAutoVal):
                     raise QuestRuntimeError(f"Inspect target must be an auto value, got {v.type_name}")
                 for c in cases:
+                    if c.descriptor is not None:
+                        self.check_descriptors((c.descriptor,), (c.match_type,), frame)
                     match_type = frame.resolve(c.match_type)
                     if is_type_equal(v.type_val, match_type) if c.exact else is_subtype(v.type_val, match_type):
                         for b in c.binders:

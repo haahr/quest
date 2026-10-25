@@ -1,5 +1,5 @@
 """The C backend's entry points: a typed program or module file lowered to the IR, the IR's passes run
-(codegen/backend.py), and the represented IR printed as C (c/printer.py)."""
+(codegen/backend.py), and the described IR printed as C (c/printer.py)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from quest.typechecker.typed_ast import TypedModule, TypedProgram
 
 
 def program_to_c(prog: TypedProgram, env: Any, echo: bool = False, print_result: bool = False) -> tuple[str, ir.Unit]:
-    """A program's C translation, and its represented unit."""
+    """A program's C translation, and its described unit."""
     unit = lower_program(prog, env, echo=echo, print_result=print_result)
     if ir_checks_enabled():
         check_unit(unit)

@@ -1,0 +1,153 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+static descriptor(Record a: Int b: Int c: Int end)
+static descriptor(Record c: Int end)
+static descriptor(Record f: Fun(x: Small): Big end)
+static descriptor(Record f: Fun(x: Record a: Int b: Int c: Int end): Record c: Int end end)
+static descriptor(Fun(x: Record a: Int b: Int c: Int end): Record c: Int end)
+static descriptor(Fun(x: Small): Big)
+static descriptor(Fun(x: Big): Int)
+static descriptor(Fun(x: Small): Int)
+static offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) registered
+static offsets(Record f: Fun(x: Record c: Int end): Record a: Int b: Int c: Int end end <- Record f: Fun(x: Small): Big end) registered
+static offsets(Record c: Int end <- Record c: Int end) registered
+fun p(n: Int): Ok {
+  let %24: writer.T = member writer.output
+  let %25: String = call conv.int(n)
+  let %26: String = prim <>(%25, "\n")
+  let %27: Ok = call writer.putString(%24, %26)
+  return %27
+}
+fun small(x: Small): Int {
+  let %28: Int = record_field(x, c)
+  return %28
+}
+fun useBig(h: Fun(x: Big): Int): Int {
+  let %29: Int = call h(big)
+  return %29
+}
+fun makeBig(): Big {
+  return big
+}
+fun useSmall(h.1: Fun(): Small): Int {
+  let %30: Small = call h.1()
+  let %31: Int = record_field(%30, c)
+  return %31
+}
+fun narrow(x.1: Small): Big {
+  let %32: Int = record_field(x.1, c)
+  let box.1: box(Record a: Int b: Int c: Int end) = record(a = 10, b = 20, c = %32) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
+  let %33: Record a: Int b: Int c: Int end = convert(box.1, slot_unbox)
+  return %33
+}
+fun applyBig(h.2: Fun(x: Big): Int): Int {
+  let %34: Int = call h.2(big)
+  return %34
+}
+fun f(x.2: Big): Int {
+  let %35: Int = record_field(x.2, a)
+  return %35
+}
+main {
+  let p.1: Fun(n: Int): Ok = closure p {}
+  let big_box: box(Big) = record(a = 1, b = 2, c = 3) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
+  let big: Big = convert(big_box, slot_unbox)
+  let small.1: Fun(x: Small): Int = closure small {}
+  let useBig.1: Fun(h: Fun(x: Big): Int): Int = closure useBig {}
+  let small.2: Fun(x: Record a: Int b: Int c: Int end): Int = convert(small.1, adapt {record_view(descriptor(Record c: Int end)), none})
+  let %1: Int = call useBig.1(small.2)
+  do call p.1(%1)
+  let makeBig.1: Fun(): Big = closure makeBig {}
+  let useSmall.1: Fun(h: Fun(): Small): Int = closure useSmall {}
+  let makeBig.2: Fun(): Record c: Int end = convert(makeBig.1, adapt {record_view(descriptor(Record c: Int end))})
+  let %2: Int = call useSmall.1(makeBig.2)
+  do call p.1(%2)
+  let narrow.1: Fun(x: Small): Big = closure narrow {}
+  let narrow.2: Fun(x: Big): Small = convert(narrow.1, adapt {record_view(descriptor(Record c: Int end)), record_view(descriptor(Record c: Int end))})
+  let wide: Fun(x: Big): Small = narrow.2
+  let %3: Small = call wide(big)
+  let %4: Int = record_field(%3, c)
+  do call p.1(%4)
+  let applyBig.1: Fun(h: Fun(x: Big): Int): Int = closure applyBig {}
+  let applyBig.2: Fun(h: Fun(x: Small): Int): Int = convert(applyBig.1, adapt {adapt {record_view(descriptor(Record c: Int end)), none}, none})
+  let applySmall: Fun(h: Fun(x: Small): Int): Int = applyBig.2
+  let %5: Int = call applySmall(small.1)
+  do call p.1(%5)
+  let hasNarrow_box: box(HasNarrow) = record(f = narrow.1) with offsets(Record f: Fun(x: Record c: Int end): Record a: Int b: Int c: Int end end <- Record f: Fun(x: Small): Big end) of descriptor(Record f: Fun(x: Small): Big end)
+  let hasNarrow: HasNarrow = convert(hasNarrow_box, slot_unbox)
+  let hasNarrow.1: HasWide = convert(hasNarrow, record_view(descriptor(Record f: Fun(x: Record a: Int b: Int c: Int end): Record c: Int end end)))
+  let hasWide: HasWide = hasNarrow.1
+  let %6: Fun(x: Big): Small = record_field(hasWide, f) via stored types of descriptor(Fun(x: Record a: Int b: Int c: Int end): Record c: Int end)
+  let %7: Small = call %6(big)
+  let %8: Int = record_field(%7, c)
+  do call p.1(%8)
+  let narrow.3: A = convert(narrow.1, box)
+  let d: T = call dynamic.new [descriptor(Fun(x: Small): Big)](narrow.3)
+  let fromDynamic: A = call dynamic.be [descriptor(Fun(x: Big): Small)](d)
+  let fromDynamic.1: Fun(x: Big): Small = convert(fromDynamic, unbox)
+  let fromDynamic.2: Fun(x: Big): Small = fromDynamic.1
+  let %9: Small = call fromDynamic.2(big)
+  let %10: Int = record_field(%9, c)
+  do call p.1(%10)
+  join k1(r: Int) {
+    do call p.1(r)
+    let a: Fun(x: Small): Big = narrow.1
+    let %11: Tuple a: Fun(x: Small): Big end = tuple(a)
+    let payload: Tuple a: A end = convert(%11, cast)
+    let boxedNarrow: Boxed = auto[Fun(x: Small): Big](payload) of descriptor(Fun(x: Small): Big)
+    join k2(r.1: Int) {
+      do call p.1(r.1)
+      join k3(wrong: Int) {
+        do call p.1(wrong)
+      } in {
+        let %12: Exception = member dynamic.error
+        try catching (%12) {
+          let f.1: Fun(x: Big): Int = closure f {}
+          let f.2: A = convert(f.1, box)
+          let %13: T = call dynamic.new [descriptor(Fun(x: Big): Int)](f.2)
+          let g: A = call dynamic.be [descriptor(Fun(x: Small): Int)](%13)
+          let g.1: Fun(x: Small): Int = convert(g, unbox)
+          let g.2: Fun(x: Small): Int = g.1
+          let box: box(Record c: Int end) = record(c = 0) with offsets(Record c: Int end <- Record c: Int end) of descriptor(Record c: Int end)
+          let %14: Record c: Int end = convert(box, slot_unbox)
+          let %15: Int = call g.2(%14)
+          jump k3(%15)
+        } handle (e: Exception) {
+          let %16: Bool = prim is(e, %12)
+          if %16 {
+            let %17: Int = prim -(0, 1)
+            jump k3(%17)
+          } else {
+            reraise e
+          }
+        }
+      }
+    } in {
+      inspect boxedNarrow (witness: descriptor) {
+        case Fun(x: Big): Small of descriptor(Fun(x: Big): Small) (g.3: Tuple a: Fun(x: Big): Small end) converting (component(witness, descriptor(Fun(x: Big): Small))): {
+          let %18: Fun(x: Big): Small = tuple_field(g.3, 0) via proxy
+          let %19: Small = call %18(big)
+          let %20: Int = record_field(%19, c)
+          jump k2(%20)
+        }
+        else: {
+          jump k2(0)
+        }
+      }
+    }
+  } in {
+    inspect d (witness.1: descriptor) {
+      case Fun(x: Big): Small of descriptor(Fun(x: Big): Small) (g.4: Tuple a: Fun(x: Big): Small end) converting (component(witness.1, descriptor(Fun(x: Big): Small))): {
+        let %21: Fun(x: Big): Small = tuple_field(g.4, 0) via proxy
+        let %22: Small = call %21(big)
+        let %23: Int = record_field(%22, c)
+        jump k1(%23)
+      }
+      else: {
+        jump k1(0)
+      }
+    }
+  }
+}
+

@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
 from quest.ir.shapes import Shape, shape
-from quest.types import QKind, QType
+from quest.types import QExternalType, QKind, QType
 
 
 # ============================================================================
@@ -62,6 +62,73 @@ class Const:
 Atom = Union[Var, Const]
 
 
+# ============================================================================
+# Descriptors (docs/ir.md §7, §8.4)
+# ============================================================================
+
+# The type of a descriptor variable: a run-time type, the descriptor of a type parameter
+DESCRIPTOR_TYPE = QExternalType(name="descriptor", c_type="const QTypeDescriptor *")
+
+
+@dataclass(eq=False)
+class StaticDescriptor:
+    """The static descriptor of a type that mentions no type parameter in scope, or of a template, a type whose holes
+    (codegen/descriptors.py, hole_var) stand for type parameters. `echo`: the descriptor echo writes a value of the
+    closed type by, which writes its type components with their alias names (a copy of the shared descriptor, where
+    the type has type components)."""
+    type: QType
+    echo: bool = False
+
+
+@dataclass(eq=False)
+class Instantiate:
+    """A template's descriptor instantiated with the descriptors of its holes, in order (at run time)."""
+    template: QType
+    args: tuple[Descriptor, ...]
+
+
+# A descriptor operand (after the describe pass): a descriptor variable (a Var of DESCRIPTOR_TYPE, bound by a
+# DescriptorParam), a static descriptor, or an instantiated template. Descriptors are pure, so operands are these small
+# expressions rather than values named by lets
+Descriptor = Union[Var, StaticDescriptor, Instantiate]
+
+
+@dataclass(eq=False)
+class DescriptorParam:
+    """A descriptor variable bound for a type parameter: a function's (its own, passed before its parameters, or one
+    its closure supplies, read from its environment), a thunk's, or an inspected auto value's type component. `symbols`
+    are the symbols the type parameter is named by in the types it describes (a thunk's type parameters are named by
+    both the closure's type and the type it is adapted to)."""
+    var: Var
+    symbols: tuple[int, ...]
+
+
+@dataclass(eq=False)
+class OffsetTable:
+    """A static offset table: the record type `layout`'s payload viewed at `view` (docs/c-representation.md §5.2).
+    `registered`: the two types' static descriptors, by which the runtime finds the table for dynamic values, when
+    both are closed."""
+    view: QType
+    layout: QType
+    registered: Optional[tuple[StaticDescriptor, StaticDescriptor]] = None
+
+
+@dataclass(eq=False)
+class TagMap:
+    """A static table remapping a variant's tags from `source`'s numbering to its supertype `target`'s."""
+    target: QType
+    source: QType
+
+
+@dataclass(eq=False)
+class StaticData:
+    """The static descriptors and tables a unit's operations refer to (after the describe pass), which a backend
+    emits: descriptors (each with those of its parts), offset tables, and tag maps."""
+    descriptors: list[StaticDescriptor] = field(default_factory=list)
+    offset_tables: list[OffsetTable] = field(default_factory=list)
+    tag_maps: list[TagMap] = field(default_factory=list)
+
+
 @dataclass(eq=False)
 class TypeParam:
     """A type parameter of a function, identified by the symbol that types (and so shapes) refer to it by."""
@@ -90,6 +157,8 @@ class Prim:
     offset: Optional[int] = None
     # For `is` of tuples or options that may be proxies, ORIGINAL: their originals are compared
     access: str = DIRECT
+    # For `is` of values held as QVal words (after the describe pass), their type's descriptor
+    descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)
@@ -103,6 +172,8 @@ class Call:
     member: Optional[str] = None
     # The type of a module's member called (a variable's is its own)
     callee_type: Optional[QType] = None
+    # The type arguments' descriptors (after the describe pass)
+    descriptors: tuple[Descriptor, ...] = ()
 
 
 @dataclass(eq=False)
@@ -118,6 +189,14 @@ class TypeApp:
     # parameter types to the function's generic ones at the type arguments, and its result back: the parameters'
     # plans (None for var and out parameters), then the result's
     plans: tuple[Optional[Plan], ...] = ()
+    # Set by the represent pass for a function: the symbols the instance's own type parameters (the thunk's) are named
+    # by in the plans, the let's type's as written
+    thunk_symbols: tuple[tuple[int, ...], ...] = ()
+    # Set by the describe pass: the type arguments' descriptors, and for a function, the thunk's own type parameters'
+    # descriptor variables (which its plans' descriptors use); None for a value of no parameters, whose plan converts
+    # it where it is applied
+    descriptors: tuple[Descriptor, ...] = ()
+    thunk_params: Optional[tuple[DescriptorParam, ...]] = None
 
 
 @dataclass(eq=False)
@@ -151,6 +230,8 @@ class CallExternal:
     inline_template: Optional[str]
     type_args: tuple[QType, ...]
     args: tuple[Atom, ...]
+    # The type arguments' descriptors (after the describe pass)
+    descriptors: tuple[Descriptor, ...] = ()
 
 
 @dataclass(eq=False)
@@ -161,6 +242,8 @@ class MakeClosure:
     code: Function
     captures: tuple[Atom, ...]
     type_args: tuple[QType, ...] = ()
+    # The type arguments' descriptors (after the describe pass)
+    descriptors: tuple[Descriptor, ...] = ()
 
 
 @dataclass(eq=False)
@@ -194,6 +277,15 @@ class Plan:
     layout: Optional[tuple[dict[int, QType], bool]] = None
     # A copy's reads of the source tuple's components (DIRECT, ORIGINAL, PROXY)
     access: tuple[str, ...] = ()
+    # An adapt plan's thunk's type parameters: the symbols each is named by in the plans of `fields` (the target's
+    # and the source's, as written), set by the represent pass
+    thunk_symbols: tuple[tuple[int, ...], ...] = ()
+    # Set by the describe pass: the descriptors a plan converts by (record_view: the target record's; view: the
+    # source's and the target's; runtime: those of the layouts it converts from and to), an adapt plan's thunk's
+    # descriptor variables (which its fields' descriptors use), and a variant_tags plan's tag map
+    descriptors: tuple[Descriptor, ...] = ()
+    thunk_params: tuple[DescriptorParam, ...] = ()
+    tag_map: Optional[TagMap] = None
 
 
 @dataclass(eq=False)
@@ -231,6 +323,11 @@ class MakeRecord:
     fields: tuple[tuple[str, Atom, bool], ...]
     embedded: tuple[int, ...] = ()
     runtime_offsets: bool = False
+    # Set by the describe pass: the descriptor of the record's own type (its fields' atoms' types), which its payload
+    # carries; the static offset table of its view, or with runtime offsets, the view's descriptor
+    descriptor: Optional[Descriptor] = None
+    offsets: Optional[OffsetTable] = None
+    view_descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)
@@ -240,6 +337,8 @@ class RecordField:
     record: Atom
     name: str
     stored: bool = False
+    # For a stored field (after the describe pass), the descriptor of the field's type, converted to
+    descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)
@@ -315,6 +414,8 @@ class MakeAuto:
     witness: QType
     auto_type: QType
     payload: Atom
+    # The witness's descriptor (after the describe pass)
+    descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)
@@ -425,6 +526,9 @@ class Function:
     env: Optional[Var] = None
     # The function's frame in tracebacks (docs/exceptions.md §2.3); None for the functions the passes make
     trace_name: Optional[str] = None
+    # Set by the describe pass: the descriptor variables of its type parameters, in order (those its closure supplies
+    # first, read from its environment, then its own, passed before its parameters)
+    descriptor_params: tuple[DescriptorParam, ...] = ()
 
     @property
     def result(self) -> Shape:
@@ -484,6 +588,8 @@ class InspectCase:
     exact: bool = False
     # How the binders' components are obtained from the auto value's stored payload, decided by the represent pass
     arm: Optional[InspectArm] = None
+    # The matched type's descriptor (after the describe pass)
+    descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)
@@ -505,6 +611,10 @@ class InspectArm:
     plan: Optional[Plan] = None
     layout_error: bool = False
     bound: Optional[QType] = None
+    # Set by the describe pass: per component converted, the descriptors it converts from and to (None for the
+    # others); a component mentioning the type component is converted from its stored type at the value's type
+    # component (the inspect's witness)
+    descriptors: tuple[Optional[tuple[Descriptor, Descriptor]], ...] = ()
 
 
 @dataclass(eq=False)
@@ -515,6 +625,9 @@ class Inspect:
     else_body: Optional[Body] = None
     auto_type: Optional[QType] = None
     offset: Optional[int] = None
+    # Set by the describe pass: the descriptor variable of the value's type component (its run-time type), bound for
+    # the cases' arms, under the auto type's own symbol
+    witness: Optional[DescriptorParam] = None
 
 
 @dataclass(eq=False)
@@ -556,6 +669,8 @@ class Echo:
     value: Atom
     type: QType
     prefix: str = ""
+    # The descriptor the value is written by, when its type does not say how (after the describe pass)
+    descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)
@@ -640,6 +755,13 @@ class Module:
     init: Body
     members: dict[str, Var]
     exports: Optional[dict[str, Var]] = None
+    # Set by the describe pass: its record's descriptor and offset table (the record of its members, or of its
+    # exports), and its abstract types' registrations for dynamic values (docs/dynamic.md §2.3): each one's global
+    # name, its arity, and the descriptor of its representation (a template whose holes are its parameters, for an
+    # operator)
+    descriptor: Optional[StaticDescriptor] = None
+    offsets: Optional[OffsetTable] = None
+    abstract_types: tuple[tuple[str, int, StaticDescriptor], ...] = ()
 
 
 @dataclass(eq=False)
@@ -653,7 +775,11 @@ class Import:
 
 
 # The IR's stages (docs/ir.md §9), in order: each pass produces the next
-STAGES = ("core", "specialized", "closed", "represented")
+STAGES = ("core", "specialized", "closed", "represented", "described")
+
+# The fields of operations that hold descriptor operands (or tables), not atoms: traversals of atoms skip them, and the
+# verifier checks them on their own
+DESCRIPTOR_FIELDS = frozenset({"descriptor", "descriptors", "view_descriptor", "thunk_params", "offsets", "tag_map"})
 
 # A reference to a module: one the unit defines, or one it imports (by identity, never by name)
 ModuleRef = Union[Module, Import]
@@ -671,6 +797,8 @@ class Unit:
     stage: str = "core"
     # The source map of the unit's file, in which the nodes' offsets are
     source_map: Optional[Any] = None
+    # After the describe pass, the static descriptors and tables its operations refer to
+    static_data: Optional[StaticData] = None
 
     def at_least(self, stage: str) -> bool:
         """Whether the unit is at the given stage or a later one."""

@@ -1,0 +1,138 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+static descriptor(Record a: Int b: Int c: Int end)
+static descriptor(Record inner: Big tag: Int end)
+static descriptor(Record inner: Record c: Int end tag: Int end)
+static descriptor(Record c: Int end)
+static descriptor(Record outer: OuterBig end)
+static descriptor(Record outer: Record inner: Record c: Int end tag: Int end end)
+static descriptor(Record v: VSmall end)
+static descriptor(Record v: Variant one: Int two: Int end end)
+static descriptor(Record o: OSmall end)
+static descriptor(Record o: Option none some with Tuple r: Record c: Int end end other end end)
+static descriptor(Record pair: Tuple r: Small n: Int end end)
+static descriptor(Tuple r: Record c: Int end n: Int end)
+static descriptor(Option none some with Tuple r: Record c: Int end end other end)
+static descriptor(Variant one: Int two: Int end)
+static offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) registered
+static offsets(Record inner: Record a: Int b: Int c: Int end tag: Int end <- Record inner: Big tag: Int end) registered
+static offsets(Record pair: Tuple r: Record c: Int end n: Int end end <- Record pair: Tuple r: Small n: Int end end) registered
+fun p(n.3: Int): Ok {
+  let %30: writer.T = member writer.output
+  let %31: String = call conv.int(n.3)
+  let %32: String = prim <>(%31, "\n")
+  let %33: Ok = call writer.putString(%30, %32)
+  return %33
+}
+fun innerC(o: OuterSmall): Int {
+  let %34: Small = record_field(o, inner) via stored types of descriptor(Record c: Int end)
+  let %35: Int = record_field(%34, c)
+  let %36: Int = record_field(o, tag)
+  let %37: Int = prim +(%35, %36)
+  return %37
+}
+fun first [A::TYPE](descriptor_A: descriptor, x: A, y: A): A {
+  return x
+}
+fun first_spec(x.1: OuterSmall, y.1: OuterSmall): OuterSmall {
+  return x.1
+}
+main {
+  let p.1: Fun(n: Int): Ok = closure p {}
+  let big_box: box(Big) = record(a = 1, b = 2, c = 3) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
+  let big: Big = convert(big_box, slot_unbox)
+  let outerBig_box: box(OuterBig) = record(inner = big_box, tag = 10) with offsets(Record inner: Record a: Int b: Int c: Int end tag: Int end <- Record inner: Big tag: Int end) of descriptor(Record inner: Big tag: Int end)
+  let outerBig: OuterBig = convert(outerBig_box, slot_unbox)
+  let outerBig.1: OuterSmall = convert(outerBig, record_view(descriptor(Record inner: Record c: Int end tag: Int end)))
+  let outerSmall: OuterSmall = outerBig.1
+  let %1: Small = record_field(outerSmall, inner) via stored types of descriptor(Record c: Int end)
+  let %2: Int = record_field(%1, c)
+  do call p.1(%2)
+  let innerC.1: Fun(o: OuterSmall): Int = closure innerC {}
+  let outerBig.2: Record inner: Record c: Int end tag: Int end = convert(outerBig, record_view(descriptor(Record inner: Record c: Int end tag: Int end)))
+  let %3: Int = call innerC.1(outerBig.2)
+  do call p.1(%3)
+  let deep_box: box(DeepSmall) = record(outer = outerBig_box) with runtime offsets(descriptor(Record outer: Record inner: Record c: Int end tag: Int end end)) of descriptor(Record outer: OuterBig end)
+  let deep: DeepSmall = convert(deep_box, slot_unbox)
+  let %4: OuterSmall = record_field(deep, outer) via stored types of descriptor(Record inner: Record c: Int end tag: Int end)
+  let %5: Small = record_field(%4, inner) via stored types of descriptor(Record c: Int end)
+  let %6: Int = record_field(%5, c)
+  do call p.1(%6)
+  let %7: VSmall = variant(two, 7)
+  let hasVBig_box: box(HasVBig) = record(v = box %7) with runtime offsets(descriptor(Record v: Variant one: Int two: Int end end)) of descriptor(Record v: VSmall end)
+  let hasVBig: HasVBig = convert(hasVBig_box, slot_unbox)
+  join k1(r: Int) {
+    do call p.1(r)
+    let r.1: Big = big
+    let %8: Tuple r: Big end = tuple(big_box)
+    let %9: OSmall = option(some, %8)
+    let hasOBig_box: box(HasOBig) = record(o = %9) with runtime offsets(descriptor(Record o: Option none some with Tuple r: Record c: Int end end other end end)) of descriptor(Record o: OSmall end)
+    let hasOBig: HasOBig = convert(hasOBig_box, slot_unbox)
+    join k2(r.2: Int) {
+      do call p.1(r.2)
+      let r.3: Big = big
+      let n: Int = 4
+      let r.4: Record c: Int end = convert(r.3, record_view(descriptor(Record c: Int end)))
+      let %10: Tuple r: Small n: Int end = tuple(box r.4, n)
+      let hasPairSmall_box: box(HasPairSmall) = record(pair = %10) with offsets(Record pair: Tuple r: Record c: Int end n: Int end end <- Record pair: Tuple r: Small n: Int end end) of descriptor(Record pair: Tuple r: Small n: Int end end)
+      let hasPairSmall: HasPairSmall = convert(hasPairSmall_box, slot_unbox)
+      let %11: Tuple r: Small n: Int end = record_field(hasPairSmall, pair) via stored types of descriptor(Tuple r: Record c: Int end n: Int end)
+      let box: box(Small) = tuple_field(%11, 0) via proxy
+      let %12: Small = convert(box, slot_unbox)
+      let %13: Int = record_field(%12, c)
+      let %14: Tuple r: Small n: Int end = record_field(hasPairSmall, pair) via stored types of descriptor(Tuple r: Record c: Int end n: Int end)
+      let %15: Int = tuple_field(%14, 1) via original
+      let %16: Int = prim +(%13, %15)
+      do call p.1(%16)
+      let outerBig.3: OuterSmall = convert(outerBig, record_view(descriptor(Record inner: Record c: Int end tag: Int end)))
+      let outerBig.4: A = convert(outerBig.3, box)
+      let d: T = call dynamic.new [descriptor(OuterSmall)](outerBig.4)
+      let fromDynamic: A = call dynamic.be [descriptor(OuterSmall)](d)
+      let fromDynamic_box: box(OuterSmall) = convert(fromDynamic, unbox)
+      let fromDynamic.1: OuterSmall = convert(fromDynamic_box, slot_unbox)
+      let fromDynamic.2: OuterSmall = fromDynamic.1
+      let %17: Small = record_field(fromDynamic.2, inner) via stored types of descriptor(Record c: Int end)
+      let %18: Int = record_field(%17, c)
+      do call p.1(%18)
+      let %19: writer.T = member writer.output
+      do call dynamic.extern(%19, d)
+      let %20: writer.T = member writer.output
+      do call writer.putString(%20, "\n")
+      let first.1: All(A :: TYPE) Fun(x: A y: A): A = closure first {}
+      let first_spec.1: Fun(x: OuterSmall y: OuterSmall): OuterSmall = closure first_spec {}
+      let outerBig.5: Record inner: Record c: Int end tag: Int end = convert(outerBig, record_view(descriptor(Record inner: Record c: Int end tag: Int end)))
+      let firstSmall: OuterSmall = call first_spec.1(outerBig.5, outerSmall)
+      let %21: Small = record_field(firstSmall, inner) via stored types of descriptor(Record c: Int end)
+      let %22: Int = record_field(%21, c)
+      let %23: Int = record_field(firstSmall, tag)
+      let %24: Int = prim +(%22, %23)
+      do call p.1(%24)
+    } in {
+      let %25: OBig = record_field(hasOBig, o) via stored types of descriptor(Option none some with Tuple r: Record c: Int end end other end)
+      switch tag(%25) via proxy {
+        case some (s: Tuple r: Small end) via (proxy): {
+          let box.1: box(Small) = tuple_field(s, 0) via proxy
+          let %26: Small = convert(box.1, slot_unbox)
+          let %27: Int = record_field(%26, c)
+          jump k2(%27)
+        }
+        case none, other: {
+          jump k2(0)
+        }
+      }
+    }
+  } in {
+    let %28: VBig = record_field(hasVBig, v) via stored types of descriptor(Variant one: Int two: Int end)
+    switch tag(%28) {
+      case one (n.1: Int): {
+        let %29: Int = prim -(0, n.1)
+        jump k1(%29)
+      }
+      case two (n.2: Int): {
+        jump k1(n.2)
+      }
+    }
+  }
+}
+

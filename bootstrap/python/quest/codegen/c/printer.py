@@ -1,4 +1,4 @@
-"""The C printer (docs/ir.md §8.5): prints a represented IR unit as C, the IR's backend.
+"""The C printer (docs/ir.md §8.5): prints a described IR unit as C, the IR's backend.
 
 It prints what the passes decided: each IR function is a C function taking its closure's environment first (and its
 own type parameters' descriptors, then its parameters), each closure a QClosure of one (a static one when it captures
@@ -10,10 +10,13 @@ their plans say, and every other representation decision is the represent pass's
 parameters point to do, and the IR's boxed variables, slot_box and slot_unbox conversions, and embedded components say
 where boxes are made, reused, and read; a tuple or option whose type may be proxied (docs/c-representation.md §5.8)
 may be a view of an object of a subtype, and each read of a component records whether it goes through a proxy check,
-the original, or neither; inspect cases record their arms, and type applications their thunks' plans. The printer
-still makes descriptors and the declarations of the types it meets. The declarations of the types it uses (structs, descriptors, function type adapters) are
-c/declarations.py's, and the representations codegen/layout.py's, spelled in C by c/types.py
-(docs/c-representation.md). A module file's unit
+the original, or neither; inspect cases record their arms, and type applications their thunks' plans. Descriptors are
+the describe pass's (ir/describe.py, docs/ir.md §8.4): every run-time use of a type carries its descriptor operand
+(a descriptor variable, which the printer names: a function's descriptor parameter, a thunk's, or an inspected auto
+value's type component; a static descriptor, which it declares; or a template instantiated at run time), and the
+unit's static data lists the static descriptors, offset tables, and tag maps the printer declares. The declarations
+of the types it uses (structs, descriptors, offset tables, function type adapters) are c/declarations.py's, and the
+representations codegen/layout.py's, spelled in C by c/types.py (docs/c-representation.md). A module file's unit
 exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function
 for each function or polymorphic value (`qv_<module>_<member>`), the ABI other units link against.
 """
@@ -28,6 +31,7 @@ from quest.codegen.c.declarations import (
     CDeclarationEmitter,
     collect_aggregate_types,
     fun_shape_signature,
+    module_function_arguments,
     module_function_signature,
 )
 from quest.codegen.c.types import (
@@ -49,11 +53,7 @@ from quest.codegen.c.types import (
     shape_slot_store,
     shape_slot_to_qval,
 )
-from quest.types.canonical import collect_fun_quantifiers
 from quest.codegen.layout import (
-    is_record_subtype,
-    is_tuple_subtype,
-    is_variant_subtype,
     qtype_to_name_str,
     shape_location_representation,
     shape_representation,
@@ -63,88 +63,28 @@ from quest.codegen.layout import (
     type_identity_key,
     type_tag,
 )
-from quest.codegen.descriptors import hole_var
 from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types.env import Scope
 from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
-from quest.ir.represent import held_shape, shared_signatures
+from quest.ir.describe import echo_value_kind
+from quest.ir.represent import held_shape
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.typechecker.typed_ast import TypedModule
 from quest.types import (
-    QPathType,
-    QTupleField,
-    QTupleTypeBinding,
-    QTupleTypeFormal,
-    QAbstractType,
     QAutoType,
-    QAllKind,
-    QPowerKind,
-    QTypeApp,
-    QTypeFun,
-    QTypeKind,
     auto_payload_type,
-    QAllType,
-    QFunType,
     QParam,
     QRecordField,
     QRecordType,
-    QTupleType,
     QType,
-    QTypeVar,
-    strip_aliases,
 )
 
 _INT_OPS = {"+": "+", "-": "-", "*": "*", "<": "<", "<=": "<=", ">": ">", ">=": ">="}
 _REAL_OPS = {"++": "quest_real_add", "--": "quest_real_sub", "**": "quest_real_mul", "//": "quest_real_divide"}
 _REAL_RELATIONS = {"<<": "<", "<<=": "<=", ">>": ">", ">>=": ">="}
-
-
-_BASE_VALUE_KINDS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char", "string": "String", "ok": "Ok"}
-
-
-def _value_kind(t: QType) -> str:
-    """How quest_print_value writes a value of type t, as the interpreter does (format_value_with_type), or "" if
-    quest_print_typed writes it from its type descriptor."""
-    s = shape(t)
-    if s.kind == "word":
-        return "Word"
-    if s.kind in ("fun", "all"):
-        return "fun"
-    if s.kind == "typevar" or (s.kind == "abstract" and not isinstance(s.structure, QTypeApp)):
-        return "hidden"
-    return _BASE_VALUE_KINDS.get(s.kind, "")
-
-
-def _existential_tuple_display(t: QTupleType) -> str:
-    """An existential tuple (a package) as the interpreter prints it: its components hidden."""
-    parts: list[str] = []
-    for comp in t.components:
-        if isinstance(comp, QTupleTypeFormal):
-            parts.append(f"<Hidden>::{comp.bound}")
-        elif isinstance(comp, QTupleTypeBinding):
-            parts.append(f"Let {comp.name} = {comp.type_val}")
-        elif isinstance(comp, QTupleField):
-            if isinstance(comp.type_val, (QPathType, QTypeVar)):
-                elem = "<hidden>"
-            elif isinstance(comp.type_val, (QFunType, QAllType)):
-                elem = "<fun>"
-            else:
-                elem = "<val>"
-            parts.append(f"{comp.name}={elem}" if comp.name else elem)
-    return f"tuple {' '.join(parts)} end" if parts else "tuple end"
-
-
-def _signature(t: QType) -> tuple[tuple, tuple[QParam, ...], QType]:
-    """A function type's quantifiers, parameters, and result type, as written: the symbols of its own type parameters,
-    which its parts refer to, are those the IR's type arguments and descriptors are keyed by (its shape's canonical
-    form names them afresh)."""
-    quants, inner = collect_fun_quantifiers(t)
-    if isinstance(inner, QFunType):
-        return quants, tuple(inner.params), inner.result_type
-    return quants, (), inner
 
 
 def _type_parameter_count(t: QType) -> int:
@@ -199,10 +139,8 @@ class CPrinter:
         self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
         self.types: list[QType] = []
-        # The types echoed through descriptors of their own (echo_descriptor_form)
-        self.echo_types: list[QType] = []
-        self.descriptors: dict[int, str] = {}
-        self.descriptor_params: dict[tuple[int, int], str] = {}
+        # The pairs of tuple types converted by casts (whose layouts agree, which the C asserts)
+        self.tuple_casts: dict[tuple[str, str], tuple[QType, QType]] = {}
         self.fs = _FunctionState(None)
         self.lines: list[str] = []
         self.indent = 1
@@ -225,6 +163,9 @@ class CPrinter:
 
     def name(self, var: ir.Var) -> str:
         key = id(var)
+        if key not in self.names and var.type is ir.DESCRIPTOR_TYPE:
+            # A descriptor variable (a function's descriptor parameter)
+            self.names[key] = self.fresh_name(var.hint)
         if key not in self.names:
             base = mangle_ident(var.hint or "t")
             prefix = "g_" if key in self.globals else "l_"
@@ -393,66 +334,31 @@ class CPrinter:
             raise NotImplementedError(f"C printing of an array operation on a value of type {self.atom_type(a)}")
         return s.element
 
-    def descriptor(self, t: QType) -> str:
-        """The descriptor of a type: a type parameter's, passed to its function; a closed type's static one; or, for a
-        type mentioning type parameters in scope, its template (a hole for each), instantiated with theirs."""
-        var = shape(t).type
-        if isinstance(var, (QTypeVar, QAbstractType)) and var.symbol_id in self.descriptors:
-            return self.descriptors[var.symbol_id]
-        params = self.free_type_vars(t, lambda v: v.symbol_id in self.descriptors)
-        return self.template_descriptor(t, params, [self.descriptors[v.symbol_id] for v in params])
+    def descriptor(self, d: ir.Descriptor) -> str:
+        """A descriptor operand (ir/describe.py): a descriptor variable, a static descriptor, or a template instantiated
+        at run time with its holes' descriptors."""
+        if isinstance(d, ir.Var):
+            return self.name(d)
+        if isinstance(d, ir.StaticDescriptor):
+            form = echo_descriptor_form(d.type, self.ctx) if d.echo else None
+            return (form or self.static_form(d.type)).c_expr
+        if isinstance(d, ir.Instantiate):
+            form = self.static_form(d.template)
+            if form.kind in ("base", "bound_var"):
+                return form.c_expr
+            args = ", ".join(self.descriptor(a) for a in d.args)
+            return f"quest_instantiate_descriptor({form.c_expr}, {len(d.args)}, (const QTypeDescriptor *const[]){{ {args} }})"
+        raise NotImplementedError("C code generation: a run-time use of a type without its descriptor")
 
-    def template_descriptor(self, t: QType, holes: list, args: list[str]) -> str:
-        """The descriptor of t with a hole for each of holes (type variables), instantiated with args."""
-        template = t.substitute({v.symbol_id: hole_var(i, v.bound) for i, v in enumerate(holes)}) if holes else t
-        self.types.append(template)
+    def static_form(self, t: QType):
         try:
-            form = descriptor_form(template, self.ctx)
+            return descriptor_form(t, self.ctx)
         except MissingDescriptorError as e:
             raise NotImplementedError(f"C code generation: {e}") from None
-        if form.kind in ("base", "bound_var") or not holes:
-            return form.c_expr
-        return (
-            f"quest_instantiate_descriptor({form.c_expr}, {len(holes)}, "
-            f"(const QTypeDescriptor *const[]){{ {', '.join(args)} }})"
-        )
 
-    def generic_layout_descriptor(self, t: QType, instantiation: dict[int, QType]) -> str:
-        """The descriptor of a polymorphic callee's type t laid out as the callee lays it out at the call's type
-        arguments: its template, a hole for each of the callee's type parameters (and for each in scope), instantiated
-        with the type arguments' descriptors (and theirs)."""
-        params = self.free_type_vars(t, lambda v: v.symbol_id in instantiation)
-        in_scope = self.free_type_vars(
-            t, lambda v: v.symbol_id in self.descriptors and v.symbol_id not in instantiation
-        )
-        args = [self.descriptor(instantiation[v.symbol_id]) for v in params]
-        args.extend(self.descriptors[v.symbol_id] for v in in_scope)
-        return self.template_descriptor(t, params + in_scope, args)
-
-    @staticmethod
-    def free_type_vars(t: QType, wanted) -> list:
-        """The type variables occurring free in t for which wanted holds, in order of appearance."""
-        free = getattr(t, "_fv", None)
-        if not free:
-            return []
-        found: dict[int, Any] = {}
-        seen: set[int] = set()
-
-        def visit(node: Any) -> None:
-            if id(node) in seen:
-                return
-            seen.add(id(node))
-            if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in free and wanted(node):
-                found.setdefault(node.symbol_id, node)
-            if isinstance(node, (tuple, list)):
-                for item in node:
-                    visit(item)
-            elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-                for f in dataclasses.fields(node):
-                    visit(getattr(node, f.name))
-
-        visit(t)
-        return list(found.values())
+    def static_descriptor(self, t: QType) -> str:
+        """The static descriptor of a closed type (a part of another's, as the declarations name it)."""
+        return self.static_form(t).c_expr
 
     # Output
 
@@ -510,7 +416,7 @@ class CPrinter:
             case ir.Var() | ir.Const():
                 return self.atom(o)
             case ir.Prim(op=op, args=args, offset=offset, access=access):
-                return self.prim(op, args, offset, access)
+                return self.prim(op, args, offset, access, o.descriptor)
             case ir.Ordinal(value=v, access=access):
                 return self.option_tag(self.atom(v), access)
             case ir.Call():
@@ -524,8 +430,8 @@ class CPrinter:
                 if t is not None and self.is_function(t):
                     return self.external_closure(o, t)
                 return symbol
-            case ir.CallExternal(type_args=type_args, args=args):
-                return self.external_call(o, [self.descriptor(t) for t in type_args], [self.atom(a) for a in args])
+            case ir.CallExternal(args=args):
+                return self.external_call(o, [self.descriptor(d) for d in o.descriptors], [self.atom(a) for a in args])
             case ir.MakeClosure():
                 return self.make_closure(o, result)
             case ir.EnvField(env=env, index=index):
@@ -577,8 +483,8 @@ class CPrinter:
                 return self.tuple_component(self.atom(t), shape(self.atom_type(t)), index, access)
             case ir.MakeRecord():
                 return self.make_record(o, result)
-            case ir.RecordField(record=r, name=name, stored=stored):
-                return self.record_field(self.atom(r), self.held(self.atom_type(r), "record"), name, stored)
+            case ir.RecordField(record=r, name=name):
+                return self.record_field(self.atom(r), self.held(self.atom_type(r), "record"), name, o)
             case ir.MakeVariant(tag=tag, payload=payload):
                 vs = self.held(result.type, "variant")
                 index = self.tag_index(vs, tag)
@@ -603,8 +509,8 @@ class CPrinter:
                 return f"quest_array_new({n}, {self.array_element(init, shape(result.type).element)})"
             case ir.TypeApp():
                 return self.type_app(o, result)
-            case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
-                return self.make_auto(witness, auto_t, payload)
+            case ir.MakeAuto(auto_type=auto_t, payload=payload):
+                return self.make_auto(o.descriptor, auto_t, payload)
             case ir.Index(array=a, index=i, offset=offset):
                 arr, idx = self.atom(a), self.atom(i)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
@@ -622,15 +528,19 @@ class CPrinter:
             case "unbox":
                 return qval_unwrap(c, plan.target, self.ctx)
             case "record_view":
-                return f"quest_record_view({c}, {self.descriptor(self.held(plan.target, 'record').structure)})"
+                return f"quest_record_view({c}, {self.descriptor(plan.descriptors[0])})"
             case "variant_tags":
-                source, target = self.held(plan.source, "variant"), self.held(plan.target, "variant")
-                self.types.extend((source.structure, target.structure))
+                table = plan.tag_map
+                self.types.extend((table.source, table.target))
                 v = self.temp("QVariantVal")
                 self.emit(f"{v} = {c};")
-                tagmap = f"tagmap_{shape_tag(target)}_{shape_tag(source)}"
+                tagmap = f"tagmap_{type_tag(table.target)}_{type_tag(table.source)}"
                 return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
             case "cast":
+                source_s, target_s = shape(plan.source), shape(plan.target)
+                if source_s.kind == target_s.kind == "tuple" and shape_tag(source_s) != shape_tag(target_s):
+                    self.tuple_casts[(shape_tag(target_s), shape_tag(source_s))] = (target_s.structure,
+                                                                                    source_s.structure)
                 return f"(({self.c_type(plan.target)}){c})"
             case "unproxy":
                 return f"(({self.c_type(plan.target)})quest_unproxy({c}))"
@@ -639,8 +549,8 @@ class CPrinter:
             case "slot_unbox":
                 return f"(*{c})"
             case "view":
-                converted = f"quest_convert({qval_wrap(c, plan.source)}, {self.descriptor(plan.source)}, " \
-                            f"{self.descriptor(plan.target)})"
+                source_d, target_d = (self.descriptor(d) for d in plan.descriptors)
+                converted = f"quest_convert({qval_wrap(c, plan.source)}, {source_d}, {target_d})"
                 return qval_unwrap(converted, plan.target, self.ctx)
             case "adapt":
                 thunk = self.adapter(plan)
@@ -653,11 +563,8 @@ class CPrinter:
                 instantiation, to_generic = plan.layout
                 generic_t = plan.target if to_generic else plan.source
                 native_t = generic_t.substitute(instantiation)
-                generic_d = self.generic_layout_descriptor(generic_t, instantiation)
-                native_d = self.descriptor(native_t)
-                from_t, from_d, to_t, to_d = (
-                    (native_t, native_d, generic_t, generic_d) if to_generic else (generic_t, generic_d, native_t, native_d)
-                )
+                from_t, to_t = (native_t, generic_t) if to_generic else (generic_t, native_t)
+                from_d, to_d = (self.descriptor(d) for d in plan.descriptors)
                 converted = f"quest_convert({qval_wrap(c, from_t)}, {from_d}, {to_d})"
                 return qval_unwrap(converted, to_t, self.ctx)
             case "copy":
@@ -670,8 +577,8 @@ class CPrinter:
                     fc = self.tuple_component(src, source_s, i, plan.access[i])
                     if fp is not None and fp.kind == "view":
                         # Converted by descriptor, from the slot's QVal form to the target slot's
-                        converted = (f"quest_convert({shape_slot_to_qval(fc, sc)}, {self.descriptor(fp.source)}, "
-                                     f"{self.descriptor(fp.target)})")
+                        source_d, target_d = (self.descriptor(d) for d in fp.descriptors)
+                        converted = f"quest_convert({shape_slot_to_qval(fc, sc)}, {source_d}, {target_d})"
                         fields.append(shape_qval_to_slot(converted, tc.shape))
                     elif fp is not None:
                         fields.append(shape_slot_store(self.convert(shape_slot_load(fc, sc), fp), tc.shape))
@@ -691,25 +598,28 @@ class CPrinter:
 
         class _Saved:
             def __enter__(self_inner):
-                self_inner.saved = (printer.fs, printer.lines, printer.indent, dict(printer.descriptors))
+                self_inner.saved = (printer.fs, printer.lines, printer.indent)
                 printer.fs = _FunctionState(None)
                 printer.lines = []
                 printer.indent = 1
                 return self_inner
 
             def __exit__(self_inner, *exc):
-                printer.fs, printer.lines, printer.indent, printer.descriptors = self_inner.saved
+                printer.fs, printer.lines, printer.indent = self_inner.saved
                 return False
 
         return _Saved()
 
-    def thunk_params(self, quants, params) -> tuple[list[str], list[str], list[str]]:
-        """A thunk's parameter declarations (after its environment), and the names of its descriptor and value
-        parameters."""
+    def thunk_params(self, descriptor_params, params) -> tuple[list[str], list[str], list[str]]:
+        """A thunk's parameter declarations (after its environment), and the names of its descriptor parameters (its
+        descriptor variables, ir.DescriptorParam, or as many as there are if they are counted) and value parameters."""
         decls, descs, names = [], [], []
-        for k, _ in enumerate(quants):
+        count = descriptor_params if isinstance(descriptor_params, int) else len(descriptor_params)
+        for k in range(count):
             descs.append(f"qd_{k}")
             decls.append(f"const QTypeDescriptor *qd_{k}")
+            if not isinstance(descriptor_params, int):
+                self.names[id(descriptor_params[k].var)] = f"qd_{k}"
         for i, p in enumerate(params):
             names.append(f"qa_{i}")
             if p.is_var or p.is_out:
@@ -735,15 +645,11 @@ class CPrinter:
             return self.thunks[key]
         name = self.fresh_name("qa_adapt")
         self.thunks[key] = name
-        s_quants, _ = collect_fun_quantifiers(plan.source)
-        t_quants, t_inner = collect_fun_quantifiers(plan.target)
-        s_params, s_result, t_params, t_result = shared_signatures(plan.source, plan.target)
+        _, _, s_result = fun_shape_signature(plan.source)
+        _, t_params, t_result = fun_shape_signature(plan.target)
         with self.auxiliary():
-            decls, descs, names = self.thunk_params(t_quants, t_params)
-            for q, d in zip(s_quants, descs):
-                self.descriptors[q.symbol_id] = d
-            for q, d in zip(t_quants, descs):
-                self.descriptors[q.symbol_id] = d
+            # The thunk's descriptor parameters are its descriptor variables, which its plans' descriptors use
+            decls, descs, names = self.thunk_params(plan.thunk_params, t_params)
             args = []
             for p, n, fp in zip(t_params, names, plan.fields):
                 args.append(n if fp is None else self.convert(n, fp))
@@ -784,10 +690,9 @@ class CPrinter:
             orig_t, clos = member.type, self.atom(member)
         else:
             orig_t, clos = o.callee_type, self.module_member(o.module, o.member)
-        _, inner = collect_fun_quantifiers(orig_t)
-        descs = [self.descriptor(t) for t in o.type_args]
+        descs = [self.descriptor(d) for d in o.descriptors]
         self.types.extend((orig_t, result.type))
-        if not isinstance(inner, QFunType):
+        if o.thunk_params is None:
             if o.callee is None and isinstance(o.module, ir.Import):
                 call = f"{mangle_module_ident(mangle_module_name(o.module.canonical_path), o.member)}({', '.join(descs)})"
             else:
@@ -795,7 +700,7 @@ class CPrinter:
                 call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + descs)})"
             p = o.plans[0]
             return call if p is None else self.convert(call, p)
-        thunk, env_struct = self.type_app_thunk(orig_t, result.type, o.type_args, o.plans)
+        thunk, env_struct = self.type_app_thunk(orig_t, result.type, o)
         env = self.temp(f"{env_struct} *")
         self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}));")
         self.emit(f"{env}->orig = {clos};")
@@ -807,9 +712,11 @@ class CPrinter:
         self.emit(f"{c}->env = (void *){env};")
         return c
 
-    def type_app_thunk(self, orig_t: QType, target_t: QType, type_args, plans) -> tuple[str, str]:
+    def type_app_thunk(self, orig_t: QType, target_t: QType, o: ir.TypeApp) -> tuple[str, str]:
         """The thunk of a type application (and its environment's struct), converting its arguments and result by the
-        plans the represent pass made (ir.TypeApp.plans)."""
+        plans the represent pass made (ir.TypeApp.plans), with the descriptors the describe pass gave them (its own
+        descriptor variables, ir.TypeApp.thunk_params, and static ones)."""
+        type_args, plans = o.type_args, o.plans
         key = ("type_app", type_identity_key(orig_t), type_identity_key(target_t),
                tuple(type_identity_key(t) for t in type_args))
         if key in self.thunks:
@@ -821,16 +728,10 @@ class CPrinter:
         self.thunk_decls.append(
             f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{max(n, 1)}]; }} {env_struct};"
         )
-        _, o_inner = collect_fun_quantifiers(orig_t)
-        t_quants, t_inner = collect_fun_quantifiers(target_t)
-        t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
-        o_result = o_inner.result_type if isinstance(o_inner, QFunType) else o_inner
-        t_result = t_inner.result_type if isinstance(t_inner, QFunType) else t_inner
+        _, _, o_result = fun_shape_signature(orig_t)
+        _, t_params, t_result = fun_shape_signature(target_t)
         with self.auxiliary():
-            decls, descs, names = self.thunk_params(t_quants, t_params)
-            # The descriptors of the closure's own type parameters, which the plans' layouts refer to
-            for tq, d in zip(t_quants, descs):
-                self.descriptors[tq.symbol_id] = d
+            decls, descs, names = self.thunk_params(o.thunk_params, t_params)
             args = [a if p is None else self.convert(a, p) for a, p in zip(names, plans[:-1])]
             env_descs = [f"_env->desc[{i}]" for i in range(n)]
             call_args = ["_env->orig->env"] + env_descs + descs + args
@@ -879,13 +780,13 @@ class CPrinter:
         )
         self.emit(f"{box} = (QRecordVal *)quest_alloc({size});")
         self.emit(f"{payload} = ({struct} *)({box} + 1);")
-        self.emit(f"{payload}->header.descriptor = {self.descriptor(concrete)};")
+        self.emit(f"{payload}->header.descriptor = {self.descriptor(o.descriptor)};")
         for (_, n, _), value in zip(stored, self.fill_embedded(values)):
             self.emit(f"{payload}->qf_{n} = {value};")
         if o.runtime_offsets:
-            dict_expr = f"quest_record_dict({self.descriptor(target)}, {self.descriptor(concrete)})"
+            dict_expr = f"quest_record_dict({self.descriptor(o.view_descriptor)}, {self.descriptor(o.descriptor)})"
         else:
-            dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(target, concrete)}"
+            dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(o.offsets.view, o.offsets.layout)}"
         self.emit(f"*{box} = (QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }};")
         return box if result.boxed else f"(*{box})"
 
@@ -898,11 +799,12 @@ class CPrinter:
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
         return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))", field
 
-    def record_field(self, rec: str, rs: Shape, name: str, stored: bool) -> str:
+    def record_field(self, rec: str, rs: Shape, name: str, o: ir.RecordField) -> str:
         """A field of a record of shape rs, through its offset table: its slot form, or when stored (a field the
-        payload may store at another type, as its stored types say) read as stored and converted."""
+        payload may store at another type, as its stored types say) read as stored and converted to the field's
+        type, by its descriptor."""
         ptr, field = self.record_slot(rec, rs, name)
-        if not stored:
+        if not o.stored:
             return f"(*{ptr})"
         fields = rs.sorted_components()
         index = next(i for i, f in enumerate(fields) if f.name == name)
@@ -911,7 +813,7 @@ class CPrinter:
         val = self.temp(c_fld)
         stored = f"((const {dict_t} *){rec}.dict)->stored_types"
         converted = shape_qval_unwrap(
-            f"quest_convert(quest_slot_read({ptr}), {stored}[{index}], {self.descriptor(field.type)})",
+            f"quest_convert(quest_slot_read({ptr}), {stored}[{index}], {self.descriptor(o.descriptor)})",
             field,
         )
         self.emit(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
@@ -1036,7 +938,8 @@ class CPrinter:
         loc = source_map.locate(offset)
         return c_string_literal(f"{loc.file_name}:{loc.line}:{loc.column}")
 
-    def prim(self, op: str, args: tuple[ir.Atom, ...], offset: Optional[int] = None, access: str = ir.DIRECT) -> str:
+    def prim(self, op: str, args: tuple[ir.Atom, ...], offset: Optional[int] = None, access: str = ir.DIRECT,
+             descriptor: Optional[ir.Descriptor] = None) -> str:
         cs = [self.atom(a) for a in args]
         if op == "not":
             return f"(!({cs[0]}))"
@@ -1059,7 +962,7 @@ class CPrinter:
                 t = None
             if t is not None and self.c_type(t) == "QVal":
                 negate = "" if op == "is" else "!"
-                return f"({negate}quest_val_is({self.descriptor(t)}, {left}, {right}))"
+                return f"({negate}quest_val_is({self.descriptor(descriptor)}, {left}, {right}))"
             t2 = self.atom_type(args[1]) if t is not None else None
             if access == ir.ORIGINAL:
                 # A proxy is the object it views
@@ -1085,7 +988,7 @@ class CPrinter:
         return out
 
     def call(self, call: ir.Call) -> str:
-        descs = [self.descriptor(t) for t in call.type_args]
+        descs = [self.descriptor(d) for d in call.descriptors]
         if call.callee is None:
             module = call.module
             if isinstance(module, ir.Module):
@@ -1119,7 +1022,7 @@ class CPrinter:
         self.thunks[key] = name
         quants, params, result_t = fun_shape_signature(t)
         with self.auxiliary():
-            decls, descs, names = self.thunk_params(quants, params)
+            decls, descs, names = self.thunk_params(len(quants), params)
             call = self.external_call(o, descs if o.pass_type_descriptors else [], names)
             ret = "void" if self.is_ok(result_t) else self.c_type(result_t)
             self.emit(f"{call};" if ret == "void" else f"return {call};")
@@ -1168,8 +1071,8 @@ class CPrinter:
             return f"(&{code}_closure)"
         env = self.temp(f"struct QEnv_{code} *")
         self.emit(f"{env} = (struct QEnv_{code} *)quest_alloc(sizeof(struct QEnv_{code}));")
-        for i, t in enumerate(o.type_args):
-            self.emit(f"{env}->d{i} = {self.descriptor(t)};")
+        for i, d in enumerate(o.descriptors):
+            self.emit(f"{env}->d{i} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
             if self.deferred is not None and isinstance(a, ir.Var) and id(a) in self.deferred[0]:
                 # A variable of the let rec being made, which holds its value once the let rec's body has run
@@ -1254,7 +1157,7 @@ class CPrinter:
             case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
                 self.switch(value, cases, else_body, access)
             case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
-                self.inspect(value, cases, else_body, auto_t, offset)
+                self.inspect(value, cases, else_body, auto_t, offset, s.witness)
             case ir.LetRec(vars=vars_, body=body):
                 saved = self.deferred
                 self.deferred = ({id(v) for v in vars_}, [])
@@ -1340,8 +1243,8 @@ class CPrinter:
                 self.emit(f"quest_reraise({self.name(e)});")
             case ir.Unreachable():
                 self.emit("abort();")
-            case ir.Echo(value=value, type=t, prefix=prefix):
-                self.echo(prefix, self.atom(value), t, "" if prefix else f" : {qtype_to_name_str(t)}")
+            case ir.Echo(value=value, type=t, prefix=prefix, descriptor=d):
+                self.echo(prefix, self.atom(value), t, d, "" if prefix else f" : {qtype_to_name_str(t)}")
             case ir.EchoText(text=text):
                 self.emit(f"puts({c_string_literal(text)});")
             case _:
@@ -1385,52 +1288,45 @@ class CPrinter:
     # Auto values (docs/c-representation.md §6.4.4): a type component's descriptor and the payload, stored in the
     # witness-independent layout (docs/c-representation.md §8), as the represent pass converted it
 
-    def make_auto(self, witness: QType, auto_t: QAutoType, payload: ir.Atom) -> str:
+    def make_auto(self, witness: ir.Descriptor, auto_t: QAutoType, payload: ir.Atom) -> str:
         stored_t = auto_payload_type(auto_t)
         self.types.extend((auto_t, stored_t))
         return f"quest_auto_new({self.descriptor(witness)}, {qval_wrap(self.atom(payload), stored_t)})"
 
-    def auto_arm_converted(self, auto_t: QAutoType, arm_plan: ir.InspectArm, stored: str, stored_t: QTupleType,
-                           arm_t: QTupleType, tgt: str) -> str:
+    def auto_arm_converted(self, arm_plan: ir.InspectArm, stored: str, stored_t, arm_t) -> str:
         """The components S[T] of an auto value, converted by descriptor from the stored ones as the case's arm says
         (the type component's own value to the case's type, or to the bound it is viewed at; a component mentioning
-        it from its stored type at the value's type component; the others copied)."""
+        it from its stored type at the value's type component; the others copied), by the descriptors the describe
+        pass gave the arm."""
         arm_struct = tuple_struct_name(arm_t)
         self.types.append(arm_t)
         arm = self.temp(f"{arm_struct} *")
         self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
-        for i, (how, stored_f, arm_f) in enumerate(zip(arm_plan.converted, stored_t.value_fields, arm_t.value_fields)):
+        for i, (pair, stored_f, arm_f) in enumerate(zip(arm_plan.descriptors, stored_t.value_fields,
+                                                        arm_t.value_fields)):
             src = f"{stored}->_{i}"
-            if how is None:
+            if pair is None:
                 self.emit(f"{arm}->_{i} = {src};")
                 continue
-            to_desc = self.descriptor(arm_f.type_val)
-            if how == "component":
-                from_desc = f"{tgt}->type_desc"
-                if arm_plan.bound is not None:
-                    to_desc = self.descriptor(arm_plan.bound)
-            else:
-                saved = dict(self.descriptors)
-                self.descriptors[auto_t.symbol_id] = f"{tgt}->type_desc"
-                try:
-                    from_desc = self.descriptor(stored_f.type_val)
-                finally:
-                    self.descriptors = saved
+            from_desc, to_desc = (self.descriptor(d) for d in pair)
             viewed = f"quest_convert({shape_slot_to_qval(src, shape(stored_f.type_val))}, {from_desc}, {to_desc})"
             self.emit(f"{arm}->_{i} = {shape_qval_to_slot(viewed, shape(arm_f.type_val))};")
         return arm
 
     def inspect(self, value: ir.Atom, cases, else_body: Optional[ir.Body], auto_t: QAutoType,
-                offset: Optional[int]) -> None:
+                offset: Optional[int], witness: Optional[ir.DescriptorParam]) -> None:
         stored_t = auto_payload_type(auto_t)
         stored_struct = tuple_struct_name(stored_t)
         self.types.extend((auto_t, stored_t))
         tgt = self.temp("const QAuto *")
         self.emit(f"{tgt} = {self.atom(value)};")
+        if witness is not None:
+            # The value's type component, the descriptor variable the arms' descriptors use
+            self.names[id(witness.var)] = f"{tgt}->type_desc"
         stored = self.temp(f"{stored_struct} *")
         self.emit(f"{stored} = ({stored_struct} *){tgt}->payload.p;")
         for i, case in enumerate(cases):
-            match_desc = self.descriptor(case.match_type)
+            match_desc = self.descriptor(case.descriptor)
             cond = f"quest_is_subtype({tgt}->type_desc, {match_desc})"
             if case.exact:
                 cond = f"{cond} && quest_is_subtype({match_desc}, {tgt}->type_desc)"
@@ -1456,12 +1352,12 @@ class CPrinter:
                     self.indent += 1
                     if arm_plan.layout_error:
                         self.emit(f"quest_layout_conversion_error({tgt}->type_desc, {match_desc});")
-                    converted = self.auto_arm_converted(auto_t, arm_plan, stored, stored_t, arm_t, tgt)
+                    converted = self.auto_arm_converted(arm_plan, stored, stored_t, arm_t)
                     self.emit(f"{arm} = {converted};")
                     self.indent -= 1
                     self.emit("}")
                 else:
-                    arm = self.auto_arm_converted(auto_t, arm_plan, stored, stored_t, arm_t, tgt)
+                    arm = self.auto_arm_converted(arm_plan, stored, stored_t, arm_t)
                 for b in case.binders:
                     self.assign(b, arm)
             self.body(case.body)
@@ -1480,30 +1376,17 @@ class CPrinter:
     def atom_type(self, a: ir.Atom) -> QType:
         return a.type if isinstance(a, ir.Var) else a.shape.type
 
-    def echo(self, prefix: str, value: str, t: QType, suffix: str) -> None:
-        # Echo prints the type as written (packages with their components' types as the interpreter prints them,
-        # without alias names), which only the type has: its shape's canonical form names binders afresh
-        bare = strip_aliases(t)
-        if prefix and isinstance(bare, QTupleType) and bare.is_existential:
-            # A package's components are hidden, so the line is known statically (as the interpreter prints it)
-            self.emit(f"puts({c_string_literal(prefix + _existential_tuple_display(bare))});")
-            return
+    def echo(self, prefix: str, value: str, t: QType, descriptor: Optional[ir.Descriptor], suffix: str) -> None:
+        """Prints a top-level phrase's value as the interpreter does: by its type's kind, or by the descriptor the
+        describe pass gave it (an echo-only one for a closed type with type components, which writes them with their
+        alias names)."""
         wrapped = qval_wrap(value, t)
-        if kind := _value_kind(t):
+        if kind := echo_value_kind(t):
             self.emit(f"quest_print_value({c_string_literal(prefix)}, {wrapped}, {c_string_literal(kind)}, "
                       f"{c_string_literal(suffix)});")
         else:
-            self.emit(f"quest_print_typed({c_string_literal(prefix)}, {wrapped}, {self.echo_descriptor(t)}, "
+            self.emit(f"quest_print_typed({c_string_literal(prefix)}, {wrapped}, {self.descriptor(descriptor)}, "
                       f"{c_string_literal(suffix)});")
-
-    def echo_descriptor(self, t: QType) -> str:
-        """The descriptor echo writes a value of type t by: one of its own if t has type components (or parts that
-        do) and mentions no type parameters, so that it writes them as the interpreter does; otherwise t's."""
-        if not self.free_type_vars(t, lambda v: v.symbol_id in self.descriptors):
-            if (form := echo_descriptor_form(t, self.ctx)) is not None:
-                self.echo_types.append(t)
-                return form.c_expr
-        return self.descriptor(t)
 
     # Functions
 
@@ -1539,10 +1422,10 @@ class CPrinter:
 
     def function_signature(self, f: ir.Function) -> str:
         count = _type_parameter_count(f.var.type)
-        own = f.type_params[len(f.type_params) - count:] if count else ()
+        own = f.descriptor_params[len(f.descriptor_params) - count:] if count else ()
         params = ["void *_raw_env"]
-        for tp in own:
-            params.append(f"const QTypeDescriptor *{self.descriptor_param(f, tp)}")
+        for p in own:
+            params.append(f"const QTypeDescriptor *{self.name(p.var)}")
         for v, mode in f.params:
             if mode != "value":
                 params.append(f"{self.location_c_type(v.type)} *{self.name(v)}")
@@ -1551,29 +1434,20 @@ class CPrinter:
         ret = "void" if self.is_ok(f.result_type) else self.c_type(f.result_type)
         return f"static Q_UNUSED {ret} {self.code_name(f)}({', '.join(params)})"
 
-    def descriptor_param(self, f: ir.Function, tp: ir.TypeParam) -> str:
-        """The C parameter of a function's own type parameter, which holds its descriptor."""
-        key = (id(f), tp.symbol_id)
-        if key not in self.descriptor_params:
-            self.descriptor_params[key] = self.fresh_name(f"descriptor_{tp.name}")
-        return self.descriptor_params[key]
-
     def function(self, f: ir.Function) -> list[str]:
         self.fs = _FunctionState(f)
         self.fs.volatile = self.volatile_vars(f.body)
-        saved_descriptors = dict(self.descriptors)
         n_captured = len(f.type_params) - _type_parameter_count(f.var.type)
         signature = self.function_signature(f)
         prologue: list[str] = []
-        for tp in f.type_params[n_captured:]:
-            self.descriptors[tp.symbol_id] = self.descriptor_param(f, tp)
-            prologue.append(f"(void){self.descriptors[tp.symbol_id]};")
+        for p in f.descriptor_params[n_captured:]:
+            prologue.append(f"(void){self.name(p.var)};")
         if f.env is not None:
             env_struct = f"struct QEnv_{self.code_name(f)}"
             prologue.append(f"{env_struct} *{self.name(f.env)} = ({env_struct} *)_raw_env;")
-            for i, tp in enumerate(f.type_params[:n_captured]):
-                d = self.fresh_name(f"descriptor_{tp.name}")
-                self.descriptors[tp.symbol_id] = d
+            # The descriptors of the type parameters its closure supplies
+            for i, p in enumerate(f.descriptor_params[:n_captured]):
+                d = self.name(p.var)
                 prologue.append(f"const QTypeDescriptor *{d} = {self.name(f.env)}->d{i};")
                 prologue.append(f"(void){d};")
         else:
@@ -1584,7 +1458,6 @@ class CPrinter:
         self.indent = 1
         self.body(f.body)
         body_lines = self.lines
-        self.descriptors = saved_descriptors
         out = [signature + " {"]
         out.extend(f"    {line}" for line in prologue)
         out.extend(f"    {c_t} {name};" for c_t, name in decls + self.fs.locals)
@@ -1683,10 +1556,13 @@ class CPrinter:
         out.append("static void qr_register_dicts(void) {")
         if funcs:
             out.append("    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
-        for view_t, layout_t in self.needed_dicts:
-            dict_name = self.ctx.offset_dict_instance_name(view_t, layout_t)
-            out.append(f"    quest_register_record_dict({self.descriptor(view_t)}, {self.descriptor(layout_t)}, "
-                       f"&{dict_name});")
+        registered: set[str] = set()
+        for table in self.unit.static_data.offset_tables:
+            dict_name = self.ctx.offset_dict_instance_name(table.view, table.layout)
+            if table.registered is not None and dict_name not in registered:
+                registered.add(dict_name)
+                view_d, layout_d = (self.descriptor(d) for d in table.registered)
+                out.append(f"    quest_register_record_dict({view_d}, {layout_d}, &{dict_name});")
         out.append("}")
         out.append("")
         out.extend(functions)
@@ -1753,21 +1629,21 @@ class CPrinter:
                f"    if (qv_mod_{clean}_initialized) return;",
                f"    qv_mod_{clean}_initialized = true;"]
         out.extend(f"    {c_t} {name};" for c_t, name in decls)
-        out.extend(self.abstract_type_registrations(m.name))
+        out.extend(self.abstract_type_registrations(m))
         if m.exports is not None:
             out.append("    qr_register_dicts();")
             out.extend(f"    qv_mod_{mangle_module_name(imp.canonical_path)}_init();" for imp in self.unit.imports)
         out.extend(lines)
         fields = m.members if m.exports is None else m.exports
-        rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
+        rec_t = m.descriptor.type
         self.types.append(rec_t)
         struct = record_struct_name(rec_t, self.ctx)
         out.append(f"    {struct} *_payload = ({struct} *)quest_alloc(sizeof({struct}));")
-        out.append(f"    _payload->header.descriptor = {self.descriptor(rec_t)};")
+        out.append(f"    _payload->header.descriptor = {self.descriptor(m.descriptor)};")
         for n, v in sorted(fields.items()):
             if not self.is_ok(v.type):
                 out.append(f"    _payload->qf_{n} = {shape_slot_store(self.name(v), shape(v.type))};")
-        dict_name = self.ctx.offset_dict_instance_name(rec_t, rec_t)
+        dict_name = self.ctx.offset_dict_instance_name(m.offsets.view, m.offsets.layout)
         out.append(f"    {module_record_ident(clean)} = (QRecordVal){{ .val = (void *)_payload, "
                    f".dict = (const void *)&{dict_name} }};")
         out.append("}")
@@ -1786,8 +1662,7 @@ class CPrinter:
             if sig is None:
                 continue
             ret_c, ident, param_decls = sig
-            quants, params, _ = _signature(export.type)
-            args = [f"descriptor_{q.name}" for q in quants] + [f"qv_p_{p.name}" for p in params]
+            args = module_function_arguments(export.type)
             known = self.closures.get(id(export))
             if known is not None and not known.type_args and not known.captures:
                 call = f"{self.code_name(known.code)}({', '.join(['NULL'] + args)})"
@@ -1802,30 +1677,17 @@ class CPrinter:
             out.append("")
         return out
 
-    def abstract_type_registrations(self, canon: str) -> list[str]:
+    def abstract_type_registrations(self, m: ir.Module) -> list[str]:
         """Registers a module's abstract types with their representations, for dynamic values (docs/dynamic.md
-        §2.3): an abstract type operator's representation as a template whose holes are its parameters."""
-        from quest.modules.abstract_types import module_abstract_types
-
+        §2.3), as the describe pass listed them (an operator's representation as a template whose holes are its
+        parameters); a representation without a descriptor is not registered."""
         lines: list[str] = []
-        for entry in module_abstract_types(canon):
-            rep = shape(entry.rep).type
-            arity = 0
-            kind = entry.type_var.bound
-            while isinstance(kind, QAllKind):
-                arity, kind = arity + 1, kind.result_kind
-            if not isinstance(kind, (QTypeKind, QPowerKind)) or (arity and isinstance(kind, QPowerKind)):
-                continue
-            if arity:
-                if not isinstance(rep, QTypeFun) or len(rep.params) != arity:
-                    continue
-                rep = rep.body.substitute({p.symbol_id: hole_var(i, p.bound) for i, p in enumerate(rep.params)})
+        for global_name, arity, d in m.abstract_types:
             try:
-                form = descriptor_form(rep, self.ctx)
+                form = descriptor_form(d.type, self.ctx)
             except MissingDescriptorError:
                 continue
-            self.types.append(rep)
-            lines.append(f'    quest_register_abstract_type("{entry.global_name}", {arity}, {form.c_expr});')
+            lines.append(f'    quest_register_abstract_type("{global_name}", {arity}, {form.c_expr});')
         return lines
 
     def import_declarations(self) -> list[str]:
@@ -1848,40 +1710,35 @@ class CPrinter:
 
     def declarations(self) -> list[str]:
         """The declarations of the types the unit uses: structs, offset tables, descriptors, and adapters."""
+        data = self.unit.static_data
         for scope in self.module_scopes.values():
             self.types.append(build_record_type_from_scope(scope))
+        for table in data.offset_tables:
+            self.types.extend((table.view, table.layout))
         decl = CDeclarationEmitter(self.ctx, lambda t: qtype_to_c_type(t, self.ctx))
         self.decl_emitter = decl
-        agg_types, variant_types, all_types = collect_aggregate_types(list(self.types), self.ctx)
-        records = [t for _, t in agg_types if isinstance(t, QRecordType)]
-        tuples = [t for _, t in agg_types if isinstance(t, QTupleType)]
-        needed: dict[tuple[str, str], tuple] = {}
-        for t in records:
-            needed[(record_struct_name(t, self.ctx),) * 2] = (t, t)
-            for s in records:
-                if s is not t and is_record_subtype(s, t):
-                    needed[(record_struct_name(t, self.ctx), record_struct_name(s, self.ctx))] = (t, s)
-        tuple_coercions = {
-            (tuple_struct_name(t), tuple_struct_name(s)): (t, s)
-            for t in tuples for s in tuples if s is not t and is_tuple_subtype(s, t)
+        agg_types, _, _ = collect_aggregate_types(list(self.types), self.ctx)
+        # The static tables the unit's operations refer to (ir.StaticData), by their C names
+        offset_tables = {
+            (record_struct_name(t.view, self.ctx), record_struct_name(t.layout, self.ctx)): (t.view, t.layout)
+            for t in data.offset_tables
         }
-        variant_coercions = {
-            (type_tag(t), type_tag(s)): (t, s)
-            for t in variant_types for s in variant_types if s is not t and is_variant_subtype(s, t)
-        }
-        self.needed_dicts = list(needed.values())
+        tag_maps = {(type_tag(t.target), type_tag(t.source)): (t.target, t.source) for t in data.tag_maps}
         lines = []
         lines.extend(decl.emit_forward_typedefs(agg_types))
         lines.extend(decl.emit_aggregate_structs(agg_types))
-        lines.extend(decl.emit_evidence_dictionaries(agg_types, self.needed_dicts))
-        lines.extend(decl.emit_coercion_tables(list(tuple_coercions.values()), list(variant_coercions.values())))
-        lines.extend(decl.emit_type_descriptors(agg_types, variant_types, self.descriptor, all_types, self.echo_types))
+        lines.extend(decl.emit_evidence_dictionaries(agg_types, list(offset_tables.values())))
+        lines.extend(decl.emit_coercion_tables(list(self.tuple_casts.values()), list(tag_maps.values())))
+        lines.extend(decl.emit_type_descriptors([d.type for d in data.descriptors if not d.echo],
+                                                self.static_descriptor,
+                                                [d.type for d in data.descriptors if d.echo],
+                                                [name for name, _ in agg_types]))
         lines.extend(decl.emit_fun_type_adapters(decl.emitted_fun_types))
         return lines
 
 
 def print_c(unit: ir.Unit, env: Any, interface_header: Optional[str] = None) -> str:
-    """The C translation of a represented unit: a program, or a module file (including its interface's C header,
+    """The C translation of a described unit: a program, or a module file (including its interface's C header,
     if it has one)."""
     scopes: dict[int, Scope] = {}
     for imp in unit.imports:

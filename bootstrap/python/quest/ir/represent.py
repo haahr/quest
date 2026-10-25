@@ -195,7 +195,14 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
         _ADAPTING.discard(key)
     if all(p is None for p in fields) and signature_representation(source) == signature_representation(target):
         return None
-    return ir.Plan("adapt", source, target, fields, layout)
+    # The thunk takes target's type parameters, which the fields' types name by source's symbols (shared_signatures)
+    # or target's own
+    s_quants, _ = collect_fun_quantifiers(source)
+    t_quants, _ = collect_fun_quantifiers(target)
+    thunk_symbols = tuple(
+        (tq.symbol_id,) + ((s_quants[k].symbol_id,) if k < len(s_quants) else ()) for k, tq in enumerate(t_quants)
+    )
+    return ir.Plan("adapt", source, target, fields, layout, thunk_symbols=thunk_symbols)
 
 
 # The pairs of shapes being planned (with their layouts), for recursive types, which are compared coinductively
@@ -423,16 +430,18 @@ def inspect_arm(auto_t, case: ir.InspectCase, type_params: set[int]) -> ir.Inspe
                          layout_error=has_var)
 
 
-def type_app_plans(orig_t: QType, type_args: tuple[QType, ...], target_t: QType) -> tuple[Optional[ir.Plan], ...]:
+def type_app_plans(orig_t: QType, type_args: tuple[QType, ...],
+                   target_t: QType) -> tuple[tuple[Optional[ir.Plan], ...], tuple[tuple[int, ...], ...]]:
     """How a polymorphic value of type orig_t applied to the type arguments is used at target_t (ir.TypeApp.plans):
     for a value of no parameters, its value's plan from the generic result at the type arguments; for a function, the
     plans of a thunk of target_t's signature, converting each argument from target_t's parameter type to the
     function's generic one at the type arguments (None for var and out parameters), and the result back. The type
-    parameters the type arguments do not bind stand for target_t's own."""
+    parameters the type arguments do not bind stand for target_t's own, the thunk's, whose symbols are returned too
+    (ir.TypeApp.thunk_symbols)."""
     quants, inner = collect_fun_quantifiers(orig_t)
     instantiation = {q.symbol_id: t for q, t in zip(quants, type_args)}
     if not isinstance(inner, QFunType):
-        return (plan(inner, target_t, (instantiation, False)),)
+        return (plan(inner, target_t, (instantiation, False)),), ()
     t_quants, t_inner = collect_fun_quantifiers(target_t)
     for oq, tq in zip(quants[len(type_args):], t_quants):
         instantiation[oq.symbol_id] = QTypeVar(name=tq.name, symbol_id=tq.symbol_id, bound=tq.bound)
@@ -442,7 +451,8 @@ def type_app_plans(orig_t: QType, type_args: tuple[QType, ...], target_t: QType)
         None if tp.is_var or tp.is_out else plan(tp.type_val, op.type_val, (instantiation, True))
         for tp, op in zip(t_params, inner.params)
     )
-    return params + (plan(inner.result_type, t_result, (instantiation, False)),)
+    plans = params + (plan(inner.result_type, t_result, (instantiation, False)),)
+    return plans, tuple((tq.symbol_id,) for tq in t_quants)
 
 
 def fun_signature(t: QType) -> tuple[tuple, QType]:
@@ -628,7 +638,7 @@ class _Representer:
                     orig_t = o.module.members[o.member].type
                 else:
                     orig_t = o.callee_type
-                o.plans = type_app_plans(orig_t, type_args, result_t)
+                o.plans, o.thunk_symbols = type_app_plans(orig_t, type_args, result_t)
             case ir.Payload(value=v, tag=tag):
                 vt = written_structure(_type_of(v), "variant")
                 if vt is not None:

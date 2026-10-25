@@ -42,7 +42,7 @@ class TestPhase41Codegen(unittest.TestCase):
             p.phase_names(),
             [
                 "tokenize", "parse", "desugar", "typecheck", "ir_core", "ir_specialized", "ir_closed", "ir_represented",
-                "codegen_c",
+                "ir_described", "codegen_c",
             ],
         )
 

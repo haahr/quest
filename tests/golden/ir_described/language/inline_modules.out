@@ -1,0 +1,82 @@
+import int = "int" : IntOp
+static descriptor(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end)
+static descriptor(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end)
+static descriptor(Int)
+static descriptor(Record value: Fun(n: Int): Int end)
+static descriptor(Fun(c: counter.T): Int)
+static descriptor(Fun(n: Int): counter.T)
+static offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) registered
+static offsets(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) registered
+static offsets(Record value: Fun(n: Int): Int end <- Record value: Fun(n: Int): Int end) registered
+fun add(n: Int): Int {
+  let %16: Int = prim +(sum, n)
+  sum := %16
+  return sum
+}
+fun total(): Int {
+  let %17: Int = prim +(start, sum)
+  return %17
+}
+fun make(n.1: Int): T {
+  return n.1
+}
+fun get(c: T): Int {
+  return c
+}
+fun next(c.1: T): T {
+  let %18: Int = prim +(c.1, 1)
+  return %18
+}
+fun value(n.2: Int): Int {
+  let %19: Int = call int.abs(n.2)
+  return %19
+}
+fun addTwice(n.3: Int): Int {
+  let %20: Int = call tally.add(n.3)
+  let %21: Int = call tally.add(n.3)
+  return %21
+}
+module tally : Tally {
+  let start: Int = 100
+  var sum: Int = 0
+  let add.1: Fun(n: Int): Int = closure add {}
+  let total.1: Fun(): Int = closure total {}
+  export start = start, sum = sum, add = add.1, total = total.1
+  record descriptor(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) with offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end)
+}
+module counter : Counter {
+  let make.1: Fun(n: Int): T = closure make {}
+  let get.1: Fun(c: T): Int = closure get {}
+  let next.1: Fun(c: T): T = closure next {}
+  export make = make.1, get = get.1, next = next.1
+  record descriptor(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) with offsets(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end)
+  abstract "counter.T"/0 = descriptor(Int)
+}
+module absolute : Absolute {
+  let value.1: Fun(n: Int): Int = closure value {}
+  export value = value.1
+  record descriptor(Record value: Fun(n: Int): Int end) with offsets(Record value: Fun(n: Int): Int end <- Record value: Fun(n: Int): Int end)
+}
+main {
+  let %1: Int = member tally.start
+  let %2: Int = call tally.add(3)
+  let %3: Int = call tally.add(4)
+  let %4: Int = call tally.total()
+  let addTwice.1: Fun(n: Int): Int = closure addTwice {}
+  let %5: Int = call addTwice.1(10)
+  let %6: Int = call tally.total()
+  let k: Int = call counter.make(4)
+  let k.1: counter.T = convert(k, box)
+  let k.2: Int = convert(k.1, unbox)
+  let %7: Int = call counter.next(k.2)
+  let %8: counter.T = convert(%7, box)
+  let %9: Int = convert(%8, unbox)
+  let %10: Int = call counter.get(%9)
+  let m: Module 'counter' = module counter
+  let %11: Fun(c: counter.T): Int = record_field(m, get) via stored types of descriptor(Fun(c: counter.T): Int)
+  let %12: Fun(n: Int): counter.T = record_field(m, make) via stored types of descriptor(Fun(n: Int): counter.T)
+  let %13: counter.T = call %12(9)
+  let %14: Int = call %11(%13)
+  let %15: Int = call absolute.value(-7)
+}
+

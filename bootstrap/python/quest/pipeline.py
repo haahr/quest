@@ -510,9 +510,9 @@ class RunIrPhase(Phase):
 
 
 class CodegenCPhase(Phase):
-    """C code generation: prints the represented IR as C99 source code (docs/ir.md §8.5)."""
+    """C code generation: prints the described IR as C99 source code (docs/ir.md §8.5)."""
     name = "codegen_c"
-    description = "Print the represented IR as C99 source code"
+    description = "Print the described IR as C99 source code"
     artifact_name = "c_source"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:

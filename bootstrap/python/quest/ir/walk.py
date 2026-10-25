@@ -51,7 +51,7 @@ def _atoms_of(node) -> Iterator[ir.Atom]:
         yield node
         return
     for f in fields(node):
-        if f.name in ("type_components", "module", "code"):
+        if f.name in ("type_components", "module", "code") or f.name in ir.DESCRIPTOR_FIELDS:
             continue
         v = getattr(node, f.name)
         if isinstance(v, (ir.Var, ir.Const)):

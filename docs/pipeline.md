@@ -32,7 +32,7 @@ The compiler processes Quest programs through a linear sequence of modular passe
                 [ Phase: typecheck ] ===> (typed AST)
                     /        \
                    v          v
-   [ Phase: interpret ]    [ Phases: ir_core ... ir_represented ]
+   [ Phase: interpret ]    [ Phases: ir_core ... ir_described ]
             |                       |
             v                       v
     (runtime value)            (IR unit, docs/ir.md)
@@ -55,7 +55,8 @@ The compiler driver exposes three execution pipelines:
   `interpret`.
   Used by default for `quest <file>`, `quest -e "<code>"`, and interactive REPL sessions.
 - **Compilation Pipeline (`compile_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
-  $\to$ `ir_core` $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented` $\to$ `codegen_c`. Used by
+  $\to$ `ir_core` $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented` $\to$ `ir_described` $\to$
+  `codegen_c`. Used by
   `quest compile <file>`, lowering the typed AST to the IR ([ir.md](ir.md)), running its passes, and printing C99
   source to build native binaries.
 - **Full Execution Pipeline (`full_pipeline()`):** the compilation pipeline, then `run_c_compiled`.
@@ -76,9 +77,10 @@ All compiler phases are named by their **Verb / Action Form**:
 - `interpret`: Direct evaluation of typed AST via tree-walking interpreter. Returns final phrase
   `QValue`. Output is silent if `ok` (`QOk`), formatted if non-ok. Runtime I/O operations execute as direct
   side effects.
-- `ir_core`, `ir_specialized`, `ir_closed`, `ir_represented`: lowering the typed AST to the IR and the IR's passes
-  ([ir.md](ir.md) §8, §9).
-- `codegen_c`: C code generation, printing the represented IR as portable C99 source.
+- `ir_core`, `ir_specialized`, `ir_closed`, `ir_represented`, `ir_described`: lowering the typed AST to the IR and
+  the IR's passes ([ir.md](ir.md) §8, §9): specialization, closure conversion, representation, and descriptors. Each
+  stage is verified when `QUEST_CHECK_IR=1`; `run_ir_<stage>` runs a stage in the IR interpreter.
+- `codegen_c`: C code generation, printing the described IR as portable C99 source.
 - `run_c_compiled`: Host compilation and execution of generated C code. Runs the binary and captures standard output.
 
 ### Uniform Enforcement Across Interfaces
@@ -136,7 +138,7 @@ class Phase(ABC):
 - **`default_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
   $\to$ `interpret`.
 - **`compile_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
-  $\to$ the IR's phases (`ir_pipeline("represented")`) $\to$ `codegen_c`.
+  $\to$ the IR's phases (`ir_pipeline("described")`) $\to$ `codegen_c`.
 - **`full_pipeline() -> PhasePipeline`:** Registers the compilation pipeline's phases $\to$ `run_c_compiled`.
 
 ---

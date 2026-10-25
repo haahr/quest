@@ -2,6 +2,12 @@
 
 Variables print as their hints, made distinct within a unit by a numeric suffix (x, x.1, ...) in the order they are
 bound, and temporaries (no hint) as %1, %2, ...; types print as Quest types, with alias names.
+
+After the describe pass, descriptor operands print as descriptor variables, `descriptor(T)` (`echo_descriptor(T)`
+for echo's), or `instantiate(T, d...)` (T a template, its holes ?0, ?1, ...), in place of type arguments and after
+the operations and plans that use them (`of d`); descriptor variables are declared where they are bound (a function's
+before its parameters, a thunk's after its plan, an inspect's witness after its value), and the unit's static data is
+listed first.
 """
 
 from __future__ import annotations
@@ -61,8 +67,28 @@ class _Printer:
     def type(t) -> str:
         return format_type_compact(t)
 
-    def type_args(self, types: tuple) -> str:
+    def type_args(self, types: tuple, descriptors: tuple = ()) -> str:
+        """Type arguments, or after the describe pass, their descriptors."""
+        if descriptors:
+            return f" [{self.descriptors(descriptors)}]"
         return f" [{' '.join(self.type(t) for t in types)}]" if types else ""
+
+    def descriptor(self, d) -> str:
+        if isinstance(d, ir.Var):
+            return self.name(d)
+        if isinstance(d, ir.StaticDescriptor):
+            return f"{'echo_descriptor' if d.echo else 'descriptor'}({self.type(d.type)})"
+        return f"instantiate({self.type(d.template)}{''.join(', ' + self.descriptor(a) for a in d.args)})"
+
+    def descriptors(self, ds) -> str:
+        return ", ".join(self.descriptor(d) for d in ds)
+
+    def of(self, d) -> str:
+        """The descriptor an operation uses, if it has one."""
+        return f" of {self.descriptor(d)}" if d is not None else ""
+
+    def offsets(self, table: ir.OffsetTable) -> str:
+        return f"offsets({self.type(table.view)} <- {self.type(table.layout)})"
 
     def decl(self, var: ir.Var) -> str:
         # A boxed variable (after the represent pass) holds its record or variant boxed
@@ -88,7 +114,14 @@ class _Printer:
     def plan(self, plan: Optional[ir.Plan]) -> str:
         if plan is None:
             return "none"
-        return plan.kind + self.accesses(plan.access)
+        text = plan.kind + self.accesses(plan.access)
+        if plan.descriptors:
+            text += f"({self.descriptors(plan.descriptors)})"
+        if plan.thunk_params:
+            text += f" [{', '.join(self.decl(p.var) for p in plan.thunk_params)}]"
+        if plan.kind in ("copy", "adapt") and _described(plan):
+            text += " {" + ", ".join(self.plan(f) for f in plan.fields) + "}"
+        return text
 
     # Operations
 
@@ -99,13 +132,18 @@ class _Printer:
         match o:
             case ir.Var() | ir.Const():
                 return self.atom(o)
-            case ir.Prim(op=op, args=args, access=access):
-                return f"prim {op}({self.atoms(args)}){self.access(access)}"
+            case ir.Prim(op=op, args=args, access=access, descriptor=d):
+                return f"prim {op}({self.atoms(args)}){self.access(access)}{self.of(d)}"
             case ir.Call(callee=callee, type_args=type_args, args=args, module=module, member=member):
-                return f"call {self.callee(callee, module, member)}{self.type_args(type_args)}({self.atoms(args)})"
+                type_args_text = self.type_args(type_args, o.descriptors)
+                return f"call {self.callee(callee, module, member)}{type_args_text}({self.atoms(args)})"
             case ir.TypeApp(callee=callee, type_args=type_args, module=module, member=member, plans=plans):
-                converting = f" converting ({', '.join(self.plan(p) for p in plans)})" if any(plans) else ""
-                return f"type_app {self.callee(callee, module, member)}{self.type_args(type_args)}{converting}"
+                thunk = ""
+                if o.thunk_params:
+                    thunk = f" [{', '.join(self.decl(p.var) for p in o.thunk_params)}]"
+                converting = f"{thunk} converting ({', '.join(self.plan(p) for p in plans)})" if any(plans) else ""
+                type_args_text = self.type_args(type_args, o.descriptors)
+                return f"type_app {self.callee(callee, module, member)}{type_args_text}{converting}"
             case ir.ModuleMember(module=module, member=member):
                 return f"member {module.name}.{member}" if member is not None else f"module {module.name}"
             case ir.Builtin(name=name):
@@ -113,9 +151,11 @@ class _Printer:
             case ir.External(symbol=symbol):
                 return f"external {json.dumps(symbol)}"
             case ir.CallExternal(symbol=symbol, type_args=type_args, args=args):
-                return f"call external {json.dumps(symbol)}{self.type_args(type_args)}({self.atoms(args)})"
+                type_args_text = self.type_args(type_args, o.descriptors)
+                return f"call external {json.dumps(symbol)}{type_args_text}({self.atoms(args)})"
             case ir.MakeClosure(code=code, captures=captures, type_args=type_args):
-                return f"closure {self.name(code.var)} {{{self.atoms(captures)}}}{self.type_args(type_args)}"
+                type_args_text = self.type_args(type_args, o.descriptors)
+                return f"closure {self.name(code.var)} {{{self.atoms(captures)}}}{type_args_text}"
             case ir.EnvField(env=env, index=index):
                 return f"env_field({self.atom(env)}, {index})"
             case ir.Convert(value=v, plan=plan):
@@ -126,12 +166,20 @@ class _Printer:
             case ir.TupleField(tuple=t, index=index, access=access):
                 return f"tuple_field({self.atom(t)}, {index}){self.access(access)}"
             case ir.MakeRecord(fields=fields, embedded=embedded, runtime_offsets=runtime_offsets):
-                return "record(" + ", ".join(
+                text = "record(" + ", ".join(
                     f"{'var ' if is_var else ''}{n} = {'box ' if i in embedded else ''}{self.atom(a)}"
                     for i, (n, a, is_var) in enumerate(fields)
-                ) + ")" + (" with runtime offsets" if runtime_offsets else "")
+                ) + ")"
+                if runtime_offsets:
+                    text += " with runtime offsets"
+                    if o.view_descriptor is not None:
+                        text += f"({self.descriptor(o.view_descriptor)})"
+                if o.offsets is not None:
+                    text += f" with {self.offsets(o.offsets)}"
+                return text + self.of(o.descriptor)
             case ir.RecordField(record=r, name=name, stored=stored):
-                return f"record_field({self.atom(r)}, {name}){' via stored types' if stored else ''}"
+                stored_text = f" via stored types{self.of(o.descriptor)}" if stored else ""
+                return f"record_field({self.atom(r)}, {name}){stored_text}"
             case ir.MakeVariant(tag=tag, payload=payload):
                 return f"variant({tag}{', ' + self.atom(payload) if payload is not None else ''})"
             case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, access=access):
@@ -151,7 +199,7 @@ class _Printer:
             case ir.Index(array=a, index=i):
                 return f"index({self.atom(a)}, {self.atom(i)})"
             case ir.MakeAuto(witness=w, payload=p):
-                return f"auto[{self.type(w)}]({self.atom(p)})"
+                return f"auto[{self.type(w)}]({self.atom(p)}){self.of(o.descriptor)}"
             case ir.MakeException(name=name, payload_type=pt):
                 payload = pt is not None and self.type(pt) != "Ok"
                 return f"exception {name}{': ' + self.type(pt) if payload else ''}"
@@ -176,7 +224,11 @@ class _Printer:
         """How an inspect case's components are obtained, after the represent pass (ir.InspectArm)."""
         if arm is None:
             return ""
-        parts = [f"converting ({', '.join(c or 'none' for c in arm.converted)})"]
+        converted = []
+        for i, c in enumerate(arm.converted):
+            pair = arm.descriptors[i] if i < len(arm.descriptors) else None
+            converted.append(f"{c}({self.descriptors(pair)})" if pair is not None else (c or "none"))
+        parts = [f"converting ({', '.join(converted)})"]
         if arm.bound is not None:
             parts.append(f"from bound {self.type(arm.bound)}")
         if arm.exact:
@@ -201,7 +253,9 @@ class _Printer:
 
     def function(self, f: ir.Function, depth: int) -> None:
         tps = (" [" + " ".join(f"{tp.name}::{tp.kind}" for tp in f.type_params) + "]") if f.type_params else ""
-        params = ", ".join(f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params)
+        # Its type parameters' descriptors (after the describe pass), then its parameters
+        params = ", ".join([self.decl(p.var) for p in f.descriptor_params]
+                           + [f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params])
         # A lifted function's environment, which has no Quest type
         env = f" {{{self.bind(f.env)}}}" if f.env is not None else ""
         self.block(f"fun {self.name(f.var)}{env}{tps}({params}): {self.type(f.result_type)}", f.body, depth)
@@ -261,13 +315,14 @@ class _Printer:
                 if else_body is not None:
                     self.block("else:", else_body, depth + 1)
                 self.emit(depth, "}")
-            case ir.Inspect(value=value, cases=cases, else_body=else_body):
-                self.emit(depth, f"inspect {self.atom(value)} {{")
+            case ir.Inspect(value=value, cases=cases, else_body=else_body, witness=witness):
+                binding = f" ({self.decl(witness.var)})" if witness is not None else ""
+                self.emit(depth, f"inspect {self.atom(value)}{binding} {{")
                 for c in cases:
                     binders = ", ".join(self.decl(b) for b in c.binders)
                     exact = " exact" if c.exact else ""
-                    self.block(f"case {self.type(c.match_type)}{exact} ({binders}){self.arm(c.arm)}:", c.body,
-                               depth + 1)
+                    head = f"case {self.type(c.match_type)}{self.of(c.descriptor)}{exact} ({binders}){self.arm(c.arm)}:"
+                    self.block(head, c.body, depth + 1)
                 if else_body is not None:
                     self.block("else:", else_body, depth + 1)
                 self.emit(depth, "}")
@@ -291,8 +346,8 @@ class _Printer:
                 self.emit(depth, "} in {")
                 self.body(body, depth + 1)
                 self.emit(depth, "}")
-            case ir.Echo(value=value, type=t, prefix=prefix):
-                self.emit(depth, f"echo {json.dumps(prefix)} {self.atom(value)} : {self.type(t)}")
+            case ir.Echo(value=value, type=t, prefix=prefix, descriptor=d):
+                self.emit(depth, f"echo {json.dumps(prefix)} {self.atom(value)} : {self.type(t)}{self.of(d)}")
             case ir.EchoText(text=text):
                 self.emit(depth, f"echo {json.dumps(text)}")
             case ir.Return(value=value):
@@ -313,11 +368,26 @@ class _Printer:
                 raise TypeError(f"not an IR statement: {s!r}")
 
 
+def _described(plan: Optional[ir.Plan]) -> bool:
+    """Whether a plan, or one in it, has descriptors (after the describe pass)."""
+    if plan is None:
+        return False
+    return bool(plan.descriptors or plan.thunk_params) or any(_described(f) for f in plan.fields)
+
+
 def format_unit(unit: ir.Unit) -> str:
-    """The textual form of a unit: its modules, then its main body."""
+    """The textual form of a unit: its static data (after the describe pass), its modules, then its main body."""
     p = _Printer()
     for i in unit.imports:
         p.emit(0, f"import {i.name} = {json.dumps(i.module_path)} : {i.interface_path}")
+    if unit.static_data is not None:
+        for d in unit.static_data.descriptors:
+            p.emit(0, f"static {p.descriptor(d)}")
+        for table in unit.static_data.offset_tables:
+            registered = " registered" if table.registered is not None else ""
+            p.emit(0, f"static {p.offsets(table)}{registered}")
+        for table in unit.static_data.tag_maps:
+            p.emit(0, f"static tag_map({p.type(table.target)} <- {p.type(table.source)})")
     # The unit's functions, after closure conversion, are named before any is printed, as closures refer to them, and
     # so are the globals they use (the variables the top levels bind outside loops), printed after them
     for f in unit.functions:
@@ -335,6 +405,10 @@ def format_unit(unit: ir.Unit) -> str:
         p.emit(0, f"module {m.name} : {m.interface_name} {{")
         p.body(m.init, 1)
         p.emit(1, "export " + ", ".join(f"{n} = {p.name(v)}" for n, v in m.members.items()))
+        if m.descriptor is not None:
+            p.emit(1, f"record {p.descriptor(m.descriptor)} with {p.offsets(m.offsets)}")
+        for name, arity, d in m.abstract_types:
+            p.emit(1, f"abstract {json.dumps(name)}/{arity} = {p.descriptor(d)}")
         p.emit(0, "}")
     p.block("main", unit.main, 0)
     return "\n".join(p.lines) + "\n"

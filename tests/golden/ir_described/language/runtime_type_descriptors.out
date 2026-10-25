@@ -1,0 +1,259 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+import list = "list" : List
+static descriptor(Tuple x: Int end)
+static descriptor(Int)
+static descriptor(Record x: Int end)
+static descriptor(Exception(Int))
+static descriptor(IntList)
+static descriptor(list.T(Int))
+static descriptor(Fun(n: Int): Int)
+static descriptor(Record a: Int b: Int c: Int end)
+static descriptor(Record c: Int end)
+static descriptor(All(A :: TYPE) Fun(x: A): Big)
+static descriptor(All(C :: TYPE) Fun(z: C): Small)
+static descriptor(String)
+static descriptor(Record f: All(A :: TYPE) Fun(x: A): Big end)
+static descriptor(Record f: All(A :: TYPE) Fun(x: A): Record a: Int b: Int c: Int end end)
+static descriptor(Record f: All(B :: TYPE) Fun(y: B): Record c: Int end end)
+static descriptor(All(B :: TYPE) Fun(y: B): Record c: Int end)
+static descriptor(Bool)
+static descriptor(All(A :: TYPE) Fun(x: A): A)
+static descriptor(All(B :: TYPE) Fun(y: B): B)
+static descriptor(Fun(t: String): Int)
+static descriptor(Fun(m: Int): Int)
+static descriptor(list.T(String))
+static descriptor(Option nil end)
+static descriptor(Exception(String))
+static descriptor(Tuple end)
+static offsets(Record x: Int end <- Record x: Int end) registered
+static offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) registered
+static offsets(Record f: All(A :: TYPE) Fun(x: A): Record a: Int b: Int c: Int end end <- Record f: All(A :: TYPE) Fun(x: A): Big end) registered
+fun p(n.1: Int): Ok {
+  let %50: writer.T = member writer.output
+  let %51: String = call conv.int(n.1)
+  let %52: String = prim <>(%51, "\n")
+  let %53: Ok = call writer.putString(%50, %52)
+  return %53
+}
+fun s(text: String): Ok {
+  let %54: writer.T = member writer.output
+  let %55: String = prim <>(text, "\n")
+  let %56: Ok = call writer.putString(%54, %55)
+  return %56
+}
+fun whatIs(d: Dynamic): String {
+  join k1(r.4: String) {
+    return r.4
+  } in {
+    inspect d (witness: descriptor) {
+      case Tuple end of descriptor(Tuple end) (t: Tuple a: Tuple end end) converting (component(witness, descriptor(Tuple end))): {
+        jump k1("a tuple")
+      }
+      else: {
+        jump k1("not a tuple")
+      }
+    }
+  }
+}
+fun sum(xs.1: OtherList): Int {
+  join k4(r.5: Int) {
+    return r.5
+  } in {
+    switch tag(xs.1) via proxy {
+      case cons (c: Tuple head: Int tail: OtherList end) via (original, proxy): {
+        let %57: Int = tuple_field(c, 0) via original
+        let %58: OtherList = tuple_field(c, 1) via proxy
+        let %59: Int = call sum.1(%58)
+        let %60: Int = prim +(%57, %59)
+        jump k4(%60)
+      }
+      case nil: {
+        jump k4(0)
+      }
+    }
+  }
+}
+fun f(n.2: Int): Int {
+  let %61: Int = prim *(n.2, 2)
+  return %61
+}
+fun mk [A::TYPE](descriptor_A: descriptor, x.3: A): Big {
+  return big
+}
+fun ident [A::TYPE](descriptor_A.1: descriptor, x.4: A): A {
+  return x.4
+}
+main {
+  let p.1: Fun(n: Int): Ok = closure p {}
+  let s.1: Fun(text: String): Ok = closure s {}
+  let whatIs.1: Fun(d: Dynamic): String = closure whatIs {}
+  let x: Int = 1
+  let %1: Tuple x: Int end = tuple(x)
+  let %2: A = convert(%1, box)
+  let %3: T = call dynamic.new [descriptor(Tuple x: Int end)](%2)
+  let %4: String = call whatIs.1(%3)
+  do call s.1(%4)
+  let %5: A = convert(1, box)
+  let %6: T = call dynamic.new [descriptor(Int)](%5)
+  let %7: String = call whatIs.1(%6)
+  do call s.1(%7)
+  let box: box(Record x: Int end) = record(x = 1) with offsets(Record x: Int end <- Record x: Int end) of descriptor(Record x: Int end)
+  let %8: Record x: Int end = convert(box, slot_unbox)
+  let %9: A = convert(box, box)
+  let %10: T = call dynamic.new [descriptor(Record x: Int end)](%9)
+  let %11: String = call whatIs.1(%10)
+  do call s.1(%11)
+  let Boom: Exception(Int) = exception Boom: Int
+  let Boom.1: A = convert(Boom, box)
+  let dBoom: T = call dynamic.new [descriptor(Exception(Int))](Boom.1)
+  join k2(raised: Int) {
+    do call p.1(raised)
+    join k3(r: Int) {
+      do call p.1(r)
+      let head: Int = 1
+      let head.1: Int = 2
+      let tail: IntList = option(nil)
+      let %12: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+      let tail.1: IntList = option(cons, %12)
+      let %13: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+      let l: IntList = option(cons, %13)
+      let l.1: A = convert(l, box)
+      let dl: T = call dynamic.new [descriptor(IntList)](l.1)
+      let sum.1: Fun(xs: OtherList): Int = closure sum {}
+      let %14: A = call dynamic.be [descriptor(OtherList)](dl)
+      let %15: OtherList = convert(%14, unbox)
+      let %16: OtherList = %15
+      let %17: Int = call sum.1(%16)
+      do call p.1(%17)
+      join k5(r.1: Int) {
+        do call p.1(r.1)
+        let %18: list.T(Int) = type_app list.nil [descriptor(Int)]
+        let %19: A = convert(5, box)
+        let ints: list.T(Int) = call list.cons [descriptor(Int)](%19, %18)
+        let dInts: T = call dynamic.new [descriptor(list.T(Int))](ints)
+        join k6(r.2: Int) {
+          do call p.1(r.2)
+          let f.1: Fun(n: Int): Int = closure f {}
+          let f.2: A = convert(f.1, box)
+          let dFun: T = call dynamic.new [descriptor(Fun(n: Int): Int)](f.2)
+          join k7(r.3: Int) {
+            do call p.1(r.3)
+            let big_box: box(Big) = record(a = 1, b = 2, c = 3) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
+            let big: Big = convert(big_box, slot_unbox)
+            let mk.1: All(A :: TYPE) Fun(x: A): Big = closure mk {}
+            let mk.2: All(B :: TYPE) Fun(y: B): Small = convert(mk.1, adapt [qd_0: descriptor] {none, record_view(descriptor(Record c: Int end))})
+            let mkSmall: All(B :: TYPE) Fun(y: B): Small = mk.2
+            let %20: B = convert(0, box)
+            let %21: Small = call mkSmall [descriptor(Int)](%20)
+            let %22: Int = record_field(%21, c)
+            do call p.1(%22)
+            let mk.3: A = convert(mk.1, box)
+            let dMk: T = call dynamic.new [descriptor(All(A :: TYPE) Fun(x: A): Big)](mk.3)
+            let fromDynamic: A = call dynamic.be [descriptor(All(C :: TYPE) Fun(z: C): Small)](dMk)
+            let fromDynamic.1: All(C :: TYPE) Fun(z: C): Small = convert(fromDynamic, unbox)
+            let fromDynamic.2: All(C :: TYPE) Fun(z: C): Small = fromDynamic.1
+            let %23: C = convert("z", box)
+            let %24: Small = call fromDynamic.2 [descriptor(String)](%23)
+            let %25: Int = record_field(%24, c)
+            do call p.1(%25)
+            let hasMk_box: box(HasMk) = record(f = mk.1) with offsets(Record f: All(A :: TYPE) Fun(x: A): Record a: Int b: Int c: Int end end <- Record f: All(A :: TYPE) Fun(x: A): Big end) of descriptor(Record f: All(A :: TYPE) Fun(x: A): Big end)
+            let hasMk: HasMk = convert(hasMk_box, slot_unbox)
+            let hasMk.1: HasMkSmall = convert(hasMk, record_view(descriptor(Record f: All(B :: TYPE) Fun(y: B): Record c: Int end end)))
+            let hasMkSmall: HasMkSmall = hasMk.1
+            let %26: All(B :: TYPE) Fun(y: B): Small = record_field(hasMkSmall, f) via stored types of descriptor(All(B :: TYPE) Fun(y: B): Record c: Int end)
+            let %27: B = convert(true, box)
+            let %28: Small = call %26 [descriptor(Bool)](%27)
+            let %29: Int = record_field(%28, c)
+            do call p.1(%29)
+            let ident.1: All(A :: TYPE) Fun(x: A): A = closure ident {}
+            let ident.2: A = convert(ident.1, box)
+            let dIdent: T = call dynamic.new [descriptor(All(A :: TYPE) Fun(x: A): A)](ident.2)
+            let %30: A = call dynamic.be [descriptor(All(B :: TYPE) Fun(y: B): B)](dIdent)
+            let %31: All(B :: TYPE) Fun(y: B): B = convert(%30, unbox)
+            let %32: All(B :: TYPE) Fun(y: B): B = %31
+            let %33: B = convert(4, box)
+            let %34: B = call %32 [descriptor(Int)](%33)
+            let %35: Int = convert(%34, unbox)
+            let %36: Int = %35
+            do call p.1(%36)
+          } in {
+            inspect dFun (witness.1: descriptor) {
+              case Fun(t: String): Int of descriptor(Fun(t: String): Int) (f.3: Tuple a: Fun(t: String): Int end) converting (component(witness.1, descriptor(Fun(t: String): Int))): {
+                let %37: Fun(t: String): Int = tuple_field(f.3, 0)
+                let %38: Int = call %37("x")
+                jump k7(%38)
+              }
+              case Fun(m: Int): Int of descriptor(Fun(m: Int): Int) (f.4: Tuple a: Fun(m: Int): Int end) converting (component(witness.1, descriptor(Fun(m: Int): Int))): {
+                let %39: Fun(m: Int): Int = tuple_field(f.4, 0)
+                let %40: Int = call %39(21)
+                jump k7(%40)
+              }
+              else: {
+                jump k7(0)
+              }
+            }
+          }
+        } in {
+          inspect dInts (witness.2: descriptor) {
+            case list.T(String) of descriptor(list.T(String)) (x.1: Tuple a: list.T(String) end) converting (component(witness.2, descriptor(list.T(String)))): {
+              jump k6(0)
+            }
+            case list.T(Int) of descriptor(list.T(Int)) (x.2: Tuple a: list.T(Int) end) converting (component(witness.2, descriptor(list.T(Int)))): {
+              let %41: list.T(Int) = tuple_field(x.2, 0) via proxy
+              let %42: A = call list.head [descriptor(Int)](%41)
+              let %43: Int = convert(%42, unbox)
+              let %44: Int = %43
+              jump k6(%44)
+            }
+            else: {
+              let %45: Int = prim -(0, 1)
+              jump k6(%45)
+            }
+          }
+        }
+      } in {
+        inspect dl (witness.3: descriptor) {
+          case Option nil end of descriptor(Option nil end) (o: Tuple a: Option nil end end) converting (component(witness.3, descriptor(Option nil end))): {
+            jump k5(1)
+          }
+          case IntList of descriptor(IntList) (xs: Tuple a: IntList end) converting (component(witness.3, descriptor(IntList))): {
+            jump k5(2)
+          }
+          else: {
+            jump k5(0)
+          }
+        }
+      }
+    } in {
+      inspect dBoom (witness.4: descriptor) {
+        case Exception(String) of descriptor(Exception(String)) (e: Tuple a: Exception(String) end) converting (component(witness.4, descriptor(Exception(String)))): {
+          jump k3(1)
+        }
+        case Exception(Int) of descriptor(Exception(Int)) (e.1: Tuple a: Exception(Int) end) converting (component(witness.4, descriptor(Exception(Int)))): {
+          jump k3(2)
+        }
+        else: {
+          jump k3(0)
+        }
+      }
+    }
+  } in {
+    try catching (Boom) {
+      let %46: A = call dynamic.be [descriptor(Exception(Int))](dBoom)
+      let %47: Exception(Int) = convert(%46, unbox)
+      let %48: Exception(Int) = %47
+      raise %48 with 42
+    } handle (e.2: Exception) {
+      let %49: Bool = prim is(e.2, Boom)
+      if %49 {
+        let n: Int = exception_payload(e.2)
+        jump k2(n)
+      } else {
+        reraise e.2
+      }
+    }
+  }
+}
+

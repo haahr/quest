@@ -1,0 +1,605 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+static descriptor(Bool)
+static descriptor(Int)
+static descriptor(Real)
+static descriptor(Char)
+static descriptor(String)
+static descriptor(Box(Bool))
+static descriptor(Tree(Bool))
+static descriptor(Record a: Int end)
+static descriptor(V)
+static offsets(Record a: Int end <- Record a: Int end) registered
+fun print(s: String): Ok {
+  let %225: String = prim <>(s, "\n")
+  let %226: Ok = call writer.putString(wOut, %225)
+  return %226
+}
+fun mkTuple [A::TYPE](descriptor_A: descriptor, v: A): Tuple x: A end {
+  let x.1: A = v
+  let %227: Tuple x: A end = tuple(x.1)
+  return %227
+}
+fun mkTuple_spec(v.1: Bool): Tuple x: Bool end {
+  let x.2: Bool = v.1
+  let %228: Tuple x: Bool end = tuple(x.2)
+  return %228
+}
+fun getTuple [A::TYPE](descriptor_A.1: descriptor, t: Tuple x: A end): A {
+  let %229: A = tuple_field(t, 0) via proxy
+  return %229
+}
+fun getTuple_spec(t.1: Tuple x: Bool end): Bool {
+  let %230: Bool = tuple_field(t.1, 0)
+  return %230
+}
+fun mkBox [A::TYPE](descriptor_A.2: descriptor, v.2: A): Box(A) {
+  let x.3: A = v.2
+  let %231: Tuple x: A end = tuple(x.3)
+  return %231
+}
+fun getBox [A::TYPE](descriptor_A.3: descriptor, b: Box(A)): A {
+  let %232: A = tuple_field(b, 0) via proxy
+  return %232
+}
+fun id [A::TYPE](descriptor_A.4: descriptor, v.3: A): A {
+  return v.3
+}
+fun mkPair [A::TYPE](descriptor_A.5: descriptor, v.4: A): Pair(A) {
+  let first: Box(A) = call mkBox.1 [descriptor_A.5](v.4)
+  let second: Int = 1
+  let %233: Tuple first: Box(A) second: Int end = tuple(first, second)
+  return %233
+}
+fun firstOf [A::TYPE](descriptor_A.6: descriptor, p: Pair(A)): A {
+  let %234: Box(A) = tuple_field(p, 0) via proxy
+  let %235: A = tuple_field(%234, 0) via proxy
+  return %235
+}
+fun mkSome [A::TYPE](descriptor_A.7: descriptor, v.5: A): Maybe(A) {
+  let value: A = v.5
+  let %236: Tuple value: A end = tuple(value)
+  let %237: Maybe(A) = option(some, %236)
+  return %237
+}
+fun getOr [A::TYPE](descriptor_A.8: descriptor, m: Maybe(A), d: A): A {
+  join k1(r.1: A) {
+    return r.1
+  } in {
+    switch tag(m) via proxy {
+      case some (s.1: Tuple value: A end) via (proxy): {
+        let %238: A = tuple_field(s.1, 0) via proxy
+        jump k1(%238)
+      }
+      else: {
+        jump k1(d)
+      }
+    }
+  }
+}
+fun mkOpt [A::TYPE](descriptor_A.9: descriptor, v.6: A): Option none some with Tuple value: A end end {
+  let value.1: A = v.6
+  let %239: Tuple value: A end = tuple(value.1)
+  let %240: Maybe(A) = option(some, %239)
+  return %240
+}
+fun getOpt [A::TYPE](descriptor_A.10: descriptor, m.1: Option none some with Tuple value: A end end, d.1: A): A {
+  join k2(r.2: A) {
+    return r.2
+  } in {
+    switch tag(m.1) via proxy {
+      case some (s.2: Tuple value: A end) via (proxy): {
+        let %241: A = tuple_field(s.2, 0) via proxy
+        jump k2(%241)
+      }
+      else: {
+        jump k2(d.1)
+      }
+    }
+  }
+}
+fun nil [A::TYPE](descriptor_A.11: descriptor): List(A) {
+  let %242: List(A) = option(nil)
+  return %242
+}
+fun cons [A::TYPE](descriptor_A.12: descriptor, head.2: A, tail.2: List(A)): List(A) {
+  let head.3: A = head.2
+  let tail.3: List(A) = tail.2
+  let %243: Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end = tuple(head.3, tail.3)
+  let %244: List(A) = option(cons, %243)
+  return %244
+}
+fun cons_spec(head.4: Tree(Bool), tail.4: List(Tree(Bool))): List(Tree(Bool)) {
+  let head.5: Tree(Bool) = head.4
+  let tail.5: List(Tree(Bool)) = tail.4
+  let %245: Tuple head: Tree(Bool) tail: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(Bool) tail: List end end end = tuple(box head.5, tail.5)
+  let %246: List(Tree(Bool)) = option(cons, %245)
+  return %246
+}
+fun length [A::TYPE](descriptor_A.13: descriptor, l: List(A)): Int {
+  join k3(r.3: Int) {
+    return r.3
+  } in {
+    switch tag(l) via proxy {
+      case cons (c: Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end) via (proxy, proxy): {
+        let %247: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end = tuple_field(c, 1) via proxy
+        let %248: Int = call length.1 [descriptor_A.13](%247)
+        let %249: Int = prim +(1, %248)
+        jump k3(%249)
+      }
+      else: {
+        jump k3(0)
+      }
+    }
+  }
+}
+fun last [A::TYPE](descriptor_A.14: descriptor, l.1: List(A), d.2: A): A {
+  join k4(r.4: A) {
+    return r.4
+  } in {
+    switch tag(l.1) via proxy {
+      case cons (c.1: Tuple head: A tail: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end end) via (proxy, proxy): {
+        let %250: Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end = tuple_field(c.1, 1) via proxy
+        let %251: A = tuple_field(c.1, 0) via proxy
+        let %252: A = call last.1 [descriptor_A.14](%250, %251)
+        jump k4(%252)
+      }
+      else: {
+        jump k4(d.2)
+      }
+    }
+  }
+}
+fun leaf [A::TYPE](descriptor_A.15: descriptor, v.7: A): Tree(A) {
+  let %253: Tree(A) = variant(leaf, v.7)
+  return %253
+}
+fun node [A::TYPE](descriptor_A.16: descriptor, trees: List(Tree(A))): Tree(A) {
+  let trees.1: List(Tree(A)) = trees
+  let %254: Tuple trees: List(Rec(Tree :: TYPE) Variant leaf: A node: Forest end) end = tuple(trees.1)
+  let %255: Tree(A) = variant(node, %254)
+  return %255
+}
+fun count [A::TYPE](descriptor_A.17: descriptor, t.2: Tree(A)): Int {
+  join k5(r.5: Int) {
+    return r.5
+  } in {
+    switch tag(t.2) {
+      case leaf: {
+        jump k5(1)
+      }
+      case node (f: Rec(Forest :: TYPE) Tuple trees: List(Tree) end): {
+        let %256: List(Rec(Tree :: TYPE) Variant leaf: A node: Forest end) = tuple_field(f, 0) via proxy
+        let %257: Int = call countList.1 [descriptor_A.17](%256)
+        jump k5(%257)
+      }
+      else: {
+        jump k5(0)
+      }
+    }
+  }
+}
+fun countList [A::TYPE](descriptor_A.18: descriptor, l.2: List(Tree(A))): Int {
+  join k6(r.6: Int) {
+    return r.6
+  } in {
+    switch tag(l.2) via proxy {
+      case cons (c.2: Tuple head: Tree(A) tail: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end end) via (proxy, proxy): {
+        let box.12: box(Tree(A)) = tuple_field(c.2, 0) via proxy
+        let %258: Tree(A) = convert(box.12, slot_unbox)
+        let %259: Int = call count.1 [descriptor_A.18](%258)
+        let %260: Rec(List :: TYPE) Option nil cons with Tuple head: Tree(A) tail: List end end = tuple_field(c.2, 1) via proxy
+        let %261: Int = call countList.1 [descriptor_A.18](%260)
+        let %262: Int = prim +(%259, %261)
+        jump k6(%262)
+      }
+      else: {
+        jump k6(0)
+      }
+    }
+  }
+}
+fun applyTo [A::TYPE](descriptor_A.19: descriptor, f.1: Fun(b: Box(A)): A, b.1: Box(A)): A {
+  let %263: A = call f.1(b.1)
+  return %263
+}
+fun isSet(b.2: Box(Bool)): Bool {
+  let %264: Bool = tuple_field(b.2, 0)
+  return %264
+}
+fun make [A::TYPE](descriptor_A.20: descriptor, f.2: Fun(v: A): Box(A), v.8: A): A {
+  let %265: Box(A) = call f.2(v.8)
+  let %266: A = tuple_field(%265, 0) via proxy
+  return %266
+}
+fun boxed(v.9: Bool): Box(Bool) {
+  let x.4: Bool = v.9
+  let %267: Tuple x: Bool end = tuple(x.4)
+  return %267
+}
+fun applyOpt [A::TYPE](descriptor_A.21: descriptor, f.3: Fun(m: Maybe(A)): A, m.2: Maybe(A)): A {
+  let %268: A = call f.3(m.2)
+  return %268
+}
+fun orFalse(m.3: Maybe(Bool)): Bool {
+  let m.4: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(m.3, cast)
+  let %269: A = convert(false, box)
+  let %270: A = call getOr.1 [descriptor(Bool)](m.4, %269)
+  let %271: Bool = convert(%270, unbox)
+  let %272: Bool = %271
+  return %272
+}
+fun getter [A::TYPE](descriptor_A.22: descriptor, b.3: Box(A)): A {
+  let %273: A = tuple_field(b.3, 0) via proxy
+  return %273
+}
+main {
+  let wOut: writer.T = member writer.output
+  let print.1: Fun(s: String): Ok = closure print {}
+  let mkTuple.1: All(A :: TYPE) Fun(v: A): Tuple x: A end = closure mkTuple {}
+  let mkTuple_spec.1: Fun(v: Bool): Tuple x: Bool end = closure mkTuple_spec {}
+  let getTuple.1: All(A :: TYPE) Fun(t: Tuple x: A end): A = closure getTuple {}
+  let getTuple_spec.1: Fun(t: Tuple x: Bool end): Bool = closure getTuple_spec {}
+  let mkBox.1: All(A :: TYPE) Fun(v: A): Box(A) = closure mkBox {}
+  let getBox.1: All(A :: TYPE) Fun(b: Box(A)): A = closure getBox {}
+  let id.1: All(A :: TYPE) Fun(v: A): A = closure id {}
+  let %1: A = convert(true, box)
+  let bools: Fun(A :: TYPE) Tuple x: A end(A) = call mkBox.1 [descriptor(Bool)](%1)
+  let bools.1: Fun(A :: TYPE) Tuple x: A end(Bool) = convert(bools, unproxy)
+  let bools.2: Box(Bool) = bools.1
+  let bools.3: Fun(A :: TYPE) Tuple x: A end(A) = convert(bools.2, cast)
+  let %2: A = call getBox.1 [descriptor(Bool)](bools.3)
+  let %3: Bool = convert(%2, unbox)
+  let %4: Bool = %3
+  let %5: String = call conv.bool(%4)
+  do call print.1(%5)
+  let %6: Tuple x: Bool end = call mkTuple_spec.1(false)
+  let %7: Bool = call getTuple_spec.1(%6)
+  let %8: String = call conv.bool(%7)
+  do call print.1(%8)
+  let %9: A = convert(3, box)
+  let %10: Fun(A :: TYPE) Tuple x: A end(A) = call mkBox.1 [descriptor(Int)](%9)
+  let %11: Fun(A :: TYPE) Tuple x: A end(Int) = convert(%10, unproxy)
+  let %12: Box(Int) = %11
+  let %13: Fun(A :: TYPE) Tuple x: A end(A) = convert(%12, cast)
+  let %14: A = call getBox.1 [descriptor(Int)](%13)
+  let %15: Int = convert(%14, unbox)
+  let %16: Int = %15
+  let %17: String = call conv.int(%16)
+  do call print.1(%17)
+  let %18: A = convert(2.5, box)
+  let %19: Fun(A :: TYPE) Tuple x: A end(A) = call mkBox.1 [descriptor(Real)](%18)
+  let %20: Fun(A :: TYPE) Tuple x: A end(Real) = convert(%19, unproxy)
+  let %21: Box(Real) = %20
+  let %22: Fun(A :: TYPE) Tuple x: A end(A) = convert(%21, cast)
+  let %23: A = call getBox.1 [descriptor(Real)](%22)
+  let %24: Real = convert(%23, unbox)
+  let %25: Real = %24
+  let %26: String = call conv.real(%25)
+  do call print.1(%26)
+  let %27: A = convert('c', box)
+  let %28: Fun(A :: TYPE) Tuple x: A end(A) = call mkBox.1 [descriptor(Char)](%27)
+  let %29: Fun(A :: TYPE) Tuple x: A end(Char) = convert(%28, unproxy)
+  let %30: Box(Char) = %29
+  let %31: Fun(A :: TYPE) Tuple x: A end(A) = convert(%30, cast)
+  let %32: A = call getBox.1 [descriptor(Char)](%31)
+  let %33: Char = convert(%32, unbox)
+  let %34: Char = %33
+  let %35: String = call conv.char(%34)
+  do call print.1(%35)
+  let %36: A = convert("box", box)
+  let %37: Fun(A :: TYPE) Tuple x: A end(A) = call mkBox.1 [descriptor(String)](%36)
+  let %38: Fun(A :: TYPE) Tuple x: A end(String) = convert(%37, unproxy)
+  let %39: Box(String) = %38
+  let %40: Fun(A :: TYPE) Tuple x: A end(A) = convert(%39, cast)
+  let %41: A = call getBox.1 [descriptor(String)](%40)
+  let %42: String = convert(%41, unbox)
+  let %43: String = %42
+  do call print.1(%43)
+  let bools.4: A = convert(bools.2, box)
+  let %44: A = call id.1 [descriptor(Box(Bool))](bools.4)
+  let %45: Box(Bool) = convert(%44, unbox)
+  let %46: Box(Bool) = %45
+  let %47: Bool = tuple_field(%46, 0)
+  let %48: String = call conv.bool(%47)
+  do call print.1(%48)
+  let mkPair.1: All(A :: TYPE) Fun(v: A): Pair(A) = closure mkPair {}
+  let firstOf.1: All(A :: TYPE) Fun(p: Pair(A)): A = closure firstOf {}
+  let %49: A = convert(true, box)
+  let pair: Fun(A :: TYPE) Tuple first: Fun(A :: TYPE) Tuple x: A end(A) second: Int end(A) = call mkPair.1 [descriptor(Bool)](%49)
+  let pair.1: Fun(A :: TYPE) Tuple first: Fun(A :: TYPE) Tuple x: A end(A) second: Int end(Bool) = convert(pair, cast)
+  let pair.2: Pair(Bool) = pair.1
+  let %50: Box(Bool) = tuple_field(pair.2, 0) via proxy
+  let %51: Bool = tuple_field(%50, 0)
+  let %52: String = call conv.bool(%51)
+  let pair.3: Fun(A :: TYPE) Tuple first: Fun(A :: TYPE) Tuple x: A end(A) second: Int end(A) = convert(pair.2, cast)
+  let %53: A = call firstOf.1 [descriptor(Bool)](pair.3)
+  let %54: Bool = convert(%53, unbox)
+  let %55: Bool = %54
+  let %56: String = call conv.bool(%55)
+  let %57: String = prim <>(" ", %56)
+  let %58: String = prim <>(%52, %57)
+  do call print.1(%58)
+  let mkSome.1: All(A :: TYPE) Fun(v: A): Maybe(A) = closure mkSome {}
+  let getOr.1: All(A :: TYPE) Fun(m: Maybe(A) d: A): A = closure getOr {}
+  let mkOpt.1: All(A :: TYPE) Fun(v: A): Option none some with Tuple value: A end end = closure mkOpt {}
+  let getOpt.1: All(A :: TYPE) Fun(m: Option none some with Tuple value: A end end d: A): A = closure getOpt {}
+  let %59: A = convert(true, box)
+  let maybe: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = call mkSome.1 [descriptor(Bool)](%59)
+  let maybe.1: Fun(A :: TYPE) Option none some with Tuple value: A end end(Bool) = convert(maybe, cast)
+  let maybe.2: Maybe(Bool) = maybe.1
+  let %60: Tuple Int value: Bool end = payload(maybe.2, some) via proxy via (original)
+  let %61: Bool = tuple_field(%60, 1)
+  let %62: String = call conv.bool(%61)
+  do call print.1(%62)
+  let maybe.3: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(maybe.2, cast)
+  let %63: A = convert(false, box)
+  let %64: A = call getOr.1 [descriptor(Bool)](maybe.3, %63)
+  let %65: Bool = convert(%64, unbox)
+  let %66: Bool = %65
+  let %67: String = call conv.bool(%66)
+  do call print.1(%67)
+  let %68: Maybe(Bool) = option(none)
+  let %69: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(%68, cast)
+  let %70: A = convert(false, box)
+  let %71: A = call getOr.1 [descriptor(Bool)](%69, %70)
+  let %72: Bool = convert(%71, unbox)
+  let %73: Bool = %72
+  let %74: String = call conv.bool(%73)
+  do call print.1(%74)
+  let %75: A = convert(true, box)
+  let %76: Option none some with Tuple value: A end end = call mkOpt.1 [descriptor(Bool)](%75)
+  let %77: Option none some with Tuple value: Bool end end = convert(%76, cast)
+  let %78: Option none some with Tuple value: Bool end end = %77
+  let %79: Option none some with Tuple value: A end end = convert(%78, cast)
+  let %80: A = convert(false, box)
+  let %81: A = call getOpt.1 [descriptor(Bool)](%79, %80)
+  let %82: Bool = convert(%81, unbox)
+  let %83: Bool = %82
+  let %84: String = call conv.bool(%83)
+  do call print.1(%84)
+  let %85: A = convert('m', box)
+  let %86: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = call mkSome.1 [descriptor(Char)](%85)
+  let %87: Fun(A :: TYPE) Option none some with Tuple value: A end end(Char) = convert(%86, cast)
+  let %88: Maybe(Char) = %87
+  let %89: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(%88, cast)
+  let %90: A = convert(' ', box)
+  let %91: A = call getOr.1 [descriptor(Char)](%89, %90)
+  let %92: Char = convert(%91, unbox)
+  let %93: Char = %92
+  let %94: String = call conv.char(%93)
+  do call print.1(%94)
+  let nil.1: All(A :: TYPE) List(A) = closure nil {}
+  let cons.1: All(A :: TYPE) Fun(head: A tail: List(A)): List(A) = closure cons {}
+  let cons_spec.1: Fun(head: Tree(Bool) tail: List(Tree(Bool))): List(Tree(Bool)) = closure cons_spec {}
+  let length.1: All(A :: TYPE) Fun(l: List(A)): Int = closure length {}
+  let last.1: All(A :: TYPE) Fun(l: List(A) d: A): A = closure last {}
+  let %95: List(Bool) = type_app nil.1 [descriptor(Bool)] converting (cast)
+  let %96: A = convert(false, box)
+  let %97: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(%95, cast)
+  let %98: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = call cons.1 [descriptor(Bool)](%96, %97)
+  let %99: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(Bool) = convert(%98, cast)
+  let %100: List(Bool) = %99
+  let %101: A = convert(true, box)
+  let %102: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(%100, cast)
+  let flags: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = call cons.1 [descriptor(Bool)](%101, %102)
+  let flags.1: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(Bool) = convert(flags, cast)
+  let flags.2: List(Bool) = flags.1
+  let flags.3: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(flags.2, cast)
+  let %103: Int = call length.1 [descriptor(Bool)](flags.3)
+  let %104: String = call conv.int(%103)
+  let flags.4: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(flags.2, cast)
+  let %105: A = convert(true, box)
+  let %106: A = call last.1 [descriptor(Bool)](flags.4, %105)
+  let %107: Bool = convert(%106, unbox)
+  let %108: Bool = %107
+  let %109: String = call conv.bool(%108)
+  let %110: String = prim <>(" ", %109)
+  let %111: String = prim <>(%104, %110)
+  do call print.1(%111)
+  let head: String = "a"
+  let head.1: String = "b"
+  let tail: List(String) = option(nil)
+  let %112: Tuple head: String tail: Rec(List :: TYPE) Option nil cons with Tuple head: String tail: List end end end = tuple(head.1, tail)
+  let tail.1: List(String) = option(cons, %112)
+  let %113: Tuple head: String tail: Rec(List :: TYPE) Option nil cons with Tuple head: String tail: List end end end = tuple(head, tail.1)
+  let words: List(String) = option(cons, %113)
+  let words.1: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(words, cast)
+  let %114: Int = call length.1 [descriptor(String)](words.1)
+  let %115: String = call conv.int(%114)
+  let words.2: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(words, cast)
+  let %116: A = convert("", box)
+  let %117: A = call last.1 [descriptor(String)](words.2, %116)
+  let %118: String = convert(%117, unbox)
+  let %119: String = %118
+  let %120: String = prim <>(" ", %119)
+  let %121: String = prim <>(%115, %120)
+  do call print.1(%121)
+  let %122: Tuple Int head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end = payload(flags.2, cons) via proxy via (original, proxy)
+  let %123: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end = tuple_field(%122, 2) via proxy
+  let %124: Tuple Int head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end = payload(%123, cons) via proxy via (original, proxy)
+  let %125: Bool = tuple_field(%124, 1) via original
+  let %126: String = call conv.bool(%125)
+  do call print.1(%126)
+  let leaf.1: All(A :: TYPE) Fun(v: A): Tree(A) = closure leaf {}
+  let node.1: All(A :: TYPE) Fun(trees: List(Tree(A))): Tree(A) = closure node {}
+  let count.1: All(A :: TYPE) Fun(t: Tree(A)): Int = closure count {}
+  let countList.1: All(A :: TYPE) Fun(l: List(Tree(A))): Int = closure countList {}
+  let %127: A = convert(true, box)
+  let %128: Tree(Bool) = call leaf.1 [descriptor(Bool)](%127)
+  let %129: A = convert(false, box)
+  let %130: Tree(Bool) = call leaf.1 [descriptor(Bool)](%129)
+  let %131: List(Tree(Bool)) = type_app nil.1 [descriptor(Tree(Bool))] converting (cast)
+  let %132: List(Tree(Bool)) = call cons_spec.1(%130, %131)
+  let %133: List(Tree(Bool)) = call cons_spec.1(%128, %132)
+  let %134: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(Fun(A :: TYPE) Rec(Tree :: TYPE) Variant leaf: A node: Forest end(A)) = convert(%133, cast)
+  let tree: Tree(Bool) = call node.1 [descriptor(Bool)](%134)
+  let %135: Int = call count.1 [descriptor(Bool)](tree)
+  let %136: String = call conv.int(%135)
+  do call print.1(%136)
+  let mkB: All(A :: TYPE) Fun(v: A): Box(A) = mkBox.1
+  let getB: All(A :: TYPE) Fun(b: Box(A)): A = getBox.1
+  let mkS: All(A :: TYPE) Fun(v: A): Maybe(A) = mkSome.1
+  let consF: All(A :: TYPE) Fun(head: A tail: List(A)): List(A) = cons.1
+  let box: box(Record a: Int end) = record(a = 4) with offsets(Record a: Int end <- Record a: Int end) of descriptor(Record a: Int end)
+  let %137: Record a: Int end = convert(box, slot_unbox)
+  let %138: A = convert(box, box)
+  let rb: Fun(A :: TYPE) Tuple x: A end(A) = call mkB [descriptor(P)](%138)
+  let rb.1: Fun(A :: TYPE) Tuple x: A end(P) = convert(rb, cast)
+  let rb.2: Box(P) = rb.1
+  let box.1: box(P) = tuple_field(rb.2, 0) via proxy
+  let %139: P = convert(box.1, slot_unbox)
+  let %140: Int = record_field(%139, a)
+  let %141: String = call conv.int(%140)
+  let rb.3: Fun(A :: TYPE) Tuple x: A end(A) = convert(rb.2, cast)
+  let %142: A = call getB [descriptor(P)](rb.3)
+  let box.2: box(P) = convert(%142, unbox)
+  let %143: P = convert(box.2, slot_unbox)
+  let %144: P = %143
+  let %145: Int = record_field(%144, a)
+  let %146: String = call conv.int(%145)
+  let %147: String = prim <>(" ", %146)
+  let %148: String = prim <>(%141, %147)
+  do call print.1(%148)
+  let %149: V = variant(p, 5)
+  let %150: A = convert(%149, box)
+  let vb: Fun(A :: TYPE) Tuple x: A end(A) = call mkB [descriptor(V)](%150)
+  let vb.1: Fun(A :: TYPE) Tuple x: A end(V) = convert(vb, cast)
+  let vb.2: Box(V) = vb.1
+  join k7(r: Int) {
+    let %151: String = call conv.int(r)
+    do call print.1(%151)
+    let box.3: box(Record a: Int end) = record(a = 6) with offsets(Record a: Int end <- Record a: Int end) of descriptor(Record a: Int end)
+    let %152: Record a: Int end = convert(box.3, slot_unbox)
+    let %153: A = convert(box.3, box)
+    let rm: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = call mkS [descriptor(P)](%153)
+    let rm.1: Fun(A :: TYPE) Option none some with Tuple value: A end end(P) = convert(rm, cast)
+    let rm.2: Maybe(P) = rm.1
+    let %154: Tuple Int value: P end = payload(rm.2, some) via proxy via (proxy)
+    let box.4: box(P) = tuple_field(%154, 1) via proxy
+    let %155: P = convert(box.4, slot_unbox)
+    let %156: Int = record_field(%155, a)
+    let %157: String = call conv.int(%156)
+    do call print.1(%157)
+    let box.5: box(Record a: Int end) = record(a = 7) with offsets(Record a: Int end <- Record a: Int end) of descriptor(Record a: Int end)
+    let %158: Record a: Int end = convert(box.5, slot_unbox)
+    let box.6: box(Record a: Int end) = record(a = 8) with offsets(Record a: Int end <- Record a: Int end) of descriptor(Record a: Int end)
+    let %159: Record a: Int end = convert(box.6, slot_unbox)
+    let %160: List(P) = option(nil)
+    let %161: A = convert(box.6, box)
+    let %162: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(%160, cast)
+    let %163: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = call consF [descriptor(P)](%161, %162)
+    let %164: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(P) = convert(%163, cast)
+    let %165: List(P) = %164
+    let %166: A = convert(box.5, box)
+    let %167: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(%165, cast)
+    let rl: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = call consF [descriptor(P)](%166, %167)
+    let rl.1: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(P) = convert(rl, cast)
+    let rl.2: List(P) = rl.1
+    let %168: Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end = payload(rl.2, cons) via proxy via (proxy, proxy)
+    let box.7: box(P) = tuple_field(%168, 1) via proxy
+    let %169: P = convert(box.7, slot_unbox)
+    let %170: Int = record_field(%169, a)
+    let %171: Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end = payload(rl.2, cons) via proxy via (proxy, proxy)
+    let %172: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end = tuple_field(%171, 2) via proxy
+    let %173: Tuple Int head: P tail: Rec(List :: TYPE) Option nil cons with Tuple head: P tail: List end end end = payload(%172, cons) via proxy via (proxy, proxy)
+    let box.8: box(P) = tuple_field(%173, 1) via proxy
+    let %174: P = convert(box.8, slot_unbox)
+    let %175: Int = record_field(%174, a)
+    let %176: Int = prim +(%170, %175)
+    let %177: String = call conv.int(%176)
+    do call print.1(%177)
+    let applyTo.1: All(A :: TYPE) Fun(f: Fun(b: Box(A)): A b: Box(A)): A = closure applyTo {}
+    let isSet.1: Fun(b: Box(Bool)): Bool = closure isSet {}
+    let isSet.2: Fun(b: Fun(A :: TYPE) Tuple x: A end(A)): A = convert(isSet.1, adapt)
+    let bools.5: Fun(A :: TYPE) Tuple x: A end(A) = convert(bools.2, cast)
+    let %178: A = call applyTo.1 [descriptor(Bool)](isSet.2, bools.5)
+    let %179: Bool = convert(%178, unbox)
+    let %180: Bool = %179
+    let %181: String = call conv.bool(%180)
+    do call print.1(%181)
+    let make.1: All(A :: TYPE) Fun(f: Fun(v: A): Box(A) v: A): A = closure make {}
+    let boxed.1: Fun(v: Bool): Box(Bool) = closure boxed {}
+    let boxed.2: Fun(v: A): Fun(A :: TYPE) Tuple x: A end(A) = convert(boxed.1, adapt)
+    let %182: A = convert(false, box)
+    let %183: A = call make.1 [descriptor(Bool)](boxed.2, %182)
+    let %184: Bool = convert(%183, unbox)
+    let %185: Bool = %184
+    let %186: String = call conv.bool(%185)
+    do call print.1(%186)
+    let applyOpt.1: All(A :: TYPE) Fun(f: Fun(m: Maybe(A)): A m: Maybe(A)): A = closure applyOpt {}
+    let orFalse.1: Fun(m: Maybe(Bool)): Bool = closure orFalse {}
+    let orFalse.2: Fun(m: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A = convert(orFalse.1, adapt)
+    let maybe.4: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(maybe.2, cast)
+    let %187: A = call applyOpt.1 [descriptor(Bool)](orFalse.2, maybe.4)
+    let %188: Bool = convert(%187, unbox)
+    let %189: Bool = %188
+    let %190: String = call conv.bool(%189)
+    do call print.1(%190)
+    let getter.1: All(A :: TYPE) Fun(b: Box(A)): A = closure getter {}
+    let bools.6: Fun(A :: TYPE) Tuple x: A end(A) = convert(bools.2, cast)
+    let %191: A = call getter.1 [descriptor(Bool)](bools.6)
+    let %192: Bool = convert(%191, unbox)
+    let %193: Bool = %192
+    let %194: String = call conv.bool(%193)
+    do call print.1(%194)
+    let getBool: Fun(b: Box(Bool)): Bool = type_app getBox.1 [descriptor(Bool)] converting (cast, unbox)
+    let getReal: Fun(b: Box(Real)): Real = type_app getBox.1 [descriptor(Real)] converting (cast, unbox)
+    let mkP: Fun(v: P): Box(P) = type_app mkBox.1 [descriptor(P)] converting (box, cast)
+    let %195: Bool = call getBool(bools.2)
+    let %196: String = call conv.bool(%195)
+    let %197: A = convert(1.5, box)
+    let %198: Fun(A :: TYPE) Tuple x: A end(A) = call mkBox.1 [descriptor(Real)](%197)
+    let %199: Fun(A :: TYPE) Tuple x: A end(Real) = convert(%198, unproxy)
+    let %200: Box(Real) = %199
+    let %201: Real = call getReal(%200)
+    let %202: String = call conv.real(%201)
+    let box.9: box(Record a: Int end) = record(a = 3) with offsets(Record a: Int end <- Record a: Int end) of descriptor(Record a: Int end)
+    let %203: Record a: Int end = convert(box.9, slot_unbox)
+    let %204: Box(P) = call mkP(%203)
+    let box.10: box(P) = tuple_field(%204, 0) via proxy
+    let %205: P = convert(box.10, slot_unbox)
+    let %206: Int = record_field(%205, a)
+    let %207: String = call conv.int(%206)
+    let %208: String = prim <>(" ", %207)
+    let %209: String = prim <>(%202, %208)
+    let %210: String = prim <>(" ", %209)
+    let %211: String = prim <>(%196, %210)
+    do call print.1(%211)
+    let lengthOf: Fun(l: List(Bool)): Int = type_app length.1 [descriptor(Bool)] converting (cast, none)
+    let %212: Int = call lengthOf(flags.2)
+    let %213: String = call conv.int(%212)
+    do call print.1(%213)
+    let x: Bool = true
+    let y: Int = 2
+    let wide: Tuple x: Bool y: Int end = tuple(x, y)
+    let wide.1: Box(Bool) = convert(wide, cast)
+    let narrow: Box(Bool) = wide.1
+    let %214: Bool = tuple_field(narrow, 0)
+    let %215: String = call conv.bool(%214)
+    let wide.2: Fun(A :: TYPE) Tuple x: A end(Bool) = convert(wide, cast)
+    let wide.3: Fun(A :: TYPE) Tuple x: A end(A) = convert(wide.2, cast)
+    let %216: A = call getBox.1 [descriptor(Bool)](wide.3)
+    let %217: Bool = convert(%216, unbox)
+    let %218: Bool = %217
+    let %219: String = call conv.bool(%218)
+    let %220: String = prim <>(" ", %219)
+    let %221: String = prim <>(%215, %220)
+    do call print.1(%221)
+  } in {
+    let vb.3: Fun(A :: TYPE) Tuple x: A end(A) = convert(vb.2, cast)
+    let %222: A = call getB [descriptor(V)](vb.3)
+    let box.11: box(V) = convert(%222, unbox)
+    let %223: V = convert(box.11, slot_unbox)
+    let %224: V = %223
+    switch tag(%224) {
+      case p (n: Int): {
+        jump k7(n)
+      }
+      else: {
+        jump k7(0)
+      }
+    }
+  }
+}
+
