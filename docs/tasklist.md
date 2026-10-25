@@ -311,3 +311,44 @@ compare the pointers as `void *`, or have represent convert both operands to one
 
 **Done when.** The program compiles and prints what the interpreter prints (which after the copy is `false` in C
 until the representation change), and a golden test covers `is` on tuples, options, and arrays of different types.
+
+---
+
+## Checking a function against a function type ignores its annotations
+
+**Problem.** When a `fun` is checked against an expected function type, its parameter annotations are never compared
+with the expected parameter types, and its result type annotation is not even elaborated. This is a soundness hole:
+a function written for `Bool` can be called with an `Int`.
+
+**Reproduce.**
+
+```quest
+let f: All(x: Int) Int = fun(x: Bool): Int 3;
+f(3)
+```
+
+type-checks and prints `3 : Int`. `let h: All(x: Int) Int = fun(x: Int): Nonexistent 3;` is accepted, though
+`Nonexistent` names nothing.
+
+**Where to start.** `_elaborate_fun_expr` in `bootstrap/python/quest/typechecker/bindings.py` (found in B2 of
+`docs/reorganization.md`): elaborate the written annotations and require each expected parameter type to be a subtype
+of the written one, and the written result type a subtype of the expected one.
+
+**Done when.** Both programs above are rejected with errors at the offending annotation, and error tests cover them.
+
+---
+
+## Other annotations the type checker skips when it has an expected type
+
+**Problem.** Found while merging the checking and synthesis functions (B2 of `docs/reorganization.md`); not yet
+reproduced with a test program.
+
+- A `fun` checked against a function type ignores the type parameters it writes.
+- `raise ... as T` checked against an expected type never elaborates `T`, so an ill-formed `T` goes unreported.
+- A tuple checked against an expected type that contains a component a tuple cannot hold (an import, say) is not
+  rejected with "Unsupported tuple component"; it falls into the field checks instead.
+
+**Where to start.** `_elaborate_fun_expr` (`bindings.py`), `_elaborate_raise_expr` (`exceptions.py`) and
+`_elaborate_tuple_expr` (`aggregates.py`), in `bootstrap/python/quest/typechecker/`.
+
+**Done when.** Each case has an error test showing the same error as when synthesizing.
