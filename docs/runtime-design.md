@@ -33,7 +33,7 @@ subtyping, field offsets cannot be assigned globally without conflict.
 |                                                                                         |
 |  • Upcasting cost: Zero heap allocation (attaches pointer to static constant dict)     |
 |  • Register ABI: 2 registers (x0, x1) under AAPCS64 for parameters and returns          |
-|  • Tuples: Inlined 16-byte fields                                                       |
+|  • Aggregates: one-word slots holding pointers to immutable 16-byte boxes              |
 |  • Arrays: Boxed into 8-byte heap pointer (QRecordVal *) for uniform 1-word QVal slots  |
 +-----------------------------------------------------------------------------------------+
 ```
@@ -53,7 +53,8 @@ typedef struct QVariantVal {
   in `.rodata` and constructs an unboxed compound literal with remapped tag and copied payload.
 - **Aggregate Storage:** When a subtyped variant is stored into an aggregate (`Array(SuperVariant)` or
   `Tuple ... SuperVariant ...`), the compiler coerces the variant at insertion time using the static tag table.
-  Tuples store the 16-byte `QVariantVal` inline. Arrays box into `QVariantVal *` within the 8-byte `QVal.p` slot.
+  Aggregates (tuples, records, options, arrays) store a pointer to an immutable boxed `QVariantVal` in each one-word
+  slot, as a `QVal` holds it.
   Extracting from aggregates accesses values whose tags are pre-aligned to the supertype's tag space, allowing
   direct `switch (v.tag)` matching without runtime descriptor overhead.
 
@@ -78,7 +79,7 @@ typedef struct QVariantVal {
 | :--- | :--- | :--- |
 | **Record Values** | **Uniform 2 words (`val, dict`)** | Fragmented: 1 word in some places, 2 in others |
 | **Function ABI** | Clean 1-to-1 parameter mapping (AAPCS64 `x0, x1`) | Companion synthetic dict parameters |
-| **Collections** | Boxed in `QRecordVal *` for arrays; inline in tuples | Subtyped records in aggregates disallowed |
+| **Collections** | Boxed (`QRecordVal *`) in every aggregate slot | Subtyped records in aggregates disallowed |
 | **Subsumption** | **Zero Allocation:** Pairs data with static dict | Requires synthetic variables or thunks |
 | **Garbage Collection** | `dict` points to `.rodata`; `val` traced | Traced as normal pointer |
 | **Coercions** | Supported directly via attached dictionary | Fragile side-channel dictionary propagation |
@@ -189,8 +190,8 @@ When `dynamic.be` or `inspect` succeeds on a structural subtype:
   the program's own. Descriptor names are only display labels.
 - **Single-Pass Decoding:** Every `@id` precedes its `@ref`s in the document, so a record, tuple, or array is allocated
   and registered under its `@id` before its components are read, and references inside it resolve to it.
-- **Natural C ABI Packing:** Dynamically interned compound records allocate heap memory matching standard C ABI struct
-  packing rules (8-byte aligned scalars and pointers, 16-byte aligned fat records and variants).
+- **Struct Layout:** Dynamically interned records and tuples lay out one 8-byte slot per field, as compiled structs
+  do (records and variants boxed in their slots).
 
 ## 7. Uncaught Exceptions and Tracebacks
 

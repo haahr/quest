@@ -37,8 +37,10 @@ What every backend shares, since a backend's units use the C runtime and link wi
 - **`backend.py`:** The IR's passes after lowering (`run_passes`), and the modules a unit uses without importing them.
 - **`layout.py`:** How values are laid out, computed from shapes (`ir/shapes.py`) and cached per shape: layout tags
   (which name structs and descriptors), type digests and identity keys, representations (`representation`, named by
-  the runtime's C types, and `signature_representation` for calls), and whether generic code's layout agrees with the
-  native one (`generic_layout_agrees`). The IR's represent pass decides its plans from these. Reduced types and the
+  the runtime's C types, and `signature_representation` for calls), slot representations (`slot_representation`: as
+  an aggregate's slot or a `QVal` holds a value, a record or variant boxed) and location representations
+  (`location_representation`: as a `var` parameter's location holds it), and whether generic code's layout agrees
+  with the native one (`generic_layout_agrees`). The IR's represent pass decides its plans from these. Reduced types and the
   canonical forms of recursive types, which shapes are built from, are `types/canonical.py`'s.
 - **`descriptors.py`:** Runtime descriptors' type-level forms: placeholders for bound type parameters and template
   holes, and the canonical function and auto types that descriptors compare.
@@ -427,10 +429,12 @@ Cardelli's structural subtyping is supported across tuples, records, and variant
   ```c
   (*((QInt *)((char *)qv_pt.val + ((const OffsetDict_Point2D *)qv_pt.dict)->offset_x)))
   ```
-- **Aggregate Storage:** Records and variants in tuples are stored inline as 16-byte values (`QRecordVal` and
-  `QVariantVal`). In arrays (`QArray`), they are boxed into 8-byte heap pointers (`QRecordVal *`, `QVariantVal *`)
-  via `quest_record_box` and `quest_variant_box`, setting the stage for future unboxed multi-stride arrays.
-  Subtyped variants in aggregates apply static tag remapping (`tagmap_<Target>_<Source>`) at insertion time.
+- **Aggregate Storage:** Every slot of an aggregate (tuple, option payload, record, array, auto payload, module
+  record) is one word: records and variants are pointers to immutable 16-byte boxes (`QRecordVal *`, `QVariantVal *`,
+  made by `quest_record_box` and `quest_variant_box`), `Bool`s and `Char`s words of their own (`QBoolSlot`,
+  `QCharSlot`) (c-representation.md §5.1, Slots). Reading a slot reads the box; storing makes one, or reuses the box
+  the value was read from. Subtyped variants apply static tag remapping (`tagmap_<Target>_<Source>`) before they are
+  stored.
 
 ### 10.3. Variant Subtyping & Static Tag Remapping
 - **First-Class Value Representation:** `QVariantVal` is a 16-byte value type (`int64_t tag; QVal payload;`).
@@ -464,21 +468,14 @@ arguments:
 - **Direct Calling Convention & Zero-Boxing:** Specialized function clones take unboxed `QRecordVal` and `QVariantVal`
   parameters directly without descriptor parameters (unless uninstantiated quantifiers remain) and pass them in
   register pairs `(x0, x1)` without heap boxing.
-- **Struct Layout Alignment:** Generic tuples within specialized clones instantiate concrete C structs
-  (`struct QTuple_<TypeTags>`) with 16-byte inline slots matching caller expectations, eliminating pointer mismatches.
+- **Struct Layout:** Generic tuples within specialized clones instantiate concrete C structs
+  (`struct QTuple_<TypeTags>`), which agree with the generic ones in memory anyway, every slot being a word.
 - **First-Class Fallback:** The canonical unspecialized `QVal` version is retained for indirect calls and closures.
 
-### 10.6. Flat Stride Arrays
-Arrays containing records or variants (`Array(Record)` and `Array(Variant)`) are lowered to specialized wide array
-structures (`QArrayWideRecord` and `QArrayWideVariant`):
-- **Flat 16-Byte Stride Buffers:** Elements are stored directly in contiguous memory buffers without individual
-  heap boxing (`quest_record_box` / `quest_variant_box`).
-- **In-Place Read and Write:** Indexing (`arr[i]`) and assignment (`arr[i] := val`) operate directly on 16-byte
-  slots in-place, passing and returning values in register pairs `(x0, x1)` with zero heap allocation.
-- **Subtyping Coercion at Insertion:** Inserting a subtyped record or variant into an array evaluates evidence
-  dictionary attachment or static tag remapping at insertion time and stores the result flat in the array slot.
-- **Interaction with Call-Site Specialization:** Generic functions operating on `Array(A)` where `A` is a record
-  or variant specialize to concrete clones that access flat wide arrays directly.
+### 10.6. Arrays of Records and Variants
+Arrays of records and variants are `QArray`s like any other, of slots holding boxes (c-representation.md §5.4).
+Indexing reads the box; assignment stores one (applying the offset table or tag remapping of a subtype first). An
+array of records passes to generic code (`Array(A)`) by cast.
 
 ### 10.7. Unified Native Module Mechanism & Hybrid Modules
 All modules—whether pure Quest, standard library built-ins (`writer`, `reader`, `conv`, `ascii`, `int`, `real`,
@@ -518,9 +515,12 @@ Cardelli's mutable reference parameters compile directly to native C pointers:
 - **Polymorphic Reference Invocations (Two-Tier Model):**
   - **Tier 1 (Specialization):** Direct calls in the unit are specialized (`ir/specialize.py`); the clone takes
     native `T *` parameters, passing lvalue pointers directly without overhead.
-  - **Tier 2 (Shadow Cell Fallback):** For an unspecialized polymorphic callee (`var p: A`, a `QVal *`), the represent
-    pass passes the address of a shadow cell of the parameter's representation, copied in from the location (boxing
-    `QRecordVal` and `QVariantVal`) for `var` and copied out to it after the call (`ref_argument`, ir.md §8.3).
+  - **Tier 2 (Unspecialized callees):** For an unspecialized polymorphic callee (`var p: A`, a `QVal *`), a location
+    holding a record or variant passes as it is (cast to `QVal *`): a `var` parameter's location holds a record or
+    variant boxed, as a slot does (`location_representation`; a local variable whose address is taken is held boxed),
+    so a field or element is updated in place. Any other location whose representation differs from a `QVal` (a
+    `Bool` local, a closure) is passed as the address of a shadow cell of the parameter's representation, copied in
+    from the location for `var` and copied out to it after the call (`ref_argument`, ir.md §8.3).
 - **Closure Capture Restrictions:** Closure capture of `out`/`var` parameters or local stack mutable variables
   is prohibited at compile time, guaranteeing that pointers never outlive their stack frames.
 
@@ -553,8 +553,6 @@ are lowered as follows:
 - **Tuple Structural Coercion & Generic Returns (`copy` plans):** Coercions between tuples whose field C types
   differ (e.g., concrete scalar to `QVal`, closure adaptation, nested tuple structural conversions, or generic tuple
   returns where `QVal` fields are unwrapped into concrete types) allocate a new target tuple and map each field.
-  - **Fat Pointer & Variant Support:** Unwrapping `QVal` fields into concrete record fat pointers (`QRecordVal`) or
-    variants (`QVariantVal`) invokes `quest_record_unbox` or `quest_variant_unbox`.
   - **Record Subtyping & Tag Remapping:** Coercions attach evidence dictionaries for subtyped records and apply static
     tag remapping arrays for variants across subtyping boundaries.
   - If all field C types match identically, zero-cost pointer casting is retained.
@@ -600,7 +598,8 @@ Every golden test program is compiled to C and run (`run_c_compiled`), and its o
 interpreter's; the run error tests are compiled too ([testing.md](testing.md)). The IR's passes are checked on their
 own (`run_ir_<stage>`, and unit tests in `tests/python/test_ir_*.py`). Unit tests cover what goldens cannot express:
 the pipeline's phases, `--nogc`, and `quest compile` (`test_phase4_1_c_codegen.py`); layouts and conversions
-(`test_generic_layouts.py`, `test_layout_differential.py`, `test_conversion_rejections.py`); module files and
+(`test_generic_layouts.py`, `test_layout_differential.py`, `test_conversion_rejections.py`), and the conversion
+matrix (`tests/conversions/generate.py`); module files and
 separate compilation (`test_module_compiler.py`, `test_separate_compilation_types.py`, and others); existential
 tuples (`test_existential_tuples.py`); and runtime descriptors (`test_runtime_descriptors.py`).
 

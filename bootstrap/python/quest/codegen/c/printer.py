@@ -5,7 +5,9 @@ own type parameters' descriptors, then its parameters), each closure a QClosure 
 nothing), each variable a C variable of its type's representation (globals for the variables the top levels bind
 outside loops, declared at file scope), and each structured statement a C statement: join points and loop exits are
 labels, and try regions setjmp handlers, popped on every way out. Conversions are `convert` operations, printed as
-their plans say. The declarations of the types it uses (structs, descriptors, function type adapters) are
+their plans say. Aggregate slots hold records and variants boxed (slot_representation), as the locations var and out
+parameters point to do: the printer boxes a value it stores into one, reusing the box the value was read from, and
+unboxes a value it reads. The declarations of the types it uses (structs, descriptors, function type adapters) are
 c/declarations.py's, and the representations codegen/layout.py's, spelled in C by c/types.py
 (docs/c-representation.md). A module file's unit
 exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function
@@ -153,6 +155,14 @@ def _type_parameter_count(t: QType) -> int:
     return count
 
 
+@dataclasses.dataclass
+class _FreshBox:
+    """A record or variant (an unboxed value) to be stored into a slot of an aggregate being made, in a box sharing
+    the aggregate's allocation."""
+    value: str
+    shape: Shape
+
+
 class _FunctionState:
     """What printing one C function needs: its locals and the labels and handlers in scope."""
 
@@ -267,6 +277,58 @@ class CPrinter:
         if is_boxed_in_slots(s) and isinstance(a, ir.Var) and id(a) in self.fs.boxes:
             return self.fs.boxes[id(a)]
         return shape_slot_store(self.atom(a), s)
+
+    def slot_field(self, a: ir.Atom, s: Shape):
+        """An atom of shape s as a field of an aggregate being made holds it: its slot form, or for a record or variant
+        not read from a slot, a _FreshBox, which the aggregate's allocation makes room for (embedded_boxes)."""
+        if is_boxed_in_slots(s) and not (isinstance(a, ir.Var) and id(a) in self.fs.boxes):
+            return _FreshBox(self.atom(a), s)
+        return self.slot_value(a, s)
+
+    def embedded_boxes(self, block: str, size: str, fields: list) -> tuple[str, list[str]]:
+        """The size of an aggregate's allocation with room after it (size, at block) for the boxes of its fields that
+        are _FreshBoxes, and the fields' slot forms, filling in those boxes: a field's box is immutable, so it may
+        share the aggregate's allocation (one allocation rather than one per box)."""
+        fresh = [f for f in fields if isinstance(f, _FreshBox)]
+        if not fresh:
+            return size, fields
+        boxes = self.temp("QRecordVal *")
+        values = []
+        for f in fields:
+            if isinstance(f, _FreshBox):
+                k = len([v for v in values if isinstance(v, tuple)])
+                values.append((k, f))
+            else:
+                values.append(f)
+        out = []
+        self.pending_embedded = (boxes, block)
+        for v in values:
+            if isinstance(v, tuple):
+                k, f = v
+                box_c = self.slot_c_type(f.shape)
+                out.append((k, f"(({box_c})&{boxes}[{k}])", f))
+            else:
+                out.append(v)
+        return f"{size} + {len(fresh)} * sizeof(QRecordVal)", out
+
+    def fill_embedded(self, fields: list) -> list[str]:
+        """Fills in the embedded boxes of fields (from embedded_boxes), returning the fields' slot forms."""
+        if self.pending_embedded is None:
+            return fields
+        boxes, block = self.pending_embedded
+        self.pending_embedded = None
+        self.emit(f"{boxes} = (QRecordVal *)({block} + 1);")
+        out = []
+        for f in fields:
+            if isinstance(f, tuple):
+                _, box, fresh = f
+                self.emit(f"*{box} = {fresh.value};")
+                out.append(box)
+            else:
+                out.append(f)
+        return out
+
+    pending_embedded: Optional[tuple[str, str]] = None
 
     def slot_address(self, ptr: str, s: Shape) -> str:
         """The address of a slot holding values of shape s, as the address of a location of the value
@@ -488,7 +550,7 @@ class CPrinter:
                 return self.array_slot(self.atom(base), self.atom(index), self.element_shape(base), offset)
             case ir.MakeTuple(args=args):
                 components = shape(result.type).components
-                return self.make_tuple(result.type, [self.slot_value(a, c.shape) for a, c in zip(args, components)])
+                return self.make_tuple(result.type, [self.slot_field(a, c.shape) for a, c in zip(args, components)])
             case ir.TupleField(tuple=t, index=index):
                 component = shape(self.atom_type(t)).components[index].shape
                 value, self.pending_box = self.load_slot(f"({self.atom(t)}->_{index})", component)
@@ -765,12 +827,14 @@ class CPrinter:
         """The index of a case of a variant or option shape."""
         return next((i for i, case in enumerate(s.cases) if case.name == tag), 0)
 
-    def make_tuple(self, t: QType, fields: list[str]) -> str:
+    def make_tuple(self, t: QType, fields: list) -> str:
+        """A new tuple of type t of the fields (slot forms, or _FreshBoxes, which its allocation makes room for)."""
         struct = shape_tag(shape(t))
         self.c_type(t)
         tmp = self.temp(f"{struct} *")
-        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
-        for i, c in enumerate(fields):
+        size, fields = self.embedded_boxes(tmp, f"sizeof({struct})", fields)
+        self.emit(f"{tmp} = ({struct} *)quest_alloc({size});")
+        for i, c in enumerate(self.fill_embedded(fields)):
             self.emit(f"{tmp}->_{i} = {c};")
         return tmp
 
@@ -782,17 +846,26 @@ class CPrinter:
         target = held.structure if held is not None else concrete
         self.types.extend((concrete, target))
         struct = record_struct_name(concrete, self.ctx)
+        # The record is made in its box, the payload following it in one allocation: storing it into a slot
+        # reuses the box
+        box = self.temp("QRecordVal *")
         payload = self.temp(f"{struct} *")
-        self.emit(f"{payload} = ({struct} *)quest_alloc(sizeof({struct}));")
+        stored = [(n, a) for n, a, _ in fields if not self.is_ok(self.atom_type(a))]
+        size, values = self.embedded_boxes(
+            payload, f"sizeof(QRecordVal) + sizeof({struct})", [self.slot_field(a, shape(self.atom_type(a))) for _, a in stored]
+        )
+        self.emit(f"{box} = (QRecordVal *)quest_alloc({size});")
+        self.emit(f"{payload} = ({struct} *)({box} + 1);")
         self.emit(f"{payload}->header.descriptor = {self.descriptor(concrete)};")
-        for n, a, _ in fields:
-            if not self.is_ok(self.atom_type(a)):
-                self.emit(f"{payload}->qf_{n} = {self.slot_value(a, shape(self.atom_type(a)))};")
+        for (n, _), value in zip(stored, self.fill_embedded(values)):
+            self.emit(f"{payload}->qf_{n} = {value};")
         if is_type_equal(target, concrete) or is_record_subtype(concrete, target):
             dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(target, concrete)}"
         else:
             dict_expr = f"quest_record_dict({self.descriptor(target)}, {self.descriptor(concrete)})"
-        return f"((QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }})"
+        self.emit(f"*{box} = (QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }};")
+        self.pending_box = box
+        return f"(*{box})"
 
     def record_slot(self, rec: str, rs: Shape, name: str) -> tuple[str, Shape]:
         """The address of the slot of a field of a record of shape rs, through its offset table, and the field's

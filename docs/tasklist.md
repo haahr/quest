@@ -90,32 +90,32 @@ describe the rule.
 
 ## Conversions that copy change object identity in C
 
-**Problem.** `is` compares tuples, records, and arrays by identity. When a value passed to or returned from a
-polymorphic function is laid out differently from the callee's generic layout, and the layouts do not agree in
-memory (a type parameter standing for a record or a variant), C copies the tuple or option
+**Problem.** `is` compares tuples, records, and arrays by identity. A value passed to or returned from a polymorphic
+function is converted between the callee's generic layout and the native one by pointer cast, since every slot is one
+word (`docs/c-representation.md` §5.1, Slots), except where the layouts disagree: generic code views a value of a
+bounded type parameter at its bound (a record with the bound's offset table, a variant with the bound's tags), and a
+closure among the components may have a different C signature. There C copies the tuple or option
 (`docs/c-representation.md` §5.1, Polymorphic Calls), and the copy is a different object. The interpreter has no
-layouts, so the two backends disagree. This is documented as a limitation for now (`docs/ir.md` §8.3).
+layouts, so the two backends disagree.
 
 **Reproduce.**
 
 ```quest
 Let P = Record a: Int end;
-let id(A::TYPE t: Tuple x: A end): Tuple x: A end = t;
-let f: All(A::TYPE t: Tuple x: A end) Tuple x: A end = id;
-let t: Tuple x: P end = tuple let x = record a = 1 end end;
-f(:P t) is t
+Let Q = Record a: Int b: Int end;
+let id(A <: P t: Tuple x: A end): Tuple x: A end = t;
+let f: All(A <: P t: Tuple x: A end) Tuple x: A end = id;
+let t: Tuple x: Q end = tuple let x = record a = 1 b = 2 end end;
+f(:Q t) is t
 ```
 
-prints `true` interpreted and `false` compiled. At `Bool` the conversion is a cast and both print `true`.
+prints `true` interpreted and `false` compiled. With `A::TYPE` both print `true`.
 
-**Where to start.** The choice is between rejecting such conversions of aggregates statically (as conversions that
-would copy mutable data are rejected), which rejects more programs where calls are not specialized (first-class
-polymorphic values, functions of other units), and representing type-parameter positions uniformly (records and
-variants boxed inside tuples and options), which removes the copies and revisits the dual C representation
-(`docs/c-representation.md` §1). With the IR (`docs/ir.md`), either is a change to the represent pass's plans.
+**Where to start.** Views on view-sensitive tuples and options (`docs/reorganization.md` §2, 0a, V1) would make a
+bounded type parameter's case an upcast that sets the view, without copying.
 
 **Done when.** Compiled code and the interpreter agree on `is` for converted values, or the language documents where
-they may differ, and the conversion matrix's identity column checks the rule.
+they may differ, and the conversion matrix's identity column checks the rule (it covers unbounded type parameters).
 
 ---
 
@@ -279,38 +279,16 @@ s.n
 ```
 
 prints `1 : Int` interpreted and `0 : Int` with `--stop-after run_c_compiled`. A variant component
-(`Variant p: Int q: Bool end` upcast to `Variant q: Bool r: Ok p: Int end`) behaves the same. Record fields of
-records do not: records' offset tables carry stored types, and reads convert.
+(`Variant p: Int q: Bool end` upcast to `Variant q: Bool r: Ok p: Int end`) behaves the same, and so does an option
+whose payload components change view (converted by the runtime, `language/identity_of_subtypes`), and `is` between
+such a tuple or option and its upcast is `false` in C. Record fields of records do not: records' offset tables carry
+stored types, and reads convert.
 
-**Where to start.** `docs/reorganization.md` §2, 0a.
+**Where to start.** `docs/reorganization.md` §2, 0a (V1, views on view-sensitive tuples and options), and A2's notes
+there: how views interact with aggregate slots and generic layouts is an open decision.
 
 **Done when.** The program above prints `1 : Int` in both phases, for record and variant components, and a golden
 test covers both.
-
----
-
-## `is` between tuples of different types does not compile in C
-
-**Problem.** `s is t`, with `s` and `t` tuples of different (subtype-related) types, prints a C comparison of
-distinct pointer types, which clang rejects with `-pedantic-errors`.
-
-**Reproduce.**
-
-```quest
-Let Big = Record a: Int b: Int end;
-Let Small = Record a: Int end;
-let t: Tuple x: Big end = tuple let x = record a = 1 b = 2 end end;
-let s: Tuple x: Small end = t;
-s is t
-```
-
-fails with `comparison of distinct pointer types` under `--stop-after run_c_compiled`.
-
-**Where to start.** The `prim is` case of the C printer (`prim` in `bootstrap/python/quest/codegen/c/printer.py`):
-compare the pointers as `void *`, or have represent convert both operands to one type.
-
-**Done when.** The program compiles and prints what the interpreter prints (which after the copy is `false` in C
-until the representation change), and a golden test covers `is` on tuples, options, and arrays of different types.
 
 ---
 

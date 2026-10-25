@@ -231,6 +231,26 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   } QTuple;
   ```
 
+- **Slots:**
+  Every slot of an aggregate (a tuple component, an option payload component, a record field, an array element, an
+  auto value's component, a module record's field) is one 8-byte word holding the value's *slot representation*
+  (`slot_representation` in `codegen/layout.py`): a record or variant is a pointer to an immutable 16-byte box
+  (`QRecordVal *`, `QVariantVal *`, made by `quest_record_box` and `quest_variant_box`), a `Bool` or `Char` is a word
+  of its own (`QBoolSlot`, `QCharSlot`: 0 or 1, or the character, as a `QVal`'s `.i` holds it), and any other value
+  is its representation. A slot thus holds exactly the value's `QVal` form, so the slots generic code lays out for a
+  type parameter (`QVal`) agree in memory with native ones for every type argument, and the runtime reads and writes
+  any slot as a word (`quest_slot_read`, `quest_slot_write`). Locals, parameters, and results stay unboxed (16-byte
+  `QRecordVal` and `QVariantVal`), so field access is unchanged. A box is never changed once made (storing into a
+  `var` slot stores a new box), so a record or variant read from one slot is stored into another in the same box:
+  the printer keeps the box a slot read gave (`load_slot`, `slot_value` in `codegen/c/printer.py`). Boxes share
+  allocations where they can: a record is made in its box (its payload follows the box in one allocation), and an
+  aggregate being made allocates after itself the boxes of the fields that need new ones (`embedded_boxes`), so that
+  storing a record or variant rarely allocates on its own (the collector recognizes pointers into an allocation's
+  interior, as Boehm GC does by default). The location a
+  `var` or `out` parameter of a record or variant type points to holds the value boxed too
+  (`location_representation`): the address of a slot is passed as it is, and a local variable whose address is taken
+  is held boxed.
+
 - **Zero-Cost Prefix Subtyping & Memoized Cast Verification:**
   Because each field is 8 bytes at consecutive 8-byte offsets, a pointer to an extended tuple (e.g. 3 components) is
   physically identical in its first 16 bytes to its prefix tuple (2 components). Passing an extended tuple to a
@@ -292,21 +312,21 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     :A :B end` builds a `QTuple_QVal_QVal`), whether the type is written out or reached through a type operator
     (`Box(A)`) or a recursive type (`List(A)`, whose nodes hold `QVal` heads). A call converts each such argument from
     the native layout of its type at the call's type arguments to the callee's layout, and each such result back
-    (plans with a layout context: the instantiation, and the direction; `layout_plan` in `ir/represent.py`). When the layouts agree in memory (`generic_layout_agrees`: a `QVal` holds a scalar or
-    pointer in the same bits; §6.4.5) the value is used as it is, through a pointer cast, so it keeps its identity and
-    a recursive value is not copied. When they do not, because a parameter stands for a record or a variant (16 bytes
-    natively, a pointer to a boxed copy as a `QVal`), the value is copied by `quest_convert`, from and to the
-    descriptor of the type laid out each way: for the callee's layout, the type's template with a hole for each of
-    the callee's type parameters, instantiated with the type arguments (`generic_layout_descriptor` in `codegen/c/printer.py`). Calls with
-    records or variants as type arguments are mostly specialized (§6.4.3), which avoids the conversion; it remains for
-    first-class polymorphic values and polymorphic functions of other modules. Converted records are unboxed from the
-    heap cell (`quest_record_unbox`), and variants likewise.
+    (plans with a layout context: the instantiation, and the direction; `layout_plan` in `ir/represent.py`). Every slot
+    holds a value's `QVal` form (Slots, above), so the layouts agree in memory whatever the type arguments
+    (`generic_layout_agrees`, §6.4.5), and the value is used as it is, through a pointer cast: it keeps its identity,
+    and a recursive value is not copied. The layouts differ only where generic code views a value of a bounded type
+    parameter at its bound (a record with the bound's offset table, a variant with the bound's tags), and where a
+    component is a closure whose C signature changes (a `QVal` parameter or result in a register agrees only with
+    integers and pointers). Such a value is copied by `quest_convert`, from and to the descriptor of the type laid out
+    each way: for the callee's layout, the type's template with a hole for each of the callee's type parameters,
+    instantiated with the type arguments (`generic_layout_descriptor` in `codegen/c/printer.py`).
     A value whose conversion would copy mutable data laid out differently (an array of such tuples, or a tuple with a
-    `var` component of the parameter, at a record type argument) cannot be converted, since the copy would not share
-    its updates; the compiler rejects the call (`generic_layout_copies_mutable_data`). An array's C type is the same
-    whatever its elements, so its layout is judged from its type, not its C type.
-    A copy is a new object, so a converted tuple or option is not `is` the original (identity is kept by casts,
-    and specialized calls need no conversion); this is a known limitation (`docs/tasklist.md`).
+    `var` component of a bounded parameter) cannot be converted, since the copy would not share its updates; the
+    compiler rejects the call (`generic_layout_copies_mutable_data`). An array's C type is the same whatever its
+    elements, so its layout is judged from its type, not its C type.
+    A copy is a new object, so a converted tuple or option is not `is` the original; this remains a known limitation
+    for the two cases above (`docs/tasklist.md`).
   - **Record Width Subtyping in Tuples:** When a tuple field contains a record subtype whose field dictionary differs
     from the target tuple field, the compiler synthesizes the new fat pointer by attaching the target evidence
     dictionary (`(QRecordVal){ .val = src._i.val, .dict = &... }`) rather than an unsafe pointer cast.
@@ -379,21 +399,14 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
      ```
    - Reading an immutable field whose type is a record, variant, option, nonempty tuple, or function also checks the
      table's `stored_types`. When it names a type for the field, the value is read as stored
-     (`quest_slot_read(stored, slot)`) and converted to its view at the field's type with
+     (`quest_slot_read(slot)`) and converted to its view at the field's type with
      `quest_convert(v, stored, &quest_type_<FieldType>)`: records get the offset table for the view, variants and
      options their tags in the field's type, tuples are copied with converted elements, and closures adapted. Scalar, `var`, and
      other fields are read with the single offset load. `quest_record_field_value` does the same for the runtime.
-6. **Storage in Aggregates:**
-   - **Tuples:** Tuple fields of record type store `QRecordVal` inline (16 bytes).
-   - **Flat Stride Arrays:** `Array(Record)` and `Array(Variant)` store 16-byte elements directly in contiguous
-     memory without individual heap boxing using specialized wide array structures (`QArrayWideRecord` and
-     `QArrayWideVariant`). Reading (`arr[i]`) and writing (`arr[i] := val`) operate directly on 16-byte slots
-     in-place. Subtyping coercion (dictionary attachment for records, static tag remapping for variants) is
-     applied at insertion time and stored flat.
-   - **Unspecialized Generic Arrays:** When arrays are manipulated through unspecialized first-class polymorphic
-     closures (`Array(A)` with erased uniform representation), slots use 8-byte `QVal` words in `QArray`,
-     boxing wide elements via `quest_record_box` / `quest_variant_box`. Concrete arrays are specialized to flat
-     stride buffers.
+6. **Storage in Aggregates:** A record in a slot (a tuple component, record field, option payload, array element, or
+   auto component) is a pointer to an immutable box holding its `QRecordVal`, viewed at the slot's type (§5.1, Slots).
+   Reading it reads the box; storing it makes a box, or reuses the one it was read from. Subtyping coercion (attaching
+   the target's offset table) is applied before it is stored.
  6. **Bounded Specialization for Records (`A <: Record`):**
     - **Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_A` in their
       C function signatures to support separate compilation and uniform reflection.
@@ -505,11 +518,9 @@ static_assert(offsetof(QVariantVal, payload) == 8, qvariantval_payload_at_offset
   ```c
   (QVariantVal){ .tag = tagmap_Large_Small[src.tag], .payload = src.payload }
   ```
-- **Aggregate Storage:** Storing a subtyped variant into an aggregate (`Array` or `Tuple`) applies the static
-  `tagmap` remapping at insertion time. In `Tuple`, `QVariantVal` is stored inline (16 bytes). In `Array`, it is
-  boxed into an 8-byte pointer (`QVariantVal *`) via `quest_variant_box`, setting the stage for future flat stride
-  arrays. Reading from aggregates accesses values whose tags are pre-aligned to the supertype's tag space,
-  allowing normal, zero-cost dynamic tag dispatch on extraction and `case` expressions.
+- **Aggregate Storage:** A variant in a slot is a pointer to an immutable box holding its `QVariantVal` (§5.1,
+  Slots), whose tag is in the slot's type's numbering: storing a subtyped variant applies the static `tagmap`
+  remapping first, so values read from aggregates dispatch on their tags directly.
 - **Polymorphic Contexts:** When passed to unbounded polymorphic functions (`All(A::TYPE)`), `QVariantVal` is
   boxed via `quest_variant_box(v)` into `QVal.p` and unboxed via `(*((QVariantVal *)qval.p))`.
 - **Bounded Specialization for Variants (`V <: Variant`):**
@@ -523,47 +534,20 @@ static_assert(offsetof(QVariantVal, payload) == 8, qvariantval_payload_at_offset
 - **Specialization:** Eliminated entirely when the variant type is statically known.
 
 ### 5.4. Arrays
-Arrays are mutable, length-prefixed contiguous buffers. In Quest, arrays are invariant (`Array(S) <: Array(T)`
-iff `S == T`), allowing the transpiler to statically select the optimal representation without covariance anomalies:
+Arrays are mutable, length-prefixed contiguous buffers of slots (§5.1), whatever their elements: each element is its
+`QVal` form, a record or variant boxed. In Quest, arrays are invariant (`Array(S) <: Array(T)` iff `S == T`), so an
+element's static type is the array's:
+```c
+typedef struct QArray {
+    int64_t length;
+    QVal    data[];
+} QArray;
 
-1. **Standard Arrays (`QArray`):**
-   Length-prefixed buffer of uniform 64-bit `QVal` words for scalar types (`Int`, `Real`, `Bool`, `Char`, `String`)
-   and pointer types (`Tuple`, `Array`, `Closure`):
-   ```c
-   typedef struct QArray {
-       int64_t length;
-       QVal    data[];
-   } QArray;
-
-   static_assert(offsetof(QArray, data) == 8, qarray_data_at_offset_8);
-   ```
-
-2. **Flat Stride Record Arrays (`QArrayWideRecord`):**
-   Length-prefixed buffer storing 16-byte `QRecordVal` elements directly in contiguous memory. Eliminates per-element
-   heap boxing:
-   ```c
-   typedef struct QArrayWideRecord {
-       int64_t    length;
-       QRecordVal data[];
-   } QArrayWideRecord;
-
-   static_assert(offsetof(QArrayWideRecord, data) == 8, qarray_wide_rec_data_at_offset_8);
-   ```
-
-3. **Flat Stride Variant Arrays (`QArrayWideVariant`):**
-   Length-prefixed buffer storing 16-byte `QVariantVal` elements directly in contiguous memory:
-   ```c
-   typedef struct QArrayWideVariant {
-       int64_t     length;
-       QVariantVal data[];
-   } QArrayWideVariant;
-
-   static_assert(offsetof(QArrayWideVariant, data) == 8, qarray_wide_var_data_at_offset_8);
-   ```
-
-All three array layouts place `length` at offset 0, enabling uniform bounds checking
-(`quest_check_array_bounds(const void *arr_ptr, int64_t idx)`) and length inspection (`arr->length`)
-without pointer type casting overhead.
+static_assert(offsetof(QArray, data) == 8, qarray_data_at_offset_8);
+```
+`length` at offset 0 serves bounds checking (`quest_check_array_bounds(const void *arr_ptr, int64_t idx)`) and length
+inspection (`arr->length`). Since an array of records holds pointers to boxes, as generic code's `Array(A)` holds
+`QVal` words, arrays of records and variants pass to generic code by cast.
 
 ### 5.5. Strings
 In Quest, strings are mutable character sequences (supporting Cardelli's `StringOp` interface):
@@ -920,15 +904,14 @@ function passes on ([type-system.md](type-system.md) §6.11).
   type argument: a value of that type stored as generic code stores a type parameter, as its `QVal` form, or, when
   `storage` is set, as a value of the bound (a record viewed at the bound). The instance keeps the template's
   offsets, sizes, adapters, and invokers, so it describes both the value's type and the layout it is in. Subtyping
-  (`quest_is_subtype`) looks through stored types; `quest_slot_read` and `quest_slot_write` read and write slots as
-  stored.
+  (`quest_is_subtype`) looks through stored types; every slot is a word whatever its type (§5.1, Slots).
 - **Layout equivalence:** `quest_layout_equivalent(a, b)` tells whether values laid out as `a` describes can be used
-  as `b` describes, for two descriptors of the same type. A stored `QVal` and a native value agree in memory for
-  scalars and pointers but not for records and variants (16 bytes inline, or a pointer to a boxed copy), and in
-  function parameters and results (registers) only for integers and pointers; aggregates agree when their
-  components do, records when their views' field types do. Recursive descriptors are compared coinductively.
-  A `QBool` or `QChar` component agrees with its `QVal` form because aggregates are allocated zeroed (`quest_alloc`;
-  only strings use `quest_alloc_atomic`), so the bytes past the value are zero, and the target is little-endian.
+  as `b` describes, for two descriptors of the same type. A stored `QVal` and a native value agree in a slot always
+  (every slot holds a value's `QVal` form, §5.1), in the cell a `var` or `out` parameter points to for eight-byte
+  scalars, pointers, records, and variants (a cell holds a record or variant boxed, but a `Bool` or `Char` in its own
+  byte), and in function parameters and results (registers) only for integers and pointers. A value stored as a
+  bounded type parameter is viewed at its bound, and agrees only with the bound's own layout. Aggregates agree when
+  their components do, records when their views' field types do. Recursive descriptors are compared coinductively.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
   type arguments (`generic_layout_agrees` in `codegen/layout.py`), conservatively: when it cannot tell, the value
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
@@ -961,7 +944,10 @@ Following Cardelli's *Typeful Programming* (§4.8), Quest supports passing mutab
 - When a function takes polymorphic parameters (`var p: A`), the unspecialized signature uses `QVal *qv_p`.
 
 #### 2. Polymorphic `out` and `var` Parameters: Two-Tier Invocation Model
-When calling a generic function with polymorphic reference parameters (e.g. `assignPoly(:A @x val)` where `x: T`):
+When calling a generic function with polymorphic reference parameters (e.g. `assignPoly(:A @x val)` where `x: T`).
+A location holding a record or variant holds it boxed (§5.1, Slots), as the generic parameter's `QVal` does, so its
+address is passed as it is (cast to `QVal *`); so is any location whose representation agrees with a `QVal` cell (an
+`Int`, a `Real`, a pointer). The tiers below concern the others:
 - **Tier 1 (Direct Call Specialization):** Within the same compilation unit, calls with concrete type arguments
   specialize the function (`ir/specialize.py`). The specialized function receives a direct native pointer `T *`, passing the address of
   the native memory location without any boxing or intermediate allocation.
@@ -970,13 +956,10 @@ When calling a generic function with polymorphic reference parameters (e.g. `ass
   - The caller declares a shadow cell of the parameter's representation, a `QVal` (`ref_argument` in
     `ir/represent.py`).
   - **Copy-in (`var` only):** For `var` parameters, the caller converts the current native value into the shadow cell
-    (a `box` plan). If `T` is a 16-byte record fat pointer (`QRecordVal`), it is heap-boxed
-    via `quest_record_box`; if `T` is a 16-byte `QVariantVal`, it is boxed via `quest_variant_box`. For `out`
-    parameters, copy-in is skipped because the callee cannot read the parameter.
+    (a `box` plan). For `out` parameters, copy-in is skipped because the callee cannot read the parameter.
   - **Callee Invocation:** Callee receives the shadow cell's address (`QVal *`).
   - **Copy-out Writeback (`var` and `out`):** Immediately after the callee returns, the caller converts the shadow
-    cell's value back (an `unbox` plan) and stores it into the location. If `T` is a record, that unboxes the
-    `QRecordVal` fat pointer; if a variant, the `QVariantVal`.
+    cell's value back (an `unbox` plan) and stores it into the location.
   - **Writeback Semantics:** In fallback mode, writes made by the callee are buffered in the shadow cell and committed
     to the target location only upon function return. If the target location is aliased by another reference or accessed
     by another thread during callee execution, in-flight mutations are not visible until the writeback executes.
@@ -1140,17 +1123,19 @@ An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) 
 descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
 stored in a layout that does not depend on the type component, that of `Tuple S end` with `A` an abstract type of
 kind `K` (`auto_payload_type(auto_t)`). As for any abstract type, a component of type `A` is a `QVal`, or the
-representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a `QRecordVal`); components
+representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a record boxed, viewed at
+`Object`); components
 of other types that mention `A`, such as `show(:A):String`, take the generic form too (here a closure taking a
 `QVal`). Auto types have descriptors of kind `QTYPE_KIND_AUTO` (`QAutoTypeDescriptor`): the bound of the type
 parameter, the size of the stored payload, and for each component its name, its type (the type parameter is
-`quest_type_bound_vars[0]`, so equal auto types have equal descriptors), its offset in the payload, and its storage
-(a record or variant stored inline, or else 8 bytes that are its `QVal` form). Runtime subtyping of auto types
+`quest_type_bound_vars[0]`, so equal auto types have equal descriptors), and its offset in the payload (every
+component is a slot holding its `QVal` form, §5.1). Runtime subtyping of auto types
 follows §6.7: a subtype bound and, as for tuples, a prefix of the components with matching names. Serialization
 supports auto values with one component.
 
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
-  with the payload's own plan (`auto_payload_plan` in `ir/represent.py`: boxing to `QVal`, closure adapters), and calls
+  with the payload's own plan (`auto_payload_plan` in `ir/represent.py`: closure adapters, and conversions of
+  components not of the type component's type; a slot already holds its `QVal` form), and calls
   `quest_auto_new(descriptor_T, payload)`. Components holding values of the type component are stored at `T`'s own
   view: when `T` is a bounded type parameter of generic code, which holds its values viewed at the bound, they are
   converted from the bound's view to `T`'s first. Conversely, a branch at a bounded type parameter converts them to
@@ -1159,12 +1144,11 @@ supports auto values with one component.
   that the code that made the value knew the type component in: natively when it was a particular type, generically
   when generic code made the value with a type that mentions its type parameters (§6.4.5). When the type component's
   descriptor is layout-equivalent to `T`'s (`quest_layout_equivalent`, at run time), the components are as they would
-  be for `T`: when every stored component has the representation of the corresponding `S[T/A]` component, or is a
-  `QVal` holding a scalar or pointer of that type, the binder is the stored struct itself, cast to the
-  `Tuple S[T/A] end` struct, so updates of `var` components are shared with the auto value; otherwise the binder is a
-  statically converted copy, which is rejected with an error for signatures with `var` components, whose updates would
-  be lost (for example `Auto A::TYPE with a:A var n:Int end` inspected at a record type: give the auto type a bound,
-  `A<:Object`, so that records are stored unboxed). When the layouts differ, the binder is a copy converted by
+  be for `T`: when every stored component has the slot representation of the corresponding `S[T/A]` component, or is
+  a `QVal` (which agrees with any slot, §5.1), the binder is the stored struct itself, cast to the `Tuple S[T/A] end`
+  struct, so updates of `var` components are shared with the auto value; otherwise (a closure whose C signature
+  differs) the binder is a statically converted copy, which is rejected with an error for signatures with `var`
+  components, whose updates would be lost. When the layouts differ, the binder is a copy converted by
   descriptor (`auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored type,
   described with `A` standing for the type component (a template's instance), to its type in `S[T/A]`. For a
   signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
@@ -1291,9 +1275,8 @@ Quest supports graph serialization and deserialization of dynamically typed valu
   descriptors structurally.
 - **Single-Pass Decoding:** An object with an `@id` is allocated and registered before its components are decoded, so
   `@ref`s inside it (cycles) and after it (sharing) resolve to the same block.
-- **Natural C ABI Struct Packing:** Records and tuples read from a table use standard C struct packing (8-byte
-  scalars/pointers, 16-byte wide records/variants) matching static compiler emission; an option is its tag followed
-  by its case's components.
+- **Struct Layout:** Records and tuples read from a table lay out one 8-byte slot per field (§5.1, Slots), after the
+  record header for a record, as compiled structs do; an option is its tag followed by its case's components.
 
 ---
 

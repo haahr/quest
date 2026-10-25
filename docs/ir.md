@@ -122,10 +122,19 @@ From the represented stage on (§9), every binder also has a **representation**,
 | `descriptor` | `const QTypeDescriptor *` | a run-time type (§7) |
 | `void` | — | `Ok` results |
 
+Inside an aggregate, a value is held in a **slot** of one word (`slot_representation`): a record or variant as a
+pointer to an immutable 16-byte box, a `Bool` or `Char` as a word of its own, anything else as its representation, so
+that a slot holds exactly the value's `word` form. The location a `var` or `out` parameter points to holds a record or
+variant boxed too (`location_representation`). The printer boxes and unboxes as it stores into and reads from slots
+(reusing the box a value was read from), as it wraps array elements; the represent pass's plans concern
+representations only.
+
 A **layout** describes an aggregate in memory: its shape, together with which positions hold a type parameter's
-value stored generically (as a `word`, or as the bound's representation for a bounded parameter). Two layouts of the
-same shape may differ: `Tuple x: A end` in generic code and `Tuple x: Bool end` at the call. Whether two layouts
-agree in memory is decided by `generic_layout_agrees` (§8.3), mirroring the runtime's `quest_layout_equivalent`.
+value stored generically (as a `word`, or as the bound's representation for a bounded parameter, viewed at the
+bound). Two layouts of the same shape may differ: `Tuple x: A end` in generic code, with `A <: P`, and
+`Tuple x: Q end` at the call, whose record is viewed at `Q`. Since every slot is a word, layouts over unbounded type
+parameters always agree in memory. Whether two layouts agree is decided by `generic_layout_agrees` (§8.3), mirroring
+the runtime's `quest_layout_equivalent`.
 
 ## 5. Atoms, Operations, and Bindings
 
@@ -341,7 +350,8 @@ A polymorphic call's argument converts first to its parameter's type at the type
 type argument), then to the parameter's generic representation, in the context of the call's instantiation (and its
 result back the same way); a `var` or `out` argument whose location is laid out differently from its parameter is
 passed as a temporary of the parameter's representation (a shadow cell), copied in for `var` and out to the location
-after the call. An auto value's payload is stored in the auto type's witness-independent layout, its type
+after the call; a location holding a record or variant boxed agrees with a generic parameter's `word` and is passed
+by `cast`. An auto value's payload is stored in the auto type's witness-independent layout, its type
 component's values at their own type (inspect reads them by the stored descriptor). Plans (`plan`):
 
 | Plan | Meaning |
@@ -353,7 +363,7 @@ component's values at their own type (inspect reads them by the stored descripto
 | `view` | a variant or option converted by the runtime from a bounded type parameter's view at its bound to another type's |
 | `cast` | a pointer to an aggregate whose layouts agree in memory, viewed through the other struct |
 | `copy` | a new tuple, each component converted by its own plan |
-| `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call |
+| `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (a bounded type parameter's values viewed at its bound, or closures among the components whose C signatures differ) |
 | `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
 | rejected | a conversion that would copy mutable data laid out differently: a compile-time error (`RejectedConversion`) |
 
@@ -368,10 +378,12 @@ every operation's atoms have exactly the representations the operation requires.
 
 **Identity.** A `copy` or `runtime` step builds a new tuple or option, so the converted value is not the same object
 as the original, and `is` (object identity for tuples, records, and arrays) can answer differently in compiled code
-than in the interpreter: a `Tuple x: P end`, with `P` a record type, passed through an unspecialized polymorphic
-function that returns it is no longer `is` the original. A `cast` keeps identity, and specialized calls need no
-conversion. This is a documented limitation of the C backend, recorded in [tasklist.md](tasklist.md) to return to;
-the conversion matrix (`tests/conversions/generate.py`) tests it, so that the rule is checked rather than incidental.
+than in the interpreter. Every slot being a word, a polymorphic call converts aggregates over unbounded type
+parameters by `cast`, which keeps identity (a `Tuple x: P end`, with `P` a record type, passed through an
+unspecialized polymorphic function is still `is` the original); copies remain at polymorphic calls only for the
+layouts that disagree (`runtime`, above), and for upcasts that change a component's view (a record at a supertype), a
+documented limitation of the C backend recorded in [tasklist.md](tasklist.md). The conversion matrix
+(`tests/conversions/generate.py`) tests the rule, so that it is checked rather than incidental.
 
 ### 8.4. Materialize descriptors
 

@@ -195,7 +195,7 @@ calls `strip_aliases`, `normalize_type`, or `beta_reduce`, and goldens are uncha
 - `collect_aggregate_types` in `codegen/c/declarations.py`: the order of struct declarations, which interfaces' C
   headers pin (`tests/abi`), and record names follow the types as written (a canonical form may write the fields'
   types differently, naming the value parameters of equal function types alike), so moving it to shapes needs an
-  `ABI_VERSION` bump.
+  `ABI_VERSION` bump. (Moved to shapes in A2, record names with it.)
 
 Recording the written component types on IR operations at lowering would remove the first.
 
@@ -205,6 +205,52 @@ conversion matrix. A2 also moves `collect_aggregate_types` to shapes (left over 
 `ABI_VERSION` bump. Done when the matrix's identity column and the lost-update test pass in C, the rejected
 conversions that boxing makes unnecessary are accepted, `ABI_VERSION` is bumped, and the benchmarks are within the
 bar.
+
+**Done in part:** boxing and `collect_aggregate_types` on shapes, under `ABI_VERSION` 31; V1 is not done, pending
+the decision below.
+
+- Every aggregate slot (tuple component, option payload, record field, array element, auto payload, module record
+  field) is one word, its value's `QVal` form (`slot_representation` in `codegen/layout.py`): a record or variant is a
+  pointer to an immutable box, a `Bool` or `Char` a word of its own (`QBoolSlot`, `QCharSlot`; before, tuples and
+  records of them were read wrongly by generic code and the runtime). Wide arrays are gone; `quest_slot_read` and
+  `quest_slot_write` copy words; auto payloads have no storage descriptors. The printer boxes and unboxes at slots,
+  reusing the box a value was read from (`load_slot`, `slot_value`).
+- The location a `var` or `out` parameter of a record or variant type points to holds it boxed
+  (`location_representation`): a slot's address is passed as it is, and a local whose address is taken is held boxed,
+  so such locations pass to generic `var` parameters by cast (no shadow cell).
+- Polymorphic calls convert aggregates over unbounded type parameters by cast: the conversion matrix's identity column
+  passes, and arrays of records and tuples with `var` components of a type parameter are accepted. `runtime` and
+  `copy` plans and rejections remain where layouts still disagree: generic code views a bounded type parameter's
+  values at the bound, and closures among the components whose C signatures change (registers). So
+  `generic_layout_agrees` and `quest_layout_equivalent` are not trivial: they tell three places (slot, register, and
+  the cell a `var` parameter points to) and bounded views apart, and the differential test stays.
+- Also fixed: `is` between tuples of different types (compared as addresses), and option upcasts whose payload
+  components change view (an unsupported conversion; now a runtime copy, as for tuples).
+
+**Open decision: views and slots (V1).** 0a says that boxing makes native and generic layouts agree in memory for
+every type, and that view-sensitive tuples and options are 16-byte pairs, boxed like records in aggregate slots. The
+two conflict: `List(A)` with `A` unbounded is not view-sensitive, so generic code's cons cells hold their tails as
+plain pointers, while `List(P)` (a record `P`) is, so native cons cells would hold their tails as boxed pairs. A
+polymorphic call with a list of records would again copy the list (and fail the identity column, which boxing alone
+passes), as would `Nest(P)` and any other nested view-sensitive type. The alternatives:
+
+- (A) Slots and `QVal` words hold view-sensitive tuples and options as plain pointers stored at the slot's type; the
+  pair (pointer, view) exists only in variables, parameters, and results. Reading a nested component through a view
+  passes the view down (the component's stored type), so nothing is copied while values stay in variables; storing a
+  pair with a non-NULL view into a slot, or passing it to generic code at an unbounded type parameter, converts it to
+  the slot's type with `quest_convert` (a copy, and a run-time error for `var` components). Layouts agree in memory,
+  the identity column and the lost-update test pass, and nested lists cost nothing extra; the copies remain for
+  values upcast and then stored or passed generically. Recommended.
+- (B) As 0a literally: pairs boxed in slots. Every cons of a list of records allocates a box for its tail, and
+  polymorphic calls copy nested view-sensitive values (lists of records through `list.map`, which is not
+  specialized across units).
+
+Either way, V1 must also settle variant payloads (a payload is a `QVal` word, so a variant upcast that changes its
+payload's view converts it), options bounded by options (today's `view` plans), and existential packages, whose
+function components would be adapted on every read through a view rather than once when packed. Also remaining:
+the lost-update test (`Upcasting a tuple whose components change view copies it in C`, [tasklist.md](tasklist.md)),
+and identity at polymorphic calls over bounded type parameters (`Conversions that copy change object identity in
+C`).
 
 **A3. Representation decisions out of the printer.** Auto packing (`make_auto`), `inspect` arm conversions
 (`auto_arm_converted`, `auto_layouts_agree`), bounded type parameters' views (`bounded_param_in_scope`), `type_app`

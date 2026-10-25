@@ -1,5 +1,6 @@
 """C spellings for the C backend: the C types of representations (codegen/layout.py), function pointer types, QVal
-wrapping and unwrapping, literals, record struct and offset table names, and descriptor expressions."""
+wrapping and unwrapping, loading from and storing into aggregate slots (a record or variant boxed), literals, record
+struct and offset table names, and descriptor expressions."""
 
 from __future__ import annotations
 
