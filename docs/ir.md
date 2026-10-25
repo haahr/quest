@@ -423,12 +423,15 @@ variable's (lowering binds the annotation's at entry, and the copy converts).
 and read through proxies:
 
 - an operation that reads a record or variant from a slot (a tuple's component, a record's field, an array's element,
-  a location, a module's member, a QVal word unboxed, and a record literal, made in its box) binds a boxed variable,
-  and a `slot_unbox` conversion the value; storing the value into another slot, or boxing it into a QVal word (a
-  `box` plan from the boxed variable), reuses its box;
-- an operation that stores a record or variant into a slot (a tuple, record, option, or array being made, a store, a
-  cell, an assignment of a boxed mutable variable) takes a box: the one remembered, or a new one (`slot_box`); a tuple
-  or record being made boxes the others in its own allocation instead (`embedded`, printed `box a`);
+  a location, a module's member, a variant's or exception's payload, a QVal word unboxed, and a record literal, made
+  in its box) binds a boxed variable, as does a variant case's binder of its payload, and a `slot_unbox` conversion
+  the value; storing the value into another slot, or boxing it into a QVal word (a `box` plan from the boxed
+  variable), reuses its box;
+- an operation that stores a record or variant into a slot (a tuple, record, option, variant, or array being made, a
+  store, a cell, an assignment of a boxed mutable variable, a raised exception's payload, and an echoed value, which
+  the runtime takes as a QVal word) takes a box: the one remembered, or a new one (`slot_box`); a tuple or record
+  being made boxes the others in its own allocation instead (`embedded`, printed `box a`). A payload or echoed value
+  is a slot of one word, so the C printer only reinterprets the slot's word as a QVal (and back), and boxes nothing;
 - a read of a component of a tuple or option whose type may be proxied (`may_be_proxied`), a write of a tuple's var
   component and its address, an option's tag, and `is` record their access: direct (the value is not a proxy: its
   type cannot be one, or, for a tuple's component read or a copy's, the function made it), from the original (it may

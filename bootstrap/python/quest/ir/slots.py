@@ -5,13 +5,15 @@ Slots (docs/ir.md §4.2). Every slot of an aggregate holds a record or variant b
 codegen/layout.py), as does the location a var or out parameter points to. The step makes the boxes explicit:
 
 - an operation that reads a record or variant from a slot (a tuple's component, a record's field, an array's element,
-  a location, a module's member, a QVal word unboxed, and a record being made, which is made in its box) binds a
-  boxed variable, the box, and a `slot_unbox` conversion binds the value from it; the value's box is remembered (and
-  a copy's is its original's), so that storing the value into another slot, or boxing it into a QVal word, reuses the
-  box (boxes are immutable) rather than allocating another;
-- an operation that stores a record or variant into a slot (a tuple, record, option, or array being made, a store, a
-  fresh cell, an assignment of a boxed mutable variable) takes its box: the one remembered, or a new one (a
-  `slot_box` conversion); a tuple or record being made boxes the others in its own allocation instead (`embedded`);
+  a location, a module's member, a variant's or exception's payload, a QVal word unboxed, and a record being made,
+  which is made in its box) binds a boxed variable, the box, as does a case of a variant whose binder takes its
+  payload, and a `slot_unbox` conversion binds the value from it; the value's box is remembered (and a copy's is its
+  original's), so that storing the value into another slot, or boxing it into a QVal word, reuses the box (boxes
+  are immutable) rather than allocating another;
+- an operation that stores a record or variant into a slot (a tuple, record, option, variant, or array being made, a
+  store, a fresh cell, an assignment of a boxed mutable variable, an exception's payload raised, and a value echoed,
+  which is passed as a QVal word) takes its box: the one remembered, or a new one (a `slot_box` conversion); a tuple
+  or record being made boxes the others in its own allocation instead (`embedded`);
 - a mutable variable of a record or variant type whose address is taken, and a var or out parameter of one, are
   boxed: they hold their locations' boxes, so that a var or out parameter can point to them as to a slot.
 
@@ -60,6 +62,12 @@ def _tag_shape(t: QType) -> Optional[Shape]:
 
 def _boxed(s: Optional[Shape]) -> bool:
     return s is not None and is_boxed_in_slots(s)
+
+
+def _exception_payload(t: QType) -> Optional[Shape]:
+    """The shape of the payload of an exception of type t."""
+    s = shape(t)
+    return s.element if s.kind == "exception" else None
 
 
 def tuple_access(ts: Shape, index: int, fresh: bool = False) -> str:
@@ -172,7 +180,33 @@ class _Slots:
                     s.access = option_tag_access(ts)
                     for c in cases:
                         self.option_case(ts, c)
+                elif ts is not None:
+                    for c in cases:
+                        self.variant_case(ts, c)
+            case ir.Raise(exception=e, payload=p) if p is not None:
+                s.payload = self.slot_if_boxed(p, _exception_payload(_type_of(e)), before)
+            case ir.Echo(value=value, type=t):
+                s.value = self.slot_if_boxed(value, shape(t), before)
         return before + [s]
+
+    def variant_case(self, vs: Shape, c: ir.Case) -> None:
+        """A switch's case of a variant, whose binder takes the payload: a record or variant in its slot form (a boxed
+        variable, from which the value is read)."""
+        b = c.binder
+        if b is None or shape(b.type).kind == "ok":
+            return
+        case = vs.case(c.tags[0])
+        payload_s = case.shape if case is not None and case.shape is not None else shape(b.type)
+        if _boxed(payload_s):
+            self.unbox_binder(c)
+
+    def unbox_binder(self, c: ir.Case) -> None:
+        """Binds a case's binder to its payload's box, from which a let at the case's start reads the value."""
+        b = c.binder
+        box = ir.Var(f"{b.hint}_box" if b.hint else "box", b.type, boxed=True)
+        c.binder = box
+        c.body.statements.insert(0, ir.Let(b, ir.Convert(box, ir.Plan("slot_unbox", b.type, b.type))))
+        self.boxes[id(b)] = box
 
     def option_case(self, os: Shape, c: ir.Case) -> None:
         """A switch's case of an option, whose binder takes the payload: a tuple of its components, read as decided, or
@@ -186,10 +220,7 @@ class _Slots:
         case = os.case(c.tags[0])
         payload_s = case.shape if case is not None and case.shape is not None else shape(b.type)
         if _boxed(payload_s):
-            box = ir.Var(f"{b.hint}_box" if b.hint else "box", b.type, boxed=True)
-            c.binder = box
-            c.body.statements.insert(0, ir.Let(b, ir.Convert(box, ir.Plan("slot_unbox", b.type, b.type))))
-            self.boxes[id(b)] = box
+            self.unbox_binder(c)
 
     def let(self, s: ir.Let) -> list:
         var, value = s.var, s.value
@@ -288,6 +319,12 @@ class _Slots:
                         o.access = tuple(tuple_access(ps, i, fresh) for i in range(len(pt.components)))
                     else:
                         o.payload = self.slot_if_boxed(payload, pt, before)
+            case ir.MakeVariant(tag=tag, payload=payload) if var is not None and payload is not None:
+                vs = _held(var.type, "variant")
+                case = vs.case(tag) if vs is not None else None
+                o.payload = self.slot_if_boxed(payload, case.shape if case is not None else None, before)
+            case ir.ExceptionPayload(exception=e):
+                return _boxed(_exception_payload(_type_of(e)))
             case ir.IsTag(value=v) | ir.Ordinal(value=v):
                 ts = _tag_shape(_type_of(v))
                 if ts is not None and ts.kind == "option":
@@ -297,6 +334,9 @@ class _Slots:
                 if ts is not None and ts.kind == "option":
                     o.access = option_tag_access(ts)
                     o.components = option_component_accesses(ts, tag)
+                elif ts is not None:
+                    case = ts.case(tag)
+                    return _boxed(case.shape if case is not None else None)
             case ir.MakeArray(args=args) if var is not None:
                 elem = shape(var.type).element
                 o.args = tuple(self.slot_if_boxed(a, elem, before) for a in args)

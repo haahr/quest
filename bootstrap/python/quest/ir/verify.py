@@ -327,7 +327,7 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
     representation is its type's, or for a boxed value its slot representation (a boxed mutable variable reads its
     value, and is assigned its box); and the slots of aggregates (components being made or stored, locations, cells)
     take records and variants boxed."""
-    from quest.codegen.layout import is_boxed_in_slots, representation, slot_representation
+    from quest.codegen.layout import is_boxed_in_slots, representation, resolved_shape, slot_representation
     from quest.ir.written import fun_signature
     from quest.ir.shapes import shape
     from quest.ir.walk import statement_binders, walk_statements
@@ -408,6 +408,15 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
                     slot(a, shape(var.type).element, f"{where}: the element of {var.hint}")
                 case ir.Let(value=ir.Addr(cell=a)) if a is not None:
                     slot(a, shape(atom_type(a)), f"{where}: a cell")
+                case ir.Let(var=var, value=ir.MakeVariant(tag=tag, payload=a)) if a is not None:
+                    vs = resolved_shape(shape(var.type))
+                    case = vs.case(tag) if vs.kind == "variant" else None
+                    slot(a, case.shape if case is not None else None, f"{where}: the payload of {var.hint}")
+                case ir.Raise(exception=e, payload=a) if a is not None:
+                    es = shape(atom_type(e))
+                    slot(a, es.element if es.kind == "exception" else None, f"{where}: a raised payload")
+                case ir.Echo(value=a, type=t):
+                    slot(a, shape(t), f"{where}: an echoed value")
                 case ir.Store(value=a, address=p) if p is not None:
                     slot(a, located(p), f"{where}: a store")
                 case ir.Store(value=a, base=b, index=i) if isinstance(i, int):

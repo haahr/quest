@@ -48,7 +48,6 @@ from quest.codegen.c.types import (
     RecordNamingContext,
     shape_qval_to_slot,
     shape_qval_unwrap,
-    shape_qval_wrap,
     shape_slot_load,
     shape_slot_store,
     shape_slot_to_qval,
@@ -451,7 +450,8 @@ class CPrinter:
             case ir.MakeException(name=name):
                 return f"quest_alloc_exception({c_string_literal(name)})"
             case ir.ExceptionPayload(exception=e):
-                return qval_unwrap(f"{self.name(e)}.payload", result.type, self.ctx)
+                # In its slot form (a record or variant, for a boxed variable)
+                return shape_qval_to_slot(f"{self.name(e)}.payload", shape(result.type))
             case ir.Addr(var=var) if var is not None:
                 if self.is_pointer_param(var):
                     return self.name(var)
@@ -496,7 +496,8 @@ class CPrinter:
                     return f"((QVariantVal){{ .tag = {index}LL, .payload = Q_OK_VAL }})"
                 case = vs.case(tag)
                 case_s = case.shape if case is not None and case.shape is not None else shape(self.atom_type(payload))
-                return f"((QVariantVal){{ .tag = {index}LL, .payload = {shape_qval_wrap(self.atom(payload), case_s)} }})"
+                word = shape_slot_to_qval(self.atom(payload), case_s)
+                return f"((QVariantVal){{ .tag = {index}LL, .payload = {word} }})"
             case ir.MakeOption():
                 return self.make_option(o, result.type)
             case ir.IsTag(value=v, tag=tag, access=access):
@@ -518,11 +519,8 @@ class CPrinter:
             case ir.Index(array=a, index=i, offset=offset):
                 arr, idx = self.atom(a), self.atom(i)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
-                elem = self.element_shape(a)
-                if result is not None and result.boxed:
-                    # A record or variant in its slot form, its box
-                    return shape_qval_to_slot(f"({arr}->data[{idx}])", elem)
-                return self.array_get(arr, idx, elem)
+                # In its slot form (a record or variant, for a boxed variable)
+                return shape_qval_to_slot(f"({arr}->data[{idx}])", self.element_shape(a))
         raise NotImplementedError(f"C printing of {type(o).__name__}")
 
     def convert(self, c: str, plan: ir.Plan) -> str:
@@ -901,15 +899,10 @@ class CPrinter:
             self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error_at({site});")
             case = ts.case(tag)
             case_s = case.shape if case is not None and case.shape is not None else shape(t)
-            return shape_qval_unwrap(f"{self.atom(v)}.payload", case_s)
+            # In its slot form (a record or variant, for a boxed variable)
+            return shape_qval_to_slot(f"{self.atom(v)}.payload", case_s)
         self.emit(f"if ({self.option_tag(self.atom(v), o.access)} != {index}LL) quest_raise_variant_error_at({site});")
         return self.option_case_tuple(self.atom(v), ts, tag, t, 1, o.access, o.components, o.ordinal or 0)
-
-    def array_get(self, arr: str, idx: str, elem: Shape) -> str:
-        """An element of an array (its QVal form) as a value of its type (a record or variant read from its box)."""
-        if self.shape_c_type(elem) == "QVal":
-            return f"({arr}->data[{idx}])"
-        return shape_qval_unwrap(f"({arr}->data[{idx}])", elem)
 
     def array_element(self, a: ir.Atom, elem: Shape) -> str:
         """An atom (in its slot form) as an array element of shape elem holds it: its QVal form."""
@@ -1241,7 +1234,7 @@ class CPrinter:
                 else:
                     self.emit(f"return {self.atom(value)};")
             case ir.Raise(exception=e, payload=p, offset=offset):
-                payload = "Q_OK_VAL" if p is None else qval_wrap(self.atom(p), self.atom_type(p))
+                payload = "Q_OK_VAL" if p is None else shape_slot_to_qval(self.atom(p), shape(self.atom_type(p)))
                 self.emit(f"quest_raise_at({self.atom(e)}, {payload}, {self.site(offset)});")
             case ir.Reraise(exception=e):
                 self.emit(f"quest_reraise({self.name(e)});")
@@ -1268,7 +1261,8 @@ class CPrinter:
             self.indent += 1
             if c.binder is not None and not self.is_ok(c.binder.type):
                 if is_variant:
-                    self.assign(c.binder, qval_unwrap(f"{v}.payload", c.binder.type, self.ctx))
+                    # In its slot form (a record or variant, for a boxed variable)
+                    self.assign(c.binder, shape_qval_to_slot(f"{v}.payload", shape(c.binder.type)))
                 elif shape(c.binder.type).kind == "tuple":
                     self.assign(c.binder, self.option_case_tuple(v, t, c.tags[0], c.binder.type, 0, access,
                                                                  c.components))
@@ -1295,7 +1289,7 @@ class CPrinter:
     def make_auto(self, witness: ir.Descriptor, auto_t: QAutoType, payload: ir.Atom) -> str:
         stored_t = auto_payload_type(auto_t)
         self.types.extend((auto_t, stored_t))
-        return f"quest_auto_new({self.descriptor(witness)}, {qval_wrap(self.atom(payload), stored_t)})"
+        return f"quest_auto_new({self.descriptor(witness)}, {shape_slot_to_qval(self.atom(payload), shape(stored_t))})"
 
     def auto_arm_converted(self, arm_plan: ir.InspectArm, stored: str, stored_t, arm_t) -> str:
         """The components S[T] of an auto value, converted by descriptor from the stored ones as the case's arm says
@@ -1383,8 +1377,8 @@ class CPrinter:
     def echo(self, prefix: str, value: str, t: QType, descriptor: Optional[ir.Descriptor], suffix: str) -> None:
         """Prints a top-level phrase's value as the interpreter does: by its type's kind, or by the descriptor the
         describe pass gave it (an echo-only one for a closed type with type components, which writes them with their
-        alias names)."""
-        wrapped = qval_wrap(value, t)
+        alias names). The value is in its slot form (a record or variant boxed), its QVal word."""
+        wrapped = shape_slot_to_qval(value, shape(t))
         if kind := echo_value_kind(t):
             self.emit(f"quest_print_value({c_string_literal(prefix)}, {wrapped}, {c_string_literal(kind)}, "
                       f"{c_string_literal(suffix)});")

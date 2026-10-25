@@ -142,6 +142,15 @@ and `slot_unbox` already are for slots, so each payload operand arrives in the r
 Done when the printer calls none of these wrapping functions except to spell a conversion the IR records, the
 verifier checks payload representations, and the C is unchanged but for names and separate statements.
 
+**Done.** Variant and exception payloads, a variant case's binder, and echoed values are slots of one word to the
+slots pass, which boxes records and variants stored into them (reusing the box a value was read from) and binds a
+boxed variable for those read from them, as for tuples' components; the verifier checks them as slots. The printer
+reinterprets their words (`shape_slot_to_qval`, `shape_qval_to_slot`) and no longer boxes or unboxes a value itself:
+`qval_wrap` and `qval_unwrap` remain only where it spells a conversion the IR records (`box` and `unbox` plans, and the
+values a `view` or `runtime` plan or a stored field read passes to `quest_convert`). An array element read is the
+same reinterpretation (`array_get` is gone). No golden output changed, and the benchmarks run as on main (CPU time,
+interleaved: 1.00 to 1.01).
+
 **3b. Declarations from the IR.** The printer collects the types whose structs it declares as it prints
 (`self.types`). A pass lists the aggregate shapes a unit uses, as `Unit.static_data` lists its static descriptors and
 tables, and the printer declares exactly those. The order of declarations in interfaces' headers must stay fixed, or
