@@ -5,35 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Subtyping between `All` types requires equal bounds
-
-**Problem.** `All(X <: K) B <: All(X <: K') B'` holds only when `K` and `K'` are equal (and `B <: B'`), as in Cardelli
-and Wegner's Kernel Fun. Cardelli's Quest is contravariant in the bound: its rule [TIncl Π] (*A Semantic Basis for
-Quest* §2, validated by Theorem 3.4.1) needs only `K' <:: K` and `B <: B'` under `X::K'`, so a polymorphic function
-whose type parameter has a weaker bound can be used where a stronger one is expected. Function literals checked
-against an annotation already follow that rule (`type-system.md` §6.9); values of `All` types in general do not.
-
-**Reproduce.** With `Let P = Record a: Int end; Let Q = Record a: Int b: Int end;`,
-`let f(X <: P x: X): Int = x.a; let g: All(X <: Q x: X) Int = f;` is rejected, while the same function written as a
-literal against the annotation is accepted.
-
-**Where to start.** The `QAllType` case of `_prove_subtype` in `bootstrap/python/quest/types/subtyping.py`, which
-compares bounds with `is_kind_equal`. The contravariant rule makes subtyping undecidable in F<: (Pierce, *Bounded
-quantification is undecidable*, 1992), because comparing bodies under the supertype's bound can rename variables
-without end; a bound on the search (the `fuel` already passed), or a restriction such as requiring the bounds not to
-mention the quantified variables, would keep the check terminating. In C, a value of a bounded type parameter is held
-viewed at its bound (`docs/c-representation.md` §5.1), so a function used at a stronger bound needs its arguments
-converted to the weaker bound's view (a closure adaptation thunk) unless the views agree.
-
-**Decided.** Adopt the full contravariant rule, kept terminating by the `fuel` already passed: a search that runs
-out of fuel fails as not a subtype. Compiled code needs the adaptation where the bounds' views differ.
-
-**Done when.** A function whose type parameters have weaker bounds is a subtype as [TIncl Π] says, in both backends,
-the check still terminates on the existing tests and on a known diverging example, and `type-system.md` §3 and §6.9
-describe the rule.
-
----
-
 ## Auto types may not mention type parameters inside mutable data
 
 **Problem.** Generic code lays out values of types that mention its type parameters generically, and a value used

@@ -26,7 +26,9 @@ the callee's parts refer to (a shape's are its canonical form's, named afresh).
 
 from __future__ import annotations
 
-from typing import Optional
+import dataclasses
+
+from typing import Any, Optional
 
 from quest.codegen.layout import (
     generic_layout_agrees,
@@ -52,6 +54,7 @@ from quest.types import (
     QTypeVar,
     QVarType,
     auto_payload_type,
+    is_kind_equal,
     is_type_equal,
 )
 
@@ -108,6 +111,41 @@ def _equal(a: QType, b: QType) -> bool:
     return a is b or is_type_equal(a, b)
 
 
+# The type variables in each type met, by the type's identity (types are hash-consed and long-lived)
+_TYPE_VARS: dict[int, tuple[Any, frozenset]] = {}
+
+
+def _type_vars(t: Any) -> frozenset:
+    """The type variables (as objects, which carry their bounds) in type t, or in a component of one."""
+    cached = _TYPE_VARS.get(id(t))
+    if cached is not None and cached[0] is t:
+        return cached[1]
+    found: frozenset = frozenset()
+    if isinstance(t, QTypeVar):
+        found = frozenset((t,))
+    elif isinstance(t, tuple):
+        found = frozenset().union(*(_type_vars(item) for item in t))
+    elif dataclasses.is_dataclass(t) and not isinstance(t, type) and getattr(t, "_fv", True):
+        found = frozenset().union(*(_type_vars(getattr(t, f.name)) for f in dataclasses.fields(t)))
+    if len(_TYPE_VARS) > 200_000:
+        _TYPE_VARS.clear()
+    _TYPE_VARS[id(t)] = (t, found)
+    return found
+
+
+def _same_views(a: QType, b: QType) -> bool:
+    """Whether two equal types hold their type parameters at the same views: a type parameter renamed with another
+    bound (shared_signatures) is the same type, but held viewed at another bound."""
+    if not (getattr(a, "_fv", None) and getattr(b, "_fv", None)):
+        return True
+    bounds: dict[int, Any] = {}
+    for var in _type_vars(a) | _type_vars(b):
+        first = bounds.setdefault(var.symbol_id, var.bound)
+        if first is not var.bound and not is_kind_equal(first, var.bound):
+            return False
+    return True
+
+
 def _variant_subtype(s: Shape, t: Shape) -> bool:
     """Whether every case of the variant shape s is a case of t, with an equal payload."""
     payloads = {c.name: c.shape for c in t.cases}
@@ -152,14 +190,23 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
 
 def shared_signatures(source: QType, target: QType) -> tuple[tuple, QType, tuple, QType]:
     """Two (possibly polymorphic) function types' parameters and results as written, target's type parameters renamed
-    to source's, so that they can be compared."""
+    to source's, so that they can be compared. A renamed parameter keeps target's bound where it is stronger than
+    source's ([TIncl Π], types/subtyping.py): target's values of it are held viewed at its bound, source's at theirs,
+    so that the plans between them convert the views."""
     s_quants, s_inner = collect_fun_quantifiers(source)
     t_quants, t_inner = collect_fun_quantifiers(target)
     if s_quants and len(s_quants) == len(t_quants):
-        t_inner = t_inner.substitute({
+        renamed = {
             tq.symbol_id: QTypeVar(name=sq.name, symbol_id=sq.symbol_id, bound=sq.bound)
             for sq, tq in zip(s_quants, t_quants)
-        })
+        }
+        subst: dict[int, QType] = {}
+        for sq, tq in zip(s_quants, t_quants):
+            bound = tq.bound.substitute_types(renamed)
+            if is_kind_equal(bound, sq.bound):
+                bound = sq.bound
+            subst[tq.symbol_id] = QTypeVar(name=sq.name, symbol_id=sq.symbol_id, bound=bound)
+        t_inner = t_inner.substitute(subst)
     s_params = s_inner.params if isinstance(s_inner, QFunType) else ()
     t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
     s_result = s_inner.result_type if isinstance(s_inner, QFunType) else s_inner
@@ -254,7 +301,7 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         return ir.Plan("box", source, target)
     if cs == "QVal" and ct != "QVal":
         return ir.Plan("unbox", source, target)
-    if cs == "QVal" or _equal(source, target):
+    if cs == "QVal" or (_equal(source, target) and _same_views(source, target)):
         return None
     s_held, t_held = resolved_shape(ss), resolved_shape(ts)
     if s_held.kind == t_held.kind == "record":

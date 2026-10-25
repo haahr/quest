@@ -1,0 +1,25 @@
+(* Language: a polymorphic function whose type parameters have weaker bounds is a subtype of one whose type
+   parameters have stronger bounds ([TIncl Π], Cardelli, A Semantic Basis for Quest §2). In C, values of a bounded
+   type parameter are held viewed at its bound, so the function is adapted: its arguments convert from the stronger
+   bound's view to the weaker's, and its results back *)
+Let P = Record z: Int end;
+Let Q = Record a: Int m: Int z: Int end;
+let f(X <: P x: X): Int = x.z;
+let g: All(X <: Q x: X) Int = f;
+let id(X <: P x: X): X = x;
+let idQ: All(X <: Q x: X) X = id;
+let pair(X <: P t: Tuple y: X end): Tuple f: X s: Int end = tuple t.y t.y.z end;
+let pairQ: All(X <: Q t: Tuple y: X end) Tuple f: X s: Int end = pair;
+let pick(Y <: Variant a: Bool q: Int end y: Y): Int = case y when q with n then n when a with b then 0 end;
+let pickQ: All(Y <: Variant q: Int end y: Y) Int = pick;
+let back(Y <: Variant a: Bool q: Int end y: Y): Y = y;
+let backQ: All(Y <: Variant q: Int end y: Y) Y = back;
+let r: Q = record a = 1 m = 2 z = 3 end;
+let p = pairQ(:Q tuple r end);
+tuple
+  let viaG = g(:Q r)
+  let viaId = idQ(:Q r).m
+  let viaPair = p.f.a + p.s
+  let viaPick = pickQ(:Variant q: Int end variant q of Variant q: Int end with 9 end)
+  let viaBack = case backQ(:Variant q: Int end variant q of Variant q: Int end with 7 end) when q with n then n end
+end

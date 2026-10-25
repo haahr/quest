@@ -178,6 +178,10 @@ class SubtypeTrail:
         return zip(it, it)
 
 
+# The fuel a comparison of quantified types costs (see the QAllType case of _prove_subtype_step)
+_QUANTIFIER_FUEL = 500
+
+
 def is_subtype(
     sub: QType,
     sup: QType,
@@ -420,19 +424,36 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
             return (_prove_subtype(s_pay, t_pay, env, trail, fuel)
                     and _prove_subtype(t_pay, s_pay, env, trail, fuel))
 
-        # Universal Quantifiers (Kernel F<:): bounds match, body covariant
+        # Universal Quantifiers ([TIncl Π], A Semantic Basis for Quest §2): bounds contravariant, body covariant,
+        # compared under the supertype's bounds. As in full F<: this is undecidable; fuel keeps it terminating
         case (QAllType(), QAllType()):
             if len(sub_lazy.quantifiers) != len(sup_lazy.quantifiers):
                 return False
-            subst = {
-                t_quant.symbol_id: QTypeVar(s_quant.name, s_quant.symbol_id, s_quant.bound)
-                for s_quant, t_quant in zip(sub_lazy.quantifiers, sup_lazy.quantifiers)
-            }
+            # Both sides' quantifiers become fresh variables, with sup's bounds: either type may contain the other's
+            # binders (a type compared with its own bound), which renaming one to the other's would capture
+            from quest.types.env import allocate_symbol_id  # env imports this module
+
+            # The bounds are compared within this proof, so that they share its fuel, and each comparison of
+            # quantifiers costs much of it: a search that diverges through bounds (Pierce, Bounded quantification is
+            # undecidable) runs out after a few levels, well within Python's stack, and fails as not a subtype
+            if fuel <= _QUANTIFIER_FUEL:
+                return False
+            fuel -= _QUANTIFIER_FUEL
+            sub_subst: dict[int, QType] = {}
+            sup_subst: dict[int, QType] = {}
             for s_q, t_q in zip(sub_lazy.quantifiers, sup_lazy.quantifiers):
-                t_bound_renamed = t_q.bound.substitute_types(subst)
-                if not is_kind_equal(s_q.bound, t_bound_renamed, env):
+                fresh = QTypeVar(t_q.name, allocate_symbol_id(), t_q.bound.substitute_types(sup_subst))
+                s_bound = s_q.bound.substitute_types(sub_subst)
+                if isinstance(fresh.bound, QPowerKind) and isinstance(s_bound, QPowerKind):
+                    if not _prove_subtype(fresh.bound.bound, s_bound.bound, env, trail, fuel):
+                        return False
+                elif not is_subkind(fresh.bound, s_bound, env):
                     return False
-            return _prove_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
+                sub_subst[s_q.symbol_id] = fresh
+                sup_subst[t_q.symbol_id] = fresh
+            return _prove_subtype(
+                sub_lazy.body.substitute(sub_subst), sup_lazy.body.substitute(sup_subst), env, trail, fuel
+            )
 
         # Auto types (Cardelli §6.7): subkind for the type component; for the signature, as for tuples, a
         # prefix match with matching names, covariant immutable and invariant mutable components

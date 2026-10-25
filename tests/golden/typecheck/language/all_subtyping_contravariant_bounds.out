@@ -1,0 +1,107 @@
+(TypedProgram
+  :phrases (
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'Q' :kind TYPE)
+    (TypedLetValue 'f' :type All(X <: P) Fun(x: X): Int
+      :value (TypedFun :params (('x' : X)) :type All(X <: P) Fun(x: X): Int
+        :body (TypedSelect 'z' :type Int
+          :target (TypedVar 'x' :type X))))
+    (TypedLetValue 'g' :type All(X <: Q) Fun(x: X): Int
+      :value (TypedVar 'f' :type All(X <: P) Fun(x: X): Int))
+    (TypedLetValue 'id' :type All(X <: P) Fun(x: X): X
+      :value (TypedFun :params (('x' : X)) :type All(X <: P) Fun(x: X): X
+        :body (TypedVar 'x' :type X)))
+    (TypedLetValue 'idQ' :type All(X <: Q) Fun(x: X): X
+      :value (TypedVar 'id' :type All(X <: P) Fun(x: X): X))
+    (TypedLetValue 'pair' :type All(X <: P) Fun(t: Tuple y: X end): Tuple f: X s: Int end
+      :value (TypedFun :params (('t' : Tuple y: X end)) :type All(X <: P) Fun(t: Tuple y: X end): Tuple f: X s: Int end
+        :body (TypedTuple :type Tuple f: X s: Int end
+          :elements (
+            (TypedSelect 'y' :type X
+              :target (TypedVar 't' :type Tuple y: X end))
+            (TypedSelect 'z' :type Int
+              :target (TypedSelect 'y' :type X
+                :target (TypedVar 't' :type Tuple y: X end)))
+          ))))
+    (TypedLetValue 'pairQ' :type All(X <: Q) Fun(t: Tuple y: X end): Tuple f: X s: Int end
+      :value (TypedVar 'pair' :type All(X <: P) Fun(t: Tuple y: X end): Tuple f: X s: Int end))
+    (TypedLetValue 'pick' :type All(Y <: Variant a: Bool q: Int end) Fun(y: Y): Int
+      :value (TypedFun :params (('y' : Y)) :type All(Y <: Variant a: Bool q: Int end) Fun(y: Y): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'y' :type Y)
+          :branches (
+            (TypedCaseBranch tags=(q) :binder 'n'
+              :body (TypedVar 'n' :type Int))
+            (TypedCaseBranch tags=(a) :binder 'b'
+              :body (TypedInt 0 :type Int))
+          ))))
+    (TypedLetValue 'pickQ' :type All(Y <: Variant q: Int end) Fun(y: Y): Int
+      :value (TypedVar 'pick' :type All(Y <: Variant a: Bool q: Int end) Fun(y: Y): Int))
+    (TypedLetValue 'back' :type All(Y <: Variant a: Bool q: Int end) Fun(y: Y): Y
+      :value (TypedFun :params (('y' : Y)) :type All(Y <: Variant a: Bool q: Int end) Fun(y: Y): Y
+        :body (TypedVar 'y' :type Y)))
+    (TypedLetValue 'backQ' :type All(Y <: Variant q: Int end) Fun(y: Y): Y
+      :value (TypedVar 'back' :type All(Y <: Variant a: Bool q: Int end) Fun(y: Y): Y))
+    (TypedLetValue 'r' :type Q
+      :value (TypedRecord :type Record a: Int m: Int z: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 1 :type Int))
+          (TypedRecordField 'm'
+            :value (TypedInt 2 :type Int))
+          (TypedRecordField 'z'
+            :value (TypedInt 3 :type Int))
+        )))
+    (TypedLetValue 'p' :type Tuple f: Q s: Int end
+      :value (TypedApp :type Tuple f: Q s: Int end
+        :func (TypedTypeApp [Q] :type Fun(t: Tuple y: Q end): Tuple f: Q s: Int end
+          :func (TypedVar 'pairQ' :type All(X <: Q) Fun(t: Tuple y: X end): Tuple f: X s: Int end))
+        :args (
+          (TypedTuple :type Tuple y: Q end
+            :elements (
+              (TypedVar 'r' :type Q)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedTuple :type Tuple viaG: Int viaId: Int viaPair: Int viaPick: Int viaBack: Int end
+        :elements (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Q] :type Fun(x: Q): Int
+              :func (TypedVar 'g' :type All(X <: Q) Fun(x: X): Int))
+            :args (
+              (TypedVar 'r' :type Q)
+            ))
+          (TypedSelect 'm' :type Int
+            :target (TypedApp :type Q
+              :func (TypedTypeApp [Q] :type Fun(x: Q): Q
+                :func (TypedVar 'idQ' :type All(X <: Q) Fun(x: X): X))
+              :args (
+                (TypedVar 'r' :type Q)
+              )))
+          (TypedInfix '+' :type Int
+            :left (TypedSelect 'a' :type Int
+              :target (TypedSelect 'f' :type Q
+                :target (TypedVar 'p' :type Tuple f: Q s: Int end)))
+            :right (TypedSelect 's' :type Int
+              :target (TypedVar 'p' :type Tuple f: Q s: Int end)))
+          (TypedApp :type Int
+            :func (TypedTypeApp [Variant q: Int end] :type Fun(y: Variant q: Int end): Int
+              :func (TypedVar 'pickQ' :type All(Y <: Variant q: Int end) Fun(y: Y): Int))
+            :args (
+              (TypedVariant 'q' :type Variant q: Int end
+                :payload (TypedInt 9 :type Int))
+            ))
+          (TypedCase :type Int
+            :target (TypedApp :type Variant q: Int end
+              :func (TypedTypeApp [Variant q: Int end] :type Fun(y: Variant q: Int end): Variant q: Int end
+                :func (TypedVar 'backQ' :type All(Y <: Variant q: Int end) Fun(y: Y): Y))
+              :args (
+                (TypedVariant 'q' :type Variant q: Int end
+                  :payload (TypedInt 7 :type Int))
+              ))
+            :branches (
+              (TypedCaseBranch tags=(q) :binder 'n'
+                :body (TypedVar 'n' :type Int))
+            ))
+        )))
+  ))

@@ -1,0 +1,73 @@
+main {
+  funs {
+    fun f [X::<: P](x: X): Int {
+      let %1: Int = record_field(x, z)
+      return %1
+    }
+  }
+  let g: All(X <: Q) Fun(x: X): Int = f
+  funs {
+    fun id [X::<: P](x.1: X): X {
+      return x.1
+    }
+  }
+  let idQ: All(X <: Q) Fun(x: X): X = id
+  funs {
+    fun pair [X::<: P](t: Tuple y: X end): Tuple f: X s: Int end {
+      let f.1: X = tuple_field(t, 0)
+      let %2: X = tuple_field(t, 0)
+      let s: Int = record_field(%2, z)
+      let %3: Tuple f: X s: Int end = tuple(f.1, s)
+      return %3
+    }
+  }
+  let pairQ: All(X <: Q) Fun(t: Tuple y: X end): Tuple f: X s: Int end = pair
+  funs {
+    fun pick [Y::<: Variant a: Bool q: Int end](y: Y): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(y) {
+          case q (n: Int): {
+            jump k1(n)
+          }
+          case a (b: Bool): {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let pickQ: All(Y <: Variant q: Int end) Fun(y: Y): Int = pick
+  funs {
+    fun back [Y::<: Variant a: Bool q: Int end](y.1: Y): Y {
+      return y.1
+    }
+  }
+  let backQ: All(Y <: Variant q: Int end) Fun(y: Y): Y = back
+  let r.1: Q = record(a = 1, m = 2, z = 3)
+  let y.2: Q = r.1
+  let %4: Tuple y: Q end = tuple(y.2)
+  let p: Tuple f: Q s: Int end = call pairQ [Q](%4)
+  let viaG: Int = call g [Q](r.1)
+  let %5: Q = call idQ [Q](r.1)
+  let viaId: Int = record_field(%5, m)
+  let %6: Q = tuple_field(p, 0)
+  let %7: Int = record_field(%6, a)
+  let %8: Int = tuple_field(p, 1)
+  let viaPair: Int = prim +(%7, %8)
+  let %9: Variant q: Int end = variant(q, 9)
+  let viaPick: Int = call pickQ [Variant q: Int end](%9)
+  join k2(viaBack: Int) {
+    let %10: Tuple viaG: Int viaId: Int viaPair: Int viaPick: Int viaBack: Int end = tuple(viaG, viaId, viaPair, viaPick, viaBack)
+  } in {
+    let %11: Variant q: Int end = variant(q, 7)
+    let %12: Variant q: Int end = call backQ [Variant q: Int end](%11)
+    switch tag(%12) {
+      case q (n.1: Int): {
+        jump k2(n.1)
+      }
+    }
+  }
+}
+

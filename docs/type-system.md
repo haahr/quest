@@ -124,6 +124,20 @@ Subkinding allows type operators and power kinds to be used wherever broader kin
   $\iff K_1' \le K_1 \land K_2 \le K_2'[Y \mapsto X]$
   (contravariant in parameter kind, covariant in result kind).
 
+**Universal types** follow Cardelli's [TIncl Π] (*A Semantic Basis for Quest* §2):
+$\text{All}(X::K)\,B \le \text{All}(X::K')\,B' \iff K' \le K \land B \le B'$ under $X::K'$, contravariant in
+each quantifier's bound and covariant in the body, so a polymorphic function whose type parameters have weaker bounds
+is a subtype of one whose parameters have stronger bounds. `_prove_subtype` in `types/subtyping.py` renames both
+sides' quantifiers to fresh variables with the supertype's bounds (renaming one side's to the other's could capture
+binders when a type is compared with a bound that contains it). As in full F<:, this subtyping is undecidable (Pierce,
+*Bounded quantification is undecidable*): each comparison of quantifiers costs a large share of the proof's fuel
+(`_QUANTIFIER_FUEL`), and the supertype's bounds are compared within the same proof, so a search that diverges
+through bounds stops after a few levels and fails as not a subtype (`tests/errors/typecheck/all_subtyping_diverges`).
+In C, values of a bounded type parameter are held viewed at its bound, so such a function is adapted: the represent
+pass compares the two signatures with the type parameter at each bound (`shared_signatures`), and converts arguments
+from the stronger bound's view to the weaker one's and results back. Arguments of mutable types that mention the
+parameter (`Array(X)`) cannot be converted without copying and are rejected in C, as at other polymorphic calls.
+
 ### 3.2. Equi-Recursive Subtyping and the Coinductive Trail ($\Sigma$)
 In Quest, recursive types are equi-recursive: $\text{Rec}(X::K) T \equiv T[\text{Rec}(X::K) T / X]$.
 No explicit user `fold` or `unfold` operations are required.
@@ -598,8 +612,7 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   the function writes may be weaker than the expected one, following Cardelli's [TIncl Π] (*A Semantic Basis for
   Quest* §2: $\Pi(X::K)B <: \Pi(X::K')B'$ when $K' <:: K$ and $B <: B'$ under $X::K'$), and the body is checked
   under the expected bound; a stronger bound, or a different number of type parameters, is an error. Subtyping
-  between `All` types (`_prove_subtype` in `types/subtyping.py`) still requires equal bounds, as Cardelli and
-  Wegner's Kernel Fun does (see `docs/tasklist.md`).
+  between `All` types follows the same rule (§3.1).
 
 ### 6.10. Function Signatures and Recursive Bindings (`let rec`)
 - **Explicit Parameter Types:** Function parameters are syntactically signatures ($S$). In Quest, every value
