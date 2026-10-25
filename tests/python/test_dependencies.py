@@ -120,6 +120,16 @@ class TestDependencies(unittest.TestCase):
         outside = [m for m in graph if not _within(m, C_COMPILATION + PIPELINE_CLIENTS)]
         self.assertEqual(paths_to(graph, outside, C_BACKEND), [], "modules outside C compilation reach the C backend")
 
+    def test_the_front_end_does_not_reach_later_phases(self) -> None:
+        """Tokenizing, parsing, and desugaring (quest.syntax) need no types, scopes, units, or back end."""
+        # The package's __init__, which every import of a submodule runs, re-exports the whole compiler
+        graph = {m: imported - {"quest"} for m, imported in import_graph().items()}
+        self.assertIn("quest.syntax.desugar", graph)
+        later = (
+            "quest.types", "quest.typechecker", "quest.modules", "quest.build", "quest.pipeline", "quest.ir",
+            "quest.codegen", "quest.interpreter", "quest.values",
+        )
+        self.assertEqual(reached(graph, ("quest.syntax",), later), [], "the front end reaches later phases")
 
 if __name__ == "__main__":
     unittest.main()

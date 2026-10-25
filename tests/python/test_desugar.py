@@ -4,7 +4,7 @@ import unittest
 
 import quest.syntax.ast as ast
 from quest.modules.units import parse_unit
-from quest.syntax.desugar import desugar
+from quest.syntax.desugar import BUILTIN_INFIX_OPERATORS, desugar
 from quest.syntax.sources import SourceMap
 from tests.python.helpers import parse_expr, parse_phrase
 
@@ -77,6 +77,11 @@ class TestDesugar(unittest.TestCase):
                 offset=0,
             ),
         )
+
+    def test_builtin_infix_operators_are_those_the_type_checker_types(self) -> None:
+        from quest.types.kinds import INFIX_OPERATORS
+
+        self.assertEqual(BUILTIN_INFIX_OPERATORS, {*INFIX_OPERATORS, ":=", "is", "isnot", "==", "!="})
 
     def test_builtin_infix_operators_stay_infix(self) -> None:
         for op in ("+", "<>", "++", "/\\", "is", "isnot", "==", ":="):
