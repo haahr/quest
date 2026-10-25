@@ -1,0 +1,147 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('arrayOp') : 'ArrayOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('string') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('scoring') : 'Scoring')
+      ))
+    (TypedExprStmt
+      :expr (TypedException 'empty' :type Exception))
+    (TypedLetValue 'argmax' :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): Tuple index: Int element: E end
+      :value (TypedFun :params (('a' : Array(E)) ('key' : Fun(e: E): K) ('isGreater' : Fun(x: K y: K): Bool)) :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): Tuple index: Int element: E end
+        :body (TypedBlock :type Tuple index: Int element: E end
+          :bindings (
+            (TypedLetValue 'n' :type Int
+              :value (TypedApp :type Int
+                :func (TypedTypeApp [E] :type Fun(a: Array(E)): Int
+                  :func (TypedSelect 'size' :type All(A :: TYPE) Fun(a: Array(A)): Int
+                    :target (TypedVar 'arrayOp' :type Module 'arrayOp')))
+                :args (
+                  (TypedVar 'a' :type Array(E))
+                )))
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedInfix 'is' :type Bool
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 0 :type Int))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedRaise :type Ok
+                        :exc (TypedVar 'empty' :type Exception)))
+                  )
+                  :result (TypedOk))
+                :else (TypedOk)))
+            (TypedLetValue 'best' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedLetValue 'bestKey' :type K
+              :value (TypedApp :type K
+                :func (TypedVar 'key' :type Fun(e: E): K)
+                :args (
+                  (TypedIndex :type E
+                    :target (TypedVar 'a' :type Array(E))
+                    :index (TypedInt 0 :type Int))
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 1 :type Int))
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'k' :type K
+                      :value (TypedApp :type K
+                        :func (TypedVar 'key' :type Fun(e: E): K)
+                        :args (
+                          (TypedIndex :type E
+                            :target (TypedVar 'a' :type Array(E))
+                            :index (TypedVar 'i' :type Int))
+                        )))
+                  )
+                  :result (TypedIf :type Ok
+                    :cond (TypedApp :type Bool
+                      :func (TypedVar 'isGreater' :type Fun(x: K y: K): Bool)
+                      :args (
+                        (TypedVar 'k' :type K)
+                        (TypedDerefCell :type K
+                          :target (TypedVar 'bestKey' :type Var(K)))
+                      ))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedBlock :type Ok
+                            :bindings (
+                              (TypedExprStmt
+                                :expr (TypedAssign
+                                  :target (TypedVar 'best' :type Var(Int))
+                                  :value (TypedVar 'i' :type Int)))
+                            )
+                            :result (TypedAssign
+                              :target (TypedVar 'bestKey' :type Var(K))
+                              :value (TypedVar 'k' :type K))))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))))
+          )
+          :result (TypedTuple :type Tuple index: Int element: E end
+            :elements (
+              (TypedDerefCell :type Int
+                :target (TypedVar 'best' :type Var(Int)))
+              (TypedIndex :type E
+                :target (TypedVar 'a' :type Array(E))
+                :index (TypedDerefCell :type Int
+                  :target (TypedVar 'best' :type Var(Int))))
+            )))))
+    (TypedLetValue 'words' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'pear' :type String)
+          (TypedString 'fig' :type String)
+          (TypedString 'banana' :type String)
+          (TypedString 'kiwi' :type String)
+        )))
+    (TypedLetValue 'longest' :type Tuple index: Int element: String end
+      :value (TypedApp :type Tuple index: Int element: String end
+        :func (TypedTypeApp [String Int] :type Fun(a: Array(String) key: Fun(e: String): Int isGreater: Fun(x: Int y: Int): Bool): Tuple index: Int element: String end
+          :func (TypedVar 'argmax' :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): Tuple index: Int element: E end))
+        :args (
+          (TypedVar 'words' :type Array(String))
+          (TypedSelect 'length' :type Fun(string: String): Int
+            :target (TypedVar 'string' :type Module 'string'))
+          (TypedVar '>' :type Fun(a: Int b: Int): Bool)
+        )))
+    (TypedLetValue 'candidates' :type Array(Tuple name: String years: Int rating: Real end)
+      :value (TypedArray :type Array(Tuple name: String years: Int rating: Real end)
+        :elements (
+          (TypedTuple :type Tuple name: String years: Int rating: Real end
+            :elements (
+              (TypedString 'Ada' :type String)
+              (TypedInt 12 :type Int)
+              (TypedReal 4.5 :type Real)
+            ))
+          (TypedTuple :type Tuple name: String years: Int rating: Real end
+            :elements (
+              (TypedString 'Grace' :type String)
+              (TypedInt 30 :type Int)
+              (TypedReal 4.9 :type Real)
+            ))
+        )))
+    (TypedLetValue 'best' :type Tuple index: Int element: Tuple name: String years: Int rating: Real end end
+      :value (TypedApp :type Tuple index: Int element: Tuple name: String years: Int rating: Real end end
+        :func (TypedTypeApp [Tuple name: String years: Int rating: Real end Real] :type Fun(a: Array(Tuple name: String years: Int rating: Real end) key: Fun(e: Tuple name: String years: Int rating: Real end): Real isGreater: Fun(x: Real y: Real): Bool): Tuple index: Int element: Tuple name: String years: Int rating: Real end end
+          :func (TypedVar 'argmax' :type All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): Tuple index: Int element: E end))
+        :args (
+          (TypedVar 'candidates' :type Array(Tuple name: String years: Int rating: Real end))
+          (TypedSelect 'score' :type Fun(c: Candidate): Real
+            :target (TypedVar 'scoring' :type Module 'scoring'))
+          (TypedVar '>>' :type Fun(a: Real b: Real): Bool)
+        )))
+  ))

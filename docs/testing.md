@@ -94,6 +94,12 @@ tests/
 Test sources are discovered recursively (`*.quest`, except interfaces and modules; see §2.6), preserving their relative
 directory paths in `tests/golden/`.
 
+The example programs in `examples/`, which documentation walks through (`examples/argmax/` for
+[walkthrough.md](walkthrough.md)), are golden tests too, discovered the same way. Their goldens are under `examples/`
+in each phase's directory (`tests/golden/typecheck/examples/argmax/argmax.out`), and each example has goldens for
+every IR stage, not a subset, so a change to any phase's output for an example is noticed. `-k examples/` selects
+them.
+
 ### 2.2. Standard Output and Execution Discipline
 - **Valid Programs:** Must complete successfully with exit code 0. Standard output is captured and verified against
   the corresponding `<test>.out` file.

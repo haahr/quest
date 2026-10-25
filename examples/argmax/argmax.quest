@@ -1,0 +1,38 @@
+(* @echo *)
+(* argmax: the first element of an array whose key is greatest *)
+
+import arrayOp: ArrayOp;
+import string: StringOp;
+import scoring: Scoring;
+
+exception empty: Ok end;
+
+let argmax(E::TYPE K::TYPE)(
+           a: Array(E)
+           key: All(e: E) K
+           isGreater: All(x: K y: K) Bool): Tuple index: Int element: E end =
+    begin
+        let n = arrayOp.size(:E a);
+        if n is 0 then raise empty end end;
+        let var best = 0;
+        let var bestKey = key(a[0]);
+        for i = 1 upto n - 1 do
+            let k = key(a[i]);
+            if isGreater(k bestKey) then
+                best := i;
+                bestKey := k
+            end
+        end;
+        tuple let index = best let element = a[best] end
+    end;
+
+(* The longest string *)
+let words = array of "pear" "fig" "banana" "kiwi" end;
+let longest = argmax(words string.length {>});
+
+(* The best-scoring candidate *)
+let candidates = array of
+    tuple let name = "Ada" let years = 12 let rating = 4.5 end
+    tuple let name = "Grace" let years = 30 let rating = 4.9 end
+end;
+let best = argmax(candidates scoring.score {>>});

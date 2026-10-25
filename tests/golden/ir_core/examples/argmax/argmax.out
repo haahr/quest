@@ -1,0 +1,59 @@
+import arrayOp = "arrayOp" : ArrayOp
+import string = "string" : StringOp
+import scoring = "scoring" : Scoring
+main {
+  let empty: Exception = exception empty
+  funs {
+    fun argmax [E::TYPE K::TYPE](a: Array(E), key: Fun(e: E): K, isGreater: Fun(x: K y: K): Bool): Tuple index: Int element: E end {
+      let n: Int = prim extent(a)
+      let %1: Bool = prim is(n, 0)
+      if %1 {
+        raise empty
+      }
+      var best: Int = 0
+      let %2: E = index(a, 0)
+      let %3: K = call key(%2)
+      var bestKey: K = %3
+      let %4: Int = prim -(n, 1)
+      var i: Int = 1
+      loop L1 {
+        let %5: Bool = prim <=(i, %4)
+        if %5 {
+          let i.1: Int = i
+          let %6: E = index(a, i.1)
+          let k: K = call key(%6)
+          let %7: Bool = call isGreater(k, bestKey)
+          if %7 {
+            best := i.1
+            bestKey := k
+          }
+          let %8: Int = prim +(i, 1)
+          i := %8
+        } else {
+          break L1
+        }
+      }
+      let index: Int = best
+      let element: E = index(a, best)
+      let %9: Tuple index: Int element: E end = tuple(index, element)
+      return %9
+    }
+  }
+  let words: Array(String) = array("pear", "fig", "banana", "kiwi")
+  let %10: Fun(string: String): Int = member string.length
+  let %11: Fun(a: Int b: Int): Bool = builtin >
+  let longest: Tuple index: Int element: String end = call argmax [String Int](words, %10, %11)
+  let name: String = "Ada"
+  let years: Int = 12
+  let rating: Real = 4.5
+  let %12: Tuple name: String years: Int rating: Real end = tuple(name, years, rating)
+  let name.1: String = "Grace"
+  let years.1: Int = 30
+  let rating.1: Real = 4.9
+  let %13: Tuple name: String years: Int rating: Real end = tuple(name.1, years.1, rating.1)
+  let candidates: Array(Tuple name: String years: Int rating: Real end) = array(%12, %13)
+  let %14: Fun(c: Candidate): Real = member scoring.score
+  let %15: Fun(a: Real b: Real): Bool = builtin >>
+  let best.1: Tuple index: Int element: Tuple name: String years: Int rating: Real end end = call argmax [Tuple name: String years: Int rating: Real end Real](candidates, %14, %15)
+}
+

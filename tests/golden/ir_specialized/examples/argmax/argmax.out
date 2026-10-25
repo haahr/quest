@@ -1,0 +1,127 @@
+import arrayOp = "arrayOp" : ArrayOp
+import string = "string" : StringOp
+import scoring = "scoring" : Scoring
+main {
+  let empty: Exception = exception empty
+  funs {
+    fun argmax [E::TYPE K::TYPE](a: Array(E), key: Fun(e: E): K, isGreater: Fun(x: K y: K): Bool): Tuple index: Int element: E end {
+      let n: Int = prim extent(a)
+      let %1: Bool = prim is(n, 0)
+      if %1 {
+        raise empty
+      }
+      var best: Int = 0
+      let %2: E = index(a, 0)
+      let %3: K = call key(%2)
+      var bestKey: K = %3
+      let %4: Int = prim -(n, 1)
+      var i: Int = 1
+      loop L1 {
+        let %5: Bool = prim <=(i, %4)
+        if %5 {
+          let i.1: Int = i
+          let %6: E = index(a, i.1)
+          let k: K = call key(%6)
+          let %7: Bool = call isGreater(k, bestKey)
+          if %7 {
+            best := i.1
+            bestKey := k
+          }
+          let %8: Int = prim +(i, 1)
+          i := %8
+        } else {
+          break L1
+        }
+      }
+      let index: Int = best
+      let element: E = index(a, best)
+      let %9: Tuple index: Int element: E end = tuple(index, element)
+      return %9
+    }
+    fun argmax_spec(a.1: Array(String), key.1: Fun(e: String): Int, isGreater.1: Fun(x: Int y: Int): Bool): Tuple index: Int element: String end {
+      let n.1: Int = prim extent(a.1)
+      let %10: Bool = prim is(n.1, 0)
+      if %10 {
+        raise empty
+      }
+      var best.1: Int = 0
+      let %11: String = index(a.1, 0)
+      let %12: Int = call key.1(%11)
+      var bestKey.1: Int = %12
+      let %13: Int = prim -(n.1, 1)
+      var i.2: Int = 1
+      loop L1 {
+        let %14: Bool = prim <=(i.2, %13)
+        if %14 {
+          let i.3: Int = i.2
+          let %15: String = index(a.1, i.3)
+          let k.1: Int = call key.1(%15)
+          let %16: Bool = call isGreater.1(k.1, bestKey.1)
+          if %16 {
+            best.1 := i.3
+            bestKey.1 := k.1
+          }
+          let %17: Int = prim +(i.2, 1)
+          i.2 := %17
+        } else {
+          break L1
+        }
+      }
+      let index.1: Int = best.1
+      let element.1: String = index(a.1, best.1)
+      let %18: Tuple index: Int element: String end = tuple(index.1, element.1)
+      return %18
+    }
+    fun argmax_spec.1(a.2: Array(Tuple name: String years: Int rating: Real end), key.2: Fun(e: Tuple name: String years: Int rating: Real end): Real, isGreater.2: Fun(x: Real y: Real): Bool): Tuple index: Int element: Tuple name: String years: Int rating: Real end end {
+      let n.2: Int = prim extent(a.2)
+      let %19: Bool = prim is(n.2, 0)
+      if %19 {
+        raise empty
+      }
+      var best.2: Int = 0
+      let %20: Tuple name: String years: Int rating: Real end = index(a.2, 0)
+      let %21: Real = call key.2(%20)
+      var bestKey.2: Real = %21
+      let %22: Int = prim -(n.2, 1)
+      var i.4: Int = 1
+      loop L1 {
+        let %23: Bool = prim <=(i.4, %22)
+        if %23 {
+          let i.5: Int = i.4
+          let %24: Tuple name: String years: Int rating: Real end = index(a.2, i.5)
+          let k.2: Real = call key.2(%24)
+          let %25: Bool = call isGreater.2(k.2, bestKey.2)
+          if %25 {
+            best.2 := i.5
+            bestKey.2 := k.2
+          }
+          let %26: Int = prim +(i.4, 1)
+          i.4 := %26
+        } else {
+          break L1
+        }
+      }
+      let index.2: Int = best.2
+      let element.2: Tuple name: String years: Int rating: Real end = index(a.2, best.2)
+      let %27: Tuple index: Int element: Tuple name: String years: Int rating: Real end end = tuple(index.2, element.2)
+      return %27
+    }
+  }
+  let words: Array(String) = array("pear", "fig", "banana", "kiwi")
+  let %28: Fun(string: String): Int = member string.length
+  let %29: Fun(a: Int b: Int): Bool = builtin >
+  let longest: Tuple index: Int element: String end = call argmax_spec(words, %28, %29)
+  let name: String = "Ada"
+  let years: Int = 12
+  let rating: Real = 4.5
+  let %30: Tuple name: String years: Int rating: Real end = tuple(name, years, rating)
+  let name.1: String = "Grace"
+  let years.1: Int = 30
+  let rating.1: Real = 4.9
+  let %31: Tuple name: String years: Int rating: Real end = tuple(name.1, years.1, rating.1)
+  let candidates: Array(Tuple name: String years: Int rating: Real end) = array(%30, %31)
+  let %32: Fun(c: Candidate): Real = member scoring.score
+  let %33: Fun(a: Real b: Real): Bool = builtin >>
+  let best.3: Tuple index: Int element: Tuple name: String years: Int rating: Real end end = call argmax_spec.1(candidates, %32, %33)
+}
+

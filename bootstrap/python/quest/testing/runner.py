@@ -38,6 +38,8 @@ from quest.modules.graph import UnitKind, file_unit_kind
 from quest.testing.errors import run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
+# The example programs the documentation walks through, run as golden tests too (docs/testing.md §2.1)
+EXAMPLES_DIR = ROOT_DIR / "examples"
 TESTS_GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TESTS_ERRORS_DIR = ROOT_DIR / "tests" / "errors"
 DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
@@ -143,6 +145,15 @@ def discover_tests(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*.quest") if file_unit_kind(p) == UnitKind.PROGRAM)
 
 
+def golden_test_id(source_file: Path) -> Path:
+    """The path of a golden test's program relative to its goldens' directories: its path within tests/source, or
+    within examples/ under examples/."""
+    try:
+        return source_file.relative_to(TESTS_SOURCE_DIR)
+    except ValueError:
+        return Path("examples") / source_file.relative_to(EXAMPLES_DIR)
+
+
 # The IR's stages after Core are dumped (and compared with goldens) for a subset of the programs, chosen to exercise
 # each pass: those that have a golden in the stage's directory. (Every program runs through every stage, verified, in
 # the run_ir phases.) To add a program to a stage's subset, create its golden file empty and update goldens.
@@ -198,7 +209,7 @@ def run_single_golden_test(
     driver_args: Optional[list[str]] = None,
 ) -> tuple[bool, str, str]:
     golden_base = golden_dir_for_phase(phase_name)
-    rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
+    rel_source = golden_test_id(source_file)
     target_dir = golden_base / rel_source.parent
     target_dir.mkdir(parents=True, exist_ok=True)
     out_file = target_dir / f"{source_file.stem}.out"
@@ -467,12 +478,9 @@ def run_all_tests(
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
         # 1. Run Golden Tests (if suite is 'golden' or 'all')
         if suite_mode in ("golden", "all"):
-            source_files = discover_tests(TESTS_SOURCE_DIR)
+            source_files = discover_tests(TESTS_SOURCE_DIR) + discover_tests(EXAMPLES_DIR)
             if args.test:
-                source_files = [
-                    sf for sf in source_files
-                    if args.test in str(sf.relative_to(TESTS_SOURCE_DIR))
-                ]
+                source_files = [sf for sf in source_files if args.test in str(golden_test_id(sf))]
 
             if source_files:
                 print("=== Golden Tests ===")
@@ -484,7 +492,7 @@ def run_all_tests(
                     phase_tasks: list[PhaseTask] = []
                     for source_file in source_files:
                         skipped_phases = parse_skipped_phases(source_file)
-                        rel_source = source_file.relative_to(TESTS_SOURCE_DIR)
+                        rel_source = golden_test_id(source_file)
                         test_id = str(rel_source.with_suffix(""))
                         if phase.lower() in skipped_phases:
                             skipped_golden += 1
