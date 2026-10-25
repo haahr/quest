@@ -485,8 +485,12 @@ interfaces, and of its offset tables, `unit_types`); and each module's abstract 
 values ([dynamic.md](dynamic.md) §2.3). An echo of a package with a prefix, whose line is known statically from its type as
 written, becomes an echo of its text.
 
-Descriptor operands are small pure expressions rather than values named by lets, so where they are evaluated is a
-backend's choice: the C printer evaluates each where it is used, and a native backend could share them.
+Descriptor operands are small pure expressions rather than values named by lets, by design, so where they are
+evaluated is a backend's choice: the C printer evaluates each where it is used, and a native backend could share them.
+They could not all be let-bound: the thunks of `adapt` plans and type applications bind their own descriptor variables
+without an IR body, and an inspect arm uses the witness's before its case's body begins. (Binding the others would
+share little: an instantiation repeated in a function costs a lookup in the runtime's cache, and few programs repeat
+one.)
 
 ### 8.5. Print C
 

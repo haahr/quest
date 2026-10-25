@@ -174,6 +174,13 @@ instantiations that are now repeated at each use. Done when the IR is in strict 
 verifier checks that descriptor operands are atoms, and the benchmarks are within the bar (expected equal or
 faster).
 
+**Not done (decided, October 2026).** Strict ANF cannot be reached this way: the thunks of `adapt` plans and type
+applications bind their own descriptor variables and have no IR body to bind an instantiation in, and an inspect arm
+converts its components by descriptors of the witness before its case's body begins. And the sharing would gain
+nothing measurable: no benchmark instantiates a template, and the C of the 180 test programs has 92 instantiations, in
+20 programs, of which 14 repeat another in the same function (each a lookup in the runtime's instantiation cache).
+Descriptor operands stay small pure expressions by design ([ir.md](ir.md) §8.4).
+
 3a and 3b come after 2c, so that imported modules' records are spelled from the IR. 3b comes after 1b, so that
 option structs are declared under their canonical names once.
 
