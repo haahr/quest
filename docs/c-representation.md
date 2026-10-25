@@ -649,14 +649,20 @@ typedef struct QProxy {
 ```
 - **Which values may be proxies:** a value of a tuple type one of whose components may change view (a record,
   variant, auto value, type variable, abstract type, function whose signature mentions one, or a tuple or option that
-  may be a proxy), or of an option type with two or more cases or such a payload component (`may_be_proxied` in
-  `codegen/layout.py`). No value of any other type is a proxy: an upcast to such a type unwraps one
-  (`quest_unproxy`), and `quest_convert` copies rather than proxies a value whose target type cannot be proxied (the
-  runtime decides with the same rule on descriptors, conservatively).
+  may be a proxy), or may hold a proxy (any tuple, or an option with a payload: a value of its subtype there may be a
+  proxy, and must be converted when the container is upcast to a type at which it never is), or of an option type
+  with two or more cases or such a payload component (`may_be_proxied` in `codegen/layout.py`). No value of any other
+  type is a proxy: an upcast to such a type unwraps one (`quest_unproxy`; its original serves, as no component of the
+  type changes view), and `quest_convert` copies rather than proxies a value whose target type cannot be proxied
+  otherwise (the runtime decides with the same rule on descriptors, `quest_may_be_proxied`, conservatively).
 - **Making one:** an upcast that changes a component's view is a `view` plan, `quest_make_proxy(v, from, to)`
   (through `quest_convert`); so is a conversion at a polymorphic call over a bounded type parameter (`runtime` plans).
   Upcasting a proxy makes a new proxy of its original (proxies never chain), and viewing it at the original's type
-  gives back the original. An upcast that changes no component's view is a cast.
+  gives back the original. An upcast that changes no component's view is a cast. A container whose layout agrees with
+  the target's is still proxied when a component, at any depth through tuples and options, goes from a type that may
+  be proxied to one that may not (`quest_proxies_agree`; statically, such a component's `unproxy` plan is a view
+  change), so that the component is converted, and unwrapped, when it is read; a variant's payload is converted at the
+  upcast (a variant is a value).
 - **Reading:** code reading a component of a value that may be a proxy checks the tag (the represent pass decides
   each read's access, docs/ir.md §8.3, and the printer prints it). Through a proxy, component `i`
   is read from the original and converted from its stored type to the view's (`quest_proxy_element`; for an option,

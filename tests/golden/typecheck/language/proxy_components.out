@@ -1,0 +1,524 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetType 'TB' :kind TYPE)
+    (TypedLetType 'TS' :kind TYPE)
+    (TypedLetType 'T0' :kind TYPE)
+    (TypedLetValue 'tb' :type TB
+      :value (TypedTuple :type Tuple s: String n: Int x: Big end
+        :elements (
+          (TypedString 'hello' :type String)
+          (TypedInt 7 :type Int)
+          (TypedRecord :type Record a: Int b: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 1 :type Int))
+              (TypedRecordField 'b'
+                :value (TypedInt 2 :type Int))
+            ))
+        )))
+    (TypedLetValue 'ts' :type TS
+      :value (TypedVar 'tb' :type TB))
+    (TypedLetValue 'q' :type T0
+      :value (TypedVar 'tb' :type TB))
+    (TypedLetValue 'show' :type Fun(t: T0): String
+      :value (TypedFun :params (('t' : T0)) :type Fun(t: T0): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedSelect 's' :type String
+            :target (TypedVar 't' :type T0))
+          :right (TypedInfix '<>' :type String
+            :left (TypedString ' ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'n' :type Int
+                  :target (TypedVar 't' :type T0))
+              ))))))
+    (TypedLetType 'OS' :kind TYPE)
+    (TypedLetType 'O0' :kind TYPE)
+    (TypedLetValue 'o' :type OS
+      :value (TypedOption 'some' :type OS
+        :payload (TypedTuple :type Tuple p: TS end
+          :elements (
+            (TypedVar 'ts' :type TS)
+          ))))
+    (TypedLetValue 'o0' :type O0
+      :value (TypedVar 'o' :type OS))
+    (TypedLetValue 'p0' :type T0
+      :value (TypedSelect 'p' :type T0
+        :target (TypedVariantAssert 'some' :type Tuple Int p: T0 end
+          :target (TypedVar 'o0' :type O0))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'option: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedVar 'p0' :type T0)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedInfix 'is' :type Bool
+                        :left (TypedVar 'p0' :type T0)
+                        :right (TypedVar 'q' :type T0))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedInfix 'is' :type Bool
+                            :left (TypedVar 'p0' :type T0)
+                            :right (TypedVar 'tb' :type TB))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                            :target (TypedVar 'conv' :type Module 'conv'))
+                          :args (
+                            (TypedInfix 'is' :type Bool
+                              :left (TypedVar 'o0' :type O0)
+                              :right (TypedVar 'o' :type OS))
+                          )))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'option, case: ' :type String)
+            :right (TypedCase :type String
+              :target (TypedVar 'o0' :type O0)
+              :branches (
+                (TypedCaseBranch tags=(some) :binder 'c'
+                  :body (TypedApp :type String
+                    :func (TypedVar 'show' :type Fun(t: T0): String)
+                    :args (
+                      (TypedSelect 'p' :type T0
+                        :target (TypedVar 'c' :type Tuple p: T0 end))
+                    )))
+              )))
+        )))
+    (TypedLetType 'L' :kind ALL(A :: TYPE) TYPE)
+    (TypedLetValue 'l' :type L(TS)
+      :value (TypedOption 'cons' :type L(TS)
+        :payload (TypedTuple :type Tuple head: TS tail: Rec(L :: TYPE) Option nil cons with Tuple head: TS tail: L end end end
+          :elements (
+            (TypedVar 'ts' :type TS)
+            (TypedOption 'nil' :type L(TS))
+          ))))
+    (TypedLetValue 'l0' :type L(T0)
+      :value (TypedVar 'l' :type L(TS)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'list: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedSelect 'head' :type T0
+                    :target (TypedVariantAssert 'cons' :type Tuple Int head: T0 tail: Rec(L :: TYPE) Option nil cons with Tuple head: T0 tail: L end end end
+                      :target (TypedVar 'l0' :type L(T0))))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedInfix 'is' :type Bool
+                        :left (TypedSelect 'head' :type T0
+                          :target (TypedVariantAssert 'cons' :type Tuple Int head: T0 tail: Rec(L :: TYPE) Option nil cons with Tuple head: T0 tail: L end end end
+                            :target (TypedVar 'l0' :type L(T0))))
+                        :right (TypedVar 'q' :type T0))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedInfix 'is' :type Bool
+                          :left (TypedVar 'l0' :type L(T0))
+                          :right (TypedVar 'l' :type L(TS)))
+                      )))))))
+        )))
+    (TypedLetValue 'w' :type Tuple c: TS end
+      :value (TypedTuple :type Tuple c: TS end
+        :elements (
+          (TypedVar 'ts' :type TS)
+        )))
+    (TypedLetValue 'w0' :type Tuple c: T0 end
+      :value (TypedVar 'w' :type Tuple c: TS end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'tuple: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedSelect 'c' :type T0
+                    :target (TypedVar 'w0' :type Tuple c: T0 end))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedInfix 'is' :type Bool
+                        :left (TypedSelect 'c' :type T0
+                          :target (TypedVar 'w0' :type Tuple c: T0 end))
+                        :right (TypedVar 'q' :type T0))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedInfix 'is' :type Bool
+                          :left (TypedVar 'w0' :type Tuple c: T0 end)
+                          :right (TypedVar 'w' :type Tuple c: TS end))
+                      )))))))
+        )))
+    (TypedLetValue 'ww' :type Tuple d: Tuple c: TS end end
+      :value (TypedTuple :type Tuple d: Tuple c: TS end end
+        :elements (
+          (TypedVar 'w' :type Tuple c: TS end)
+        )))
+    (TypedLetValue 'ww0' :type Tuple d: Tuple c: T0 end end
+      :value (TypedVar 'ww' :type Tuple d: Tuple c: TS end end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'nested tuple: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedSelect 'c' :type T0
+                    :target (TypedSelect 'd' :type Tuple c: T0 end
+                      :target (TypedVar 'ww0' :type Tuple d: Tuple c: T0 end end)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedInfix 'is' :type Bool
+                        :left (TypedSelect 'c' :type T0
+                          :target (TypedSelect 'd' :type Tuple c: T0 end
+                            :target (TypedVar 'ww0' :type Tuple d: Tuple c: T0 end end)))
+                        :right (TypedVar 'q' :type T0))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedInfix 'is' :type Bool
+                          :left (TypedSelect 'd' :type Tuple c: T0 end
+                            :target (TypedVar 'ww0' :type Tuple d: Tuple c: T0 end end))
+                          :right (TypedVar 'w' :type Tuple c: TS end))
+                      )))))))
+        )))
+    (TypedLetValue 'oo' :type Option some with Tuple p: OS end end
+      :value (TypedOption 'some' :type Option some with Tuple p: OS end end
+        :payload (TypedTuple :type Tuple p: OS end
+          :elements (
+            (TypedVar 'o' :type OS)
+          ))))
+    (TypedLetValue 'oo0' :type Option some with Tuple p: O0 end end
+      :value (TypedVar 'oo' :type Option some with Tuple p: OS end end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'nested option: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedSelect 'p' :type T0
+                    :target (TypedVariantAssert 'some' :type Tuple Int p: T0 end
+                      :target (TypedSelect 'p' :type O0
+                        :target (TypedVariantAssert 'some' :type Tuple Int p: O0 end
+                          :target (TypedVar 'oo0' :type Option some with Tuple p: O0 end end)))))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedInfix 'is' :type Bool
+                      :left (TypedSelect 'p' :type T0
+                        :target (TypedVariantAssert 'some' :type Tuple Int p: T0 end
+                          :target (TypedSelect 'p' :type O0
+                            :target (TypedVariantAssert 'some' :type Tuple Int p: O0 end
+                              :target (TypedVar 'oo0' :type Option some with Tuple p: O0 end end)))))
+                      :right (TypedVar 'q' :type T0))
+                  )))))
+        )))
+    (TypedLetValue 'v' :type Variant k: TS j: Int end
+      :value (TypedVariant 'k' :type Variant k: TS j: Int end
+        :payload (TypedVar 'ts' :type TS)))
+    (TypedLetValue 'v0' :type Variant k: T0 j: Int end
+      :value (TypedVar 'v' :type Variant k: TS j: Int end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'variant: ' :type String)
+            :right (TypedCase :type String
+              :target (TypedVar 'v0' :type Variant k: T0 j: Int end)
+              :branches (
+                (TypedCaseBranch tags=(k) :binder 'z'
+                  :body (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedVar 'show' :type Fun(t: T0): String)
+                      :args (
+                        (TypedVar 'z' :type T0)
+                      ))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString ' ' :type String)
+                      :right (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedInfix 'is' :type Bool
+                            :left (TypedVar 'z' :type T0)
+                            :right (TypedVar 'q' :type T0))
+                        )))))
+              )
+              :else (TypedString '' :type String)))
+        )))
+    (TypedLetValue 'arr' :type Array(T0)
+      :value (TypedArray :type Array(T0)
+        :elements (
+          (TypedVar 'p0' :type T0)
+        )))
+    (TypedLetValue 'cell' :type Tuple var c: T0 end
+      :value (TypedTuple :type Tuple var c: T0 end
+        :elements (
+          (TypedVar 'q' :type T0)
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'c' :type T0
+          :target (TypedVar 'cell' :type Tuple var c: T0 end))
+        :value (TypedVar 'p0' :type T0)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'stored: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedIndex :type T0
+                    :target (TypedVar 'arr' :type Array(T0))
+                    :index (TypedInt 0 :type Int))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'show' :type Fun(t: T0): String)
+                    :args (
+                      (TypedSelect 'c' :type T0
+                        :target (TypedVar 'cell' :type Tuple var c: T0 end))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedInfix 'is' :type Bool
+                          :left (TypedIndex :type T0
+                            :target (TypedVar 'arr' :type Array(T0))
+                            :index (TypedInt 0 :type Int))
+                          :right (TypedVar 'q' :type T0))
+                      )))))))
+        )))
+    (TypedLetValue 'first' :type All(A :: TYPE) Fun(p: Tuple c: A end): A
+      :value (TypedFun :params (('p' : Tuple c: A end)) :type All(A :: TYPE) Fun(p: Tuple c: A end): A
+        :body (TypedSelect 'c' :type A
+          :target (TypedVar 'p' :type Tuple c: A end))))
+    (TypedLetValue 'firstF' :type All(A :: TYPE) Fun(p: Tuple c: A end): A
+      :value (TypedVar 'first' :type All(A :: TYPE) Fun(p: Tuple c: A end): A))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'generic: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedApp :type T0
+                    :func (TypedTypeApp [T0] :type Fun(p: Tuple c: T0 end): T0
+                      :func (TypedVar 'firstF' :type All(A :: TYPE) Fun(p: Tuple c: A end): A))
+                    :args (
+                      (TypedVar 'w0' :type Tuple c: T0 end)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedInfix 'is' :type Bool
+                      :left (TypedApp :type T0
+                        :func (TypedTypeApp [T0] :type Fun(p: Tuple c: T0 end): T0
+                          :func (TypedVar 'firstF' :type All(A :: TYPE) Fun(p: Tuple c: A end): A))
+                        :args (
+                          (TypedVar 'w0' :type Tuple c: T0 end)
+                        ))
+                      :right (TypedVar 'q' :type T0))
+                  )))))
+        )))
+    (TypedLetValue 'firstB' :type All(A <: T0) Fun(p: Tuple c: A end): A
+      :value (TypedFun :params (('p' : Tuple c: A end)) :type All(A <: T0) Fun(p: Tuple c: A end): A
+        :body (TypedSelect 'c' :type A
+          :target (TypedVar 'p' :type Tuple c: A end))))
+    (TypedLetValue 'firstBF' :type All(A <: T0) Fun(p: Tuple c: A end): A
+      :value (TypedVar 'firstB' :type All(A <: T0) Fun(p: Tuple c: A end): A))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'generic, bounded: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedApp :type T0
+                    :func (TypedTypeApp [T0] :type Fun(p: Tuple c: T0 end): T0
+                      :func (TypedVar 'firstBF' :type All(A <: T0) Fun(p: Tuple c: A end): A))
+                    :args (
+                      (TypedVar 'w0' :type Tuple c: T0 end)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'show' :type Fun(t: T0): String)
+                  :args (
+                    (TypedApp :type TS
+                      :func (TypedTypeApp [TS] :type Fun(p: Tuple c: TS end): TS
+                        :func (TypedVar 'firstBF' :type All(A <: T0) Fun(p: Tuple c: A end): A))
+                      :args (
+                        (TypedVar 'w' :type Tuple c: TS end)
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'dynamic: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(t: T0): String)
+                :args (
+                  (TypedApp :type T0
+                    :func (TypedTypeApp [T0] :type Fun(d: T): T0
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [T0] :type Fun(a: T0): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'p0' :type T0)
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'show' :type Fun(t: T0): String)
+                  :args (
+                    (TypedApp :type T0
+                      :func (TypedTypeApp [T0] :type Fun(d: T): T0
+                        :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                          :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                      :args (
+                        (TypedApp :type T
+                          :func (TypedTypeApp [TS] :type Fun(a: TS): T
+                            :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                              :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                          :args (
+                            (TypedVar 'ts' :type TS)
+                          ))
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedVar 'p0' :type T0))
+    (TypedExprStmt
+      :expr (TypedVar 'w0' :type Tuple c: T0 end))
+  ))

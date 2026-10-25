@@ -1,0 +1,63 @@
+(* Upcasts of containers (options, lists, tuples, variants) whose component goes from a type whose values may be views
+   of subtypes' values (C: proxies, docs/c-representation.md §5.8) to one whose values are never views (a tuple of
+   scalars): the component is the original at its new type, read, compared, stored, and passed on as such, and the
+   containers keep their identity *)
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+Let TB = Tuple s: String n: Int x: Big end;
+Let TS = Tuple s: String n: Int x: Small end;
+Let T0 = Tuple s: String n: Int end;
+let tb: TB = tuple let s = "hello" let n = 7 let x = record a = 1 b = 2 end end;
+let ts: TS = tb;
+let q: T0 = tb;
+let show(t: T0): String = t.s <> " " <> conv.int(t.n);
+
+(* An option of one case *)
+Let OS = Option some with p: TS end end;
+Let O0 = Option some with p: T0 end end;
+let o: OS = option some of OS with let p = ts end;
+let o0: O0 = o;
+let p0: T0 = o0!some.p;
+print("option: " <> show(p0) <> " " <> conv.bool(p0 is q) <> " " <> conv.bool(p0 is tb) <> " " <> conv.bool(o0 is o));
+print("option, case: " <> case o0 when some with c then show(c.p) end);
+
+(* A list *)
+Let Rec L(A::TYPE) = Option nil cons with head: A tail: L(A) end end;
+let l: L(TS) = option cons of L(TS) with let head = ts let tail = option nil of L(TS) end end;
+let l0: L(T0) = l;
+print("list: " <> show(l0!cons.head) <> " " <> conv.bool(l0!cons.head is q) <> " " <> conv.bool(l0 is l));
+
+(* Tuples, one and two levels deep *)
+let w: Tuple c: TS end = tuple let c = ts end;
+let w0: Tuple c: T0 end = w;
+print("tuple: " <> show(w0.c) <> " " <> conv.bool(w0.c is q) <> " " <> conv.bool(w0 is w));
+let ww: Tuple d: Tuple c: TS end end = tuple let d = w end;
+let ww0: Tuple d: Tuple c: T0 end end = ww;
+print("nested tuple: " <> show(ww0.d.c) <> " " <> conv.bool(ww0.d.c is q) <> " " <> conv.bool(ww0.d is w));
+let oo: Option some with p: OS end end = option some of Option some with p: OS end end with let p = o end;
+let oo0: Option some with p: O0 end end = oo;
+print("nested option: " <> show(oo0!some.p!some.p) <> " " <> conv.bool(oo0!some.p!some.p is q));
+
+(* A variant's payload *)
+let v: Variant k: TS j: Int end = variant k of Variant k: TS j: Int end with ts end;
+let v0: Variant k: T0 j: Int end = v;
+print("variant: " <> case v0 when k with z then show(z) <> " " <> conv.bool(z is q) else "" end);
+
+(* Stored, passed to generic code, and through dynamic values *)
+let arr: Array(T0) = array of p0 end;
+let cell: Tuple var c: T0 end = tuple let var c = q end;
+cell.c := p0;
+print("stored: " <> show(arr[0]) <> " " <> show(cell.c) <> " " <> conv.bool(arr[0] is q));
+let first(A::TYPE p: Tuple c: A end): A = p.c;
+let firstF: All(A::TYPE p: Tuple c: A end) A = first;
+print("generic: " <> show(firstF(:T0 w0)) <> " " <> conv.bool(firstF(:T0 w0) is q));
+let firstB(A <: T0 p: Tuple c: A end): A = p.c;
+let firstBF: All(A <: T0 p: Tuple c: A end) A = firstB;
+print("generic, bounded: " <> show(firstBF(:T0 w0)) <> " " <> show(firstBF(:TS w)));
+print("dynamic: " <> show(dynamic.be(:T0 dynamic.new(:T0 p0))) <> " " <> show(dynamic.be(:T0 dynamic.new(:TS ts))));
+p0;
+w0

@@ -223,8 +223,10 @@ prototype proxies instead, which kept every value one pointer, and measured them
 
 - A tuple or option type *may be proxied* (`may_be_proxied` in `codegen/layout.py`) when a component may change view
   (a record, variant, auto value, type variable or abstract type, function whose signature mentions one, or a tuple or
-  option that may be proxied), and an option also when it has two or more cases (a subtype may number them
-  differently). The printer reads such a value's components through `quest_is_proxy` checks; components that cannot
+  option that may be proxied) or may hold a proxy (any tuple, or an option with a payload; added after A3, under
+  `ABI_VERSION` 32, so that a container upcast whose component goes to a type that is never a proxy converts the
+  component through a proxy of the container), and an option also when it has two or more cases (a subtype may number
+  them differently). The printer reads such a value's components through `quest_is_proxy` checks; components that cannot
   change view are read from the original as they are (`quest_unproxy`), as are tuples and options the function made
   itself. A value of any other type is never a proxy: an upcast to such a type unwraps one, and the runtime copies
   rather than proxies where the target type may not be proxied (a closure whose C signature changes with a generic
@@ -270,7 +272,7 @@ printer prints what it is given ([ir.md](ir.md) §8.3, §8.5).
 - **Proxies:** reads of tuple and option components, option tags and payloads, writes of tuple `var` components and
   their addresses, and `is` record their access (`direct`, `original`, `proxy`, printed `via ...`), with the
   "made by this function" rule applied by the pass; casts to types that cannot be proxies are `unproxy` plans.
-  `may_be_proxied` is unchanged, so it stays consistent with `quest_may_be_proxied`.
+  `may_be_proxied` was unchanged by A3 (it was widened afterwards, with `quest_may_be_proxied`, A2's notes).
 - **Autos and inspect:** `bounded_param` moved to the pass. An auto value of a bounded witness made by generic code
   copies its payload with `view` fields from the bound to the witness (the printer converted the payload tuple in
   place with `quest_convert`, which also changed the view of a tuple the program still held). Each inspect case

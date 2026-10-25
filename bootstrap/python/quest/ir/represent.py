@@ -255,7 +255,12 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
     if s_held.kind == t_held.kind == "variant":
         index = {case.name: i for i, case in enumerate(t_held.cases)}
         if all(index.get(case.name) == i for i, case in enumerate(s_held.cases)):
-            return None
+            if not _variant_payloads_change(s_held, t_held):
+                return None
+            # A payload changes view (a record's view, a tuple or option that may be a proxy where the supertype's
+            # cannot be): converted by the runtime, which converts the payload (a variant is a value, so nothing is
+            # shared)
+            return ir.Plan("view", s_held.structure, t_held.structure)
         if _variant_subtype(s_held, t_held):
             return ir.Plan("variant_tags", source, target)
         # From a bounded type parameter's view at its bound back to the type the caller holds it at: by the runtime,
@@ -284,9 +289,24 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
     raise UnsupportedConversion(f"converting a value of type {source} ({cs}) to {target} ({ct})")
 
 
+def _variant_payloads_change(s: Shape, t: Shape) -> bool:
+    """Whether a payload of a variant of shape s changes representation as one of t's (a supertype's with the same
+    case indices): a payload is a QVal word, so boxing changes nothing."""
+    payloads = {c.name: c.shape for c in t.cases}
+    for c in s.cases:
+        other = payloads.get(c.name)
+        if c.shape is None or other is None:
+            continue
+        p = plan(c.shape.type, other.type)
+        if p is not None and p.kind not in ("box", "unbox"):
+            return True
+    return False
+
+
 def _option_cases_agree(s: Shape, t: Shape) -> bool:
     """Whether an option of shape s is laid out as one of shape t (a supertype): each of its cases has the same index
-    in t, with a payload that converts by a cast at most."""
+    in t, with a payload that converts by a cast at most (not an unproxy: a payload component that may be a proxy,
+    used where its type cannot be one, must be converted, through a proxy of the option)."""
     for i, case in enumerate(s.cases):
         if i >= len(t.cases) or t.cases[i].name != case.name:
             return False
@@ -295,7 +315,7 @@ def _option_cases_agree(s: Shape, t: Shape) -> bool:
             return False
         if case.shape is not None:
             p = plan(case.shape.type, tc.shape.type)
-            if p is not None and p.kind not in ("cast", "unproxy"):
+            if p is not None and p.kind != "cast":
                 return False
     return True
 

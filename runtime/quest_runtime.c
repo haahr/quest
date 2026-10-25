@@ -1206,6 +1206,8 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
 static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor *d);
 static const QTypeDescriptor *quest_concrete_representation(const QTypeDescriptor *d);
 
+static bool quest_proxies_agree(const QTypeDescriptor *from, const QTypeDescriptor *to);
+
 /* The tuple or option descriptor a descriptor stands for (looking through stored and abstract types) */
 static const QTypeDescriptor *quest_proxied_type(const QTypeDescriptor *d) {
     return quest_concrete_representation(quest_stored_representation(d));
@@ -1220,7 +1222,7 @@ void *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDe
     }
     from = quest_proxied_type(from);
     to = quest_proxied_type(to);
-    if (from == to || quest_layout_equivalent(from, to)) return (void *)orig;
+    if (from == to || (quest_layout_equivalent(from, to) && quest_proxies_agree(from, to))) return (void *)orig;
     QProxy *proxy = (QProxy *)quest_alloc(sizeof(QProxy));
     proxy->orig = orig;
     proxy->stored = from;
@@ -1327,8 +1329,10 @@ QVal quest_proxy_option_element(const void *p, size_t i) {
 }
 
 /* Whether a value of type d (a tuple or option) may be a proxy, as the compiler decides it for the type
- * (may_be_proxied in codegen/layout.py), or less often: a tuple one of whose components is view-sensitive, an option
- * of two or more cases or one of whose payloads' components is. A component is view-sensitive when values of its
+ * (may_be_proxied in codegen/layout.py), or less often: a tuple one of whose components may change view, an option
+ * of two or more cases or one of whose payloads' components may. A component may change view when it is
+ * view-sensitive or may hold a proxy (a tuple, or an option with a payload, whose subtypes' values may be proxies
+ * where its own are not). A component is view-sensitive when values of its
  * subtypes may be represented differently at its type: a record, variant, or auto value, a value stored as a type
  * parameter, a function whose signature mentions a view-sensitive type, or a tuple or option that may be a proxy.
  * (Abstract types, which the compiler counts as view-sensitive, are not here: the runtime cannot tell a module's
@@ -1337,6 +1341,23 @@ QVal quest_proxy_option_element(const void *p, size_t i) {
 #define Q_PROXIED_TRAIL_MAX 64
 
 static bool quest_view_sensitive_rec(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth);
+
+/* Whether a component of type d may hold a proxy though values of d itself may not be: a tuple, or an option with a
+ * payload (holds_proxies in codegen/layout.py) */
+static bool quest_holds_proxies(const QTypeDescriptor *d) {
+    if (d == NULL) return false;
+    if (d->kind == QTYPE_KIND_TUPLE) return true;
+    if (d->kind != QTYPE_KIND_OPTION) return false;
+    const QVariantTypeDescriptor *meta = (const QVariantTypeDescriptor *)d->extra;
+    for (size_t i = 0; meta != NULL && i < meta->case_count; ++i) {
+        if (meta->cases[i].payload_type != NULL) return true;
+    }
+    return false;
+}
+
+static bool quest_component_changes_view(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth) {
+    return quest_holds_proxies(d) || quest_view_sensitive_rec(d, trail, depth);
+}
 
 static bool quest_may_be_proxied_rec(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth) {
     if (d == NULL || depth >= Q_PROXIED_TRAIL_MAX) return false;
@@ -1347,7 +1368,7 @@ static bool quest_may_be_proxied_rec(const QTypeDescriptor *d, const QTypeDescri
     if (d->kind == QTYPE_KIND_TUPLE) {
         const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)d->extra;
         for (size_t i = 0; meta != NULL && i < meta->element_count; ++i) {
-            if (quest_view_sensitive_rec(meta->elements[i].type, trail, depth + 1)) return true;
+            if (quest_component_changes_view(meta->elements[i].type, trail, depth + 1)) return true;
         }
         return false;
     }
@@ -1397,6 +1418,53 @@ static bool quest_view_sensitive_rec(const QTypeDescriptor *d, const QTypeDescri
 static bool quest_may_be_proxied(const QTypeDescriptor *d) {
     const QTypeDescriptor *trail[Q_PROXIED_TRAIL_MAX];
     return quest_may_be_proxied_rec(d, trail, 0);
+}
+
+static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor *d);
+
+/* Whether a tuple or option laid out as `from` can be used as `to` as it is, as far as proxies go: no component, at
+ * any depth through tuples and options, of a type whose values may be proxies is used at a type whose values never
+ * are (which code reads directly). The value itself may be used at such a type: its original serves, as no component
+ * of the type changes view. Recursive descriptors are compared coinductively. */
+static bool quest_proxies_agree_rec(const QTypeDescriptor *from, const QTypeDescriptor *to, QSubtypePair *trail,
+                                    size_t depth) {
+    from = quest_stored_representation(from);
+    to = quest_stored_representation(to);
+    if (from == to || from == NULL || to == NULL || depth >= Q_PROXIED_TRAIL_MAX) return true;
+    if (to->kind != QTYPE_KIND_TUPLE && to->kind != QTYPE_KIND_OPTION) return true;
+    if (from->kind != to->kind) return true;
+    for (size_t i = 0; i < depth; ++i) {
+        if (trail[i].sub == from && trail[i].super_type == to) return true;
+    }
+    if (depth > 0 && !quest_may_be_proxied(to) && quest_may_be_proxied(from)) return false;
+    trail[depth] = (QSubtypePair){ from, to };
+    if (to->kind == QTYPE_KIND_TUPLE) {
+        const QTupleTypeDescriptor *f_meta = (const QTupleTypeDescriptor *)from->extra;
+        const QTupleTypeDescriptor *t_meta = (const QTupleTypeDescriptor *)to->extra;
+        for (size_t i = 0; f_meta != NULL && t_meta != NULL && i < f_meta->element_count && i < t_meta->element_count; ++i) {
+            if (!quest_proxies_agree_rec(f_meta->elements[i].type, t_meta->elements[i].type, trail, depth + 1)) return false;
+        }
+        return true;
+    }
+    const QVariantTypeDescriptor *f_meta = (const QVariantTypeDescriptor *)from->extra;
+    const QVariantTypeDescriptor *t_meta = (const QVariantTypeDescriptor *)to->extra;
+    for (size_t i = 0; f_meta != NULL && t_meta != NULL && i < f_meta->case_count; ++i) {
+        const QVariantCaseDescriptor *fc = &f_meta->cases[i];
+        for (size_t j = 0; j < t_meta->case_count; ++j) {
+            const QVariantCaseDescriptor *tc = &t_meta->cases[j];
+            if (fc->name == NULL || tc->name == NULL || strcmp(fc->name, tc->name) != 0) continue;
+            if (fc->payload_type != NULL && tc->payload_type != NULL &&
+                !quest_proxies_agree_rec(fc->payload_type, tc->payload_type, trail, depth + 1)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool quest_proxies_agree(const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    QSubtypePair trail[Q_PROXIED_TRAIL_MAX];
+    return quest_proxies_agree_rec(from, to, trail, 0);
 }
 
 /* A copy of v (a tuple or option of type `from`, a proxy or not) laid out as `to`, which values are never proxies of:
@@ -1535,7 +1603,7 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
             /* Viewed at `to` through a proxy, not copied (the original's identity and var components are kept),
              * where values of `to` may be proxies */
             if (v.p == NULL || to->extra == NULL) return v;
-            if (!quest_is_proxy(v.p) && quest_layout_equivalent(from, to)) return v;
+            if (!quest_is_proxy(v.p) && quest_layout_equivalent(from, to) && quest_proxies_agree(from, to)) return v;
             if (quest_may_be_proxied(to)) return (QVal){ .p = quest_make_proxy(v.p, from, to) };
             if (quest_is_proxy(v.p) && quest_layout_equivalent(quest_proxy_of(v.p)->stored, to)) {
                 return (QVal){ .p = (void *)quest_proxy_of(v.p)->orig };

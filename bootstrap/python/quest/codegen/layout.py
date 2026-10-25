@@ -169,17 +169,30 @@ def shape_location_representation(s: Shape) -> str:
 def may_be_proxied(s: Shape) -> bool:
     """Whether a value of shape s, a tuple or option, may be a proxy (docs/c-representation.md §5.8): a view of an
     object of a subtype at which some component changes view, so that reading a component may have to convert it.
-    A tuple may be when one of its components is view-sensitive (see _view_sensitive); an option when it has two or
-    more cases (a subtype numbers them differently) or one of its payloads' components is view-sensitive. Code
+    A tuple may be when one of its components may change view (see changes_view); an option when it has two or
+    more cases (a subtype numbers them differently) or one of its payloads' components may change view. Code
     reading a component of such a value checks for a proxy; a value of any other type is never one."""
     return s.kind in ("tuple", "option") and layout_of(s).proxied
 
 
 def changes_view(s: Shape) -> bool:
-    """Whether a component of shape s may change view when its tuple or option is upcast (see _view_sensitive): one
-    that may not is read through a proxy from the original's slot as it is (every slot being a word, at the same
-    offset)."""
-    return _view_sensitive(s, set())
+    """Whether a component of shape s may change view when its tuple or option is upcast: it is view-sensitive (see
+    _view_sensitive), or an aggregate a subtype's value of which may be a proxy where a value of s is never one (see
+    _holds_proxies). One that may not is read through a proxy from the original's slot as it is (every slot being a
+    word, at the same offset)."""
+    return _component_changes_view(s, set())
+
+
+def _holds_proxies(s: Shape) -> bool:
+    """Whether a component of shape s may hold a proxy as a subtype's value, though a value of s itself may not be a
+    proxy: a tuple (a prefix of a tuple with a component that changes view), or an option with a payload (whose
+    payload's components may be subtypes'). Upcasting a tuple or option holding such a component to a type at which
+    it is never a proxy converts it, so its tuple or option may be a proxy too."""
+    return s.kind == "tuple" or (s.kind == "option" and any(c.shape is not None for c in s.cases))
+
+
+def _component_changes_view(s: Shape, seen: set[int]) -> bool:
+    return _holds_proxies(s) or _view_sensitive(s, seen)
 
 
 def _view_sensitive(s: Shape, seen: set[int]) -> bool:
@@ -207,12 +220,12 @@ def _may_be_proxied(s: Shape, seen: set[int]) -> bool:
         return False
     seen.add(id(s))
     if s.kind == "tuple":
-        return any(_view_sensitive(c.shape, seen) for c in s.components)
+        return any(_component_changes_view(c.shape, seen) for c in s.components)
     if s.kind == "option":
         if len(s.cases) >= 2:
             return True
         return any(
-            c.shape is not None and any(_view_sensitive(pc.shape, seen) for pc in c.shape.components)
+            c.shape is not None and any(_component_changes_view(pc.shape, seen) for pc in c.shape.components)
             for c in s.cases if c.shape is not None and c.shape.kind == "tuple"
         )
     return False
