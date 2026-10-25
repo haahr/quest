@@ -42,25 +42,19 @@ from quest.ir import nodes as ir
 from quest.ir.represent import held_shape
 from quest.ir.shapes import shape
 from quest.ir.walk import statement_bodies
+from quest.ir.written import package_text
 from quest.types import (
     QAbstractType,
     QAllKind,
-    QPathType,
     QPowerKind,
     QRecordField,
     QRecordType,
-    QTupleField,
     QTupleType,
-    QTupleTypeBinding,
-    QTupleTypeFormal,
     QType,
     QTypeFun,
     QTypeKind,
     QTypeVar,
-    QAllType,
-    QFunType,
     auto_payload_type,
-    strip_aliases,
 )
 
 
@@ -85,25 +79,6 @@ def echo_value_kind(t: QType) -> str:
     if s.kind == "typevar" or (s.kind == "abstract" and not isinstance(s.structure, QTypeApp)):
         return "hidden"
     return _BASE_VALUE_KINDS.get(s.kind, "")
-
-
-def _existential_tuple_display(t: QTupleType) -> str:
-    """An existential tuple (a package) as the interpreter prints it: its components hidden."""
-    parts: list[str] = []
-    for comp in t.components:
-        if isinstance(comp, QTupleTypeFormal):
-            parts.append(f"<Hidden>::{comp.bound}")
-        elif isinstance(comp, QTupleTypeBinding):
-            parts.append(f"Let {comp.name} = {comp.type_val}")
-        elif isinstance(comp, QTupleField):
-            if isinstance(comp.type_val, (QPathType, QTypeVar)):
-                elem = "<hidden>"
-            elif isinstance(comp.type_val, (QFunType, QAllType)):
-                elem = "<fun>"
-            else:
-                elem = "<val>"
-            parts.append(f"{comp.name}={elem}" if comp.name else elem)
-    return f"tuple {' '.join(parts)} end" if parts else "tuple end"
 
 
 def free_type_vars(t: QType, wanted) -> list:
@@ -309,11 +284,11 @@ class _Describer:
             case ir.Try(exception=e):
                 self.handler_vars.add(id(e))
             case ir.Echo(value=value, type=t, prefix=prefix):
-                bare = strip_aliases(t)
-                if prefix and isinstance(bare, QTupleType) and bare.is_existential:
+                text = package_text(t) if prefix else None
+                if text is not None:
                     # A package's components are hidden, so its line is known statically (as the interpreter prints
                     # it), from its type as written
-                    return ir.EchoText(prefix + _existential_tuple_display(bare))
+                    return ir.EchoText(prefix + text)
                 if not echo_value_kind(t):
                     closed = not free_type_vars(t, lambda sid: sid in self.scope)
                     s.descriptor = self.static(t, echo=True) if closed else self.describe(t)

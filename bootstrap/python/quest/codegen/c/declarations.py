@@ -9,19 +9,18 @@ from typing import Any, Callable, Optional, Sequence
 from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import may_be_stored_as_subtype
 from quest.ir.shapes import Shape, shape
+from quest.ir.written import echo_children, tuple_type_components
 from quest.codegen.c.types import (
     c_string_literal,
     closure_fn_ptr_type,
     descriptor_form,
     DescriptorForm,
-    echo_children,
     echo_descriptor_form,
     MissingDescriptorError,
     qval_unwrap,
     qval_wrap,
     record_struct_name,
     RecordNamingContext,
-    tuple_type_components,
 )
 from quest.codegen.descriptors import fun_descriptor_tag
 from quest.codegen.layout import (

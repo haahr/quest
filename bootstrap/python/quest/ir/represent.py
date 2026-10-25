@@ -19,9 +19,9 @@ auto values of bounded witnesses are stored and how inspect cases get their comp
 plans of type applications, and, in its last step (ir/slots.py), boxing at slots and reads through proxies.
 
 Every decision is made on shapes (ir/shapes.py). The variables the pass makes have types as written, with their alias
-names, which the IR prints (docs/ir.md §5): the types of the components of a type as written (written_structure), and
-the signatures of function types as written, whose type parameters' symbols are those the call's type arguments and
-the callee's parts refer to (a shape's are its canonical form's, named afresh).
+names, which the IR prints (docs/ir.md §5), found through ir/written.py: the types of the components of a type as
+written (written_structure), and the signatures of function types as written, whose type parameters' symbols are
+those the call's type arguments and the callee's parts refer to (a shape's are its canonical form's, named afresh).
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
 from quest.ir.slots import decide_slots, tuple_access
 from quest.ir.walk import statement_bodies
-from quest.types.canonical import collect_fun_quantifiers, normalize_type, resolve_type_bound
+from quest.ir.written import array_element as written_element, fun_signature, quantified, written_structure
 from quest.types import (
     QAbstractType,
     QFunType,
@@ -74,24 +74,12 @@ def held_shape(t: QType, kind: str) -> Optional[Shape]:
     return held if held.kind == kind else None
 
 
-def written_structure(t: QType, kind: str) -> Optional[QType]:
-    """t as written with its outermost constructor exposed, if t's shape is of the kind ("tuple", "array",
-    "exception", or one of the kinds a type parameter is viewed at its bound at, for which it is the bound): None
-    otherwise. The types of its components, with their alias names, are the types of the variables the pass makes for
-    them, which the IR prints; a shape's components have only their canonical types."""
-    s = shape(t)
-    held = resolved_shape(s) if kind in _VIEWED_KINDS else s
-    if held.kind != kind:
-        return None
-    return normalize_type(resolve_type_bound(t) if held is not s else t)
-
-
 def array_element(t: QType) -> QType:
     """The element type, as written, of an array type."""
-    written = written_structure(t, "array")
-    if written is None:
+    element = written_element(t)
+    if element is None:
         raise UnsupportedConversion(f"an array operation on a value of type {t}")
-    return written.element_type
+    return element
 
 
 def may_be_stored_as_subtype(s: Shape) -> bool:
@@ -193,8 +181,8 @@ def shared_signatures(source: QType, target: QType) -> tuple[tuple, QType, tuple
     to source's, so that they can be compared. A renamed parameter keeps target's bound where it is stronger than
     source's ([TIncl Π], types/subtyping.py): target's values of it are held viewed at its bound, source's at theirs,
     so that the plans between them convert the views."""
-    s_quants, s_inner = collect_fun_quantifiers(source)
-    t_quants, t_inner = collect_fun_quantifiers(target)
+    s_quants, s_inner = quantified(source)
+    t_quants, t_inner = quantified(target)
     if s_quants and len(s_quants) == len(t_quants):
         renamed = {
             tq.symbol_id: QTypeVar(name=sq.name, symbol_id=sq.symbol_id, bound=sq.bound)
@@ -244,8 +232,8 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
         return None
     # The thunk takes target's type parameters, which the fields' types name by source's symbols (shared_signatures)
     # or target's own
-    s_quants, _ = collect_fun_quantifiers(source)
-    t_quants, _ = collect_fun_quantifiers(target)
+    s_quants, _ = quantified(source)
+    t_quants, _ = quantified(target)
     thunk_symbols = tuple(
         (tq.symbol_id,) + ((s_quants[k].symbol_id,) if k < len(s_quants) else ()) for k, tq in enumerate(t_quants)
     )
@@ -485,11 +473,11 @@ def type_app_plans(orig_t: QType, type_args: tuple[QType, ...],
     function's generic one at the type arguments (None for var and out parameters), and the result back. The type
     parameters the type arguments do not bind stand for target_t's own, the thunk's, whose symbols are returned too
     (ir.TypeApp.thunk_symbols)."""
-    quants, inner = collect_fun_quantifiers(orig_t)
+    quants, inner = quantified(orig_t)
     instantiation = {q.symbol_id: t for q, t in zip(quants, type_args)}
     if not isinstance(inner, QFunType):
         return (plan(inner, target_t, (instantiation, False)),), ()
-    t_quants, t_inner = collect_fun_quantifiers(target_t)
+    t_quants, t_inner = quantified(target_t)
     for oq, tq in zip(quants[len(type_args):], t_quants):
         instantiation[oq.symbol_id] = QTypeVar(name=tq.name, symbol_id=tq.symbol_id, bound=tq.bound)
     t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
@@ -500,15 +488,6 @@ def type_app_plans(orig_t: QType, type_args: tuple[QType, ...],
     )
     plans = params + (plan(inner.result_type, t_result, (instantiation, False)),)
     return plans, tuple((tq.symbol_id,) for tq in t_quants)
-
-
-def fun_signature(t: QType) -> tuple[tuple, QType]:
-    """The parameters and result type, as written, of a (possibly polymorphic) function type, its type parameters'
-    symbols standing for themselves."""
-    _, inner = collect_fun_quantifiers(t)
-    if isinstance(inner, QFunType):
-        return tuple(inner.params), inner.result_type
-    return (), inner
 
 
 def _type_of(a: ir.Atom) -> QType:
@@ -725,7 +704,7 @@ class _Representer:
         params, result_t = fun_signature(callee_t)
         # A polymorphic callee's parameters at the call's type arguments: an argument is converted to its parameter's
         # type there (a record viewed at the type argument), then to the parameter's generic representation
-        quants, _ = collect_fun_quantifiers(callee_t)
+        quants, _ = quantified(callee_t)
         instantiation = {q.symbol_id: t for q, t in zip(quants, call.type_args)}
         args = []
         for i, a in enumerate(call.args):

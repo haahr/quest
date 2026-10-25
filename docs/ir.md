@@ -116,6 +116,12 @@ names are made. A canonical form names its binders afresh, so a polymorphic func
 names) for the interpreter and for printing; IR nodes that print types (echo, error messages) carry the original
 type alongside the shape.
 
+**Types as written.** Every IR variable's type is the type as written, by design, so that dumps and echo show the
+program's alias names (`let p: Point`). Passes decide by shapes; where one needs the written structure of such a
+type (a component's type for a variable it makes, a function type's quantifiers and signature, whose symbols a
+call's type arguments refer to, or what echo writes), it asks `ir/written.py`, the one module below lowering that
+looks inside types as written.
+
 ### 4.2. Representations
 
 From the represented stage on (§9), every binder also has a **representation**, the ABI's class for its values:

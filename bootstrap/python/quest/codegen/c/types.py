@@ -30,34 +30,27 @@ from quest.codegen.layout import (
     type_tag,
 )
 from quest.ir.shapes import Shape, shape
+from quest.ir.written import echo_children, echo_head, recursive_identity, tuple_type_components
 from quest.codegen.symbols import mangle_ident
 from quest.types import (
     short_type_name,
     QAbstractType,
-    QAliasType,
     QAllType,
     QArrayType,
     QAutoType,
     QExceptionType,
     QExternalType,
     QFunType,
-    QOptionType,
     QPathType,
     QPowerKind,
-    QRecGroupType,
-    QRecType,
     QRecordType,
     QTupleType,
-    QTupleTypeBinding,
-    QTupleTypeFormal,
     QType,
     QTypeApp,
     QTypeFun,
     QTypeVar,
     QVarType,
     QOutType,
-    QVariantType,
-    unalias,
 )
 
 
@@ -410,63 +403,6 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
     return f"{shape_representation(s.result)} (*)({', '.join(param_types)})"
 
 
-def tuple_type_components(t: QTupleType) -> list[tuple[int, str]]:
-    """A tuple type's type components as echo writes them, as the interpreter does (_format_aggregate), each with
-    the number of value elements before it."""
-    components: list[tuple[int, str]] = []
-    position = 0
-    for comp in t.components:
-        if isinstance(comp, QTupleTypeFormal):
-            components.append((position, f"<Hidden>::{comp.bound}"))
-        elif isinstance(comp, QTupleTypeBinding):
-            components.append((position, f"Let {comp.name} = {comp.type_val}"))
-        else:
-            position += 1
-    return components
-
-
-def _echo_head(t: QType) -> QType:
-    """The type whose structure echo writes a value of type t by: a recursive type unfolded, through its alias if it
-    has one, so that its recursive occurrences and the aliases in it keep their names, as the interpreter unfolds
-    recursive types as it goes (_exposed_type in interpreter/treewalk.py)."""
-    t = t.prune() if hasattr(t, "prune") else t
-    if isinstance(t, QAliasType) and isinstance(t.target, (QRecType, QRecGroupType)):
-        t = t.unfold_lazily()
-    t = unalias(t)
-    if isinstance(t, QRecType):
-        t = t.unfold_lazily()
-    return unalias(t)
-
-
-def _recursive_identity(t: QType) -> Optional[int]:
-    """What tells recursive types apart for _echo_key: the recursive type t is or names, or None if it is not one."""
-    t = t.prune() if hasattr(t, "prune") else t
-    while isinstance(t, QAliasType):
-        if isinstance(t.target, (QRecType, QRecGroupType)):
-            return id(t.target)
-        t = t.target
-    return id(t) if isinstance(t, QRecType) else None
-
-
-def echo_children(t: QType) -> dict[str, QType]:
-    """The types of the parts of a value of type t that echo writes through descriptors of their own, keyed as the
-    emitted descriptor of t refers to them: a tuple's value elements by index, a record's fields, options', and
-    variants' cases by name, and an array's elements by "". A recursive type's are its unfolding's (_echo_head); a
-    type application has none here: its unfolding is described by its shared descriptor."""
-    t = _echo_head(t)
-    if isinstance(t, QTupleType):
-        return {str(i): f.type_val for i, f in enumerate(t.value_fields)}
-    if isinstance(t, QRecordType):
-        return {f.name: f.type_val for f in t.fields}
-    if isinstance(t, QArrayType):
-        return {"": t.element_type}
-    if isinstance(t, QOptionType):
-        return {o.name: o.payload_type for o in t.options if o.payload_type is not None}
-    if isinstance(t, QVariantType):
-        return {v.name: v.type_val for v in t.variants if v.type_val is not None}
-    return {}
-
-
 def _echo_key(t: QType, recursive: tuple[int, ...] = ()) -> Optional[str]:
     """What tells apart the echo-only descriptors of t: the type components that echo writes for it and its parts,
     with their alias names, or None if it writes none (and t's shared descriptor will do).
@@ -474,12 +410,12 @@ def _echo_key(t: QType, recursive: tuple[int, ...] = ()) -> Optional[str]:
     recursive holds the recursive types being unfolded around t: an occurrence of one adds nothing (its components
     are those already being keyed), which keeps the key finite. Its descriptor, keyed on its own, is the one being
     made where the occurrence is the type keyed, so a recursive type's echo-only descriptor refers to itself."""
-    identity = _recursive_identity(t)
+    identity = recursive_identity(t)
     if identity is not None:
         if identity in recursive:
             return None
         recursive = (*recursive, identity)
-    head = _echo_head(t)
+    head = echo_head(t)
     own = tuple_type_components(head) if isinstance(head, QTupleType) else []
     parts = [(name, _echo_key(child, recursive)) for name, child in echo_children(head).items()]
     if not own and all(key is None for _, key in parts):
@@ -502,4 +438,4 @@ def echo_descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) 
         return None
     # A record's tag names its struct too, which the copy keeps
     struct = form.struct or (form.tag if form.kind == "record" else "")
-    return replace(form, tag=f"{form.tag}_echo_{text_digest(key)}", struct=struct, display=_echo_head(t))
+    return replace(form, tag=f"{form.tag}_echo_{text_digest(key)}", struct=struct, display=echo_head(t))

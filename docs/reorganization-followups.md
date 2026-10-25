@@ -6,9 +6,9 @@ the reorganization's: golden output and errors change only where a step says so,
 main (`tests/perf/measure.py`, compared by CPU time or interleaved runs on this machine), and a change to the runtime's
 headers or to the C that interfaces pin bumps `ABI_VERSION`.
 
-The goal of phases 2 and 3 is the one stated in [reorganization.md](reorganization.md) §1: below lowering, code reads
-shapes and what lowering recorded, never types as written; and the C printer only spells the IR in C, deciding
-nothing.
+The goal of phases 2 and 3 is the one stated in [reorganization.md](reorganization.md) §1: below lowering, code
+decides by shapes, and looks inside the IR's types as written (which carry the program's alias names) only through
+one module (phase 2, as decided there); and the C printer only spells the IR in C, deciding nothing.
 
 **Not in this plan:** unifying types as written with canonical types. B4 showed that type equality cannot become
 identity in the type checker ([reorganization.md](reorganization.md) §4), so that would be a change to how types are
@@ -91,24 +91,30 @@ clang treat them as loads, gained nothing measurable (1.06 to 1.04), so neither 
 
 ---
 
-## 2. Phase 2: Types as Written, Recorded at Lowering
+## 2. Phase 2: Types as Written
 
-Lowering is the last phase that sees the typed AST, so it records what later passes need from types as written; the
-passes below it read those records and shapes. Each step removes one of the remaining readers
-([reorganization.md](reorganization.md), "Left undone").
+**Decided (October 2026), replacing the plan to record types as written at lowering.** Every IR variable has a type
+as written, by design ([ir.md](ir.md) §4.1), so that dumps and echo show the program's alias names; the remaining
+readers below lowering look inside those types, the IR's own, not the typed AST's. Recording their parts at lowering
+would only copy what the variables carry (and `specialize` would have to substitute the copies), and adapters
+between two variables' function types would still read both signatures. So 2a and 2b instead put every such reading
+behind one module.
 
-**2a. Component types and quantifiers.** The represent pass finds the types, with their alias names, of the variables
-it makes for components (`written_structure`, `array_element`), and the symbols of function types' own type
-parameters (`collect_fun_quantifiers`, recorded on thunks as `thunk_symbols`). Lowering records both on the IR
-operations that need them: the written component types of aggregate constructions, reads, and stores, and the
-quantifier symbols of function types at type applications, adapters, and calls. Done when `ir/represent.py` no longer
-imports `normalize_type`, `resolve_type_bound`, or `collect_fun_quantifiers`, and IR dumps are unchanged.
+**2a and 2b. One module for the IR's types as written.** `ir/written.py` exposes what passes need from a type as
+written: its outermost constructor with its components' written types (`written_structure`, `array_element`), a
+function type's quantifiers and signature (`quantified`, `fun_signature`), whether a type argument is a type operator
+(`is_type_operator`), and what echo writes from one (`package_text`, `echo_head`, `echo_children`,
+`recursive_identity`, `tuple_type_components`). Done when no pass and no part of the C backend calls
+`normalize_type`, `resolve_type_bound`, `collect_fun_quantifiers`, `strip_aliases`, or `unalias` except through it,
+and IR dumps are unchanged.
 
-**2b. Echo.** The describe pass turns an echo of a package into an echo of its text from the type as written, and
-echo-only descriptors take alias names from types as written (`echo_descriptor_form` and `descriptor_form` in
-`codegen/c/types.py`). Lowering records each echo's written form: the text, for a package, and otherwise the written
-type tree whose alias names the descriptor shows (a structure of shapes and names, not a `QType`). Done when the
-describe pass and `codegen/c/types.py` read no type as written for echo, and echo goldens are unchanged.
+**Done.** `written_structure`, `array_element`, and `fun_signature` moved from the represent pass, the package text
+from the describe pass, and the echo helpers from `codegen/c/types.py`; the represent pass, `specialize`, the
+describe pass, the verifier, and the C backend use the module and shapes. Nothing in `ir/` or `codegen/` imports
+those functions but `ir/lower.py`, `ir/shapes.py`, and `ir/written.py`. No output changed. Found on the way and
+recorded in [tasklist.md](tasklist.md): specialization's trigger on tuple parameters tests the type as written, so it
+misses a tuple type reached through an alias or a type application (made shape-based, it specializes functions it did
+not, which needs measuring).
 
 **2c. Imported modules' interfaces.** The printer builds the record types of imported modules from their scopes
 (`build_record_type_from_scope`), and exported functions' C signatures from the interface's types as written

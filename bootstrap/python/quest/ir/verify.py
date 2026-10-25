@@ -328,15 +328,14 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
     value, and is assigned its box); and the slots of aggregates (components being made or stored, locations, cells)
     take records and variants boxed."""
     from quest.codegen.layout import is_boxed_in_slots, representation, slot_representation
-    from quest.ir.represent import fun_signature
+    from quest.ir.written import fun_signature
     from quest.ir.shapes import shape
     from quest.ir.walk import statement_binders, walk_statements
-    from quest.types import OK_TYPE, strip_aliases
 
     problems: list[str] = []
 
     def rep(t) -> Optional[str]:
-        return None if strip_aliases(t) is OK_TYPE else representation(t)
+        return None if shape(t).kind == "ok" else representation(t)
 
     def atom_type(a):
         return a.type if isinstance(a, ir.Var) else a.shape.type

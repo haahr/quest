@@ -16,11 +16,11 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Optional
 
 from quest.codegen.layout import type_identity_key
-from quest.types.canonical import collect_fun_quantifiers
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import statement_bodies
-from quest.types import QFunType, QParam, QTupleType, QType, QTypeFun, strip_aliases
+from quest.ir.written import is_type_operator, quantified
+from quest.types import QFunType, QParam, QTupleType, QType
 
 # The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion (a function of
 # A calling itself at List(A)) would otherwise specialize without end, each clone calling for the next
@@ -54,13 +54,14 @@ def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
     variant, which generic code would box; or a var or out parameter, or a tuple parameter or result, over the
     function's type parameters, whose generic layout differs from the caller's."""
     # A type operator (the argument of a higher-kinded type parameter) is not the type of values, and has no shape
-    if any(not isinstance(strip_aliases(t), QTypeFun) and holds_record_or_variant(shape(t)) for t in type_args):
+    if any(not is_type_operator(t) and holds_record_or_variant(shape(t)) for t in type_args):
         return True
     ids = {tp.symbol_id for tp in f.type_params}
 
     def mentions(t: QType) -> bool:
         return bool(t._fv & ids)
 
+    # A tuple written as such, not through an alias or a type operator's application (docs/tasklist.md)
     for var, mode in f.params:
         if mode != "value" and mentions(var.type):
             return True
@@ -205,7 +206,7 @@ class _Cloner:
         result_t = self.type(f.result_type)
         # The clone's type is made from its parameters and result: the type of the variable naming the original may
         # be elaborated with quantifiers of other symbols than the function's own type parameters
-        _, inner = collect_fun_quantifiers(f.var.type)
+        _, inner = quantified(f.var.type)
         names = [p.name for p in inner.params] if isinstance(inner, QFunType) else []
         if isinstance(inner, QFunType) or params:
             clone_t: QType = QFunType(
