@@ -204,6 +204,15 @@ class TestRepresent(unittest.TestCase):
         # Var components: inspected exactly, sharing the stored components, or a layout error
         self.assertTrue(exact.exact and exact.shared and exact.layout_error)
 
+    def test_type_applications_record_their_thunks_plans(self) -> None:
+        # The instance converts its argument to the generic layout (a cast) and its Int result not at all
+        unit = represent(
+            "Let Rec L(A::TYPE) = Option nil cons with head: A tail: L(A) end end; "
+            "let rec length(A::TYPE l: L(A)): Int = if l?nil then 0 else 1 + length(:A l!cons.tail) end; "
+            "let len: All(l: L(Bool)) Int = length(:Bool); len(option nil of L(Bool) end)"
+        )
+        self.assertEqual([[p and p.kind for p in t.plans] for t in operations(unit, ir.TypeApp)], [["cast", None]])
+
     def test_casts_to_types_that_cannot_be_proxies_unproxy(self) -> None:
         unit = represent(
             "Let Big = Record a: Int b: Int end; let t = tuple let x = record a = 1 b = 2 end let n = 3 end; "

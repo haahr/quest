@@ -66,7 +66,7 @@ from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_modu
 from quest.types.env import Scope
 from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
-from quest.ir.represent import held_shape, plan, shared_signatures
+from quest.ir.represent import held_shape, shared_signatures
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.modules.elaboration import build_record_type_from_scope
@@ -782,9 +782,8 @@ class CPrinter:
             orig_t, clos = member.type, self.atom(member)
         else:
             orig_t, clos = o.callee_type, self.module_member(o.module, o.member)
-        quants, inner = collect_fun_quantifiers(orig_t)
+        _, inner = collect_fun_quantifiers(orig_t)
         descs = [self.descriptor(t) for t in o.type_args]
-        instantiation = {q.symbol_id: t for q, t in zip(quants, o.type_args)}
         self.types.extend((orig_t, result.type))
         if not isinstance(inner, QFunType):
             if o.callee is None and isinstance(o.module, ir.Import):
@@ -792,9 +791,9 @@ class CPrinter:
             else:
                 fn_ptr = closure_fn_ptr_type(orig_t, self.ctx)
                 call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + descs)})"
-            p = plan(inner, result.type, (instantiation, False))
+            p = o.plans[0]
             return call if p is None else self.convert(call, p)
-        thunk, env_struct = self.type_app_thunk(orig_t, result.type, o.type_args)
+        thunk, env_struct = self.type_app_thunk(orig_t, result.type, o.type_args, o.plans)
         env = self.temp(f"{env_struct} *")
         self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}));")
         self.emit(f"{env}->orig = {clos};")
@@ -806,7 +805,9 @@ class CPrinter:
         self.emit(f"{c}->env = (void *){env};")
         return c
 
-    def type_app_thunk(self, orig_t: QType, target_t: QType, type_args) -> tuple[str, str]:
+    def type_app_thunk(self, orig_t: QType, target_t: QType, type_args, plans) -> tuple[str, str]:
+        """The thunk of a type application (and its environment's struct), converting its arguments and result by the
+        plans the represent pass made (ir.TypeApp.plans)."""
         key = ("type_app", type_identity_key(orig_t), type_identity_key(target_t),
                tuple(type_identity_key(t) for t in type_args))
         if key in self.thunks:
@@ -818,31 +819,21 @@ class CPrinter:
         self.thunk_decls.append(
             f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{max(n, 1)}]; }} {env_struct};"
         )
-        o_quants, o_inner = collect_fun_quantifiers(orig_t)
+        _, o_inner = collect_fun_quantifiers(orig_t)
         t_quants, t_inner = collect_fun_quantifiers(target_t)
-        o_params = o_inner.params if isinstance(o_inner, QFunType) else ()
         t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
         o_result = o_inner.result_type if isinstance(o_inner, QFunType) else o_inner
         t_result = t_inner.result_type if isinstance(t_inner, QFunType) else t_inner
-        # The function's type parameters: those bound stand for the type arguments, the others for the closure's own
-        instantiation = {q.symbol_id: t for q, t in zip(o_quants, type_args)}
-        for oq, tq in zip(o_quants[n:], t_quants):
-            instantiation[oq.symbol_id] = QTypeVar(name=tq.name, symbol_id=tq.symbol_id, bound=tq.bound)
         with self.auxiliary():
             decls, descs, names = self.thunk_params(t_quants, t_params)
+            # The descriptors of the closure's own type parameters, which the plans' layouts refer to
             for tq, d in zip(t_quants, descs):
                 self.descriptors[tq.symbol_id] = d
-            args = []
-            for tp, op, a in zip(t_params, o_params, names):
-                if tp.is_var or tp.is_out:
-                    args.append(a)
-                    continue
-                p = plan(tp.type_val, op.type_val, (instantiation, True))
-                args.append(a if p is None else self.convert(a, p))
+            args = [a if p is None else self.convert(a, p) for a, p in zip(names, plans[:-1])]
             env_descs = [f"_env->desc[{i}]" for i in range(n)]
             call_args = ["_env->orig->env"] + env_descs + descs + args
             call = f"(({closure_fn_ptr_type(orig_t, self.ctx)})(_env->orig->fn))({', '.join(call_args)})"
-            self.finish_thunk_call(call, o_result, t_result, plan(o_result, t_result, (instantiation, False)))
+            self.finish_thunk_call(call, o_result, t_result, plans[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
             self.thunk(name, ret, decls, [f"{env_struct} *_env = ({env_struct} *)_raw_env;"]
                        + [f"(void){d};" for d in descs])
