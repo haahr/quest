@@ -5,28 +5,27 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Bounded type parameters inside mutable data in types used at run time
+## Values of type parameters bounded by option or tuple types can be used only through upcasts
 
-**Problem.** Generic code holds a value of a bounded type parameter (`A <: T`) viewed at its bound, so a value
-mentioning one is converted when used at a particular type argument (`quest_convert`, `docs/c-representation.md`
-§6.4.5), and a conversion of mutable data would be a copy that does not share updates. The type checker rejects a
-bounded type parameter inside mutable data (arrays, var components and fields, var and out parameters) in an auto
-value's witness, in the types of inspect's when clauses, and in the type arguments of `dynamic.new` and
-`dynamic.be`, and a larger type mentioning one as the witness or when type of an auto type with var components
-(`docs/type-system.md` §6.11). Where it cannot see the type, as when one reaches `dynamic.new` as an ordinary type
-argument, compiled code stops with a run-time error. The interpreter has no layouts and runs such programs.
-Unbounded type parameters are not restricted: generic and native layouts agree for them.
+**Problem.** The type checker accepts `case`, `?`, and `!` on a value of a type parameter bounded by a variant type,
+and field selection on one bounded by a record type, but rejects `case`, `?`, and `!` on one bounded by an option type
+(only `ordinal` is accepted), and selection on one bounded by a tuple type. The backends read such values through the
+bound already (a view map for options, `docs/c-representation.md` §5.1; tuples' components would be read as through a
+proxy).
 
-**Reproduce.** `tests/errors/typecheck/auto/*_bounded_type_parameter_*.quest` are rejected, and
-`tests/errors/run/layout_conversion_mutable_data.quest` runs interpreted but fails compiled with `a value used at type
-Array(Tuple v: Record age: Int fuel: String end end) was laid out by generic code, and converting it would copy
-mutable data`.
+**Reproduce.** `let get(A <: Option none some with x: Int end end o: A): Int = case o when some with p then p.x
+when none then 0 end;` reports `Case target must have Option or Variant type, got 'A'`; `o!some` reports `Variant
+assertion '!' requires Variant or Option target`; and `let f(A <: Tuple x: Int end t: A): Int = t.x;` reports `Cannot
+select field 'x' from non-record/tuple type 'A'`.
 
-**Where to start.** Phase 4 of [reorganization-followups.md](reorganization-followups.md), decided as (B): generic
-code holds bounded type parameters' values at their own view, so layouts agree and nothing converts.
+**Where to start.** The case, query, and extraction elaboration in `bootstrap/python/quest/typechecker/control.py` and
+`aggregates.py`, which resolve a variant bound (`resolve_option_bound` exists, and `ordinal` uses it) but not an
+option's, and `_synth_select_expr` in `typechecker/aggregates.py` for tuples. The C printer reads an option through a
+view map already (`view_payload` in `codegen/c/printer.py`); a tuple bound needs the same (or the value upcast to
+its bound, through a proxy).
 
-**Done when.** The five tests above run (the error tests becoming golden tests) with the same results interpreted
-and compiled.
+**Done when.** The programs above type-check and run with the same results in every backend, and
+`language/bounded_parameters_own_view` covers them.
 
 ---
 

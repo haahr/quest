@@ -69,6 +69,9 @@ Atom = Union[Var, Const]
 # The type of a descriptor variable: a run-time type, the descriptor of a type parameter
 DESCRIPTOR_TYPE = QExternalType(name="descriptor", c_type="const QTypeDescriptor *")
 
+# The type of view map variables (ViewMapParam)
+VIEW_MAP_TYPE = QExternalType(name="view_map", c_type="const QViewMap *")
+
 
 @dataclass(eq=False)
 class StaticDescriptor:
@@ -101,6 +104,18 @@ class DescriptorParam:
     both the closure's type and the type it is adapted to)."""
     var: Var
     symbols: tuple[int, ...]
+
+
+@dataclass(eq=False)
+class ViewMapParam:
+    """A view map variable (after the describe pass): the view map of the type argument of a type parameter bounded by
+    a record, variant, or option type, at its bound (docs/c-representation.md §5.1), fetched where its function begins.
+    Generic code holds the type parameter's values at their own view, the type argument's, and reads them through the
+    bound by it."""
+    var: Var
+    symbol: int
+    descriptor: Var
+    bound: "Descriptor"
 
 
 @dataclass(eq=False)
@@ -342,6 +357,9 @@ class RecordField:
     stored: bool = False
     # For a stored field (after the describe pass), the descriptor of the field's type, converted to
     descriptor: Optional[Descriptor] = None
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -372,6 +390,9 @@ class IsTag:
     value: Atom
     tag: str
     access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -385,6 +406,9 @@ class Payload:
     access: str = DIRECT
     components: tuple[str, ...] = ()
     ordinal: Optional[int] = None
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -394,6 +418,9 @@ class Ordinal:
     value: Atom
     cases: tuple[str, ...] = ()
     access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -453,6 +480,9 @@ class Addr:
     cell: Optional[Atom] = None
     offset: Optional[int] = None
     access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -505,6 +535,9 @@ class Store:
     address: Optional[Atom] = None
     offset: Optional[int] = None
     access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -527,8 +560,10 @@ class Function:
     # The function's frame in tracebacks (docs/exceptions.md §2.3); None for the functions the passes make
     trace_name: Optional[str] = None
     # Set by the describe pass: the descriptor variables of its type parameters, in order (those its closure supplies
-    # first, read from its environment, then its own, passed before its parameters)
+    # first, read from its environment, then its own, passed before its parameters), and the view maps of those
+    # bounded by record, variant, or option types that its body reads values of through the bound
     descriptor_params: tuple[DescriptorParam, ...] = ()
+    view_maps: tuple[ViewMapParam, ...] = ()
 
     @property
     def result(self) -> Shape:
@@ -576,6 +611,9 @@ class Switch:
     cases: tuple[Case, ...]
     else_body: Optional[Body] = None
     access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
+    # view map it is read through the bound by
+    view_map: Optional[Var] = None
 
 
 @dataclass(eq=False)
@@ -597,20 +635,17 @@ class InspectArm:
     """How an inspect case of an auto value obtains its components from the payload, stored in the auto type's
     witness-independent layout (docs/c-representation.md §8), decided by the represent pass. `converted` says, per
     component, how a new tuple of the case's components gets it: None, copied; "component", the type component's
-    value itself, converted by descriptor from the value's type component to the case's type (or to `bound`); or
+    value itself, converted by descriptor from the value's type component to the case's type; or
     "mentions", a component whose type mentions the type component, converted by descriptor from its stored type at
     the value's type component. For an exact case (`exact`), the runtime checks whether the stored layout is the
     case's (quest_layout_equivalent): if so the stored payload serves, shared (`shared`, the layouts agree statically,
     so var components are shared too) or converted by `plan`; if not, the components are converted as for any case,
-    after raising a layout error when the auto type has var components (`layout_error`). `bound` is set when the
-    case's type is a type parameter in scope bounded by a record, variant, or option type, whose values generic code
-    holds viewed at the bound."""
+    after raising a layout error when the auto type has var components (`layout_error`)."""
     converted: tuple[Optional[str], ...]
     exact: bool = False
     shared: bool = False
     plan: Optional[Plan] = None
     layout_error: bool = False
-    bound: Optional[QType] = None
     # Set by the describe pass: per component converted, the descriptors it converts from and to (None for the
     # others); a component mentioning the type component is converted from its stored type at the value's type
     # component (the inspect's witness)
@@ -782,7 +817,8 @@ STAGES = ("core", "specialized", "closed", "represented", "described")
 
 # The fields of operations that hold descriptor operands (or tables), not atoms: traversals of atoms skip them, and the
 # verifier checks them on their own
-DESCRIPTOR_FIELDS = frozenset({"descriptor", "descriptors", "view_descriptor", "thunk_params", "offsets", "tag_map"})
+DESCRIPTOR_FIELDS = frozenset({"descriptor", "descriptors", "view_descriptor", "thunk_params", "offsets", "tag_map",
+                               "view_map"})
 
 # A reference to a module: one the unit defines, or one it imports (by identity, never by name)
 ModuleRef = Union[Module, Import]

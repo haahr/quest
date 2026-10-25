@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Callable, Sequence
-from typing import Any, Optional
+from typing import Optional
 
 from quest.diagnostics import QuestTypeError
 from quest.types.env import Environment
 from quest.typechecker.typed_ast import TypedExpr
 from quest.types import (
-    QAbstractType,
     QAllType,
-    QArrayType,
     QAutoType,
     QFunType,
     QType,
@@ -70,57 +67,6 @@ def check_no_package_types(t: QType, what: str, offset: int) -> None:
             f"known at run time",
             offset=offset,
         )
-
-
-def mutable_type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
-    """The type variables in t (a type stripped of aliases) whose symbol ids are in ids and that occur inside
-    mutable data: an array's elements, a var component or field, or a var or out parameter."""
-    found: list[Any] = []
-    seen: set[tuple[int, bool]] = set()
-
-    def visit(node: Any, mutable: bool) -> None:
-        if (id(node), mutable) in seen:
-            return
-        seen.add((id(node), mutable))
-        if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in ids and mutable:
-            found.append(node)
-        if isinstance(node, (tuple, list)):
-            for item in node:
-                visit(item, mutable)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            inner = (
-                mutable
-                or isinstance(node, QArrayType)
-                or bool(getattr(node, "is_var", False))
-                or bool(getattr(node, "is_out", False))
-            )
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name), inner)
-
-    visit(t, False)
-    return found
-
-
-def type_vars_with_ids(t: Any, ids: set[int]) -> list[Any]:
-    """The type variables in t (a type stripped of aliases) whose symbol ids are in ids."""
-    found: list[Any] = []
-    seen: set[int] = set()
-
-    def visit(node: Any) -> None:
-        if id(node) in seen:
-            return
-        seen.add(id(node))
-        if isinstance(node, (QTypeVar, QAbstractType)) and node.symbol_id in ids:
-            found.append(node)
-        if isinstance(node, (tuple, list)):
-            for item in node:
-                visit(item)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name))
-
-    visit(t)
-    return found
 
 
 def check_no_escaping_path_types(

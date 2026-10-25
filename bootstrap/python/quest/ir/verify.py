@@ -458,7 +458,7 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
     from quest.codegen.layout import representation
     from quest.ir.describe import free_type_vars
     from quest.ir.shapes import shape
-    from quest.ir.walk import statement_bodies
+    from quest.ir.walk import statement_bodies, walk_statements
 
     problems: list[str] = []
     data = unit.static_data
@@ -604,6 +604,19 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
             problems.append(f"{where}: its descriptor parameters are not its type parameters'")
         bind(f.descriptor_params, where)
         body(f.body, top.with_params(f.descriptor_params), where)
+        # View maps: each of a type parameter of the function, at the bound, and every one used is the function's
+        own_descriptors = {id(p.var) for p in f.descriptor_params}
+        for m in f.view_maps:
+            if m.var.type is not ir.VIEW_MAP_TYPE or id(m.descriptor) not in own_descriptors:
+                problems.append(f"{where}: view map {m.var.hint} is not of one of its type parameters")
+            descriptor(m.bound, top.with_params(f.descriptor_params), where)
+        maps = {id(m.var) for m in f.view_maps}
+        for s in walk_statements(f.body, into_functions=False):
+            values = [s.value] if isinstance(s, (ir.Let, ir.Do)) else []
+            for o in [s] + values:
+                vm = getattr(o, "view_map", None)
+                if vm is not None and id(vm) not in maps:
+                    problems.append(f"{where}: an operation reads through a view map that is not the function's")
     for table in data.offset_tables:
         for d in table.registered or ():
             descriptor(d, top, "the unit's offset tables")

@@ -36,6 +36,7 @@ class ModuleAbstractType:
 
 
 _SYMBOL_IDS: dict[str, int] = {}
+_ABSTRACT_SYMBOL_IDS: set[int] = set()
 _BY_SYMBOL: dict[int, ModuleAbstractType] = {}
 _BY_NAME: dict[str, ModuleAbstractType] = {}
 
@@ -45,7 +46,13 @@ def abstract_type_symbol_id(global_name: str) -> int:
     symbol_id = _SYMBOL_IDS.get(global_name)
     if symbol_id is None:
         symbol_id = _SYMBOL_IDS[global_name] = allocate_symbol_id()
+        _ABSTRACT_SYMBOL_IDS.add(symbol_id)
     return symbol_id
+
+
+def is_abstract_type_symbol(symbol_id: int) -> bool:
+    """Whether a symbol id is that of a module abstract type's opaque type (abstract_type_symbol_id)."""
+    return symbol_id in _ABSTRACT_SYMBOL_IDS
 
 
 def _record(global_name: str, type_var: QTypeVar, linked: bool) -> ModuleAbstractType:

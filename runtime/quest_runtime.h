@@ -256,23 +256,27 @@ typedef struct QFunTypeDescriptor {
 
 /* Descriptor templates (Cardelli §4.6 for types used at run time inside generic code). Inside a polymorphic function,
  * a type that mentions the function's type parameters, such as Tuple fst:A snd:Int end, is laid out generically:
- * independently of A's type argument, with each A stored as generic code stores a value of a type parameter (a
- * QVal, or the representation of its bound). Compiled code describes such a type by a template, a descriptor in
- * which each type parameter is a hole, and quest_instantiate_descriptor fills the holes with the run-time type
- * arguments. The result describes the type the value has and the layout the value is in: each hole becomes a
- * QTYPE_KIND_STORED descriptor of its type argument, which subtyping looks through and conversion (quest_convert)
- * unwraps, so that a value laid out generically is converted when it is used at a particular type. */
+ * independently of A's type argument, with each A stored as generic code stores a value of a type parameter (a QVal, or
+ * for a bounded one, the type argument's own value in the representation of its bound). Compiled code describes such a
+ * type by a template, a descriptor in which each type parameter is a hole, and quest_instantiate_descriptor fills the
+ * holes with the run-time type arguments. The result describes the type the value has and the layout the value is in:
+ * each hole becomes a QTYPE_KIND_STORED descriptor of its type argument, which subtyping looks through and conversion
+ * (quest_convert) unwraps, so that a value laid out generically is converted when it is used at a particular type. */
 typedef struct QHoleDescriptor {
     size_t                 index;    /* which type argument */
-    const QTypeDescriptor *storage;  /* the type parameter's bound B (for A <: B), as which it is stored, or NULL */
+    const QTypeDescriptor *storage;  /* the type parameter's bound B (for A <: B), in whose representation it is
+                                        stored, or NULL */
 } QHoleDescriptor;
 
 /* A value of type `type` stored in the representation of a type parameter: as its QVal form when `storage` is NULL,
- * and otherwise as a value of type `storage`, the type parameter's bound (a record or variant boxed, viewed at the
- * bound, as generic code views values of a bounded type parameter) */
+ * and otherwise in the representation of `storage`, the type parameter's bound. A type parameter's value keeps its
+ * own view (generic code holds a value of a bounded type parameter as its type argument holds it, and reads it
+ * through the bound by a view map, QViewMap), so it agrees with a value of `type`; a module's abstract type's value
+ * is `viewed` at `storage`, as code outside the module holds it. */
 typedef struct QStoredDescriptor {
     const QTypeDescriptor *type;
     const QTypeDescriptor *storage;
+    bool                   viewed;
 } QStoredDescriptor;
 
 /* An application of an abstract type operator (list.T(Int)): opaque, named by the operator; descriptors with
@@ -772,6 +776,58 @@ bool                   quest_slot_layout_equivalent(const QTypeDescriptor *a, co
  * the type arguments `args`; memoized, so equal arguments give the same descriptor */
 const QTypeDescriptor *quest_instantiate_descriptor(
     const QTypeDescriptor *template_desc, size_t arg_count, const QTypeDescriptor *const *args);
+
+/* View maps (docs/c-representation.md §5.1). Generic code holds a value of a type parameter bounded by a record,
+ * variant, or option type at its own view, its type argument's, and reads it through the bound by the view map of the
+ * type argument at the bound, which a function fetches once for each such type parameter (memoized, so a pair has one
+ * map). Parts read through the bound are converted from the type argument's types for them, where those differ. */
+typedef struct QViewMap {
+    const QTypeDescriptor *actual;  /* the type argument, as its values are held */
+    const QTypeDescriptor *bound;
+    /* A record's: for each field of the bound (in name order), the field's index among the actual's (in name order).
+     * A variant's or option's: for each tag of the actual, the bound's tag for its case. */
+    const int64_t         *index;
+    /* The types parts read through the bound are converted from: a record's, for each field of the bound, the
+     * actual's type for it; a variant's, for each case of the bound, the actual's payload type; an option's, for each
+     * component of each case of the bound (from component_start), the actual's. NULL where the actual's agrees with
+     * the bound's (nothing to convert). `to` holds the bound's. */
+    const QTypeDescriptor *const *from;
+    const QTypeDescriptor *const *to;
+    const size_t          *component_start;  /* an option's: for each case of the bound, its first component's index */
+} QViewMap;
+const QViewMap *quest_view_map(const QTypeDescriptor *actual, const QTypeDescriptor *bound);
+
+/* Part i of a value read through a view map, from its QVal form: converted from the actual's type for it to the
+ * bound's when they differ */
+static inline QVal quest_view_part(const QViewMap *m, size_t i, QVal v) {
+    return m->from[i] != NULL ? quest_convert(v, m->from[i], m->to[i]) : v;
+}
+
+/* Through a view map of a record type: the slot of field k of the bound (in name order) in a record value at the
+ * actual's view, and the field's value (from its QVal form), converted from the type the payload stores it at, or the
+ * actual's type for it, to the bound's */
+static inline void *quest_view_record_slot(QRecordVal rec, const QViewMap *m, size_t k) {
+    return (char *)rec.val + quest_record_field_offset(rec, (size_t)m->index[k]);
+}
+
+static inline QVal quest_view_record_field(QRecordVal rec, const QViewMap *m, size_t k) {
+    size_t j = (size_t)m->index[k];
+    QVal v = quest_slot_read((const char *)rec.val + quest_record_field_offset(rec, j));
+    size_t field_count = ((const QRecordTypeDescriptor *)m->actual->extra)->field_count;
+    QRecordStoredTypes stored = quest_record_stored_types(rec, field_count);
+    if (stored != NULL && stored[j] != NULL) return quest_convert(v, stored[j], m->to[k]);
+    return quest_view_part(m, k, v);
+}
+
+/* Through a view map of a variant or option type: a value's tag in the bound's numbering, and component j of the
+ * payload of case b (the bound's tag) of an option, converted to the bound's type for it */
+static inline int64_t quest_view_option_tag(const void *opt, const QViewMap *m) {
+    return m->index[quest_option_tag(opt)];
+}
+
+static inline QVal quest_view_option_component(const void *opt, const QViewMap *m, size_t b, size_t j) {
+    return quest_view_part(m, m->component_start[b] + j, quest_option_element(opt, m->actual, j));
+}
 
 /* A descriptor's type, looking through QTYPE_KIND_STORED */
 static inline const QTypeDescriptor *quest_stored_type(const QTypeDescriptor *d) {

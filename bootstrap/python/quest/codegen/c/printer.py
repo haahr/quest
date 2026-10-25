@@ -162,8 +162,8 @@ class CPrinter:
 
     def name(self, var: ir.Var) -> str:
         key = id(var)
-        if key not in self.names and var.type is ir.DESCRIPTOR_TYPE:
-            # A descriptor variable (a function's descriptor parameter)
+        if key not in self.names and (var.type is ir.DESCRIPTOR_TYPE or var.type is ir.VIEW_MAP_TYPE):
+            # A descriptor variable (a function's descriptor parameter), or a view map
             self.names[key] = self.fresh_name(var.hint)
         if key not in self.names:
             base = mangle_ident(var.hint or "t")
@@ -210,6 +210,41 @@ class CPrinter:
         tmp = self.temp(self.slot_c_type(comp))
         through = shape_qval_to_slot(f"quest_proxy_element({t}, {i})", comp)
         self.emit(f"{tmp} = quest_is_proxy({t}) ? {through} : ({t})->_{i};")
+        return tmp
+
+    def tag(self, v: str, ts: Shape, access: str, view_map: Optional[ir.Var]) -> str:
+        """The tag of the variant or option v, of shape ts, in its numbering: read as access says, or for a bounded type
+        parameter's value, at its own view, through the view map of its type argument at the bound ts."""
+        if view_map is not None:
+            vm = self.name(view_map)
+            return f"({vm}->index[{v}.tag])" if ts.kind == "variant" else f"quest_view_option_tag({v}, {vm})"
+        return f"{v}.tag" if ts.kind == "variant" else self.option_tag(v, access)
+
+    def view_payload(self, v: str, ts: Shape, tag: str, view_map: ir.Var, t: QType) -> str:
+        """The payload of case tag of a variant held at its own view, read through the view map and converted to the
+        bound's type for it, or a new tuple of an option's case components (after its ordinal, when t has one more
+        component than the case), read so, as a value of type t."""
+        vm = self.name(view_map)
+        b = self.tag_index(ts, tag)
+        case = ts.case(tag)
+        if ts.kind == "variant":
+            case_s = case.shape if case is not None and case.shape is not None else shape(t)
+            return shape_qval_unwrap(f"quest_view_part({vm}, {b}, {v}.payload)", case_s)
+        tuple_s = shape(t)
+        if tuple_s.kind != "tuple":
+            # A payload that is not a tuple: its one component
+            return shape_qval_unwrap(f"quest_view_option_component({v}, {vm}, {b}, 0)", tuple_s)
+        struct = shape_tag(tuple_s)
+        tmp = self.temp(f"{struct} *")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        pt = case.shape if case is not None else None
+        comps = [c.shape for c in pt.components] if pt is not None and pt.kind == "tuple" else [pt] if pt else []
+        offset = len(tuple_s.components) - len(comps)
+        if offset:
+            self.emit(f"{tmp}->_0 = 0LL;")
+        for j, comp in enumerate(comps):
+            word = f"quest_view_option_component({v}, {vm}, {b}, {j})"
+            self.emit(f"{tmp}->_{j + offset} = {shape_qval_to_slot(word, tuple_s.components[j + offset].shape)};")
         return tmp
 
     @staticmethod
@@ -414,8 +449,9 @@ class CPrinter:
                 return self.prim(op, args, offset, access, o.descriptor)
             case ir.Ordinal(value=v, cases=cases, access=access):
                 # The tag numbers the shape's cases, ordered by name; the ordinal counts in the static type's order
-                tag = self.option_tag(self.atom(v), access)
-                names = tuple(c.name for c in self.tag_shape(self.atom_type(v)).cases)
+                ts = self.tag_shape(self.atom_type(v))
+                tag = self.tag(self.atom(v), ts, access, o.view_map)
+                names = tuple(c.name for c in ts.cases)
                 return tag if names == cases else f"{_index_table([cases.index(n) for n in names])}[{tag}]"
             case ir.Call():
                 return self.call(o)
@@ -460,7 +496,8 @@ class CPrinter:
             case ir.Load(address=a):
                 return f"(*{self.atom(a)})"
             case ir.Addr(base=base, name=name) if name is not None:
-                ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
+                ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
+                                              o.view_map)
                 return self.slot_address(ptr, field)
             case ir.Addr(base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
@@ -497,7 +534,7 @@ class CPrinter:
                 return self.make_option(o, result.type)
             case ir.IsTag(value=v, tag=tag, access=access):
                 ts = self.tag_shape(self.atom_type(v))
-                tag_c = f"{self.atom(v)}.tag" if ts.kind == "variant" else self.option_tag(self.atom(v), access)
+                tag_c = self.tag(self.atom(v), ts, access, o.view_map)
                 return f"({tag_c} == {self.tag_index(ts, tag)}LL)"
             case ir.Payload():
                 return self.payload(o, result.type)
@@ -783,11 +820,15 @@ class CPrinter:
         self.emit(f"*{box} = (QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }};")
         return box if result.boxed else f"(*{box})"
 
-    def record_slot(self, rec: str, rs: Shape, name: str) -> tuple[str, Shape]:
-        """The address of the slot of a field of a record of shape rs, through its offset table, and the field's
+    def record_slot(self, rec: str, rs: Shape, name: str, view_map: Optional[ir.Var] = None) -> tuple[str, Shape]:
+        """The address of the slot of a field of a record of shape rs, through its offset table (and for a bounded
+        type parameter's value, at its own view, the view map of its type argument at the bound rs), and the field's
         shape."""
         fields = rs.sorted_components()
         field = next(f for f in fields if f.name == name).shape
+        if view_map is not None:
+            k = next(i for i, f in enumerate(fields) if f.name == name)
+            return f"(({self.slot_c_type(field)} *)quest_view_record_slot({rec}, {self.name(view_map)}, {k}))", field
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
         return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))", field
 
@@ -795,9 +836,13 @@ class CPrinter:
         """A field of a record of shape rs, through its offset table: its slot form, or when stored (a field the
         payload may store at another type, as its stored types say) read as stored and converted to the field's
         type, by its descriptor."""
-        ptr, field = self.record_slot(rec, rs, name)
+        ptr, field = self.record_slot(rec, rs, name, o.view_map)
         if not o.stored:
             return f"(*{ptr})"
+        if o.view_map is not None:
+            # Through the view map: read as stored, converted to the bound's type for it
+            k = next(i for i, f in enumerate(rs.sorted_components()) if f.name == name)
+            return shape_qval_unwrap(f"quest_view_record_field({rec}, {self.name(o.view_map)}, {k})", field)
         fields = rs.sorted_components()
         index = next(i for i, f in enumerate(fields) if f.name == name)
         c_fld = self.shape_c_type(field)
@@ -883,6 +928,13 @@ class CPrinter:
         v, tag, offset = o.value, o.tag, o.offset
         ts = self.tag_shape(self.atom_type(v))
         site = self.site(offset)
+        if o.view_map is not None:
+            tag_c = self.tag(self.atom(v), ts, o.access, o.view_map)
+            self.emit(f"if ({tag_c} != {self.tag_index(ts, tag)}LL) quest_raise_variant_error_at({site});")
+            result = self.view_payload(self.atom(v), ts, tag, o.view_map, t)
+            if ts.kind == "option":
+                self.emit(f"{result}->_0 = {o.ordinal or 0}LL;")
+            return result
         index = self.tag_index(ts, tag)
         if ts.kind == "variant":
             self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error_at({site});")
@@ -1117,7 +1169,8 @@ class CPrinter:
             case ir.Store(value=value, address=address) if address is not None:
                 self.emit(f"*{self.atom(address)} = {self.atom(value)};")
             case ir.Store(value=value, base=base, name=name) if name is not None:
-                ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
+                ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
+                                              s.view_map)
                 self.emit(f"*{ptr} = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
@@ -1139,7 +1192,7 @@ class CPrinter:
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
                 self.emit(f"{arr}->data[{idx}] = {self.array_element(value, elem)};")
             case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
-                self.switch(value, cases, else_body, access)
+                self.switch(value, cases, else_body, access, s.view_map)
             case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
                 self.inspect(value, cases, else_body, auto_t, offset, s.witness)
             case ir.LetRec(vars=vars_, body=body):
@@ -1234,11 +1287,12 @@ class CPrinter:
             case _:
                 raise NotImplementedError(f"C printing of {type(s).__name__}")
 
-    def switch(self, value: ir.Atom, cases, else_body: Optional[ir.Body], access: str) -> None:
+    def switch(self, value: ir.Atom, cases, else_body: Optional[ir.Body], access: str,
+               view_map: Optional[ir.Var]) -> None:
         v = self.atom(value)
         t = self.tag_shape(self.atom_type(value))
         is_variant = t.kind == "variant"
-        self.emit(f"switch ({f'{v}.tag' if is_variant else self.option_tag(v, access)}) {{")
+        self.emit(f"switch ({self.tag(v, t, access, view_map)}) {{")
         self.indent += 1
         for c in cases:
             for tag in c.tags:
@@ -1246,7 +1300,10 @@ class CPrinter:
             self.emit("{")
             self.indent += 1
             if c.binder is not None and not self.is_ok(c.binder.type):
-                if is_variant:
+                if view_map is not None:
+                    # A bounded type parameter's value: its payload read through the view map, converted
+                    self.assign(c.binder, self.view_payload(v, t, c.tags[0], view_map, c.binder.type))
+                elif is_variant:
                     # In its slot form (a record or variant, for a boxed variable)
                     self.assign(c.binder, shape_qval_to_slot(f"{v}.payload", shape(c.binder.type)))
                 elif shape(c.binder.type).kind == "tuple":
@@ -1431,6 +1488,10 @@ class CPrinter:
                 prologue.append(f"(void){d};")
         else:
             prologue.append("(void)_raw_env;")
+        for m in f.view_maps:
+            # The view maps of type parameters whose values the body reads through their bounds
+            prologue.append(f"const QViewMap *{self.name(m.var)} = quest_view_map({self.name(m.descriptor)}, "
+                            f"{self.descriptor(m.bound)});")
         exclude = {id(v) for v, _ in f.params}
         decls = self.declare_locals(f.body, exclude)
         self.lines = []

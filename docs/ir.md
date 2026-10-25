@@ -146,10 +146,11 @@ whose address is taken, or a `var` or `out` parameter, of a record or variant ty
 value from its box).
 
 A **layout** describes an aggregate in memory: its shape, together with which positions hold a type parameter's
-value stored generically (as a `word`, or as the bound's representation for a bounded parameter, viewed at the
-bound). Two layouts of the same shape may differ: `Tuple x: A end` in generic code, with `A <: P`, and
-`Tuple x: Q end` at the call, whose record is viewed at `Q`. Since every slot is a word, layouts over unbounded type
-parameters always agree in memory. Whether two layouts agree is decided by `generic_layout_agrees` (§8.3), mirroring
+value stored generically (as a `word`, or for a bounded parameter, as the type argument's own value in the bound's
+representation). Since every slot is a word, layouts over type parameters agree in memory; two layouts of the same
+shape differ only where a closure's C signature does (a `word` result in a register agrees only with integers and
+pointers), or where a module's abstract type is held viewed at its bound. Whether two layouts agree is decided by
+`generic_layout_agrees` (§8.3), mirroring
 the runtime's `quest_layout_equivalent`.
 
 ## 5. Atoms, Operations, and Bindings
@@ -383,8 +384,9 @@ the type of what they bind, assign, return, pass to, or store into; a call's arg
 and its result comes in its callee's result type; a component of a tuple, record, variant, option, or array being
 made its component's type, and one read comes in the type its aggregate gives it. A member of one of the unit's
 modules is called (or read) from outside at its interface's types and converts to the module's own at the boundary.
-A polymorphic call's argument converts first to its parameter's type at the type arguments (a record viewed at the
-type argument), then to the parameter's generic representation, in the context of the call's instantiation (and its
+A polymorphic call's argument converts first to its parameter's type at the type arguments, then to the
+parameter's generic representation (a bounded type parameter's values are held at their own view, so nothing
+converts for them), in the context of the call's instantiation (and its
 result back the same way); a `var` or `out` argument whose location is laid out differently from its parameter is
 passed as a temporary of the parameter's representation (a shadow cell), copied in for `var` and out to the location
 after the call; a location holding a record or variant boxed agrees with a generic parameter's `word` and is passed
@@ -397,25 +399,24 @@ component's values at their own type (inspect reads them by the stored descripto
 | `box`, `unbox` | between a native scalar, pointer, record, or variant and its QVal word |
 | `record_view` | a record viewed at a supertype, with its offset table (from the runtime map) |
 | `variant_tags` | a variant's tag remapped by the static table of a subtype pair, when the cases' order differs |
-| `view` | converted by the runtime between two views' descriptors: a tuple or option upcast to a supertype at which components change view, as a proxy of the original ([c-representation.md](c-representation.md) §5.8); a variant or option from a bounded type parameter's view at its bound to another type's |
+| `view` | converted by the runtime between two views' descriptors: a tuple or option upcast to a supertype at which components change view, as a proxy of the original ([c-representation.md](c-representation.md) §5.8); a bounded type parameter's value (at its own view) used at another type; a variant or option from a module's abstract type's view at its bound to another type's |
 | `cast` | a pointer to an aggregate whose layouts agree in memory, viewed through the other struct |
 | `unproxy` | a cast to a tuple or option type that cannot be a proxy from one that may be: the original serves, as no component changes view |
 | `slot_box`, `slot_unbox` | a record or variant put in a new box to be stored into a slot, and read from its box (a boxed variable) |
-| `copy` | a new tuple, each component converted by its own plan and read as the plan's access says (an auto value's payload, stored in its witness-independent layout; a component of a bounded witness, converted from the bound's view to the witness's type by a `view` field) |
-| `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (a bounded type parameter's values viewed at its bound, or closures among the components whose C signatures differ) |
+| `copy` | a new tuple, each component converted by its own plan and read as the plan's access says (an auto value's payload, stored in its witness-independent layout) |
+| `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (closures among the components whose C signatures differ) |
 | `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
 | rejected | a conversion that would copy mutable data laid out differently: a compile-time error (`RejectedConversion`) |
 
 Function types are compared with the target's type parameters renamed to the source's, and recursive ones
-coinductively. A value of a type parameter bounded by a record, variant, or option is held viewed at its bound, so it
-converts to that view whatever the layouts.
+coinductively. A value of a type parameter bounded by a record, variant, option, or tuple type is held at its own
+view, its type argument's, so it converts (`view`) only where it is used at another type; a module's abstract type's
+is held viewed at its bound, and converts to that view whatever the layouts.
 
 A type application records its plans (`TypeApp.plans`): for a polymorphic value of no parameters, its value's plan
 from the generic result at the type arguments; for a function, those of the thunk the instance is, converting each
-argument from the instance's parameter type to the function's generic one and the result back. An auto value whose
-witness is a type parameter in scope bounded by a record, variant, or option type (`bounded_param`) has its payload
-copied, the witness's components converted from the bound's view to the witness's own type, as inspect reads them;
-an inspect case records its arm (§6.5), and binders converted from the arm's type are bound by lets at the case's
+argument from the instance's parameter type to the function's generic one and the result back. An inspect case
+records its arm (§6.5), and binders converted from the arm's type are bound by lets at the case's
 start. A function whose value parameter is annotated with a supertype of its variable's parameter type takes the
 variable's (lowering binds the annotation's at entry, and the copy converts).
 
@@ -475,6 +476,12 @@ a closed type, which writes its type components with their alias names); and the
 plans, nested ones included (a copy's view fields, an adapter's fields). A thunk is a C function of its own, passed
 only its own type parameters' descriptors: a type there that mentions a type parameter of the enclosing function is
 rejected (`UnsupportedDescriptor`; no program does).
+
+A function whose body reads values of a type parameter bounded by a record, variant, or option type through the
+bound (a field, a tag, a payload) gets a view map for it (`ir.ViewMapParam` in `Function.view_maps`, printed as
+`view_map` lines at the function's start: the type argument's view map at the bound, from the parameter's descriptor
+and the bound's), and each such operation the view map it reads through (`view_map`, printed `through ...`), since
+generic code holds those values at their own view ([c-representation.md](c-representation.md) §5.1).
 
 The pass lists the unit's static data (`ir.StaticData`): the static descriptors its operations refer to (templates
 among them), the static offset tables of record literals (`ir.OffsetTable`: the view and the layout, registered with

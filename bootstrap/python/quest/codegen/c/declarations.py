@@ -162,7 +162,7 @@ def collect_aggregate_types(
                 visit_shape(c.shape)
             add(record_struct_name(t, ctx), t)
         elif held.kind == "option":
-            # An option, or a type parameter bounded by one, whose values are viewed at the bound
+            # An option, or a type parameter bounded by one, whose values are held in the bound's representation
             for c in held.cases:
                 visit_shape(c.shape)
             add(shape_tag(held), held.structure)
@@ -604,7 +604,8 @@ class CDeclarationEmitter:
             lines.extend(type_descriptor(f"{form.tag}_abstract", "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", "NULL"))
             lines.append(
                 f"static const QStoredDescriptor qstored_desc_{form.tag} Q_UNUSED = "
-                f"{{ .type = &quest_type_{form.tag}_abstract, .storage = {desc_fn(form.type.bound.bound)} }};"
+                f"{{ .type = &quest_type_{form.tag}_abstract, .storage = {desc_fn(form.type.bound.bound)}, "
+                f".viewed = true }};"
             )
             lines.extend(type_descriptor(
                 form.tag, "QTYPE_KIND_STORED", form.name, f"sizeof({self.c_type(form.type)})", f"&qstored_desc_{form.tag}"

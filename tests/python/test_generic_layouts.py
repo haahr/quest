@@ -78,11 +78,11 @@ class TestGenericLayoutAgrees(unittest.TestCase):
     def test_types_without_the_parameter_agree(self) -> None:
         self.assertTrue(self.agrees("Tuple x: P y: V end", "P"))
 
-    def test_bounded_parameter_is_stored_as_its_bound(self) -> None:
+    def test_bounded_parameter_is_stored_at_its_own_view(self) -> None:
         b = self.declare_param("B", QPowerKind(elaborate_test_type("Int", self.env)))
         self.assertTrue(self.agrees("Box(B)", "Int", b))
-        # Viewed at the bound, which a record of another type is not
-        self.assertFalse(self.agrees("Box(C)", "Q", self.c))
+        # As the type argument's own value, in the representation of the bound
+        self.assertTrue(self.agrees("Box(C)", "Q", self.c))
 
 
 class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
@@ -93,11 +93,10 @@ class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
         )
 
     def test_mutable_data_whose_layout_differs(self) -> None:
-        for generic in ("Array(Box(C))", "Array(C)", "Var(Box(C))", "Box(Array(Box(C)))"):
+        # A bounded parameter's values are held at their own view, so mutable data holding them agrees
+        for generic in ("Array(Box(C))", "Array(C)", "Var(Box(C))", "Box(Array(Box(C)))", "Tuple var x: C end"):
             with self.subTest(generic=generic):
-                self.assertTrue(self.copies(generic, "Q", self.c))
-        # A tuple is converted through a proxy, which shares its var components
-        self.assertFalse(self.copies("Tuple var x: C end", "Q", self.c))
+                self.assertFalse(self.copies(generic, "Q", self.c))
         for generic in ("Array(Box(A))", "Array(A)", "Tuple var x: A end", "Var(Box(A))", "Box(Array(Box(A)))"):
             with self.subTest(generic=generic):
                 self.assertFalse(self.copies(generic, "P"))
@@ -142,26 +141,31 @@ class TestPolymorphicCallsInC(unittest.TestCase):
         main = self.c_code("let b: Box(P) = mkB(:P record a = 1 end); b.x.a").split(MAIN_DEFINITION)[1]
         self.assertNotIn("quest_convert(", main)
 
-    def test_differing_layouts_are_converted(self) -> None:
+    def test_bounded_parameters_are_not_converted(self) -> None:
+        # Generic code holds a bounded parameter's values at their own view, as the caller does
         main = self.c_code(
             "Let Q = Record a: Int b: Int end;"
             "let mkC(C <: P v: C): Box(C) = tuple let x = v end;"
             "let mkCF: All(C <: P v: C) Box(C) = mkC;"
             "let b: Box(Q) = mkCF(:Q record a = 1 b = 2 end); b.x.b"
         ).split(MAIN_DEFINITION)[1]
-        self.assertIn("quest_convert(", main)
+        self.assertNotIn("quest_convert(", main)
 
     def test_mutable_data_is_not_copied(self) -> None:
-        for source in (
+        # Mutable data holding a bounded parameter's values is shared as it is
+        self.c_code(
             "Let Q = Record a: Int b: Int end;"
             "let first(C <: P a: Array(Box(C))): C = a[0].x;"
             "let f: All(C <: P a: Array(Box(C))) C = first;"
-            "f(:Q array of mkBox(:Q record a = 5 b = 6 end) end).b",
-        ):
-            with self.subTest(source=source):
-                res = self.generate(source)
-                self.assertFalse(res.success)
-                self.assertIn("would copy mutable data", " ".join(d.message for d in res.diagnostics))
+            "f(:Q array of mkBox(:Q record a = 5 b = 6 end) end).b"
+        )
+        # Closures returning a value a register holds differently from a QVal, in mutable data, would be copied
+        res = self.generate(
+            "let first(A::TYPE fs: Array(All(x: Int) A)): A = fs[0](1);"
+            "let f: All(A::TYPE fs: Array(All(x: Int) A)) A = first; f(:Bool array of fun(x: Int): Bool true end)"
+        )
+        self.assertFalse(res.success)
+        self.assertIn("would copy mutable data", " ".join(d.message for d in res.diagnostics))
 
 
 if __name__ == "__main__":

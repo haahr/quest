@@ -1,8 +1,9 @@
 """Representation (docs/ir.md §8.3): inserts `convert` wherever a value's representation differs from the one its use
 requires.
 
-A value's representation is its type's (codegen/layout.py: the runtime's, shared by every backend): a type
-parameter's values are held as QVal words (a bounded one's viewed at its bound), and other types natively. A use
+A value's representation is its type's (codegen/layout.py: the runtime's, shared by every backend): an unbounded type
+parameter's values are held as QVal words, a bounded one's at their own view (their type argument's) in the bound's
+representation, and other types natively (a module's abstract type's viewed at its bound). A use
 requires the representation of the type it expects: a call's argument, its callee's parameter type (in a polymorphic
 callee, mentioning the callee's type parameters, so a QVal where the parameter is one); a call's result, its callee's
 result type; a component of a tuple, record, variant, option, or array being made or stored into, the component's
@@ -15,8 +16,8 @@ aggregates whose layouts agree (unwrapping a proxy where the target cannot be on
 components change view through proxies of the originals (docs/c-representation.md §5.8), copy auto payloads into
 their stored layouts, adapt closures, and convert by descriptor at run time; any other change of representation is
 reported as unsupported, rather than printed wrong. The pass also decides what the C printer would otherwise: how
-auto values of bounded witnesses are stored and how inspect cases get their components (ir.InspectArm), the thunks'
-plans of type applications, and, in its last step (ir/slots.py), boxing at slots and reads through proxies.
+inspect cases get their components (ir.InspectArm), the thunks' plans of type applications, and, in its last step
+(ir/slots.py), boxing at slots and reads through proxies.
 
 Every decision is made on shapes (ir/shapes.py). The variables the pass makes have types as written, with their alias
 names, which the IR prints (docs/ir.md §5), found through ir/written.py: the types of the components of a type as
@@ -32,6 +33,8 @@ from typing import Any, Optional
 
 from quest.codegen.layout import (
     generic_layout_agrees,
+    held_at_bound,
+    own_view,
     is_boxed_in_slots,
     generic_layout_copies_mutable_data,
     may_be_proxied,
@@ -49,7 +52,6 @@ from quest.types import (
     QAbstractType,
     QFunType,
     QOutType,
-    QPowerKind,
     QType,
     QTypeVar,
     QVarType,
@@ -63,13 +65,15 @@ class UnsupportedConversion(Exception):
     """A change of representation the represent pass does not handle."""
 
 
-# The kinds of shapes whose values a type parameter bounded by one holds viewed at its bound
+# The kinds of shapes whose values change view at a supertype: a module's abstract type bounded by one is held viewed
+# at its bound
 _VIEWED_KINDS = ("record", "variant", "option")
 
 
 def held_shape(t: QType, kind: str) -> Optional[Shape]:
     """The shape of t's values as they are held, if it is of the kind ("record", "variant", or "option"): t's own, or
-    for a type parameter bounded by a type of the kind, its bound's, at which it is viewed."""
+    for a type parameter bounded by a type of the kind, its bound's (in whose representation they are held, at their
+    own view, read through the bound by a view map; a module's abstract type's viewed at it)."""
     held = resolved_shape(shape(t))
     return held if held.kind == kind else None
 
@@ -91,8 +95,15 @@ def may_be_stored_as_subtype(s: Shape) -> bool:
 
 
 def _bounded_view(s: Shape) -> bool:
-    """Whether s is a type parameter's bounded by a record, variant, or option type, held viewed at its bound."""
-    return s.kind not in _VIEWED_KINDS and resolved_shape(s).kind in _VIEWED_KINDS
+    """Whether s is a module's abstract type's (or an abstract or path type's) bounded by a record, variant, or option
+    type, held viewed at its bound."""
+    return held_at_bound(s) and resolved_shape(s).kind in _VIEWED_KINDS
+
+
+def _own_viewed(s: Shape) -> bool:
+    """Whether s is a type parameter's bounded by a record, variant, option, or tuple type, whose values are held at
+    their own view, so that they change view when used at another type."""
+    return own_view(s) and resolved_shape(s).kind in _VIEWED_KINDS + ("tuple",)
 
 
 def _equal(a: QType, b: QType) -> bool:
@@ -179,8 +190,7 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
 def shared_signatures(source: QType, target: QType) -> tuple[tuple, QType, tuple, QType]:
     """Two (possibly polymorphic) function types' parameters and results as written, target's type parameters renamed
     to source's, so that they can be compared. A renamed parameter keeps target's bound where it is stronger than
-    source's ([TIncl Π], types/subtyping.py): target's values of it are held viewed at its bound, source's at theirs,
-    so that the plans between them convert the views."""
+    source's ([TIncl Π], types/subtyping.py); both hold its values at their own view."""
     s_quants, s_inner = quantified(source)
     t_quants, t_inner = quantified(target)
     if s_quants and len(s_quants) == len(t_quants):
@@ -280,8 +290,8 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         return adapt_plan(source, target, layout)
     if layout is not None and layout[0] and cs != "QVal" and ct != "QVal":
         lp = layout_plan(source, target, layout)
-        # A value of a bounded type parameter is held viewed at its bound, whatever the layouts: a record or variant
-        # of another type converts to the bound's view (and back), as below
+        # A module's abstract type's value is held viewed at its bound, whatever the layouts: a record or variant of
+        # another type converts to the bound's view (and back), as below
         if lp is not None or not (_bounded_view(ss) or _bounded_view(ts)):
             return lp
     # A value of a type parameter, held as a QVal word: a scalar or pointer in its bits, a record or variant boxed
@@ -291,6 +301,15 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         return ir.Plan("unbox", source, target)
     if cs == "QVal" or (_equal(source, target) and _same_views(source, target)):
         return None
+    if own_view(ss) and own_view(ts) and ss.symbol_id == ts.symbol_id:
+        # One type parameter, at whatever bounds (a function used where its parameter's bound is stronger): its values
+        # are held at their own view either way
+        return None
+    if _own_viewed(ss) or _own_viewed(ts):
+        # A bounded type parameter's value is held at its own view, its type argument's: used at another type, it is
+        # converted by the runtime between the two types' descriptors (a record viewed at the other, a variant's tags
+        # remapped, a tuple or option through a proxy)
+        return ir.Plan("view", source, target)
     s_held, t_held = resolved_shape(ss), resolved_shape(ts)
     if s_held.kind == t_held.kind == "record":
         return None if _equal(s_held.type, t_held.type) else ir.Plan("record_view", source, target)
@@ -375,20 +394,17 @@ def _slots_agree(source: Shape, target: Shape) -> bool:
     return s_c == t_c or (t_c == "QVal" and s_c != "void")
 
 
-def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t, witness: QType,
-                      bound: Optional[QType] = None) -> Optional[ir.Plan]:
+def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.Plan]:
     """How an auto value's components are stored, in the auto type's witness-independent layout: a component of the
     type component's type keeps its own representation (inspect reads it by the stored type component's
-    descriptor), in its QVal form where the layout holds a QVal, which its slot already holds; the others convert to
-    their stored types. When the witness is a type parameter in scope bounded by a record, variant, or option type
-    (bound), whose values generic code holds viewed at the bound, the payload is copied, and those components are
-    converted from the bound's view to the witness's type at run time (`view`), as inspect reads them."""
+    descriptor), in its QVal form where the layout holds a QVal, which its slot already holds (a bounded type
+    parameter's value, at its own view, as the witness's); the others convert to their stored types."""
     source = shape(payload_t).components
     target = shape(stored_t).components
     fields = []
     for sig_f, sc, tc in zip(auto_t.signature, source, target):
         if is_type_variable(sig_f.type_val, auto_t.symbol_id) and _slots_agree(sc.shape, tc.shape):
-            fields.append(None if bound is None else ir.Plan("view", bound, witness))
+            fields.append(None)
         else:
             fields.append(plan(sc.shape.type, tc.shape.type))
     if all(p is None for p in fields) and all(_slots_agree(sc.shape, tc.shape) for sc, tc in zip(source, target)):
@@ -398,21 +414,6 @@ def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t, witness: QType,
     payload_s = shape(payload_t)
     access = tuple(tuple_access(payload_s, i) for i in range(len(fields)))
     return ir.Plan("copy", payload_t, stored_t, tuple(fields), access=access)
-
-
-def bounded_param(t: QType, type_params: set[int]) -> Optional[QType]:
-    """The bound B of t, if t is a type parameter in scope (its symbol among type_params) bounded by a record, variant,
-    or option type (A <: B), whose values generic code holds viewed at the bound; None for any other type."""
-    var = shape(t).type
-    if not isinstance(var, (QTypeVar, QAbstractType)) or var.symbol_id not in type_params:
-        return None
-    if not isinstance(var.bound, QPowerKind):
-        return None
-    bound = var.bound.bound
-    bound_s = shape(bound)
-    if not may_be_stored_as_subtype(bound_s) or bound_s.kind in ("fun", "all"):
-        return None
-    return bound
 
 
 def auto_layouts_agree(stored_t: QType, arm_t: QType) -> bool:
@@ -432,7 +433,7 @@ def auto_layouts_agree(stored_t: QType, arm_t: QType) -> bool:
     return True
 
 
-def inspect_arm(auto_t, case: ir.InspectCase, type_params: set[int]) -> ir.InspectArm:
+def inspect_arm(auto_t, case: ir.InspectCase) -> ir.InspectArm:
     """How an inspect case of an auto value of type auto_t obtains its components (ir.InspectArm)."""
     stored_t = auto_payload_type(auto_t)
     arm_t = auto_payload_type(auto_t, case.match_type)
@@ -443,15 +444,6 @@ def inspect_arm(auto_t, case: ir.InspectCase, type_params: set[int]) -> ir.Inspe
         else "mentions"
         for sig_f in auto_t.signature
     )
-    bound = bounded_param(case.match_type, type_params)
-    if bound is not None:
-        if has_var:
-            raise UnsupportedConversion(
-                f"C code generation cannot inspect an auto value of type '{auto_t}' at the bounded type "
-                f"parameter '{case.match_type}': its components are converted to the bound, so the var "
-                f"components could not be shared with the auto value"
-            )
-        return ir.InspectArm(converted, bound=bound)
     if not case.exact:
         return ir.InspectArm(converted)
     shared = auto_layouts_agree(stored_t, arm_t)
@@ -600,7 +592,7 @@ class _Representer:
         binder that needs converting is bound by a let at the case's start, from a binder of the arm's type."""
         if not case.binders:
             return
-        case.arm = inspect_arm(auto_t, case, self.type_params(function))
+        case.arm = inspect_arm(auto_t, case)
         arm_t = auto_payload_type(auto_t, case.match_type)
         binders = []
         lets = []
@@ -640,8 +632,7 @@ class _Representer:
                 o.init = self.convert(init, array_element(result_t), before)
             case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
                 stored_t = auto_payload_type(auto_t)
-                bound = bounded_param(witness, self.type_params(self.function))
-                p = auto_payload_plan(_type_of(payload), stored_t, auto_t, witness, bound)
+                p = auto_payload_plan(_type_of(payload), stored_t, auto_t)
                 if p is not None:
                     stored = ir.Var("payload", stored_t)
                     before.append(ir.Let(stored, ir.Convert(payload, p)))

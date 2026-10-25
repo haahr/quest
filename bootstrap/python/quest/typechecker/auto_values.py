@@ -8,18 +8,14 @@ from typing import Optional
 import quest.syntax.ast as ast
 from quest.types import (
     OK_TYPE,
-    QAbstractType,
     QAutoType,
     QType,
-    QTypeVar,
     TYPE_KIND,
     KindError,
     check_kind,
     is_subtype,
     auto_matches_subtypes,
     auto_payload_type,
-    strip_aliases,
-    unalias,
 )
 from quest.types.env import (
     Environment,
@@ -44,8 +40,6 @@ from quest.typechecker.checks import (
 from quest.typechecker.escape import (
     check_no_package_types,
     inspected_auto_type,
-    mutable_type_vars_with_ids,
-    type_vars_with_ids,
 )
 
 # Internal convenience alias for typechecking error raises
@@ -116,9 +110,7 @@ class AutoValueMixin:
         typed_branches: list[TypedInspectBranch] = []
         for branch in expr.branches:
             match_t = elaborate_type(branch.match_type, env)
-            self._check_closed_type(
-                match_t, "The type in an inspect when clause", branch.match_type.offset, auto_type
-            )
+            self._check_closed_type(match_t, "The type in an inspect when clause", branch.match_type.offset)
             arm_type: QType = auto_payload_type(auto_type, match_t)
             with env.scoped("inspect_branch"):
                 b_syms: list[ValueSymbol] = []
@@ -154,43 +146,17 @@ class AutoValueMixin:
         else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
         return typed_branches, else_typed
 
-    def _check_closed_type(
-        self, t: QType, what: str, offset: int, auto_type: Optional[QAutoType] = None
-    ) -> None:
+    def _check_closed_type(self, t: QType, what: str, offset: int) -> None:
         """Checks a type that is used at run time (Cardelli §4.6 requires it to be closed).
 
         A type that mentions type parameters of enclosing polymorphic functions is allowed: their run-time type
         arguments are known when the function runs. Inside generic code such a type's values are laid out
-        generically, which agrees with the native layout at any type argument (every slot holds one word), except
-        where generic code holds a value of a bounded type parameter (A <: T) viewed at its bound. Using such a
-        value at a particular type argument converts it, so for now a bounded parameter may not occur inside
-        mutable data (arrays, var components and fields, var and out parameters), whose conversion would be a copy
-        that loses updates, nor in a larger type component of an auto type with var components (`auto_type`),
-        since its binders must share those components. An abstract type projected from a package value (t.A) has
-        no run-time identity.
+        generically, which agrees with the native layout at any type argument (every slot holds one word, and a
+        bounded type parameter's value is held at its own view), so they are used at a particular type argument as
+        they are, mutable data included. An abstract type projected from a package value (t.A) has no run-time
+        identity.
         """
         check_no_package_types(t, what, offset)
-        free = set(t._fv) & self._bounded_type_param_ids
-        if not free:
-            return
-        bare = unalias(t)
-        if isinstance(bare, (QTypeVar, QAbstractType)) and bare.symbol_id in free:
-            return
-        mutable = sorted({v.name for v in mutable_type_vars_with_ids(strip_aliases(t), free)})
-        if mutable:
-            raise TypeError(
-                f"{what} cannot yet mention a bounded type parameter of an enclosing function inside mutable data "
-                f"(an array, a var component or field, or a var or out parameter): '{t}' mentions "
-                f"{', '.join(mutable)}",
-                offset=offset,
-            )
-        if auto_type is not None and any(f.is_var for f in auto_type.signature):
-            names = sorted({v.name for v in type_vars_with_ids(strip_aliases(t), free)})
-            raise TypeError(
-                f"{what} cannot yet mention a bounded type parameter of an enclosing function inside a larger type "
-                f"when the auto type has var components: '{t}' mentions {', '.join(names)}",
-                offset=offset,
-            )
 
     def _elaborate_auto_expr(
         self,
@@ -215,9 +181,7 @@ class AutoValueMixin:
                 offset=expr.offset,
             )
         witness = elaborate_type(expr.witness_type, env)
-        self._check_closed_type(
-            witness, "The type component of an auto value", expr.witness_type.offset, auto_type
-        )
+        self._check_closed_type(witness, "The type component of an auto value", expr.witness_type.offset)
         try:
             check_kind(witness, auto_type.kind_bound, env)
         except KindError:

@@ -47,15 +47,15 @@ from quest.types import (
     unalias,
 )
 
-# The kinds of shapes whose values a type parameter bounded by one holds viewed at its bound
+# The kinds of shapes in whose representation a type parameter bounded by one holds its values
 _VIEWED_KINDS = ("record", "variant", "option")
 
 
 def written_structure(t: QType, kind: str) -> Optional[QType]:
     """t as written with its outermost constructor exposed, if t's shape is of the kind ("tuple", "array",
-    "exception", or one of the kinds a type parameter is viewed at its bound at, for which it is the bound): None
-    otherwise. Its components' types keep their alias names; a shape's components have only their canonical
-    types."""
+    "exception", or one of the kinds a type parameter bounded by one is held in the representation of, for which it
+    is the bound): None otherwise. Its components' types keep their alias names; a shape's components have only their
+    canonical types."""
     s = shape(t)
     held = resolved_shape(s) if kind in _VIEWED_KINDS else s
     if held.kind != kind:

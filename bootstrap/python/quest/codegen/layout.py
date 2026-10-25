@@ -128,6 +128,27 @@ def resolved_shape(s: Shape) -> Shape:
     return s
 
 
+def held_at_bound(s: Shape) -> bool:
+    """Whether values of shape s, of a type with a bound, are held viewed at the bound: a module's abstract type (as
+    code outside the module holds it), an abstract type elaborated as such, or a path type. Generic code holds the
+    values of a bounded type parameter at their own view, their type argument's, in the representation of the bound
+    (docs/c-representation.md §5.1)."""
+    if s.bound is None or s.kind not in ("typevar", "abstract"):
+        return False
+    if s.kind == "abstract":
+        return True
+    from quest.modules.abstract_types import is_abstract_type_symbol
+
+    return is_abstract_type_symbol(s.symbol_id)
+
+
+def own_view(s: Shape) -> bool:
+    """Whether s is a bounded type parameter's shape, whose values generic code holds at their own view (their type
+    argument's) and reads through the bound by a view map (ir.ViewMapParam) when the bound is a record, variant, or
+    option type."""
+    return s.kind == "typevar" and s.bound is not None and not held_at_bound(s)
+
+
 def is_word_type(t: QType) -> bool:
     """Returns True if t is the standard library Word.T type."""
     return shape(t).kind == "word"
@@ -546,14 +567,15 @@ def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
     variable in subst is a type parameter of that code: so that the value can be used there as it is, through a
     pointer cast, and a value made there can be used natively.
 
-    Generic code stores a value of an unbounded type parameter as a QVal, and one of a bounded parameter as a value of
-    the bound. Every slot is one word (slot_representation), so in memory a QVal agrees with any native value: a
-    scalar or pointer in its bits, a record or variant boxed. In registers (function parameters and results) it agrees
-    only with integers and pointers, and in the cell a var or out parameter points to (natively a variable of the
-    value's representation) only with eight-byte scalars and pointers. A value of a bounded parameter is held viewed at its bound, which agrees with a
-    native value only when both are the same scalar. Aggregates agree when their components do; recursive types are
-    compared coinductively. This mirrors quest_layout_equivalent in the runtime, conservatively: False means only that
-    the value may need converting.
+    Generic code stores a value of an unbounded type parameter as a QVal, and one of a bounded parameter as its type
+    argument's own value, in the representation of the bound. Every slot is one word (slot_representation), so in
+    memory a QVal agrees with any native value: a scalar or pointer in its bits, a record or variant boxed. In
+    registers (function parameters and results) it agrees only with integers and pointers, and in the cell a var or out
+    parameter points to (natively a variable of the value's representation) only with eight-byte scalars and pointers.
+    A value of a bounded parameter agrees with the native value (which has the bound's representation). A module's
+    abstract type's value is held viewed at its bound, which agrees with a native value only when both are the same
+    scalar. Aggregates agree when their components do; recursive types are compared coinductively. This mirrors
+    quest_layout_equivalent in the runtime, conservatively: False means only that the value may need converting.
     """
     if not subst:
         return True
@@ -570,8 +592,13 @@ def _stored_value_agrees(var: Shape, arg: QType, place: str) -> bool:
     """Whether a native value of arg agrees with a value of the type parameter of shape var as generic code holds it
     in the place (_SLOT, _REGISTER, or _CELL)."""
     arg_c = representation(arg)
+    if var.bound is not None and own_view(var):
+        # Held as arg's own value, in the representation of the bound, which arg's is (a pointer to another struct
+        # holds the same object)
+        bound_c = shape_representation(var.bound)
+        return arg_c == bound_c or (arg_c.endswith("*") and bound_c.endswith("*"))
     if var.bound is not None:
-        # Held as a value of the bound, which agrees with one of arg only when both are the same scalar
+        # Held as a value of the bound, viewed at it, which agrees with one of arg only when both are the same scalar
         return arg_c == shape_representation(var.bound) and arg_c in _WORD_SCALARS and (
             place != _REGISTER or arg_c in _REGISTER_WORDS
         )

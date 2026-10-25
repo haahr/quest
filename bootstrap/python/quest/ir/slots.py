@@ -38,6 +38,7 @@ from quest.codegen.layout import (
     is_boxed_in_slots,
     is_record_subtype,
     may_be_proxied,
+    own_view,
     resolved_shape,
     shape_representation,
 )
@@ -176,7 +177,11 @@ class _Slots:
                 s.value = self.slot_if_boxed(s.value, shape(_type_of(base)).element, before)
             case ir.Switch(value=value, cases=cases):
                 ts = _tag_shape(_type_of(value))
-                if ts is not None and ts.kind == "option":
+                if own_view(shape(_type_of(value))):
+                    # A bounded type parameter's value (at its own view): its payloads are read through the view map,
+                    # converted, as values
+                    pass
+                elif ts is not None and ts.kind == "option":
                     s.access = option_tag_access(ts)
                     for c in cases:
                         self.option_case(ts, c)
@@ -256,8 +261,11 @@ class _Slots:
                     return False
                 fields = rs.sorted_components()
                 field = next(f for f in fields if f.name == name)
-                if not field.is_var and (shape_representation(field.shape) == "QVal" or _may_be_stored_as_subtype(field.shape)):
-                    # A subtype's payload may store it at another type: read by the offset table's stored types and
+                own = own_view(shape(_type_of(r)))
+                if not field.is_var and (own or shape_representation(field.shape) == "QVal"
+                                         or _may_be_stored_as_subtype(field.shape)):
+                    # A subtype's payload may store it at another type, or a bounded type parameter's value (at its own
+                    # view) at its type argument's type for it: read through the offset table (and the view map) and
                     # converted, as a value
                     o.stored = True
                     return False
@@ -325,10 +333,13 @@ class _Slots:
                 o.payload = self.slot_if_boxed(payload, case.shape if case is not None else None, before)
             case ir.ExceptionPayload(exception=e):
                 return _boxed(_exception_payload(_type_of(e)))
-            case ir.IsTag(value=v) | ir.Ordinal(value=v):
+            case ir.IsTag(value=v) | ir.Ordinal(value=v) if not own_view(shape(_type_of(v))):
                 ts = _tag_shape(_type_of(v))
                 if ts is not None and ts.kind == "option":
                     o.access = option_tag_access(ts)
+            case ir.Payload(value=v) if own_view(shape(_type_of(v))):
+                # Read through the view map, converted, as a value
+                return False
             case ir.Payload(value=v, tag=tag):
                 ts = _tag_shape(_type_of(v))
                 if ts is not None and ts.kind == "option":

@@ -133,10 +133,9 @@ binders when a type is compared with a bound that contains it). As in full F<:, 
 *Bounded quantification is undecidable*): each comparison of quantifiers costs a large share of the proof's fuel
 (`_QUANTIFIER_FUEL`), and the supertype's bounds are compared within the same proof, so a search that diverges
 through bounds stops after a few levels and fails as not a subtype (`tests/errors/typecheck/all_subtyping_diverges`).
-In C, values of a bounded type parameter are held viewed at its bound, so such a function is adapted: the represent
-pass compares the two signatures with the type parameter at each bound (`shared_signatures`), and converts arguments
-from the stronger bound's view to the weaker one's and results back. Arguments of mutable types that mention the
-parameter (`Array(X)`) cannot be converted without copying and are rejected in C, as at other polymorphic calls.
+In C, values of a bounded type parameter are held at their own view, their type argument's, whatever the bound
+([c-representation.md](c-representation.md) §5.1), so such a function's arguments and results need no conversion
+(at most a cast between the C names of equal types).
 
 ### 3.2. Equi-Recursive Subtyping and the Coinductive Trail ($\Sigma$)
 In Quest, recursive types are equi-recursive: $\text{Rec}(X::K) T \equiv T[\text{Rec}(X::K) T / X]$.
@@ -715,21 +714,12 @@ end
   `dynamic.new` or `dynamic.be`. Inside generic code, a value of a type that mentions a type parameter is laid out
   generically (an `A` component is a `QVal`, a closure taking an `A` takes a `QVal`); the C backend describes such
   a type by a template instantiated at run time ([c-representation.md](c-representation.md) §6.4.5). Every
-  aggregate slot holds one word, so the generic layout agrees with the native one at any type argument, and
-  updates through either are shared (`language/auto_type_parameters_in_mutable_data`), except where generic code
-  holds a value of a bounded type parameter (`A <: T`) viewed at its bound, which is converted when used at a
-  particular type. Conversion copies, so for now `_check_closed_type` rejects:
-  - a type that mentions a bounded type parameter inside mutable data: an array's elements, a `var` component or
-    field, or a `var` or `out` parameter (`auto :Array(A) with ... end` for `A <: Record a: Int end`), since a copy
-    would not share updates;
-  - a larger type that mentions a bounded type parameter as the type component or `when` type of an auto type with
-    `var` components, whose binders must share those components;
-  - an abstract type projected from a package value (`t.A`, a `QPathType`), which has no run-time identity.
-
-  Such a type can still reach run time as an ordinary type argument (`pack(:Array(Tuple v: A end) ...)`, with `A`
-  bounded, for a `pack(B::TYPE x: B n: Int)` that calls `dynamic.new(:B x)`); compiled code then stops with a run-time error if
-  the value must be converted, and the interpreter, which has no layouts, runs it. Types exported abstractly by
-  modules, such as `writer.T`, are fine: they denote the same type throughout a program.
+  aggregate slot holds one word, and generic code holds a bounded type parameter's (`A <: T`) values at their own
+  view, so the generic layout agrees with the native one at any type argument: nothing is converted, and updates
+  through either are shared, mutable data included (`language/auto_type_parameters_in_mutable_data`,
+  `language/bounded_parameters_own_view`). `_check_closed_type` rejects only an abstract type projected from a
+  package value (`t.A`, a `QPathType`), which has no run-time identity. Types exported abstractly by modules, such as
+  `writer.T`, are fine: they denote the same type throughout a program.
 - **Run-time type arguments (interpreter):** a closure records the symbol ids of its type parameters
   (`TypedFun.type_param_ids`); a type application returns the closure with them bound to its type arguments, which
   are first resolved through the bindings in scope (so generic code can pass its own type parameters on); a call

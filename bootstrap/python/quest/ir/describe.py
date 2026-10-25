@@ -37,7 +37,7 @@ import dataclasses
 from typing import Any, Optional
 
 from quest.codegen.descriptors import bound_var_index, hole_var
-from quest.codegen.layout import representation
+from quest.codegen.layout import own_view, representation, resolved_shape
 from quest.ir import nodes as ir
 from quest.ir.represent import held_shape
 from quest.ir.shapes import shape
@@ -141,6 +141,8 @@ class _Describer:
         # type parameters whose descriptors are not available here (an enclosing function's, in a thunk)
         self.scope: dict[int, ir.Var] = {}
         self.unavailable: frozenset[int] = frozenset()
+        # The view maps of the function being described, by the symbols of their type parameters
+        self.view_maps: dict[int, ir.ViewMapParam] = {}
         # Handlers' exception variables, which `is` compares as exceptions
         self.handler_vars: set[int] = set()
 
@@ -283,6 +285,10 @@ class _Describer:
                 self.inspect(s)
             case ir.Try(exception=e):
                 self.handler_vars.add(id(e))
+            case ir.Store(base=base) if base is not None:
+                s.view_map = self.view_map(base)
+            case ir.Switch(value=value):
+                s.view_map = self.view_map(value)
             case ir.Echo(value=value, type=t, prefix=prefix):
                 text = package_text(t) if prefix else None
                 if text is not None:
@@ -296,7 +302,26 @@ class _Describer:
             self.body(b)
         return s
 
+    def view_map(self, a: ir.Atom) -> Optional[ir.Var]:
+        """The view map a value is read through its type's bound by, if its type is a type parameter in scope bounded by
+        a record, variant, or option type (held at its own view); made for the function on first use."""
+        s = shape(_type_of(a))
+        held = resolved_shape(s)
+        if not own_view(s) or held.kind not in ("record", "variant", "option") or s.symbol_id not in self.scope:
+            return None
+        param = self.view_maps.get(s.symbol_id)
+        if param is None:
+            name = s.name.replace(".", "_") if s.name else "t"
+            param = ir.ViewMapParam(ir.Var(f"view_{name}", ir.VIEW_MAP_TYPE), s.symbol_id, self.scope[s.symbol_id],
+                                    self.describe(held.structure))
+            self.view_maps[s.symbol_id] = param
+        return param.var
+
     def operation(self, o, result: Optional[ir.Var]) -> None:
+        match o:
+            case ir.RecordField(record=a) | ir.Addr(base=a) | ir.IsTag(value=a) | ir.Payload(value=a) | \
+                    ir.Ordinal(value=a) if a is not None:
+                o.view_map = self.view_map(a)
         match o:
             case ir.Prim(op="is" | "isnot", args=args):
                 a = args[0]
@@ -367,7 +392,7 @@ class _Describer:
                     if how is None:
                         descriptors.append(None)
                     elif how == "component":
-                        to = self.describe(arm.bound if arm.bound is not None else arm_f.type_val)
+                        to = self.describe(arm_f.type_val)
                         descriptors.append((s.witness.var, to))
                     else:
                         descriptors.append((self.describe(stored_f.type_val), self.describe(arm_f.type_val)))
@@ -384,7 +409,10 @@ class _Describer:
             for tp in f.type_params
         )
         self.scope = {p.symbols[0]: p.var for p in f.descriptor_params}
+        self.view_maps = {}
         self.body(f.body)
+        f.view_maps = tuple(self.view_maps.values())
+        self.view_maps = {}
         self.scope = {}
 
     def module(self, m: ir.Module) -> None:

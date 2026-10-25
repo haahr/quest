@@ -131,7 +131,7 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         and (global_name := module_abstract_type_name(t)) is not None
     ):
         # A module's abstract type with a bound: opaque, and held outside the module in the representation of its
-        # bound, viewed at the bound (a stored descriptor, as for a bounded type parameter)
+        # bound, viewed at the bound (a stored descriptor, `viewed`)
         return DescriptorForm("stored", tag=f"stored_{text_digest(global_name)}", name=global_name, type=t)
     # A type variable bounded by a record, variant, or option type is described by its bound
     held = resolved_shape(s)

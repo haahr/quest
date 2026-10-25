@@ -10,6 +10,19 @@ The goal of phases 2 and 3 is the one stated in [reorganization.md](reorganizati
 decides by shapes, and looks inside the IR's types as written (which carry the program's alias names) only through
 one module (phase 2, as decided there); and the C printer only spells the IR in C, deciding nothing.
 
+**Status: complete** (October 2026). Each step's **Done** note says what it did. In summary:
+
+- **Phase 1.** Type parameters inside mutable data are no longer restricted (unbounded ones in 1a, bounded ones in
+  phase 4). Variant and option cases are numbered by name, so equal types listing them in different orders share a
+  layout, and ordinals count in the static type (1b, which also fixed a silent miscompilation of reordered
+  variants). Checking for a proxy once per value turned out not to be needed (1c).
+- **Phase 2.** Re-scoped by decision: the IR's types as written are read only through `ir/written.py` (2a, 2b), and
+  imports carry their interfaces' record types, so the C printer takes no scopes (2c).
+- **Phase 3.** Payloads and echoed values are slots, so the printer boxes nothing (3a), and the describe pass lists
+  the types a unit's C declares (3b). Descriptor operands stay expressions, by decision (3c).
+- **Phase 4.** Generic code holds a bounded type parameter's values at their own view and reads them through view
+  maps, so nothing converts at polymorphic calls (`ABI_VERSION` 35).
+
 **Not in this plan:** unifying types as written with canonical types. B4 showed that type equality cannot become
 identity in the type checker ([reorganization.md](reorganization.md) §4), so that would be a change to how types are
 represented, not a cleanup.
@@ -206,6 +219,34 @@ view. Converting it would copy, losing updates (`tests/errors/run/layout_convers
 (B) is a representation change on the scale of A2, so it is prototyped and measured against the bar before it lands.
 Done when the error test above becomes a golden test with the same results in every backend, the remaining
 restrictions in §6.11 and both tasks in [tasklist.md](tasklist.md) are gone, and the benchmarks are within the bar.
+
+**Done,** under `ABI_VERSION` 35.
+
+- **Representation.** Generic code holds a value of a bounded type parameter at its own view, its type argument's, in
+  the bound's representation (`own_view` in `codegen/layout.py`); a module's abstract type (and an abstract or path
+  type) is still held viewed at its bound (`held_at_bound`). So such values agree with the caller's
+  (`_stored_value_agrees`), and nothing converts at calls and returns, mutable data included. A value used at another
+  type (its bound, say) converts at run time (`view`). The runtime's stored descriptors say which they are
+  (`QStoredDescriptor.viewed`, set for modules' abstract types only).
+- **View maps.** Reads through the bound go through the type argument's view map at the bound (`QViewMap`,
+  `quest_view_map`, memoized per pair; the record field indices, the tag maps, and the descriptors parts convert
+  from), which the describe pass gives a function for each type parameter its body reads so (`Function.view_maps`)
+  and each reading operation (`view_map` on record field reads, addresses, and stores, tag tests, switches,
+  payloads, and ordinals). The printer fetches the maps where a function begins.
+- **Removed.** The type checker's remaining restriction (`_check_closed_type` rejects only package types now), the
+  bound conversions of auto payloads and inspect arms (`bounded_param`, `InspectArm.bound`), and the conversions at
+  calls between a bound's view and a type argument's (as in `language/auto_bounded_type_components`, whose IR loses
+  them). A function used where its parameter's bound is stronger converts nothing.
+- **Tests.** `language/bounded_parameters_own_view`: records (fields read and written, one stored at a subtype's
+  view), arrays and a `var` cell of a bounded parameter's values, variants (tags remapped, payloads at a subtype's
+  view), an option's ordinal through a remapped tag, generic code passing values on and upcasting them, and the forms
+  the type checker used to reject (now golden; the error tests are gone), all through first-class polymorphic
+  values, so that compiled code runs the generic versions.
+- **Measured** (CPU time, interleaved, against main): the benchmarks run within 0.99 to 1.03 (they call specialized
+  clones). In generic code, a loop of field reads through a view map runs at 1.06; a call per element through a
+  polymorphic value runs at 0.50, as the old representation converted its argument at run time at every call.
+- **Found:** the type checker rejects `case`, `?`, and `!` on a value of a type parameter bounded by an option type,
+  and selection through a tuple bound ([tasklist.md](tasklist.md)).
 
 ---
 

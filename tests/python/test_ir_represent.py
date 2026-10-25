@@ -115,20 +115,31 @@ class TestRepresent(unittest.TestCase):
         self.assertNotIn("runtime", plans(unit))
 
     def test_layouts_that_disagree_convert_at_run_time(self) -> None:
-        # Generic code views a bounded type parameter's values at the bound
+        # A closure returning a Bool, which a register holds differently from a QVal
         unit = represent(
-            "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; Let Box = Fun(A::TYPE) Tuple x: A end; "
-            "let get(A <: P b: Box(A)): A = b.x; let f: All(A <: P b: Box(A)) A = get; "
-            "f(:Q tuple let x = record a = 5 b = 6 end end).b"
+            "let get(A::TYPE t: Tuple f: All(x: Int) A end): A = t.f(1); "
+            "let g: All(A::TYPE t: Tuple f: All(x: Int) A end) A = get; g(:Bool tuple let f = fun(x: Int): Bool true end)"
         )
         self.assertIn("runtime", plans(unit))
+
+    def test_bounded_parameters_are_held_at_their_own_view(self) -> None:
+        # As the caller holds the type argument's values: nothing converts, mutable data included
+        for source in (
+            "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; Let Box = Fun(A::TYPE) Tuple x: A end; "
+            "let get(A <: P b: Box(A)): A = b.x; let f: All(A <: P b: Box(A)) A = get; "
+            "f(:Q tuple let x = record a = 5 b = 6 end end).b",
+            "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; "
+            "let first(A <: P xs: Array(A)): A = xs[0]; "
+            "let f: All(A <: P xs: Array(A)) A = first; f(:Q array of record a = 1 b = 2 end end).b",
+        ):
+            with self.subTest(source=source):
+                self.assertFalse({"runtime", "view", "record_view", "copy"} & set(plans(represent(source))))
 
     def test_copying_mutable_data_is_rejected(self) -> None:
         with self.assertRaises(RejectedConversion):
             represent(
-                "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; "
-                "let first(A <: P xs: Array(A)): A = xs[0]; "
-                "let f: All(A <: P xs: Array(A)) A = first; f(:Q array of record a = 1 b = 2 end end).b"
+                "let first(A::TYPE fs: Array(All(x: Int) A)): A = fs[0](1); "
+                "let f: All(A::TYPE fs: Array(All(x: Int) A)) A = first; f(:Bool array of fun(x: Int): Bool true end)"
             )
 
     def test_records_read_from_slots_keep_their_boxes(self) -> None:
@@ -173,16 +184,13 @@ class TestRepresent(unittest.TestCase):
         self.assertIn((1, ir.DIRECT), access)
 
     def test_auto_values_of_bounded_witnesses_are_stored_at_the_witness(self) -> None:
-        # Generic code views the witness's values at the bound; the payload is stored at the witness's own type
+        # Generic code holds the witness's values at their own view, at which the payload stores them: no copy
         unit = represent(
             "Let Big = Variant a: Int b: Bool end; Let AnyBig = Auto A<:Big with a: A end; "
             "let mk0(A <: Big x: A): AnyBig = auto :A with x end; let mk: All(A <: Big x: A) AnyBig = mk0; "
             "mk(:Big variant a of Big with 1 end)"
         )
-        copies = [c.plan for c in operations(unit, ir.Convert) if c.plan.kind == "copy"]
-        self.assertEqual([[f.kind for f in c.fields] for c in copies], [["view"]])
-        # The payload is made by the function: its components are read directly
-        self.assertEqual([c.access for c in copies], [(ir.DIRECT,)])
+        self.assertEqual([c.plan for c in operations(unit, ir.Convert) if c.plan.kind == "copy"], [])
 
     def test_inspect_arms(self) -> None:
         unit = represent(
@@ -196,11 +204,10 @@ class TestRepresent(unittest.TestCase):
         )
         arms = [c.arm for i in operations(unit, ir.Inspect) for c in i.cases]
         exact = next(a for a in arms if len(a.converted) == 2)
-        bounded = next(a for a in arms if a.bound is not None)
-        at_big = next(a for a in arms if a is not exact and a is not bounded)
-        self.assertEqual([a.converted for a in (bounded, at_big, exact)], [("component",)] * 2 + [("component", None)])
-        self.assertIsNotNone(bounded.bound)
-        self.assertFalse(at_big.exact)
+        # At the bounded parameter A, as at Big: the component converted by descriptor (A's own view, the witness's)
+        others = [a for a in arms if a is not exact]
+        self.assertEqual([a.converted for a in others + [exact]], [("component",)] * 2 + [("component", None)])
+        self.assertFalse(any(a.exact for a in others))
         # Var components: inspected exactly, sharing the stored components, or a layout error
         self.assertTrue(exact.exact and exact.shared and exact.layout_error)
 

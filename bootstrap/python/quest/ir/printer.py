@@ -83,6 +83,11 @@ class _Printer:
     def descriptors(self, ds) -> str:
         return ", ".join(self.descriptor(d) for d in ds)
 
+    def through(self, o) -> str:
+        """The view map an operation reads a value through its type's bound by, if it has one."""
+        view_map = getattr(o, "view_map", None)
+        return f" through {self.name(view_map)}" if view_map is not None else ""
+
     def of(self, d) -> str:
         """The descriptor an operation uses, if it has one."""
         return f" of {self.descriptor(d)}" if d is not None else ""
@@ -230,8 +235,6 @@ class _Printer:
             pair = arm.descriptors[i] if i < len(arm.descriptors) else None
             converted.append(f"{c}({self.descriptors(pair)})" if pair is not None else (c or "none"))
         parts = [f"converting ({', '.join(converted)})"]
-        if arm.bound is not None:
-            parts.append(f"from bound {self.type(arm.bound)}")
         if arm.exact:
             parts.append("if equivalent shared" if arm.shared else f"if equivalent {self.plan(arm.plan)}")
         if arm.layout_error:
@@ -259,12 +262,18 @@ class _Printer:
                            + [f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params])
         # A lifted function's environment, which has no Quest type
         env = f" {{{self.bind(f.env)}}}" if f.env is not None else ""
-        self.block(f"fun {self.name(f.var)}{env}{tps}({params}): {self.type(f.result_type)}", f.body, depth)
+        self.emit(depth, f"fun {self.name(f.var)}{env}{tps}({params}): {self.type(f.result_type)} {{")
+        # The view maps it reads its type parameters' values through their bounds by (after the describe pass)
+        for m in f.view_maps:
+            self.emit(depth + 1, f"view_map {self.bind(m.var)} = view_map({self.name(m.descriptor)}, "
+                                 f"{self.descriptor(m.bound)})")
+        self.body(f.body, depth + 1)
+        self.emit(depth, "}")
 
     def statement(self, s, depth: int) -> None:
         match s:
             case ir.Let(var=var, value=value):
-                text = self.op(value)
+                text = self.op(value) + self.through(value)
                 self.emit(depth, f"let {self.decl(var)} = {text}")
             case ir.VarDecl(var=var, init=init):
                 if init is None:
@@ -282,9 +291,9 @@ class _Printer:
                     target = f"{self.atom(base)}.#{index}"
                 else:
                     target = f"{self.atom(base)}[{self.atom(index)}]"
-                self.emit(depth, f"store {target} := {self.atom(value)}{self.access(s.access)}")
+                self.emit(depth, f"store {target} := {self.atom(value)}{self.access(s.access)}{self.through(s)}")
             case ir.Do(value=value):
-                self.emit(depth, f"do {self.op(value)}")
+                self.emit(depth, f"do {self.op(value)}{self.through(value)}")
             case ir.Funs(functions=functions, recursive=recursive):
                 # Members of a recursive group are named before their bodies, which refer to one another
                 if recursive:
@@ -307,7 +316,7 @@ class _Printer:
                     self.body(else_body, depth + 1)
                 self.emit(depth, "}")
             case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
-                self.emit(depth, f"switch tag({self.atom(value)}){self.access(access)} {{")
+                self.emit(depth, f"switch tag({self.atom(value)}){self.access(access)}{self.through(s)} {{")
                 for c in cases:
                     binder = f" ({self.decl(c.binder)}){self.accesses(c.components)}" if c.binder is not None else ""
                     self.block(f"case {', '.join(c.tags)}{binder}:", c.body, depth + 1)

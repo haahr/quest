@@ -283,11 +283,21 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     assigned to abstract slots are boxed via `qval_wrap`, and extracted abstract values are unboxed via `qval_unwrap`.
   - Bounded type variables and path-types (`A::POWER(T)`, `p.T` where `p.T <: T`) resolve directly to the bound's
     native C type (e.g. `A <: Int` resolves to `QInt`, `A <: Real` to `QReal`), enabling unboxed, zero-overhead access.
-    Code holds a value of a type parameter bounded by a record, variant, or option type viewed at the bound (a record
-    with the bound's offset table, a variant with the bound's tags; `_bounded_view` in `ir/represent.py`). A call converts each argument to
-    the view the callee holds its parameter at, and converts a result of such a type parameter from the bound's view
-    to the view the caller holds the type at (the represent pass's conversions of a call's result), with `quest_convert` when the views are known
-    only at run time.
+  - **Own views.** Generic code holds a value of a type parameter bounded by a record, variant, or option type at its
+    own view, its type argument's, in the bound's representation (a record with its own offset table, a variant with
+    its own tags, an option as it is), as the caller holds it: nothing is converted when it is passed to or returned
+    from generic code, so mutable data holding such values (arrays, `var` components and cells) is shared as it is.
+    Generic code reads such a value through the bound by a **view map** (`QViewMap`, `quest_view_map(actual,
+    bound)`, memoized per pair), which a function fetches where it begins for each type parameter whose values its
+    body reads so (`ir.Function.view_maps`): for a record, the index in the type argument's offset table of each of
+    the bound's fields; for a variant or option, the bound's tag for each of the type argument's; and the descriptors
+    to convert a part from, where the type argument's type for it differs from the bound's (a field, payload, or
+    option component at a subtype's view). A field is read through the map, as stored and converted
+    (`quest_view_record_field`), or addressed through it (`quest_view_record_slot`, for `var` fields), a tag mapped
+    (`quest_view_option_tag`), and a payload or option component converted (`quest_view_part`,
+    `quest_view_option_component`). Used at another type (its bound, say), such a value is converted by the runtime
+    between the two descriptors (a `view` plan). A module's abstract type with a bound is held viewed at its bound
+    outside the module, as before (§6.10).
 
 - **Closure Adaptation Thunks:**
   When a tuple with concrete function signatures (e.g. `create: Int -> Counter` where `Counter = Int`) is coerced or
@@ -317,14 +327,13 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     (plans with a layout context: the instantiation, and the direction; `layout_plan` in `ir/represent.py`). Every slot
     holds a value's `QVal` form (Slots, above), so the layouts agree in memory whatever the type arguments
     (`generic_layout_agrees`, §6.4.5), and the value is used as it is, through a pointer cast: it keeps its identity,
-    and a recursive value is not copied. The layouts differ only where generic code views a value of a bounded type
-    parameter at its bound (a record with the bound's offset table, a variant with the bound's tags), and where a
-    component is a closure whose C signature changes (a `QVal` parameter or result in a register agrees only with
-    integers and pointers). Such a value is converted by `quest_convert`, from and to the descriptor of the type laid
-    out each way (for the callee's layout, the type's template with a hole for each of the callee's type parameters,
-    instantiated with the type arguments, `layout_descriptor` in `ir/describe.py`): a tuple or option
-    into a proxy (§5.8), which shares the original's identity and `var` components, or a copy where the target type
-    cannot be proxied (a closure among its components whose C signature changes with the layout).
+    and a recursive value is not copied (a bounded type parameter's value is held at its own view, above). The
+    layouts differ only where a component is a closure whose C signature changes (a `QVal` parameter or result in a
+    register agrees only with integers and pointers). Such a value is converted by `quest_convert`, from and to the
+    descriptor of the type laid out each way (for the callee's layout, the type's template with a hole for each of the
+    callee's type parameters, instantiated with the type arguments, `layout_descriptor` in `ir/describe.py`): a tuple or
+    option into a proxy (§5.8), which shares the original's identity and `var` components, or a copy where the target
+    type cannot be proxied (a closure among its components whose C signature changes with the layout).
     A value whose conversion would copy mutable data laid out differently (an array of such values) cannot be
     converted, since the copy would not share its updates; the compiler rejects the call
     (`generic_layout_copies_mutable_data`). An array's C type is the same whatever its elements, so its layout is
@@ -404,17 +413,14 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    auto component) is a pointer to an immutable box holding its `QRecordVal`, viewed at the slot's type (§5.1, Slots).
    Reading it reads the box; storing it makes a box, or reuses the one it was read from. Subtyping coercion (attaching
    the target's offset table) is applied before it is stored.
- 6. **Bounded Specialization for Records (`A <: Record`):**
+ 6. **Bounded Type Parameters (`A <: Record`):**
     - **Descriptor Retention:** Bounded polymorphic functions retain `const QTypeDescriptor *descriptor_A` in their
       C function signatures to support separate compilation and uniform reflection.
-    - **Uniform Fat Pointer Parameter Passing:** Parameters of bounded type `p: A` are passed as unboxed 16-byte
-      `QRecordVal` structs. At the call site, the caller coerces the concrete subtype argument to `A`'s bound by
-      attaching the appropriate static subtyping offset dictionary (`(const void *)&offsetdict_Bound_Actual`).
-    - **Dynamic Offset Evaluation:** Field access `p.x` inside the bounded function evaluates dynamic byte offsets
-      through the passed-in dictionary: `((const OffsetDict_Bound *)p.dict)->offset_x`.
-    - **Caller Dictionary Restoration on Return:** When a bounded function returns a bounded type variable `A` and the
-      caller receives it as concrete subtype `T`, the caller restores the dictionary (`Option A: Caller Restores
-      Dictionary`) by attaching `T`'s identity dictionary `&offsetdict_T_T` to the returned `.val`.
+    - **Own Views:** Parameters of bounded type `p: A` are passed as unboxed 16-byte `QRecordVal` structs at their own
+      view, the type argument's: the caller passes its value as it is, and a result is the caller's as it is.
+    - **Field Access Through a View Map:** Field access `p.x` inside the bounded function reads the type argument's
+      offset table at the index the function's view map gives for `x` (§5.1, Own views), and converts an immutable
+      field from the type the payload stores it at (or the type argument's type for it) to the bound's.
 
 ### 5.3. Options and Variants (Sums)
 
@@ -940,8 +946,9 @@ When extracting a value from a dynamic package (`dynamic.be[:T](d)` or `inspect 
 
 #### 5. Types Used at Run Time Inside Generic Code (Descriptor Templates)
 Inside a polymorphic function, a type that mentions the function's type parameters, such as `Tuple fst: A snd: Int
-end`, is laid out generically, independently of `A`'s type argument: an `A` component is a `QVal` (or the
-representation of `A`'s bound, for `A <: B`), and a closure of type `Fun(:A): String` takes a `QVal`. The same type at
+end`, is laid out generically, independently of `A`'s type argument: an `A` component is a `QVal` (or for
+`A <: B`, the type argument's own value in the representation of `B`), and a closure of type `Fun(:A): String` takes a
+`QVal`. The same type at
 a particular `A`, say `Tuple fst: Real snd: Int end` or `Fun(:Car): String`, is laid out natively (a `QReal`
 component, a closure taking a 16-byte `QRecordVal`). Such types reach run time as the type components of auto values,
 in `inspect` `when` clauses, as type arguments of `dynamic.new` and `dynamic.be`, and as any type argument a generic
@@ -960,7 +967,8 @@ function passes on ([type-system.md](type-system.md) §6.11).
   arguments.
 - **Stored types:** In an instance, each hole becomes a `QTYPE_KIND_STORED` descriptor (`QStoredDescriptor`) of its
   type argument: a value of that type stored as generic code stores a type parameter, as its `QVal` form, or, when
-  `storage` is set, as a value of the bound (a record viewed at the bound). The instance keeps the template's
+  `storage` is set, as its own value in the representation of the bound (a module's abstract type's stored
+  descriptor is `viewed` at its bound instead). The instance keeps the template's
   offsets, sizes, adapters, and invokers, so it describes both the value's type and the layout it is in. Subtyping
   (`quest_is_subtype`) looks through stored types; every slot is a word whatever its type (§5.1, Slots).
 - **Layout equivalence:** `quest_layout_equivalent(a, b)` tells whether values laid out as `a` describes can be used
@@ -968,7 +976,8 @@ function passes on ([type-system.md](type-system.md) §6.11).
   (every slot holds a value's `QVal` form, §5.1), in the cell a `var` or `out` parameter points to for eight-byte
   scalars, pointers, records, and variants (a cell holds a record or variant boxed, but a `Bool` or `Char` in its own
   byte), and in function parameters and results (registers) only for integers and pointers. A value stored as a
-  bounded type parameter is viewed at its bound, and agrees only with the bound's own layout. Aggregates agree when
+  bounded type parameter agrees with its type argument's own value (whose representation is the bound's); a module's
+  abstract type's, viewed at its bound, agrees only with the bound's own layout. Aggregates agree when
   their components do, records when their views' field types do. Recursive descriptors are compared coinductively.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
   type arguments (`generic_layout_agrees` in `codegen/layout.py`), conservatively: when it cannot tell, the value
@@ -976,15 +985,12 @@ function passes on ([type-system.md](type-system.md) §6.11).
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
   components their sharing); otherwise tuples and options are viewed through proxies of the originals (§5.8; copied,
-  where `to` cannot be proxied), auto payloads are copied with converted components, records are re-viewed from
-  their own layout (always, since code that knows a value only as of a type parameter's bound views it at the
-  bound), and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker. Arrays, exceptions,
-  and tuples with `var` components that would have to be copied cannot be without losing updates: converting one
-  whose layout differs is a fatal run-time error (`quest_layout_conversion_error`). At a polymorphic call, where both layouts are known,
-  the compiler reports it instead (§5.1, Polymorphic Calls). Only a bounded type parameter's values (held
-  viewed at the bound) make such layouts differ; the type checker rejects types that mention bounded type
-  parameters inside mutable data where they are used at run time, so this happens only when such a type reaches run
-  time as an ordinary type argument.
+  where `to` cannot be proxied), auto payloads are copied with converted components, records are re-viewed from their
+  own layout, and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker. Arrays, exceptions,
+  and tuples with `var` components that would have to be copied cannot be without losing updates: converting one whose
+  layout differs is a fatal run-time error (`quest_layout_conversion_error`). At a polymorphic call, where both layouts
+  are known, the compiler reports it instead (§5.1, Polymorphic Calls). Only closures whose C signatures change (in an
+  array of closures returning a `Bool`, say), and a module's abstract types, make such layouts differ.
 - **Where values are converted:** where a value is used at a particular type: an `inspect` branch converts the
   components (§8.1), `dynamic.be` converts its result, and record field reads convert fields stored differently
   (§5.2). Values are never converted when made: `auto :Tuple fst: A snd: Int end with ... end` stores its components
@@ -1183,8 +1189,8 @@ An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) 
 descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
 stored in a layout that does not depend on the type component, that of `Tuple S end` with `A` an abstract type of
 kind `K` (`auto_payload_type(auto_t)`). As for any abstract type, a component of type `A` is a `QVal`, or the
-representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a record boxed, viewed at
-`Object`); components
+representation of `B` when `K` is `POWER(B)` (so `Auto A<:Object with a:A end` stores a record boxed, at its own
+view); components
 of other types that mention `A`, such as `show(:A):String`, take the generic form too (here a closure taking a
 `QVal`). Auto types have descriptors of kind `QTYPE_KIND_AUTO` (`QAutoTypeDescriptor`): the bound of the type
 parameter, the size of the stored payload, and for each component its name, its type (the type parameter is
@@ -1197,9 +1203,8 @@ supports auto values with one component.
   with the payload's own plan (`auto_payload_plan` in `ir/represent.py`: closure adapters, and conversions of
   components not of the type component's type; a slot already holds its `QVal` form), and calls
   `quest_auto_new(descriptor_T, payload)`. Components holding values of the type component are stored at `T`'s own
-  view: when `T` is a bounded type parameter of generic code, which holds its values viewed at the bound, they are
-  converted from the bound's view to `T`'s first, in a copy of the payload (a `copy` plan with `view` fields). Conversely, a branch at a bounded type parameter converts them to
-  the bound's view.
+  view, as generic code holds a bounded type parameter's values too, so they are stored as they are. A branch at a
+  bounded type parameter converts them to its type argument's view, as a branch at any type does.
 - **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. The components are in the layout
   that the code that made the value knew the type component in: natively when it was a particular type, generically
   when generic code made the value with a type that mentions its type parameters (§6.4.5). When the type component's

@@ -1,0 +1,105 @@
+(* Language: generic code holds a value of a bounded type parameter (A <: B) at its own view, its type argument's,
+   and reads it through the bound (c-representation.md §5.1): record fields, a variant's or option's case, and their
+   payloads, converted to the bound's types where the type argument's differ. Nothing is converted when such values
+   are passed to or returned from generic code, so they may be inside mutable data (arrays, var components and
+   cells), whose updates both sides share. The polymorphic functions are called through first-class values, so that
+   compiled code runs their generic versions rather than clones specialized at the type arguments. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printInt(n: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(n));
+        writer.putString(wOut "\n")
+    end;
+
+(* 1. Records: fields read and written through the bound, one stored at a subtype's view *)
+Let Small = Record a: Int end;
+Let Big = Record a: Int b: Int end;
+Let P = Record s: Small var n: Int end;
+Let Car = Record fuel: String var n: Int s: Big end;
+let bump0(A <: P x: A): Int = begin x.n := x.n + 10; x.s.a + x.n end;
+let bump: All(A <: P x: A) Int = bump0;
+let car: Car = record fuel = "gas" var n = 1 s = record a = 5 b = 6 end end;
+printInt(bump(:Car car));
+printInt(car.n);
+
+(* 2. Arrays of a bounded parameter's values: updated by generic code, seen by the caller *)
+let rotate0(A <: P xs: Array(A)): Ok =
+    begin
+        let first = xs[0];
+        xs[0] := xs[1];
+        xs[1] := first
+    end;
+let rotate: All(A <: P xs: Array(A)) Ok = rotate0;
+let cars = array of :Car car record fuel = "diesel" var n = 2 s = record a = 7 b = 8 end end end;
+rotate(:Car cars);
+printInt(cars[0].n);
+printInt(cars[0].s.b);
+
+(* 3. A var cell of a bounded parameter's value *)
+let swapIn0(A <: P var x: A y: A): Int = begin let old = x; x := y; old.n end;
+let swapIn: All(A <: P var x: A y: A) Int = swapIn0;
+let var held: Car = car;
+printInt(swapIn(:Car @held cars[1]));
+printInt(held.n);
+
+(* 4. Variants: the type argument's tags in the bound's numbering, and a payload at a subtype's view *)
+Let V = Variant a: Small b: Int z: Ok end;
+let sizeOf0(A <: V v: A): Int = case v when a with s then s.a when b with n then n when z then 0 end;
+let sizeOf: All(A <: V v: A) Int = sizeOf0;
+let wa: Variant a: Big b: Int end = variant a of Variant a: Big b: Int end with record a = 3 b = 4 end end;
+printInt(sizeOf(:Variant a: Big b: Int end wa));
+(* The type argument numbers b 0, the bound 1 *)
+printInt(sizeOf(:Variant b: Int z: Ok end variant b of Variant b: Int z: Ok end with 9 end));
+let pick0(A <: V vs: Array(A) i: Int): Int = sizeOf(:A vs[i]);
+let pick: All(A <: V vs: Array(A) i: Int) Int = pick0;
+printInt(pick(:Variant a: Big b: Int end array of wa variant b of Variant a: Big b: Int end with 11 end end 1));
+
+(* 5. Options: an ordinal through the bound, whose numbering differs from the type argument's *)
+Let O = Option none some with x: Small end end;
+let ord0(A <: O o: A): Int = ordinal(o);
+let ord: All(A <: O o: A) Int = ord0;
+(* The type argument has only the case some, which it numbers 0, the bound 1 *)
+Let S = Option some with x: Big end end;
+let qs: S = option some of S with record a = 12 b = 13 end end;
+printInt(ord(:S qs));
+
+(* 6. Generic code passing its values on to other generic code, and upcasting them to the bound *)
+let viaBound0(A <: P x: A): Int = begin let p: P = x; p.s.a + bump(:A x) end;
+let viaBound: All(A <: P x: A) Int = viaBound0;
+printInt(viaBound(:Car car));
+printInt(car.n);
+
+(* 7. Types used at run time that mention a bounded parameter inside mutable data: an array in a dynamic value (made
+   by code that knows the type only as an ordinary type argument), an auto witness with a var component, and a
+   compound witness of an auto type with a var component, each updated through one side and seen through the other *)
+import dynamic: Dynamic;
+let pack(B::TYPE x: B): Dynamic = dynamic.new(:B x);
+let cars0(A <: Small x: A): Dynamic = pack(:Array(Tuple v: A end) array of(1 tuple x end));
+let carsOf: All(A <: Small x: A) Dynamic = cars0;
+let d = carsOf(:Big record a = 20 b = 21 end);
+let inDynamic = dynamic.be(:Array(Tuple v: Big end) d);
+inDynamic[0] := tuple record a = 22 b = 23 end end;
+printInt(dynamic.be(:Array(Tuple v: Big end) d)[0].v.b);
+
+Let Boxed = Auto A::TYPE with a: A end;
+let box0(A <: Small x: A): Boxed = auto :Tuple var y: A end with tuple let var y = x end end;
+let box: All(A <: Small x: A) Boxed = box0;
+let set0(A <: Small b: Boxed v: A): Bool =
+    inspect b when Tuple var y: A end with t then begin t.a.y := v; true end else false end;
+let set: All(A <: Small b: Boxed v: A) Bool = set0;
+let boxed = box(:Big record a = 30 b = 31 end);
+set(:Big boxed record a = 32 b = 33 end);
+printInt(inspect boxed when Tuple var y: Big end with t then t.a.y.b else 0 end);
+
+Let Cell = Auto A::TYPE with var a: A end;
+let cell0(A <: Small x: A): Cell = auto :Tuple y: A end with let var a = tuple x end end;
+let cell: All(A <: Small x: A) Cell = cell0;
+let reset0(A <: Small c: Cell v: A): Ok = inspect c when Tuple y: A end with t then t.a := tuple v end else ok end;
+let reset: All(A <: Small c: Cell v: A) Ok = reset0;
+let c = cell(:Big record a = 40 b = 41 end);
+reset(:Big c record a = 42 b = 43 end);
+printInt(inspect c when Tuple y: Big end with t then t.a.y.b else 0 end);

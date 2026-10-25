@@ -80,10 +80,6 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         # Implicit type arguments of the polymorphic call whose arguments are being checked, as
         # (metavariable, quantifier, call offset); nested calls may defer theirs to it.
         self._pending_type_args: Optional[list[tuple[QTypeMeta, QQuantifier, int]]] = None
-        # Symbol ids of the type parameters of polymorphic functions, and of those declared with a bound (A <: T),
-        # which the types used at run time may mention only outside mutable data (_check_closed_type)
-        self._type_param_ids: set[int] = set()
-        self._bounded_type_param_ids: set[int] = set()
 
     @contextmanager
     def scope(self, name: str = "local") -> Iterator[Scope]:
