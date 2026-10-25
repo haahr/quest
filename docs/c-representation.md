@@ -242,9 +242,10 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   any slot as a word (`quest_slot_read`, `quest_slot_write`). Locals, parameters, and results stay unboxed (16-byte
   `QRecordVal` and `QVariantVal`), so field access is unchanged. A box is never changed once made (storing into a
   `var` slot stores a new box), so a record or variant read from one slot is stored into another in the same box:
-  the printer keeps the box a slot read gave (`load_slot`, `slot_value` in `codegen/c/printer.py`). Boxes share
-  allocations where they can: a record is made in its box (its payload follows the box in one allocation), and an
-  aggregate being made allocates after itself the boxes of the fields that need new ones (`embedded_boxes`), so that
+  the represent pass binds the box a slot read gives to a boxed variable and stores that (`ir/slots.py`, docs/ir.md
+  §8.3), as it does when the value is boxed into a `QVal` word. Boxes share allocations where they can: a record is
+  made in its box (its payload follows the box in one allocation), and an aggregate being made allocates after itself
+  the boxes of the fields that need new ones (the pass marks them `embedded`; `embedded_boxes` in the printer), so that
   storing a record or variant rarely allocates on its own (the collector recognizes pointers into an allocation's
   interior, as Boehm GC does by default). The location a
   `var` or `out` parameter of a record or variant type points to holds the value boxed too
@@ -656,7 +657,8 @@ typedef struct QProxy {
   (through `quest_convert`); so is a conversion at a polymorphic call over a bounded type parameter (`runtime` plans).
   Upcasting a proxy makes a new proxy of its original (proxies never chain), and viewing it at the original's type
   gives back the original. An upcast that changes no component's view is a cast.
-- **Reading:** code reading a component of a value that may be a proxy checks the tag. Through a proxy, component `i`
+- **Reading:** code reading a component of a value that may be a proxy checks the tag (the represent pass decides
+  each read's access, docs/ir.md §8.3, and the printer prints it). Through a proxy, component `i`
   is read from the original and converted from its stored type to the view's (`quest_proxy_element`; for an option,
   `quest_proxy_tag` and `quest_proxy_option_element`): a record by the offset-table map, a variant by its tags, a
   nested tuple or option by a proxy, a closure by its type's adapter. Immutable components, once converted, are kept in
@@ -1177,7 +1179,7 @@ supports auto values with one component.
   components not of the type component's type; a slot already holds its `QVal` form), and calls
   `quest_auto_new(descriptor_T, payload)`. Components holding values of the type component are stored at `T`'s own
   view: when `T` is a bounded type parameter of generic code, which holds its values viewed at the bound, they are
-  converted from the bound's view to `T`'s first. Conversely, a branch at a bounded type parameter converts them to
+  converted from the bound's view to `T`'s first, in a copy of the payload (a `copy` plan with `view` fields). Conversely, a branch at a bounded type parameter converts them to
   the bound's view.
 - **Inspect, exact match:** a branch tests `quest_is_subtype` in both directions. The components are in the layout
   that the code that made the value knew the type component in: natively when it was a particular type, generically
@@ -1188,7 +1190,7 @@ supports auto values with one component.
   struct, so updates of `var` components are shared with the auto value; otherwise (a closure whose C signature
   differs) the binder is a statically converted copy, which is rejected with an error for signatures with `var`
   components, whose updates would be lost. When the layouts differ, the binder is a copy converted by
-  descriptor (`auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored type,
+  descriptor (as the case's arm, decided by the represent pass, says; `auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored type,
   described with `A` standing for the type component (a template's instance), to its type in `S[T/A]`. For a
   signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
   types it sees.

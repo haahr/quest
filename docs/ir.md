@@ -125,9 +125,11 @@ From the represented stage on (§9), every binder also has a **representation**,
 Inside an aggregate, a value is held in a **slot** of one word (`slot_representation`): a record or variant as a
 pointer to an immutable 16-byte box, a `Bool` or `Char` as a word of its own, anything else as its representation, so
 that a slot holds exactly the value's `word` form. The location a `var` or `out` parameter points to holds a record or
-variant boxed too (`location_representation`). The printer boxes and unboxes as it stores into and reads from slots
-(reusing the box a value was read from), as it wraps array elements; the represent pass's plans concern
-representations only.
+variant boxed too (`location_representation`). The represent pass makes boxing at slots explicit (§8.3): a variable
+may be **boxed**, holding its record or variant in its slot representation (printed `x: box(T)`): a value read from a
+slot is bound boxed and then unboxed, so that storing it into another slot reuses its box, and a mutable variable
+whose address is taken, or a `var` or `out` parameter, of a record or variant type is boxed (a use of it reads the
+value from its box).
 
 A **layout** describes an aggregate in memory: its shape, together with which positions hold a type parameter's
 value stored generically (as a `word`, or as the bound's representation for a bounded parameter, viewed at the
@@ -161,7 +163,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Calls | `call f [τ...](a...)` (a function bound by `funs`, or a function value in a variable), `call m.x [τ...](a...)` (a module's member), `type_app f [τ...]` (a polymorphic value applied to types only) | C+ |
 | Modules and externals | `member m.x` (a module's member as a value), `external "symbol"` (a C value, or a C function as a closure), `call external "symbol" [τ...](a...)` (the body of a function defined as `external`: a call of the C function, with its type parameters' descriptors) | C+ |
 | Closures | `closure f {a...} [τ...]` (a closure of the unit's function `f`, capturing the atoms, and supplying the enclosing functions' type parameters it takes first), `env_field(env, i)` | after closure conversion |
-| Tuples | `tuple(a...)` (value components; type components kept for printing), `tuple_field(t, i)` | C+ |
+| Tuples | `tuple(a...)` (value components; type components kept for printing; `box a` for a record or variant boxed in the tuple's allocation, after §8.3), `tuple_field(t, i)` | C+ |
 | Records | `record(name = a, var name = a...)`, `record_field(r, name)` | C+ |
 | Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n, a...)`, `is_tag(v, tag)`, `payload(v, tag)`, `ordinal(v)` | C+ |
 | Arrays | `array(a...)`, `array_rep(n, a)`, `index(a, i)` | C+ |
@@ -169,6 +171,12 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Exceptions | `exception Name` (generative), `exception_payload(e)` | C+ |
 | Addresses | `addr x` (a mutable variable), `addr r.name`, `addr t.#i`, `addr a[i]`, `cell(a)` (a fresh cell, for `var(e)`), `load p` | C+ |
 | Conversions | `convert(a, plan)` (§8) | R+ |
+
+From the represented stage on, operations also carry the represent pass's decisions about how they reach their
+operands' components, printed after them: `via original` or `via proxy` on a read of a tuple's component (and a store
+into one, its address, an option's tag or payload, and `is`) of a value that may be a proxy (§8.3); `via stored types`
+on a record field read converted by the offset table's stored types; `with runtime offsets` on a record literal whose
+view's offset table is found at run time; `converting (plans)` on a `type_app`; and an inspect case's arm.
 | Descriptors | `descriptor(τ)`, `instantiate(template, d...)`, `descriptor_param(A)` | after materialization |
 
 Library functions (`dynamic.new`, `arrayOp.size`, ...) are calls of module members, not operations of their own. A
@@ -262,7 +270,11 @@ off its end, or a jump, break, continue, or return). C makes a non-`volatile` lo
 
 `inspect` (auto values and dynamic values) is a structured statement, like `switch`: each case tests the value's
 run-time type against a type (subtype or exact match) and binds the value's components as of that type. Conversions
-of the components are explicit `convert` operations in the case (§8).
+of the components are explicit `convert` operations in the case (§8). For an auto value, the represent pass records
+how each case gets its components from the payload stored in the witness-independent layout (an `InspectArm`, printed
+after the case's binders): which are converted by descriptor, the bound a bounded type parameter's values are viewed
+at, and for an exact case whether the stored payload is shared or converted when the run-time layouts agree, and
+whether a layout error is raised when they do not.
 
 ### 6.6. Echo
 
@@ -325,7 +337,8 @@ refer to the variables being bound; the C printer fills in those captures once a
 allocated, as the IR interpreter does.
 
 `type_app` stays an operation, now on closures: instantiating a polymorphic closure binds its next type
-parameters, which the C printer emits as a runtime instantiation call using descriptor values (§7).
+parameters, which the C printer emits as a runtime instantiation call using descriptor values (§7), converting
+arguments and result by the plans the represent pass records on it (§8.3).
 
 ### 8.3. Represent
 
@@ -362,7 +375,9 @@ component's values at their own type (inspect reads them by the stored descripto
 | `variant_tags` | a variant's tag remapped by the static table of a subtype pair, when the cases' order differs |
 | `view` | converted by the runtime between two views' descriptors: a tuple or option upcast to a supertype at which components change view, as a proxy of the original ([c-representation.md](c-representation.md) §5.8); a variant or option from a bounded type parameter's view at its bound to another type's |
 | `cast` | a pointer to an aggregate whose layouts agree in memory, viewed through the other struct |
-| `copy` | a new tuple, each component converted by its own plan (an auto value's payload, stored in its witness-independent layout) |
+| `unproxy` | a cast to a tuple or option type that cannot be a proxy from one that may be: the original serves, as no component changes view |
+| `slot_box`, `slot_unbox` | a record or variant put in a new box to be stored into a slot, and read from its box (a boxed variable) |
+| `copy` | a new tuple, each component converted by its own plan and read as the plan's access says (an auto value's payload, stored in its witness-independent layout; a component of a bounded witness, converted from the bound's view to the witness's type by a `view` field) |
 | `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (a bounded type parameter's values viewed at its bound, or closures among the components whose C signatures differ) |
 | `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
 | rejected | a conversion that would copy mutable data laid out differently: a compile-time error (`RejectedConversion`) |
@@ -370,6 +385,32 @@ component's values at their own type (inspect reads them by the stored descripto
 Function types are compared with the target's type parameters renamed to the source's, and recursive ones
 coinductively. A value of a type parameter bounded by a record, variant, or option is held viewed at its bound, so it
 converts to that view whatever the layouts.
+
+A type application records its plans (`TypeApp.plans`): for a polymorphic value of no parameters, its value's plan
+from the generic result at the type arguments; for a function, those of the thunk the instance is, converting each
+argument from the instance's parameter type to the function's generic one and the result back. An auto value whose
+witness is a type parameter in scope bounded by a record, variant, or option type (`bounded_param`) has its payload
+copied, the witness's components converted from the bound's view to the witness's own type, as inspect reads them;
+an inspect case records its arm (§6.5), and binders converted from the arm's type are bound by lets at the case's
+start. A function whose value parameter is annotated with a supertype of its variable's parameter type takes the
+variable's (lowering binds the annotation's at entry, and the copy converts).
+
+**Slots and proxies.** The pass's last step (`ir/slots.py`) decides how values are stored into and read from slots,
+and read through proxies:
+
+- an operation that reads a record or variant from a slot (a tuple's component, a record's field, an array's element,
+  a location, a module's member, a QVal word unboxed, and a record literal, made in its box) binds a boxed variable,
+  and a `slot_unbox` conversion the value; storing the value into another slot, or boxing it into a QVal word (a
+  `box` plan from the boxed variable), reuses its box;
+- an operation that stores a record or variant into a slot (a tuple, record, option, or array being made, a store, a
+  cell, an assignment of a boxed mutable variable) takes a box: the one remembered, or a new one (`slot_box`); a tuple
+  or record being made boxes the others in its own allocation instead (`embedded`, printed `box a`);
+- a read of a component of a tuple or option whose type may be proxied (`may_be_proxied`), a write of a tuple's var
+  component and its address, an option's tag, and `is` record their access: direct (the value is not a proxy: its
+  type cannot be one, or, for a tuple's component read or a copy's, the function made it), from the original (it may
+  be a proxy, but the component cannot change view), or through a proxy (checked, and converted);
+- a record field read records whether it goes through the offset table's stored types (`RecordField.stored`), and a
+  record literal whether its view's offset table is found at run time (`MakeRecord.runtime_offsets`).
 
 Static decisions (whether layouts agree, whether a copy would lose updates) are made by `generic_layout_agrees` and
 `generic_layout_copies_mutable_data` in `codegen/layout.py`, which a differential test
@@ -400,7 +441,12 @@ function per IR function, structured statements for structured control, labeled 
 bodies), and `volatile` mutable variables where §6.4 requires. C names derive from symbols and their name hints
 (`g_<name>`, `l_<name>`, `qf_<name>`, with a suffix when two symbols share a hint in one scope; see
 [name-mangling.md](name-mangling.md)), keeping the generated C readable for debugging. The printer makes no
-representation decisions.
+representation decisions: it prints the plans, boxed variables, accesses, inspect arms, and type applications' plans
+the represent pass recorded, and calls `quest_convert` only to print a conversion recorded as one (`view` and
+`runtime` plans, a field read through stored types, an inspect arm's converted components). It still makes the
+descriptors (§8.4) and the declarations of the types it meets (structs, offset tables and the subtype pairs they are
+needed for, tag maps), and builds module records; a variant's payload, an exception's, and an echoed value are QVal
+words, wrapped and unwrapped as their representations say.
 
 ### 8.6. Future: CFG and SSA for the native backend
 
@@ -416,7 +462,7 @@ builds its own SSA and optimizes.
 | **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
-| **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to); conversions only through `convert` |
+| **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed |
 | (Descriptors) | §8.4 | not a separate IR stage on the C path: the C printer makes descriptors as it prints (§8.4) |
 
 The verifier runs after every pass when `QUEST_CHECK_IR=1`, which the test runners set (like

@@ -11,10 +11,12 @@ assignment, the type of what they bind or assign. Where the two differ, the valu
 pair (`plan`).
 
 The plans box and unbox between QVal and native values, view records at supertypes, remap variants' tags, cast
-aggregates whose layouts agree, view tuples and options whose components change view through proxies of the
-originals (docs/c-representation.md §5.8), copy auto payloads into their stored layouts, adapt closures, and convert
-by descriptor at run time; any other change of representation is reported as unsupported, rather than printed
-wrong.
+aggregates whose layouts agree (unwrapping a proxy where the target cannot be one), view tuples and options whose
+components change view through proxies of the originals (docs/c-representation.md §5.8), copy auto payloads into
+their stored layouts, adapt closures, and convert by descriptor at run time; any other change of representation is
+reported as unsupported, rather than printed wrong. The pass also decides what the C printer would otherwise: how
+auto values of bounded witnesses are stored and how inspect cases get their components (ir.InspectArm), the thunks'
+plans of type applications, and, in its last step (ir/slots.py), boxing at slots and reads through proxies.
 
 Every decision is made on shapes (ir/shapes.py). The variables the pass makes have types as written, with their alias
 names, which the IR prints (docs/ir.md §5): the types of the components of a type as written (written_structure), and

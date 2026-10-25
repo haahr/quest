@@ -5,11 +5,13 @@ own type parameters' descriptors, then its parameters), each closure a QClosure 
 nothing), each variable a C variable of its type's representation (globals for the variables the top levels bind
 outside loops, declared at file scope), and each structured statement a C statement: join points and loop exits are
 labels, and try regions setjmp handlers, popped on every way out. Conversions are `convert` operations, printed as
-their plans say. Aggregate slots hold records and variants boxed (slot_representation), as the locations var and out
-parameters point to do: the printer boxes a value it stores into one, reusing the box the value was read from, and
-unboxes a value it reads. A tuple or option whose type may be proxied (docs/c-representation.md §5.8) may be a view of
-an object of a subtype: its components are read through proxy checks, and its var components written into the
-original. The declarations of the types it uses (structs, descriptors, function type adapters) are
+their plans say, and every other representation decision is the represent pass's, recorded in the IR (docs/ir.md
+§8.3, §8.5): aggregate slots hold records and variants boxed (slot_representation), as the locations var and out
+parameters point to do, and the IR's boxed variables, slot_box and slot_unbox conversions, and embedded components say
+where boxes are made, reused, and read; a tuple or option whose type may be proxied (docs/c-representation.md §5.8)
+may be a view of an object of a subtype, and each read of a component records whether it goes through a proxy check,
+the original, or neither; inspect cases record their arms, and type applications their thunks' plans. The printer
+still makes descriptors and the declarations of the types it meets. The declarations of the types it uses (structs, descriptors, function type adapters) are
 c/declarations.py's, and the representations codegen/layout.py's, spelled in C by c/types.py
 (docs/c-representation.md). A module file's unit
 exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function

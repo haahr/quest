@@ -34,8 +34,8 @@ latter: a preparatory phase, then three tracks that can proceed in parallel.
 
 **From the compiler's organization.** Tracks A to C below address these:
 
-- the C printer still makes representation decisions (auto values, `inspect` arms, bounded type parameters' views,
-  `type_app` thunks, adapters) and materializes descriptors, contrary to [ir.md](ir.md) §8.5;
+- the C printer made representation decisions (auto values, `inspect` arms, bounded type parameters' views,
+  `type_app` thunks, adapters; moved to the represent pass by A3) and materializes descriptors;
 - below lowering, represent, `layout.py`, the C declarations, and the printer work on raw types, normalizing them
   again and again (`strip_aliases`, `normalize_type`, `beta_reduce`), where shapes were meant to be the only view;
 - `typechecker/typecheck.py` (3,349 lines) pairs a check and a synthesis function for most constructs, with much
@@ -255,6 +255,45 @@ original's interpreted ([tasklist.md](tasklist.md), `Options whose cases are lis
 (`auto_arm_converted`, `auto_layouts_agree`), bounded type parameters' views (`bounded_param_in_scope`), `type_app`
 thunks, and adapters become `convert` plans or IR operations decided by represent. Done when the printer calls neither
 `quest_convert` nor `layout.py`'s judgements on its own, and [ir.md](ir.md) §8.5 holds.
+
+**Done:** the represent pass decides, and records in the IR, every representation decision the printer made; the
+printer prints what it is given ([ir.md](ir.md) §8.3, §8.5).
+
+- **Slots** (`ir/slots.py`, the pass's last step): a read of a record or variant from a slot binds a *boxed* variable
+  (`Var.boxed`, printed `box(T)`) and a `slot_unbox` conversion the value; storing the value into another slot, or
+  boxing it into a QVal word, reuses that box; a value with no box gets a `slot_box` conversion, or is boxed in the
+  tuple's or record's own allocation (`embedded`, printed `box a`); mutable variables whose address is taken, and
+  `var` and `out` parameters, of record or variant types are boxed. Record field reads through stored types
+  (`RecordField.stored`) and record literals' runtime offset tables (`MakeRecord.runtime_offsets`) are decided there
+  too. `load_slot`, `slot_value`, `slot_field`, the printer's `located` set, and its box and freshness bookkeeping
+  are gone.
+- **Proxies:** reads of tuple and option components, option tags and payloads, writes of tuple `var` components and
+  their addresses, and `is` record their access (`direct`, `original`, `proxy`, printed `via ...`), with the
+  "made by this function" rule applied by the pass; casts to types that cannot be proxies are `unproxy` plans.
+  `may_be_proxied` is unchanged, so it stays consistent with `quest_may_be_proxied`.
+- **Autos and inspect:** `bounded_param` moved to the pass. An auto value of a bounded witness made by generic code
+  copies its payload with `view` fields from the bound to the witness (the printer converted the payload tuple in
+  place with `quest_convert`, which also changed the view of a tuple the program still held). Each inspect case
+  records its arm (`InspectArm`: components converted by descriptor, the bound, exact cases' sharing, plan, and
+  layout error, `auto_layouts_agree` moved to the pass); binders converted from the arm's type are bound by lets.
+- **Type applications** record their thunks' plans (`TypeApp.plans`); adapters already carried theirs.
+- **Also fixed:** a value parameter annotated with a proper supertype of its function's expected parameter type
+  (former [tasklist.md](tasklist.md) task): lowering gives the parameter the variable's type and binds the
+  annotation's at entry, which the pass converts (`language/contravariant_parameter_annotations`).
+
+The verifier checks boxed representations and that slots take boxes. The C of every test program and benchmark is
+unchanged but for names, the order of declarations, a separate statement per box, and three improvements: a record or
+variant read from a slot or made as a literal is boxed into a QVal word by its own box rather than a new one; a copy
+of a tuple the function made reads it without proxy checks; and the bounded auto payload copy above. The benchmarks'
+C is unchanged but for names, and they run as on main.
+
+Remaining in the printer, by design or for A4: it makes descriptors and templates, the types' declarations (structs,
+offset tables and the subtype pairs that need them, `is_record_subtype` and the tuple and variant coercion tables),
+and module records (boxing their members); it wraps and unwraps variant payloads, exception payloads, and echoed
+values as QVal words by their representations; and it calls `quest_convert` only to print conversions recorded as
+such (`view` and `runtime` plans, `stored` field reads, inspect arms). The written component types are still found
+by `written_structure` (recording them on IR operations at lowering, A1's suggestion, would not have simplified A3, so
+it is left for A4 or later).
 
 **A4. Descriptors as an IR pass** ([ir.md](ir.md) §8.4). A pass after represent makes descriptors IR values, and a
 fifth stage (`ir_described`) is dumped and verified. Done when the printer prints descriptors it is given and creates

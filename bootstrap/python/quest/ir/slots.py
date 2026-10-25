@@ -19,7 +19,8 @@ Proxies (docs/c-representation.md §5.8). A tuple or option whose type may be pr
 of an object of a subtype. Each read of a component (and each write of a tuple's var component, and each address of
 one) is DIRECT when the value cannot be a proxy (its type cannot be, or the function made it itself, for a tuple's
 component read), ORIGINAL when it may be but the component cannot change view (read from the original's slot), and
-PROXY otherwise (checked, and read through the proxy, converted); `is` compares originals (ORIGINAL).
+PROXY otherwise (checked, and read through the proxy, converted); `is` compares originals (ORIGINAL). A copy of a tuple
+the function made reads its components directly.
 
 The step also decides how a record's field is read (through the offset table's stored types, when a subtype's payload
 may store it at another type) and whether a record literal's offset table is known statically.

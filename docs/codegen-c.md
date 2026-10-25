@@ -553,12 +553,15 @@ are lowered as follows:
 - **Tuple Upcasts (`view` plans, proxies):** An upcast of a tuple or option whose components change view (a record
   at a supertype, a variant or option whose cases the supertype numbers differently, a closure whose signature
   changes) makes a proxy of the original, `quest_make_proxy` (c-representation.md §5.8). For a tuple or option type
-  that may be proxied (`may_be_proxied`), the printer reads components through `quest_is_proxy` checks
-  (`tuple_component`, `option_tag`, `option_component`; components that cannot change view read the original's slot
-  through `quest_unproxy`), writes `var` components into the original (`quest_proxy_store`, `quest_proxy_slot`), and
-  compares with `is` the originals. Tuples and options a function made itself are never proxies, and are read
-  directly. An upcast that changes no component's view is a cast; one to a type that cannot be proxied unwraps a
-  proxy.
+  that may be proxied (`may_be_proxied`), the represent pass records each read's access (ir.md §8.3), which the
+  printer prints: through `quest_is_proxy` checks (`tuple_component`, `option_tag`, `option_component`), from the
+  original's slot through `quest_unproxy` for components that cannot change view, or directly for tuples and options
+  a function made itself; `var` components are written into the original (`quest_proxy_store`, `quest_proxy_slot`),
+  and `is` compares the originals. An upcast that changes no component's view is a cast; one to a type that cannot be
+  proxied is an `unproxy` plan.
+- **Slots:** records and variants are boxed in aggregate slots; the represent pass makes boxing explicit (boxed
+  variables, `slot_box` and `slot_unbox` conversions, components boxed in a tuple's or record's own allocation), so
+  that the printer reuses the box a value was read from only where the IR says so (ir.md §8.3).
 - **End-to-End Golden Verification:** Verified across all phases (`tokenize`, `parse`, `typecheck`, `interpret`,
   `run_c_compiled`) via `existential_packages.quest`, `existential_adt.quest`, `cardelli_syntax.quest`, and
   `polymorphic_refs_records.quest`.
