@@ -90,6 +90,8 @@ from quest.types import (
     STRING_TYPE,
     QAllType,
     QFunType,
+    QRecordField,
+    QRecordType,
     QType,
     QTypeVar,
     QVarType,
@@ -949,7 +951,18 @@ def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
             module.init.statements.append(ir.Let(export, member))
             exports[name] = export
     module.exports = exports
+    _add_module_record(module)
     return unit
+
+
+def _add_module_record(module: ir.Module) -> None:
+    """Ends a module's initializer by making its record: of its members, or of its exports (docs/ir.md §3)."""
+    fields = module.members if module.exports is None else module.exports
+    rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
+    module.record = ir.Var(f"{module.name}_record", rec_t)
+    module.init.statements.append(
+        ir.Let(module.record, ir.MakeRecord(tuple((n, v, False) for n, v in fields.items())))
+    )
 
 
 def lower_program(
@@ -962,4 +975,7 @@ def lower_program(
     """Lowers a typed program to a Core IR unit."""
     if options is not None:
         echo = bool(getattr(options, "echo", echo))
-    return _Lowerer(env, echo, print_result).program(prog)
+    unit = _Lowerer(env, echo, print_result).program(prog)
+    for module in unit.modules:
+        _add_module_record(module)
+    return unit

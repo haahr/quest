@@ -578,10 +578,6 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
     for m in unit.modules:
         where = f"module '{m.name}'"
         body(m.init, top, where)
-        if m.descriptor is None or m.offsets is None or id(m.offsets) not in offset_tables:
-            problems.append(f"{where}: its record's descriptor or offset table is missing")
-        else:
-            descriptor(m.descriptor, top, where)
         for _, _, d in m.abstract_types:
             descriptor(d, top, where)
     body(unit.main, top, "main")

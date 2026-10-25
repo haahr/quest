@@ -749,18 +749,18 @@ class Body:
 class Module:
     """A module defined by the unit: its members, bound in its initializer body, by name. A module file's module (a
     unit of its own, which other units import) also has exports: its interface's members, at the interface's types,
-    bound last in its initializer (a member itself where the types are the same)."""
+    bound in its initializer after its members (a member itself where the types are the same). The initializer ends by
+    making the module's record of them (`record`)."""
     name: str
     interface_name: str
     init: Body
     members: dict[str, Var]
     exports: Optional[dict[str, Var]] = None
-    # Set by the describe pass: its record's descriptor and offset table (the record of its members, or of its
-    # exports), and its abstract types' registrations for dynamic values (docs/dynamic.md §2.3): each one's global
-    # name, its arity, and the descriptor of its representation (a template whose holes are its parameters, for an
-    # operator)
-    descriptor: Optional[StaticDescriptor] = None
-    offsets: Optional[OffsetTable] = None
+    # The module's record (a record of its members, or of its exports), which its initializer makes last
+    record: Optional[Var] = None
+    # Set by the describe pass: its abstract types' registrations for dynamic values (docs/dynamic.md §2.3): each
+    # one's global name, its arity, and the descriptor of its representation (a template whose holes are its
+    # parameters, for an operator)
     abstract_types: tuple[tuple[str, int, StaticDescriptor], ...] = ()
 
 

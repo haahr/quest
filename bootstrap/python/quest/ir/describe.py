@@ -23,8 +23,8 @@ mentioning a type parameter of the enclosing function there is rejected (Unsuppo
 
 The pass also lists the unit's static data (ir.StaticData), which a backend emits: the static descriptors operations
 refer to, the static offset tables of record literals (ir.OffsetTable, registered with the runtime for dynamic values
-when both types are closed) and of modules' records, and the tag maps of variant_tags plans (ir.TagMap); and each
-module's record descriptor and its abstract types' registrations (docs/dynamic.md §2.3). An echo of a package with a
+when both types are closed; modules' records among them), and the tag maps of variant_tags plans (ir.TagMap); and
+each module's abstract types' registrations (docs/dynamic.md §2.3). An echo of a package with a
 prefix, whose line is known statically (its components hidden), becomes an echo of its text.
 
 Descriptor operands are small pure expressions over descriptor variables, not values named by lets: where a backend
@@ -414,10 +414,6 @@ class _Describer:
 
     def module(self, m: ir.Module) -> None:
         self.body(m.init)
-        fields = m.members if m.exports is None else m.exports
-        rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
-        m.descriptor = self.static(rec_t)
-        m.offsets = self.offset_table(rec_t, rec_t, True)
         m.abstract_types = self.abstract_types(m.name)
 
     def abstract_types(self, canon: str) -> tuple[tuple[str, int, ir.StaticDescriptor], ...]:

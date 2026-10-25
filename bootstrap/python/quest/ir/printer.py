@@ -405,8 +405,8 @@ def format_unit(unit: ir.Unit) -> str:
         p.emit(0, f"module {m.name} : {m.interface_name} {{")
         p.body(m.init, 1)
         p.emit(1, "export " + ", ".join(f"{n} = {p.name(v)}" for n, v in m.members.items()))
-        if m.descriptor is not None:
-            p.emit(1, f"record {p.descriptor(m.descriptor)} with {p.offsets(m.offsets)}")
+        if m.record is not None:
+            p.emit(1, f"record {p.name(m.record)}")
         for name, arity, d in m.abstract_types:
             p.emit(1, f"abstract {json.dumps(name)}/{arity} = {p.descriptor(d)}")
         p.emit(0, "}")

@@ -1620,8 +1620,9 @@ class CPrinter:
             self.emit(f"{handler}.n_catches = {len(catches)};")
 
     def module_init(self, m: ir.Module) -> list[str]:
-        """A module's initializer, which makes its record. A module file's is extern, as are its record and its
-        exported functions, and initializes the modules it imports first, as a program's main does."""
+        """A module's initializer, whose body makes its record (ir.Module.record), stored in the module's global. A
+        module file's is extern, as are its record and its exported functions, and initializes the modules it imports
+        first, as a program's main does."""
         clean = mangle_module_name(m.name)
         decls, lines = self.top_level(m.init)
         linkage = "" if m.exports is not None else "static "
@@ -1634,18 +1635,8 @@ class CPrinter:
             out.append("    qr_register_dicts();")
             out.extend(f"    qv_mod_{mangle_module_name(imp.canonical_path)}_init();" for imp in self.unit.imports)
         out.extend(lines)
-        fields = m.members if m.exports is None else m.exports
-        rec_t = m.descriptor.type
-        self.types.append(rec_t)
-        struct = record_struct_name(rec_t, self.ctx)
-        out.append(f"    {struct} *_payload = ({struct} *)quest_alloc(sizeof({struct}));")
-        out.append(f"    _payload->header.descriptor = {self.descriptor(m.descriptor)};")
-        for n, v in sorted(fields.items()):
-            if not self.is_ok(v.type):
-                out.append(f"    _payload->qf_{n} = {shape_slot_store(self.name(v), shape(v.type))};")
-        dict_name = self.ctx.offset_dict_instance_name(m.offsets.view, m.offsets.layout)
-        out.append(f"    {module_record_ident(clean)} = (QRecordVal){{ .val = (void *)_payload, "
-                   f".dict = (const void *)&{dict_name} }};")
+        # The record the initializer made last
+        out.append(f"    {module_record_ident(clean)} = {self.atom(m.record)};")
         out.append("}")
         out.append("")
         if m.exports is not None:

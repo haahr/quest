@@ -6,7 +6,7 @@ static descriptor(Record value: Fun(n: Int): Int end)
 static descriptor(Fun(c: counter.T): Int)
 static descriptor(Fun(n: Int): counter.T)
 static offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) registered
-static offsets(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) registered
+static offsets(Record make: Fun(n: Int): Int get: Fun(c: Int): Int next: Fun(c: Int): Int end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) registered
 static offsets(Record value: Fun(n: Int): Int end <- Record value: Fun(n: Int): Int end) registered
 fun add(n: Int): Int {
   let %16: Int = prim +(sum, n)
@@ -41,21 +41,27 @@ module tally : Tally {
   var sum: Int = 0
   let add.1: Fun(n: Int): Int = closure add {}
   let total.1: Fun(): Int = closure total {}
+  let tally_record_box: box(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) = record(start = start, sum = sum, add = add.1, total = total.1) with offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) of descriptor(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end)
+  let tally_record: Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end = convert(tally_record_box, slot_unbox)
   export start = start, sum = sum, add = add.1, total = total.1
-  record descriptor(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) with offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end)
+  record tally_record
 }
 module counter : Counter {
   let make.1: Fun(n: Int): T = closure make {}
   let get.1: Fun(c: T): Int = closure get {}
   let next.1: Fun(c: T): T = closure next {}
+  let counter_record_box: box(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) = record(make = make.1, get = get.1, next = next.1) with offsets(Record make: Fun(n: Int): Int get: Fun(c: Int): Int next: Fun(c: Int): Int end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) of descriptor(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end)
+  let counter_record: Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end = convert(counter_record_box, slot_unbox)
   export make = make.1, get = get.1, next = next.1
-  record descriptor(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) with offsets(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end)
+  record counter_record
   abstract "counter.T"/0 = descriptor(Int)
 }
 module absolute : Absolute {
   let value.1: Fun(n: Int): Int = closure value {}
+  let absolute_record_box: box(Record value: Fun(n: Int): Int end) = record(value = value.1) with offsets(Record value: Fun(n: Int): Int end <- Record value: Fun(n: Int): Int end) of descriptor(Record value: Fun(n: Int): Int end)
+  let absolute_record: Record value: Fun(n: Int): Int end = convert(absolute_record_box, slot_unbox)
   export value = value.1
-  record descriptor(Record value: Fun(n: Int): Int end) with offsets(Record value: Fun(n: Int): Int end <- Record value: Fun(n: Int): Int end)
+  record absolute_record
 }
 main {
   let %1: Int = member tally.start
