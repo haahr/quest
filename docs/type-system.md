@@ -394,6 +394,12 @@ family: `bindings.py` (functions and bindings), `application.py` (calls), `aggre
 selection, options, variants, arrays), `control.py` (case, infix operators and assignment, conditionals, for loops,
 blocks), `exceptions.py` (exceptions, raise, try), and `auto_values.py` (auto values and `inspect`).
 
+The type checker's input is the desugared AST ([syntax.md](syntax.md) §5): short-circuit operators are conditionals,
+elsif chains are conditionals nested in else branches, user infix operators are calls, assignments to array
+elements are `ExprIndexAssign`, and non-recursive `let` declarations with parameters bind function values. Errors in
+those forms are reported as errors in their core forms, at the positions of the syntax they replace: for example,
+`true andif 3` reports that the conditional's branches `Int` and `Bool` have no common supertype.
+
 ### 6.1. Bidirectional Discipline
 - **Checking Mode ($\Gamma \vdash e \Leftarrow T$):** Pushes expected type $T$ down into expression $e$. Enables
   local inference for numeric constants, record upcasts, existential tuple packing, and function bodies.
@@ -407,7 +413,9 @@ blocks), `exceptions.py` (exceptions, raise, try), and `auto_values.py` (auto va
   expected type, a construct passes it, or its components (a tuple's or record's fields, a function's parameter
   and result types, an array's element type), into its parts and has that type; a record, tuple, function, or
   array checked against a type of another form is synthesized and must be a subtype. Synthesized, the parts'
-  types are joined or assembled. `check_expr` checks a conditional without an else branch by synthesis.
+  types are joined or assembled. `check_expr` checks a conditional without an else branch (a statement, of type Ok)
+  by synthesis; an elsif chain has an else branch once desugared, ending in `ok` if it was written without one, so
+  its branches are checked against the expected type.
 
 ### 6.2. Mutability, Assignment, and Reference Parameters
 Mutable locations are declared with `var`:

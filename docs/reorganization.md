@@ -247,6 +247,20 @@ makes) the merged methods keep the difference.
 chains. Typecheck dumps may change. Errors may change where desugaring gives a logical reason, provided each still
 shows a reader clearly where the problem is in the source as written.
 
+**Done:** `quest/syntax/desugar.py` ([syntax.md](syntax.md) §5), the pipeline's `desugar` phase between `parse` and
+`typecheck` (dumped as an AST, without goldens), and run on every other path that parses a unit and checks it (the
+unit loader, the interface and module compilers, the build engine's main routines). It rewrites `andif` and `orif`
+into conditionals, user infix operators into calls, `elsif` chains into nested conditionals (ending in `else ok`
+without an else branch), assignments to array elements into `ExprIndexAssign`, and non-recursive, non-external
+`let` declarations with parameters into function values. The type checker rejects those forms as internal errors.
+Left in the type checker: a conditional without elsif or else branches, a statement of type Ok whose then branch it
+wraps in a block, since that is its typing rule rather than syntax; and the parameters of recursive and external
+`let` declarations, which declare their types. No desugared node is marked, so the core forms are elaborated as if
+written: an elsif chain without an else branch is checked against the expected type branch by branch instead of
+synthesized, a user infix call gets the expected type for its implicit type arguments, an unbound operator is an
+undefined variable, and an `andif` or `orif` whose right operand is not Bool reports its conditional's branches.
+No typecheck dump or golden output changed, nor any error test.
+
 **B4. Canonical recursive types at construction (experiment).** Prototype building canonical forms when types are
 made, so that type equality is identity; measure type checking time and the code it removes, and adopt it only if it
 pays: if it removes the `QUEST_CHECK_CANONICAL` guard and the on-demand canonicalization below the type checker (the

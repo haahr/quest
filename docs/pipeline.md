@@ -26,6 +26,9 @@ The compiler processes Quest programs through a linear sequence of modular passe
                 [ Phase: parse ]     ===> (untyped AST)
                        |
                        v
+                [ Phase: desugar ]   ===> (core AST)
+                       |
+                       v
                 [ Phase: typecheck ] ===> (typed AST)
                     /        \
                    v          v
@@ -48,12 +51,13 @@ The compiler processes Quest programs through a linear sequence of modular passe
 
 ### 1.1. Pipeline Modes
 The compiler driver exposes three execution pipelines:
-- **Default Pipeline (`default_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `interpret`.
+- **Default Pipeline (`default_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck` $\to$
+  `interpret`.
   Used by default for `quest <file>`, `quest -e "<code>"`, and interactive REPL sessions.
-- **Compilation Pipeline (`compile_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `ir_core`
-  $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented` $\to$ `codegen_c`. Used by `quest compile <file>`,
-  lowering the typed AST to the IR ([ir.md](ir.md)), running its passes, and printing C99 source to build native
-  binaries.
+- **Compilation Pipeline (`compile_pipeline()`):** `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
+  $\to$ `ir_core` $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented` $\to$ `codegen_c`. Used by
+  `quest compile <file>`, lowering the typed AST to the IR ([ir.md](ir.md)), running its passes, and printing C99
+  source to build native binaries.
 - **Full Execution Pipeline (`full_pipeline()`):** the compilation pipeline, then `run_c_compiled`.
   Used for automated end-to-end compiled testing via `quest --stop-after run_c_compiled <file>`.
 
@@ -64,6 +68,10 @@ The compiler driver exposes three execution pipelines:
 All compiler phases are named by their **Verb / Action Form**:
 - `tokenize`: Lexical analysis from source text to token stream.
 - `parse`: Syntactic parsing from token stream to untyped AST.
+- `desugar`: Rewriting the untyped AST's syntactic sugar (`andif` and `orif`, elsif chains, user infix operators,
+  assignments to array elements, non-recursive `let` declarations with parameters) into the core forms the type
+  checker elaborates ([syntax.md](syntax.md) §5). Its dump is the core AST, printed as `parse`'s is; it has no golden
+  directory, since the typecheck goldens cover its output.
 - `typecheck`: Semantic typing, kind well-formedness, subtyping, and elaboration to typed AST.
 - `interpret`: Direct evaluation of typed AST via tree-walking interpreter. Returns final phrase
   `QValue`. Output is silent if `ok` (`QOk`), formatted if non-ok. Runtime I/O operations execute as direct
@@ -125,9 +133,10 @@ class Phase(ABC):
 ```
 
 ### 3.4. Pipeline Construction Factories
-- **`default_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ `interpret`.
-- **`compile_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `typecheck` $\to$ the IR's
-  phases (`ir_pipeline("represented")`) $\to$ `codegen_c`.
+- **`default_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
+  $\to$ `interpret`.
+- **`compile_pipeline() -> PhasePipeline`:** Registers `tokenize` $\to$ `parse` $\to$ `desugar` $\to$ `typecheck`
+  $\to$ the IR's phases (`ir_pipeline("represented")`) $\to$ `codegen_c`.
 - **`full_pipeline() -> PhasePipeline`:** Registers the compilation pipeline's phases $\to$ `run_c_compiled`.
 
 ---
@@ -153,6 +162,7 @@ quest -i file.quest
 # Stop after a specific phase and print its canonical output:
 quest --stop-after tokenize file.quest
 quest --stop-after parse file.quest
+quest --stop-after desugar file.quest
 quest --stop-after typecheck file.quest
 quest --stop-after interpret file.quest
 quest --stop-after run_c_compiled file.quest
@@ -215,9 +225,9 @@ quest --stop-after codegen_c counter.mod.quest
 ```
 
 `--stop-after` and `--dump-after` run a unit file's phases as the unit compilers compile it, in both modes: an
-interface file's phases are `tokenize`, `parse` and `typecheck`, and a module file's continue through the IR's stages
-to `codegen_c`, where it is lowered as a unit with its exports (`lower_module_file`) and printed as the `.mod.c` its
-compilation writes. A unit does not run alone, so the phases that run code are errors. `--stop-after` writes none of
+interface file's phases are `tokenize`, `parse`, `desugar` and `typecheck`, and a module file's continue through the
+IR's stages to `codegen_c`, where it is lowered as a unit with its exports (`lower_module_file`) and printed as the
+`.mod.c` its compilation writes. A unit does not run alone, so the phases that run code are errors. `--stop-after` writes none of
 the unit's artifacts (the units it imports are built in the build directory, as for a program's phases); with
 `--dump-after` alone, the unit is compiled after its phases are dumped. Both modes handle a unit file in one place
 (`run_unit_file` in `quest_driver.py`), classifying the file by its kind in the unit graph (`file_unit_kind`,

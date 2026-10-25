@@ -1,5 +1,6 @@
-"""Elaboration of control flow: case, infix operators (including assignment and short-circuit logic),
-conditionals, for loops, and blocks."""
+"""Elaboration of control flow: case, the built-in infix operators (including assignment), conditionals, for loops,
+and blocks. Desugaring (quest/syntax/desugar.py) has made conditionals of short-circuit operators and elsif chains,
+calls of other infix operators, and ExprIndexAssign of assignments to array elements."""
 
 from __future__ import annotations
 

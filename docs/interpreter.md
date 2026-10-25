@@ -157,7 +157,7 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - Evaluates `not` (inverts `QBool`), `extent` (returns `QInt` array size), and `ordinal` (returns `QInt` tag index).
 - **Conditionals:**
   - `TypedIf`: Evaluates condition; conditionally evaluates `then_branch` or `else_branch`. Short-circuit logic
-    (`andif`, `orif`) is handled directly via desugared `TypedIf` nodes.
+    (`andif`, `orif`) arrives as `TypedIf` nodes, since desugaring makes conditionals of it.
 - **Loops & Control Flow:**
   - `TypedLoop`: Executes body repeatedly until `_LoopExit` is caught; returns `OK_VALUE`.
   - `TypedWhile`: Evaluates condition before each iteration; breaks on `false` or `_LoopExit`.

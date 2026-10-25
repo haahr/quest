@@ -20,7 +20,12 @@ The front-end pipeline translates raw UTF-8 Quest source text into an immutable 
        │          Uniform right-associativity, phrase separation
        ▼
   [ AST Tree ]    Immutable dataclasses (quest/syntax/ast.py)
-                  Emits canonical 2-space indented S-expressions (ast_dump)
+       │          Emits canonical 2-space indented S-expressions (ast_dump)
+       ▼
+ [ Desugarer ]    Rewrites syntactic sugar into core forms (quest/syntax/desugar.py, §5)
+       │
+       ▼
+  [ Core AST ]    The same dataclasses, without the sugar; the type checker's input
 ```
 
 The formal EBNF grammar specification is preserved in [grammar.txt](grammar.txt).
@@ -255,6 +260,41 @@ The parser outputs deterministic S-expressions formatted with **2 spaces of inde
   )
 )
 ```
+
+---
+
+## 5. Desugaring (`quest/syntax/desugar.py`)
+
+Between parsing and type checking, `desugar` rewrites syntactic sugar into the core forms the type checker
+elaborates, so that the type checker does not rewrite syntax. It runs as the pipeline's `desugar` phase
+([pipeline.md](pipeline.md) §2), and on every other path that parses a unit and then checks it (the unit loader, the
+interface and module compilers, and the build engine's main routines). The pass is purely syntactic, needing neither
+types nor scopes, and each core form takes the offset of the syntax it replaces, so that errors point at the source
+as written. It rewrites bottom up, returning a node unchanged (the same object) when there is nothing to desugar.
+
+| Written | Core form |
+|---|---|
+| `a andif b` | `if a then b else false end` |
+| `a orif b` | `if a then true else b end` |
+| `a op b`, for an operator `op` that is not built in | the call `op(a b)` (`ExprApp`) |
+| `a[i] := v` | `ExprIndexAssign` |
+| `if c1 then e1 elsif c2 then e2 ... [else e] end` | `if c1 then e1 else if c2 then e2 ... else e end end` |
+| `let f(S): T = e`, neither `rec` nor external | `let f = fun(S): T e` |
+
+Each conditional an elsif chain nests is positioned at its elsif's condition; a chain without an else branch ends in
+`else ok`.
+
+The built-in infix operators, which stay infix, are the arithmetic, relational, concatenation, and eager boolean
+operators of [type-system.md](type-system.md) §6.3, `is`, `isnot`, `:=`, and `==` and `!=` (which the type checker
+rejects with a suggestion). A conditional with neither elsif nor else branches stays as it is: it is a statement,
+of type Ok. A recursive `let` with parameters keeps them, since its parameters and result annotation declare its
+type before any value is checked ([type-system.md](type-system.md) §6.10); so does an external one, whose
+parameters declare the external function's type. The parser already makes function values of the parameters of a
+tuple's non-recursive components, and keeps recursive ones as declarations ([type-system.md](type-system.md) §4.1).
+
+The type checker rejects the sugared forms as internal errors (`not_desugared` in `typechecker/checks.py`), so a path
+that skips the pass fails loudly. The `desugar` phase's dump is the core AST, printed as the parse phase's is; it has
+no golden tests.
 
 ---
 

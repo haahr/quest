@@ -3,7 +3,7 @@
 The pass runs between parsing and type checking (the pipeline's `desugar` phase, and every other path that parses a
 unit and checks it), so that the type checker never rewrites syntax. It is purely syntactic: it needs neither types
 nor scopes, and it keeps the offsets of the syntax it replaces, so that errors point at the source as written
-([type-system.md](../../../../docs/type-system.md) §6.2, [pipeline.md](../../../../docs/pipeline.md) §2).
+(docs/syntax.md §5, docs/pipeline.md §2).
 
 - `a andif b` becomes `if a then b else false end`, and `a orif b` becomes `if a then true else b end`.
 - An infix operator that is not built in, `a op b`, becomes the call `op(a, b)`.
@@ -61,24 +61,24 @@ def _rewrite(node: ast.ASTNode) -> ast.ASTNode:
     """Rewrites one node whose children are already desugared."""
     match node:
         case ast.ExprInfix(left=left, op="andif", right=right, offset=off):
-            return ast.ExprIf(cond=left, then_branch=right, else_branch=ast.ExprBool(value=False, offset=off), offset=off)
+            false = ast.ExprBool(value=False, offset=off)
+            return ast.ExprIf(cond=left, then_branch=right, else_branch=false, offset=off)
         case ast.ExprInfix(left=left, op="orif", right=right, offset=off):
-            return ast.ExprIf(cond=left, then_branch=ast.ExprBool(value=True, offset=off), else_branch=right, offset=off)
+            true = ast.ExprBool(value=True, offset=off)
+            return ast.ExprIf(cond=left, then_branch=true, else_branch=right, offset=off)
         case ast.ExprInfix(left=ast.ExprIndex(target=target, index=index), op=":=", right=right, offset=off):
             return ast.ExprIndexAssign(target=target, index=index, value=right, offset=off)
         case ast.ExprInfix(left=left, op=op, right=right, offset=off) if op not in BUILTIN_INFIX_OPERATORS:
             return ast.ExprApp(func=ast.ExprId(name=op, offset=off), args=(left, right), offset=off)
         case ast.ExprIf(elsifs=elsifs) if elsifs:
-            else_branch: ast.Expr = node.else_branch if node.else_branch is not None else ast.ExprOk(offset=node.offset)
+            nested: ast.Expr = node.else_branch if node.else_branch is not None else ast.ExprOk(offset=node.offset)
             for cond, then_branch in reversed(elsifs):
-                else_branch = ast.ExprIf(
-                    cond=cond, then_branch=then_branch, else_branch=else_branch, offset=cond.offset
-                )
-            return replace(node, elsifs=(), else_branch=else_branch)
-        case ast.LetValueBinding(params=params, is_rec=False) if params and not isinstance(
-            node.value, ast.ExprExternal
+                nested = ast.ExprIf(cond=cond, then_branch=then_branch, else_branch=nested, offset=cond.offset)
+            return replace(node, elsifs=(), else_branch=nested)
+        case ast.LetValueBinding(params=params, value=value, is_rec=False) if params and not isinstance(
+            value, ast.ExprExternal
         ):
-            fun = ast.ExprFun(params=params, return_type=node.type_annot, body=node.value, offset=node.offset)
+            fun = ast.ExprFun(params=params, return_type=node.type_annot, body=value, offset=node.offset)
             return replace(node, value=fun, params=(), type_annot=None)
         case _:
             return node
