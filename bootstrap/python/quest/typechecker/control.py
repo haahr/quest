@@ -30,7 +30,6 @@ from quest.typechecker.typed_ast import (
     TypedAssign,
     TypedBinding,
     TypedBlock,
-    TypedBool,
     TypedCase,
     TypedCaseBranch,
     TypedExpr,
@@ -193,26 +192,9 @@ class ControlMixin:
         if expr.op == ":=":
             return self._synth_assignment(expr, env, loop_depth)
 
-        # 2. Short-Circuit Logic (andif, orif) -> desugar to TypedIf
+        # 2. Short-circuit logic (andif, orif) is desugared into conditionals
         if expr.op in ("andif", "orif"):
-            left_typed = self.check_expr(expr.left, BOOL_TYPE, env, loop_depth)
-            right_typed = self.check_expr(expr.right, BOOL_TYPE, env, loop_depth)
-            if expr.op == "andif":
-                return TypedIf(
-                    cond=left_typed,
-                    then_branch=right_typed,
-                    else_branch=TypedBool(value=False, offset=expr.offset),
-                    type_val=BOOL_TYPE,
-                    offset=expr.offset,
-                )
-            else:
-                return TypedIf(
-                    cond=left_typed,
-                    then_branch=TypedBool(value=True, offset=expr.offset),
-                    else_branch=right_typed,
-                    type_val=BOOL_TYPE,
-                    offset=expr.offset,
-                )
+            raise not_desugared(expr)
 
         # 3. Non-overloaded operators (Arithmetic, Relational, String concatenation, Eager boolean)
         if expr.op in INFIX_OPERATORS:

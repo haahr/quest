@@ -39,6 +39,30 @@ class TestDesugar(unittest.TestCase):
         self.assertIs(desugar(expr), expr)
         self.assertIsNone(expr.else_branch)
 
+    def test_andif(self) -> None:
+        expr = desugar(parse_expr("a andif b"))
+        self.assertEqual(
+            expr,
+            ast.ExprIf(
+                cond=ast.ExprId(name="a", offset=0),
+                then_branch=ast.ExprId(name="b", offset=8),
+                else_branch=ast.ExprBool(value=False, offset=0),
+                offset=0,
+            ),
+        )
+
+    def test_orif(self) -> None:
+        expr = desugar(parse_expr("a orif b"))
+        self.assertEqual(
+            expr,
+            ast.ExprIf(
+                cond=ast.ExprId(name="a", offset=0),
+                then_branch=ast.ExprBool(value=True, offset=0),
+                else_branch=ast.ExprId(name="b", offset=7),
+                offset=0,
+            ),
+        )
+
     def test_nested_sugar_is_desugared(self) -> None:
         program = desugar(parse_phrase("let f = fun(): Int if a then 1 elsif b then 2 else 3 end;", target="program"))
         fun = program.phrases[0].value
