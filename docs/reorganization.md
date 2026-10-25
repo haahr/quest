@@ -247,9 +247,12 @@ makes) the merged methods keep the difference.
 chains. Typecheck dumps may change; error messages must still point at and name the source syntax.
 
 **B4. Canonical recursive types at construction (experiment).** Prototype building canonical forms when types are
-made, so that type equality is identity; measure type checking time and the code it removes (the subtyping cache,
-`QUEST_CHECK_CANONICAL`), and adopt it only if it pays. After 0c and B1 to B3, since it touches `types/model.py` and
-subtyping.
+made, so that type equality is identity; measure type checking time and the code it removes, and adopt it only if it
+pays: if it removes the `QUEST_CHECK_CANONICAL` guard and the on-demand canonicalization below the type checker (the
+memo tables of `normalize_type` and `canonical_type`, shapes' separate canonical forms) and type checking is at most
+about 10% slower. The subtyping cache stays either way: it records proofs between distinct types, which canonical
+forms do not decide (equal types become identical, so it gains hits). After 0c and B1 to B3, since it touches
+`types/model.py` and subtyping.
 
 ---
 
@@ -327,5 +330,6 @@ Stale docstrings and comments are fixed by whichever step touches their files.
 | `collect_aggregate_types` on shapes (left from A1) | In A2, under its `ABI_VERSION` bump |
 | Performance bar for A2 | At most 10% slower on any benchmark |
 | Desugaring before type checking (B3) | Yes; typecheck dumps may change, error positions must not |
-| Canonical types at construction (B4) | Experiment, then decide |
+| Canonical types at construction (B4) | Experiment; adopt if it removes the guard and on-demand canonicalization at most ~10% slower |
+| Fix the `fun` annotation soundness hole | After B3, as its own step |
 | Execution | Tracks in parallel worktrees after phase 0 |
