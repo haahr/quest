@@ -35,7 +35,8 @@ latter: a preparatory phase, then three tracks that can proceed in parallel.
 **From the compiler's organization.** Tracks A to C below address these:
 
 - the C printer made representation decisions (auto values, `inspect` arms, bounded type parameters' views,
-  `type_app` thunks, adapters; moved to the represent pass by A3) and materializes descriptors;
+  `type_app` thunks, adapters; moved to the represent pass by A3) and materialized descriptors (moved to the describe
+  pass by A4);
 - below lowering, represent, `layout.py`, the C declarations, and the printer work on raw types, normalizing them
   again and again (`strip_aliases`, `normalize_type`, `beta_reduce`), where shapes were meant to be the only view;
 - `typechecker/typecheck.py` (3,349 lines) pairs a check and a synthesis function for most constructs, with much
@@ -300,6 +301,52 @@ it is left for A4 or later).
 **A4. Descriptors as an IR pass** ([ir.md](ir.md) §8.4). A pass after represent makes descriptors IR values, and a
 fifth stage (`ir_described`) is dumped and verified. Done when the printer prints descriptors it is given and creates
 none.
+
+**Done:** the describe pass (`ir/describe.py`, [ir.md](ir.md) §8.4) produces the described stage, dumped
+(`ir_described` goldens), run in the IR interpreter (`run_ir_described`), and verified; the printer prints the
+descriptors it is given and creates none.
+
+- **Descriptor operands.** Every run-time use of a type carries one: a descriptor variable (`ir.DescriptorParam`: a
+  function's for each type parameter, a thunk's, or an inspected auto value's type component, `ir.Inspect.witness`),
+  a static descriptor, or a template instantiated with descriptors. They are small pure expressions rather than values
+  named by lets, so the C printer evaluates each where it is used, as before. The uses: type arguments (calls,
+  closures, type applications, external calls), auto witnesses, inspect cases and arms (the arm's converted components
+  and an exact arm's plan, with the witness in scope), `is` of QVal words, record literals (their own type, and the
+  view with runtime offsets), stored field reads, echo, and the `record_view`, `view`, and `runtime` plans, nested ones
+  included. The thunks of `adapt` plans and type applications bind their own descriptor variables, from the written
+  quantifier symbols the represent pass now records on them (`thunk_symbols`), so neither the pass nor the printer
+  calls `collect_fun_quantifiers` or `shared_signatures`; a thunk's plan that needed a descriptor of the enclosing
+  function's type parameter (which the printer would have referenced out of scope) is rejected.
+- **Static data.** The unit lists the static descriptors its operations use, the static offset tables of its record
+  literals (registered for dynamic values when both types are closed), and the tag maps of its `variant_tags` plans
+  (`ir.StaticData`); the printer declares exactly these (with the descriptors of their parts), no longer every
+  descriptor of every type it met, nor every offset table and tag map among subtype pairs it found with
+  `is_record_subtype` and `is_variant_subtype`. Tuple casts' `static_assert`s are those of the casts it prints.
+- **Module records** are record literals made last in their initializers (`ir.Module.record`), so the slots pass
+  boxes their members and the describe pass describes them; the printer stores the record in the module's global.
+- **Verification.** The verifier checks that every use has its descriptors, that every descriptor variable is bound
+  where it is used (a thunk's plans use only the thunk's), that no static descriptor mentions a type parameter whose
+  descriptor is a variable there, and that the static descriptors and tables used are the unit's. The IR interpreter
+  evaluates the descriptors of type arguments, witnesses, and inspect cases and checks them against the types.
+- **Also:** an echo of a package with a prefix becomes an echo of its text in the pass; instantiated descriptors are
+  named from their templates (former [tasklist.md](tasklist.md) task, `language/instantiated_descriptor_names`).
+
+The C of the test programs and benchmarks shrinks from 24 MB to 8 MB (unused descriptors and tables are gone); code
+is unchanged but for module records (allocated as record literals) and an exact inspect arm's plan, which now
+converts from the stored payload's descriptor at the value's type component rather than an opaque descriptor of the
+auto type's own parameter. `ABI_VERSION` is unchanged (no runtime header changed). The benchmarks run as on main
+(CPU time, interleaved), and C generation takes about 28% less time (7.1 s to 5.2 s over the test programs), as it
+declares far fewer descriptors. Recording written component types on IR operations at lowering (A1's suggestion) was
+not needed: descriptor binding needs only the thunks' quantifier symbols, which the represent pass, which reads the
+types as written anyway, now records.
+
+Remaining in the printer, as the C spelling of the IR: the structs of the shapes it meets (collected as it prints),
+thunks' and exported functions' C signatures (from shapes, and for exports the interface's types as written), QVal
+wrapping of variant and exception payloads and echoed values, and the static content of descriptors
+(`descriptor_form`, in `codegen/c/types.py`, which also decides an echo-only descriptor's copy). Below lowering, types
+as written are still read by the represent pass (`written_structure`, and the quantifiers of function types, which it
+now records for the thunks), by echo (packages, in the describe pass; alias names in echo descriptors), and by the
+interface record types of imported modules (`build_record_type_from_scope` in the printer).
 
 A2 comes before A3 so that A3 ports only the plans that survive the representation change.
 

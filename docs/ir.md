@@ -13,8 +13,8 @@ that the IR verifier checks. The C printer consumes the last stage. A future nat
 ```
 source → tokens → AST → typed AST ─┬─→ interpreter
                                    └─→ lower → Core IR → specialize → closure-convert → represent
-                                                → materialize descriptors → C printer → C → clang
-                                                                         └→ (future) CFG/SSA → AArch64
+                                                → describe → C printer → C → clang
+                                                          └→ (future) CFG/SSA → AArch64
 ```
 
 Lowering the typed AST into the IR and running small, single-responsibility passes ensures that:
@@ -64,16 +64,21 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
 - **Globals:** top-level values and module-level `var` state, each a symbol with a type. Top-level rebindings
   (`let x = 1; ... let x = 2`) are distinct symbols, so distinct globals.
 - **Module records:** a module's exported record, its layout, and its lazy initializer function
-  ([c-representation.md](c-representation.md) §5.6). A module file's unit is its module alone, with its
-  **exports**: its interface's members at the interface's types, bound last in its initializer (converted from the
-  members, at the abstract types' representations, by the represent pass). Its record holds them, and it exports a
+  ([c-representation.md](c-representation.md) §5.6). The initializer ends by making the record, a record literal of
+  the module's members (`record m_record` after the module's members, `ir.Module.record`), which the printer stores
+  in the module's global. A module file's unit is its module alone, with its
+  **exports**: its interface's members at the interface's types, bound in its initializer after its members (converted
+  from the members, at the abstract types' representations, by the represent pass). Its record holds them, and it
+  exports a
   C function `qv_<module>_<member>` for each that is a function or a polymorphic value, the ABI other units call
   (`codegen/c/declarations.py`, `module_function_signature`).
 - **Main:** the program's top-level phrases, in order, as the body of an initializer, including echo (§6.6).
 - **Imports:** the units it depends on and the symbols it uses from them; interfaces (`.qi`) are unchanged.
 
 Type declarations do not appear as items: the shapes in the IR carry everything later stages need, and the printer
-derives C struct declarations and descriptors from the shapes it meets.
+derives C struct declarations from the shapes it meets. After the describe pass (§8.4), the unit lists its **static
+data**: the static descriptors its operations refer to, the static offset tables of its record literals, and the tag
+maps of its `variant_tags` plans, which a backend emits.
 
 ## 4. Types: Shapes and Representations
 
@@ -177,7 +182,19 @@ operands' components, printed after them: `via original` or `via proxy` on a rea
 into one, its address, an option's tag or payload, and `is`) of a value that may be a proxy (§8.3); `via stored types`
 on a record field read converted by the offset table's stored types; `with runtime offsets` on a record literal whose
 view's offset table is found at run time; `converting (plans)` on a `type_app`; and an inspect case's arm.
-| Descriptors | `descriptor(τ)`, `instantiate(template, d...)`, `descriptor_param(A)` | after materialization |
+
+From the described stage on (§8.4), every run-time use of a type also carries a **descriptor operand**: a descriptor
+variable (a `Var` of the `descriptor` type, bound by the function, thunk, or inspect it is used in), `descriptor(τ)`
+(a static descriptor; `echo_descriptor(τ)` for echo's), or `instantiate(τ, d...)` (a template τ, whose holes `?0`,
+`?1`, ... stand for type parameters, instantiated with their descriptors). Descriptor operands are pure expressions,
+not atoms named by lets. They print in place of type arguments (`call f [descriptor(Int)](x)`, `closure g {x}
+[descriptor_A]`), and after the operations and plans that use them: `of d` on `is` of QVal words, record literals (with
+`with offsets(V <- L)` for a static offset table, or `with runtime offsets(d)`), stored field reads, auto values,
+inspect cases, and echo; `view(d1, d2)`, `runtime(d1, d2)`, and `record_view(d)` plans; a thunk's descriptor
+variables after an `adapt` plan or a `type_app` (`[qd_0: descriptor]`), whose fields print in braces; an inspect's
+witness after its value (`inspect v (witness: descriptor)`), and its arms' converted components with the descriptors
+they convert from and to (`component(witness, descriptor(Int))`). A function's descriptor parameters print before
+its parameters.
 
 Library functions (`dynamic.new`, `arrayOp.size`, ...) are calls of module members, not operations of their own. A
 module reference (the `m` of `call m.x` and `member m.x`) is the module itself: one the unit defines (`module m`), or
@@ -284,15 +301,16 @@ whether a layout error is raised when they do not.
 ## 7. Type Parameters and Descriptors
 
 In Core IR, a polymorphic function has type parameters (`fun f [A <: P] (x: A): A`) and calls supply type arguments
-(`call f [Int] (x)`); shapes mention type parameters as `typevar` symbols. The **materialize descriptors** pass makes
-them values, following the uniform quantifier rule ([c-representation.md](c-representation.md) §6.4):
+(`call f [Int] (x)`); shapes mention type parameters as `typevar` symbols. The **describe** pass (§8.4) makes them
+values, following the uniform quantifier rule ([c-representation.md](c-representation.md) §6.4):
 
-- each type parameter becomes a parameter of representation `descriptor`, preceding the value parameters;
-- each type argument becomes a `descriptor` value: a static descriptor for a closed type, the descriptor parameter
-  for a type parameter in scope, and `instantiate(template, d...)` for a type that mentions type parameters in scope,
-  whose template has a hole per parameter (§4.2), found by symbol;
-- the other run-time uses of types (auto values, `inspect`, `dynamic.new`, `dynamic.be`, echo, `quest_convert`) take
-  descriptor values likewise.
+- each type parameter gets a descriptor variable, a parameter of representation `descriptor` preceding the value
+  parameters (`ir.Function.descriptor_params`; one its closure supplies is read from its environment);
+- each type argument becomes a descriptor operand: a static descriptor for a type that mentions no type parameter in
+  scope, the descriptor variable for a type parameter in scope, and `instantiate(template, d...)` for a type that
+  mentions type parameters in scope, whose template has a hole per parameter (§4.2), found by symbol;
+- the other run-time uses of types (auto values, `inspect`, `is` of QVal words, record literals, echo, and the plans
+  converted by `quest_convert`) take descriptor operands likewise.
 
 Descriptors in scope are keyed by the type parameter's symbol, so a caller's `A` and a callee's `A` never meet by
 name.
@@ -425,14 +443,39 @@ runtime still copies a tuple or option where the target type cannot be proxied (
 whose C signature changes with a generic layout). The conversion matrix (`tests/conversions/generate.py`) tests the
 rule, so that it is checked rather than incidental; `language/view_proxies` tests upcasts.
 
-### 8.4. Materialize descriptors
+### 8.4. Describe
 
-On the C path, descriptors (§7) are materialized directly by the C printer as it prints: a run-time type's descriptor
-is emitted where it is used, keyed by symbol (a type parameter's, the descriptor parameter of its function or of the
-closure's environment that captured it; a closed type's static one; a type mentioning type parameters in scope, its
-template instantiated with theirs; the generic layout of a polymorphic callee's type, its template with a hole for
-each of the callee's type parameters, instantiated with the type arguments'). The future native backend, which has no
-C printer to make them, can materialize descriptors as a separate IR pass.
+`ir/describe.py`, after represent, producing the described stage. It gives every run-time use of a type its
+descriptor operand (§5, §7), keyed by symbol:
+
+- a type parameter in scope is its descriptor variable (`ir.DescriptorParam`): a function's, bound by the function
+  for each of its type parameters (its own passed before its parameters, those its closure supplies read from its
+  environment); a thunk's (an `adapt` plan's, or a function `type_app`'s, `thunk_params`), bound for the type
+  parameters of the type it is adapted to, which its plans name by the symbols the represent pass recorded
+  (`thunk_symbols`: the target's, and the source's that `shared_signatures` renamed them to); and, in an inspect's
+  arms, the inspected auto value's type component (`ir.Inspect.witness`), under the auto type's own symbol;
+- a type mentioning no type parameter in scope is its static descriptor; one mentioning some is its template, a hole
+  for each, instantiated with their descriptors;
+- the generic layout of a polymorphic callee's type (a `runtime` plan's) is its template with a hole for each of the
+  callee's type parameters too, instantiated with the type arguments' descriptors.
+
+The uses: type arguments of calls, closures, type applications, and external calls; auto values' witnesses; inspect
+cases' types and arms' converted components (and an exact arm's plan); `is` of QVal words; a record literal's own
+type, and with runtime offsets its view; a field read through stored types; echo (an echo-only static descriptor for
+a closed type, which writes its type components with their alias names); and the `record_view`, `view`, and `runtime`
+plans, nested ones included (a copy's view fields, an adapter's fields). A thunk is a C function of its own, passed
+only its own type parameters' descriptors: a type there that mentions a type parameter of the enclosing function is
+rejected (`UnsupportedDescriptor`; no program does).
+
+The pass lists the unit's static data (`ir.StaticData`): the static descriptors its operations refer to (templates
+among them), the static offset tables of record literals (`ir.OffsetTable`: the view and the layout, registered with
+the runtime for dynamic values when both are closed; a module's record is a record literal, §3), and the tag maps of
+`variant_tags` plans (`ir.TagMap`); and each module's abstract types' registrations for dynamic values
+([dynamic.md](dynamic.md) §2.3). An echo of a package with a prefix, whose line is known statically from its type as
+written, becomes an echo of its text.
+
+Descriptor operands are small pure expressions rather than values named by lets, so where they are evaluated is a
+backend's choice: the C printer evaluates each where it is used, and a native backend could share them.
 
 ### 8.5. Print C
 
@@ -443,14 +486,18 @@ bodies), and `volatile` mutable variables where §6.4 requires. C names derive f
 [name-mangling.md](name-mangling.md)), keeping the generated C readable for debugging. The printer makes no
 representation decisions: it prints the plans, boxed variables, accesses, inspect arms, and type applications' plans
 the represent pass recorded, and calls `quest_convert` only to print a conversion recorded as one (`view` and
-`runtime` plans, a field read through stored types, an inspect arm's converted components). It still makes the
-descriptors (§8.4) and the declarations of the types it meets (structs, offset tables and the subtype pairs they are
-needed for, tag maps), and builds module records; a variant's payload, an exception's, and an echoed value are QVal
-words, wrapped and unwrapped as their representations say.
+`runtime` plans, a field read through stored types, an inspect arm's converted components). It prints the
+descriptors it is given and makes none (§8.4): it names descriptor variables (a function's parameters, a thunk's
+`qd_<k>`, an inspect's `->type_desc`), declares the static descriptors (with those of their parts) and the offset
+tables and tag maps of the unit's static data, and calls `quest_instantiate_descriptor` for an instantiated template.
+What it still decides is how to spell the IR in C: the structs of the shapes it meets, the C signatures of thunks and
+of a module file's exported functions, and the `static_assert`s of the tuple casts it prints; a variant's payload, an
+exception's, and an echoed value are QVal words, wrapped and unwrapped as their representations say.
 
 ### 8.6. Future: CFG and SSA for the native backend
 
-The native AArch64 backend would add, after §8.4: building a control-flow graph from the structured IR (join points
+The native AArch64 backend would add, after §8.4 (whose descriptor operands it would materialize as it sees fit):
+building a control-flow graph from the structured IR (join points
 become blocks with arguments), promoting mutable locals whose address is not taken to SSA values, and then
 instruction selection, register allocation (simpler on SSA), and emission. The C path does not need these: clang
 builds its own SSA and optimizes.
@@ -463,7 +510,7 @@ builds its own SSA and optimizes.
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
 | **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed |
-| (Descriptors) | §8.4 | not a separate IR stage on the C path: the C printer makes descriptors as it prints (§8.4) |
+| **Described** | §8.4 | every run-time use of a type has its descriptor operands (type arguments, auto values' witnesses, inspect cases and arms, `is` of QVal words, record literals, stored field reads, echo, the plans converted by descriptor), and every function its type parameters' descriptor variables; every descriptor variable an operand uses is bound where it is used and of the `descriptor` type (a thunk's plans use only the thunk's own); no static descriptor or template mentions a type parameter whose descriptor is a variable there (nor, in a thunk, one of the enclosing function's); the static descriptors and tables operations refer to are the unit's static data. The IR interpreter also checks that each operation's descriptors describe the types they stand for |
 
 The verifier runs after every pass when `QUEST_CHECK_IR=1`, which the test runners set (like
 `QUEST_CHECK_CANONICAL`); production builds skip it.
@@ -487,29 +534,33 @@ fun length [A :: TYPE] (l: List(A)): Int {
 }
 ```
 
-and, after representation and descriptors:
+and, described (§8.4; types print as written, representations follow from them, and the reads of a list that may be
+a proxy go through it):
 
 ```
-fun length (d_A: descriptor, l: ptr<List(?0)>): int {
-  switch tag(l) {
-    case cons: {
-      let c: ptr<Tuple head: ?0 tail: List(?0) end> = payload(l, cons)
-      let t: ptr<List(?0)> = tuple_field(c, 1)
-      let n: int = call length (d_A, t)
-      let r: int = prim add(1, n)
-      return r
+fun length [A::TYPE](descriptor_A: descriptor, l: List(A)): Int {
+  join k3(r: Int) {
+    return r
+  } in {
+    switch tag(l) via proxy {
+      case cons (c: Tuple head: A tail: List(A) end) via (proxy, proxy): {
+        let t: List(A) = tuple_field(c, 1) via proxy
+        let n: Int = call length [descriptor_A](t)
+        let r.1: Int = prim +(1, n)
+        jump k3(r.1)
+      }
+      else: {
+        jump k3(0)
+      }
     }
-    else: { return 0 }
   }
 }
 ```
 
-(`?0` marks a position stored generically, as a `word`.) A caller at `Bool` passes its native list:
+A caller at `Bool` passes its list as it is (every slot is a word) and the descriptor of `Bool`:
 
 ```
-let xs: ptr<List(Bool)> = ...
-let xs1: ptr<List(?0)> = convert(xs, cast)
-let n: int = call length (descriptor(Bool), xs1)
+let n: Int = call length [descriptor(Bool)](flags)
 ```
 
 ## 11. Open Questions

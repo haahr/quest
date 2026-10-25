@@ -16,11 +16,11 @@ and the objects of the modules the unit imports.
 Typed AST (TypedProgram, or a module file's TypedModule)
            |
            v  ir/lower.py: Core IR (ANF with join points)
-           v  ir/specialize.py, ir/closure.py, ir/represent.py: the passes (ir.md §8)
+           v  ir/specialize.py, ir/closure.py, ir/represent.py, ir/describe.py: the passes (ir.md §8)
            |
 +-----------------------+      layout.py, descriptors.py, symbols.py (shared by backends)
 |   c/printer.py        | <--- c/types.py: C spellings; c/declarations.py: structs, tables, descriptors
-|   (CPrinter)          |      Prints what the passes decided: no representation decisions of its own
+|   (CPrinter)          |      Prints what the passes decided: no representation decisions or descriptors of its own
 +-----------------------+
            |
            v  (C99 source)
@@ -49,8 +49,10 @@ What every backend shares, since a backend's units use the C runtime and link wi
 The C backend (`codegen/c/`):
 - **`backend.py`:** Its entry points, `program_to_c` and `module_file_to_c` (lowering, passes, printing), used by
   `module_compiler.py` and `BuildEngine`; the pipeline runs the same steps as phases (`ir_core` ...
-  `ir_represented`, then `codegen_c`).
-- **`printer.py`:** `CPrinter`, printing a represented IR unit as C.
+  `ir_described`, then `codegen_c`).
+- **`printer.py`:** `CPrinter`, printing a described IR unit as C: the descriptors it is given (descriptor variables,
+  static descriptors, instantiated templates) and the unit's static data (static descriptors, offset tables, tag
+  maps), which declarations.py declares.
 - **`declarations.py`:** The declarations of the types a unit uses (structs, offset and coercion tables, type
   descriptors, function type adapters), the extern declarations of imported modules' functions, and the signature of
   the functions a module file exports (`module_function_signature`).
@@ -411,7 +413,8 @@ Cardelli's structural subtyping is supported across tuples, records, and variant
 - **Polymorphic Call Arguments:** For a call with type arguments, each argument is first coerced to its parameter's
   type with the type arguments substituted (so `f(:Small big)` passes a `Small` view), then to the generic
   representation of the parameter.
-- **Offset Table Map:** `main` registers each static `offsetdict_<Target>_<Source>` with
+- **Offset Table Map:** `main` registers each static `offsetdict_<Target>_<Source>` of the unit's static data
+  (its record literals' tables, ir.md §8.4) whose types are closed with
   `quest_register_record_dict(&quest_type_<Target>, &quest_type_<Source>, &offsetdict_<Target>_<Source>)`; tables
   for other (view, layout) pairs are built by the runtime on demand (`quest_record_dict`).
 - **First-Class Fat Pointers (`QRecordVal`):** All records are represented uniformly as a 16-byte struct:
@@ -547,9 +550,13 @@ are lowered as follows:
   function type with a runtime descriptor gets an adapter and an invoker, referenced by the descriptor, for
   conversions known only at run time; see [c-representation.md](c-representation.md) §6.4 (Compound Descriptor
   Payloads, Functions).
-- **Descriptor Templates:** A type that mentions type parameters in scope is
-  described by a template instantiated at run time with their descriptors; the templates the generated code uses are
-  emitted after it, ahead of the function definitions; see [c-representation.md](c-representation.md) §6.4.5.
+- **Descriptors:** Every descriptor the code uses is an operand the describe pass gave it (ir.md §8.4): a descriptor
+  variable (a function's `descriptor_<T>` parameter, a thunk's `qd_<k>`, an inspected auto value's `->type_desc`), a
+  static descriptor (`&quest_type_<tag>`), or a template (a type that mentions type parameters in scope, its holes
+  `?0`, `?1`, ...) instantiated at run time with their descriptors (`quest_instantiate_descriptor`); see
+  [c-representation.md](c-representation.md) §6.4.5. The printer declares only the static descriptors (with those
+  of their parts) and the offset tables and tag maps the unit's static data lists, ahead of the function
+  definitions.
 - **Tuple Upcasts (`view` plans, proxies):** An upcast of a tuple or option whose components change view (a record
   at a supertype, a variant or option whose cases the supertype numbers differently, a closure whose signature
   changes) makes a proxy of the original, `quest_make_proxy` (c-representation.md §5.8). For a tuple or option type

@@ -259,8 +259,8 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   ```c
   QTuple_Int_Real *sub = (QTuple_Int_Real *)tuple_3;
   ```
-  To guarantee that compiler layout and alignment assumptions hold true, the transpiler **memoizes every tuple
-  coercion pair** `(SourceTuple, TargetTuple)` encountered during translation. For each unique pair, the transpiler
+  To guarantee that compiler layout and alignment assumptions hold true, the printer **memoizes every tuple
+  cast** `(SourceTuple, TargetTuple)` it prints (a `cast` plan between two tuple structs). For each unique pair, it
   emits compile-time `static_assert` statements verifying that the byte offset of each prefix field in `SourceTuple`
   exactly matches the corresponding field in `TargetTuple`:
   ```c
@@ -322,7 +322,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     component is a closure whose C signature changes (a `QVal` parameter or result in a register agrees only with
     integers and pointers). Such a value is converted by `quest_convert`, from and to the descriptor of the type laid
     out each way (for the callee's layout, the type's template with a hole for each of the callee's type parameters,
-    instantiated with the type arguments, `generic_layout_descriptor` in `codegen/c/printer.py`): a tuple or option
+    instantiated with the type arguments, `layout_descriptor` in `ir/describe.py`): a tuple or option
     into a proxy (§5.8), which shares the original's identity and `var` components, or a copy where the target type
     cannot be proxied (a closure among its components whose C signature changes with the layout).
     A value whose conversion would copy mutable data laid out differently (an array of such values) cannot be
@@ -378,7 +378,8 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
    may itself be a view of a larger record. `quest_record_dict(view, layout)` returns the table, building it from the
    two descriptors on a miss (`NULL` if the layout lacks a field of the view), and `quest_register_record_dict`
    adds one. A compiled program pre-populates the map in `main` with its static `offsetdict_<Target>_<Source>`
-   tables, registered under (`Target`, `Source`). Deserialization (`dynamic.intern`) takes its tables from the map.
+   tables (those of its record literals, the unit's static data, ir.md §8.4) whose types are closed, registered under
+   (`Target`, `Source`). Deserialization (`dynamic.intern`) takes its tables from the map.
 4. **First-Class Uniform Record Value (`QRecordVal`):**
    - Every record value in variables, function parameters, and returns is represented as a first-class 16-byte struct:
      ```c
@@ -883,8 +884,9 @@ name outside. A type with no descriptor (such as a type metavariable) is a compi
 descriptor that matches the wrong values.
 
 ##### Static Compilation (.rodata) vs. Runtime Synthesis
-- **Closed Types in Code:** For all concrete types appearing in the program, the C emitter synthesizes `static const`
-  descriptor structs in `.rodata` with `Q_UNUSED` attribute. Forward declarations ensure that self-referential or
+- **Closed Types in Code:** For each static descriptor the code uses (the unit's static data, which the describe
+  pass lists, ir.md §8.4) and those of its parts, the printer emits a `static const` descriptor struct in `.rodata`
+  with the `Q_UNUSED` attribute. Forward declarations ensure that self-referential or
   mutually recursive types can cross-reference descriptor addresses as compile-time address constants.
 - **Runtime Synthesis & Interning:** The C runtime provides constructor functions (`quest_make_record_descriptor`,
   `quest_make_tuple_descriptor`, `quest_make_variant_descriptor`, `quest_make_fun_descriptor`,
@@ -939,13 +941,16 @@ component, a closure taking a 16-byte `QRecordVal`). Such types reach run time a
 in `inspect` `when` clauses, as type arguments of `dynamic.new` and `dynamic.be`, and as any type argument a generic
 function passes on ([type-system.md](type-system.md) §6.11).
 
-- **Templates:** the printer's `descriptor` describes such a type by a template: the type with each type parameter in scope
-  replaced by a hole (`hole_var`, a reserved type variable `?i` keeping the parameter's bound), emitted as a static
+- **Templates:** the describe pass (`ir/describe.py`, ir.md §8.4) describes such a type by a template: the type with
+  each type parameter in scope replaced by a hole (`hole_var`, a reserved type variable `?i` keeping the parameter's
+  bound), an `instantiate` operand with the parameters' descriptors. The printer emits the template as a static
   descriptor whose holes are `QTYPE_KIND_HOLE` descriptors (`QHoleDescriptor`: the hole's index and, for a bounded
-  parameter, the bound's descriptor as `storage`). Templates are collected while the code is printed and declared
-  ahead of the function definitions (`template_descriptor`), with the structs and function type adapters they need. The code passes the template and the parameters' descriptors to
+  parameter, the bound's descriptor as `storage`), declared ahead of the function definitions with the structs and
+  function type adapters it needs. The code passes the template and the parameters' descriptors to
   `quest_instantiate_descriptor(template, n, args)`, which copies the template's nodes that reach a hole (templates
-  may be cyclic) and memoizes the result by template and arguments.
+  may be cyclic), naming each copy from the template node's name with its holes replaced by the arguments' names (so
+  an auto value made by generic code prints its witness at its type arguments), and memoizes the result by template
+  and arguments.
 - **Stored types:** In an instance, each hole becomes a `QTYPE_KIND_STORED` descriptor (`QStoredDescriptor`) of its
   type argument: a value of that type stored as generic code stores a type parameter, as its `QVal` form, or, when
   `storage` is set, as a value of the bound (a record viewed at the bound). The instance keeps the template's
@@ -1196,8 +1201,10 @@ supports auto values with one component.
   struct, so updates of `var` components are shared with the auto value; otherwise (a closure whose C signature
   differs) the binder is a statically converted copy, which is rejected with an error for signatures with `var`
   components, whose updates would be lost. When the layouts differ, the binder is a copy converted by
-  descriptor (as the case's arm, decided by the represent pass, says; `auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored type,
-  described with `A` standing for the type component (a template's instance), to its type in `S[T/A]`. For a
+  descriptor (as the case's arm, decided by the represent pass, says, by the descriptors the describe pass gave it;
+  `auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored
+  type, described with `A` standing for the type component (a template instantiated with the inspect's witness, the
+  value's `type_desc`), to its type in `S[T/A]`. For a
   signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
   types it sees.
 - **Inspect, subtype match** (signatures where `A` is only the whole type of immutable components): a branch tests

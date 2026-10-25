@@ -207,38 +207,6 @@ them.
 
 ---
 
-## Auto values built in generic code print `?0` for their witness in C
-
-**Problem.** A type descriptor that generic code builds from a template at run time
-(`quest_instantiate_descriptor`, `docs/c-representation.md` §6.4.5) keeps the template's name, in which each type
-parameter is a hole named `?0`, `?1`, …. Printing an auto value prints its witness by that name.
-
-**Reproduce.**
-
-```quest
-import dynamic: Dynamic;
-let f(A::TYPE x: A): Dynamic = dynamic.new(:Tuple v: A w: Int end tuple x 1 end);
-let g: All(A::TYPE x: A) Dynamic = f;
-g(:String "hi")
-```
-
-with `--print-result` prints `auto :Tuple v: String w: Int end with …` interpreted but
-`auto :Tuple v: ?0 w: Int end with …` with `--stop-after run_c_compiled`. Serialization is
-structural and not affected.
-
-**Where to start.** `quest_instantiate_descriptor` in `runtime/quest_runtime.c` could build the instance's name
-from the template's with the holes replaced by the arguments' names (memoized with the instance), or the printer
-(the `QTYPE_KIND_AUTO` case near `printf("auto :%s with"`) could print descriptors structurally. `hole_var` in
-`bootstrap/python/quest/codegen/descriptors.py` names the holes.
-
-**Decided.** `quest_instantiate_descriptor` names each instance, from the template's name with its holes replaced
-by the arguments' names, memoized with the instance; the printer is unchanged.
-
-**Done when.** Compiled code prints the program above as the interpreter does, and a golden test covers it.
-
-
----
-
 ## Options whose cases are listed in different orders
 
 **Problem.** Option types are compared by their cases' names, unordered, so `Option a b end` and `Option b a end` are
