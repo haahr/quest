@@ -1,0 +1,25 @@
+(* Standard library: dynamic.extern writes auto types (docs/dynamic.md §2.2) as auto nodes, whose components refer
+   to the type parameter by param nodes, and auto values as their witness and components *)
+import dynamic: Dynamic;
+import writer: Writer;
+let emit(d: Dynamic): Ok = begin dynamic.extern(writer.output d); writer.putString(writer.output "\n") end;
+
+Let Pair = Auto A::TYPE with a: A b: A end;
+emit(dynamic.new(:Pair auto :Int with 1 2 end));
+
+(* A bound, and a witness that is a subtype of it *)
+Let Named = Auto A <: Record name: String end with x: A end;
+emit(dynamic.new(:Named auto :Record name: String age: Int end with record name = "n" age = 3 end end));
+
+(* Nested auto types: the inner one's components refer to both parameters *)
+Let Outer = Auto A::TYPE with a: A inner: Auto B::TYPE with b: B back: A end end;
+emit(dynamic.new(:Outer auto :Int with 7 auto :String with "s" 8 end end));
+
+(* A var component, a compound witness, and a dynamic value among the components *)
+Let Cell = Auto A::TYPE with var c: A d: Dynamic end;
+emit(dynamic.new(:Cell auto :Tuple n: Int f: Bool end with let var c = tuple let n = 1 let f = true end let d = dynamic.new(:Char 'x') end));
+
+(* Auto values inside other values, and a witness built in generic code *)
+let mk(A::TYPE x: A): Pair = auto :A with x x end;
+let mkAll: All(A::TYPE x: A) Pair = mk;
+emit(dynamic.new(:Record ps: Array(Pair) end record ps = array of mkAll(:String "p") mk(:Bool true) end end));

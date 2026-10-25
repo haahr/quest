@@ -105,6 +105,8 @@ A **TypeNode** is a JSON object with exactly one key, naming the type constructo
 | `{"abstract": "<module path>.<name>", "rep": TypeRef}` | an abstract type exported by a module (§2.3) |
 | `{"abstract": "<module path>.<name>", "args": [TypeRef, ...], "rep": TypeRef}` | an application of an abstract type operator exported by a module (§2.3) |
 | `{"external": "uint64_t"}` | the external type `uint64_t`, the representation of `word.T` (§2.3) |
+| `{"auto": {"bound": TypeRef \| null, "components": [["<label>", TypeRef], ...]}}` | `Auto A <: B with ... end` (`bound` is `B`), or `Auto A::TYPE with ... end` (`bound` is `null`) |
+| `{"param": N}` | the type parameter of the auto type `N` auto types out from this reference (0 is the innermost) |
 
 A **label** is a field name, prefixed with `var ` when the field is mutable (`"var next"`). An unnamed tuple
 component has the label `""` (or `"var"` when mutable). Identifiers cannot contain spaces and `var` is a
@@ -141,10 +143,17 @@ order, then a function's result; an abstract node's arguments, then its represen
 part of its label, as a field name is. The table is therefore minimal, and equal types have one entry. A reader does not
 rely on this: it compares types structurally, never by index.
 
-**Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), auto
-types other than `Dynamic.T` (which is `Auto A::TYPE with a:A end` and is written by its built-in name), and type
-operators themselves have binders that this table does not express. Nor are external types other than
-`uint64_t`.
+**Auto types bind their type parameter.** An auto node's components refer to it by `param` nodes, counting auto
+types outward as de Bruijn indices do, so that equal auto types have equal nodes whatever their parameters are named
+(compiled code's descriptors refer to it the same way, as `quest_type_bound_vars[N]`). In
+`Auto A::TYPE with a: A inner: Auto B::TYPE with b: B back: A end end`, `a` and `b` are `{"param": 0}` and `back` is
+`{"param": 1}`. `Dynamic.T`, which is `Auto A::TYPE with a:A end`, is written by its built-in name. A type whose
+references to a parameter would need different indices in different unfoldings (an auto type inside a recursive
+type that passes through it and mentions an outer auto type's parameter) is not regular in this form and is not
+encodable.
+
+**Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), and type
+operators themselves have binders that this table does not express. Nor are external types other than `uint64_t`.
 `dynamic.extern` raises `dynamic.error` for a type containing one. A later version can add binder nodes.
 
 ### 2.3. Abstract Types
@@ -205,6 +214,7 @@ its type raises `dynamic.error`.
 | `Variant` | `"<tag>"` or `{"<tag>": value}` | Serde-style external tagging. A case without a payload, or with payload type `Ok`, is the bare tag. |
 | `Option` | `"<tag>"` or `{"<tag>": [value, ...]}` | A case without components is the bare tag; otherwise its components, in order. |
 | `Dynamic.T` | `{"@type": TypeRef, "@value": value}` | The nested value's type is in the document's table. |
+| other auto types | `{"@type": TypeRef, "@value": [value, ...]}` | The witness, then the components in order, each at its type with the witness for the auto type's parameter (for `{"param": N}`, the witness of the `N`th enclosing auto value). A reader rejects a witness that is not a subtype of the auto type's bound. |
 | abstract type | the value at its representation type | |
 | `external "uint64_t"` | integer | From 0 to 2^64 - 1. |
 

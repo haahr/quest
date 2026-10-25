@@ -114,6 +114,24 @@ static QVal quest_dynamic_component(const QAuto *a) {
     return *(const QVal *)a->payload.p;
 }
 
+/* The witnesses of the auto values being written or read, innermost last: an auto type's components refer to its
+ * type parameter as quest_type_bound_vars[i], i counting auto types outward (docs/dynamic.md §2.2), so a value of
+ * that type is written or read at the witness of the i-th auto value out. Reset by each extern and intern. */
+static const QTypeDescriptor *quest_witnesses[Q_MAX_BOUND_VARS];
+static size_t quest_witness_count = 0;
+
+static void quest_push_witness(const QTypeDescriptor *witness) {
+    if (witness == NULL || quest_witness_count == Q_MAX_BOUND_VARS) quest_raise_dynamic_error();
+    quest_witnesses[quest_witness_count++] = witness;
+}
+
+/* The witness a value of type parameter d (a bound variable descriptor) is written or read at */
+static const QTypeDescriptor *quest_witness_of(const QTypeDescriptor *d) {
+    size_t i = (size_t)(d - quest_type_bound_vars);
+    if (d < quest_type_bound_vars || i >= Q_MAX_BOUND_VARS || i >= quest_witness_count) quest_raise_dynamic_error();
+    return quest_witnesses[quest_witness_count - 1 - i];
+}
+
 /* ------------------------------------------------------------------------- */
 /* JSON Text Output                                                          */
 /* ------------------------------------------------------------------------- */
@@ -237,6 +255,8 @@ typedef enum QTypeNodeKind {
     QTN_EXCEPTION,
     QTN_EXTERNAL,
     QTN_ABSTRACT,
+    QTN_AUTO,
+    QTN_PARAM,
 } QTypeNodeKind;
 
 /* The nodes with one key, which names them (an abstract node has "abstract", "args", and "rep") */
@@ -244,10 +264,11 @@ static const char *const quest_type_node_names[] = { "record", "tuple", "variant
 #define Q_TYPE_NODE_KIND_COUNT 7
 
 /* A type node: its constructor and labels (its shape), and the refs of its component types. Labels are field names
- * (with "var " for mutable fields), case tags, function parameter modes, an external type's C type, or an abstract
- * type's global name. Children are in the order the node lists them: record fields by name, tuple components and
- * parameters in order (then a function's result), the cases of a variant or option that have a payload, in
- * declaration order, and an abstract type's arguments (then its representation). */
+ * (with "var " for mutable fields), case tags, function parameter modes, an external type's C type, an abstract
+ * type's global name, an auto type's component names (with "var "), or a param node's index. Children are in the
+ * order the node lists them: record fields by name, tuple components and parameters in order (then a function's
+ * result), the cases of a variant or option that have a payload, in declaration order, an abstract type's arguments
+ * (then its representation), and an auto type's bound if it has one (then its components). */
 typedef struct QTypeNode {
     QTypeNodeKind kind;
     size_t        label_count;
@@ -304,8 +325,8 @@ static bool quest_is_word_type(const QTypeDescriptor *d) {
 }
 
 /* The ref of a descriptor's type, adding nodes for it and the types it mentions. Raises dynamic.error for types the
- * format cannot express: polymorphic functions, auto types other than Dynamic.T, and abstract types other than
- * those of modules (docs/dynamic.md §2.2). */
+ * format cannot express: polymorphic functions, and abstract types other than those of modules (docs/dynamic.md
+ * §2.2). */
 static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
     if (d == NULL) quest_raise_dynamic_error();
     d = quest_stored_type(d);
@@ -318,13 +339,13 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
         case QTYPE_KIND_REAL: return QREF_REAL;
         case QTYPE_KIND_AUTO:
             if (quest_is_dynamic_type(d)) return QREF_DYNAMIC;
-            quest_raise_dynamic_error();
             break;
         case QTYPE_KIND_OPAQUE:
             if (!quest_is_word_type(d) && quest_abstract_type_rep(d) == NULL) quest_raise_dynamic_error();
             break;
         case QTYPE_KIND_BOUND_VAR:
-            quest_raise_dynamic_error();
+            /* An auto type's parameter, by its index: a param node */
+            if (d < quest_type_bound_vars || d >= quest_type_bound_vars + Q_MAX_BOUND_VARS) quest_raise_dynamic_error();
             break;
         default:
             break;
@@ -447,6 +468,32 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             child_count = n + 1;
             break;
         }
+        case QTYPE_KIND_AUTO: {
+            /* Its bound, if it has one, then its components, whose types refer to its parameter by param nodes */
+            const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)d->extra;
+            if (meta == NULL) quest_raise_dynamic_error();
+            size_t n = meta->component_count, b = meta->bound != NULL ? 1 : 0;
+            labels = (const char **)quest_alloc(sizeof(char *) * (n ? n : 1));
+            children = (int *)quest_alloc(sizeof(int) * (n + b ? n + b : 1));
+            if (b) children[0] = quest_tg_ref(g, meta->bound);
+            for (size_t i = 0; i < n; ++i) {
+                labels[i] = quest_var_label(meta->components[i].name, meta->components[i].is_var);
+                children[b + i] = quest_tg_ref(g, meta->components[i].type);
+            }
+            kind = QTN_AUTO;
+            label_count = n;
+            child_count = n + b;
+            break;
+        }
+        case QTYPE_KIND_BOUND_VAR: {
+            char *index = (char *)quest_alloc_atomic(24);
+            snprintf(index, 24, "%zu", (size_t)(d - quest_type_bound_vars));
+            labels = (const char **)quest_alloc(sizeof(char *));
+            labels[0] = index;
+            kind = QTN_PARAM;
+            label_count = 1;
+            break;
+        }
         default:
             quest_raise_dynamic_error();
     }
@@ -551,6 +598,32 @@ static void quest_write_type_table(QWriter *wr, const QTypeGraph *g) {
             quest_write_raw(wr, "{\"external\":");
             quest_write_json_string(wr, node->labels[0], strlen(node->labels[0]));
             quest_writer_put_char(wr, '}');
+            continue;
+        }
+        if (node->kind == QTN_PARAM) {
+            quest_write_raw(wr, "{\"param\":");
+            quest_write_raw(wr, node->labels[0]);
+            quest_writer_put_char(wr, '}');
+            continue;
+        }
+        if (node->kind == QTN_AUTO) {
+            size_t b = node->child_count - node->label_count;
+            quest_write_raw(wr, "{\"auto\":{\"bound\":");
+            if (b) {
+                quest_write_type_ref(wr, g, node->children[0]);
+            } else {
+                quest_write_raw(wr, "null");
+            }
+            quest_write_raw(wr, ",\"components\":[");
+            for (size_t i = 0; i < node->label_count; ++i) {
+                if (i > 0) quest_writer_put_char(wr, ',');
+                quest_writer_put_char(wr, '[');
+                quest_write_json_string(wr, node->labels[i], strlen(node->labels[i]));
+                quest_writer_put_char(wr, ',');
+                quest_write_type_ref(wr, g, node->children[b + i]);
+                quest_writer_put_char(wr, ']');
+            }
+            quest_write_raw(wr, "]}}");
             continue;
         }
         if (node->kind == QTN_ABSTRACT) {
@@ -678,14 +751,20 @@ static const QTypeDescriptor *quest_unstore(const QTypeDescriptor *desc, QVal *v
     return st->type;
 }
 
-/* The type a value is written at: its own type (quest_unstore), or for a value of a module abstract type, held as a
- * QVal as a value stored as a type parameter is, its representation */
+/* The type a value is written at: its own type (quest_unstore); for a value of a module abstract type, held as a
+ * QVal as a value stored as a type parameter is, its representation; and for a value of an auto type's parameter,
+ * the auto value's witness */
 static const QTypeDescriptor *quest_concrete(const QTypeDescriptor *desc, QVal *val) {
     desc = quest_unstore(desc, val);
-    while (desc != NULL && desc->kind == QTYPE_KIND_OPAQUE && !quest_is_word_type(desc)) {
-        desc = quest_unstore(quest_abstract_type_rep(desc), val);
+    for (;;) {
+        if (desc != NULL && desc->kind == QTYPE_KIND_OPAQUE && !quest_is_word_type(desc)) {
+            desc = quest_unstore(quest_abstract_type_rep(desc), val);
+        } else if (desc != NULL && desc->kind == QTYPE_KIND_BOUND_VAR) {
+            desc = quest_unstore(quest_witness_of(desc), val);
+        } else {
+            return desc;
+        }
     }
-    return desc;
 }
 
 static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *table, QTypeGraph *g) {
@@ -703,9 +782,19 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
 
         case QTYPE_KIND_AUTO: {
             const QAuto *a = (const QAuto *)val.p;
-            if (!quest_is_dynamic_type(desc) || a == NULL || a->type_desc == NULL) quest_raise_dynamic_error();
+            if (a == NULL || a->type_desc == NULL) quest_raise_dynamic_error();
             quest_tg_add_root(g, quest_tg_ref(g, a->type_desc));
-            quest_scan_value(a->type_desc, quest_dynamic_component(a), table, g);
+            if (quest_is_dynamic_type(desc)) {
+                quest_scan_value(a->type_desc, quest_dynamic_component(a), table, g);
+                break;
+            }
+            const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)desc->extra;
+            quest_push_witness(a->type_desc);
+            for (size_t i = 0; i < meta->component_count; ++i) {
+                const QAutoComponentDescriptor *c = &meta->components[i];
+                quest_scan_value(c->type, quest_slot_read((const char *)a->payload.p + c->offset), table, g);
+            }
+            --quest_witness_count;
             break;
         }
 
@@ -832,7 +921,22 @@ static void quest_emit_value(
             int ref = type_node != NULL ? type_node->id - 1 : quest_tg_ref((QTypeGraph *)g, a->type_desc);
             quest_write_type_ref(wr, g, ref);
             quest_write_raw(wr, ",\"@value\":");
-            quest_emit_value(a->type_desc, quest_dynamic_component(a), table, g, next_id, wr);
+            if (quest_is_dynamic_type(desc)) {
+                quest_emit_value(a->type_desc, quest_dynamic_component(a), table, g, next_id, wr);
+            } else {
+                /* Its components, at their types, which refer to the witness */
+                const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)desc->extra;
+                quest_push_witness(a->type_desc);
+                quest_writer_put_char(wr, '[');
+                for (size_t i = 0; i < meta->component_count; ++i) {
+                    const QAutoComponentDescriptor *c = &meta->components[i];
+                    if (i > 0) quest_writer_put_char(wr, ',');
+                    QVal cv = quest_slot_read((const char *)a->payload.p + c->offset);
+                    quest_emit_value(c->type, cv, table, g, next_id, wr);
+                }
+                quest_writer_put_char(wr, ']');
+                --quest_witness_count;
+            }
             quest_writer_put_char(wr, '}');
             break;
         }
@@ -935,6 +1039,7 @@ void quest_dynamic_extern(QWriter *wr, const QAuto *d) {
         quest_raise_dynamic_error();
     }
     QVal value = quest_dynamic_component(d);
+    quest_witness_count = 0;
 
     QPtrTable *table = (QPtrTable *)quest_alloc(sizeof(QPtrTable));
     QTypeGraph *g = (QTypeGraph *)quest_alloc(sizeof(QTypeGraph));
@@ -1487,6 +1592,32 @@ static void quest_check_abstract_desc(QTypeDescriptor *desc) {
 /* Builds a descriptor for every node of a type table: first each node's kind (which determines how a component of
  * that type is stored), then the nodes' contents, which may refer to any node, and then checks the representations
  * of abstract types, which may refer to nodes after them */
+/* An auto type: {"bound": TypeRef | null, "components": [[label, TypeRef], ...]}, its components in slots in order,
+ * as compiled code lays them out */
+static void quest_fill_auto_desc(const QTypeTable *t, QTypeDescriptor *desc, QJsonValue *body) {
+    if (body == NULL || body->kind != QJSON_OBJECT || body->u.o.count != 2) quest_raise_dynamic_error();
+    QJsonValue *bound = quest_json_obj_get(body, "bound");
+    QJsonValue *comps = quest_json_obj_get(body, "components");
+    if (bound == NULL || comps == NULL || comps->kind != QJSON_ARRAY) quest_raise_dynamic_error();
+    size_t n = comps->u.a.count;
+    QAutoTypeDescriptor *meta =
+        (QAutoTypeDescriptor *)quest_alloc(sizeof(QAutoTypeDescriptor) + sizeof(QAutoComponentDescriptor) * n);
+    meta->bound = bound->kind == QJSON_NULL ? NULL : quest_table_ref(t, bound);
+    meta->payload_size = sizeof(QVal) * n;
+    meta->component_count = n;
+    for (size_t i = 0; i < n; ++i) {
+        QJsonValue *c = comps->u.a.items[i];
+        if (c->kind != QJSON_ARRAY || c->u.a.count != 2 || c->u.a.items[0]->kind != QJSON_STRING) {
+            quest_raise_dynamic_error();
+        }
+        QAutoComponentDescriptor *comp = (QAutoComponentDescriptor *)&meta->components[i];
+        comp->name = quest_label_name(c->u.a.items[0]->u.s.str, &comp->is_var);
+        comp->type = quest_table_ref(t, c->u.a.items[1]);
+        comp->offset = sizeof(QVal) * i;
+    }
+    desc->extra = meta;
+}
+
 static QTypeTable *quest_read_type_table(QJsonValue *types) {
     if (types == NULL || types->kind != QJSON_ARRAY) quest_raise_dynamic_error();
     QTypeTable *t = (QTypeTable *)quest_alloc(sizeof(QTypeTable));
@@ -1506,6 +1637,25 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
             continue;
         }
         QJsonKeyValue *entry = quest_type_node_entry(t->nodes[i]);
+        if (strcmp(entry->key, "param") == 0) {
+            /* An auto type's parameter: the bound variable descriptor of its index */
+            if (entry->val->kind != QJSON_INT || entry->val->u.i < 0 || entry->val->u.i >= Q_MAX_BOUND_VARS) {
+                quest_raise_dynamic_error();
+            }
+            t->descs[i] = (QTypeDescriptor *)&quest_type_bound_vars[entry->val->u.i];
+            continue;
+        }
+        if (strcmp(entry->key, "auto") == 0) {
+            QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+            desc->kind = QTYPE_KIND_AUTO;
+            desc->name = "Auto";
+            desc->size = sizeof(QAuto *);
+            desc->alignment = sizeof(void *);
+            desc->is_subtype = quest_is_subtype;
+            desc->extra = NULL;
+            t->descs[i] = desc;
+            continue;
+        }
         if (strcmp(entry->key, "external") == 0) {
             if (entry->val->kind != QJSON_STRING || strcmp(entry->val->u.s.str, "uint64_t") != 0) {
                 quest_raise_dynamic_error();
@@ -1528,9 +1678,13 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
     }
     for (size_t i = 0; i < t->count; ++i) {
         QTypeDescriptor *desc = t->descs[i];
-        if (desc == &quest_type_Word) continue;
+        if (desc == &quest_type_Word || desc->kind == QTYPE_KIND_BOUND_VAR) continue;
         if (desc->kind == QTYPE_KIND_OPAQUE) {
             quest_fill_abstract_desc(t, desc, t->nodes[i]);
+            continue;
+        }
+        if (desc->kind == QTYPE_KIND_AUTO) {
+            quest_fill_auto_desc(t, desc, quest_type_node_entry(t->nodes[i])->val);
             continue;
         }
         QJsonValue *body = quest_type_node_entry(t->nodes[i])->val;
@@ -1678,12 +1832,29 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             if (node->kind != QJSON_NULL) quest_raise_dynamic_error();
             return Q_OK_VAL;
 
+        case QTYPE_KIND_BOUND_VAR:
+            /* An auto type's parameter: the auto value's witness */
+            return quest_read_value(cx, node, quest_witness_of(desc));
+
         case QTYPE_KIND_AUTO: {
             if (node->kind != QJSON_OBJECT || node->u.o.count != 2) quest_raise_dynamic_error();
             QJsonValue *t_node = quest_json_obj_get(node, "@type");
             QJsonValue *v_node = quest_json_obj_get(node, "@value");
             if (t_node == NULL || v_node == NULL) quest_raise_dynamic_error();
-            return (QVal){ .p = (void *)quest_read_dynamic(cx, t_node, v_node) };
+            if (quest_is_dynamic_type(desc)) return (QVal){ .p = (void *)quest_read_dynamic(cx, t_node, v_node) };
+            /* Its witness, which must have the auto type's bound, then its components at their types */
+            const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)desc->extra;
+            const QTypeDescriptor *witness = quest_table_ref(cx->types, t_node);
+            if (meta->bound != NULL && !quest_is_subtype(witness, meta->bound)) quest_raise_dynamic_error();
+            if (v_node->kind != QJSON_ARRAY || v_node->u.a.count != meta->component_count) quest_raise_dynamic_error();
+            char *payload = (char *)quest_alloc(meta->payload_size > 0 ? meta->payload_size : sizeof(QVal));
+            quest_push_witness(witness);
+            for (size_t i = 0; i < meta->component_count; ++i) {
+                const QAutoComponentDescriptor *c = &meta->components[i];
+                quest_slot_write(payload + c->offset, quest_read_value(cx, v_node->u.a.items[i], c->type));
+            }
+            --quest_witness_count;
+            return (QVal){ .p = (void *)quest_auto_new(witness, (QVal){ .p = payload }) };
         }
 
         case QTYPE_KIND_RECORD: {
@@ -1827,6 +1998,7 @@ QAuto *quest_dynamic_intern(QReader *rd) {
         value == NULL) {
         quest_raise_dynamic_error();
     }
+    quest_witness_count = 0;
     QReadContext cx = { .types = quest_read_type_table(quest_json_obj_get(root, "types")), .ids = NULL };
     return quest_read_dynamic(&cx, type_ref, value);
 }

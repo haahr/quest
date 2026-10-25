@@ -1,0 +1,297 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'line' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedSelect 'output' :type writer.T
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  (TypedVar 's' :type String)
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedSelect 'output' :type writer.T
+                :target (TypedVar 'writer' :type Module 'writer'))
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetType 'Pair' :kind TYPE)
+    (TypedLetValue 'p' :type Pair
+      :value (TypedApp :type Pair
+        :func (TypedTypeApp [Pair] :type Fun(d: T): Pair
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedSelect 'input' :type reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'p' :type Pair)
+            :branches (
+              (TypedInspectBranch match=Int
+                :body (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedInfix '+' :type Int
+                      :left (TypedSelect 'a' :type Int
+                        :target (TypedVar 'q' :type Tuple a: Int b: Int end))
+                      :right (TypedSelect 'b' :type Int
+                        :target (TypedVar 'q' :type Tuple a: Int b: Int end)))
+                  )))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedLetType 'Named' :kind TYPE)
+    (TypedLetValue 'n' :type Named
+      :value (TypedApp :type Named
+        :func (TypedTypeApp [Named] :type Fun(d: T): Named
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedSelect 'input' :type reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'n' :type Named)
+            :branches (
+              (TypedInspectBranch match=Record name: String age: Int end
+                :body (TypedInfix '<>' :type String
+                  :left (TypedSelect 'name' :type String
+                    :target (TypedSelect 'x' :type Record name: String age: Int end
+                      :target (TypedVar 'r' :type Tuple x: Record name: String age: Int end end)))
+                  :right (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'age' :type Int
+                        :target (TypedSelect 'x' :type Record name: String age: Int end
+                          :target (TypedVar 'r' :type Tuple x: Record name: String age: Int end end)))
+                    ))))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedLetType 'Outer' :kind TYPE)
+    (TypedLetValue 'o' :type Outer
+      :value (TypedApp :type Outer
+        :func (TypedTypeApp [Outer] :type Fun(d: T): Outer
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedSelect 'input' :type reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'o' :type Outer)
+            :branches (
+              (TypedInspectBranch match=Int exact
+                :body (TypedInspect :type String
+                  :target (TypedSelect 'inner' :type Auto B :: TYPE with b: B back: Int end
+                    :target (TypedVar 'v' :type Tuple a: Int inner: Auto B :: TYPE with b: B back: Int end end))
+                  :branches (
+                    (TypedInspectBranch match=String
+                      :body (TypedInfix '<>' :type String
+                        :left (TypedSelect 'b' :type String
+                          :target (TypedVar 'w' :type Tuple b: String back: Int end))
+                        :right (TypedApp :type String
+                          :func (TypedSelect 'int' :type Fun(n: Int): String
+                            :target (TypedVar 'conv' :type Module 'conv'))
+                          :args (
+                            (TypedInfix '+' :type Int
+                              :left (TypedSelect 'a' :type Int
+                                :target (TypedVar 'v' :type Tuple a: Int inner: Auto B :: TYPE with b: B back: Int end end))
+                              :right (TypedSelect 'back' :type Int
+                                :target (TypedVar 'w' :type Tuple b: String back: Int end)))
+                          ))))
+                  )
+                  :else (TypedString '?' :type String)))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedLetType 'Cell' :kind TYPE)
+    (TypedLetValue 'c' :type Cell
+      :value (TypedApp :type Cell
+        :func (TypedTypeApp [Cell] :type Fun(d: T): Cell
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedSelect 'input' :type reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'c' :type Cell)
+            :branches (
+              (TypedInspectBranch match=Tuple n: Int f: Bool end exact
+                :body (TypedBlock :type String
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedSelect 'c' :type Tuple n: Int f: Bool end
+                          :target (TypedVar 'k' :type Tuple var c: Tuple n: Int f: Bool end d: Dynamic end))
+                        :value (TypedTuple :type Tuple n: Int f: Bool end
+                          :elements (
+                            (TypedInt 2 :type Int)
+                            (TypedBool false)
+                          ))))
+                  )
+                  :result (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'n' :type Int
+                          :target (TypedSelect 'c' :type Tuple n: Int f: Bool end
+                            :target (TypedVar 'k' :type Tuple var c: Tuple n: Int f: Bool end d: Dynamic end)))
+                      ))
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'char' :type Fun(c: Char): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedApp :type Char
+                          :func (TypedTypeApp [Char] :type Fun(d: T): Char
+                            :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                              :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                          :args (
+                            (TypedSelect 'd' :type Dynamic
+                              :target (TypedVar 'k' :type Tuple var c: Tuple n: Int f: Bool end d: Dynamic end))
+                          ))
+                      )))))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedLetValue 'ps' :type Record ps: Array(Pair) end
+      :value (TypedApp :type Record ps: Array(Pair) end
+        :func (TypedTypeApp [Record ps: Array(Pair) end] :type Fun(d: T): Record ps: Array(Pair) end
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedSelect 'input' :type reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedIndex :type Pair
+              :target (TypedSelect 'ps' :type Array(Pair)
+                :target (TypedVar 'ps' :type Record ps: Array(Pair) end))
+              :index (TypedInt 0 :type Int))
+            :branches (
+              (TypedInspectBranch match=String
+                :body (TypedInfix '<>' :type String
+                  :left (TypedSelect 'a' :type String
+                    :target (TypedVar 's' :type Tuple a: String b: String end))
+                  :right (TypedSelect 'b' :type String
+                    :target (TypedVar 's' :type Tuple a: String b: String end))))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedIndex :type Pair
+              :target (TypedSelect 'ps' :type Array(Pair)
+                :target (TypedVar 'ps' :type Record ps: Array(Pair) end))
+              :index (TypedInt 1 :type Int))
+            :branches (
+              (TypedInspectBranch match=Bool
+                :body (TypedIf :type String
+                  :cond (TypedSelect 'a' :type Bool
+                    :target (TypedVar 'b' :type Tuple a: Bool b: Bool end))
+                  :then (TypedString 'true' :type String)
+                  :else (TypedString 'false' :type String)))
+            )
+            :else (TypedString '?' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'line' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedBlock :type String
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type T
+                    :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                      :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                    :args (
+                      (TypedSelect 'input' :type reader.T
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                    )))
+              )
+              :result (TypedString 'read' :type String))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :body (TypedString 'rejected' :type String))
+            ))
+        )))
+  ))

@@ -1,0 +1,165 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'emit' :type Fun(d: Dynamic): Ok
+      :value (TypedFun :params (('d' : Dynamic)) :type Fun(d: Dynamic): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'extern' :type Fun(wr: writer.T d: T): Ok
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :args (
+                  (TypedSelect 'output' :type writer.T
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  (TypedVar 'd' :type Dynamic)
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedSelect 'output' :type writer.T
+                :target (TypedVar 'writer' :type Module 'writer'))
+              (TypedString '\n' :type String)
+            )))))
+    (TypedLetType 'Pair' :kind TYPE)
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'emit' :type Fun(d: Dynamic): Ok)
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Pair] :type Fun(a: Pair): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedAuto :Int :type Pair
+                :payload (TypedTuple :type Tuple a: Int b: Int end
+                  :elements (
+                    (TypedInt 1 :type Int)
+                    (TypedInt 2 :type Int)
+                  )))
+            ))
+        )))
+    (TypedLetType 'Named' :kind TYPE)
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'emit' :type Fun(d: Dynamic): Ok)
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Named] :type Fun(a: Named): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedAuto :Record name: String age: Int end :type Named
+                :payload (TypedTuple :type Tuple x: Record name: String age: Int end end
+                  :elements (
+                    (TypedRecord :type Record name: String age: Int end
+                      :fields (
+                        (TypedRecordField 'name'
+                          :value (TypedString 'n' :type String))
+                        (TypedRecordField 'age'
+                          :value (TypedInt 3 :type Int))
+                      ))
+                  )))
+            ))
+        )))
+    (TypedLetType 'Outer' :kind TYPE)
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'emit' :type Fun(d: Dynamic): Ok)
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Outer] :type Fun(a: Outer): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedAuto :Int :type Outer
+                :payload (TypedTuple :type Tuple a: Int inner: Auto B :: TYPE with b: B back: Int end end
+                  :elements (
+                    (TypedInt 7 :type Int)
+                    (TypedAuto :String :type Auto B :: TYPE with b: B back: Int end
+                      :payload (TypedTuple :type Tuple b: String back: Int end
+                        :elements (
+                          (TypedString 's' :type String)
+                          (TypedInt 8 :type Int)
+                        )))
+                  )))
+            ))
+        )))
+    (TypedLetType 'Cell' :kind TYPE)
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'emit' :type Fun(d: Dynamic): Ok)
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Cell] :type Fun(a: Cell): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedAuto :Tuple n: Int f: Bool end :type Cell
+                :payload (TypedTuple :type Tuple var c: Tuple n: Int f: Bool end d: Dynamic end
+                  :elements (
+                    (TypedTuple :type Tuple n: Int f: Bool end
+                      :elements (
+                        (TypedInt 1 :type Int)
+                        (TypedBool true)
+                      ))
+                    (TypedApp :type T
+                      :func (TypedTypeApp [Char] :type Fun(a: Char): T
+                        :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                          :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                      :args (
+                        (TypedChar 'x' :type Char)
+                      ))
+                  )))
+            ))
+        )))
+    (TypedLetValue 'mk' :type All(A :: TYPE) Fun(x: A): Pair
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): Pair
+        :body (TypedAuto :A :type Pair
+          :payload (TypedTuple :type Tuple a: A b: A end
+            :elements (
+              (TypedVar 'x' :type A)
+              (TypedVar 'x' :type A)
+            )))))
+    (TypedLetValue 'mkAll' :type All(A :: TYPE) Fun(x: A): Pair
+      :value (TypedVar 'mk' :type All(A :: TYPE) Fun(x: A): Pair))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'emit' :type Fun(d: Dynamic): Ok)
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Record ps: Array(Pair) end] :type Fun(a: Record ps: Array(Pair) end): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedRecord :type Record ps: Array(Pair) end
+                :fields (
+                  (TypedRecordField 'ps'
+                    :value (TypedArray :type Array(Pair)
+                      :elements (
+                        (TypedApp :type Pair
+                          :func (TypedTypeApp [String] :type Fun(x: String): Pair
+                            :func (TypedVar 'mkAll' :type All(A :: TYPE) Fun(x: A): Pair))
+                          :args (
+                            (TypedString 'p' :type String)
+                          ))
+                        (TypedApp :type Pair
+                          :func (TypedTypeApp [Bool] :type Fun(x: Bool): Pair
+                            :func (TypedVar 'mk' :type All(A :: TYPE) Fun(x: A): Pair))
+                          :args (
+                            (TypedBool true)
+                          ))
+                      )))
+                ))
+            ))
+        )))
+  ))

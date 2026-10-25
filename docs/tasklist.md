@@ -85,35 +85,6 @@ seen through the auto value, in all backends.
 
 ---
 
-## Only `Dynamic.T` among auto types can be externed
-
-**Problem.** The serialization format writes `Dynamic.T` by its built-in name, but no other auto type is encodable
-(`docs/dynamic.md` §2.2), so `dynamic.extern` raises `dynamic.error` on a value whose type contains any other auto
-type, such as a dynamic holding a value of `Auto A::TYPE with a:A b:A end`.
-
-**Reproduce.**
-
-```quest
-import dynamic: Dynamic;
-import writer: Writer;
-Let Pair = Auto A::TYPE with a:A b:A end;
-dynamic.extern(writer.output dynamic.new(:Pair auto :Int with 1 2 end))
-```
-
-raises `dynamic.error` in every backend.
-
-**Where to start.** A type node for auto types in `docs/dynamic.md` §2.2 (the kind bound, and the components'
-names, var-ness, and types with the bound type variable), each value written with its witness type; then the
-encoders and decoders in `bootstrap/python/quest/values/dynamic_json.py` and `runtime/quest_serialization.c`
-(`QTYPE_KIND_AUTO` in the encodability check, writer, and reader), which already write and read `Dynamic.T`'s
-witness. Bump the format version if the change is not backward compatible.
-
-**Done when.** Values of auto types round-trip through `extern` and `intern` in all backends, including autos whose
-witnesses were built in generic code, and `tests/source/stdlib/dynamic_extern.quest` (or a new golden test) covers
-them.
-
----
-
 ## Options whose cases are listed in different orders
 
 **Problem.** Option types are compared by their cases' names, unordered, so `Option a b end` and `Option b a end` are

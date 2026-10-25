@@ -1,0 +1,41 @@
+(* Standard library: dynamic.intern reads auto values (docs/dynamic.md §2.2), as dynamic_extern_auto writes them *)
+(* @stdin:
+{"quest":1,"types":[{"auto":{"bound":null,"components":[["a",1],["b",1]]}},{"param":0}],"type":0,"value":{"@type":"Int","@value":[1,2]}}
+{"quest":1,"types":[{"auto":{"bound":1,"components":[["x",2]]}},{"record":{"name":"String"}},{"param":0},{"record":{"age":"Int","name":"String"}}],"type":0,"value":{"@type":3,"@value":[{"age":3,"name":"n"}]}}
+{"quest":1,"types":[{"auto":{"bound":null,"components":[["a",1],["inner",2]]}},{"param":0},{"auto":{"bound":null,"components":[["b",1],["back",3]]}},{"param":1}],"type":0,"value":{"@type":"Int","@value":[7,{"@type":"String","@value":["s",8]}]}}
+{"quest":1,"types":[{"auto":{"bound":null,"components":[["var c",1],["d","Dynamic"]]}},{"param":0},{"tuple":[["n","Int"],["f","Bool"]]}],"type":0,"value":{"@type":2,"@value":[[1,true],{"@type":"Char","@value":"x"}]}}
+{"quest":1,"types":[{"record":{"ps":1}},{"array":2},{"auto":{"bound":null,"components":[["a",3],["b",3]]}},{"param":0}],"type":0,"value":{"ps":[{"@type":"String","@value":["p","p"]},{"@type":"Bool","@value":[true,true]}]}}
+{"quest":1,"types":[{"auto":{"bound":1,"components":[["x",2]]}},{"record":{"name":"String"}},{"param":0}],"type":0,"value":{"@type":"Int","@value":[5]}}
+*)
+import dynamic: Dynamic;
+import reader: Reader;
+import writer: Writer;
+import conv: Conv;
+let line(s: String): Ok = begin writer.putString(writer.output s); writer.putString(writer.output "\n") end;
+
+Let Pair = Auto A::TYPE with a: A b: A end;
+let p = dynamic.be(:Pair dynamic.intern(reader.input));
+line(inspect p when Int with q then conv.int(q.a + q.b) else "?" end);
+
+Let Named = Auto A <: Record name: String end with x: A end;
+let n = dynamic.be(:Named dynamic.intern(reader.input));
+line(inspect n when Record name: String age: Int end with r then r.x.name <> conv.int(r.x.age) else "?" end);
+
+Let Outer = Auto A::TYPE with a: A inner: Auto B::TYPE with b: B back: A end end;
+let o = dynamic.be(:Outer dynamic.intern(reader.input));
+line(inspect o when Int with v then
+    inspect v.inner when String with w then w.b <> conv.int(v.a + w.back) else "?" end
+  else "?" end);
+
+Let Cell = Auto A::TYPE with var c: A d: Dynamic end;
+let c = dynamic.be(:Cell dynamic.intern(reader.input));
+line(inspect c when Tuple n: Int f: Bool end with k then
+    begin k.c := tuple let n = 2 let f = false end; conv.int(k.c.n) <> conv.char(dynamic.be(:Char k.d)) end
+  else "?" end);
+
+let ps = dynamic.be(:Record ps: Array(Pair) end dynamic.intern(reader.input));
+line(inspect ps.ps[0] when String with s then s.a <> s.b else "?" end);
+line(inspect ps.ps[1] when Bool with b then if b.a then "true" else "false" end else "?" end);
+
+(* A witness that is not a subtype of the auto type's bound is rejected *)
+line(try begin dynamic.intern(reader.input); "read" end when dynamic.error then "rejected" end);

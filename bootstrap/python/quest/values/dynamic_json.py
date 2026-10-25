@@ -80,6 +80,7 @@ from quest.types import (
     QTypeVar,
     QVariantField,
     QVariantType,
+    is_subtype,
     is_type_equal,
     unalias,
 )
@@ -135,8 +136,10 @@ def parse_type_string(type_str: str) -> QType:
 #
 # A node is (shape, children). The shape holds the constructor and its labels; children are type refs, in the
 # order the node lists them: record fields sorted by name, tuple components and function parameters in order (then
-# the function's result), variant and option cases in declaration order (only those with a payload), and an
-# abstract type's arguments (then its representation).
+# the function's result), variant and option cases in declaration order (only those with a payload), an abstract
+# type's arguments (then its representation), and an auto type's bound (if it has one, then its components). A
+# param node refers to the type parameter of the auto type N auto types out from it (0 is the innermost), as
+# descriptors do (de Bruijn indices).
 
 # The external types whose values can be externed, and how: word.T is external "uint64_t", written as an integer
 _EXTERNAL_TYPES = ("uint64_t",)
@@ -225,8 +228,10 @@ class _TypeGraph:
 
     def __init__(self) -> None:
         self.nodes: list[Optional[tuple[tuple[Any, ...], tuple[TypeRef, ...]]]] = []
-        self._index: dict[int, int] = {}
+        self._index: dict[Any, int] = {}
         self._keep: list[QType] = []
+        # The type parameters of the auto types around the type being added, innermost last
+        self._binders: list[int] = []
 
     def ref(self, t: QType) -> TypeRef:
         s = _structure(t)
@@ -235,16 +240,25 @@ class _TypeGraph:
             return name
         if _is_dynamic_type(s):
             return "Dynamic"
-        index = self._index.get(id(s))
+        if isinstance(s, QTypeVar) and s.symbol_id in self._binders:
+            return self._add(("param", len(self._binders) - 1 - self._binders.index(s.symbol_id)), s, None)
+        # A type that mentions enclosing auto types' parameters is a node for each way it refers to them
+        key = (id(s), tuple(
+            (b, len(self._binders) - 1 - i) for i, b in enumerate(self._binders) if b in s._fv
+        ))
+        return self._add(key, s, s)
+
+    def _add(self, key: Any, s: QType, structure: Optional[QType]) -> int:
+        index = self._index.get(key)
         if index is not None:
             return index
         if len(self.nodes) >= _MAX_TYPE_NODES:
             raise _fail()
         index = len(self.nodes)
-        self._index[id(s)] = index
+        self._index[key] = index
         self._keep.append(s)
         self.nodes.append(None)
-        self.nodes[index] = self._node(s)
+        self.nodes[index] = self._node(structure) if structure is not None else ((key[0], key[1]), ())
         return index
 
     def _node(self, s: QType) -> tuple[tuple[Any, ...], tuple[TypeRef, ...]]:
@@ -275,12 +289,26 @@ class _TypeGraph:
             return ("exception",), (self.ref(s.payload_type),)
         if isinstance(s, QExternalType) and s.c_type in _EXTERNAL_TYPES:
             return ("external", s.c_type), ()
+        if isinstance(s, QAutoType):
+            if isinstance(s.kind_bound, QPowerKind):
+                bound: tuple[TypeRef, ...] = (self.ref(s.kind_bound.bound),)
+            elif s.kind_bound is TYPE_KIND or isinstance(s.kind_bound, QTypeKind):
+                bound = ()
+            else:
+                raise _fail()
+            labels = tuple(_var_label(f.name, f.is_var) for f in s.signature)
+            self._binders.append(s.symbol_id)
+            try:
+                components = tuple(self.ref(f.type_val) for f in s.signature)
+            finally:
+                self._binders.pop()
+            return ("auto", labels, bool(bound)), bound + components
         abstract = _module_abstract_type(s)
         if abstract is not None:
             entry, args = abstract
             children = tuple(self.ref(a) for a in args)
             return ("abstract", entry.global_name, len(args)), children + (self.ref(_representation(entry, args)),)
-        # Polymorphic types, other abstract and external types, type operators, and other auto types: not encodable
+        # Polymorphic types, other abstract and external types, and type operators: not encodable
         raise _fail()
 
 
@@ -342,6 +370,12 @@ def _canonical_table(
                 node["args"] = refs[:-1]
             node["rep"] = refs[-1]
             table.append(node)
+        elif kind == "auto":
+            bound = refs[0] if shape[2] else None
+            components = refs[1:] if shape[2] else refs
+            table.append({"auto": {"bound": bound, "components": [[l, r] for l, r in zip(shape[1], components)]}})
+        elif kind == "param":
+            table.append({"param": shape[1]})
         else:
             table.append({"exception": refs[0]})
     return table, {i: number[cls[i]] for i in range(len(nodes)) if cls[i] in number}
@@ -368,6 +402,8 @@ class _Writer:
         self.seen: set[int] = set()
         self.shared: set[int] = set()
         self.ids: dict[int, int] = {}
+        # The witnesses of the auto values being written, innermost last, which param nodes refer to
+        self.witnesses: list[TypeRef] = []
 
     def _deref(self, val: QValue) -> QValue:
         while isinstance(val, QRef):
@@ -380,10 +416,29 @@ class _Writer:
         return isinstance(val, (QRecord, QArray)) or (isinstance(val, QTuple) and len(val.elements) > 0)
 
     def _concrete(self, ref: TypeRef) -> TypeRef:
-        """The type a value of type ref is written at: an abstract type's value is written at its representation."""
-        while not isinstance(ref, str) and self.graph.nodes[ref][0][0] == "abstract":
-            ref = self.graph.nodes[ref][1][-1]
+        """The type a value of type ref is written at: an abstract type's value is written at its representation, and
+        a value of an auto type's parameter at the auto value's witness."""
+        while not isinstance(ref, str):
+            shape, children = self.graph.nodes[ref]
+            if shape[0] == "abstract":
+                ref = children[-1]
+            elif shape[0] == "param":
+                if shape[1] >= len(self.witnesses):
+                    raise _fail()
+                ref = self.witnesses[-1 - shape[1]]
+            else:
+                break
         return ref
+
+    def _auto(self, val: QValue, ref: int) -> tuple[TypeRef, list[tuple[QValue, TypeRef]]]:
+        """An auto value's witness, and its components with their types (which refer to the witness by param)."""
+        shape, children = self.graph.nodes[ref]
+        components = children[1:] if shape[2] else children
+        if not isinstance(val, QAutoVal) or not isinstance(val.value, QTuple):
+            raise _fail()
+        if len(val.value.elements) != len(components):
+            raise _fail()
+        return self.graph.ref(val.type_val), list(zip(val.value.elements, components))
 
     def _children(self, val: QValue, ref: TypeRef) -> list[tuple[QValue, TypeRef]]:
         """The component values of val with their type refs, in the order they are written."""
@@ -429,6 +484,8 @@ class _Writer:
             return list(zip(payload.elements, components))
         if kind == "external":
             return []
+        if kind == "auto":
+            return self._auto(val, ref)[1]
         raise _fail()  # functions and exceptions cannot be externed
 
     def _case_payload(self, val: QValue, shape: tuple[Any, ...], children: tuple[TypeRef, ...]) -> Optional[TypeRef]:
@@ -454,6 +511,14 @@ class _Writer:
                 self.shared.add(id(val))
                 return
             self.seen.add(id(val))
+        concrete = self._concrete(ref)
+        if not isinstance(concrete, str) and self.graph.nodes[concrete][0][0] == "auto":
+            witness, components = self._auto(val, concrete)
+            self.witnesses.append(witness)
+            for child, child_ref in components:
+                self.scan(child, child_ref)
+            self.witnesses.pop()
+            return
         for child, child_ref in self._children(val, ref):
             self.scan(child, child_ref)
 
@@ -467,6 +532,16 @@ class _Writer:
             if not isinstance(val, QWord):
                 raise _fail()
             return val.value
+        if kind == "auto":
+            # As a dynamic value is: its witness, then its components at their types, which refer to the witness
+            witness, components = self._auto(val, ref)
+            out_auto: dict[str, Any] = {"@type": witness, "@value": None}
+            self.roots.append(witness)
+            self.nested.append((out_auto, witness))
+            self.witnesses.append(witness)
+            out_auto["@value"] = [self.encode(child, child_ref) for child, child_ref in components]
+            self.witnesses.pop()
+            return out_auto
         obj_id: Optional[int] = None
         if self._has_identity(val) and id(val) in self.shared:
             if id(val) in self.ids:
@@ -544,7 +619,9 @@ def jsog_encode(dyn: QAutoVal) -> str:
 # Reading
 # ============================================================================
 
-_NODE_KINDS = ("record", "tuple", "variant", "option", "array", "fun", "exception", "external", "abstract")
+_NODE_KINDS = (
+    "record", "tuple", "variant", "option", "array", "fun", "exception", "external", "abstract", "auto", "param",
+)
 
 
 def _arity(kind: QKind) -> int:
@@ -575,6 +652,10 @@ class _Reader:
         self.binder_ids = {i: allocate_symbol_id() for i in range(len(table))}
         self.binder_id_set = set(self.binder_ids.values())
         self.objects: dict[int, QValue] = {}
+        # The type parameters of the auto types being built, innermost last, which param nodes refer to; and the
+        # witnesses of the auto values being read, which values of those parameters are read at
+        self.auto_params: list[QTypeVar] = []
+        self.witnesses: list[TypeRef] = []
 
     # --- the type table ---
 
@@ -623,6 +704,21 @@ class _Reader:
         elif kind == "external":
             if body not in _EXTERNAL_TYPES:
                 raise _fail()
+        elif kind == "param":
+            if not isinstance(body, int) or isinstance(body, bool) or body < 0:
+                raise _fail()
+        elif kind == "auto":
+            if not isinstance(body, dict) or set(body) != {"bound", "components"}:
+                raise _fail()
+            if body["bound"] is not None:
+                self._check_ref(body["bound"])
+            components = body["components"]
+            if not isinstance(components, list) or not all(
+                isinstance(c, list) and len(c) == 2 and isinstance(c[0], str) for c in components
+            ):
+                raise _fail()
+            for _, ref in components:
+                self._check_ref(ref)
         elif kind == "fun":
             if not isinstance(body, dict) or set(body) != {"params", "result"} or not isinstance(body["params"], list):
                 raise _fail()
@@ -641,11 +737,20 @@ class _Reader:
         return kind, body
 
     def concrete(self, ref: TypeRef) -> TypeRef:
-        """The type a value of type ref is written at: an abstract type's value is written at its representation."""
-        for _ in range(len(self.table) + 1):
-            if isinstance(ref, str) or "abstract" not in self.table[ref]:
+        """The type a value of type ref is written at: an abstract type's value is written at its representation, and
+        a value of an auto type's parameter at the auto value's witness."""
+        for _ in range(len(self.table) + len(self.witnesses) + 1):
+            if isinstance(ref, str):
                 return ref
-            ref = self.table[ref]["rep"]
+            if "abstract" in self.table[ref]:
+                ref = self.table[ref]["rep"]
+            elif "param" in self.table[ref]:
+                n = self.table[ref]["param"]
+                if n >= len(self.witnesses):
+                    raise _fail()
+                ref = self.witnesses[-1 - n]
+            else:
+                return ref
         raise _fail()
 
     def abstract_type(self, name: str, args: tuple[QType, ...], rep: QType) -> QType:
@@ -681,6 +786,11 @@ class _Reader:
         done = self.types.get(ref)
         if done is not None:
             return done
+        if "param" in self.table[ref]:
+            n = self.table[ref]["param"]
+            if n >= len(self.auto_params):
+                raise _fail()
+            return self.auto_params[-1 - n]
         binder = self.binder_ids[ref]
         if ref in self.active:
             self.recursive.add(ref)
@@ -719,6 +829,18 @@ class _Reader:
         elif kind == "abstract":
             args = tuple(self.type_of(a) for a in body.get("args", ()))
             t = self.abstract_type(body["abstract"], args, self.type_of(body["rep"]))
+        elif kind == "auto":
+            kind_bound: QKind = TYPE_KIND if body["bound"] is None else QPowerKind(bound=self.type_of(body["bound"]))
+            param = QTypeVar(name=f"A{len(self.auto_params)}", symbol_id=allocate_symbol_id(), bound=kind_bound)
+            self.auto_params.append(param)
+            try:
+                signature = tuple(
+                    QRecordField(name=_field_name(label), type_val=self.type_of(r), is_var=_is_var_label(label))
+                    for label, r in body["components"]
+                )
+            finally:
+                self.auto_params.pop()
+            t = QAutoType(type_param=param.name, symbol_id=param.symbol_id, kind_bound=kind_bound, signature=signature)
         elif kind == "fun":
             t = QFunType(
                 params=tuple(
@@ -732,7 +854,9 @@ class _Reader:
         self.active.discard(ref)
         if ref in self.recursive:
             t = QRecType(var_name=f"T{ref}", symbol_id=binder, bound=TYPE_KIND, body=t)
-        if not (t._fv & self.binder_id_set):
+        # A type that mentions a recursive type's binder, or an enclosing auto type's parameter, is that type only
+        # where it was reached
+        if not (t._fv & self.binder_id_set) and not any(p.symbol_id in t._fv for p in self.auto_params):
             self.types[ref] = t
         return t
 
@@ -767,6 +891,24 @@ class _Reader:
             if not isinstance(data, int) or isinstance(data, bool) or not 0 <= data < _WORD_LIMIT:
                 raise _fail()
             return QWord(data)
+        if kind == "auto":
+            if not isinstance(data, dict) or set(data) != {"@type", "@value"}:
+                raise _fail()
+            witness = data["@type"]
+            self._check_ref(witness)
+            if body["bound"] is not None and not is_subtype(self.type_of(witness), self.type_of(body["bound"])):
+                raise _fail()
+            items = data["@value"]
+            components = body["components"]
+            if not isinstance(items, list) or len(items) != len(components):
+                raise _fail()
+            self.witnesses.append(witness)
+            try:
+                values = tuple(self.value(item, r) for item, (_, r) in zip(items, components))
+            finally:
+                self.witnesses.pop()
+            labels = tuple(_field_name(label) for label, _ in components)
+            return QAutoVal(QTuple(values, labels=labels), self.type_of(witness))
         if kind == "record":
             existing, obj_id, fields = self._shared(data, kind)
             if existing is not None:
