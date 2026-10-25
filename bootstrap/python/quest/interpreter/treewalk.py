@@ -26,6 +26,7 @@ from quest.interpreter.primitives import (
     real_arithmetic,
     real_relational,
 )
+from quest.modules.graph import Roots, UnitGraph, UnitKind
 from quest.syntax.sources import SourceMap, display_file_name
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
@@ -149,7 +150,7 @@ class RuntimeEnvironment:
             self.include_paths: list[Path] = parent.include_paths
             self.current_dir: Optional[Path] = parent.current_dir
             self.program_dir: Optional[Path] = parent.program_dir
-            self.loaded_modules_ast: dict[str, Any] = parent.loaded_modules_ast
+            self.units: UnitGraph = parent.units
             self.source_map: Optional[Any] = parent.source_map
             self.call_stack: list[str] = parent.call_stack
         else:
@@ -157,7 +158,9 @@ class RuntimeEnvironment:
             self.include_paths: list[Path] = []
             self.current_dir: Optional[Path] = None
             self.program_dir: Optional[Path] = None
-            self.loaded_modules_ast: dict[str, Any] = {}
+            # The program's units (docs/build-process.md §2.1), whose typed modules the interpreter evaluates; the
+            # type checker's, when the program was type checked by a pipeline (CompilerContext.runtime_env)
+            self.units: UnitGraph = UnitGraph()
             # The source map of the file whose code runs in this scope (the program's, or a module file's), where
             # the offsets of the errors that code raises are (docs/exceptions.md §3.2)
             self.source_map: Optional[Any] = None
@@ -1108,26 +1111,30 @@ def load_module_for_interpreter(
 ) -> Optional[QValue]:
     """Loads and evaluates module `name`, as imported from r_env.current_dir, for the interpreter.
 
-    Evaluated modules are shared by canonical name (docs/modules.md §2.3), so each is evaluated once.
+    The module is the unit r_env.units resolves the import to; it is evaluated from that unit's typed module, which
+    the type checker elaborated, or which is elaborated here in an environment of its own (a module the program
+    uses without importing it, such as a standard library module named in an expression). Evaluated modules are
+    shared by canonical name (docs/modules.md §2.3), so each is evaluated once.
     """
     from quest.types.env import Environment
     from quest.modules.loader import load_module
-    from quest.modules.paths import canonicalize_module_path, resolve_module_file
 
-    file_path = resolve_module_file(name, r_env.current_dir, r_env.include_paths)
-    canon_name = canonicalize_module_path(file_path, r_env.include_paths, r_env.program_dir) if file_path else name
+    graph = r_env.units
+    resolved = graph.resolver.module(name, r_env.current_dir, Roots.of(r_env.include_paths, r_env.program_dir))
+    file_path = resolved.source
+    canon_name = resolved.canonical_name
     if canon_name in r_env.evaluated_modules:
         return r_env.evaluated_modules[canon_name]
 
-    if canon_name in r_env.loaded_modules_ast:
-        typed_mod = r_env.loaded_modules_ast[canon_name]
-    else:
+    typed_mod = graph.typed_module(canon_name)
+    if typed_mod is None:
         type_env = Environment()
+        type_env.units = UnitGraph(resolver=graph.resolver)
         type_env.include_paths = list(r_env.include_paths)
         type_env.current_dir = r_env.current_dir
         type_env.program_dir = r_env.program_dir
         typed_mod = load_module(name, expected_interface, type_env)
-        r_env.loaded_modules_ast[canon_name] = typed_mod
+        graph.unit(UnitKind.MODULE, canon_name).typed_module = typed_mod
 
     # The module's own imports are resolved from its directory.
     mod_env = r_env.push_scope()

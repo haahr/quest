@@ -18,15 +18,16 @@ from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
 from quest.config.abi import header_stamp
 from quest.diagnostics import at_import, in_unit
 from quest.types.env import Environment, Scope
+from quest.modules.graph import Resolved, Resolver, Roots
 from quest.modules.interface_compiler import (
     CompiledInterface,
     _type_signatures,
     compile_interface_file,
-    ensure_interface_artifacts,
+    ensure_resolved_interface_artifacts,
     format_kind_for_qi,
     format_type_for_qi,
 )
-from quest.modules.loader import interface_artifact_root
+from quest.modules.loader import resolve_interface, resolved_artifact_root
 from quest.modules.paths import canonicalize_interface_name
 from quest.types import QAllType, QFunType, QPowerKind, QRecordType, QType
 
@@ -189,20 +190,28 @@ def header_is_current(qi_file: Path, h_file: Path) -> bool:
     return h_file.is_file() and qi_file.is_file() and h_file.stat().st_mtime >= qi_file.stat().st_mtime
 
 
-def write_interface_header(compiled: CompiledInterface, build_dir: Optional[Path], program_dir: Optional[Path]) -> Path:
+def write_interface_header(
+    compiled: CompiledInterface,
+    build_dir: Optional[Path],
+    program_dir: Optional[Path],
+    resolver: Optional[Resolver] = None,
+) -> Path:
     """Writes a compiled interface's header beside its .qi, and returns it.
 
     With a build directory, the headers of the interfaces it imports, which it #includes, are brought up to date
-    there first, including those of builtin interfaces that are never loaded from source.
+    there first, including those of builtin interfaces that are never loaded from source. resolver resolves those
+    imports (a new one if None).
     """
+    resolver = resolver or Resolver()
     if build_dir is not None:
         build_root = Path(build_dir).resolve()
+        roots = Roots.of(compiled.include_paths, program_dir)
         with in_unit(compiled.source_map):
             for imp in compiled.decl.imports:
                 with at_import(imp.offset, compiled.source_map):
-                    ensure_interface_header(
-                        imp.effective_interface_path, compiled.source.parent, list(compiled.include_paths),
-                        build_root, program_dir=program_dir,
+                    ensure_resolved_interface_header(
+                        resolver.interface(imp.effective_interface_path, compiled.source.parent, roots),
+                        build_root, resolver,
                     )
     h_file = interface_header_file(compiled.qi_file)
     canonical_name = canonicalize_interface_name(compiled.source, list(compiled.include_paths), compiled.decl.name)
@@ -220,13 +229,14 @@ def compile_interface_with_header(
 ) -> tuple[Path, Path]:
     """Compiles an interface file to its .qi and its C header, as `quest -c x.int.quest` does, writing the headers
     of the interfaces compiled because it imports them too. Returns (header, qi)."""
+    resolver = Resolver()
 
     def write(compiled: CompiledInterface) -> None:
-        write_interface_header(compiled, build_dir, program_dir)
+        write_interface_header(compiled, build_dir, program_dir, resolver)
 
     compiled = compile_interface_file(
         file_path, output_dir=output_dir, include_paths=include_paths, build_dir=build_dir, program_dir=program_dir,
-        on_compiled=write,
+        on_compiled=write, resolver=resolver,
     )
     return interface_header_file(compiled.qi_file), compiled.qi_file
 
@@ -236,10 +246,19 @@ def ensure_interface_header(
     current_dir: Optional[Path],
     include_paths: list[Path],
     build_dir: Path,
-    file_path: Optional[Path] = None,
     program_dir: Optional[Path] = None,
 ) -> tuple[Path, Path]:
-    """Brings interface `name`'s .qi and C header under build_dir up to date, with the headers it includes, and
+    """Brings interface `name`'s .qi and C header under build_dir up to date, resolving the import of `name` from
+    current_dir with include_paths (ensure_resolved_interface_header)."""
+    resolver = Resolver()
+    resolved = resolver.interface(name, current_dir, Roots.of(include_paths, program_dir))
+    return ensure_resolved_interface_header(resolved, build_dir, resolver)
+
+
+def ensure_resolved_interface_header(
+    resolved: Resolved, build_dir: Path, resolver: Optional[Resolver] = None
+) -> tuple[Path, Path]:
+    """Brings a resolved interface's .qi and C header under build_dir up to date, with the headers it includes, and
     returns (qi, header). The files may not exist if the interface has neither a source nor prebuilt artifacts
     (a builtin); without a source, the header is used as found (Rule 3).
 
@@ -248,13 +267,13 @@ def ensure_interface_header(
     untouched, unless the .qi was found outside the build directory (from a standalone compilation): then both are
     rebuilt in the build directory rather than written into the source tree.
     """
+    resolver = resolver or Resolver()
+    program_dir = resolved.roots.program_dir
 
     def write(compiled: CompiledInterface) -> None:
-        write_interface_header(compiled, build_dir, program_dir)
+        write_interface_header(compiled, build_dir, program_dir, resolver)
 
-    artifacts = ensure_interface_artifacts(
-        name, current_dir, include_paths, build_dir, file_path, program_dir=program_dir, on_compiled=write,
-    )
+    artifacts = ensure_resolved_interface_artifacts(resolved, build_dir, on_compiled=write, resolver=resolver)
     h_file = interface_header_file(artifacts.qi_file)
     if artifacts.source is None or header_is_current(artifacts.qi_file, h_file):
         return artifacts.qi_file, h_file
@@ -262,16 +281,17 @@ def ensure_interface_header(
     artifacts.target_dir.mkdir(parents=True, exist_ok=True)
     compiled = compile_interface_file(
         artifacts.source, output_dir=artifacts.target_dir, include_paths=list(artifacts.search_paths),
-        build_dir=build_dir, program_dir=program_dir, write_qi=not in_build_dir,
+        build_dir=build_dir, program_dir=program_dir, write_qi=not in_build_dir, resolver=resolver,
     )
-    return compiled.qi_file, write_interface_header(compiled, build_dir, program_dir)
+    return compiled.qi_file, write_interface_header(compiled, build_dir, program_dir, resolver)
 
 
 def ensure_imported_interface_header(name: str, env: Environment) -> Optional[Path]:
     """Brings the C header of interface `name`, as env imports it from env.current_dir, up to date where env loads
     the interface's .qi from (the build directory, or beside the source in a standalone compilation), and returns
     it; None when env elaborates interfaces from source."""
-    root = interface_artifact_root(name, env)
+    resolved = resolve_interface(name, env)
+    root = resolved_artifact_root(env, resolved)
     if root is None:
         return None
-    return ensure_interface_header(name, env.current_dir, env.include_paths, root, program_dir=env.program_dir)[1]
+    return ensure_resolved_interface_header(resolved, root, env.units.resolver)[1]

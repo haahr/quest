@@ -627,7 +627,7 @@ class TestImportsResolvedAgain(unittest.TestCase):
 
     def test_typecheck_only_freshness_rechecks_imports(self) -> None:
         from quest.config import CompilerOptions
-        from quest.modules.paths import has_fresh_module_artifacts
+        from quest.modules.graph import has_fresh_module_artifacts
 
         self._build("h1")
         program_dir = self.main_file.parent

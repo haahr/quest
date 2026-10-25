@@ -228,10 +228,10 @@ class TestSeparateCompilationTypes(unittest.TestCase):
         )
         self.assertEqual(built.returncode, 0, built.stderr)
         env = self._pipeline_env("uses_geo.quest", "typecheck")
-        self.assertTrue(env.loaded_modules_ast["geo/coord"].is_precompiled)
+        self.assertTrue(env.units.typed_module("geo/coord").is_precompiled)
         # Interpreting needs the module bodies, so they are still elaborated from source.
         env = self._pipeline_env("uses_geo.quest", "interpret")
-        self.assertFalse(env.loaded_modules_ast["geo/coord"].is_precompiled)
+        self.assertFalse(env.units.typed_module("geo/coord").is_precompiled)
 
     def test_stale_module_artifacts_are_not_used(self) -> None:
         built = self._driver(
@@ -241,7 +241,7 @@ class TestSeparateCompilationTypes(unittest.TestCase):
         coord = self.root / "geo" / "coord.mod.quest"
         os.utime(coord, (coord.stat().st_atime, coord.stat().st_mtime + 10))
         env = self._pipeline_env("uses_geo.quest", "typecheck")
-        self.assertFalse(env.loaded_modules_ast["geo/coord"].is_precompiled)
+        self.assertFalse(env.units.typed_module("geo/coord").is_precompiled)
 
 
 

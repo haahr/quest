@@ -26,6 +26,7 @@ from quest.codegen.c.backend import program_to_c
 from quest.types.env import Environment
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.interface_compiler import indirect_interface_refs
+from quest.modules.graph import import_resolution_change
 from quest.modules.loader import load_interface
 from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import (
@@ -35,7 +36,6 @@ from quest.modules.paths import (
     canonicalize_module_name,
     canonicalize_module_path,
     find_canonical_module_source,
-    import_resolution_change,
     resolve_interface_source_file,
     resolve_module_file,
     resolve_object_file,

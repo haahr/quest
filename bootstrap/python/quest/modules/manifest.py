@@ -178,7 +178,7 @@ def unit_staleness(
 
     imports_changed, when given, says why the unit's imports would now resolve to other files than the manifest
     records (for example after a change of include paths), or returns None if they would not
-    (paths.import_resolution_change).
+    (graph.import_resolution_change).
     """
     if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():
         return f"missing artifacts in {qm_path.parent}"

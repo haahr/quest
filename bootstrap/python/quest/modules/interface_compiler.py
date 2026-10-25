@@ -23,16 +23,20 @@ from quest.config.abi import (
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
 from quest.modules.manifest import ImportedInterfaceRef
+from quest.modules.graph import (
+    Resolved,
+    Resolver,
+    Roots,
+    UnitGraph,
+    fresh_interface_qi,
+    interface_qi_file,
+    unit_artifact_dir,
+)
 from quest.modules.paths import (
     InterfaceDependency,
-    canonicalize_interface_name,
     canonicalize_module_path,
     dependency_change,
     recorded_dependencies,
-    resolve_interface_file,
-    resolve_interface_source_file,
-    resolve_module_file,
-    resolve_object_file,
 )
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
 from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_string
@@ -356,7 +360,7 @@ def compile_interface_to_qi(
 
     source is the .int.quest the interface was compiled from; it is recorded (resolved) so that a .qi is used only
     for the source it was built from (docs/build-process.md §5). deps are the interfaces it depends on
-    (interface_dependencies), recorded so that the .qi is stale when one of them changes.
+    (Resolver.interface_dependencies), recorded so that the .qi is stale when one of them changes.
     """
     imports_elems: list[QString] = []
     for imp in decl.imports:
@@ -456,79 +460,26 @@ def compile_interface_to_qi(
     return jsog_encode(dyn)
 
 
-# The interface paths each interface source imports, by resolved path and modification time.
-_interface_imports_cache: dict[tuple[Path, int], list[str]] = {}
-
-
-def _interface_imports(source: Path) -> list[str]:
-    """The interface paths an interface source file imports, as written.
-
-    A file that cannot be read or parsed imports nothing here; compiling it reports why.
-    """
-    try:
-        key = (source.resolve(), source.stat().st_mtime_ns)
-    except OSError:
-        return []
-    cached = _interface_imports_cache.get(key)
-    if cached is not None:
-        return cached
-    paths: list[str] = []
-    try:
-        text = source.read_text(encoding="utf-8")
-        prog = parse_quest_program(Tokenizer(text, str(source)).tokenize_all(), SourceMap(text, str(source)))
-        if isinstance(prog, ast.Program) and len(prog.phrases) == 1 and isinstance(prog.phrases[0], ast.InterfaceDecl):
-            paths = [imp.effective_interface_path for imp in prog.phrases[0].imports]
-    except (OSError, QuestCompilerError):
-        paths = []
-    _interface_imports_cache[key] = paths
-    return paths
-
-
-def interface_dependencies(source: Path, include_paths: list[Path]) -> list[InterfaceDependency]:
-    """The interfaces the interface in source depends on: those it imports, those they import, and so on.
-
-    Each import is resolved as compiling the importing interface resolves it (from its directory, then
-    include_paths). Every import path of every importing directory appears once, in depth-first order. A unit
-    compiled against an interface is compiled against all of these too: their types appear in the interface's
-    signatures and in its generated header.
-    """
-    deps: list[InterfaceDependency] = []
-    seen: set[tuple[str, str]] = set()
-    visited = {source.resolve()}
-
-    def visit(importer: Path) -> None:
-        importer_dir = str(importer.parent.resolve())
-        for path in _interface_imports(importer):
-            if (importer_dir, path) in seen:
-                continue
-            seen.add((importer_dir, path))
-            dep_src = resolve_interface_source_file(path, importer.parent, include_paths)
-            deps.append(InterfaceDependency(path=path, dir=importer_dir, source=str(dep_src) if dep_src else ""))
-            if dep_src is not None and dep_src.resolve() not in visited:
-                visited.add(dep_src.resolve())
-                visit(dep_src)
-
-    visit(source)
-    return deps
-
-
 def indirect_interface_refs(
     direct: list[ImportedInterfaceRef],
     include_paths: list[Path],
     program_dir: Optional[Path] = None,
+    resolver: Optional[Resolver] = None,
 ) -> list[ImportedInterfaceRef]:
     """The manifest entries for the interfaces a unit depends on through the interfaces it imports itself.
 
     direct are the unit's own imported interfaces. Each entry records the directory its path was resolved from, so
-    that the staleness checks resolve it again the same way (paths.import_resolution_change). Interfaces the unit
+    that the staleness checks resolve it again the same way (graph.import_resolution_change). Interfaces the unit
     also imports directly are left out.
     """
+    resolver = resolver or Resolver()
+    roots = Roots.of(include_paths, program_dir)
     refs: list[ImportedInterfaceRef] = []
     seen = {ref.source for ref in direct if ref.source}
     for ref in direct:
         if not ref.source:
             continue
-        for dep in interface_dependencies(Path(ref.source), include_paths):
+        for dep in resolver.interface_dependencies(Path(ref.source), include_paths):
             if dep.source and dep.source in seen:
                 continue
             if dep.source:
@@ -536,7 +487,7 @@ def indirect_interface_refs(
             src = Path(dep.source) if dep.source else None
             refs.append(
                 ImportedInterfaceRef(
-                    name=canonicalize_interface_name(src, include_paths, dep.path, program_dir),
+                    name=resolver.interface(dep.path, Path(dep.dir), roots).interface_name,
                     source=dep.source,
                     mtime=src.stat().st_mtime if src is not None and src.is_file() else 0.0,
                     path=dep.path,
@@ -559,14 +510,14 @@ class CompiledInterface:
     include_paths: tuple[Path, ...]
 
 
-# What a caller of compile_interface_file or ensure_interface_artifacts does with each interface they compile,
+# What a caller of compile_interface_file or ensure_resolved_interface_artifacts does with each interface they compile,
 # including the interfaces compiled because it imports them (the C backend writes their headers)
 OnCompiled = Callable[[CompiledInterface], None]
 
 
 @dataclass(frozen=True)
 class InterfaceArtifacts:
-    """Where an interface's .qi is, as ensure_interface_artifacts found or rebuilt it."""
+    """Where an interface's .qi is, as ensure_resolved_interface_artifacts found or rebuilt it."""
     # The .qi, which may not exist if the interface has neither a source nor prebuilt artifacts (a builtin)
     qi_file: Path
     canonical_name: str
@@ -590,11 +541,13 @@ def compile_interface_file(
     program_dir: Optional[Path] = None,
     write_qi: bool = True,
     on_compiled: Optional[OnCompiled] = None,
+    resolver: Optional[Resolver] = None,
 ) -> CompiledInterface:
     """Compiles a .int.quest file to a .qi file, or with write_qi False, only elaborates it.
 
     With a build directory, the interfaces it imports are brought up to date there first. on_compiled is called
-    for each interface compiled, the interfaces it imports first and this one last.
+    for each interface compiled, the interfaces it imports first and this one last. The interface is elaborated in
+    an environment of its own, whose imports resolver resolves (a new one if None).
     """
 
     key = file_path.resolve()
@@ -606,7 +559,7 @@ def compile_interface_file(
     _compiling_interfaces.append((key, canon_name))
     try:
         compiled = _compile_interface_file(
-            file_path, output_dir, include_paths, build_dir, program_dir, write_qi, on_compiled
+            file_path, output_dir, include_paths, build_dir, program_dir, write_qi, on_compiled, resolver or Resolver()
         )
     finally:
         _compiling_interfaces.pop()
@@ -623,6 +576,7 @@ def _compile_interface_file(
     program_dir: Optional[Path],
     write_qi: bool,
     on_compiled: Optional[OnCompiled],
+    resolver: Resolver,
 ) -> CompiledInterface:
     try:
         source_text = file_path.read_text(encoding="utf-8")
@@ -638,6 +592,7 @@ def _compile_interface_file(
         decl = unit_declaration(prog, file_path)
 
         env = Environment(builtin_registry=BuiltinModuleRegistry)
+        env.units = UnitGraph(resolver=resolver)
         env.include_paths = list(include_paths) if include_paths else []
         if build_dir is not None:
             b_dir = Path(build_dir).resolve()
@@ -653,20 +608,18 @@ def _compile_interface_file(
         if build_dir is not None:
             # Every interface it imports is brought up to date in the build directory, including builtin
             # interfaces that are never loaded from source, so that their artifacts exist beside its own.
+            roots = Roots.of(env.include_paths, program_dir)
             for imp in decl.imports:
                 with at_import(imp.offset, source_map):
-                    ensure_interface_artifacts(
-                        imp.effective_interface_path, file_path.parent, env.include_paths, Path(build_dir).resolve(),
-                        program_dir=program_dir, on_compiled=on_compiled,
+                    ensure_resolved_interface_artifacts(
+                        resolver.interface(imp.effective_interface_path, file_path.parent, roots),
+                        Path(build_dir).resolve(), on_compiled=on_compiled, resolver=resolver,
                     )
         typed_iface = elaborate_interface(decl, env)
 
     if build_dir is not None and output_dir is None:
         canon_name = canonicalize_module_path(file_path, env.include_paths, program_dir)
-        if "/" in canon_name:
-            target_dir = Path(build_dir).resolve() / Path(canon_name).parent
-        else:
-            target_dir = Path(build_dir).resolve()
+        target_dir = unit_artifact_dir(Path(build_dir).resolve(), canon_name)
     else:
         target_dir = output_dir if output_dir is not None else file_path.parent
     base_name = file_path.name
@@ -677,7 +630,7 @@ def _compile_interface_file(
 
     qi_path = target_dir / f"{stem.lower()}.qi"
     if write_qi:
-        deps = interface_dependencies(file_path, env.include_paths)
+        deps = resolver.interface_dependencies(file_path, env.include_paths)
         qi_content = compile_interface_to_qi(decl, typed_iface.scope, env=env, source=file_path, deps=deps)
         qi_path.parent.mkdir(parents=True, exist_ok=True)
         qi_path.write_text(qi_content, encoding="utf-8")
@@ -697,26 +650,36 @@ def ensure_interface_artifacts(
     current_dir: Optional[Path],
     include_paths: list[Path],
     build_dir: Path,
-    file_path: Optional[Path] = None,
     program_dir: Optional[Path] = None,
     on_compiled: Optional[OnCompiled] = None,
+    resolver: Optional[Resolver] = None,
 ) -> InterfaceArtifacts:
-    """Rebuilds interface `name`'s .qi under build_dir if stale (docs/build-process.md §5).
+    """Rebuilds interface `name`'s .qi under build_dir if stale (docs/build-process.md §5), resolving the import of
+    `name` from current_dir with include_paths (ensure_resolved_interface_artifacts)."""
+    resolver = resolver or Resolver()
+    resolved = resolver.interface(name, current_dir, Roots.of(include_paths, program_dir))
+    return ensure_resolved_interface_artifacts(resolved, build_dir, on_compiled=on_compiled, resolver=resolver)
 
-    file_path is the result of resolve_interface_file, when the caller already has it. on_compiled is called for
-    each interface compiled (compile_interface_file).
+
+def ensure_resolved_interface_artifacts(
+    resolved: Resolved,
+    build_dir: Path,
+    on_compiled: Optional[OnCompiled] = None,
+    resolver: Optional[Resolver] = None,
+) -> InterfaceArtifacts:
+    """Rebuilds the .qi of a resolved interface under build_dir if stale (docs/build-process.md §5).
+
+    The interface is rebuilt with the search paths it was resolved with, and build_dir first. on_compiled is called
+    for each interface compiled (compile_interface_file); resolver resolves the imports of those compiled.
     """
+    resolver = resolver or Resolver()
+    include_paths = list(resolved.roots.search_paths)
+    program_dir = resolved.roots.program_dir
+    src = resolved.source
 
-    if file_path is None:
-        file_path = resolve_interface_file(name, current_dir, include_paths)
-    src = resolve_interface_source_file(name, current_dir, include_paths)
-    if src is None and file_path is not None and file_path.name.endswith(".int.quest"):
-        src = file_path
-
-    canon_name = canonicalize_module_path(src, include_paths, program_dir) if src else name.lower()
-    target_dir = build_dir / Path(canon_name).parent if "/" in canon_name else build_dir
-    stem = Path(canon_name).name.lower()
-    qi_file = target_dir / f"{stem}.qi"
+    canon_name = resolved.artifact_name
+    target_dir = unit_artifact_dir(build_dir, canon_name)
+    qi_file = interface_qi_file(build_dir, canon_name)
     search_paths = list(include_paths)
     if build_dir not in search_paths:
         search_paths.insert(0, build_dir)
@@ -739,14 +702,16 @@ def ensure_interface_artifacts(
             src.stat().st_mtime <= qi_mtime
             and built_from(qi, src)
             and deps is not None
-            and dependency_change(deps, include_paths, qi_mtime) is None
+            and dependency_change(deps, include_paths, qi_mtime, resolver) is None
         )
 
     # A fresh .qi found elsewhere on the search path (e.g. next to the source, from a standalone compilation) is
     # used like one in the build directory.
-    if not current(qi_file) and file_path is not None and file_path.suffix == ".qi":
-        if current(file_path) or (src is None and not qi_file.is_file()):
-            qi_file = file_path
+    if not current(qi_file):
+        file_path = fresh_interface_qi(resolved)
+        if file_path is not None and file_path.suffix == ".qi":
+            if current(file_path) or (src is None and not qi_file.is_file()):
+                qi_file = file_path
 
     # Rule 3: without a source, existing artifacts cannot be rebuilt (binary distribution).
     if src is None or not src.is_file():
@@ -757,7 +722,7 @@ def ensure_interface_artifacts(
         target_dir.mkdir(parents=True, exist_ok=True)
         qi_file = compile_interface_file(
             src, output_dir=target_dir, include_paths=search_paths, build_dir=build_dir, program_dir=program_dir,
-            on_compiled=on_compiled,
+            on_compiled=on_compiled, resolver=resolver,
         ).qi_file
     return artifacts(qi_file)
 

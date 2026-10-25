@@ -23,21 +23,24 @@ from quest.modules.elaboration import (
     elaborate_interface,
     elaborate_module,
 )
+from quest.modules.graph import (
+    Resolved,
+    UnitKind,
+    fresh_interface_qi,
+    has_fresh_module_artifacts,
+    resolve_interface,
+    resolve_module,
+)
 from quest.modules.interface_compiler import (
-    ensure_interface_artifacts,
+    ensure_resolved_interface_artifacts,
     load_interface_from_qi_file,
 )
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
     DEFAULT_PROJECT_DIR,
-    canonicalize_module_path,
     declared_module_name,
-    has_fresh_module_artifacts,
     is_c_compilation_mode,
     is_typecheck_only,
-    resolve_interface_file,
-    resolve_interface_source_file,
-    resolve_module_file,
     resolve_object_file,
 )
 from quest.syntax.tokenizer import Tokenizer
@@ -52,32 +55,24 @@ def interface_artifact_root(name: str, env: Environment) -> Optional[Path]:
     """The directory under which interface `name`, imported from env.current_dir, has its artifacts when env loads it
     from its .qi (load_interface): the build directory, or in a standalone C compilation (no build directory), the
     search root of its source. None when env elaborates interfaces from source."""
-    file_path = resolve_interface_file(name, env.current_dir, env.include_paths)
-    int_src = resolve_interface_source_file(name, env.current_dir, env.include_paths)
-    if int_src is None and file_path is not None and file_path.name.endswith(".int.quest"):
-        int_src = file_path
-    unit_file = int_src or file_path
-    canon_name = canonicalize_module_path(unit_file, env.include_paths, env.program_dir) if unit_file else name.lower()
-    return _artifact_root(name, env, file_path, int_src, canon_name)
+    return resolved_artifact_root(env, resolve_interface(name, env))
 
 
-def _artifact_root(
-    name: str, env: Environment, file_path: Optional[Path], int_src: Optional[Path], canon_name: str
-) -> Optional[Path]:
-    """interface_artifact_root, given the interface's resolved file, source, and canonical name."""
+def resolved_artifact_root(env: Environment, resolved: Resolved) -> Optional[Path]:
+    """interface_artifact_root, given the interface's resolution."""
     opts = getattr(env, "options", None)
     build_dir = getattr(opts, "build_dir", None)
     if build_dir is not None:
         return Path(build_dir).resolve()
     if not is_c_compilation_mode(env):
         return None
-    if int_src is not None:
+    if resolved.source is not None:
         # Standalone compilation: artifacts go next to the source, under the search root that gives
         # it its canonical name (adding the source's own directory as a root would change that name).
-        return int_src.parents[len(Path(canon_name).parts) - 1].resolve()
-    if file_path is not None and "/" in name:
-        rel_parts = len(Path(name.lower()).parts)
-        return file_path.parents[rel_parts - 1].resolve()
+        return resolved.source.parents[len(Path(resolved.canonical_name).parts) - 1].resolve()
+    if resolved.prebuilt is not None and "/" in resolved.path:
+        rel_parts = len(Path(resolved.path.lower()).parts)
+        return resolved.prebuilt.parents[rel_parts - 1].resolve()
     return (env.current_dir or Path.cwd()).resolve()
 
 
@@ -85,17 +80,15 @@ def load_interface(name: str, env: Environment) -> Scope:
     """Loads, validates, and elaborates interface `name`, as imported from env.current_dir.
 
     An interface with a file is the one in that file: interfaces loaded from files (or builtins with sources in lib/)
-    are shared by all importers, cached by canonical name (docs/modules.md §2.3). Only an interface without a file
-    (a builtin, or one declared in the program) is found by the name registered for it. The name is registered for
-    the importer.
+    are shared by all importers, as units of env.units keyed by canonical name (docs/modules.md §2.3). Only an
+    interface without a file (a builtin, or one declared in the program) is found by the name registered for it. The
+    name is registered for the importer.
     """
     norm_name = name.lower()
-    file_path = resolve_interface_file(name, env.current_dir, env.include_paths)
-    int_src = resolve_interface_source_file(name, env.current_dir, env.include_paths)
-    if int_src is None and file_path is not None and file_path.name.endswith(".int.quest"):
-        int_src = file_path
-    unit_file = int_src or file_path
-    canon_name = canonicalize_module_path(unit_file, env.include_paths, env.program_dir) if unit_file else norm_name
+    resolved = resolve_interface(name, env)
+    int_src = resolved.source
+    unit_file = resolved.unit_file
+    canon_name = resolved.canonical_name
 
     def _register(scope: Scope) -> Scope:
         env.register_interface(name, scope)
@@ -105,15 +98,17 @@ def load_interface(name: str, env: Environment) -> Scope:
         if canon_name != name:
             env.register_interface(canon_name, scope)
         if unit_file is not None:
-            env.loaded_interfaces[canon_name] = scope
+            env.units.unit(UnitKind.INTERFACE, canon_name).scope = scope
         return scope
 
     if unit_file is None:
         existing = env.lookup_interface(name)
         if existing is not None:
             return existing
-    elif canon_name in env.loaded_interfaces:
-        return _register(env.loaded_interfaces[canon_name])
+    else:
+        loaded = env.units.interface_scope(canon_name)
+        if loaded is not None:
+            return _register(loaded)
 
     # Cycle detection
     if canon_name in env._loading_interfaces:
@@ -136,17 +131,17 @@ def load_interface(name: str, env: Environment) -> Scope:
 
     # With a build directory (every driver run) or in C compilation mode, the interface is loaded from its
     # .qi, which is rebuilt first if stale (docs/build-process.md §5).
-    out_root = _artifact_root(name, env, file_path, int_src, canon_name)
+    out_root = resolved_artifact_root(env, resolved)
     if out_root is not None:
-        qi_file = ensure_interface_artifacts(
-            name, env.current_dir, env.include_paths, out_root, file_path, program_dir=env.program_dir,
-        ).qi_file
+        qi_file = ensure_resolved_interface_artifacts(resolved, out_root, resolver=env.units.resolver).qi_file
 
         if qi_file and qi_file.is_file():
             if out_root not in env.include_paths:
                 env.include_paths.insert(0, out_root)
             return _register(_load_qi(qi_file))
 
+    # A fresh .qi on the search path (from a standalone compilation), else the source
+    file_path = fresh_interface_qi(resolved)
     if file_path is None:
         searched = [str(env.current_dir)] if env.current_dir else []
         searched.extend(str(p) for p in env.include_paths)
@@ -211,13 +206,15 @@ def load_interface(name: str, env: Environment) -> Scope:
 def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
     """Loads, validates, and elaborates module `name`, as imported from env.current_dir.
 
-    Loaded modules are shared by all importers through env.loaded_modules_ast, keyed by canonical name
-    (docs/modules.md §2.3); modules without a source file (builtins and prebuilt objects) by the name imported.
+    Loaded modules are shared by all importers as units of env.units, keyed by canonical name (docs/modules.md
+    §2.3); modules without a source file (builtins and prebuilt objects) by the name imported.
     """
-    file_path = resolve_module_file(name, env.current_dir, env.include_paths)
-    canon_name = canonicalize_module_path(file_path, env.include_paths, env.program_dir) if file_path else name
-    if canon_name in env.loaded_modules_ast:
-        return env.loaded_modules_ast[canon_name]
+    resolved = resolve_module(name, env)
+    file_path = resolved.source
+    canon_name = resolved.canonical_name
+    unit = env.units.unit(UnitKind.MODULE, canon_name)
+    if unit.typed_module is not None:
+        return unit.typed_module
 
     # Cycle detection
     if canon_name.lower() in [x.lower() for x in env._loading_modules]:
@@ -233,12 +230,12 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
 
         # All importers share one export scope (docs/modules.md §2.3). Name opaque exported types after the
         # module's declared name, as elaborating its source does.
-        module_export_scope = env.module_export_scopes.get(canon_name)
+        module_export_scope = unit.export_scope
         if module_export_scope is None:
             module_export_scope = create_module_export_scope(
                 declared_module_name(file_path, canon_name), canon_name, target_interface_scope, env
             )
-            env.module_export_scopes[canon_name] = module_export_scope
+            unit.export_scope = module_export_scope
         env.register_module(canon_name, module_export_scope)
         if name != canon_name:
             env.register_module(name, module_export_scope)
@@ -251,29 +248,34 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             scope=module_export_scope,
             is_precompiled=True,
         )
-        env.loaded_modules_ast[canon_name] = typed_mod
+        unit.typed_module = typed_mod
         return typed_mod
 
     # A module with a source is known by its canonical name; prebuilt objects without one are known by name.
-    if canon_name in env.precompiled_modules:
+    if unit.precompiled:
         return _synthesize_precompiled_module()
 
     # Separate compilation of hierarchical modules: importers are typed against the module's interface.
     # Building its object is left to the BuildEngine (docs/build-process.md §7.3).
     if is_c_compilation_mode(env) and ("/" in canon_name or "/" in name) and file_path is not None:
-        env.precompiled_modules.add(canon_name)
+        unit.precompiled = True
         return _synthesize_precompiled_module()
 
     # A typecheck-only run types a module with fresh artifacts through its interface alone, without
     # elaborating its body (docs/build-process.md §5.2.4). Interpreting needs module bodies.
-    if file_path is not None and is_typecheck_only(env) and has_fresh_module_artifacts(file_path, canon_name, env):
-        env.precompiled_modules.add(canon_name)
+    if (
+        file_path is not None
+        and is_typecheck_only(env)
+        and has_fresh_module_artifacts(file_path, canon_name, env, resolver=env.units.resolver)
+    ):
+        unit.precompiled = True
         return _synthesize_precompiled_module()
 
     if file_path is None:
+        # Without a source, the module's canonical name is the name imported
         obj_file = resolve_object_file(name, env.current_dir, env.include_paths)
-        if obj_file is not None or name in env.precompiled_modules:
-            env.precompiled_modules.add(name)
+        if obj_file is not None or unit.precompiled:
+            unit.precompiled = True
             return _synthesize_precompiled_module()
 
         searched = [str(env.current_dir)] if env.current_dir else []
@@ -342,10 +344,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         try:
             # The module is elaborated with its own interface and module names, resolved from its directory.
             with env.unit_names():
-                if (
-                    importer_interface is not None
-                    and resolve_interface_file(decl.interface_name, env.current_dir, env.include_paths) is None
-                ):
+                if importer_interface is not None and resolve_interface(decl.interface_name, env).unit_file is None:
                     env.register_interface(decl.interface_name, importer_interface)
                 elif env.lookup_interface(decl.interface_name) is None:
                     load_interface(decl.interface_name, env)
@@ -369,5 +368,5 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         env.register_module(name, typed_mod.scope)
         if canon_name != name:
             env.register_module(canon_name, typed_mod.scope)
-        env.loaded_modules_ast[canon_name] = typed_mod
+        unit.typed_module = typed_mod
         return typed_mod

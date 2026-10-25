@@ -56,8 +56,8 @@ class BuiltinModuleRegistry:
             base_env = Environment(builtin_registry=False)
             iface_scope = load_interface(target_iface, base_env)
             cls._cached_interfaces[target_iface] = iface_scope
-            cls._cached_loaded_interfaces.update(base_env.loaded_interfaces)
-            cls._cached_module_export_scopes.update(base_env.module_export_scopes)
+            cls._cached_loaded_interfaces.update(base_env.units.interface_scopes())
+            cls._cached_module_export_scopes.update(base_env.units.export_scopes())
 
         iface_scope = cls._cached_interfaces[target_iface]
         if env is not None:
@@ -65,8 +65,7 @@ class BuiltinModuleRegistry:
             if iface_name != target_iface:
                 env.register_interface(iface_name, iface_scope)
             env._builtin_interfaces[target_iface] = iface_scope
-            env.loaded_interfaces.update(cls._cached_loaded_interfaces)
-            env.module_export_scopes.update(cls._cached_module_export_scopes)
+            env.units.adopt(cls._cached_loaded_interfaces, cls._cached_module_export_scopes)
         return iface_scope
 
     @classmethod

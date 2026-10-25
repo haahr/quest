@@ -27,12 +27,10 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
+from quest.modules.graph import UnitKind, resolve_module
 from quest.modules.paths import (
-    canonical_import_name,
-    canonicalize_module_name,
     declared_module_name,
     is_c_compilation_mode,
-    resolve_module_file,
     resolve_object_file,
 )
 from quest.typechecker.typed_ast import (
@@ -118,9 +116,9 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                     from quest.modules.loader import load_module
                     mod_scope = None
                     if (
-                        mod_path in env.loaded_modules_ast
-                        or mod_path in env.precompiled_modules
-                        or resolve_module_file(mod_path, env.current_dir, env.include_paths) is not None
+                        env.units.typed_module(mod_path) is not None
+                        or env.units.is_precompiled(mod_path)
+                        or resolve_module(mod_path, env).source is not None
                         or resolve_object_file(mod_path, env.current_dir, env.include_paths) is not None
                     ):
                         try:
@@ -219,16 +217,17 @@ def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env:
     Each module gets its own opaque copies of the interface's abstract types, exactly as elaborating
     its source would, so that two modules implementing one interface never share an abstract type.
     """
-    src = resolve_module_file(mod_path, env.current_dir, env.include_paths)
-    canon = canonicalize_module_name(src, env.include_paths, mod_path, env.program_dir)
-    loaded = env.loaded_modules_ast.get(canon)
-    mod_scope = loaded.scope if loaded is not None else env.module_export_scopes.get(canon)
+    resolved = resolve_module(mod_path, env)
+    src = resolved.source
+    canon = resolved.canonical_name
+    unit = env.units.unit(UnitKind.MODULE, canon)
+    mod_scope = unit.typed_module.scope if unit.typed_module is not None else unit.export_scope
     if mod_scope is None:
         concrete_defs = extract_module_external_types(src)
         mod_scope = create_module_export_scope(
             declared_module_name(src, mod_path), canon, interface_scope, env, concrete_defs=concrete_defs
         )
-        env.module_export_scopes[canon] = mod_scope
+        unit.export_scope = mod_scope
     env.register_module(mod_path, mod_scope)
     return mod_scope
 
@@ -364,7 +363,7 @@ def elaborate_module(
                         )
                         registered_scope = mod_scope
                     else:
-                        if mod_path not in env.loaded_modules_ast:
+                        if env.units.typed_module(mod_path) is None:
                             load_module(mod_path, iface_path, env)
                         mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
                         mod_type = build_record_type_from_scope(
@@ -394,8 +393,7 @@ def elaborate_module(
                 module_paths=imp.module_paths,
                 interface_path=imp.interface_path,
                 canonical_module_paths=tuple(
-                    canonical_import_name(mod_path, env, current_dir=env.current_dir)
-                    for mod_path in imp.effective_module_paths
+                    resolve_module(mod_path, env).canonical_name for mod_path in imp.effective_module_paths
                 ),
                 symbol_ids=tuple(s.symbol_id if s is not None else None for s in symbols),
             )
@@ -473,9 +471,9 @@ def elaborate_module(
         env.current_scope = saved_scope
 
     # 4. Create exported module scope (strictly opaque for abstract interface types)
-    src = resolve_module_file(decl.name, env.current_dir, env.include_paths)
-    canon = canonicalize_module_name(src, env.include_paths, decl.name, env.program_dir)
-    module_export_scope = env.module_export_scopes.get(canon)
+    canon = resolve_module(decl.name, env).canonical_name
+    unit = env.units.unit(UnitKind.MODULE, canon)
+    module_export_scope = unit.export_scope
     if module_export_scope is None:
         concrete_defs = {
             name: sym.definition
@@ -485,7 +483,7 @@ def elaborate_module(
         module_export_scope = create_module_export_scope(
             decl.name, canon, target_interface_scope, env, concrete_defs=concrete_defs
         )
-        env.module_export_scopes[canon] = module_export_scope
+        unit.export_scope = module_export_scope
     else:
         for t_name, mod_type_sym in module_internal_scope.types.items():
             if t_name in module_export_scope.types and module_export_scope.types[t_name].definition is None:
@@ -549,7 +547,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                         )
                         registered_scope = mod_scope
                     else:
-                        if mod_path not in env.loaded_modules_ast:
+                        if env.units.typed_module(mod_path) is None:
                             load_module(mod_path, iface_path, env)
                         mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
                         mod_type = build_record_type_from_scope(
@@ -568,8 +566,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                         module_paths=item.module_paths,
                         interface_path=item.interface_path,
                         canonical_module_paths=tuple(
-                            canonical_import_name(mod_path, env, current_dir=env.current_dir)
-                            for mod_path in item.effective_module_paths
+                            resolve_module(mod_path, env).canonical_name for mod_path in item.effective_module_paths
                         ),
                         symbol_ids=tuple(s.symbol_id for s in symbols),
                     )

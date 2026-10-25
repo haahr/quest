@@ -172,6 +172,8 @@ class QuestREPL:
             runtime_env = self.context.runtime_env
             runtime_snap = runtime_env.snapshot()
 
+            # Each input is a compilation of its own: its imports find files created since the last one
+            self.context.env.units.resolver.forget()
             result = self.pipeline.compile_phrase(current_buffer, ctx=self.context)
 
             if result.has_errors or not result.success:

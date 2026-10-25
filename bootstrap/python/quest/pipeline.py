@@ -93,7 +93,7 @@ class CompilerContext:
 
     def _configure_runtime_env(self, r_env: RuntimeEnvironment) -> None:
         r_env.include_paths = list(self.env.include_paths)
-        r_env.loaded_modules_ast = self.env.loaded_modules_ast
+        r_env.units = self.env.units
         r_env.current_dir = self.env.current_dir
         r_env.program_dir = self.env.program_dir
 

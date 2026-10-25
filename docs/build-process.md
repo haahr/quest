@@ -96,6 +96,41 @@ A fundamental architectural distinction exists between **compiling an individual
    - Executes a queue-driven build loop that determines the transitive closure of needed modules, checks staleness,
      rebuilds out-of-date interfaces and modules, and links all object files into the final executable.
 
+### 2.1. The Unit Graph
+Every consumer of units (the type checker's loading, the interface and module compilers, the build engine, the
+interpreter, and the driver) works on one structure, the **unit graph** (`quest/modules/graph.py`), rather than
+resolving imports and placing artifacts in its own way:
+
+- **Units.** A unit is a program (a main routine or inline code, never imported), a module file, or an interface
+  file, including the standard library's (`UnitKind`; `file_unit_kind` classifies a file by its suffix). A unit is
+  identified by its kind and its canonical name ([modules.md §2.3](modules.md)).
+- **Resolution, once.** An import is a path written in a unit, resolved from the unit's directory with the search
+  paths and program directory (`Roots`). `Resolver` resolves each (path, directory, roots) once per compilation
+  session and returns a `Resolved`: the unit's source (`.int.quest` or `.mod.quest`), for an interface without a
+  source its prebuilt `.qi` (Rule 3, §5), and its names: `canonical_name` (the unit's key), `interface_name` (an
+  interface's canonical name as importers record it, with the declared base name, `util/Path`), and `artifact_name`
+  (where an interface's artifacts are placed). Every consumer of an import receives that one result. Resolution
+  depends only on which source files exist, which a compilation never changes; artifacts, which it does write, are
+  looked up when needed (`fresh_interface_qi`, a fresh `.qi` on the search path). A session is a driver run, a build,
+  or one REPL input (the REPL calls `Resolver.forget` before each, so that files created since are found).
+- **Edges.** A unit's imports are its edges: an interface's are the interface paths it imports
+  (`interface_import_paths`), each resolved from its directory; `Resolver.interface_dependencies` follows them
+  transitively, for the `.qi` dependencies (§4.2) and the indirect entries of `.qm` manifests (§7.2).
+- **Type-checked forms.** `UnitGraph` holds the units a type-checking `Environment` has loaded (`env.units`), each
+  with its elaborated forms: an interface's scope, a module's typed module, the export scope of a module known only
+  through its interface, and whether a module is typed through its interface alone (precompiled). Typed forms hold
+  the symbols one elaboration minted, so each Environment has its own graph; the graphs of one session (an
+  interface compiled for an importer, a module the interpreter elaborates on demand) share its resolver. The REPL
+  rolls a graph back with `snapshot` and `restore` when an input fails.
+- **Artifacts.** A unit's artifacts are named by its canonical name under a build directory (§3.2):
+  `unit_artifact_dir`, `interface_qi_file`, and `ModuleArtifacts` (`.qm`, `.mod.c`, `.o`). Their staleness rules
+  are §5 (interfaces, `ensure_resolved_interface_artifacts`), §5.3 (headers), and §7.1 (modules and main routines,
+  `unit_staleness` with `import_resolution_change`, which resolves a manifest's recorded imports again through the
+  resolver).
+
+The graph lives in `quest.modules`, below C compilation: the C backend uses it (to write the headers of resolved
+interfaces, `ensure_resolved_interface_header`) but the graph never reaches the C backend.
+
 ---
 
 ## 3. Dedicated Build Directory Layout (`.build/`) and Artifact Placement
@@ -325,10 +360,11 @@ If an interface is determined to be **out of date**:
 3. If interface compilation fails, compilation aborts with diagnostic messages referencing `I.int.quest`.
 4. Once regenerated, the compiler resumes compiling the dependent unit, reading signatures from the fresh `I.qi`.
 
-These rules are implemented once, by `ensure_interface_artifacts` in `interface_compiler.py`. It is called by
-`load_interface` whenever an interface is loaded from its `.qi` (every driver run, §5.2.4, and C compilation), and by
-the interface compiler for each interface an interface imports, even for interfaces the typechecker resolves without
-loading them (such as builtin interfaces like `Writer`).
+These rules are implemented once, by `ensure_resolved_interface_artifacts` in `interface_compiler.py`, for an
+interface the unit graph has resolved (§2.1). It is called by `load_interface` whenever an interface is loaded from its
+`.qi` (every driver run, §5.2.4, and C compilation), and by the interface compiler for each interface an interface
+imports, even for interfaces the typechecker resolves without loading them (such as builtin interfaces like
+`Writer`). `ensure_interface_artifacts` resolves an interface path first, for callers that start from one.
 
 ### 5.2. An ABI Version and Trusting Fresh Artifacts
 **Status:** implemented (`quest/config/abi.py`, `tests/abi/`, and §5.2.4 in `module_loader.py`).
@@ -710,12 +746,13 @@ build engine, so there is exactly one implementation of staleness checks, artifa
 
 | Responsibility | Implementation |
 | :--- | :--- |
-| Interface staleness & regeneration (§5) | `interface_compiler.ensure_interface_artifacts` |
+| Import resolution, unit names, typed units (§2.1) | `quest.modules.graph` (`Resolver`, `UnitGraph`) |
+| Interface staleness & regeneration (§5) | `interface_compiler.ensure_resolved_interface_artifacts` |
 | Interface headers (§5.3) | `codegen.c.headers.ensure_interface_header` |
 | Module / main staleness (§7.1) | `BuildEngine._unit_staleness` |
 | Module queue, conformance, cycles (§7.1, §6.3, §8.2) | `BuildEngine.build_modules` |
 | Modules a unit links against (§6.2) | `build.engine.unit_module_refs` |
-| Artifact paths under the build directory (§3.2) | `BuildEngine.build_modules`, `ensure_interface_artifacts`, `interface_header_file` |
+| Artifact paths under the build directory (§3.2) | `graph.unit_artifact_dir`, `ModuleArtifacts`, `interface_qi_file`, `interface_header_file` |
 
 ---
 

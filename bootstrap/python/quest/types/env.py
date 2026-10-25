@@ -296,17 +296,13 @@ class Environment:
         self.source_map: Optional[Any] = None
         # The directory of the program being compiled, which names units under no include root (docs/modules.md §2.3)
         self.program_dir: Optional[Path] = None
-        self.loaded_modules_ast: dict[str, Any] = {}
-        self.precompiled_modules: set[str] = set()
+        self._units: Optional[Any] = None
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []
         self.subtype_cache: dict[tuple[int, int], bool] = {}
         self.options: Optional[Any] = None
-        # Interfaces loaded from files, by canonical name (docs/modules.md §2.3). The interface and module names in
-        # _interfaces and _modules are those of the unit being elaborated: the builtins and the unit's imports.
-        self.loaded_interfaces: dict[str, Scope] = {}
-        # Export scopes of modules known only through their interfaces (separate compilation), by canonical name.
-        self.module_export_scopes: dict[str, Scope] = {}
+        # The interface and module names in _interfaces and _modules are those of the unit being elaborated: the
+        # builtins and the unit's imports. The units loaded from files are in units, by canonical name.
         self._builtin_interfaces: dict[str, Scope] = {}
         self._builtin_modules: dict[str, Scope] = {}
         self._init_builtins()
@@ -316,6 +312,19 @@ class Environment:
             reg.populate_environment(self)
         self._builtin_interfaces = dict(self._interfaces)
         self._builtin_modules = dict(self._modules)
+
+    @property
+    def units(self) -> Any:
+        """The units this environment has loaded, with their type-checked forms, and the resolver of its imports
+        (quest.modules.graph.UnitGraph, docs/build-process.md §2.1)."""
+        if self._units is None:
+            from quest.modules.graph import UnitGraph
+            self._units = UnitGraph()
+        return self._units
+
+    @units.setter
+    def units(self, graph: Any) -> None:
+        self._units = graph
 
     def fresh_symbol_id(self) -> int:
         """Allocates a unique positive integer symbol ID."""
@@ -429,7 +438,7 @@ class Environment:
         Inside, only the builtin names are registered, so the unit's imports are resolved from its own directory
         rather than taken from its importer's names, which may name different units (a sibling `counter` of a
         unit in util/ is util/counter). The importer's names are restored afterwards; loaded units are shared
-        through loaded_interfaces and loaded_modules_ast, by canonical name.
+        through units, by canonical name.
         """
         saved = (self._interfaces, self._modules)
         self._interfaces = dict(self._builtin_interfaces)
@@ -445,10 +454,7 @@ class Environment:
             "symbol_counter": self._symbol_counter,
             "interfaces": dict(self._interfaces),
             "modules": dict(self._modules),
-            "loaded_interfaces": dict(self.loaded_interfaces),
-            "module_export_scopes": dict(self.module_export_scopes),
-            "loaded_modules_ast": dict(self.loaded_modules_ast),
-            "precompiled_modules": set(self.precompiled_modules),
+            "units": self.units.snapshot(),
             "scope_declarations": list(self.current_scope._declarations),
             "scope_values": dict(self.current_scope._values),
             "scope_types": dict(self.current_scope._types),
@@ -462,14 +468,8 @@ class Environment:
         self._symbol_counter = snap["symbol_counter"]
         self._interfaces = dict(snap["interfaces"])
         self._modules = dict(snap["modules"])
-        if "loaded_interfaces" in snap:
-            self.loaded_interfaces = dict(snap["loaded_interfaces"])
-        if "module_export_scopes" in snap:
-            self.module_export_scopes = dict(snap["module_export_scopes"])
-        if "loaded_modules_ast" in snap:
-            self.loaded_modules_ast = dict(snap["loaded_modules_ast"])
-        if "precompiled_modules" in snap:
-            self.precompiled_modules = set(snap["precompiled_modules"])
+        if "units" in snap:
+            self.units.restore(snap["units"])
         self.current_scope._declarations = list(snap["scope_declarations"])
         self.current_scope._values = dict(snap["scope_values"])
         self.current_scope._types = dict(snap["scope_types"])
