@@ -269,3 +269,82 @@ mapping indices through the static type.
 
 **Done when.** Both programs compile and print the same in both phases, and golden tests cover them.
 
+
+---
+
+## A proxy can be left in a slot whose type is never a proxy
+
+**Problem.** A tuple type none of whose components can change view (`Tuple s: String end`, a tuple of scalars) is
+never a proxy (`may_be_proxied`), so C reads its components directly. But an upcast of a *container* whose component
+goes from a type that may be a proxy to such a type converts nothing in memory, and leaves the proxy in the slot: the
+represent pass treats the component's `unproxy` plan as a cast in an option (`_option_cases_agree`), and the
+runtime's `quest_convert` returns a tuple or option unchanged when `quest_layout_equivalent` says the layouts agree
+(a static `view` plan of a tuple whose target cannot be proxied goes there). Reading a component through the tagged
+pointer then reads the proxy's memory: a wrong `Int`, or a crash for a pointer. Identity breaks too (`is` of two
+values of the never-proxied type compares a proxy with its original). Echo, `is` across types, generic code (whose
+`Tuple s: A end` may be proxied), record fields (read through stored types), and function results (adapted) are
+right.
+
+**Reproduce.**
+
+```quest
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+Let TS = Tuple n: Int x: Small end;
+Let T0 = Tuple n: Int end;
+let tb: Tuple n: Int x: Big end = tuple let n = 7 let x = record a = 1 b = 2 end end;
+let ts: TS = tb;  (* a proxy of tb *)
+let o: Option some with p: TS end end = option some of Option some with p: TS end end with let p = ts end;
+let o0: Option some with p: T0 end end = o;  (* a cast: o0!some.p is the proxy, typed T0 *)
+let p0: T0 = o0!some.p;
+let q: T0 = tb;
+print(conv.int(p0.n) <> " " <> conv.bool(p0 is q));
+Let Rec L(A::TYPE) = Option nil cons with head: A tail: L(A) end end;
+let l: L(TS) = option cons of L(TS) with let head = ts let tail = option nil of L(TS) end end;
+let l0: L(T0) = l;
+print(conv.int(l0!cons.head.n));
+let w: Tuple q: TS end = tuple let q = ts end;
+let w0: Tuple q: T0 end = w;  (* quest_convert returns w: the layouts agree *)
+print(conv.int(w0.q.n))
+```
+
+prints `7 true`, `7`, `7` interpreted; compiled, each read prints a number like `~3458764513803562161` (the
+proxy's memory) and `p0 is q` prints `false`. With a `String` component instead of `n: Int`, the reads crash (signal 11), as do
+storing `p0` into an array or a tuple's `var` component and reading it back, and `dynamic.be(:T0 dynamic.new(:T0
+p0))`. A variant payload converted the same way (`Variant k: TS end` to `Variant k: T0 end`) crashes too.
+
+**Fix options.**
+
+- *(a) Make the container a proxy.* Count a component going from may-be-proxied to never-proxied as a view change,
+  statically (`_option_cases_agree`, as tuples already do) and at run time (a variant of `quest_layout_equivalent`
+  for `quest_convert`'s shortcut), so the container is proxied and its reads convert the component (the runtime
+  unwraps a proxy viewed at a type that cannot be one). Keeps identity, costs nothing on reads, but only works when
+  the target container may be a proxy: lists and options of two or more cases, tuples with a view-sensitive
+  component. Not `Option some with p: T0 end end` or `Tuple q: T0 end`.
+- *(b) Widen `may_be_proxied` to every type that can be reached this way.* Every nonempty tuple is a prefix supertype
+  of a tuple with a record component, so every nonempty tuple (and option with a tuple payload) would be read
+  through `quest_unproxy` (a test and a branch per read; A2 measured proxy checks at 9 to 13% on hot reads of
+  view-sensitive tuples, and this would reach tuples of scalars, which the tokenizer benchmark uses heavily). Expensive.
+- *(b') Widen it narrowly, combined with (a).* A tuple or option also may be proxied when one of its components is a
+  nonempty tuple or an option with a payload (the components that can be reached by such an upcast); then (a) applies
+  to every container, identity is kept, and only reads of components of containers of aggregates pay (an `ORIGINAL`
+  access, `quest_unproxy`, for components that cannot change view). Tuples of scalars and strings stay direct.
+  Needs the same change in `quest_may_be_proxied` and the runtime shortcut, and an `ABI_VERSION` bump only if
+  compiled units disagreeing about the predicate can meet (they can: a proxy made by one unit read directly by an
+  older one), so probably yes. My recommendation.
+- *(c) Copy the container, unwrapping the component.* Only in this case; loses the container's identity (`is`
+  differs from the interpreter for those values), and must be rejected when the copy would hold `var` components
+  (`quest_copy_viewed` already fails at run time for them).
+- *(d) Reject statically.* Upcasts whose nested component goes from may-be-proxied to never-proxied, inside a
+  container that cannot be proxied. Simple, but rejects programs the interpreter runs, and does not cover the
+  run-time path through generic code by itself.
+
+**Where to start.** `_option_cases_agree` and `_plan`'s tuple case in `bootstrap/python/quest/ir/represent.py`,
+`may_be_proxied` and `_view_sensitive` in `codegen/layout.py`, and `quest_convert`, `quest_may_be_proxied_rec`, and
+`quest_layout_equivalent` in `runtime/quest_runtime.c`.
+
+**Done when.** The program above prints the same in both phases, as do its `String` variants, and a golden test
+covers option, list, tuple, and variant containers.
