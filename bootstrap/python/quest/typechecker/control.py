@@ -187,7 +187,8 @@ class ControlMixin:
         return typed_branches
 
     def _synth_infix_expr(self, expr: ast.ExprInfix, env: Environment, loop_depth: int) -> TypedExpr:
-        """Synthesizes an infix expression (assignment, logic, arithmetic, comparison)."""
+        """Synthesizes an infix expression with a built-in operator: assignment, arithmetic, comparison, eager logic,
+        and identity. Desugaring has made the short-circuit operators conditionals and the others calls."""
         # 1. Assignment (lhs := rhs)
         if expr.op == ":=":
             return self._synth_assignment(expr, env, loop_depth)
@@ -238,17 +239,8 @@ class ControlMixin:
                 offset=expr.offset,
             )
 
-        # 5. User-defined infix operators: a op b desugars to op(a, b)
-        op_sym = env.lookup_value(expr.op)
-        if op_sym is not None:
-            call_expr = ast.ExprApp(
-                func=ast.ExprId(name=expr.op, offset=expr.offset),
-                args=(expr.left, expr.right),
-                offset=expr.offset,
-            )
-            return self.synth_expr(call_expr, env, loop_depth)
-
-        raise TypeError(f"Unsupported infix operator '{expr.op}'", offset=expr.offset)
+        # 5. Other infix operators are desugared into calls: a op b is op(a, b)
+        raise not_desugared(expr)
 
     def _synth_assignment(self, expr: ast.ExprInfix, env: Environment, loop_depth: int) -> TypedAssign:
         """Synthesizes an assignment expression: lhs := rhs."""

@@ -63,6 +63,22 @@ class TestDesugar(unittest.TestCase):
             ),
         )
 
+    def test_user_infix_operator_is_a_call(self) -> None:
+        expr = desugar(parse_expr("a <+> b"))
+        self.assertEqual(
+            expr,
+            ast.ExprApp(
+                func=ast.ExprId(name="<+>", offset=0),
+                args=(ast.ExprId(name="a", offset=0), ast.ExprId(name="b", offset=6)),
+                offset=0,
+            ),
+        )
+
+    def test_builtin_infix_operators_stay_infix(self) -> None:
+        for op in ("+", "<>", "++", "/\\", "is", "isnot", "==", ":="):
+            expr = parse_expr(f"a {op} b")
+            self.assertIs(desugar(expr), expr, op)
+
     def test_nested_sugar_is_desugared(self) -> None:
         program = desugar(parse_phrase("let f = fun(): Int if a then 1 elsif b then 2 else 3 end;", target="program"))
         fun = program.phrases[0].value
