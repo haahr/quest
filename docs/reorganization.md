@@ -201,7 +201,8 @@ Recording the written component types on IR operations at lowering would remove 
 
 **A2. The representation change (0a).** Boxing in aggregates, and views on view-sensitive tuples and options, in
 `layout.py`, the represent pass's plans, the runtime (`quest_convert`, `quest_layout_equivalent`, slot reads), and the
-conversion matrix. Done when the matrix's identity column and the lost-update test pass in C, the rejected
+conversion matrix. A2 also moves `collect_aggregate_types` to shapes (left over from A1), under the same
+`ABI_VERSION` bump. Done when the matrix's identity column and the lost-update test pass in C, the rejected
 conversions that boxing makes unnecessary are accepted, `ABI_VERSION` is bumped, and the benchmarks are within the
 bar.
 
@@ -323,6 +324,7 @@ Stale docstrings and comments are fixed by whichever step touches their files.
 | View changes in aggregates (0a) | V1: view-sensitive tuples and options carry the descriptor of their stored type |
 | Not pursued | One-word records and variants (per-site caches, boxing every variant); program-wide variant tags (awkward with separate compilation) |
 | Lost update after a view-changing upcast | Fixed by A2, not before |
+| `collect_aggregate_types` on shapes (left from A1) | In A2, under its `ABI_VERSION` bump |
 | Performance bar for A2 | At most 10% slower on any benchmark |
 | Desugaring before type checking (B3) | Yes; typecheck dumps may change, error positions must not |
 | Canonical types at construction (B4) | Experiment, then decide |
