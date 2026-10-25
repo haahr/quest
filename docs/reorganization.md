@@ -271,6 +271,17 @@ about 10% slower. The subtyping cache stays either way: it records proofs betwee
 forms do not decide (equal types become identical, so it gains hits). After 0c and B1 to B3, since it touches
 `types/model.py` and subtyping.
 
+**The `fun` annotation soundness hole** (§7), after B3 as its own step.
+
+**Done:** a function checked against a function type has its annotations checked as synthesis and subsumption would
+check them ([type-system.md](type-system.md) §6.1): parameter modes must match, a parameter's annotation must fit the
+expected type contravariantly (exactly for `var`, covariantly for `out`), and a result annotation must be a subtype
+of the expected result, which the body is then checked against; a function with type parameters is synthesized; a
+polymorphic function without value parameters has its result annotation checked too. A raise's `as` clause is
+elaborated under an expected type, and a tuple rejects a phrase it cannot hold before matching an expected type. New
+error tests cover each case; no golden output changed. A C miscompilation of a contravariant parameter annotation,
+which predates the fix, is in [tasklist.md](tasklist.md).
+
 ---
 
 ## 5. Track C: Units, Modules, and the Driver

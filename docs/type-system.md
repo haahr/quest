@@ -418,6 +418,18 @@ their operands are checked against Bool, so `true andif 3` reports that `3` is n
   types are joined or assembled. `check_expr` checks a conditional without an else branch (a statement, of type Ok)
   by synthesis; an elsif chain has an else branch once desugared, ending in `ok` if it was written without one, so
   its branches are checked against the expected type.
+- **Annotations under an expected type:** what a construct writes is checked as synthesis followed by subsumption
+  would check it; the expected type flows only into what is left unwritten. A function checked against a function
+  type must give each parameter the expected parameter's mode, and a parameter's annotation must fit the expected
+  parameter type as subtyping of function types requires (§3): a value parameter's must include it, a `var`
+  parameter's must equal it, and an `out` parameter's must be included in it; a parameter without one would take
+  the expected type. A result type annotation must be a subtype of the expected result type, and the body is
+  checked against the annotation (against the expected result type when there is none); the function's type has
+  the parameters' types and the expected result type. A function with type parameters checked against a function
+  type is synthesized and must be a subtype. A tuple component's annotation must be a subtype of the expected
+  field's type, and a phrase a tuple cannot hold is rejected either way. A raise is the exception: its `as` clause
+  must be well formed, but checked against an expected type it has that type whatever the clause says, since it
+  diverges. Errors are reported at the annotation (a mode mismatch at the parameter).
 
 ### 6.2. Mutability, Assignment, and Reference Parameters
 Mutable locations are declared with `var`:

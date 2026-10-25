@@ -314,41 +314,30 @@ until the representation change), and a golden test covers `is` on tuples, optio
 
 ---
 
-## Checking a function against a function type ignores its annotations
+## A function whose parameter annotation is a proper supertype of its expected type miscompiles in C
 
-**Problem.** When a `fun` is checked against an expected function type, its parameter annotations are never compared
-with the expected parameter types, and its result type annotation is not even elaborated. This is a soundness hole:
-a function written for `Bool` can be called with an `Int`.
+**Problem.** A function checked against a function type may annotate a value parameter with a supertype of the
+expected parameter type (contravariance). Its symbol has the expected type, so callers pass the argument in the
+expected type's representation, but the function's body is compiled for the written one, and nothing converts
+between them: the body reads the wrong field. Binding the same function to a variable first, and then to the
+annotated name, converts correctly. The interpreter is right.
 
 **Reproduce.**
 
 ```quest
-let f: All(x: Int) Int = fun(x: Bool): Int 3;
-f(3)
+let k: All(r: Record a: Int b: Int end) Int = fun(r: Record b: Int end): Int r.b;
+k(record a = 5 b = 6 end)
 ```
 
-type-checks and prints `3 : Int`. `let h: All(x: Int) Int = fun(x: Int): Nonexistent 3;` is accepted, though
-`Nonexistent` names nothing.
+prints `6 : Int` interpreted and `5 : Int` with `--stop-after run_c_compiled`; with
+`let g = fun(r: Record b: Int end): Int r.b; let k: All(r: Record a: Int b: Int end) Int = g;` both print 6. A
+function component of a tuple checked against a tuple type is compiled correctly, and so is a result annotation that
+is a proper subtype: the function's type has the expected result type, and its return converts.
 
-**Where to start.** `_elaborate_fun_expr` in `bootstrap/python/quest/typechecker/bindings.py` (found in B2 of
-`docs/reorganization.md`): elaborate the written annotations and require each expected parameter type to be a subtype
-of the written one, and the written result type a subtype of the expected one.
+**Where to start.** `function` and the `TypedLetValue` case of `binding` in `bootstrap/python/quest/ir/lower.py`: the
+function's IR parameters take the written types (`TypedParam.type_val`) while its variable takes the symbol's type.
+Either give the IR parameter the expected type and bind the written one with a converting `let` at entry, or lower
+the function into a variable of its own type and copy it into the symbol's (which represent converts).
 
-**Done when.** Both programs above are rejected with errors at the offending annotation, and error tests cover them.
-
----
-
-## Other annotations the type checker skips when it has an expected type
-
-**Problem.** Found while merging the checking and synthesis functions (B2 of `docs/reorganization.md`); not yet
-reproduced with a test program.
-
-- A `fun` checked against a function type ignores the type parameters it writes.
-- `raise ... as T` checked against an expected type never elaborates `T`, so an ill-formed `T` goes unreported.
-- A tuple checked against an expected type that contains a component a tuple cannot hold (an import, say) is not
-  rejected with "Unsupported tuple component"; it falls into the field checks instead.
-
-**Where to start.** `_elaborate_fun_expr` (`bindings.py`), `_elaborate_raise_expr` (`exceptions.py`) and
-`_elaborate_tuple_expr` (`aggregates.py`), in `bootstrap/python/quest/typechecker/`.
-
-**Done when.** Each case has an error test showing the same error as when synthesizing.
+**Done when.** The program above prints `6 : Int` in both phases, and a golden test covers parameters of record and
+variant types.
