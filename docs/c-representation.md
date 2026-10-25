@@ -845,7 +845,9 @@ struct QTypeDescriptor {
   number of value elements before it, and `text`, as echo writes it, `Let A = Int` or `<Hidden>::TYPE`). Only echo
   reads them. Descriptors are shared by types equal but for alias names, so echo writes a type whose type components
   (or whose parts' components) would print differently with alias names by a descriptor of its own, a copy laid out
-  the same (`quest_type_<tag>_echo_<digest>`, `echo_descriptor_form`). Descriptors the runtime makes have none.
+  the same (`quest_type_<tag>_echo_<digest>`, `echo_descriptor_form`). A recursive type is unfolded for echo, through
+  its alias if it has one, as the interpreter unfolds it; its recursive occurrences refer back to its own echo-only
+  descriptor, which they share a digest with. Descriptors the runtime makes have none.
 - **Variants & Options (`QVariantTypeDescriptor`):** Holds `size_t case_count` and an array of `QVariantCaseDescriptor`
   (`name`, `payload_type`, `tag_index`, `is_var`).
 - **Arrays (`QArrayTypeDescriptor`):** Holds `const QTypeDescriptor *element_type`.

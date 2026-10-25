@@ -5,34 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## Compiled echo expands aliases in type components within recursive types
-
-**Problem.** Compiled echo writes a tuple's type components (`Let X = P`) with their alias names, as the interpreter
-does, except within a recursive type, where it writes the type with its aliases expanded and recursive types in their
-canonical form. Echo output then differs between the backends.
-
-**Reproduce.** With `rec_echo.quest` containing
-
-```quest
-Let P = Tuple a: Int end;
-Let Rec R = Option nil cons with Def X = P h: Int t: R end end;
-let rr = option cons of R with Let X = P let h = 1 let t: R = option nil of R end end;
-```
-
-`--echo --stop-after interpret` prints `... tuple Let X = P h=1 ...`, while `--echo --stop-after run_c_compiled`
-prints `... tuple Let X = Tuple a: Int end h=1 ...`.
-
-**Where to start.** Echo writes type components from its own descriptors (`echo_descriptor_form` in
-`codegen/c/types.py`), made from the type as written, but stops at a recursive type (`echo_children`) and uses its
-shared descriptor, whose component text comes from the canonical type. The interpreter unfolds recursive types as it
-goes (`_exposed_type` in `interpreter/treewalk.py`). Echo-only descriptors would have to unfold them too, referring
-back to a descriptor already being made where the unfolding repeats, as shared descriptors of recursive types do.
-
-**Done when.** `language/tuple_type_component_echo` (or a test beside it) echoes a value of a recursive type with
-an aliased type component, and `interpret` and `run_c_compiled` agree.
-
----
-
 ## Subtyping between `All` types requires equal bounds
 
 **Problem.** `All(X <: K) B <: All(X <: K') B'` holds only when `K` and `K'` are equal (and `B <: B'`), as in Cardelli

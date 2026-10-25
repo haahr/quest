@@ -34,6 +34,7 @@ from quest.codegen.symbols import mangle_ident
 from quest.types import (
     short_type_name,
     QAbstractType,
+    QAliasType,
     QAllType,
     QArrayType,
     QAutoType,
@@ -43,6 +44,8 @@ from quest.types import (
     QOptionType,
     QPathType,
     QPowerKind,
+    QRecGroupType,
+    QRecType,
     QRecordType,
     QTupleType,
     QTupleTypeBinding,
@@ -423,14 +426,33 @@ def tuple_type_components(t: QTupleType) -> list[tuple[int, str]]:
 
 
 def _echo_head(t: QType) -> QType:
-    return unalias(t.prune() if hasattr(t, "prune") else t)
+    """The type whose structure echo writes a value of type t by: a recursive type unfolded, through its alias if it
+    has one, so that its recursive occurrences and the aliases in it keep their names, as the interpreter unfolds
+    recursive types as it goes (_exposed_type in interpreter/treewalk.py)."""
+    t = t.prune() if hasattr(t, "prune") else t
+    if isinstance(t, QAliasType) and isinstance(t.target, (QRecType, QRecGroupType)):
+        t = t.unfold_lazily()
+    t = unalias(t)
+    if isinstance(t, QRecType):
+        t = t.unfold_lazily()
+    return unalias(t)
+
+
+def _recursive_identity(t: QType) -> Optional[int]:
+    """What tells recursive types apart for _echo_key: the recursive type t is or names, or None if it is not one."""
+    t = t.prune() if hasattr(t, "prune") else t
+    while isinstance(t, QAliasType):
+        if isinstance(t.target, (QRecType, QRecGroupType)):
+            return id(t.target)
+        t = t.target
+    return id(t) if isinstance(t, QRecType) else None
 
 
 def echo_children(t: QType) -> dict[str, QType]:
     """The types of the parts of a value of type t that echo writes through descriptors of their own, keyed as the
     emitted descriptor of t refers to them: a tuple's value elements by index, a record's fields, options', and
-    variants' cases by name, and an array's elements by "". A recursive type or a type application has none here:
-    its unfolding is described by its shared descriptor."""
+    variants' cases by name, and an array's elements by "". A recursive type's are its unfolding's (_echo_head); a
+    type application has none here: its unfolding is described by its shared descriptor."""
     t = _echo_head(t)
     if isinstance(t, QTupleType):
         return {str(i): f.type_val for i, f in enumerate(t.value_fields)}
@@ -445,12 +467,21 @@ def echo_children(t: QType) -> dict[str, QType]:
     return {}
 
 
-def _echo_key(t: QType) -> Optional[str]:
+def _echo_key(t: QType, recursive: tuple[int, ...] = ()) -> Optional[str]:
     """What tells apart the echo-only descriptors of t: the type components that echo writes for it and its parts,
-    with their alias names, or None if it writes none (and t's shared descriptor will do)."""
+    with their alias names, or None if it writes none (and t's shared descriptor will do).
+
+    recursive holds the recursive types being unfolded around t: an occurrence of one adds nothing (its components
+    are those already being keyed), which keeps the key finite. Its descriptor, keyed on its own, is the one being
+    made where the occurrence is the type keyed, so a recursive type's echo-only descriptor refers to itself."""
+    identity = _recursive_identity(t)
+    if identity is not None:
+        if identity in recursive:
+            return None
+        recursive = (*recursive, identity)
     head = _echo_head(t)
     own = tuple_type_components(head) if isinstance(head, QTupleType) else []
-    parts = [(name, _echo_key(child)) for name, child in echo_children(head).items()]
+    parts = [(name, _echo_key(child, recursive)) for name, child in echo_children(head).items()]
     if not own and all(key is None for _, key in parts):
         return None
     return repr((type(head).__name__, own, parts))
