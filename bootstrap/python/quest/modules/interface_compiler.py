@@ -41,10 +41,9 @@ from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at
 from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_string
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_rec_type_operators, elaborate_type
 from quest.types.env import Environment, Scope, TypeSymbol, ValueSymbol
-from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_interface
-from quest.modules.units import unit_declaration
+from quest.modules.units import parse_unit, unit_declaration
 from quest.values.model import (
     FALSE_VALUE,
     TRUE_VALUE,
@@ -587,8 +586,7 @@ def _compile_interface_file(
     source_map = SourceMap(source_text, display_file_name(file_path))
     # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
     with in_unit(source_map):
-        tokens = Tokenizer(source_text, str(file_path)).tokenize_all()
-        prog = desugar(parse_quest_program(tokens, source_map))
+        prog = parse_unit(source_text, file_path, source_map)
 
         decl = unit_declaration(prog, file_path)
 

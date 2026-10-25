@@ -17,8 +17,6 @@ from typing import TYPE_CHECKING, Optional
 
 import quest.syntax.ast as ast
 from quest.diagnostics import QuestTypeError
-from quest.syntax.desugar import desugar
-from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import (
     create_module_export_scope,
     elaborate_interface,
@@ -44,8 +42,8 @@ from quest.modules.paths import (
     is_typecheck_only,
     resolve_object_file,
 )
-from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap, display_file_name
+from quest.modules.units import parse_unit
 
 if TYPE_CHECKING:
     from quest.types.env import Environment, Scope
@@ -165,9 +163,7 @@ def load_interface(name: str, env: Environment) -> Scope:
 
     source_map = SourceMap(source_text, display_file_name(file_path))
     with env.unit_source(source_map):
-        tokenizer = Tokenizer(source_text, str(file_path))
-        tokens = tokenizer.tokenize_all()
-        prog = desugar(parse_quest_program(tokens, source_map))
+        prog = parse_unit(source_text, file_path, source_map)
 
         if not isinstance(prog, ast.Program):
             raise QuestTypeError(f"Malformed parse result in '{file_path}'")
@@ -298,9 +294,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
 
     source_map = SourceMap(source_text, display_file_name(file_path))
     with env.unit_source(source_map):
-        tokenizer = Tokenizer(source_text, str(file_path))
-        tokens = tokenizer.tokenize_all()
-        prog = desugar(parse_quest_program(tokens, source_map))
+        prog = parse_unit(source_text, file_path, source_map)
 
         if not isinstance(prog, ast.Program):
             raise QuestTypeError(f"Malformed parse result in '{file_path}'")

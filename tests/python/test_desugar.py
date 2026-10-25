@@ -3,7 +3,9 @@
 import unittest
 
 import quest.syntax.ast as ast
+from quest.modules.units import parse_unit
 from quest.syntax.desugar import desugar
+from quest.syntax.sources import SourceMap
 from tests.python.helpers import parse_expr, parse_phrase
 
 
@@ -123,6 +125,11 @@ class TestDesugar(unittest.TestCase):
         fun = program.phrases[0].value
         self.assertEqual(fun.body.elsifs, ())
         self.assertIsInstance(fun.body.else_branch, ast.ExprIf)
+
+    def test_parse_unit_desugars(self) -> None:
+        source = "let b = true andif false;"
+        program = parse_unit(source, "<test>", SourceMap(source, "<test>"))
+        self.assertIsInstance(program.phrases[0].value, ast.ExprIf)
 
 
 if __name__ == "__main__":

@@ -31,15 +31,12 @@ from quest.modules.manifest import (
     write_qm,
 )
 from quest.types.env import Environment
-from quest.syntax.desugar import desugar
-from quest.syntax.grammar import parse_quest_program
 from quest.modules.elaboration import elaborate_module
 from quest.modules.interface_compiler import indirect_interface_refs
-from quest.modules.units import unit_declaration
+from quest.modules.units import parse_unit, unit_declaration
 from quest.modules.loader import load_interface
 from quest.modules.graph import Resolver, Roots, UnitGraph, resolve_interface, resolve_module, unit_artifact_dir
 from quest.modules.paths import DEFAULT_LIB_DIR, DEFAULT_PROJECT_DIR, resolve_object_file
-from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap, display_file_name
 
 
@@ -288,9 +285,7 @@ def compile_module_file(
     source_map = SourceMap(source_text, display_file_name(mod_path))
     # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
     with in_unit(source_map):
-        tokenizer = Tokenizer(source_text, str(mod_path))
-        tokens = tokenizer.tokenize_all()
-        prog = desugar(parse_quest_program(tokens, source_map))
+        prog = parse_unit(source_text, mod_path, source_map)
 
         decl = unit_declaration(prog, mod_path)
 
