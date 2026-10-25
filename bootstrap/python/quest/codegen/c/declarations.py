@@ -8,8 +8,7 @@ from typing import Any, Callable, Optional, Sequence
 
 from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import may_be_stored_as_subtype
-from quest.ir.shapes import shape
-from quest.types.canonical import normalize_type
+from quest.ir.shapes import Shape, shape
 from quest.codegen.c.types import (
     c_string_literal,
     closure_fn_ptr_type,
@@ -27,6 +26,8 @@ from quest.codegen.c.types import (
 from quest.codegen.descriptors import fun_descriptor_tag
 from quest.codegen.layout import (
     option_struct_name,
+    resolved_shape,
+    shape_tag,
     slot_representation,
     tuple_struct_name,
     type_tag,
@@ -34,7 +35,6 @@ from quest.codegen.layout import (
 from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types import (
     auto_payload_type,
-    is_type_equal,
     QRecordField,
     QRecGroupType,
     QRecType,
@@ -60,7 +60,6 @@ from quest.types import (
     QTypeVar,
     QVariantType,
     REAL_TYPE,
-    resolve_option_bound,
     STRING_TYPE,
 )
 
@@ -112,7 +111,9 @@ def collect_aggregate_types(
     visited_type_ids: Optional[set[int]] = None,
     visited_node_ids: Optional[set[int]] = None,
 ) -> tuple[list[tuple[str, QType]], list[QVariantType], list[QType]]:
-    """Traverses an AST to find all unique aggregate types (tuples, records, options, variants)."""
+    """Traverses an AST (or a list of types) to find all unique aggregate types (tuples, records, options, variants),
+    from their shapes: each as its shape's structure, the unfolding of its canonical form, which its struct and
+    descriptor declare, in the order first reached (which interfaces' C headers pin, tests/abi)."""
     if visited_names is None:
         visited_names = set()
     if visited_type_ids is None:
@@ -121,70 +122,63 @@ def collect_aggregate_types(
         visited_node_ids = set()
     result: list[tuple[str, QType]] = []
     variant_types: list[QVariantType] = []
+    variant_shapes: list[Shape] = []
     all_types: list[QType] = []
+    visited_shape_ids: set[int] = set()
 
     def visit_type(t: Optional[QType]) -> None:
         if t is None:
             return
-        t_id = id(t)
-        if t_id in visited_type_ids:
+        if id(t) in visited_type_ids:
             return
-        visited_type_ids.add(t_id)
-        # The type as written with its outermost constructor exposed, rather than its shape's structure (the
-        # unfolding of its canonical form): the order in which the structs are declared, which interfaces' C headers
-        # pin (tests/abi), and the names of records (whose fields' types a canonical form may write differently, with
-        # the value parameters of equal function types named alike) follow the types as written
-        t = normalize_type(t)
+        visited_type_ids.add(id(t))
+        try:
+            s = shape(t)
+        except ValueError:
+            return
+        visit_shape(s)
+
+    def visit_shape(s: Optional[Shape]) -> None:
+        # Shapes, not types as written: equal types (however written, with whatever aliases) share one shape, whose
+        # structure (the unfolding of its canonical form) declares the struct, and records are named from it
+        if s is None or id(s) in visited_shape_ids:
+            return
+        visited_shape_ids.add(id(s))
+        t = s.structure
         all_types.append(t)
-        if isinstance(t, QTupleType):
-            for f in t.value_fields:
-                visit_type(f.type_val)
-            name = tuple_struct_name(t)
-            if name not in visited_names:
-                visited_names.add(name)
-                result.append((name, t))
-        elif isinstance(t, QRecordType):
-            for f in t.fields:
-                visit_type(f.type_val)
-            name = record_struct_name(t, ctx)
-            if name not in visited_names:
-                visited_names.add(name)
-                result.append((name, t))
-        elif isinstance(t, QOptionType) or (opt_bound := resolve_option_bound(t)) is not None:
-            opt_t = t if isinstance(t, QOptionType) else opt_bound
-            for o in opt_t.options:
-                if o.payload_type:
-                    visit_type(o.payload_type)
-            name = option_struct_name(opt_t)
-            if name not in visited_names:
-                visited_names.add(name)
-                result.append((name, opt_t))
-        elif isinstance(t, QAutoType):
+        held = resolved_shape(s)
+        if s.kind == "tuple":
+            for c in s.components:
+                visit_shape(c.shape)
+            add(shape_tag(s), t)
+        elif s.kind == "record":
+            for c in s.components:
+                visit_shape(c.shape)
+            add(record_struct_name(t, ctx), t)
+        elif held.kind == "option":
+            # An option, or a type parameter bounded by one, whose values are viewed at the bound
+            for c in held.cases:
+                visit_shape(c.shape)
+            add(shape_tag(held), held.structure)
+        elif s.kind == "auto":
             # Auto payloads are stored in the witness-independent layout
             visit_type(auto_payload_type(t))
-        elif isinstance(t, QVariantType):
-            if not any(v is t or is_type_equal(v, t) for v in variant_types):
+        elif s.kind == "variant":
+            if not any(id(v) == id(s) for v in variant_shapes):
+                variant_shapes.append(s)
                 variant_types.append(t)
-            for v in t.variants:
-                if getattr(v, "type_val", None):
-                    visit_type(v.type_val)
-        elif hasattr(t, "params") and hasattr(t, "result_type"):
-            for p in getattr(t, "params", ()):
-                visit_type(getattr(p, "type_val", None))
-            visit_type(getattr(t, "result_type", None))
-        elif hasattr(t, "element_type"):
-            visit_type(getattr(t, "element_type", None))
-        elif hasattr(t, "inner_type"):
-            visit_type(getattr(t, "inner_type", None))
-        if hasattr(t, "bound"):
-            bound = getattr(t, "bound")
-            if hasattr(bound, "bound"):
-                visit_type(getattr(bound, "bound"))
-        if hasattr(t, "quantifiers") and hasattr(t, "body"):
-            for q in getattr(t, "quantifiers", ()):
-                if hasattr(q, "bound") and hasattr(q.bound, "bound"):
-                    visit_type(getattr(q.bound, "bound"))
-            visit_type(getattr(t, "body", None))
+            for c in s.cases:
+                visit_shape(c.shape)
+        else:
+            for child in s.children():
+                visit_shape(child)
+        if s.kind in ("typevar", "abstract") and s.bound is not None:
+            visit_shape(s.bound)
+
+    def add(name: str, t: QType) -> None:
+        if name not in visited_names:
+            visited_names.add(name)
+            result.append((name, t))
 
     def visit_node(n: Any) -> None:
         if n is None:

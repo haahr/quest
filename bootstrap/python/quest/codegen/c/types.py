@@ -211,8 +211,12 @@ class RecordNamingContext:
 
     def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
         # Records share a struct (and so a descriptor) only if their fields have the same types, not merely the same
-        # C representations: type_tag is QClosure for every function type and QVal for every type variable.
-        sorted_fields = sorted(t.fields, key=lambda f: f.name)
+        # C representations: type_tag is QClosure for every function type and QVal for every type variable. The
+        # fields are those of the record's shape (the structure of its canonical form), so that a record type is
+        # named alike however it is written.
+        s = shape(t)
+        fields = s.structure.fields if s.kind == "record" else t.fields
+        sorted_fields = sorted(fields, key=lambda f: f.name)
         return tuple((f.name, type_tag(f.type_val), type_digest(f.type_val)) for f in sorted_fields)
 
     @staticmethod
