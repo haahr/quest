@@ -103,13 +103,13 @@ from quest.types import (
 
 def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QType]]:
     """The parameter types of a function's variable's type (var_t), as written, for a function of count parameters
-    and type fun_t that takes no type parameters; None when they are not known."""
-    if isinstance(fun_t, QAllType):
-        return None
+    and type fun_t, in the function's own type parameters; None when they are not known."""
+    fun_quants = fun_t.quantifiers if isinstance(fun_t, QAllType) else ()
     quants, inner = collect_fun_quantifiers(var_t)
-    if quants or not isinstance(inner, QFunType) or len(inner.params) != count:
+    if len(quants) != len(fun_quants) or not isinstance(inner, QFunType) or len(inner.params) != count:
         return None
-    return [param.type_val for param in inner.params]
+    subst = {vq.symbol_id: QTypeVar(fq.name, fq.symbol_id, fq.bound) for vq, fq in zip(quants, fun_quants)}
+    return [param.type_val.substitute(subst) if subst else param.type_val for param in inner.params]
 
 
 _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent", "ordinal"}
