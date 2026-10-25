@@ -1940,7 +1940,40 @@ static void quest_inst_reach(void *cx, const QTypeDescriptor *c) {
 typedef struct QInstContext {
     QInstWork                    *w;
     const QTypeDescriptor *const *args;
+    size_t                        arg_count;
 } QInstContext;
+
+/* The name of an instance of a template node named name: the name with each of the template's holes (?0, ?1, ...)
+   replaced by its argument's name, so that values print with their types (or name itself, if it has no holes) */
+static const char *quest_inst_name(const QInstContext *cx, const char *name) {
+    if (name == NULL || strchr(name, '?') == NULL) return name;
+    /* Each occurrence of a hole grows the name by at most the longest argument's name */
+    size_t longest = 0, holes = 0, len = 0;
+    for (size_t i = 0; i < cx->arg_count; ++i) {
+        size_t n = cx->args[i] != NULL && cx->args[i]->name != NULL ? strlen(cx->args[i]->name) : 0;
+        if (n > longest) longest = n;
+    }
+    for (const char *c = name; *c; ++c) holes += (*c == '?');
+    size_t cap = strlen(name) + 1 + holes * longest;
+    char *out = (char *)quest_alloc(cap);
+    for (const char *c = name; *c;) {
+        if (*c == '?' && c[1] >= '0' && c[1] <= '9') {
+            char *end = NULL;
+            unsigned long index = strtoul(c + 1, &end, 10);
+            const QTypeDescriptor *arg = index < cx->arg_count ? cx->args[index] : NULL;
+            if (arg != NULL && arg->name != NULL) {
+                size_t n = strlen(arg->name);
+                memcpy(out + len, arg->name, n);
+                len += n;
+                c = end;
+                continue;
+            }
+        }
+        out[len++] = *c++;
+    }
+    out[len] = '\0';
+    return out;
+}
 
 /* The instance of template node d */
 static const QTypeDescriptor *quest_inst_of(const QInstContext *cx, const QTypeDescriptor *d) {
@@ -1960,6 +1993,8 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
     const QTypeDescriptor *d = n->tmpl;
     QTypeDescriptor *out = n->inst;
     *out = *d;
+    /* An opaque descriptor is compared by its name, an abstract type operator's (its arguments are filled below) */
+    if (d->kind != QTYPE_KIND_OPAQUE) out->name = quest_inst_name(cx, d->name);
     switch (d->kind) {
         case QTYPE_KIND_TUPLE: {
             const QTupleTypeDescriptor *m = (const QTupleTypeDescriptor *)d->extra;
@@ -2105,7 +2140,7 @@ const QTypeDescriptor *quest_instantiate_descriptor(
     for (size_t i = 0; i < w.count; ++i) {
         if (w.nodes[i].has_hole) w.nodes[i].inst = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
     }
-    QInstContext cx = { &w, args };
+    QInstContext cx = { &w, args, arg_count };
     for (size_t i = 0; i < w.count; ++i) {
         if (w.nodes[i].has_hole) quest_inst_fill(&cx, &w.nodes[i]);
     }
