@@ -397,8 +397,10 @@ blocks), `exceptions.py` (exceptions, raise, try), and `auto_values.py` (auto va
 The type checker's input is the desugared AST ([syntax.md](syntax.md) §5): short-circuit operators are conditionals,
 elsif chains are conditionals nested in else branches, user infix operators are calls, assignments to array
 elements are `ExprIndexAssign`, and non-recursive `let` declarations with parameters bind function values. Errors in
-those forms are reported as errors in their core forms, at the positions of the syntax they replace: for example,
-`true andif 3` reports that the conditional's branches `Int` and `Bool` have no common supertype.
+those forms are reported as errors in their core forms, at the positions of the syntax they replace: an unbound user
+infix operator is an undefined variable, and an elsif chain without an else branch checked against `Int` reports
+that its implicit `ok` is not an `Int`. Short-circuit operators are the exception: their conditionals are marked, and
+their operands are checked against Bool, so `true andif 3` reports that `3` is not a Bool.
 
 ### 6.1. Bidirectional Discipline
 - **Checking Mode ($\Gamma \vdash e \Leftarrow T$):** Pushes expected type $T$ down into expression $e$. Enables
