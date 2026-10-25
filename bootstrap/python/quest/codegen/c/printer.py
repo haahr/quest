@@ -138,7 +138,6 @@ class CPrinter:
         # External C functions bound by lets (by variable), which are called directly
         self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
-        self.types: list[QType] = []
         # The pairs of tuple types converted by casts (whose layouts agree, which the C asserts)
         self.tuple_casts: dict[tuple[str, str], tuple[QType, QType]] = {}
         self.fs = _FunctionState(None)
@@ -187,16 +186,13 @@ class CPrinter:
     # Types
 
     def c_type(self, t: QType) -> str:
-        self.types.append(t)
         return qtype_to_c_type(t, self.ctx)
 
     def shape_c_type(self, s: Shape) -> str:
-        self.types.append(s.structure)
         return shape_representation(s)
 
     def slot_c_type(self, s: Shape) -> str:
         """The C type of a slot holding values of shape s (slot_representation)."""
-        self.types.append(s.structure)
         return shape_slot_representation(s)
 
     # Proxies (docs/c-representation.md §5.8): a value of a tuple or option type that may be proxied may be a view of
@@ -388,7 +384,6 @@ class CPrinter:
 
     def location_c_type(self, t: QType) -> str:
         """The C type of a location of a value of t (location_representation): a record or variant boxed."""
-        self.types.append(t)
         return shape_location_representation(shape(t))
 
     def const(self, c: ir.Const) -> str:
@@ -533,7 +528,6 @@ class CPrinter:
                 return f"quest_record_view({c}, {self.descriptor(plan.descriptors[0])})"
             case "variant_tags":
                 table = plan.tag_map
-                self.types.extend((table.source, table.target))
                 v = self.temp("QVariantVal")
                 self.emit(f"{v} = {c};")
                 tagmap = f"tagmap_{type_tag(table.target)}_{type_tag(table.source)}"
@@ -656,7 +650,6 @@ class CPrinter:
             for p, n, fp in zip(t_params, names, plan.fields):
                 args.append(n if fp is None else self.convert(n, fp))
             call = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))({', '.join(['orig->env'] + descs + args)})"
-            self.types.extend((plan.source, plan.target))
             self.finish_thunk_call(call, s_result, t_result, plan.fields[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
             self.thunk(name, ret, decls, ["QClosure *orig = (QClosure *)_raw_env;"] + [f"(void){d};" for d in descs])
@@ -693,7 +686,6 @@ class CPrinter:
         else:
             orig_t, clos = o.callee_type, self.module_member(o.module, o.member)
         descs = [self.descriptor(d) for d in o.descriptors]
-        self.types.extend((orig_t, result.type))
         if o.thunk_params is None:
             if o.callee is None and isinstance(o.module, ir.Import):
                 call = f"{mangle_module_ident(mangle_module_name(o.module.canonical_path), o.member)}({', '.join(descs)})"
@@ -771,7 +763,6 @@ class CPrinter:
         ))
         held = held_shape(result.type, "record")
         target = held.structure if held is not None else concrete
-        self.types.extend((concrete, target))
         struct = record_struct_name(concrete, self.ctx)
         box = self.temp("QRecordVal *")
         payload = self.temp(f"{struct} *")
@@ -795,7 +786,6 @@ class CPrinter:
     def record_slot(self, rec: str, rs: Shape, name: str) -> tuple[str, Shape]:
         """The address of the slot of a field of a record of shape rs, through its offset table, and the field's
         shape."""
-        self.types.append(rs.structure)
         fields = rs.sorted_components()
         field = next(f for f in fields if f.name == name).shape
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
@@ -827,7 +817,6 @@ class CPrinter:
         payload that is not a tuple in its slot form)."""
         tag, payload, ordinal, offset = o.tag, o.payload, o.ordinal, o.offset
         os = self.held(t, "option")
-        self.types.append(os.structure)
         struct = shape_tag(os)
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
@@ -1040,7 +1029,6 @@ class CPrinter:
             env = "NULL" if not known.captures else f"{self.name(callee)}->env"
             return f"{self.code_name(known.code)}({', '.join([env] + c_args)})"
         fn_ptr = closure_fn_ptr_type(callee.type, self.ctx)
-        self.types.append(callee.type)
         clos = self.atom(callee)
         return f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + c_args)})"
 
@@ -1056,7 +1044,6 @@ class CPrinter:
         rec_t = module.record_type
         if rec_t is None:
             raise NotImplementedError(f"module {module.name}: its interface is unknown")
-        self.types.append(rec_t)
         field = next(f for f in rec_t.fields if f.name == member)
         field_s = shape(field.type_val)
         c_fld = self.slot_c_type(field_s)
@@ -1251,7 +1238,6 @@ class CPrinter:
         v = self.atom(value)
         t = self.tag_shape(self.atom_type(value))
         is_variant = t.kind == "variant"
-        self.types.append(t.structure)
         self.emit(f"switch ({f'{v}.tag' if is_variant else self.option_tag(v, access)}) {{")
         self.indent += 1
         for c in cases:
@@ -1288,7 +1274,6 @@ class CPrinter:
 
     def make_auto(self, witness: ir.Descriptor, auto_t: QAutoType, payload: ir.Atom) -> str:
         stored_t = auto_payload_type(auto_t)
-        self.types.extend((auto_t, stored_t))
         return f"quest_auto_new({self.descriptor(witness)}, {shape_slot_to_qval(self.atom(payload), shape(stored_t))})"
 
     def auto_arm_converted(self, arm_plan: ir.InspectArm, stored: str, stored_t, arm_t) -> str:
@@ -1297,7 +1282,6 @@ class CPrinter:
         it from its stored type at the value's type component; the others copied), by the descriptors the describe
         pass gave the arm."""
         arm_struct = tuple_struct_name(arm_t)
-        self.types.append(arm_t)
         arm = self.temp(f"{arm_struct} *")
         self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
         for i, (pair, stored_f, arm_f) in enumerate(zip(arm_plan.descriptors, stored_t.value_fields,
@@ -1315,7 +1299,6 @@ class CPrinter:
                 offset: Optional[int], witness: Optional[ir.DescriptorParam]) -> None:
         stored_t = auto_payload_type(auto_t)
         stored_struct = tuple_struct_name(stored_t)
-        self.types.extend((auto_t, stored_t))
         tgt = self.temp("const QAuto *")
         self.emit(f"{tgt} = {self.atom(value)};")
         if witness is not None:
@@ -1335,7 +1318,6 @@ class CPrinter:
                 arm_t = auto_payload_type(auto_t, case.match_type)
                 if arm_plan.exact:
                     arm_struct = tuple_struct_name(arm_t)
-                    self.types.append(arm_t)
                     arm = self.temp(f"{arm_struct} *")
                     self.emit(f"if (quest_layout_equivalent({tgt}->type_desc, {match_desc})) {{")
                     if arm_plan.shared:
@@ -1656,7 +1638,6 @@ class CPrinter:
                 call = f"{self.code_name(known.code)}({', '.join(['NULL'] + args)})"
             else:
                 fn_ptr = closure_fn_ptr_type(export.type, self.ctx)
-                self.types.append(export.type)
                 clos = self.name(export)
                 call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + args)})"
             out.append(f"{ret_c} {ident}({', '.join(param_decls) or 'void'}) {{")
@@ -1698,12 +1679,11 @@ class CPrinter:
     def declarations(self) -> list[str]:
         """The declarations of the types the unit uses: structs, offset tables, descriptors, and adapters."""
         data = self.unit.static_data
-        self.types.extend(imp.record_type for imp in self.unit.imports if imp.record_type is not None)
-        for table in data.offset_tables:
-            self.types.extend((table.view, table.layout))
         decl = CDeclarationEmitter(self.ctx, lambda t: qtype_to_c_type(t, self.ctx))
         self.decl_emitter = decl
-        agg_types, _, _ = collect_aggregate_types(list(self.types), self.ctx)
+        # The aggregates of the types the describe pass listed (ir.StaticData.types)
+        agg_types, _, _ = collect_aggregate_types(list(data.types), self.ctx)
+
         # The static tables the unit's operations refer to (ir.StaticData), by their C names
         offset_tables = {
             (record_struct_name(t.view, self.ctx), record_struct_name(t.layout, self.ctx)): (t.view, t.layout)

@@ -479,8 +479,10 @@ rejected (`UnsupportedDescriptor`; no program does).
 The pass lists the unit's static data (`ir.StaticData`): the static descriptors its operations refer to (templates
 among them), the static offset tables of record literals (`ir.OffsetTable`: the view and the layout, registered with
 the runtime for dynamic values when both are closed; a module's record is a record literal, §3), and the tag maps of
-`variant_tags` plans (`ir.TagMap`); and each module's abstract types' registrations for dynamic values
-([dynamic.md](dynamic.md) §2.3). An echo of a package with a prefix, whose line is known statically from its type as
+`variant_tags` plans (`ir.TagMap`), and the types whose aggregates C declares (`types`: those of the unit's
+variables, operations, and plans, of its record literals' own layouts and its inspect arms' payloads, of its imports'
+interfaces, and of its offset tables, `unit_types`); and each module's abstract types' registrations for dynamic
+values ([dynamic.md](dynamic.md) §2.3). An echo of a package with a prefix, whose line is known statically from its type as
 written, becomes an echo of its text.
 
 Descriptor operands are small pure expressions rather than values named by lets, so where they are evaluated is a
@@ -499,9 +501,11 @@ the represent pass recorded, and calls `quest_convert` only to print a conversio
 descriptors it is given and makes none (§8.4): it names descriptor variables (a function's parameters, a thunk's
 `qd_<k>`, an inspect's `->type_desc`), declares the static descriptors (with those of their parts) and the offset
 tables and tag maps of the unit's static data, and calls `quest_instantiate_descriptor` for an instantiated template.
-What it still decides is how to spell the IR in C: the structs of the shapes it meets, the C signatures of thunks and
-of a module file's exported functions, and the `static_assert`s of the tuple casts it prints; a variant's payload, an
-exception's, and an echoed value are QVal words, wrapped and unwrapped as their representations say.
+It declares the structs of the aggregates of the unit's listed types (`ir.StaticData.types`), and the C compiler
+checks that every struct the C names is among them. What it still decides is how to spell the IR in C: the C
+signatures of thunks and of a module file's exported functions, the `static_assert`s of the tuple casts it prints,
+and the reinterpretation of a slot's word as a QVal (and back) for a variant's or exception's payload and an echoed
+value, which the slots pass gives it in their slot forms.
 
 ### 8.6. Future: CFG and SSA for the native backend
 

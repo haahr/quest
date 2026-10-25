@@ -157,6 +157,16 @@ tables, and the printer declares exactly those. The order of declarations in int
 `ABI_VERSION` is bumped (with 1b's bump if they land together). Done when the printer appends to no list of types,
 and the verifier checks that every aggregate shape used is declared.
 
+**Done.** The describe pass lists the unit's types (`ir.StaticData.types`, `unit_types` in `ir/describe.py`): those of
+every variable, operation, and plan in the unit (descriptor operands aside), its record literals' own layouts, its
+inspect arms' payloads, its imports' interfaces, and its offset tables. The printer declares the aggregates of exactly
+these and collects nothing as it prints. Interfaces' headers are made by `codegen/c/headers.py`, not the printer, so
+their order is unaffected (the ABI corpus is unchanged). Instead of a verifier check, the C compiler checks that every
+struct the C names is declared, on every compiled test; a check that compared the printer's own record of what it
+spelled with the list was tried and dropped, because the printer recorded shapes' structures, whose shapes asked again
+are distinct (though equal) and name structs the C never uses. Those unused structs are gone: the C of the test
+programs shrinks slightly (8,386,063 to 8,367,282 bytes), and the benchmarks run as on main.
+
 **3c. Let-bound descriptor operands** ([ir.md](ir.md) §8.4). Descriptor operands are small pure expressions, a
 departure from strict ANF. The describe pass binds each instantiated template to a variable, once per function where
 its descriptors are in scope, and static descriptors and descriptor parameters stay atoms. This shares

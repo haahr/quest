@@ -418,7 +418,62 @@ class _Describer:
         self.body(self.unit.main)
         for f in self.unit.functions:
             self.function(f)
+        self.data.types = unit_types(self.unit)
         self.unit.static_data = self.data
+
+
+def unit_types(unit: ir.Unit) -> list[QType]:
+    """The types a unit's C declares the aggregates of (ir.StaticData.types), in the order first met: those of its
+    variables and functions' results, of the operations' and plans' types (and those plans convert inside), of the
+    records its literals make (their own types, from their fields') and the payloads its inspect arms make, of its
+    imports' interfaces, and of its offset tables."""
+    found: list[QType] = []
+    seen_types: set[int] = set()
+    seen_nodes: set[int] = set()
+
+    def add(t) -> None:
+        if t is not None and id(t) not in seen_types:
+            seen_types.add(id(t))
+            found.append(t)
+
+    def visit(node) -> None:
+        if isinstance(node, QType):
+            add(node)
+            return
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                visit(item)
+            return
+        if isinstance(node, dict):
+            for item in node.values():
+                visit(item)
+            return
+        if not dataclasses.is_dataclass(node) or isinstance(node, (type, ir.Shape)) or id(node) in seen_nodes:
+            return
+        seen_nodes.add(id(node))
+        if isinstance(node, ir.MakeRecord):
+            add(QRecordType(tuple(QRecordField(name=n, type_val=_type_of(a), is_var=v) for n, a, v in node.fields)))
+        elif isinstance(node, ir.Inspect) and node.auto_type is not None:
+            for case in node.cases:
+                if case.binders:
+                    add(auto_payload_type(node.auto_type, case.match_type))
+        for f in dataclasses.fields(node):
+            if f.name not in _UNDECLARED_FIELDS:
+                visit(getattr(node, f.name))
+
+    visit(unit.modules)
+    visit(unit.main)
+    visit(unit.functions)
+    visit(unit.imports)
+    for table in unit.static_data.offset_tables if unit.static_data is not None else ():
+        add(table.view)
+        add(table.layout)
+    return found
+
+
+# The fields of IR nodes whose types C declares no aggregates for: descriptor operands (described by the static data's
+# descriptors, which declare what they need) and the static data itself
+_UNDECLARED_FIELDS = ir.DESCRIPTOR_FIELDS | {"static_data", "witness"}
 
 
 def describe_unit(unit: ir.Unit) -> ir.Unit:

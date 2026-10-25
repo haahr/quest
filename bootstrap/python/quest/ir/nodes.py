@@ -123,10 +123,13 @@ class TagMap:
 @dataclass(eq=False)
 class StaticData:
     """The static descriptors and tables a unit's operations refer to (after the describe pass), which a backend
-    emits: descriptors (each with those of its parts), offset tables, and tag maps."""
+    emits: descriptors (each with those of its parts), offset tables, and tag maps; and the types whose aggregates
+    (tuples, records, options, variants, and those inside them) a backend declares (`types`, ir/describe.py's
+    unit_types)."""
     descriptors: list[StaticDescriptor] = field(default_factory=list)
     offset_tables: list[OffsetTable] = field(default_factory=list)
     tag_maps: list[TagMap] = field(default_factory=list)
+    types: list[QType] = field(default_factory=list)
 
 
 @dataclass(eq=False)
