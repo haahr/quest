@@ -75,5 +75,10 @@ def _rewrite(node: ast.ASTNode) -> ast.ASTNode:
                     cond=cond, then_branch=then_branch, else_branch=else_branch, offset=cond.offset
                 )
             return replace(node, elsifs=(), else_branch=else_branch)
+        case ast.LetValueBinding(params=params, is_rec=False) if params and not isinstance(
+            node.value, ast.ExprExternal
+        ):
+            fun = ast.ExprFun(params=params, return_type=node.type_annot, body=node.value, offset=node.offset)
+            return replace(node, value=fun, params=(), type_annot=None)
         case _:
             return node

@@ -8,6 +8,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import quest.syntax.ast as ast
+from quest.syntax.desugar import desugar
 from quest.diagnostics import QuestTypeError
 from quest.types.env import Environment
 from quest.modules.elaboration import (
@@ -89,7 +90,7 @@ class TestModulesElaboration(unittest.TestCase):
             let unbox(b: T): Int = b;
         end;
         """
-        mod_node = parse_phrase(mod_code)
+        mod_node = desugar(parse_phrase(mod_code))
         self.assertIsInstance(mod_node, ast.ModuleDecl)
         typed_mod = elaborate_module(mod_node, self.env)
 

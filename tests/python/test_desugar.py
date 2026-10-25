@@ -91,6 +91,31 @@ class TestDesugar(unittest.TestCase):
             ),
         )
 
+    def test_let_with_parameters_is_a_function_value(self) -> None:
+        source = "let var f(x: Int): Int = x;"
+        binding = desugar(parse_phrase(source, target="program")).phrases[0]
+        self.assertIsInstance(binding, ast.LetValueBinding)
+        self.assertEqual((binding.name, binding.params, binding.type_annot, binding.is_var), ("f", (), None, True))
+        fun = binding.value
+        self.assertIsInstance(fun, ast.ExprFun)
+        self.assertEqual(fun.offset, binding.offset)
+        self.assertEqual([p.name for p in fun.params], ["x"])
+        self.assertEqual(fun.return_type, ast.TypePath(path=("Int",), offset=source.index("Int =")))
+
+    def test_simultaneous_let_members_with_parameters(self) -> None:
+        group = desugar(parse_phrase("let f(x: Int): Int = x and g(y: Int): Int = y;", target="program")).phrases[0]
+        self.assertIsInstance(group, ast.LetValueBindingGroup)
+        self.assertTrue(all(isinstance(m.value, ast.ExprFun) and not m.params for m in group.bindings))
+
+    def test_recursive_and_external_lets_keep_their_parameters(self) -> None:
+        for source in (
+            "let rec f(x: Int): Int = f(x);",
+            "let rec f(x: Int): Int = x and g(y: Int): Int = f(y);",
+            'let f(x: Int): Int = external "f";',
+        ):
+            program = parse_phrase(source, target="program")
+            self.assertIs(desugar(program), program, source)
+
     def test_nested_sugar_is_desugared(self) -> None:
         program = desugar(parse_phrase("let f = fun(): Int if a then 1 elsif b then 2 else 3 end;", target="program"))
         fun = program.phrases[0].value
