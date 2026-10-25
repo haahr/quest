@@ -1943,8 +1943,13 @@ typedef struct QInstContext {
     size_t                        arg_count;
 } QInstContext;
 
+/* Descriptors' names are cut off at this many characters, followed by "...", as short_type_name (types/dump.py)
+   cuts off static descriptors' names and the interpreter the types it prints */
+#define Q_DISPLAY_NAME_LIMIT 80
+
 /* The name of an instance of a template node named name: the name with each of the template's holes (?0, ?1, ...)
-   replaced by its argument's name, so that values print with their types (or name itself, if it has no holes) */
+   replaced by its argument's name, cut off as static names are, so that values print with their types (or name
+   itself, if it has no holes) */
 static const char *quest_inst_name(const QInstContext *cx, const char *name) {
     if (name == NULL || strchr(name, '?') == NULL) return name;
     /* Each occurrence of a hole grows the name by at most the longest argument's name */
@@ -1954,7 +1959,7 @@ static const char *quest_inst_name(const QInstContext *cx, const char *name) {
         if (n > longest) longest = n;
     }
     for (const char *c = name; *c; ++c) holes += (*c == '?');
-    size_t cap = strlen(name) + 1 + holes * longest;
+    size_t cap = strlen(name) + 1 + holes * longest + 3;
     char *out = (char *)quest_alloc(cap);
     for (const char *c = name; *c;) {
         if (*c == '?' && c[1] >= '0' && c[1] <= '9') {
@@ -1970,6 +1975,10 @@ static const char *quest_inst_name(const QInstContext *cx, const char *name) {
             }
         }
         out[len++] = *c++;
+    }
+    if (len > Q_DISPLAY_NAME_LIMIT) {
+        memcpy(out + Q_DISPLAY_NAME_LIMIT, "...", 3);
+        len = Q_DISPLAY_NAME_LIMIT + 3;
     }
     out[len] = '\0';
     return out;

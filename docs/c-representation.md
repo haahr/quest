@@ -950,9 +950,10 @@ function passes on ([type-system.md](type-system.md) §6.11).
   parameter, the bound's descriptor as `storage`), declared ahead of the function definitions with the structs and
   function type adapters it needs. The code passes the template and the parameters' descriptors to
   `quest_instantiate_descriptor(template, n, args)`, which copies the template's nodes that reach a hole (templates
-  may be cyclic), naming each copy from the template node's name with its holes replaced by the arguments' names (so
-  an auto value made by generic code prints its witness at its type arguments), and memoizes the result by template
-  and arguments.
+  may be cyclic), naming each copy from the template node's name with its holes replaced by the arguments' names, cut
+  off at 80 characters as static descriptors' names are (`short_type_name`), so that an auto value made by generic
+  code prints its witness at its type arguments as the interpreter does, and memoizes the result by template and
+  arguments.
 - **Stored types:** In an instance, each hole becomes a `QTYPE_KIND_STORED` descriptor (`QStoredDescriptor`) of its
   type argument: a value of that type stored as generic code stores a type parameter, as its `QVal` form, or, when
   `storage` is set, as a value of the bound (a record viewed at the bound). The instance keeps the template's
