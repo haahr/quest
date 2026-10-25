@@ -124,6 +124,13 @@ signatures, which the printer spells. If a signature's C changes (parameter name
 `ABI_VERSION` bump, since interfaces' headers pin it (`tests/abi`). Done when `codegen/c/` imports nothing from
 `quest.modules.elaboration` and neither function reads a scope or a type as written.
 
+**Done.** Lowering records the record type of each import's interface on the import (`ir.Import.record_type`),
+looking the interface up in the environment as the printer did; the printer reads imported members, declares their
+records, and declares the functions imported modules export from it, and takes no scopes (`print_c` no longer looks
+up modules). The unit graph was not needed: the environment already holds each interface once. Exported functions'
+signatures (`module_function_signature`, `module_function_arguments`) read the interface's function types through
+`ir/written.py` and their results' kinds from shapes. No C changed, so the ABI corpus is unchanged.
+
 ---
 
 ## 3. Phase 3: The Printer Only Spells the IR

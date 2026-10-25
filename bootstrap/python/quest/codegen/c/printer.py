@@ -64,15 +64,12 @@ from quest.codegen.layout import (
     type_tag,
 )
 from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
-from quest.types.env import Scope
 from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
 from quest.ir.describe import echo_value_kind
 from quest.ir.represent import held_shape
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import global_variables, statement_binders, walk_statements
-from quest.modules.elaboration import build_record_type_from_scope
-from quest.typechecker.typed_ast import TypedModule
 from quest.types import (
     QAutoType,
     auto_payload_type,
@@ -127,13 +124,12 @@ class _FunctionState:
 
 class CPrinter:
     def __init__(
-        self, unit: ir.Unit, env: Any, module_scopes: dict[int, Scope], interface_header: Optional[str] = None
+        self, unit: ir.Unit, env: Any, interface_header: Optional[str] = None
     ) -> None:
         self.unit = unit
         self.interface_header = interface_header
         self.env = env
         self.ctx = RecordNamingContext()
-        self.module_scopes = module_scopes
         self.globals = global_variables(unit)
         self.names: dict[int, str] = {}
         self.used_names: set[str] = set()
@@ -1064,10 +1060,9 @@ class CPrinter:
         record = module_record_ident(clean)
         if member is None:
             return record
-        scope = self.module_scopes.get(id(module))
-        if scope is None:
+        rec_t = module.record_type
+        if rec_t is None:
             raise NotImplementedError(f"module {module.name}: its interface is unknown")
-        rec_t = build_record_type_from_scope(scope)
         self.types.append(rec_t)
         field = next(f for f in rec_t.fields if f.name == member)
         field_s = shape(field.type_val)
@@ -1690,28 +1685,26 @@ class CPrinter:
         return lines
 
     def import_declarations(self) -> list[str]:
-        stubs = []
+        imports: list[ir.Import] = []
         seen: set[str] = set()
         for imp in self.unit.imports:
-            if imp.canonical_path in seen:
-                continue
-            seen.add(imp.canonical_path)
-            scope = self.module_scopes.get(id(imp)) or Scope()
-            stubs.append(TypedModule(name=imp.canonical_path, interface_name=imp.interface_path, bindings=(),
-                                     scope=scope, is_precompiled=True))
+            if imp.canonical_path not in seen:
+                seen.add(imp.canonical_path)
+                imports.append(imp)
         lines = []
-        for stub in stubs:
-            clean = mangle_module_name(stub.name)
+        for imp in imports:
+            clean = mangle_module_name(imp.canonical_path)
             lines.append(f"extern QRecordVal {module_record_ident(clean)};")
             lines.append(f"extern void qv_mod_{clean}_init(void);")
-        lines.extend(self.decl_emitter.emit_precompiled_module_declarations(stubs))
+        lines.extend(self.decl_emitter.emit_precompiled_module_declarations(
+            [(imp.canonical_path, imp.record_type) for imp in imports]
+        ))
         return lines
 
     def declarations(self) -> list[str]:
         """The declarations of the types the unit uses: structs, offset tables, descriptors, and adapters."""
         data = self.unit.static_data
-        for scope in self.module_scopes.values():
-            self.types.append(build_record_type_from_scope(scope))
+        self.types.extend(imp.record_type for imp in self.unit.imports if imp.record_type is not None)
         for table in data.offset_tables:
             self.types.extend((table.view, table.layout))
         decl = CDeclarationEmitter(self.ctx, lambda t: qtype_to_c_type(t, self.ctx))
@@ -1739,16 +1732,4 @@ class CPrinter:
 def print_c(unit: ir.Unit, env: Any, interface_header: Optional[str] = None) -> str:
     """The C translation of a described unit: a program, or a module file (including its interface's C header,
     if it has one)."""
-    scopes: dict[int, Scope] = {}
-    for imp in unit.imports:
-        scope = None
-        if env is not None:
-            scope = (
-                env.lookup_module(imp.canonical_path)
-                or env.lookup_module(imp.module_path)
-                or env.lookup_module(imp.name)
-                or env.lookup_interface(imp.interface_path)
-            )
-        if scope is not None:
-            scopes[id(imp)] = scope
-    return CPrinter(unit, env, scopes, interface_header).print_unit()
+    return CPrinter(unit, env, interface_header).print_unit()

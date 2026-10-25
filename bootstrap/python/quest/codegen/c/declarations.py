@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional, Sequence
 from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import may_be_stored_as_subtype
 from quest.ir.shapes import Shape, shape
-from quest.ir.written import echo_children, tuple_type_components
+from quest.ir.written import echo_children, fun_signature, quantified, tuple_type_components
 from quest.codegen.c.types import (
     c_string_literal,
     closure_fn_ptr_type,
@@ -69,34 +69,27 @@ def module_function_signature(
 ) -> Optional[tuple[str, str, list[str]]]:
     """The C function a module file exports for a member of its interface that is a function or a polymorphic value
     (`qv_<module>_<member>`, taking its type parameters' descriptors and then its parameters, at the interface's
-    types): its result's C type, its name, and its parameters' declarations; None for other members."""
-    if isinstance(type_val, QAllType):
-        quants, fun_t = type_val.quantifiers, type_val.body
-    else:
-        quants, fun_t = (), type_val
+    types): its result's C type, its name, and its parameters' declarations; None for other members. The type
+    parameters' and parameters' names are the interface's, as written."""
+    quants, fun_t = quantified(type_val)
     if not isinstance(fun_t, QFunType) and not quants:
         return None
-    ret_type = fun_t.result_type if isinstance(fun_t, QFunType) else fun_t
-    ret_c = "void" if ret_type is OK_TYPE else ("QRecordVal" if isinstance(ret_type, QRecordType) else c_type(ret_type))
+    params, ret_type = fun_signature(type_val)
+    ret_kind = shape(ret_type).kind
+    ret_c = "void" if ret_kind == "ok" else ("QRecordVal" if ret_kind == "record" else c_type(ret_type))
     param_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
-    if isinstance(fun_t, QFunType):
-        param_decls += [
-            f"{location_representation(p.type_val)} *qv_p_{p.name}" if p.is_out or p.is_var
-            else f"{c_type(p.type_val)} qv_p_{p.name}" for p in fun_t.params
-        ]
+    param_decls += [
+        f"{location_representation(p.type_val)} *qv_p_{p.name}" if p.is_out or p.is_var
+        else f"{c_type(p.type_val)} qv_p_{p.name}" for p in params
+    ]
     return ret_c, mangle_module_ident(clean_mod, name), param_decls
 
 
 def module_function_arguments(type_val: QType) -> list[str]:
     """The names of the parameters module_function_signature declares, in order."""
-    if isinstance(type_val, QAllType):
-        quants, fun_t = type_val.quantifiers, type_val.body
-    else:
-        quants, fun_t = (), type_val
-    names = [f"descriptor_{q.name}" for q in quants]
-    if isinstance(fun_t, QFunType):
-        names += [f"qv_p_{p.name}" for p in fun_t.params]
-    return names
+    quants, _ = quantified(type_val)
+    params, _ = fun_signature(type_val)
+    return [f"descriptor_{q.name}" for q in quants] + [f"qv_p_{p.name}" for p in params]
 
 
 def fun_shape_signature(t: QType) -> tuple[tuple[Optional[QType], ...], tuple[QParam, ...], QType]:
@@ -266,21 +259,19 @@ class CDeclarationEmitter:
             lines.append("")
         return lines
 
-    def emit_precompiled_module_declarations(self, modules: list) -> list[str]:
-        """The extern declarations of the functions modules compiled on their own export (each a TypedModule whose
-        scope is its interface's)."""
+    def emit_precompiled_module_declarations(self, modules: list[tuple[str, Optional[QType]]]) -> list[str]:
+        """The extern declarations of the functions modules compiled on their own export, for each module by its
+        canonical name and the record type of its interface (ir.Import.record_type)."""
         lines: list[str] = []
-        precompiled_mods = [m for m in modules if getattr(m, "is_precompiled", False)]
-        if precompiled_mods:
+        if modules:
             lines.append("/* External declarations for precompiled module functions */")
-            for mod in precompiled_mods:
-                clean_mod = mangle_module_name(mod.name)
-                if getattr(mod, "scope", None) and hasattr(mod.scope, "values"):
-                    for val_name, val_sym in mod.scope.values.items():
-                        sig = module_function_signature(clean_mod, val_name, val_sym.type_val, self.c_type)
-                        if sig is not None:
-                            ret_c, m_ident, param_decls = sig
-                            lines.append(f"extern {ret_c} {m_ident}({', '.join(param_decls) or 'void'});")
+            for name, record_t in modules:
+                clean_mod = mangle_module_name(name)
+                for f in record_t.fields if record_t is not None else ():
+                    sig = module_function_signature(clean_mod, f.name, f.type_val, self.c_type)
+                    if sig is not None:
+                        ret_c, m_ident, param_decls = sig
+                        lines.append(f"extern {ret_c} {m_ident}({', '.join(param_decls) or 'void'});")
             lines.append("")
         return lines
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Optional, Union
 
 from quest.diagnostics import MAIN_FRAME, frame_name, init_frame
+from quest.modules.elaboration import build_record_type_from_scope
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions
 from quest.types.env import Environment, ValueSymbol
@@ -135,6 +136,7 @@ class _Lowerer:
         self.builtins: dict[int, str] = {
             sym.symbol_id: name for name, sym in env.base_scope.values.items() if isinstance(sym, ValueSymbol)
         }
+        self.env = env
         self.echo = echo
         self.print_result = print_result
         # The source file's map, in which the offsets of the nodes that can raise are (docs/exceptions.md §3.1)
@@ -349,7 +351,7 @@ class _Lowerer:
             name = STANDARD_LIBRARY_MODULE_NAMES.get(e.name, STANDARD_LIBRARY_MODULE_NAMES.get(e.name.lower()))
             if name is None:
                 raise LoweringError(f"module '{e.name}' (#{e.symbol.symbol_id}) is neither defined nor imported")
-            module = ir.Import(e.name, name, name, STANDARD_LIBRARY_MODULES[name])
+            module = self.make_import(e.name, name, name, STANDARD_LIBRARY_MODULES[name])
             self.imports.append(module)
             self.module_refs[e.symbol.symbol_id] = module
         return module
@@ -865,13 +867,24 @@ class _Lowerer:
 
     # Units
 
+    def make_import(self, name: str, module_path: str, canonical_path: str, interface_path: str) -> ir.Import:
+        """An imported module, with the record type of the interface it is imported through."""
+        scope = (
+            self.env.lookup_module(canonical_path)
+            or self.env.lookup_module(module_path)
+            or self.env.lookup_module(name)
+            or self.env.lookup_interface(interface_path)
+        )
+        record_t = build_record_type_from_scope(scope) if scope is not None else None
+        return ir.Import(name, module_path, canonical_path, interface_path, record_t)
+
     def add_imports(self, items) -> None:
         for item in items:
             symbol_ids = item.symbol_ids if item.symbol_ids is not None else (None,) * len(item.names)
             for name, path, canonical, symbol_id in zip(
                 item.names, item.effective_module_paths, item.effective_canonical_module_paths, symbol_ids
             ):
-                imp = ir.Import(name, path, canonical, item.effective_interface_path)
+                imp = self.make_import(name, path, canonical, item.effective_interface_path)
                 self.imports.append(imp)
                 if symbol_id is not None:
                     self.module_refs[symbol_id] = imp

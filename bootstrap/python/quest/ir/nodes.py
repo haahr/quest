@@ -764,11 +764,14 @@ class Module:
 @dataclass(eq=False)
 class Import:
     """A module the unit uses from elsewhere: the name it is imported as, the module's path as imported and its
-    canonical name (docs/modules.md §2.3), and the path of the interface it is imported through."""
+    canonical name (docs/modules.md §2.3), the path of the interface it is imported through, and the record type of
+    that interface (its members, with their types as written; None if lowering did not know the interface), which
+    the module's record value has."""
     name: str
     module_path: str
     canonical_path: str
     interface_path: str
+    record_type: Optional[QType] = None
 
 
 # The IR's stages (docs/ir.md §9), in order: each pass produces the next
