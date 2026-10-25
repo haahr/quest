@@ -244,7 +244,8 @@ differed visibly (the order of errors, the minting order of symbol ids, the esca
 makes) the merged methods keep the difference.
 
 **B3. A desugaring pass** between parsing and type checking: `andif`/`orif`, user infix operators as calls, `elsif`
-chains. Typecheck dumps may change; error messages must still point at and name the source syntax.
+chains. Typecheck dumps may change. Errors may change where desugaring gives a logical reason, provided each still
+shows a reader clearly where the problem is in the source as written.
 
 **B4. Canonical recursive types at construction (experiment).** Prototype building canonical forms when types are
 made, so that type equality is identity; measure type checking time and the code it removes, and adopt it only if it
@@ -329,7 +330,7 @@ Stale docstrings and comments are fixed by whichever step touches their files.
 | Lost update after a view-changing upcast | Fixed by A2, not before |
 | `collect_aggregate_types` on shapes (left from A1) | In A2, under its `ABI_VERSION` bump |
 | Performance bar for A2 | At most 10% slower on any benchmark |
-| Desugaring before type checking (B3) | Yes; typecheck dumps may change, error positions must not |
+| Desugaring before type checking (B3) | Yes; typecheck dumps may change, and errors may change for a logical reason if they still point clearly at the source |
 | Canonical types at construction (B4) | Experiment; adopt if it removes the guard and on-demand canonicalization at most ~10% slower |
 | Fix the `fun` annotation soundness hole | After B3, as its own step |
 | Execution | Tracks in parallel worktrees after phase 0 |
