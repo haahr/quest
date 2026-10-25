@@ -45,6 +45,7 @@ from quest.types import (
     QAbstractType,
     QFunType,
     QOutType,
+    QPowerKind,
     QType,
     QTypeVar,
     QVarType,
@@ -310,17 +311,20 @@ def _slots_agree(source: Shape, target: Shape) -> bool:
     return s_c == t_c or (t_c == "QVal" and s_c != "void")
 
 
-def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.Plan]:
+def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t, witness: QType,
+                      bound: Optional[QType] = None) -> Optional[ir.Plan]:
     """How an auto value's components are stored, in the auto type's witness-independent layout: a component of the
-    type component's type keeps its own representation (a bounded parameter's value is not viewed at the bound, as
-    inspect reads it by the stored type component's descriptor), in its QVal form where the layout holds a QVal,
-    which its slot already holds; the others convert to their stored types."""
+    type component's type keeps its own representation (inspect reads it by the stored type component's
+    descriptor), in its QVal form where the layout holds a QVal, which its slot already holds; the others convert to
+    their stored types. When the witness is a type parameter in scope bounded by a record, variant, or option type
+    (bound), whose values generic code holds viewed at the bound, the payload is copied, and those components are
+    converted from the bound's view to the witness's type at run time (`view`), as inspect reads them."""
     source = shape(payload_t).components
     target = shape(stored_t).components
     fields = []
     for sig_f, sc, tc in zip(auto_t.signature, source, target):
         if is_type_variable(sig_f.type_val, auto_t.symbol_id) and _slots_agree(sc.shape, tc.shape):
-            fields.append(None)
+            fields.append(None if bound is None else ir.Plan("view", bound, witness))
         else:
             fields.append(plan(sc.shape.type, tc.shape.type))
     if all(p is None for p in fields) and all(_slots_agree(sc.shape, tc.shape) for sc, tc in zip(source, target)):
@@ -330,6 +334,71 @@ def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.
     payload_s = shape(payload_t)
     access = tuple(tuple_access(payload_s, i) for i in range(len(fields)))
     return ir.Plan("copy", payload_t, stored_t, tuple(fields), access=access)
+
+
+def bounded_param(t: QType, type_params: set[int]) -> Optional[QType]:
+    """The bound B of t, if t is a type parameter in scope (its symbol among type_params) bounded by a record, variant,
+    or option type (A <: B), whose values generic code holds viewed at the bound; None for any other type."""
+    var = shape(t).type
+    if not isinstance(var, (QTypeVar, QAbstractType)) or var.symbol_id not in type_params:
+        return None
+    if not isinstance(var.bound, QPowerKind):
+        return None
+    bound = var.bound.bound
+    bound_s = shape(bound)
+    if not may_be_stored_as_subtype(bound_s) or bound_s.kind in ("fun", "all"):
+        return None
+    return bound
+
+
+def auto_layouts_agree(stored_t: QType, arm_t: QType) -> bool:
+    """Whether an auto value's stored payload can be read in place as an inspect case's components: each component
+    has the same slot representation (a closure the same signature representation), or is stored as a QVal holding
+    a scalar or pointer."""
+    for stored_f, arm_f in zip(shape(stored_t).components, shape(arm_t).components):
+        stored_c = shape_slot_representation(stored_f.shape)
+        arm_c = shape_slot_representation(arm_f.shape)
+        if stored_c == arm_c:
+            if arm_f.shape.kind in ("fun", "all") and (
+                signature_representation(stored_f.shape.type) != signature_representation(arm_f.shape.type)
+            ):
+                return False
+        elif stored_c != "QVal" or arm_c == "void":
+            return False
+    return True
+
+
+def inspect_arm(auto_t, case: ir.InspectCase, type_params: set[int]) -> ir.InspectArm:
+    """How an inspect case of an auto value of type auto_t obtains its components (ir.InspectArm)."""
+    stored_t = auto_payload_type(auto_t)
+    arm_t = auto_payload_type(auto_t, case.match_type)
+    has_var = any(f.is_var for f in auto_t.signature)
+    converted = tuple(
+        None if auto_t.symbol_id not in sig_f.type_val._fv
+        else "component" if is_type_variable(sig_f.type_val, auto_t.symbol_id)
+        else "mentions"
+        for sig_f in auto_t.signature
+    )
+    bound = bounded_param(case.match_type, type_params)
+    if bound is not None:
+        if has_var:
+            raise UnsupportedConversion(
+                f"C code generation cannot inspect an auto value of type '{auto_t}' at the bounded type "
+                f"parameter '{case.match_type}': its components are converted to the bound, so the var "
+                f"components could not be shared with the auto value"
+            )
+        return ir.InspectArm(converted, bound=bound)
+    if not case.exact:
+        return ir.InspectArm(converted)
+    shared = auto_layouts_agree(stored_t, arm_t)
+    if not shared and has_var:
+        raise UnsupportedConversion(
+            f"C code generation cannot inspect an auto value of type '{auto_t}' at type "
+            f"'{case.match_type}': its components need conversion, so the var components could not be "
+            f"shared with the auto value"
+        )
+    return ir.InspectArm(converted, exact=True, shared=shared, plan=None if shared else plan(stored_t, arm_t),
+                         layout_error=has_var)
 
 
 def fun_signature(t: QType) -> tuple[tuple, QType]:
@@ -350,6 +419,8 @@ class _Representer:
         self.unit = unit
         self.joins: dict[str, tuple[ir.Var, ...]] = {}
         self.generic_results: list[tuple[QType, QType, dict]] = []
+        # The function whose body is being represented (None for a top level)
+        self.function: Optional[ir.Function] = None
 
     def convert(self, a: ir.Atom, target: QType, before: list, layout=None) -> ir.Atom:
         """a, converted to be used at target (by a let added to before), or a itself."""
@@ -361,6 +432,7 @@ class _Representer:
         return converted
 
     def body(self, body: ir.Body, function: Optional[ir.Function]) -> None:
+        self.function = function
         statements = []
         for s in body.statements:
             if isinstance(s, ir.Join):
@@ -432,7 +504,36 @@ class _Representer:
                 exc_t = written_structure(_type_of(e), "exception")
                 if exc_t is not None and exc_t.payload_type is not None:
                     s.payload = self.convert(p, exc_t.payload_type, before)
+            case ir.Inspect(cases=cases, auto_type=auto_t) if auto_t is not None:
+                for case in cases:
+                    self.inspect_case(auto_t, case, function)
         return before + [s] + after
+
+    @staticmethod
+    def type_params(function: Optional[ir.Function]) -> set[int]:
+        """The symbols of the type parameters in scope in a function's body (its own and those its closure supplies),
+        whose descriptors it is passed."""
+        return {tp.symbol_id for tp in function.type_params} if function is not None else set()
+
+    def inspect_case(self, auto_t, case: ir.InspectCase, function: Optional[ir.Function]) -> None:
+        """Decides how an inspect case obtains its components (its arm), and converts them to its binders' types: a
+        binder that needs converting is bound by a let at the case's start, from a binder of the arm's type."""
+        if not case.binders:
+            return
+        case.arm = inspect_arm(auto_t, case, self.type_params(function))
+        arm_t = auto_payload_type(auto_t, case.match_type)
+        binders = []
+        lets = []
+        for b in case.binders:
+            p = plan(arm_t, b.type)
+            if p is None:
+                binders.append(b)
+                continue
+            arm = ir.Var(b.hint, arm_t)
+            binders.append(arm)
+            lets.append(ir.Let(b, ir.Convert(arm, p)))
+        case.binders = tuple(binders)
+        case.body.statements[:0] = lets
 
     def operation(self, o, result_t: QType, before: list) -> Optional[QType]:
         """Converts an operation's operands to the types it stores them at, returning the type of its result as the
@@ -457,9 +558,10 @@ class _Representer:
                 o.args = tuple(self.convert(a, elem, before) for a in args)
             case ir.ArrayRep(init=init):
                 o.init = self.convert(init, array_element(result_t), before)
-            case ir.MakeAuto(auto_type=auto_t, payload=payload):
+            case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
                 stored_t = auto_payload_type(auto_t)
-                p = auto_payload_plan(_type_of(payload), stored_t, auto_t)
+                bound = bounded_param(witness, self.type_params(self.function))
+                p = auto_payload_plan(_type_of(payload), stored_t, auto_t, witness, bound)
                 if p is not None:
                     stored = ir.Var("payload", stored_t)
                     before.append(ir.Let(stored, ir.Convert(payload, p)))

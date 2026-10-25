@@ -172,6 +172,38 @@ class TestRepresent(unittest.TestCase):
         self.assertIn((1, ir.ORIGINAL), access)
         self.assertIn((1, ir.DIRECT), access)
 
+    def test_auto_values_of_bounded_witnesses_are_stored_at_the_witness(self) -> None:
+        # Generic code views the witness's values at the bound; the payload is stored at the witness's own type
+        unit = represent(
+            "Let Big = Variant a: Int b: Bool end; Let AnyBig = Auto A<:Big with a: A end; "
+            "let mk0(A <: Big x: A): AnyBig = auto :A with x end; let mk: All(A <: Big x: A) AnyBig = mk0; "
+            "mk(:Big variant a of Big with 1 end)"
+        )
+        copies = [c.plan for c in operations(unit, ir.Convert) if c.plan.kind == "copy"]
+        self.assertEqual([[f.kind for f in c.fields] for c in copies], [["view"]])
+        # The payload is made by the function: its components are read directly
+        self.assertEqual([c.access for c in copies], [(ir.DIRECT,)])
+
+    def test_inspect_arms(self) -> None:
+        unit = represent(
+            "Let Big = Variant a: Int b: Bool end; Let Small = Variant b: Bool end; "
+            "Let AnyBig = Auto A<:Big with a: A end; Let Counter = Auto A<:Big with a: A var n: Int end; "
+            "let x: AnyBig = auto :Small with variant b of Small with true end end; "
+            "let c: Counter = auto :Small with let a = variant b of Small with true end let var n = 0 end; "
+            "let get(A <: Big v: AnyBig d: A): A = inspect v when A with t then t.a else d end; "
+            "inspect x when Big with t then t.a?a else false end; "
+            "inspect c when Small with t then t.n else 0 end"
+        )
+        arms = [c.arm for i in operations(unit, ir.Inspect) for c in i.cases]
+        exact = next(a for a in arms if len(a.converted) == 2)
+        bounded = next(a for a in arms if a.bound is not None)
+        at_big = next(a for a in arms if a is not exact and a is not bounded)
+        self.assertEqual([a.converted for a in (bounded, at_big, exact)], [("component",)] * 2 + [("component", None)])
+        self.assertIsNotNone(bounded.bound)
+        self.assertFalse(at_big.exact)
+        # Var components: inspected exactly, sharing the stored components, or a layout error
+        self.assertTrue(exact.exact and exact.shared and exact.layout_error)
+
     def test_casts_to_types_that_cannot_be_proxies_unproxy(self) -> None:
         unit = represent(
             "Let Big = Record a: Int b: Int end; let t = tuple let x = record a = 1 b = 2 end let n = 3 end; "

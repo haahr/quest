@@ -27,6 +27,7 @@ may store it at another type) and whether a record literal's offset table is kno
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Optional
 
 from quest.codegen.layout import (
@@ -242,6 +243,9 @@ class _Slots:
                 if p.kind == "box" and isinstance(v, ir.Var) and id(v) in self.boxes:
                     # A record's or variant's QVal word is its box: the one it was read from serves
                     o.value = self.boxes[id(v)]
+                if p.kind == "copy" and self.is_fresh(v):
+                    # A copy of a tuple the function made reads its components directly
+                    o.plan = dataclasses.replace(p, access=tuple(ir.DIRECT for _ in p.access))
                 return False
             case ir.MakeRecord(fields=fields):
                 new_fields = []

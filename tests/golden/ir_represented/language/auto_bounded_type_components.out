@@ -28,7 +28,8 @@ fun show(x: Big): String {
 fun mk0 [A::<: Big](x.1: A): AnyBig {
   let a.1: A = x.1
   let %71: Tuple a: A end = tuple(box a.1)
-  let %72: AnyBig = auto[A](%71)
+  let payload.1: Tuple a: A end = convert(%71, copy)
+  let %72: AnyBig = auto[A](payload.1)
   return %72
 }
 fun unbox0 [A::<: Big](b: AnyBig, default: A): A {
@@ -36,7 +37,7 @@ fun unbox0 [A::<: Big](b: AnyBig, default: A): A {
     return r.4
   } in {
     inspect b {
-      case A (x.2: Tuple a: A end): {
+      case A (x.2: Tuple a: A end) converting (component) from bound Variant a: Int b: String c: Bool end: {
         let box.5: box(A) = tuple_field(x.2, 0) via proxy
         let %73: A = convert(box.5, slot_unbox)
         jump k4(%73)
@@ -55,7 +56,8 @@ fun roundTrip0 [A::<: Big](x.3: A): A {
 fun mkObj0 [A::<: Object](x.4: A): AnyObject {
   let a.2: A = x.4
   let %76: Tuple a: A end = tuple(box a.2)
-  let %77: AnyObject = auto[A](%76)
+  let payload.2: Tuple a: A end = convert(%76, copy)
+  let %77: AnyObject = auto[A](payload.2)
   return %77
 }
 fun unboxObj0 [A::<: Object](b.1: AnyObject, default.1: A): A {
@@ -63,7 +65,7 @@ fun unboxObj0 [A::<: Object](b.1: AnyObject, default.1: A): A {
     return r.5
   } in {
     inspect b.1 {
-      case A (x.5: Tuple a: A end): {
+      case A (x.5: Tuple a: A end) converting (component) from bound Record age: Int end: {
         let box.6: box(A) = tuple_field(x.5, 0) via proxy
         let %78: A = convert(box.6, slot_unbox)
         jump k6(%78)
@@ -217,7 +219,7 @@ main {
         let car.4: A = convert(car, runtime)
         let %56: AnyObject = call mkObj [Car](car.4)
         inspect %56 {
-          case Car (t: Tuple a: Car end): {
+          case Car (t: Tuple a: Car end) converting (component): {
             let box.2: box(Car) = tuple_field(t, 0) via proxy
             let %57: Car = convert(box.2, slot_unbox)
             let %58: String = record_field(%57, fuel)
@@ -232,7 +234,7 @@ main {
       let small.4: A = convert(small, variant_tags)
       let %59: AnyBig = call mk [Small](small.4)
       inspect %59 {
-        case Big (t.1: Tuple a: Big end): {
+        case Big (t.1: Tuple a: Big end) converting (component): {
           let box.3: box(Big) = tuple_field(t.1, 0) via proxy
           let %60: Big = convert(box.3, slot_unbox)
           let %61: String = call show.1(%60)
@@ -247,7 +249,7 @@ main {
     let small.5: A = convert(small, variant_tags)
     let %62: AnyBig = call mk [Small](small.5)
     inspect %62 {
-      case Small (t.2: Tuple a: Small end): {
+      case Small (t.2: Tuple a: Small end) converting (component): {
         let box.4: box(Small) = tuple_field(t.2, 0) via proxy
         let %63: Small = convert(box.4, slot_unbox)
         let %64: Variant a: Int b: String c: Bool end = convert(%63, variant_tags)

@@ -66,7 +66,7 @@ from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_modu
 from quest.types.env import Scope
 from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
-from quest.ir.represent import held_shape, is_type_variable, may_be_stored_as_subtype, plan, shared_signatures
+from quest.ir.represent import held_shape, plan, shared_signatures
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.modules.elaboration import build_record_type_from_scope
@@ -1390,79 +1390,32 @@ class CPrinter:
         self.emit("}")
 
     # Auto values (docs/c-representation.md §6.4.4): a type component's descriptor and the payload, stored in the
-    # witness-independent layout (docs/c-representation.md §8)
-
-    def bounded_param_in_scope(self, t: QType) -> Optional[QType]:
-        """The bound B of a type parameter in scope bounded by a record, variant, or option type (A <: B), which
-        generic code holds its values viewed at; None for any other type."""
-        var = shape(t).type
-        if not isinstance(var, (QTypeVar, QAbstractType)) or var.symbol_id not in self.descriptors:
-            return None
-        if not isinstance(var.bound, QPowerKind):
-            return None
-        bound = var.bound.bound
-        bound_s = shape(bound)
-        if not may_be_stored_as_subtype(bound_s) or bound_s.kind in ("fun", "all"):
-            return None
-        return bound
-
-    @staticmethod
-    def is_auto_param(auto_t: QAutoType, t: QType) -> bool:
-        return is_type_variable(t, auto_t.symbol_id)
+    # witness-independent layout (docs/c-representation.md §8), as the represent pass converted it
 
     def make_auto(self, witness: QType, auto_t: QAutoType, payload: ir.Atom) -> str:
         stored_t = auto_payload_type(auto_t)
         self.types.extend((auto_t, stored_t))
-        c_payload = self.atom(payload)
-        desc = self.descriptor(witness)
-        if (bound := self.bounded_param_in_scope(witness)) is not None:
-            # Generic code holds a value of a bounded type parameter viewed at the bound; concrete code stores the
-            # type component's values at their own type, as inspect reads them, so convert them to it
-            struct = tuple_struct_name(stored_t)
-            p = self.temp(f"{struct} *")
-            self.emit(f"{p} = ({struct} *)({c_payload});")
-            for i, (sig_f, stored_f) in enumerate(zip(auto_t.signature, stored_t.value_fields)):
-                if self.is_auto_param(auto_t, sig_f.type_val):
-                    src = f"{p}->_{i}"
-                    stored_s = shape(stored_f.type_val)
-                    converted = f"quest_convert({shape_slot_to_qval(src, stored_s)}, {self.descriptor(bound)}, {desc})"
-                    self.emit(f"{src} = {shape_qval_to_slot(converted, stored_s)};")
-            c_payload = p
-        return f"quest_auto_new({desc}, {qval_wrap(c_payload, stored_t)})"
+        return f"quest_auto_new({self.descriptor(witness)}, {qval_wrap(self.atom(payload), stored_t)})"
 
-    def auto_layouts_agree(self, stored_t: QTupleType, arm_t: QTupleType) -> bool:
-        """Whether a stored auto payload can be read in place through the arm's struct: each component has the same
-        representation, or is stored as a QVal holding a scalar or pointer."""
-        for stored_f, arm_f in zip(stored_t.value_fields, arm_t.value_fields):
-            stored_c = self.slot_c_type(shape(stored_f.type_val))
-            arm_c = self.slot_c_type(shape(arm_f.type_val))
-            if stored_c == arm_c:
-                if shape(arm_f.type_val).kind in ("fun", "all") and (
-                    closure_fn_ptr_type(stored_f.type_val, self.ctx) != closure_fn_ptr_type(arm_f.type_val, self.ctx)
-                ):
-                    return False
-            elif stored_c != "QVal" or arm_c == "void":
-                return False
-        return True
-
-    def auto_arm_converted(self, auto_t: QAutoType, stored: str, stored_t: QTupleType, arm_t: QTupleType,
-                           tgt: str, param_target: Optional[str] = None) -> str:
-        """The components S[T] of an auto value, converted by descriptor from the stored ones (those whose types
-        mention the auto type's parameter; the others copied)."""
+    def auto_arm_converted(self, auto_t: QAutoType, arm_plan: ir.InspectArm, stored: str, stored_t: QTupleType,
+                           arm_t: QTupleType, tgt: str) -> str:
+        """The components S[T] of an auto value, converted by descriptor from the stored ones as the case's arm says
+        (the type component's own value to the case's type, or to the bound it is viewed at; a component mentioning
+        it from its stored type at the value's type component; the others copied)."""
         arm_struct = tuple_struct_name(arm_t)
         self.types.append(arm_t)
         arm = self.temp(f"{arm_struct} *")
         self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
-        for i, (sig_f, stored_f, arm_f) in enumerate(zip(auto_t.signature, stored_t.value_fields, arm_t.value_fields)):
+        for i, (how, stored_f, arm_f) in enumerate(zip(arm_plan.converted, stored_t.value_fields, arm_t.value_fields)):
             src = f"{stored}->_{i}"
-            if auto_t.symbol_id not in sig_f.type_val._fv:
+            if how is None:
                 self.emit(f"{arm}->_{i} = {src};")
                 continue
             to_desc = self.descriptor(arm_f.type_val)
-            if self.is_auto_param(auto_t, sig_f.type_val):
+            if how == "component":
                 from_desc = f"{tgt}->type_desc"
-                if param_target is not None:
-                    to_desc = param_target
+                if arm_plan.bound is not None:
+                    to_desc = self.descriptor(arm_plan.bound)
             else:
                 saved = dict(self.descriptors)
                 self.descriptors[auto_t.symbol_id] = f"{tgt}->type_desc"
@@ -1490,50 +1443,34 @@ class CPrinter:
                 cond = f"{cond} && quest_is_subtype({match_desc}, {tgt}->type_desc)"
             self.emit(f"{'if' if i == 0 else '} else if'} ({cond}) {{")
             self.indent += 1
-            match_bound = self.bounded_param_in_scope(case.match_type)
             if case.binders:
+                arm_plan = case.arm
                 arm_t = auto_payload_type(auto_t, case.match_type)
-                if match_bound is not None:
-                    if any(f.is_var for f in auto_t.signature):
-                        raise NotImplementedError(
-                            f"C code generation cannot inspect an auto value of type '{auto_t}' at the bounded type "
-                            f"parameter '{case.match_type}': its components are converted to the bound, so the var "
-                            f"components could not be shared with the auto value"
-                        )
-                    arm = self.auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt, self.descriptor(match_bound))
-                elif case.exact:
-                    agree = self.auto_layouts_agree(stored_t, arm_t)
-                    if not agree and any(f.is_var for f in auto_t.signature):
-                        raise NotImplementedError(
-                            f"C code generation cannot inspect an auto value of type '{auto_t}' at type "
-                            f"'{case.match_type}': its components need conversion, so the var components could not be "
-                            f"shared with the auto value"
-                        )
+                if arm_plan.exact:
                     arm_struct = tuple_struct_name(arm_t)
                     self.types.append(arm_t)
                     arm = self.temp(f"{arm_struct} *")
                     self.emit(f"if (quest_layout_equivalent({tgt}->type_desc, {match_desc})) {{")
-                    if agree:
+                    if arm_plan.shared:
                         # The binders share the stored components (and so see updates of var components)
                         self.emit(f"    {arm} = ({arm_struct} *){stored};")
                     else:
-                        p = plan(stored_t, arm_t)
                         self.indent += 1
+                        p = arm_plan.plan
                         self.emit(f"{arm} = {stored if p is None else self.convert(stored, p)};")
                         self.indent -= 1
                     self.emit("} else {")
                     self.indent += 1
-                    if any(f.is_var for f in auto_t.signature):
+                    if arm_plan.layout_error:
                         self.emit(f"quest_layout_conversion_error({tgt}->type_desc, {match_desc});")
-                    converted = self.auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt)
+                    converted = self.auto_arm_converted(auto_t, arm_plan, stored, stored_t, arm_t, tgt)
                     self.emit(f"{arm} = {converted};")
                     self.indent -= 1
                     self.emit("}")
                 else:
-                    arm = self.auto_arm_converted(auto_t, stored, stored_t, arm_t, tgt)
+                    arm = self.auto_arm_converted(auto_t, arm_plan, stored, stored_t, arm_t, tgt)
                 for b in case.binders:
-                    p = plan(arm_t, b.type)
-                    self.assign(b, arm if p is None else self.convert(arm, p))
+                    self.assign(b, arm)
             self.body(case.body)
             self.indent -= 1
         if cases:

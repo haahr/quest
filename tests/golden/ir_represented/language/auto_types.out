@@ -6,30 +6,30 @@ fun printStr(s: String): Ok {
   let %34: Ok = call writer.putString(wOut, "\n")
   return %34
 }
-fun printBool(b.1: Bool): Ok {
+fun printBool(b.2: Bool): Ok {
   join k1(r.4: String) {
     let %35: Ok = call printStr.1(r.4)
     return %35
   } in {
-    if b.1 {
+    if b.2 {
       jump k1("true")
     } else {
       jump k1("false")
     }
   }
 }
-fun truthy(b.2: UniformPair): Bool {
+fun truthy(b.3: UniformPair): Bool {
   join k2(r.5: Bool) {
     return r.5
   } in {
-    inspect b.2 {
-      case Bool (arm: Tuple fst: Bool snd: Bool end): {
+    inspect b.3 {
+      case Bool (arm: Tuple fst: Bool snd: Bool end) converting (component, component): {
         let %36: Bool = tuple_field(arm, 0)
         let %37: Bool = tuple_field(arm, 1)
         let %38: Bool = prim \/(%36, %37)
         jump k2(%38)
       }
-      case Int (arm.1: Tuple fst: Int snd: Int end): {
+      case Int (arm.1: Tuple fst: Int snd: Int end) converting (component, component): {
         let %39: Int = tuple_field(arm.1, 0)
         let %40: Int = tuple_field(arm.1, 1)
         let %41: Int = prim *(%39, %40)
@@ -39,19 +39,19 @@ fun truthy(b.2: UniformPair): Bool {
     }
   }
 }
-fun describe(b.3: UniformPair): String {
+fun describe(b.4: UniformPair): String {
   join k3(r.6: String) {
     return r.6
   } in {
-    inspect b.3 {
-      case Int (arm.2: Tuple fst: Int snd: Int end): {
+    inspect b.4 {
+      case Int (arm.2: Tuple fst: Int snd: Int end) converting (component, component): {
         let %43: Int = tuple_field(arm.2, 0)
         let %44: Int = tuple_field(arm.2, 1)
         let %45: Int = prim +(%43, %44)
         let %46: String = call conv.int(%45)
         jump k3(%46)
       }
-      case String (arm.3: Tuple fst: String snd: String end): {
+      case String (arm.3: Tuple fst: String snd: String end) converting (component, component): {
         let %47: String = tuple_field(arm.3, 0)
         let %48: String = tuple_field(arm.3, 1)
         let %49: String = prim <>(%47, %48)
@@ -63,7 +63,7 @@ fun describe(b.3: UniformPair): String {
     }
   }
 }
-fun safeTruthy(b.4: UniformPair): String {
+fun safeTruthy(b.5: UniformPair): String {
   join k4(r.7: String) {
     return r.7
   } in {
@@ -72,7 +72,7 @@ fun safeTruthy(b.4: UniformPair): String {
       join k5(r.8: String) {
         jump k4(r.8)
       } in {
-        let %51: Bool = call truthy.1(b.4)
+        let %51: Bool = call truthy.1(b.5)
         if %51 {
           jump k5("true")
         } else {
@@ -94,14 +94,14 @@ fun classify(x.4: AnyObject): String {
     return r.9
   } in {
     inspect x.4 {
-      case Car (c: Tuple a: Car end): {
+      case Car (c: Tuple a: Car end) converting (component): {
         let box.2: box(Car) = tuple_field(c, 0) via proxy
         let %53: Car = convert(box.2, slot_unbox)
         let %54: String = record_field(%53, fuel)
         let %55: String = prim <>("car using ", %54)
         jump k6(%55)
       }
-      case Vehicle (v.1: Tuple a: Vehicle end): {
+      case Vehicle (v.1: Tuple a: Vehicle end) converting (component): {
         let box.3: box(Vehicle) = tuple_field(v.1, 0) via proxy
         let %56: Vehicle = convert(box.3, slot_unbox)
         let %57: Int = record_field(%56, speed)
@@ -116,7 +116,7 @@ fun classify(x.4: AnyObject): String {
           jump k6(%61)
         } in {
           inspect x.4 {
-            case Object (o: Tuple a: Object end): {
+            case Object (o: Tuple a: Object end) converting (component): {
               let box.4: box(Object) = tuple_field(o, 0) via proxy
               let %62: Object = convert(box.4, slot_unbox)
               let %63: Int = record_field(%62, age)
@@ -141,7 +141,7 @@ fun showIt(s.2: Showable): String {
     return r.11
   } in {
     inspect s.2 {
-      case Int exact (i: Tuple x: Int show: Fun(_: Int): String end): {
+      case Int exact (i: Tuple x: Int show: Fun(_: Int): String end) converting (component, mentions) if equivalent view: {
         let %66: Fun(_: Int): String = tuple_field(i, 1)
         let %67: Int = tuple_field(i, 0)
         let %68: Int = prim +(%67, 1)
@@ -149,7 +149,7 @@ fun showIt(s.2: Showable): String {
         let %70: String = prim <>("int ", %69)
         jump k8(%70)
       }
-      case String exact (t: Tuple x: String show: Fun(_: String): String end): {
+      case String exact (t: Tuple x: String show: Fun(_: String): String end) converting (component, mentions) if equivalent view: {
         let %71: Fun(_: String): String = tuple_field(t, 1)
         let %72: String = tuple_field(t, 0)
         let %73: String = call %71(%72)
@@ -164,7 +164,7 @@ fun showIt(s.2: Showable): String {
 }
 fun bump(c.1: Counter): Ok {
   inspect c.1 {
-    case Car exact (x.5: Tuple a: Car var count: Int end): {
+    case Car exact (x.5: Tuple a: Car var count: Int end) converting (component, none) if equivalent shared or layout error: {
       let %75: Int = tuple_field(x.5, 1) via original
       let box.5: box(Car) = tuple_field(x.5, 0) via proxy
       let %76: Car = convert(box.5, slot_unbox)
@@ -172,7 +172,7 @@ fun bump(c.1: Counter): Ok {
       let %78: Int = prim +(%75, %77)
       store x.5.#1 := %78 via original
     }
-    case Object exact (x.6: Tuple a: Object var count: Int end): {
+    case Object exact (x.6: Tuple a: Object var count: Int end) converting (component, none) if equivalent shared or layout error: {
       let %79: Int = tuple_field(x.6, 1) via original
       let %80: Int = prim +(%79, 1)
       store x.6.#1 := %80 via original
@@ -278,7 +278,7 @@ main {
         do call printStr.1(r.3)
       } in {
         inspect counter {
-          case Car exact (x.3: Tuple a: Car var count: Int end): {
+          case Car exact (x.3: Tuple a: Car var count: Int end) converting (component, none) if equivalent shared or layout error: {
             let %23: Int = tuple_field(x.3, 1) via original
             let %24: String = call conv.int(%23)
             jump k11(%24)
@@ -290,8 +290,9 @@ main {
       }
     } in {
       inspect pairBox {
-        case Tuple x: Int y: Int end (b: Tuple a: Tuple x: Int end end): {
-          let %25: Tuple x: Int end = tuple_field(b, 0)
+        case Tuple x: Int y: Int end (b: Tuple a: Tuple x: Int y: Int end end) converting (component): {
+          let b.1: Tuple a: Tuple x: Int end end = convert(b, view)
+          let %25: Tuple x: Int end = tuple_field(b.1, 0)
           let %26: Int = tuple_field(%25, 0)
           let %27: String = call conv.int(%26)
           jump k10(%27)
@@ -303,7 +304,7 @@ main {
     }
   } in {
     inspect objectWithSpare {
-      case Vehicle (v: Tuple a: Vehicle spare: Object end): {
+      case Vehicle (v: Tuple a: Vehicle spare: Object end) converting (component, none): {
         let box: box(Vehicle) = tuple_field(v, 0) via proxy
         let %28: Vehicle = convert(box, slot_unbox)
         let %29: Int = record_field(%28, speed)
