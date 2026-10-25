@@ -57,8 +57,9 @@ its fields' types (`x: Int`), which is why selecting from one is fine; selecting
 `Def` (`_synth_select_expr` in `typechecker/aggregates.py`) should substitute them too. Fixing the printing changes
 goldens that show such types (`language/option_payload_components`).
 
-**Done when.** The program above prints `Let T::TYPE = Tuple Let K::TYPE = Int k: K end` (or as `Def`, if that is
-how a tuple type should print its definitions) and `let tk:Int = 2`, and a golden test covers both.
+**Decided.** A tuple type prints its definitions as a tuple value's type does, `Let K::TYPE = Int`, not as `Def`.
+
+**Done when.** The program above prints `Let T::TYPE = Tuple Let K::TYPE = Int k: K end` and `let tk:Int = 2`, and a golden test covers both.
 
 ---
 
@@ -81,6 +82,9 @@ without end; a bound on the search (the `fuel` already passed), or a restriction
 mention the quantified variables, would keep the check terminating. In C, a value of a bounded type parameter is held
 viewed at its bound (`docs/c-representation.md` §5.1), so a function used at a stronger bound needs its arguments
 converted to the weaker bound's view (a closure adaptation thunk) unless the views agree.
+
+**Decided.** Adopt the full contravariant rule, kept terminating by the `fuel` already passed: a search that runs
+out of fuel fails as not a subtype. Compiled code needs the adaptation where the bounds' views differ.
 
 **Done when.** A function whose type parameters have weaker bounds is a subtype as [TIncl Π] says, in both backends,
 the check still terminates on the existing tests and on a known diverging example, and `type-system.md` §3 and §6.9
@@ -145,8 +149,12 @@ exception's name in the enclosing scope. Either the name should be visible only 
 path to the use (a definite-assignment check), or only within the expression that makes it, or a named exception
 should be made where its scope begins rather than where it is written.
 
-**Done when.** The type checker rejects the program above (or the language defines its meaning and both backends
-agree), and an error test covers it.
+**Decided.** A named exception is made where its scope begins, as the IR's `declare` already places it, so every
+exception a scope names exists throughout it; the program above prints `2` in every backend. Making an exception has
+no other effect, so nothing else observes the change.
+
+**Done when.** The program above prints `2` in every backend, a golden test covers it, and the language's
+description of exceptions says where a named exception is made.
 
 ---
 
@@ -253,6 +261,9 @@ structural and not affected.
 from the template's with the holes replaced by the arguments' names (memoized with the instance), or the printer
 (the `QTYPE_KIND_AUTO` case near `printf("auto :%s with"`) could print descriptors structurally. `hole_var` in
 `bootstrap/python/quest/codegen/descriptors.py` names the holes.
+
+**Decided.** `quest_instantiate_descriptor` names each instance, from the template's name with its holes replaced
+by the arguments' names, memoized with the instance; the printer is unchanged.
 
 **Done when.** Compiled code prints the program above as the interpreter does, and a golden test covers it.
 
