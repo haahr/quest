@@ -294,8 +294,11 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                             # The members of a group are elaborated together, then declared together
                             for member, symbol, bound_kind in elaborate_tuple_type_bindings(f, env):
                                 env.current_scope.declare_type(symbol)
+                                # Without a bound, a component is a type (checked), as a tuple value's says
                                 components.append(
-                                    QTupleTypeBinding(name=member.name, type_val=symbol.definition, bound=bound_kind)
+                                    QTupleTypeBinding(
+                                        name=member.name, type_val=symbol.definition, bound=bound_kind or TYPE_KIND
+                                    )
                                 )
 
                         case ast.DefKindBinding(name=name, kind_val=kind_val):

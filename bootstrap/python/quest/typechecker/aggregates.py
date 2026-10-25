@@ -11,6 +11,7 @@ from quest.types import (
     binds_module,
     INT_TYPE,
     OK_TYPE,
+    QAliasType,
     QArrayType,
     QOptionType,
     QRecordField,
@@ -27,6 +28,7 @@ from quest.types import (
     QVariantType,
     TYPE_KIND,
     check_kind,
+    map_aliases,
     is_subtype,
     is_type_equal,
     resolve_record_bound,
@@ -609,6 +611,7 @@ class AggregateMixin:
                     field_type = tup_f.type_val.substitute(subst)
                 else:
                     field_type = tup_f.type_val
+                field_type = self._outside_tuple(field_type, target_type)
 
                 return TypedSelect(
                     target=target_typed,
@@ -622,6 +625,22 @@ class AggregateMixin:
                     f"Cannot select field '{expr.field}' from non-record/tuple type '{target_type}'",
                     offset=expr.offset,
                 )
+
+    def _outside_tuple(self, t: QType, tuple_type: QTupleType) -> QType:
+        """The type t of a field selected from a value of tuple_type, as seen outside the tuple, where the names of
+        the tuple's type definitions mean nothing: with the definitions in their place. (Naming them through the
+        variable the tuple was selected from, as `lists.L`, would print types that outlive the variable's scope.)
+        """
+        definitions = {(c.name, c.type_val) for c in tuple_type.fields if isinstance(c, QTupleTypeBinding)}
+        if not definitions:
+            return t
+
+        def replace(alias: QAliasType) -> Optional[QType]:
+            if (alias.name, alias.target) not in definitions:
+                return None
+            return map_aliases(alias.target, replace)
+
+        return map_aliases(t, replace)
 
     def _are_option_signatures_compatible(
         self, p1: Optional[QType], p2: Optional[QType], env: Environment

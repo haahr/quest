@@ -86,6 +86,7 @@ from quest.types.model import (
     reserved_symbol_index,
     reserved_symbol_use,
     resolve_metas,
+    map_aliases,
     strip_aliases,
     structurally_equal,
     type_mentions_symbol_ids,

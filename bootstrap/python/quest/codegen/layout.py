@@ -424,8 +424,8 @@ def _printed_parts(node: Any) -> list[Any]:
     if isinstance(node, QTupleTypeFormal):
         return [f"{node.name}::", node.bound]
     if isinstance(node, QTupleTypeBinding):
-        bound = ["::", node.bound, " "] if node.bound else []
-        return [f"Let {node.name}", *bound, "= ", node.type_val]
+        bound = ["::", node.bound] if node.bound else []
+        return [f"Let {node.name}", *bound, " = ", node.type_val]
     if isinstance(node, QTupleType):
         return framed("Tuple", node.fields)
     if isinstance(node, QRecordField):

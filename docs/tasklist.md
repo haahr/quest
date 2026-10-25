@@ -33,36 +33,6 @@ an aliased type component, and `interpret` and `run_c_compiled` agree.
 
 ---
 
-## Type definitions in tuple types print oddly, and their names escape
-
-**Problem.** A type definition written in a tuple type (`Def K = Int`, in a tuple type or an option case's payload)
-prints as `Let K= Int`, with no space before `=` and no kind, while the same component of a tuple value's type prints
-as `Let K::TYPE = Int`. And selecting a field whose type is the defined name gives the name as its type, outside the
-tuple where it means nothing: `tt.k` below has type `K`, not `Int` (though `tt.k + 1` typechecks).
-
-**Reproduce.** With `def_in_tuple.quest` containing
-
-```quest
-Let T = Tuple Def K = Int k: K end;
-let tt: T = tuple Let K = Int let k: K = 2 end;
-let tk = tt.k;
-```
-
-`--echo --stop-after interpret` prints `Let T::TYPE = Tuple Let K= Int k: K end` and `let tk:K = 2`.
-
-**Where to start.** `QTupleTypeBinding.__str__` (`bootstrap/python/quest/types/model.py`) leaves out the space when
-the binding has no bound; elaborating a `Def` in a tuple type (`elaborate_tuple_type_bindings` in
-`typechecker/elaborate_types.py`) gives none. A tuple value's type has its definitions already substituted into
-its fields' types (`x: Int`), which is why selecting from one is fine; selecting a field of a tuple type written with
-`Def` (`_synth_select_expr` in `typechecker/aggregates.py`) should substitute them too. Fixing the printing changes
-goldens that show such types (`language/option_payload_components`).
-
-**Decided.** A tuple type prints its definitions as a tuple value's type does, `Let K::TYPE = Int`, not as `Def`.
-
-**Done when.** The program above prints `Let T::TYPE = Tuple Let K::TYPE = Int k: K end` and `let tk:Int = 2`, and a golden test covers both.
-
----
-
 ## Subtyping between `All` types requires equal bounds
 
 **Problem.** `All(X <: K) B <: All(X <: K') B'` holds only when `K` and `K'` are equal (and `B <: B'`), as in Cardelli

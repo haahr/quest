@@ -332,6 +332,10 @@ let origin: p.Point = p.origin;
   - Type components cannot be evaluated as values: `p.Point` in a value expression produces a type error.
   - Type-dependent value members (`x.a`) cannot be selected from anonymous or compound tuple expressions;
     the package must be bound to an immutable variable first.
+  - A manifest type component (`Let K = Int`, or `Def K = Int` in a tuple type, which prints as
+    `Let K::TYPE = Int`) is transparent: a member whose type refers to it is selected with the definition in its
+    place (`tt.k : Int` for `tt: Tuple Def K = Int k: K end`), since the component's name means nothing outside the
+    tuple. Naming it through the variable instead (`tt.K`) would print types that outlive the variable's scope.
 
 ### 4.5. Scope Escape Prevention (Scope Extrusion)
 Abstract path types cannot escape the lexical scope of their root variable:

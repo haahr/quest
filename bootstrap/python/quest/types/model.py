@@ -542,8 +542,8 @@ class QTupleTypeBinding(metaclass=_InternedNode):
         return QTupleTypeBinding(name=self.name, type_val=type_val, bound=bound)
 
     def __str__(self) -> str:
-        bound_str = f"::{self.bound} " if self.bound else ""
-        return f"Let {self.name}{bound_str}= {self.type_val}"
+        bound_str = f"::{self.bound}" if self.bound else ""
+        return f"Let {self.name}{bound_str} = {self.type_val}"
 
 
 QTupleComponent = Union[QTupleField, QTupleTypeFormal, QTupleTypeBinding]
@@ -1364,6 +1364,37 @@ DYNAMIC_TYPE = QAutoType(
 
 # strip_aliases results for canonical nodes, which are immutable: (node, result) by id(node).
 _STRIPPED: dict[int, tuple[Any, Any]] = {}
+
+
+def map_aliases(
+    node: Any, replace: Callable[[QAliasType], Optional[QType]], memo: Optional[dict[int, Any]] = None
+) -> Any:
+    """Rebuilds a type (or kind, or component) with each alias reference replaced by what replace gives for it, or
+    kept if it gives None (strip_aliases replaces them all by their targets)."""
+    if memo is None:
+        memo = {}
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    result = node
+    if isinstance(node, QAliasType):
+        replacement = replace(node)
+        if replacement is not None:
+            result = replacement
+    elif isinstance(node, QTypeMeta):
+        pruned = node.prune()
+        result = node if pruned is node else map_aliases(pruned, replace, memo)
+    elif isinstance(node, tuple):
+        items = tuple(map_aliases(item, replace, memo) for item in node)
+        if any(a is not b for a, b in zip(items, node)):
+            result = items
+    elif isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
+        values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
+        mapped = {k: map_aliases(v, replace, memo) for k, v in values.items()}
+        if any(mapped[k] is not values[k] for k in values):
+            result = QTupleType(mapped["fields"]) if isinstance(node, QTupleType) else type(node)(**mapped)
+    memo[key] = result
+    return result
 
 
 def strip_aliases(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
