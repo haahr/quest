@@ -18,7 +18,7 @@ latter: a preparatory phase, then three tracks that can proceed in parallel.
 - **Track C.** One graph of units: the type checker, the compilers, the build engine, the driver, the interpreter,
   and the REPL all resolve and load through it.
 
-**Left undone:**
+**Left undone** (planned in [reorganization-followups.md](reorganization-followups.md)):
 
 - Types as written are still read below lowering: represent's `written_structure` and function types' quantifiers,
   echo's package text and alias names, `build_record_type_from_scope` for imported modules' records, and
