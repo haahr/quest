@@ -707,7 +707,6 @@ class AggregateMixin:
                 tag=None,
                 type_val=opt_type,
                 payload=payload_typed,
-                ordinal=0,
                 ordinal_expr=ordinal_typed,
                 offset=expr.offset,
             )
@@ -731,12 +730,10 @@ class AggregateMixin:
             if expr.payload is not None:
                 raise TypeError(f"Option variant '{expr.tag}' does not accept a payload", offset=expr.offset)
             payload_typed = None
-        ordinal = [f.name for f in opt_lazy.options].index(expr.tag)
         return TypedOption(
             tag=expr.tag,
             type_val=opt_type,
             payload=payload_typed,
-            ordinal=ordinal,
             ordinal_expr=None,
             offset=expr.offset,
         )

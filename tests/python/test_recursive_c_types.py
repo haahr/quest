@@ -141,7 +141,7 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
 
     def test_periods_and_unfoldings_share_a_representation(self) -> None:
         one = _int_list(9401, 1)
-        self.assertEqual(type_tag(one), "Rec0_QOption_nil_cons_QTuple_Int_Self0_end")
+        self.assertEqual(type_tag(one), "Rec0_QOption_cons_QTuple_Int_Self0_end_nil")
         for period in (2, 3):
             self.assert_same_representation(one, _int_list(9402, period))
         self.assert_same_representation(one, _int_list(9403, 2).unfold_lazily())

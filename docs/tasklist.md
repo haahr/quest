@@ -27,35 +27,3 @@ code holds bounded type parameters' values at their own view, so layouts agree a
 
 **Done when.** The five tests above run (the error tests becoming golden tests) with the same results interpreted
 and compiled.
-
----
-
-## Options whose cases are listed in different orders
-
-**Problem.** Option types are compared by their cases' names, unordered, so `Option a b end` and `Option b a end` are
-equal types, but C lays them out (and numbers their tags) by the order written, and converts nothing between them: C
-generation declares a variable of the second without its struct, which clang rejects. Relatedly, `ordinal` of an
-option upcast to a supertype that lists its cases in another order gives the case's index in the original type
-interpreted and in the supertype compiled (C did the same when it copied such options; with proxies it maps the tag).
-Found while making views of options proxies (A2 of `docs/reorganization.md`).
-
-**Reproduce.**
-
-```quest
-Let O1 = Option a b end;
-Let O2 = Option b a end;
-let o: O1 = option b of O1 end;
-let p: O2 = o;
-ordinal(p)
-```
-
-prints `1 : Int` interpreted and fails to compile with `--stop-after run_c_compiled` (`unknown type name
-'QOption_b_a'`). With `Let O2 = Option b c a end` it compiles, and prints `0 : Int`.
-
-**Where to start.** Decide what `ordinal` means at a type whose case order differs from the value's
-([type-system.md](type-system.md) on options): the index at the static type seems the natural reading. Then either
-make option types with different case orders unequal, or have shapes (`ir/shapes.py`, canonical forms in
-`types/canonical.py`) order an option's cases canonically, with `ordinal` and option construction from an ordinal
-mapping indices through the static type.
-
-**Done when.** Both programs compile and print the same in both phases, and golden tests cover them.

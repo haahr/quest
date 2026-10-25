@@ -57,6 +57,22 @@ struct names and tag numbers change, so `ABI_VERSION` is bumped. Done when both 
 print the same in every backend, golden tests cover them and the extraction and construction cases, and
 [type-system.md](type-system.md) §6.6 and §6.8 say which type's declaration order an ordinal counts in.
 
+**Done,** under `ABI_VERSION` 34.
+
+- **Variants too.** Variant types are also compared by case name, and C miscompiled a variant upcast to an equal type
+  listing its cases in another order: a `case` on it took the wrong arm, silently (`variant b` of `Variant a: Int b:
+  Bool end` viewed as `Variant b: Bool a: Int end` matched `a`). The fix covers both.
+- **Shapes and canonical forms order cases by name** (`cases_by_name` in `ir/shapes.py`, and `_canonical_node` in
+  `types/canonical.py` for recursive types), so equal types share one shape, struct, descriptor, and tag numbering.
+- **Ordinals count in the static type as written.** Lowering records its cases on `ordinal` and on construction by
+  ordinal (`cases`, from `option_case_names` in `types/canonical.py`), and an option payload's ordinal on `payload`;
+  the C printer maps tags through a constant table where the orders differ, and both interpreters count in the
+  recorded order (option values no longer carry an ordinal). The verifier checks the recorded cases.
+- **Serialization** lists cases by name in both writers, and the C reader sorts the cases of a type it reads, so
+  files listing them in declaration order (all files written before) still read (`stdlib/dynamic_case_order`).
+- Tests: `language/option_case_order` (the task's programs, variants, construction, extraction, and a type
+  parameter bounded by an option type). IR dumps show the recorded cases, and descriptors their cases by name.
+
 **1c. Check for a proxy once per value.** A read of a tuple component whose type may be proxied checks the tuple for a
 proxy each time (`tuple_access` in `ir/slots.py`), about 1.6x in a microbenchmark of such reads (no benchmark is
 affected). The slots pass can instead resolve a value that may be a proxy once, where it is bound, into either its

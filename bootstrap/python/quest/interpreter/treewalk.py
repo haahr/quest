@@ -57,6 +57,7 @@ from quest.values.model import (
     QVariant,
     qvalue_is,
 )
+from quest.types.canonical import option_case_names
 from quest.types import (
     QOptionType,
     QTupleType,
@@ -340,17 +341,12 @@ class RuntimeEnvironment:
             "extent",
             QBuiltinFun("extent", lambda a: QInt(len(a.elements))),
         )
+        # ordinal counts in its operand's static type, so its applications are evaluated as such (TypedApp)
         env.define(
             "ordinal",
             QBuiltinFun(
                 "ordinal",
-                lambda o: (
-                    QInt(o.ordinal)
-                    if isinstance(o, QOption)
-                    else (_ for _ in ()).throw(
-                        QuestRuntimeError(f"ordinal expects Option, got {o.type_name}")
-                    )
-                ),
+                lambda o: (_ for _ in ()).throw(QuestRuntimeError("ordinal needs its operand's static type")),
             ),
         )
 
@@ -486,6 +482,11 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             arg_vals = [eval_expr(arg, env) for arg in args]
 
             match callee_val:
+                case QBuiltinFun(name="ordinal"):
+                    o = arg_vals[0]
+                    if not isinstance(o, QOption):
+                        raise QuestRuntimeError(f"ordinal expects Option, got {o.type_name}", offset=offset)
+                    return QInt(option_case_names(args[0].type_val).index(o.tag))
                 case QBuiltinFun(fn=fn):
                     return fn(*arg_vals)
                 case QClosure():
@@ -743,9 +744,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         case TypedAuto(witness_type=witness_type, payload=payload):
             return QAutoVal(eval_expr(payload, env), env.resolve_type(witness_type))
 
-        case TypedOption(
-            tag=tag, payload=payload, ordinal=ordinal, ordinal_expr=ordinal_expr, type_val=type_val, offset=offset
-        ):
+        case TypedOption(tag=tag, payload=payload, ordinal_expr=ordinal_expr, type_val=type_val, offset=offset):
             p_val = eval_expr(payload, env) if payload is not None else None
             if ordinal_expr is not None:
                 ord_val = eval_expr(ordinal_expr, env)
@@ -764,8 +763,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                         offset=offset,
                     )
                 branch_tag = opt_type.options[n].name
-                return QOption(tag=branch_tag, payload=p_val, ordinal=n)
-            return QOption(tag=tag, payload=p_val, ordinal=ordinal)
+                return QOption(tag=branch_tag, payload=p_val)
+            return QOption(tag=tag, payload=p_val)
 
         case TypedVariantCheck(target=target, tag=tag, offset=offset):
             target_val = eval_expr(target, env)
@@ -789,7 +788,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     offset=offset,
                 )
             if isinstance(target_val, QOption):
-                ord_val = QInt(target_val.ordinal)
+                ord_val = QInt(option_case_names(target.type_val).index(tag))
                 if target_val.payload is None:
                     return QTuple(elements=(ord_val,), labels=(None,))
                 if isinstance(target_val.payload, QTuple):

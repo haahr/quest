@@ -1,0 +1,20 @@
+(* Standard library: dynamic.intern accepts variant and option cases listed in any order (docs/dynamic.md §2.2),
+   as files written before cases were listed by name list them, and reads values of them by name *)
+(* @stdin:
+{"quest":1,"types":[{"option":{"nil":null,"cons":1}},{"tuple":[["head","Int"],["tail",0]]}],"type":0,"value":{"cons":[1,{"cons":[2,"nil"]}]}}
+{"quest":1,"types":[{"variant":{"success":"Ok","error":"Int"}}],"type":0,"value":{"error":404}}
+*)
+import dynamic: Dynamic;
+import reader: Reader;
+import writer: Writer;
+import conv: Conv;
+let line(s: String): Ok = begin writer.putString(writer.output s); writer.putString(writer.output "\n") end;
+
+Let Rec IntList = Option nil cons with head: Int tail: IntList end end;
+let rec sum(l: IntList): Int = case l when nil then 0 when cons with c then c.head + sum(c.tail) end;
+let l = dynamic.be(:IntList dynamic.intern(reader.input));
+line(conv.int(sum(l)) <> " " <> conv.int(ordinal(l)));
+
+Let Result = Variant success: Ok error: Int end;
+let r = dynamic.be(:Result dynamic.intern(reader.input));
+line(case r when success then "success" when error with n then conv.int(n) end);

@@ -233,10 +233,24 @@ def _shape(t: QType) -> Shape:
             return s
         case QTypeApp() if (reduced := normalize_type(t)) is not t:
             s = _shape(reduced)
+        case QVariantType() | QOptionType() if (ordered := cases_by_name(t)) is not t:
+            # Equal types whose cases are listed in different orders have one shape, its cases ordered by name
+            s = _shape(ordered)
         case _:
             s = _build(t)
     _SHAPES[id(t)] = (t, s)
     return s
+
+
+def cases_by_name(t: QType) -> QType:
+    """A variant or option type with its cases ordered by name: t itself if they are already."""
+    if isinstance(t, QVariantType):
+        variants = tuple(sorted(t.variants, key=lambda v: v.name))
+        return t if all(a is b for a, b in zip(variants, t.variants)) else QVariantType(variants)
+    if isinstance(t, QOptionType):
+        options = tuple(sorted(t.options, key=lambda o: o.name))
+        return t if all(a is b for a, b in zip(options, t.options)) else QOptionType(options)
+    return t
 
 
 def _kind_bound(kind: QKind) -> Optional[Shape]:

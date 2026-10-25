@@ -99,8 +99,8 @@ def _option_case_tag(os: Shape, o: ir.MakeOption) -> Optional[str]:
     constant one's, else the first case's (whose components the union overlays on the others')."""
     if o.ordinal is None:
         return o.tag
-    n = o.ordinal.value if isinstance(o.ordinal, ir.Const) else 0
-    return os.cases[n].name if 0 <= n < len(os.cases) else os.cases[0].name
+    n = o.ordinal.value if isinstance(o.ordinal, ir.Const) else -1
+    return o.cases[n] if 0 <= n < len(o.cases) else os.cases[0].name
 
 
 class _Slots:

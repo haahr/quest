@@ -97,6 +97,11 @@ def _type_parameter_count(t: QType) -> int:
     return count
 
 
+def _index_table(entries: list[int]) -> str:
+    """A C array of indices, to be indexed by a tag or an ordinal."""
+    return f"((const int64_t[]){{ {', '.join(f'{e}LL' for e in entries)} }})"
+
+
 @dataclasses.dataclass
 class _FreshBox:
     """A record or variant (an unboxed value) to be stored into a slot of an aggregate being made, in a box sharing
@@ -417,8 +422,11 @@ class CPrinter:
                 return self.atom(o)
             case ir.Prim(op=op, args=args, offset=offset, access=access):
                 return self.prim(op, args, offset, access, o.descriptor)
-            case ir.Ordinal(value=v, access=access):
-                return self.option_tag(self.atom(v), access)
+            case ir.Ordinal(value=v, cases=cases, access=access):
+                # The tag numbers the shape's cases, ordered by name; the ordinal counts in the static type's order
+                tag = self.option_tag(self.atom(v), access)
+                names = tuple(c.name for c in self.tag_shape(self.atom_type(v)).cases)
+                return tag if names == cases else f"{_index_table([cases.index(n) for n in names])}[{tag}]"
             case ir.Call():
                 return self.call(o)
             case ir.ModuleMember(module=module, member=member):
@@ -830,12 +838,15 @@ class CPrinter:
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
         if ordinal is not None:
-            self.emit(f"{tmp}->tag = quest_check_option_ordinal_at({self.atom(ordinal)}, {len(os.cases)}LL, "
-                      f"{self.site(offset)});")
+            # The ordinal counts in the type's cases as written; the tag numbers the shape's, ordered by name
+            checked = f"quest_check_option_ordinal_at({self.atom(ordinal)}, {len(os.cases)}LL, {self.site(offset)})"
+            tags = [self.tag_index(os, name) for name in o.cases]
+            mapped = checked if tags == list(range(len(tags))) else f"{_index_table(tags)}[{checked}]"
+            self.emit(f"{tmp}->tag = {mapped};")
             # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
             # does, whose components the union overlays on the other cases' (docs/c-representation.md §5)
-            n = ordinal.value if isinstance(ordinal, ir.Const) else 0
-            tag = os.cases[n].name if 0 <= n < len(os.cases) else os.cases[0].name
+            n = ordinal.value if isinstance(ordinal, ir.Const) else -1
+            tag = o.cases[n] if 0 <= n < len(o.cases) else os.cases[0].name
         else:
             self.emit(f"{tmp}->tag = {self.tag_index(os, tag)}LL;")
         if payload is not None and tag is not None:
@@ -863,8 +874,8 @@ class CPrinter:
         return src
 
     def option_case_tuple(self, opt: str, os: Shape, tag: str, tuple_t: QType, offset: int, tag_access: str,
-                          access: tuple[str, ...]) -> str:
-        """A new tuple of an option's case components (after `offset` components of tuple_t, such as the ordinal),
+                          access: tuple[str, ...], ordinal: int = 0) -> str:
+        """A new tuple of an option's case components (after `offset` components of tuple_t: the case's ordinal),
         read as access says."""
         ts = shape(tuple_t)
         struct = shape_tag(ts)
@@ -874,7 +885,7 @@ class CPrinter:
         case = os.case(tag)
         pt = case.shape if case is not None else None
         if offset:
-            self.emit(f"{tmp}->_0 = {self.option_tag(opt, tag_access)};")
+            self.emit(f"{tmp}->_0 = {ordinal}LL;")
         if pt is not None and pt.kind == "tuple":
             for i, _ in enumerate(pt.components):
                 if i + offset < len(ts.components):
@@ -896,7 +907,7 @@ class CPrinter:
             case_s = case.shape if case is not None and case.shape is not None else shape(t)
             return shape_qval_unwrap(f"{self.atom(v)}.payload", case_s)
         self.emit(f"if ({self.option_tag(self.atom(v), o.access)} != {index}LL) quest_raise_variant_error_at({site});")
-        return self.option_case_tuple(self.atom(v), ts, tag, t, 1, o.access, o.components)
+        return self.option_case_tuple(self.atom(v), ts, tag, t, 1, o.access, o.components, o.ordinal or 0)
 
     def array_get(self, arr: str, idx: str, elem: Shape) -> str:
         """An element of an array (its QVal form) as a value of its type (a record or variant read from its box)."""

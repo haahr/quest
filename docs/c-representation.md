@@ -440,7 +440,11 @@ runtime, and the `!` extraction operator, which unpacks the branch signature:
 ```
 
 To support zero or multiple components without auxiliary heap allocations, each concrete `Option` type emits a C
-`struct` containing the 0-based `tag` followed by an **inline `union` of branch structs**:
+`struct` containing the 0-based `tag` followed by an **inline `union` of branch structs**. Tags number the cases
+in the order of their names (shapes order them so, [ir.md](ir.md) §4.1), since types listing the same cases in
+different orders are equal and share one struct; where a static type lists its cases in another order, `ordinal(o)`
+maps the tag to the case's index in it through a constant table, and `option ordinal(n) of T end` maps back. The
+example below lists its cases in name order:
 ```c
 /* Generated for Option type T */
 typedef enum {
@@ -450,7 +454,7 @@ typedef enum {
 } QT_T_Tag;
 
 typedef struct QT_T {
-    int64_t tag; /* 0-based ordinal matching Cardelli's ordinal(o) */
+    int64_t tag; /* 0-based index of the case among the cases ordered by name */
     union {
         /* branch 'a' has 0 components */
         struct {
@@ -498,7 +502,7 @@ payload is always **exactly one 64-bit word** (`QVal`). Variants are first-class
 the 16-byte structure `QVariantVal`:
 ```c
 typedef struct QVariantVal {
-    int64_t tag;        /* Local dense tag index (0, 1, ...) */
+    int64_t tag;        /* Local dense tag index (0, 1, ...), cases ordered by name */
     QVal    payload;    /* Exactly one 64-bit word */
 } QVariantVal;
 
@@ -1319,7 +1323,8 @@ Quest supports graph serialization and deserialization of dynamically typed valu
 `dynamic.intern(r)`, in the format of [dynamic.md](dynamic.md) §2:
 - **Format Parity:** The output is byte-for-byte that of the interpreter (`dynamic_json.py`): the type table is
   canonical (structurally equivalent nodes merged by partition refinement, the rest numbered depth-first from the
-  roots), record fields are written by name, cases in declaration order, and reals as Python's `repr` writes them.
+  roots), record fields and cases are written by name (the reader accepts cases in any order, numbering them by name),
+  and reals as Python's `repr` writes them.
 - **Type Tables from Descriptors:** The writer walks the descriptors of the value's type and of every nested dynamic
   value's type; recursive types, whose descriptors are cyclic, become cycles in the table.
 - **Cycle & Multi-Reference Detection:** A pre-scan traversal with an address hash table finds records, arrays, and

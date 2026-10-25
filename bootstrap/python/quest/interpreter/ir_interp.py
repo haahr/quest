@@ -72,7 +72,6 @@ from quest.ir import nodes as ir
 from quest.types import (
     QAllType,
     QFunType,
-    QOptionType,
     QTupleField,
     QTupleType,
     QTupleTypeBinding,
@@ -416,23 +415,23 @@ class Interpreter:
                 return _deref(rec.get(name))
             case ir.MakeVariant(tag=tag, payload=payload):
                 return QVariant(tag=tag, payload=self.atom(payload, frame) if payload is not None else None)
-            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset):
+            case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset, cases=cases):
                 try:
-                    return self.make_option(tag, payload, ordinal, result, frame)
+                    return self.make_option(tag, payload, ordinal, cases, frame)
                 except QuestCompilerError as error:
                     raise self.located(error, offset)
             case ir.IsTag(value=v, tag=tag):
                 return QBool(self.atom(v, frame).tag == tag)
-            case ir.Payload(value=v, tag=tag, offset=offset):
+            case ir.Payload(value=v, tag=tag, offset=offset, ordinal=ordinal):
                 try:
-                    return _payload(self.atom(v, frame), tag)
+                    return _payload(self.atom(v, frame), tag, ordinal)
                 except QuestCompilerError as error:
                     raise self.located(error, offset)
-            case ir.Ordinal(value=v):
+            case ir.Ordinal(value=v, cases=cases):
                 o_val = self.atom(v, frame)
                 if not isinstance(o_val, QOption):
                     raise QuestRuntimeError(f"ordinal expects Option, got {o_val.type_name}")
-                return QInt(o_val.ordinal)
+                return QInt(cases.index(o_val.tag))
             case ir.MakeArray(args=args):
                 return QArray(elements=self.atoms(args, frame))
             case ir.ArrayRep(count=count, init=init, offset=offset):
@@ -543,18 +542,14 @@ class Interpreter:
                 elements.append(next(values_iter))
         return QTuple(elements=tuple(elements), labels=tuple(f.name for f in t.fields))
 
-    def make_option(self, tag: Optional[str], payload, ordinal, result: ir.Var, frame: _Frame) -> QOption:
+    def make_option(self, tag: Optional[str], payload, ordinal, cases: tuple[str, ...], frame: _Frame) -> QOption:
         p = self.atom(payload, frame) if payload is not None else None
-        t = exposed_type(frame.resolve(result.type))
-        if not isinstance(t, QOptionType):
-            raise IRInterpreterError(f"option of type {result.type}")
         if ordinal is not None:
             n = self.atom(ordinal, frame).value
-            if n < 0 or n >= len(t.options):
-                raise QuestRuntimeError(f"Option ordinal {n} out of bounds (0 <= ordinal < {len(t.options)})")
-            return QOption(tag=t.options[n].name, payload=p, ordinal=n)
-        n = next(i for i, case in enumerate(t.options) if case.name == tag)
-        return QOption(tag=tag, payload=p, ordinal=n)
+            if n < 0 or n >= len(cases):
+                raise QuestRuntimeError(f"Option ordinal {n} out of bounds (0 <= ordinal < {len(cases)})")
+            return QOption(tag=cases[n], payload=p)
+        return QOption(tag=tag, payload=p)
 
     def address(self, o: ir.Addr, frame: _Frame) -> QValue:
         if o.var is not None:
@@ -739,13 +734,15 @@ def _element_index(tup: QTuple, index: int) -> int:
     raise IRInterpreterError(f"tuple has no value component {index}")
 
 
-def _payload(v: QValue, tag: str) -> QValue:
-    """A variant's payload, or an option's components (its ordinal first) as a tuple, as the source interpreter's
-    `v!tag` computes them."""
+def _payload(v: QValue, tag: str, ordinal_index: Optional[int]) -> QValue:
+    """A variant's payload, or an option's components (its ordinal in its static type first) as a tuple, as the
+    source interpreter's `v!tag` computes them."""
     if v.tag != tag:
         raise QuestException(VARIANT_ERROR_EXC)
     if isinstance(v, QOption):
-        ordinal = QInt(v.ordinal)
+        if ordinal_index is None:
+            raise IRInterpreterError(f"the payload of option case {tag} without its ordinal")
+        ordinal = QInt(ordinal_index)
         if v.payload is None:
             return QTuple(elements=(ordinal,), labels=(None,))
         if isinstance(v.payload, QTuple):

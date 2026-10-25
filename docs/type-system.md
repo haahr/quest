@@ -561,8 +561,9 @@ Quest supports three parameter passing modes in signatures:
 Monadic operators are typed with high precedence:
 - `not e`: Requires $e \Leftarrow \text{Bool}$, synthesizes $\text{Bool}$.
 - `extent e`: Requires $e \Leftarrow \text{Array}(T)$, synthesizes $\text{Int}$.
-- `ordinal e`: Requires $e \Leftarrow \text{Option} \dots \text{end}$, synthesizes $\text{Int}$ representing the
-  zero-based declaration index of the injected option tag.
+- `ordinal e`: Requires $e \Leftarrow \text{Option} \dots \text{end}$, synthesizes $\text{Int}$: the zero-based index
+  of the option's case in the static type of `e` as written (for a type parameter bounded by an option type, in its
+  bound), not in the type the option was made at (§6.8).
 
 ### 6.7. Array Typing and Explicit Element Types
 Array constructors synthesize `QArrayType`:
@@ -579,6 +580,11 @@ Option types provide ordered sum types with ordinal reflection and extraction (C
   `Tuple :Int <fields> end`, where `:Int` is the anonymous ordinal component followed by the components of the
   branch's payload signature (e.g. `bOption!b` produces `Tuple :Int x:Bool end`). In contrast, variant extraction
   (`v!tag`) synthesizes the bare payload type directly.
+- **Case Order:** option (and variant) types are compared by their cases' names, unordered, so `Option a b end`
+  and `Option b a end` are equal. An ordinal therefore counts in the type where it occurs: `ordinal e` in the static
+  type of `e`, the ordinal component of `opt!tag` in the static type of `opt`, and construction by ordinal in
+  `OptionType`. After `let p: Option b a end = option b of Option a b end end`, `ordinal(p)` is 0
+  (`language/option_case_order`).
 - **Option Construction by Ordinal:** `option ordinal(e) of OptionType [with Binding] end`:
   - Checks $e \Leftarrow \text{Int}$.
   - Requires that all branches of `OptionType` share identical signatures (component names and types). Mismatched

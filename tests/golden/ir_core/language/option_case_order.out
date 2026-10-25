@@ -1,0 +1,54 @@
+main {
+  let o: O1 = option(b)
+  let p: O2 = o
+  let p3: O3 = o
+  let %1: Int = ordinal(o) in (a b)
+  let %2: Int = ordinal(p) in (b a)
+  let %3: Int = ordinal(p3) in (b c a)
+  let ordinals: Tuple Int Int Int end = tuple(%1, %2, %3)
+  let v: V1 = variant(b, true)
+  let w: V2 = v
+  join k1(viaW: Int) {
+    let back: V1 = w
+    join k2(viaBack: Int) {
+      let q: P2 = option(#2 in (c a b))
+      let r: P1 = q
+      let k: Int = 1
+      let s: P2 = option(#k in (c a b))
+      let %4: Int = ordinal(q) in (c a b)
+      let %5: Int = ordinal(r) in (a b c)
+      let %6: Int = ordinal(s) in (c a b)
+      let made: Tuple Int Int Int end = tuple(%4, %5, %6)
+      let fromQ: Tuple Int end = payload(q, b) #2
+      let fromR: Tuple Int end = payload(r, b) #1
+      funs {
+        fun ord [A::<: Option b a end](x: A): Int {
+          let %7: Int = ordinal(x) in (b a)
+          return %7
+        }
+      }
+      let %8: Int = call ord [O1](o)
+      let %9: Int = call ord [O2](p)
+      let generic: Tuple Int Int end = tuple(%8, %9)
+    } in {
+      switch tag(back) {
+        case a (x.1: Int): {
+          jump k2(x.1)
+        }
+        case b (y: Bool): {
+          jump k2(3)
+        }
+      }
+    }
+  } in {
+    switch tag(w) {
+      case a (x.2: Int): {
+        jump k1(x.2)
+      }
+      case b (y.1: Bool): {
+        jump k1(2)
+      }
+    }
+  }
+}
+

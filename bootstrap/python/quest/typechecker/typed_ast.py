@@ -520,7 +520,6 @@ class TypedOption(TypedExpr):
     tag: Optional[str]
     type_val: QOptionType
     payload: Optional[TypedExpr] = None
-    ordinal: int = 0
     ordinal_expr: Optional[TypedExpr] = None
 
     def dump_header(self) -> str:

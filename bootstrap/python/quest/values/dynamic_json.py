@@ -273,10 +273,11 @@ class _TypeGraph:
             labels = tuple(_var_label(f.name or "", f.is_var) for f in components)
             return ("tuple", labels), tuple(self.ref(f.type_val) for f in components)
         if isinstance(s, (QVariantType, QOptionType)):
+            # Cases are listed by name, as compiled code numbers them (docs/dynamic.md §2.2)
             if isinstance(s, QVariantType):
-                cases = [(_var_label(v.name, v.is_var), v.type_val) for v in s.variants]
+                cases = [(_var_label(v.name, v.is_var), v.type_val) for v in sorted(s.variants, key=lambda v: v.name)]
             else:
-                cases = [(o.name, o.payload_type) for o in s.options]
+                cases = [(o.name, o.payload_type) for o in sorted(s.options, key=lambda o: o.name)]
             shape = ("variant" if isinstance(s, QVariantType) else "option",
                      tuple(label for label, _ in cases), tuple(p is not None for _, p in cases))
             return shape, tuple(self.ref(p) for _, p in cases if p is not None)

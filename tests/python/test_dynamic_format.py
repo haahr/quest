@@ -32,7 +32,7 @@ from quest.values.model import (
 from quest.types import is_type_equal
 
 INT_LIST = "Rec(L :: TYPE) Option nil cons with head: Int tail: L end end"
-INT_LIST_TABLE = [{"option": {"nil": None, "cons": 1}}, {"tuple": [["head", "Int"], ["tail", 0]]}]
+INT_LIST_TABLE = [{"option": {"cons": 1, "nil": None}}, {"tuple": [["head", "Int"], ["tail", 0]]}]
 
 
 def _dynamic(value, type_str):
@@ -238,7 +238,7 @@ class TestDynamicFormat(unittest.TestCase):
         extern_fn(QWriter(stream=s_var_out, is_file=False), d_var)
         self.assertEqual(
             s_var_out.getvalue(),
-            '{"quest":1,"types":[{"variant":{"red":"Int","green":"Ok"}}],"type":0,"value":{"red":255}}',
+            '{"quest":1,"types":[{"variant":{"green":"Ok","red":"Int"}}],"type":0,"value":{"red":255}}',
         )
         d_var_in = intern_fn(QReader(stream=io.StringIO(s_var_out.getvalue()), is_file=False))
         var_in = d_var_in.value.elements[0]

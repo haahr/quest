@@ -350,11 +350,13 @@ class MakeVariant:
 @dataclass(eq=False)
 class MakeOption:
     """An option of the given case, by tag or, when `ordinal` is an atom, by computed ordinal, with its payload (a
-    tuple of the case's components), if it has one."""
+    tuple of the case's components), if it has one. An ordinal counts in `cases`, the names of the cases of the
+    option's type as written (types.canonical.option_case_names), not its shape's order."""
     tag: Optional[str]
     payload: Optional[Atom] = None
     ordinal: Optional[Atom] = None
     offset: Optional[int] = None
+    cases: tuple[str, ...] = ()
     # How the components of a tuple payload are read (DIRECT, ORIGINAL, PROXY); a payload that is not a tuple is in
     # its slot form
     access: tuple[str, ...] = ()
@@ -372,18 +374,22 @@ class IsTag:
 @dataclass(eq=False)
 class Payload:
     """A variant's payload, or an option's payload as a tuple, for the case (`v!tag`, raising if it is another): an
-    option's tag is read as `access` says, and its components as `components` do."""
+    option's tag is read as `access` says, and its components as `components` do. The tuple of an option's payload
+    starts with `ordinal`, the case's index in the option's static type as written."""
     value: Atom
     tag: str
     offset: Optional[int] = None
     access: str = DIRECT
     components: tuple[str, ...] = ()
+    ordinal: Optional[int] = None
 
 
 @dataclass(eq=False)
 class Ordinal:
-    """An option's ordinal, read as `access` says."""
+    """An option's ordinal: its case's index in `cases`, the names of the cases of its static type as written
+    (types.canonical.option_case_names), not its shape's order. The tag is read as `access` says."""
     value: Atom
+    cases: tuple[str, ...] = ()
     access: str = DIRECT
 
 

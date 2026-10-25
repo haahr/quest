@@ -161,6 +161,19 @@ def resolve_type_bound(t: QType) -> QType:
     return curr
 
 
+def option_case_names(t: QType) -> tuple[str, ...]:
+    """The names of the cases of an option type as written, in order (for a type parameter bounded by one, its
+    bound's): the order an option's ordinal counts in at t (docs/type-system.md §6.6), whatever the order of the
+    type its value was made at, or of t's shape (ir/shapes.py, which orders cases by name)."""
+    curr = normalize_type(t)
+    while not isinstance(curr, QOptionType):
+        exposed = normalize_type(resolve_type_bound(curr))
+        if exposed is curr:
+            raise ValueError(f"{t} is not an option type")
+        curr = exposed
+    return tuple(o.name for o in curr.options)
+
+
 def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], QType]:
     """The universal quantifiers wrapping a function type (a recursive one, through its unfolding), and the type they
     quantify, as written: their symbols are those the type's own parts refer to, where a shape's are those of its
@@ -300,12 +313,16 @@ def _canonical_node(s: Any, bound: Any) -> Optional[_NodeInfo]:
         fields = sorted(s.fields, key=lambda f: f.name)
         return _NodeInfo(("record", s.provenance, tuple((f.name, f.is_var) for f in fields)),
                          [f.type_val for f in fields])
+    # Variants and options are compared by their cases' names, unordered, so their canonical forms order cases by
+    # name, as records' fields are ordered: equal types then have one layout and one numbering of tags
     if isinstance(s, QVariantType):
-        labels = tuple((v.name, v.is_var, v.type_val is not None) for v in s.variants)
-        return _NodeInfo(("variant", labels), [v.type_val for v in s.variants if v.type_val is not None])
+        variants = sorted(s.variants, key=lambda v: v.name)
+        labels = tuple((v.name, v.is_var, v.type_val is not None) for v in variants)
+        return _NodeInfo(("variant", labels), [v.type_val for v in variants if v.type_val is not None])
     if isinstance(s, QOptionType):
-        labels = tuple((o.name, o.payload_type is not None) for o in s.options)
-        return _NodeInfo(("option", labels), [o.payload_type for o in s.options if o.payload_type is not None])
+        options = sorted(s.options, key=lambda o: o.name)
+        labels = tuple((o.name, o.payload_type is not None) for o in options)
+        return _NodeInfo(("option", labels), [o.payload_type for o in options if o.payload_type is not None])
     if isinstance(s, QArrayType):
         return _NodeInfo(("array",), [s.element_type])
     if isinstance(s, QVarType):

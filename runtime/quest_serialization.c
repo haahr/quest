@@ -1501,13 +1501,21 @@ static void quest_fill_variant_desc(const QTypeTable *t, QTypeDescriptor *desc, 
         cases[i].is_var = is_var;
         QJsonValue *ref = body->u.o.entries[i].val;
         cases[i].payload_type = ref->kind == QJSON_NULL ? NULL : quest_table_ref(t, ref);
-        cases[i].tag_index = (int64_t)i;
         /* An option case's components are a tuple type, stored in place in the option value */
         if (desc->kind == QTYPE_KIND_OPTION && cases[i].payload_type != NULL &&
             cases[i].payload_type->kind != QTYPE_KIND_TUPLE) {
             quest_raise_dynamic_error();
         }
     }
+    /* Compiled code numbers cases in the order of their names, whatever order a type lists them in, so the cases
+       are sorted (by insertion: there are few) and numbered as compiled code numbers them */
+    for (size_t i = 1; i < n; ++i) {
+        QVariantCaseDescriptor c = cases[i];
+        size_t j = i;
+        for (; j > 0 && strcmp(cases[j - 1].name, c.name) > 0; --j) cases[j] = cases[j - 1];
+        cases[j] = c;
+    }
+    for (size_t i = 0; i < n; ++i) cases[i].tag_index = (int64_t)i;
     meta->case_count = n;
     desc->size = desc->kind == QTYPE_KIND_OPTION ? sizeof(int64_t) : sizeof(QVariantVal);
     desc->extra = meta;

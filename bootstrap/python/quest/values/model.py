@@ -468,17 +468,16 @@ class QVariant(QValue):
 
 
 class QOption(QValue):
-    """Ordered tagged option value with optional payload."""
+    """Ordered tagged option value with optional payload. Its ordinal is its case's index in the static type it is
+    used at (option_case_names), not in the type it was made at."""
 
     def __init__(
         self,
         tag: str,
         payload: Optional[QValue] = None,
-        ordinal: int = 0,
     ):
         self.tag = tag
         self.payload = payload
-        self.ordinal = ordinal
 
     @property
     def type_name(self) -> str:

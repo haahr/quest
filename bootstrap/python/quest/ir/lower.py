@@ -20,7 +20,7 @@ from quest.config import CompilerOptions
 from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
 from quest.ir.shapes import shape
-from quest.types.canonical import collect_fun_quantifiers
+from quest.types.canonical import collect_fun_quantifiers, option_case_names
 from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
@@ -110,6 +110,14 @@ def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QT
         return None
     subst = {vq.symbol_id: QTypeVar(fq.name, fq.symbol_id, fq.bound) for vq, fq in zip(quants, fun_quants)}
     return [param.type_val.substitute(subst) if subst else param.type_val for param in inner.params]
+
+
+def _option_cases(t: QType) -> Optional[tuple[str, ...]]:
+    """The names of the cases of t as written, if it is an option type (or a type parameter bounded by one)."""
+    try:
+        return option_case_names(t)
+    except ValueError:
+        return None
 
 
 _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent", "ordinal"}
@@ -272,11 +280,14 @@ class _Lowerer:
             case TypedOption(tag=tag, payload=payload, ordinal_expr=ordinal_expr):
                 ordinal = self.value(ordinal_expr) if ordinal_expr is not None else None
                 p = self.value(payload) if payload is not None else None
-                return self.let(ir.MakeOption(tag, p, ordinal, e.offset), e.type_val, into)
+                cases = option_case_names(e.type_val) if ordinal is not None else ()
+                return self.let(ir.MakeOption(tag, p, ordinal, e.offset, cases), e.type_val, into)
             case TypedVariantCheck(target=target, tag=tag):
                 return self.let(ir.IsTag(self.value(target), tag), e.type_val, into)
             case TypedVariantAssert(target=target, tag=tag):
-                return self.let(ir.Payload(self.value(target), tag, e.offset), e.type_val, into)
+                cases = _option_cases(target.type_val)
+                ordinal = cases.index(tag) if cases is not None else None
+                return self.let(ir.Payload(self.value(target), tag, e.offset, ordinal=ordinal), e.type_val, into)
             case TypedAuto(witness_type=witness, auto_type=auto_type, payload=payload):
                 return self.let(ir.MakeAuto(witness, auto_type, self.value(payload)), e.type_val, into)
             case TypedException(name=name, payload_type=payload_type, symbol=symbol):
@@ -361,7 +372,10 @@ class _Lowerer:
             name = self.builtins[func.symbol.symbol_id]
             if name in _BUILTIN_FUNCTIONS:
                 args = tuple(self.value(a) for a in e.args)
-                op = ir.Ordinal(args[0]) if name == "ordinal" else ir.Prim(name, args, e.offset)
+                if name == "ordinal":
+                    op = ir.Ordinal(args[0], option_case_names(e.args[0].type_val))
+                else:
+                    op = ir.Prim(name, args, e.offset)
                 return self.let(op, e.type_val, into)
         callee, module, member = self.callee(func)
         args = tuple(self.argument(a) for a in e.args)

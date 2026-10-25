@@ -1,0 +1,38 @@
+(* Language: variant and option types are equal whatever order they list their cases in (type-system.md §6.8),
+   and an option's ordinal is its case's index in the static type it is used at, not in the type it was made at
+   (§6.6): ordinal, the ordinal component of an extraction (opt!tag), and construction by ordinal all count in the
+   option type as written where they occur. *)
+(* @echo *)
+
+(* 1. Equal option types listing their cases in different orders, and a supertype listing them in another *)
+Let O1 = Option a b end;
+Let O2 = Option b a end;
+Let O3 = Option b c a end;
+let o: O1 = option b of O1 end;
+let p: O2 = o;
+let p3: O3 = o;
+let ordinals = tuple ordinal(o) ordinal(p) ordinal(p3) end;
+
+(* 2. Equal variant types listing their cases in different orders *)
+Let V1 = Variant a: Int b: Bool end;
+Let V2 = Variant b: Bool a: Int end;
+let v: V1 = variant b of V1 with true end;
+let w: V2 = v;
+let viaW = case w when a with x then x when b with y then 2 end;
+let back: V1 = w;
+let viaBack = case back when a with x then x when b with y then 3 end;
+
+(* 3. Construction by ordinal, and extraction, count in the type as written where they occur *)
+Let P1 = Option a b c end;
+Let P2 = Option c a b end;
+let q: P2 = option ordinal(2) of P2 end;
+let r: P1 = q;
+let k = 1;
+let s: P2 = option ordinal(k) of P2 end;
+let made = tuple ordinal(q) ordinal(r) ordinal(s) end;
+let fromQ = q!b;
+let fromR = r!b;
+
+(* 4. In generic code, at a type parameter bounded by an option type, in the bound's order *)
+let ord(A <: Option b a end x: A): Int = ordinal(x);
+let generic = tuple ord(:O1 o) ord(:O2 p) end;

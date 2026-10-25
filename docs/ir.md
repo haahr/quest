@@ -92,8 +92,8 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `int`, `real`, `bool`, `char`, `string`, `ok`, `word` | — |
 | `tuple` | ordered value components (name, shape, `var`); type components are erased from the layout |
 | `record` | fields (name, shape, `var`) |
-| `variant` | cases (name, payload shape) |
-| `option` | cases (name, payload component shapes) |
+| `variant` | cases (name, payload shape), ordered by name |
+| `option` | cases (name, payload component shapes), ordered by name |
 | `array` | element shape |
 | `fun` | parameters (shape, mode `value`/`var`/`out`), result shape |
 | `all` | type parameters (symbol, bound), body shape |
@@ -106,7 +106,10 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `rec` | a reference into a recursive group: the canonical recursive graph of `types/canonical.py` |
 
 Aliases are stripped and operator applications reduced before a shape is built; recursion is explicit through
-`rec` references into the canonical graph, so that equal recursive types, however written, share one shape. Each
+`rec` references into the canonical graph, so that equal recursive types, however written, share one shape.
+Variant and option types are equal whatever order they list their cases in, so their shapes (and canonical forms)
+order cases by name: equal types have one layout and one numbering of tags. An option's ordinal counts instead in
+the order of its static type as written, which lowering records on the operations that read or make one. Each
 shape keeps its canonical type and its structure (the unfolding of a recursive type), from which descriptors and C
 names are made. A canonical form names its binders afresh, so a polymorphic function type's shape has type parameters
 (and value parameter names) of its own, not those of the type as written. The typed AST keeps its types (with alias
@@ -170,7 +173,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Closures | `closure f {a...} [τ...]` (a closure of the unit's function `f`, capturing the atoms, and supplying the enclosing functions' type parameters it takes first), `env_field(env, i)` | after closure conversion |
 | Tuples | `tuple(a...)` (value components; type components kept for printing; `box a` for a record or variant boxed in the tuple's allocation, after §8.3), `tuple_field(t, i)` | C+ |
 | Records | `record(name = a, var name = a...)`, `record_field(r, name)` | C+ |
-| Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n, a...)`, `is_tag(v, tag)`, `payload(v, tag)`, `ordinal(v)` | C+ |
+| Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n in (cases), a...)`, `is_tag(v, tag)`, `payload(v, tag)` (for an option, `payload(v, tag) #n`, its tuple starting with the case's ordinal `n`), `ordinal(v) in (cases)` (ordinals count in `cases`, the names of the cases of the option's static type as written) | C+ |
 | Arrays | `array(a...)`, `array_rep(n, a)`, `index(a, i)` | C+ |
 | Auto values | `auto[τ](a)` | C+ |
 | Exceptions | `exception Name` (generative), `exception_payload(e)` | C+ |
@@ -501,7 +504,7 @@ builds its own SSA and optimizes.
 
 | Stage | After | Invariants (checked by the verifier) |
 |---|---|---|
-| **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
+| **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last; ordinal operations record a permutation of their option's cases, and option payloads their ordinals (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
 | **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed |

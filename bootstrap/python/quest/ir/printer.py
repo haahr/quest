@@ -183,15 +183,16 @@ class _Printer:
             case ir.MakeVariant(tag=tag, payload=payload):
                 return f"variant({tag}{', ' + self.atom(payload) if payload is not None else ''})"
             case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, access=access):
-                head = tag if ordinal is None else f"#{self.atom(ordinal)}"
+                head = tag if ordinal is None else f"#{self.atom(ordinal)} in ({' '.join(o.cases)})"
                 payload_text = f", {self.atom(payload)}{self.accesses(access)}" if payload is not None else ""
                 return f"option({head}{payload_text})"
             case ir.IsTag(value=v, tag=tag, access=access):
                 return f"is_tag({self.atom(v)}, {tag}){self.access(access)}"
-            case ir.Payload(value=v, tag=tag, access=access, components=components):
-                return f"payload({self.atom(v)}, {tag}){self.access(access)}{self.accesses(components)}"
-            case ir.Ordinal(value=v, access=access):
-                return f"ordinal({self.atom(v)}){self.access(access)}"
+            case ir.Payload(value=v, tag=tag, access=access, components=components, ordinal=ordinal):
+                ordinal_text = f" #{ordinal}" if ordinal is not None else ""
+                return f"payload({self.atom(v)}, {tag}){ordinal_text}{self.access(access)}{self.accesses(components)}"
+            case ir.Ordinal(value=v, cases=cases, access=access):
+                return f"ordinal({self.atom(v)}) in ({' '.join(cases)}){self.access(access)}"
             case ir.MakeArray(args=args):
                 return f"array({self.atoms(args)})"
             case ir.ArrayRep(count=count, init=init):

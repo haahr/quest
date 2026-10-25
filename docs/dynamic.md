@@ -113,8 +113,9 @@ component has the label `""` (or `"var"` when mutable). Identifiers cannot conta
 keyword, so labels are unambiguous. A function parameter is written by its mode alone (`""`, `"var"`, or `"out"`),
 since parameter names do not affect function types. `Out(T)` does not occur in the types of values.
 
-Variant and option cases are listed in the order the type declares them, which is how compiled code numbers
-them. An option case with components (`cons with head: Int tail: L end`) refers to a tuple node for them; a case
+Variant and option cases are listed in the order of their names, which is how compiled code numbers them
+(types listing the same cases in different orders are equal, [type-system.md](type-system.md) §6.8); a reader
+accepts them in any order. An option case with components (`cons with head: Int tail: L end`) refers to a tuple node for them; a case
 without, and a variant case without a payload, has `null`.
 
 **Recursive types are cycles in the table.** Quest's recursive types are equi-recursive: two types are equal
@@ -124,7 +125,7 @@ enclosing node is the recursion. For example, `Rec(L) Option nil cons with head:
 
 ```json
 "types": [
-  {"option": {"nil": null, "cons": 1}},
+  {"option": {"cons": 1, "nil": null}},
   {"tuple": [["head", "Int"], ["tail", 0]]}
 ]
 ```
@@ -372,7 +373,7 @@ dynamic.extern(writer.output dynamic.new(:IntList l));
 {
   "quest": 1,
   "types": [
-    {"option": {"nil": null, "cons": 1}},
+    {"option": {"cons": 1, "nil": null}},
     {"tuple": [["head", "Int"], ["tail", 0]]}
   ],
   "type": 0,

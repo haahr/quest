@@ -11,7 +11,9 @@ Core invariants, checked here:
 - a jump names a join point whose body encloses it, and passes as many values as the join point has parameters; a
   break or continue names an enclosing loop; neither crosses a function's boundary;
 - a return occurs only in a function's body;
-- a terminator is the last statement of its body.
+- a terminator is the last statement of its body;
+- an ordinal, and an option made by ordinal, record the cases of the option's static type as written, the same
+  cases as its shape's (in any order), and an option's payload records its case's ordinal.
 
 After closure conversion (the closed stage), also: no funs statement remains; every closure is of one of the unit's
 functions; and those functions use only their parameters, their environment, and the unit's globals (the variables
@@ -131,6 +133,29 @@ class _Verifier:
                             if isinstance(part, (ir.Var, ir.Const)):
                                 self.use(part, scope, where)
 
+    def option_cases(self, o, var: ir.Var, where: str) -> None:
+        """Checks the cases an option operation counts ordinals in (ir.Ordinal, ir.MakeOption, ir.Payload)."""
+        from quest.codegen.layout import resolved_shape
+        from quest.ir.shapes import shape
+
+        def option_shape(t):
+            s = resolved_shape(shape(t)) if t is not None else None
+            return s if s is not None and s.kind == "option" else None
+
+        def check(cases: tuple[str, ...], t) -> None:
+            s = option_shape(t)
+            if s is not None and sorted(cases) != sorted(c.name for c in s.cases):
+                self.problem(f"{where}: an ordinal counts in cases ({' '.join(cases)}) of an option of type {t}")
+
+        match o:
+            case ir.Ordinal(value=v, cases=cases):
+                check(cases, v.type if isinstance(v, ir.Var) else None)
+            case ir.MakeOption(ordinal=ordinal, cases=cases) if ordinal is not None:
+                check(cases, var.type)
+            case ir.Payload(value=ir.Var() as v, tag=tag, ordinal=ordinal):
+                if option_shape(v.type) is not None and ordinal is None:
+                    self.problem(f"{where}: the payload of option case {tag} without its ordinal")
+
     def function(self, f: ir.Function, scope: _Scope) -> None:
         where = f"function '{f.var.hint}'"
         # A nested function may use the enclosing functions' values but not their mutable variables; the top level's
@@ -160,6 +185,7 @@ class _Verifier:
         match s:
             case ir.Let(var=var, value=value):
                 self.operation(value, scope, where)
+                self.option_cases(value, var, where)
                 self.bind(var, where)
                 if var.mutable:
                     self.problem(f"{where}: let binds mutable variable '{var.hint}'")
