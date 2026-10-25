@@ -550,12 +550,15 @@ are lowered as follows:
 - **Descriptor Templates:** A type that mentions type parameters in scope is
   described by a template instantiated at run time with their descriptors; the templates the generated code uses are
   emitted after it, ahead of the function definitions; see [c-representation.md](c-representation.md) §6.4.5.
-- **Tuple Structural Coercion & Generic Returns (`copy` plans):** Coercions between tuples whose field C types
-  differ (e.g., concrete scalar to `QVal`, closure adaptation, nested tuple structural conversions, or generic tuple
-  returns where `QVal` fields are unwrapped into concrete types) allocate a new target tuple and map each field.
-  - **Record Subtyping & Tag Remapping:** Coercions attach evidence dictionaries for subtyped records and apply static
-    tag remapping arrays for variants across subtyping boundaries.
-  - If all field C types match identically, zero-cost pointer casting is retained.
+- **Tuple Upcasts (`view` plans, proxies):** An upcast of a tuple or option whose components change view (a record
+  at a supertype, a variant or option whose cases the supertype numbers differently, a closure whose signature
+  changes) makes a proxy of the original, `quest_make_proxy` (c-representation.md §5.8). For a tuple or option type
+  that may be proxied (`may_be_proxied`), the printer reads components through `quest_is_proxy` checks
+  (`tuple_component`, `option_tag`, `option_component`; components that cannot change view read the original's slot
+  through `quest_unproxy`), writes `var` components into the original (`quest_proxy_store`, `quest_proxy_slot`), and
+  compares with `is` the originals. Tuples and options a function made itself are never proxies, and are read
+  directly. An upcast that changes no component's view is a cast; one to a type that cannot be proxied unwraps a
+  proxy.
 - **End-to-End Golden Verification:** Verified across all phases (`tokenize`, `parse`, `typecheck`, `interpret`,
   `run_c_compiled`) via `existential_packages.quest`, `existential_adt.quest`, `cardelli_syntax.quest`, and
   `polymorphic_refs_records.quest`.

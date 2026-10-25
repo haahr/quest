@@ -159,14 +159,18 @@ class TestRecordDicts(unittest.TestCase):
     assert(quest_record_field_value(viewed, &outer_mid_desc, 1).i == 7);
 """))
 
-    def test_convert_copies_tuples_with_converted_elements(self) -> None:
+    def test_convert_views_tuples_through_proxies(self) -> None:
         self.assertIn("OK", self.run_c(r"""
     PairBig *pair = (PairBig *)quest_alloc(sizeof(PairBig));
     pair->_0 = quest_record_box((QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) });
     pair->_1 = 5;
-    PairBig *converted = (PairBig *)quest_convert((QVal){ .p = pair }, &pair_big_desc, &pair_mid_desc).p;
-    assert(converted != pair && converted->_1 == 5);
-    assert(converted->_0->dict == quest_record_dict(&mid_desc, &big_desc));
+    /* A proxy of the pair, whose elements are converted as they are read */
+    void *converted = quest_convert((QVal){ .p = pair }, &pair_big_desc, &pair_mid_desc).p;
+    assert(quest_is_proxy(converted) && quest_unproxy(converted) == pair);
+    assert(quest_proxy_element(converted, 1).i == 5);
+    assert(((QRecordVal *)quest_proxy_element(converted, 0).p)->dict == quest_record_dict(&mid_desc, &big_desc));
+    /* Viewing the proxy at the original's type gives the original back */
+    assert(quest_convert((QVal){ .p = converted }, &pair_mid_desc, &pair_big_desc).p == pair);
     /* Converting between equal descriptors leaves the value alone */
     assert(quest_convert((QVal){ .p = pair }, &pair_big_desc, &pair_big_desc).p == pair);
 """))

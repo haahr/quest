@@ -1,0 +1,43 @@
+(* Benchmark: reads of the components of view-sensitive tuples and options (whose components are records), directly
+ * and through upcasts that change the components' views (in C, proxies of the originals), in hot loops *)
+import writer: Writer;
+import conv: Conv;
+
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+Let T = Tuple x: Big y: Big var n: Int end;
+Let S = Tuple x: Small y: Small var n: Int end;
+Let Rec Bigs::TYPE = Option nil cons with head: Big tail: Bigs end end;
+Let Rec Smalls::TYPE = Option nil cons with head: Small tail: Smalls end end;
+
+let var total = 0;
+let t: T = tuple let x = record a = 1 b = 2 end let y = record a = 3 b = 4 end let var n = 0 end;
+let s: S = t;
+
+(* Components of a tuple read directly, and through its upcast *)
+for i = 1 upto 4000000 do
+    t.n := i;
+    total := total + t.x.a + t.y.b + t.n;
+    total := total + s.x.a + s.y.a + s.n
+end;
+
+(* A list traversed directly, and through its upcast *)
+let var bigs: Bigs = option nil of Bigs end;
+for i = 1 upto 1000 do
+    bigs := option cons of Bigs with record a = i b = 1 end bigs end
+end;
+let smalls: Smalls = bigs;
+for round = 1 upto 1000 do
+    let var cur = bigs;
+    while cur?cons do
+        total := total + cur!cons.head.a;
+        cur := cur!cons.tail
+    end;
+    let var curs = smalls;
+    while curs?cons do
+        total := total + curs!cons.head.a;
+        curs := curs!cons.tail
+    end
+end;
+
+writer.putString(writer.output conv.int(total) <> "\n")

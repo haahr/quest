@@ -10,9 +10,11 @@ type; a component read, as its aggregate's type gives it; a let's copy, a return
 assignment, the type of what they bind or assign. Where the two differ, the value is converted by the plan of the
 pair (`plan`).
 
-The plans box and unbox between QVal and native values, view records at supertypes, remap variants' tags, cast or
-copy aggregates whose components convert, adapt closures, and convert by descriptor at run time; any other change of
-representation is reported as unsupported, rather than printed wrong.
+The plans box and unbox between QVal and native values, view records at supertypes, remap variants' tags, cast
+aggregates whose layouts agree, view tuples and options whose components change view through proxies of the
+originals (docs/c-representation.md §5.8), copy auto payloads into their stored layouts, adapt closures, and convert
+by descriptor at run time; any other change of representation is reported as unsupported, rather than printed
+wrong.
 
 Every decision is made on shapes (ir/shapes.py). The variables the pass makes have types as written, with their alias
 names, which the IR prints (docs/ir.md §5): the types of the components of a type as written (written_structure), and
@@ -191,11 +193,27 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
     return ir.Plan("adapt", source, target, fields, layout)
 
 
+# The pairs of shapes being planned (with their layouts), for recursive types, which are compared coinductively
+_PLANNING: set[tuple] = set()
+
+
 def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]] = None) -> Optional[ir.Plan]:
     """How a value of type source is converted to be used at type target (None when it is used as it is). layout is
     set for a value passed to or returned from a polymorphic callee (see layout_plan)."""
     if source is target:
         return None
+    key = (id(shape(source)), id(shape(target)), None if layout is None else (id(layout[0]), layout[1]))
+    if key in _PLANNING:
+        # A pair being planned (a recursive type's component): needs no conversion of its own
+        return None
+    _PLANNING.add(key)
+    try:
+        return _plan(source, target, layout)
+    finally:
+        _PLANNING.discard(key)
+
+
+def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]]) -> Optional[ir.Plan]:
     ss, ts = shape(source), shape(target)
     if ss.kind == "ok" or ts.kind == "ok":
         return None
@@ -227,24 +245,43 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
         # From a bounded type parameter's view at its bound back to the type the caller holds it at: by the runtime,
         # between the two views' descriptors (no static tag map relates them)
         return ir.Plan("view", s_held.structure, t_held.structure)
-    if s_held.kind == t_held.kind == "option" and not _equal(s_held.type, t_held.type) and (
-        _bounded_view(ss) or _bounded_view(ts) or shape_representation(s_held) != shape_representation(t_held)
-    ):
-        # Viewed at a bounded type parameter's bound, or an option of a subtype laid out in another struct: converted
-        # by the runtime (a copy, unless the layouts agree)
+    if s_held.kind == t_held.kind == "option" and not _equal(s_held.type, t_held.type):
+        if not (_bounded_view(ss) or _bounded_view(ts)) and _option_cases_agree(s_held, t_held):
+            return None if cs == ct else ir.Plan("cast", source, target)
+        # Viewed at a bounded type parameter's bound, or an option of a subtype whose cases are numbered differently or
+        # whose payloads change view: a proxy (made by the runtime, between the two views' descriptors)
         return ir.Plan("view", s_held.structure, t_held.structure)
     if ss.kind == ts.kind == "tuple":
         if len(ss.components) < len(ts.components):
             raise UnsupportedConversion(f"converting a tuple of type {source} to {target}")
         pairs = list(zip(ss.components, ts.components))
         fields = tuple(plan(sc.shape.type, tc.shape.type) for sc, tc in pairs)
-        same = all(shape_slot_representation(sc.shape) == shape_slot_representation(tc.shape) for sc, tc in pairs)
-        if all(p is None for p in fields) and same:
+        # A box or unbox changes no slot: a slot holds a value's QVal form
+        changing = [p for p in fields if p is not None and p.kind not in ("box", "unbox")]
+        if not changing:
             return None if cs == ct else ir.Plan("cast", source, target)
-        return ir.Plan("copy", source, target, fields)
+        # Components change view: a proxy of the tuple, which converts them as they are read (a closure by an
+        # adapter, made once per proxy)
+        return ir.Plan("view", source, target)
     if cs == ct and ts.kind not in ("fun", "all", "option", "array"):
         return None
     raise UnsupportedConversion(f"converting a value of type {source} ({cs}) to {target} ({ct})")
+
+
+def _option_cases_agree(s: Shape, t: Shape) -> bool:
+    """Whether an option of shape s is laid out as one of shape t (a supertype): each of its cases has the same index
+    in t, with a payload that converts by a cast at most."""
+    for i, case in enumerate(s.cases):
+        if i >= len(t.cases) or t.cases[i].name != case.name:
+            return False
+        tc = t.cases[i]
+        if (case.shape is None) != (tc.shape is None):
+            return False
+        if case.shape is not None:
+            p = plan(case.shape.type, tc.shape.type)
+            if p is not None and p.kind != "cast":
+                return False
+    return True
 
 
 def is_type_variable(t: QType, symbol_id: int) -> bool:

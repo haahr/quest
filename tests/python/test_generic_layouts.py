@@ -93,9 +93,11 @@ class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
         )
 
     def test_mutable_data_whose_layout_differs(self) -> None:
-        for generic in ("Array(Box(C))", "Array(C)", "Tuple var x: C end", "Var(Box(C))", "Box(Array(Box(C)))"):
+        for generic in ("Array(Box(C))", "Array(C)", "Var(Box(C))", "Box(Array(Box(C)))"):
             with self.subTest(generic=generic):
                 self.assertTrue(self.copies(generic, "Q", self.c))
+        # A tuple is converted through a proxy, which shares its var components
+        self.assertFalse(self.copies("Tuple var x: C end", "Q", self.c))
         for generic in ("Array(Box(A))", "Array(A)", "Tuple var x: A end", "Var(Box(A))", "Box(Array(Box(A)))"):
             with self.subTest(generic=generic):
                 self.assertFalse(self.copies(generic, "P"))
@@ -155,10 +157,6 @@ class TestPolymorphicCallsInC(unittest.TestCase):
             "let first(C <: P a: Array(Box(C))): C = a[0].x;"
             "let f: All(C <: P a: Array(Box(C))) C = first;"
             "f(:Q array of mkBox(:Q record a = 5 b = 6 end) end).b",
-            "Let Q = Record a: Int b: Int end;"
-            "let set(C <: P t: Tuple var x: C end v: C): Ok = t.x := v;"
-            "let f: All(C <: P t: Tuple var x: C end v: C) Ok = set;"
-            "f(:Q tuple let var x = record a = 1 b = 1 end end record a = 2 b = 2 end)",
         ):
             with self.subTest(source=source):
                 res = self.generate(source)

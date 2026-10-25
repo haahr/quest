@@ -92,37 +92,6 @@ describe the rule.
 
 ---
 
-## Conversions that copy change object identity in C
-
-**Problem.** `is` compares tuples, records, and arrays by identity. A value passed to or returned from a polymorphic
-function is converted between the callee's generic layout and the native one by pointer cast, since every slot is one
-word (`docs/c-representation.md` §5.1, Slots), except where the layouts disagree: generic code views a value of a
-bounded type parameter at its bound (a record with the bound's offset table, a variant with the bound's tags), and a
-closure among the components may have a different C signature. There C copies the tuple or option
-(`docs/c-representation.md` §5.1, Polymorphic Calls), and the copy is a different object. The interpreter has no
-layouts, so the two backends disagree.
-
-**Reproduce.**
-
-```quest
-Let P = Record a: Int end;
-Let Q = Record a: Int b: Int end;
-let id(A <: P t: Tuple x: A end): Tuple x: A end = t;
-let f: All(A <: P t: Tuple x: A end) Tuple x: A end = id;
-let t: Tuple x: Q end = tuple let x = record a = 1 b = 2 end end;
-f(:Q t) is t
-```
-
-prints `true` interpreted and `false` compiled. With `A::TYPE` both print `true`.
-
-**Where to start.** Views on view-sensitive tuples and options (`docs/reorganization.md` §2, 0a, V1) would make a
-bounded type parameter's case an upcast that sets the view, without copying.
-
-**Done when.** Compiled code and the interpreter agree on `is` for converted values, or the language documents where
-they may differ, and the conversion matrix's identity column checks the rule (it covers unbounded type parameters).
-
----
-
 ## An exception made on a branch that does not run can be named later
 
 **Problem.** A named exception made inside an expression (`exception I end`) binds its name for the rest of the
@@ -270,36 +239,35 @@ by the arguments' names, memoized with the instance; the printer is unchanged.
 
 ---
 
-## Upcasting a tuple whose components change view copies it in C
+## Options whose cases are listed in different orders
 
-**Problem.** Upcasting a tuple or option whose immutable components change representation (a record viewed at a
-supertype, a variant whose supertype numbers its cases differently) copies the aggregate in C, even without
-polymorphism. The copy does not see later updates of the original's `var` components, and is not `is` the original.
-The interpreter shares the value. This is a miscompilation; the plan is to fix it with the representation change of
-`docs/reorganization.md` (0a, step A2) rather than before.
+**Problem.** Option types are compared by their cases' names, unordered, so `Option a b end` and `Option b a end` are
+equal types, but C lays them out (and numbers their tags) by the order written, and converts nothing between them: C
+generation declares a variable of the second without its struct, which clang rejects. Relatedly, `ordinal` of an
+option upcast to a supertype that lists its cases in another order gives the case's index in the original type
+interpreted and in the supertype compiled (C did the same when it copied such options; with proxies it maps the tag).
+Found while making views of options proxies (A2 of `docs/reorganization.md`).
 
 **Reproduce.**
 
 ```quest
-Let Big = Record a: Int b: Int end;
-Let Small = Record a: Int end;
-let t: Tuple x: Big var n: Int end = tuple let x = record a = 1 b = 2 end let var n = 0 end;
-let s: Tuple x: Small var n: Int end = t;
-t.n := 1;
-s.n
+Let O1 = Option a b end;
+Let O2 = Option b a end;
+let o: O1 = option b of O1 end;
+let p: O2 = o;
+ordinal(p)
 ```
 
-prints `1 : Int` interpreted and `0 : Int` with `--stop-after run_c_compiled`. A variant component
-(`Variant p: Int q: Bool end` upcast to `Variant q: Bool r: Ok p: Int end`) behaves the same, and so does an option
-whose payload components change view (converted by the runtime, `language/identity_of_subtypes`), and `is` between
-such a tuple or option and its upcast is `false` in C. Record fields of records do not: records' offset tables carry
-stored types, and reads convert.
+prints `1 : Int` interpreted and fails to compile with `--stop-after run_c_compiled` (`unknown type name
+'QOption_b_a'`). With `Let O2 = Option b c a end` it compiles, and prints `0 : Int`.
 
-**Where to start.** `docs/reorganization.md` §2, 0a (V1, views on view-sensitive tuples and options), and A2's notes
-there: how views interact with aggregate slots and generic layouts is an open decision.
+**Where to start.** Decide what `ordinal` means at a type whose case order differs from the value's
+([type-system.md](type-system.md) on options): the index at the static type seems the natural reading. Then either
+make option types with different case orders unequal, or have shapes (`ir/shapes.py`, canonical forms in
+`types/canonical.py`) order an option's cases canonically, with `ordinal` and option construction from an ordinal
+mapping indices through the static type.
 
-**Done when.** The program above prints `1 : Int` in both phases, for record and variant components, and a golden
-test covers both.
+**Done when.** Both programs compile and print the same in both phases, and golden tests cover them.
 
 ---
 

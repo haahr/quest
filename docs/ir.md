@@ -360,9 +360,9 @@ component's values at their own type (inspect reads them by the stored descripto
 | `box`, `unbox` | between a native scalar, pointer, record, or variant and its QVal word |
 | `record_view` | a record viewed at a supertype, with its offset table (from the runtime map) |
 | `variant_tags` | a variant's tag remapped by the static table of a subtype pair, when the cases' order differs |
-| `view` | a variant or option converted by the runtime from a bounded type parameter's view at its bound to another type's |
+| `view` | converted by the runtime between two views' descriptors: a tuple or option upcast to a supertype at which components change view, as a proxy of the original ([c-representation.md](c-representation.md) §5.8); a variant or option from a bounded type parameter's view at its bound to another type's |
 | `cast` | a pointer to an aggregate whose layouts agree in memory, viewed through the other struct |
-| `copy` | a new tuple, each component converted by its own plan |
+| `copy` | a new tuple, each component converted by its own plan (an auto value's payload, stored in its witness-independent layout) |
 | `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (a bounded type parameter's values viewed at its bound, or closures among the components whose C signatures differ) |
 | `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
 | rejected | a conversion that would copy mutable data laid out differently: a compile-time error (`RejectedConversion`) |
@@ -376,14 +376,13 @@ Static decisions (whether layouts agree, whether a copy would lose updates) are 
 (`tests/python/test_layout_differential.py`) checks against the runtime's `quest_layout_equivalent`. After this pass,
 every operation's atoms have exactly the representations the operation requires.
 
-**Identity.** A `copy` or `runtime` step builds a new tuple or option, so the converted value is not the same object
-as the original, and `is` (object identity for tuples, records, and arrays) can answer differently in compiled code
-than in the interpreter. Every slot being a word, a polymorphic call converts aggregates over unbounded type
-parameters by `cast`, which keeps identity (a `Tuple x: P end`, with `P` a record type, passed through an
-unspecialized polymorphic function is still `is` the original); copies remain at polymorphic calls only for the
-layouts that disagree (`runtime`, above), and for upcasts that change a component's view (a record at a supertype), a
-documented limitation of the C backend recorded in [tasklist.md](tasklist.md). The conversion matrix
-(`tests/conversions/generate.py`) tests the rule, so that it is checked rather than incidental.
+**Identity.** `is` is object identity for tuples, records, and arrays, so a conversion must not copy them. Every slot
+being a word, a polymorphic call converts aggregates over unbounded type parameters by `cast`; an upcast that changes
+a component's view, and a `runtime` conversion at a polymorphic call over a bounded type parameter, make a proxy of
+the original rather than a copy, which `is` sees through ([c-representation.md](c-representation.md) §5.8). The
+runtime still copies a tuple or option where the target type cannot be proxied (only a closure among its components,
+whose C signature changes with a generic layout). The conversion matrix (`tests/conversions/generate.py`) tests the
+rule, so that it is checked rather than incidental; `language/view_proxies` tests upcasts.
 
 ### 8.4. Materialize descriptors
 

@@ -1,0 +1,89 @@
+(* Upcasts of tuples and options whose components change view (a record at a supertype, a variant or option whose
+   cases the supertype numbers differently) share the original: updates of var components are seen through both, and
+   the two are the same object. (C: the upcast value is a proxy of the original, docs/c-representation.md §5.8.) *)
+import writer: Writer;
+import conv: Conv;
+import dynamic: Dynamic;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+Let T = Tuple x: Big var n: Int end;
+Let S = Tuple x: Small var n: Int end;
+
+(* Record, variant, and option components *)
+let t: T = tuple let x = record a = 1 b = 2 end let var n = 0 end;
+let s: S = t;
+t.n := 1;
+print("record: " <> conv.int(s.n) <> " " <> conv.int(s.x.a) <> " " <> conv.bool(s is t) <> " " <> conv.bool(t is s));
+s.n := 5;
+print("written through the upcast: " <> conv.int(t.n));
+Let V1 = Variant p: Int q: Bool end;
+Let V2 = Variant q: Bool r: Ok p: Int end;
+let tv: Tuple x: V1 var n: Int end = tuple let x = variant p of V1 with 7 end let var n = 0 end;
+let sv: Tuple x: V2 var n: Int end = tv;
+tv.n := 2;
+print("variant: " <> conv.int(sv.n) <> " " <> conv.int(case sv.x when p with k then k else 0 end) <> " " <> conv.bool(sv is tv));
+Let O1 = Option a b with k: Int end end;
+Let O2 = Option b with k: Int end c a end;
+let to: Tuple x: O1 var n: Int end = tuple let x = option b of O1 with let k = 9 end let var n = 0 end;
+let so: Tuple x: O2 var n: Int end = to;
+to.n := 3;
+print("option: " <> conv.int(so.n) <> " " <> conv.int(so.x!b.k) <> " " <> conv.bool(so.x?b) <> " " <> conv.bool(so is to));
+
+(* An option upcast whose cases are numbered differently *)
+let o: O1 = option b of O1 with let k = 4 end;
+let ou: O2 = o;
+print("whole option: " <> conv.bool(ou is o) <> " " <> conv.bool(ou?b) <> " " <> conv.int(case ou when b with p then p.k else 0 end));
+
+(* Stored into an aggregate of the supertype *)
+Let Rec L(A::TYPE) = Option nil cons with head: A tail: L(A) end end;
+let l: L(S) = option cons of L(S) with let head = s let tail = option nil of L(S) end end;
+let arr: Array(S) = array of s end;
+t.n := 42;
+print("in a list and an array: " <> conv.int(l!cons.head.n) <> " " <> conv.int(arr[0].n) <> " " <> conv.bool(arr[0] is t));
+arr[0].n := 6;
+print("written through the array: " <> conv.int(t.n));
+
+(* Through unspecialized generic code *)
+let id(A::TYPE x: A): A = x;
+let idF: All(A::TYPE x: A) A = id;
+let s2 = idF(:S s);
+t.n := 43;
+print("through generic code: " <> conv.int(s2.n) <> " " <> conv.bool(s2 is t) <> " " <> conv.int(s2.x.a));
+let getX(A::TYPE p: Tuple x: A var n: Int end): A = p.x;
+let getXF: All(A::TYPE p: Tuple x: A var n: Int end) A = getX;
+print("a component read generically: " <> conv.int(getXF(:Small s).a));
+let setN(A::TYPE p: Tuple x: A var n: Int end v: Int): Ok = p.n := v;
+let setNF: All(A::TYPE p: Tuple x: A var n: Int end v: Int) Ok = setN;
+setNF(:Small s 44);
+print("a component written generically: " <> conv.int(t.n));
+let inc(var k: Int): Ok = k := k + 1;
+inc(@s.n);
+print("a component passed as a var argument: " <> conv.int(t.n));
+
+(* A proxy upcast again, and a nested tuple *)
+let s3: Tuple x: Record end var n: Int end = s;
+print("upcast again: " <> conv.bool(s3 is t) <> " " <> conv.int(s3.n));
+let nt: Tuple inner: T end = tuple let inner = t end;
+let ns: Tuple inner: S end = nt;
+t.n := 45;
+print("nested: " <> conv.bool(ns is nt) <> " " <> conv.bool(ns.inner is t) <> " " <> conv.int(ns.inner.n) <> " " <> conv.int(ns.inner.x.a));
+
+(* A variant whose payload changes view *)
+let pv: Variant p: T end = variant p of Variant p: T end with t end;
+let pu: Variant p: S end = pv;
+t.n := 46;
+print("variant payload: " <> conv.int(pu!p.n) <> " " <> conv.bool(pu!p is t));
+
+(* A bounded type parameter's var component, written through generic code *)
+let setX(C <: Small p: Tuple var x: C end v: C): Ok = p.x := v;
+let setXF: All(C <: Small p: Tuple var x: C end v: C) Ok = setX;
+let bt: Tuple var x: Big end = tuple let var x = record a = 1 b = 2 end end;
+setXF(:Big bt record a = 7 b = 8 end);
+print("bounded: " <> conv.int(bt.x.a) <> " " <> conv.int(bt.x.b));
+
+(* Dynamic values *)
+let d = dynamic.new(:S s);
+t.n := 47;
+print("dynamic: " <> conv.int(dynamic.be(:S d).n));
+s

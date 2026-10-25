@@ -6,7 +6,8 @@ aggregate slot or a QVal word holds it (slot_representation): a record or varian
 16-byte box, a Bool or Char in a word of its own, and anything else as its representation, so that every slot is one
 word and native and generic layouts agree in memory. Representations are named by the runtime's C types, which a
 native backend lays out as C does, to share the runtime and link with C units. Also whether generic code's layout of
-a type agrees with the native one (generic_layout_agrees)."""
+a type agrees with the native one (generic_layout_agrees), and whether a value of a tuple or option type may be a
+proxy, a view of an object of a subtype (may_be_proxied)."""
 
 from __future__ import annotations
 
@@ -70,11 +71,11 @@ _UNSET = object()
 class Layout:
     """The layout of one shape; each part is computed on first use."""
 
-    __slots__ = ("shape", "_tag", "_representation", "_slot")
+    __slots__ = ("shape", "_tag", "_representation", "_slot", "_proxied")
 
     def __init__(self, s: Shape) -> None:
         self.shape = s
-        self._tag = self._representation = self._slot = _UNSET
+        self._tag = self._representation = self._slot = self._proxied = _UNSET
 
     @property
     def tag(self) -> str:
@@ -91,6 +92,12 @@ class Layout:
         if self._representation is _UNSET:
             self._representation = _shape_representation(self.shape)
         return self._representation
+
+    @property
+    def proxied(self) -> bool:
+        if self._proxied is _UNSET:
+            self._proxied = _may_be_proxied(self.shape, set())
+        return self._proxied
 
     @property
     def slot(self) -> str:
@@ -157,6 +164,58 @@ def location_representation(t: QType) -> str:
 def shape_location_representation(s: Shape) -> str:
     """The location representation of the values of shape s (see location_representation)."""
     return layout_of(s).slot if is_boxed_in_slots(s) else layout_of(s).representation
+
+
+def may_be_proxied(s: Shape) -> bool:
+    """Whether a value of shape s, a tuple or option, may be a proxy (docs/c-representation.md §5.8): a view of an
+    object of a subtype at which some component changes view, so that reading a component may have to convert it.
+    A tuple may be when one of its components is view-sensitive (see _view_sensitive); an option when it has two or
+    more cases (a subtype numbers them differently) or one of its payloads' components is view-sensitive. Code
+    reading a component of such a value checks for a proxy; a value of any other type is never one."""
+    return s.kind in ("tuple", "option") and layout_of(s).proxied
+
+
+def changes_view(s: Shape) -> bool:
+    """Whether a component of shape s may change view when its tuple or option is upcast (see _view_sensitive): one
+    that may not is read through a proxy from the original's slot as it is (every slot being a word, at the same
+    offset)."""
+    return _view_sensitive(s, set())
+
+
+def _view_sensitive(s: Shape, seen: set[int]) -> bool:
+    """Whether values of subtypes of s may be represented differently at s (so that a component of this shape may
+    change view when its tuple or option is upcast): records and variants (offset tables, tags), options of several
+    cases, tuples and options that may be proxies, type variables (whose arguments may be any of these, or which are
+    viewed at their bounds), and functions whose signatures mention any of these (adapted)."""
+    kind = s.kind
+    if kind in ("record", "variant", "typevar", "abstract", "auto", "operator"):
+        return True
+    if kind in ("tuple", "option"):
+        return _may_be_proxied(s, seen)
+    if kind in ("fun", "all"):
+        if id(s) in seen:
+            return False
+        seen.add(id(s))
+        if kind == "all":
+            return True
+        return any(_view_sensitive(p.shape, seen) for p in s.params) or _view_sensitive(s.result, seen)
+    return False
+
+
+def _may_be_proxied(s: Shape, seen: set[int]) -> bool:
+    if id(s) in seen:
+        return False
+    seen.add(id(s))
+    if s.kind == "tuple":
+        return any(_view_sensitive(c.shape, seen) for c in s.components)
+    if s.kind == "option":
+        if len(s.cases) >= 2:
+            return True
+        return any(
+            c.shape is not None and any(_view_sensitive(pc.shape, seen) for pc in c.shape.components)
+            for c in s.cases if c.shape is not None and c.shape.kind == "tuple"
+        )
+    return False
 
 
 def is_boxed_in_slots(s: Shape) -> bool:
@@ -573,7 +632,10 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
             return disagrees(s.element) or visit(s.element)
         if kind in ("cell", "out"):
             return disagrees(s.element, _CELL) or visit(s.element)
-        if kind in ("tuple", "record"):
+        if kind == "tuple":
+            # A tuple is converted through a proxy, which reads and writes its original's components
+            return any(visit(c.shape) for c in s.components)
+        if kind == "record":
             return any((c.is_var and disagrees(c.shape)) or visit(c.shape) for c in s.components)
         if kind == "variant":
             return any(c.shape is not None and ((c.is_var and disagrees(c.shape)) or visit(c.shape)) for c in s.cases)

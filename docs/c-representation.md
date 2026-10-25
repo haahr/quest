@@ -303,10 +303,11 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   polymorphic function to types only (`getBox(:Bool)` used as a value, `type_app` in `codegen/c/printer.py`), which converts
   native arguments to the function's generic layouts and its result back.
 
-- **Tuple Structural Coercion & Generic Returns:**
-  When field types between source and target tuples differ in C representation (due to scalar-to-QVal boxing, closure
-  signature adaptation, generic function returns, or nested tuple coercion), the conversion is a `copy` plan, which
-  allocates a new target tuple struct and converts each field by its own plan:
+- **Tuple Conversions:**
+  A tuple converted to a supertype whose components change view is not copied but viewed through a proxy of the
+  original (§5.8), whatever changes: a record's offset table, a variant's tags, a nested tuple's or option's view, a
+  closure's signature. A tuple whose components keep their views (a prefix, or components whose slots agree, such as
+  a scalar used as a type parameter's `QVal`) is cast:
   - **Polymorphic Calls (Generic and Native Layouts):** A polymorphic function lays out a tuple or option over its
     type parameters generically, each component of a parameter a `QVal` (`let pair(A::TYPE B::TYPE a: A b: B): Tuple
     :A :B end` builds a `QTuple_QVal_QVal`), whether the type is written out or reached through a type operator
@@ -318,21 +319,15 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     and a recursive value is not copied. The layouts differ only where generic code views a value of a bounded type
     parameter at its bound (a record with the bound's offset table, a variant with the bound's tags), and where a
     component is a closure whose C signature changes (a `QVal` parameter or result in a register agrees only with
-    integers and pointers). Such a value is copied by `quest_convert`, from and to the descriptor of the type laid out
-    each way: for the callee's layout, the type's template with a hole for each of the callee's type parameters,
-    instantiated with the type arguments (`generic_layout_descriptor` in `codegen/c/printer.py`).
-    A value whose conversion would copy mutable data laid out differently (an array of such tuples, or a tuple with a
-    `var` component of a bounded parameter) cannot be converted, since the copy would not share its updates; the
-    compiler rejects the call (`generic_layout_copies_mutable_data`). An array's C type is the same whatever its
-    elements, so its layout is judged from its type, not its C type.
-    A copy is a new object, so a converted tuple or option is not `is` the original; this remains a known limitation
-    for the two cases above (`docs/tasklist.md`).
-  - **Record Width Subtyping in Tuples:** When a tuple field contains a record subtype whose field dictionary differs
-    from the target tuple field, the compiler synthesizes the new fat pointer by attaching the target evidence
-    dictionary (`(QRecordVal){ .val = src._i.val, .dict = &... }`) rather than an unsafe pointer cast.
-  - **Variant Tag Remapping in Tuples:** When tuple fields contain variants upcast across subtyping boundaries, static
-    tag remapping lookup tables are applied to align the tag space to the target variant type.
-  - **Zero-Cost Pointer Cast:** If all field C types match identically, zero-cost pointer casting is preserved.
+    integers and pointers). Such a value is converted by `quest_convert`, from and to the descriptor of the type laid
+    out each way (for the callee's layout, the type's template with a hole for each of the callee's type parameters,
+    instantiated with the type arguments, `generic_layout_descriptor` in `codegen/c/printer.py`): a tuple or option
+    into a proxy (§5.8), which shares the original's identity and `var` components, or a copy where the target type
+    cannot be proxied (a closure among its components whose C signature changes with the layout).
+    A value whose conversion would copy mutable data laid out differently (an array of such values) cannot be
+    converted, since the copy would not share its updates; the compiler rejects the call
+    (`generic_layout_copies_mutable_data`). An array's C type is the same whatever its elements, so its layout is
+    judged from its type, not its C type.
 
 ### 5.2. Records and Subtyping (Evidence Passing)
 Under Cardelli's structural subtyping with multiple inheritance, field offsets cannot be assigned globally.
@@ -401,7 +396,7 @@ As established in `docs/runtime-design.md`, Quest uses the **Evidence Passing** 
      table's `stored_types`. When it names a type for the field, the value is read as stored
      (`quest_slot_read(slot)`) and converted to its view at the field's type with
      `quest_convert(v, stored, &quest_type_<FieldType>)`: records get the offset table for the view, variants and
-     options their tags in the field's type, tuples are copied with converted elements, and closures adapted. Scalar, `var`, and
+     options their tags in the field's type, tuples and options get proxies (§5.8), and closures adapted. Scalar, `var`, and
      other fields are read with the single offset load. `quest_record_field_value` does the same for the runtime.
 6. **Storage in Aggregates:** A record in a slot (a tuple component, record field, option payload, array element, or
    auto component) is a pointer to an immutable box holding its `QRecordVal`, viewed at the slot's type (§5.1, Slots).
@@ -632,6 +627,49 @@ Equal types share one C representation, so a value moves between them with a pla
   identity; every other type and kind is a node, so equal types get one canonical form wherever they differ.
 
 ---
+
+### 5.8. Proxies (Views of Tuples and Options)
+A tuple or option upcast to a supertype at which some component changes view (a record at a supertype, whose offset
+table differs; a variant or option whose cases the supertype numbers differently; a nested tuple or option that
+changes view; a closure whose C signature changes) is not copied, so that it stays the same object (`is`) and shares
+its `var` components. The upcast value is a *proxy*: a pointer to an immutable `QProxy`, with `QUEST_PROXY_TAG` (1)
+set in its low bit, holding the original object (never itself a proxy), the descriptor of the type the original's
+components are stored at, the descriptor of the type the proxy is used at, and for an option a map from the stored
+type's tags to the view's (by case name):
+```c
+typedef struct QProxy {
+    const void            *orig;
+    const QTypeDescriptor *stored;
+    const QTypeDescriptor *view;
+    const int64_t         *tags;    /* an option's */
+    QVal                  *cache;   /* immutable elements read so far, converted */
+    uint8_t               *cached;
+} QProxy;
+```
+- **Which values may be proxies:** a value of a tuple type one of whose components may change view (a record,
+  variant, auto value, type variable, abstract type, function whose signature mentions one, or a tuple or option that
+  may be a proxy), or of an option type with two or more cases or such a payload component (`may_be_proxied` in
+  `codegen/layout.py`). No value of any other type is a proxy: an upcast to such a type unwraps one
+  (`quest_unproxy`), and `quest_convert` copies rather than proxies a value whose target type cannot be proxied (the
+  runtime decides with the same rule on descriptors, conservatively).
+- **Making one:** an upcast that changes a component's view is a `view` plan, `quest_make_proxy(v, from, to)`
+  (through `quest_convert`); so is a conversion at a polymorphic call over a bounded type parameter (`runtime` plans).
+  Upcasting a proxy makes a new proxy of its original (proxies never chain), and viewing it at the original's type
+  gives back the original. An upcast that changes no component's view is a cast.
+- **Reading:** code reading a component of a value that may be a proxy checks the tag. Through a proxy, component `i`
+  is read from the original and converted from its stored type to the view's (`quest_proxy_element`; for an option,
+  `quest_proxy_tag` and `quest_proxy_option_element`): a record by the offset-table map, a variant by its tags, a
+  nested tuple or option by a proxy, a closure by its type's adapter. Immutable components, once converted, are kept in
+  the proxy, so a closure is adapted once per proxy. A component that cannot change view is read from the original's
+  slot as it is (every slot is a word, at the same offset in both structs), as is any component of a tuple or option
+  the code made itself.
+- **Writing:** a `var` component (whose type is invariant) is written into the original (`quest_proxy_store`), and its
+  address is the original's slot (`quest_proxy_slot`).
+- **Seeing through:** `is` and `quest_val_is` compare originals, as `quest_identity_hash` hashes them; printing,
+  `quest_convert`, and dynamic serialization read components through proxies (`quest_tuple_element`,
+  `quest_option_tag`, `quest_option_element`), and serialization shares a proxy as its original.
+- **Collection:** a tagged pointer points into its proxy's allocation, which the collector keeps alive as Boehm GC
+  recognizes interior pointers (its default).
 
 ## 6. Closures and Calling Convention
 
@@ -917,11 +955,12 @@ function passes on ([type-system.md](type-system.md) §6.11).
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
-  components their sharing); otherwise tuples, options, and auto payloads are copied with converted components,
-  records are re-viewed from their own layout (always, since code that knows a value only as of a type parameter's
-  bound views it at the bound), and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker.
-  Arrays, exceptions, and tuples with `var` components cannot be copied without losing updates: converting one whose
-  layout differs is a fatal run-time error (`quest_layout_conversion_error`). At a polymorphic call, where both layouts are known,
+  components their sharing); otherwise tuples and options are viewed through proxies of the originals (§5.8; copied,
+  where `to` cannot be proxied), auto payloads are copied with converted components, records are re-viewed from
+  their own layout (always, since code that knows a value only as of a type parameter's bound views it at the
+  bound), and closures are wrapped by `to`'s adapter, which calls them through `from`'s invoker. Arrays, exceptions,
+  and tuples with `var` components that would have to be copied cannot be without losing updates: converting one
+  whose layout differs is a fatal run-time error (`quest_layout_conversion_error`). At a polymorphic call, where both layouts are known,
   the compiler reports it instead (§5.1, Polymorphic Calls). The type checker rejects types that
   mention type parameters inside mutable data where they are used at run time, so this happens only when such a
   type reaches run time as an ordinary type argument.

@@ -96,40 +96,32 @@ Consequences:
 Boxing alone does not address view changes (case 2): the box holds the view, so an upcast that changes a component's
 view still rebuilds the aggregate.
 
-**Decided: views on tuples and options (V1).** The candidates considered, each keeping records' and variants'
+**Decided: views on tuples and options, as proxies.** The candidates considered, each keeping records' and variants'
 16-byte values and evidence passing:
 
-- **V1. Views on tuples and options (chosen).** Generalize records' stored types to tuples and options. A tuple
-  or option whose type is *view-sensitive* is represented as a pair, like a record. A type is view-sensitive when
-  values of its subtypes can be represented differently at it, which is a matter of subtyping, not polymorphism:
-  a tuple or option type is view-sensitive when one of its immutable components (`var` components are invariant) is
-  a record or variant, a type parameter bounded by one, a function whose signature mentions a view-sensitive type
-  or one of the tuple's own type components (whose C signature changes when packed), or a view-sensitive tuple or
-  option. `Tuple x: Int y: String end` and `Tuple x: A end` (unbounded `A`, whose values are uniform words or boxes)
-  are not; `Tuple p: Point end` and `Tuple f: Fun(x: Small): Int end` are. The pair is its
-  pointer and a view, the descriptor of the type its components are stored at, or NULL when that is its static type.
-  An upcast keeps the pointer and sets the view to the source's view, or to the source type's descriptor when that is
-  NULL: no allocation, no lookup, no copy. Reading a component through a non-NULL view converts it from its stored
-  type: a record by the existing `(view, layout)` offset-table map, a variant by a tag table found the same way, a
-  nested tuple or option by passing the view down (free), and a function by an adapter.
-  - Fixes identity and lost updates for every upcast; nothing is copied.
-  - Types that are not view-sensitive (tuples of scalars, strings, arrays, and other insensitive types) keep their
-    one-word representation, decided statically from the type.
-  - Costs: view-sensitive tuples and options are 16 bytes (in aggregate slots, boxed like records); each component
-    read checks the view for NULL; reads through a view look up tables per descriptor pair, as record upcasts
-    already do; a function component read through a view allocates an adapter on each read, which matters for
-    tuples used as objects or packages viewed at a supertype.
+- **V1. Views as fat pointers.** A tuple or option whose type is *view-sensitive* (values of its subtypes can be
+  represented differently at it: a component is a record, a variant, a type parameter bounded by one, a function whose
+  signature mentions such a type, or a view-sensitive tuple or option) is a pair, its pointer and a view (the
+  descriptor of the type its components are stored at, or NULL); an upcast sets the view, and reads through a view
+  convert. Not pursued: with boxing it cannot make native and generic layouts agree, since `List(A)` (unbounded `A`)
+  is not view-sensitive and `List(P)` is, so their cons cells would hold their tails differently, and polymorphic
+  calls would copy lists of records again (A2's notes).
+- **Proxies (chosen, A2).** Every slot, `QVal` word, variable, parameter, and result holds a tuple or option as one
+  pointer, so boxing's memory agreement holds everywhere. A view-changing upcast allocates a small immutable *proxy*
+  (the original object, the descriptor of the type its components are stored at, and the descriptor of the type it is
+  used at), tagged in its pointer's low bit; nothing is copied, so identity and `var` components are shared. Reading a
+  component of a tuple or option whose type may be proxied checks the tag; through a proxy, the component is read
+  from the original and converted (a record by the `(view, layout)` offset-table map, a variant's or option's tag by a
+  map of case names, a nested tuple or option by another proxy, a closure by an adapter), and kept in the proxy if it
+  is immutable. Upcasting a proxy makes a new one of the original (proxies never chain), or gives back the original.
 - **V2. Static witnesses on tuples and options.** As V1, but the view is a static witness table for the upcast
   (per component: an offset-table map, a tag map, an adapter), built at compile time when the source view is NULL.
-  Reads apply the witness without lookups. Upcasting a value that already has a witness needs the composition of two
-  witnesses: a small allocated witness chaining them (reads apply the chain), or a memo table of compositions.
-  Fewer run-time lookups than V1 in the common case, at the price of composition and of witness tables per upcast
-  site.
+  Not pursued, for V1's reason.
 - **V3. Reject.** Keep copying for view changes, reject statically any view-changing upcast of an aggregate that
   holds `var` components (directly or nested), and document that `is` can differ for immutable ones. Least work,
   rejects programs the interpreter runs, and leaves the conversion machinery for view changes in place.
 
-A2 implements boxing and V1 together.
+A2 implements boxing and proxies together.
 
 ### 0b. Performance baseline
 
@@ -206,8 +198,7 @@ conversion matrix. A2 also moves `collect_aggregate_types` to shapes (left over 
 conversions that boxing makes unnecessary are accepted, `ABI_VERSION` is bumped, and the benchmarks are within the
 bar.
 
-**Done in part:** boxing and `collect_aggregate_types` on shapes, under `ABI_VERSION` 31; V1 is not done, pending
-the decision below.
+**Done:** boxing, `collect_aggregate_types` on shapes, and views as proxies, under `ABI_VERSION` 31.
 
 - Every aggregate slot (tuple component, option payload, record field, array element, auto payload, module record
   field) is one word, its value's `QVal` form (`slot_representation` in `codegen/layout.py`): a record or variant is a
@@ -227,30 +218,38 @@ the decision below.
 - Also fixed: `is` between tuples of different types (compared as addresses), and option upcasts whose payload
   components change view (an unsupported conversion; now a runtime copy, as for tuples).
 
-**Open decision: views and slots (V1).** 0a says that boxing makes native and generic layouts agree in memory for
-every type, and that view-sensitive tuples and options are 16-byte pairs, boxed like records in aggregate slots. The
-two conflict: `List(A)` with `A` unbounded is not view-sensitive, so generic code's cons cells hold their tails as
-plain pointers, while `List(P)` (a record `P`) is, so native cons cells would hold their tails as boxed pairs. A
-polymorphic call with a list of records would again copy the list (and fail the identity column, which boxing alone
-passes), as would `Nest(P)` and any other nested view-sensitive type. The alternatives:
+**Views as proxies.** 0a's V1 (fat pointers) conflicts with boxing's memory agreement (see 0a); the owner chose to
+prototype proxies instead, which kept every value one pointer, and measured them against the bar:
 
-- (A) Slots and `QVal` words hold view-sensitive tuples and options as plain pointers stored at the slot's type; the
-  pair (pointer, view) exists only in variables, parameters, and results. Reading a nested component through a view
-  passes the view down (the component's stored type), so nothing is copied while values stay in variables; storing a
-  pair with a non-NULL view into a slot, or passing it to generic code at an unbounded type parameter, converts it to
-  the slot's type with `quest_convert` (a copy, and a run-time error for `var` components). Layouts agree in memory,
-  the identity column and the lost-update test pass, and nested lists cost nothing extra; the copies remain for
-  values upcast and then stored or passed generically. Recommended.
-- (B) As 0a literally: pairs boxed in slots. Every cons of a list of records allocates a box for its tail, and
-  polymorphic calls copy nested view-sensitive values (lists of records through `list.map`, which is not
-  specialized across units).
+- A tuple or option type *may be proxied* (`may_be_proxied` in `codegen/layout.py`) when a component may change view
+  (a record, variant, auto value, type variable or abstract type, function whose signature mentions one, or a tuple or
+  option that may be proxied), and an option also when it has two or more cases (a subtype may number them
+  differently). The printer reads such a value's components through `quest_is_proxy` checks; components that cannot
+  change view are read from the original as they are (`quest_unproxy`), as are tuples and options the function made
+  itself. A value of any other type is never a proxy: an upcast to such a type unwraps one, and the runtime copies
+  rather than proxies where the target type may not be proxied (a closure whose C signature changes with a generic
+  layout), using the same predicate on descriptors.
+- The tag is the pointer's low bit (`QUEST_PROXY_TAG`), not a header word: tuples have no header, and one would grow
+  every tuple; the collector keeps a tagged pointer's proxy alive as it recognizes pointers into an allocation's
+  interior (Boehm GC's default).
+- An upcast that changes a component's view is a `view` plan (the runtime makes the proxy, `quest_make_proxy`);
+  one that does not stays a cast, for options too when their cases keep their indices. Tuple `copy` plans for view
+  changes are gone (only auto payloads are copied), and the `runtime` plans at polymorphic calls over bounded type
+  parameters make proxies, so tuples with `var` components of a bounded type parameter are accepted, and identity
+  holds there too. Variant payloads, `QVal` words, simply hold proxies; options bounded by options keep their `view`
+  plans, which now make proxies.
+- Reads through a proxy keep converted immutable components (records' views, nested proxies, adapters) in the proxy,
+  so a closure is adapted once per proxy; a call through such an adapter still converts by descriptor, about three
+  times slower than a statically adapted closure.
+- `is`, identity hashes, printing, `quest_convert`, and dynamic serialization see through proxies (a proxy is shared
+  as its original).
+- Cost: the existing benchmarks run within 5% of main's; reads of a view-sensitive tuple that is not a proxy (an array
+  of tuples of records, read in a hot loop) about 9 to 13% slower; reads through proxies about 3 times slower than of
+  a copy (`view_reads`, a benchmark of both).
 
-Either way, V1 must also settle variant payloads (a payload is a `QVal` word, so a variant upcast that changes its
-payload's view converts it), options bounded by options (today's `view` plans), and existential packages, whose
-function components would be adapted on every read through a view rather than once when packed. Also remaining:
-the lost-update test (`Upcasting a tuple whose components change view copies it in C`, [tasklist.md](tasklist.md)),
-and identity at polymorphic calls over bounded type parameters (`Conversions that copy change object identity in
-C`).
+Remaining: options whose cases are listed in different orders are equal types laid out differently, and `ordinal`
+of an option upcast to a supertype that numbers its cases differently gives the supertype's index in C but the
+original's interpreted ([tasklist.md](tasklist.md), `Options whose cases are listed in different orders`).
 
 **A3. Representation decisions out of the printer.** Auto packing (`make_auto`), `inspect` arm conversions
 (`auto_arm_converted`, `auto_layouts_agree`), bounded type parameters' views (`bounded_param_in_scope`), `type_app`
@@ -458,8 +457,8 @@ Stale docstrings and comments are fixed by whichever step touches their files.
 | Decision | Choice |
 |---|---|
 | Records and variants at polymorphic boundaries (0a) | Boxed in aggregate slots and `QVal` words |
-| View changes in aggregates (0a) | V1: view-sensitive tuples and options carry the descriptor of their stored type |
-| How V1's views meet boxed slots (A2) | Prototype proxy objects (one pointer everywhere; a view-changing upcast allocates a proxy holding the original and its view) and measure against the bar |
+| View changes in aggregates (0a) | Views: a view-changing upcast of a tuple or option keeps the original, with the descriptor of its stored type |
+| How V1's views meet boxed slots (A2) | Proxy objects (one pointer everywhere; a view-changing upcast allocates a proxy holding the original and its view): adopted, within the bar |
 | Not pursued | One-word records and variants (per-site caches, boxing every variant); program-wide variant tags (awkward with separate compilation) |
 | Lost update after a view-changing upcast | Fixed by A2, not before |
 | `collect_aggregate_types` on shapes (left from A1) | In A2, under its `ABI_VERSION` bump |

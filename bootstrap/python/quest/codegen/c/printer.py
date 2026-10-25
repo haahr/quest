@@ -7,7 +7,9 @@ outside loops, declared at file scope), and each structured statement a C statem
 labels, and try regions setjmp handlers, popped on every way out. Conversions are `convert` operations, printed as
 their plans say. Aggregate slots hold records and variants boxed (slot_representation), as the locations var and out
 parameters point to do: the printer boxes a value it stores into one, reusing the box the value was read from, and
-unboxes a value it reads. The declarations of the types it uses (structs, descriptors, function type adapters) are
+unboxes a value it reads. A tuple or option whose type may be proxied (docs/c-representation.md §5.8) may be a view of
+an object of a subtype: its components are read through proxy checks, and its var components written into the
+original. The declarations of the types it uses (structs, descriptors, function type adapters) are
 c/declarations.py's, and the representations codegen/layout.py's, spelled in C by c/types.py
 (docs/c-representation.md). A module file's unit
 exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function
@@ -47,7 +49,9 @@ from quest.codegen.c.types import (
 )
 from quest.types.canonical import collect_fun_quantifiers
 from quest.codegen.layout import (
+    changes_view,
     is_boxed_in_slots,
+    may_be_proxied,
     is_record_subtype,
     is_tuple_subtype,
     is_variant_subtype,
@@ -179,6 +183,8 @@ class _FunctionState:
         # The boxes of the records and variants bound by lets that read them from slots (by variable): a box is
         # immutable, so storing the value into another slot reuses it rather than allocating another
         self.boxes: dict[int, str] = {}
+        # The tuples and options bound by lets that make them, which are never proxies
+        self.fresh: set[int] = set()
 
 
 class CPrinter:
@@ -277,6 +283,49 @@ class CPrinter:
         if is_boxed_in_slots(s) and isinstance(a, ir.Var) and id(a) in self.fs.boxes:
             return self.fs.boxes[id(a)]
         return shape_slot_store(self.atom(a), s)
+
+    # Proxies (docs/c-representation.md §5.8): a value of a tuple or option type that may be proxied may be a view of
+    # an object of a subtype, whose components are read (and var components written) through the runtime
+
+    def is_fresh(self, a: ir.Atom) -> bool:
+        """Whether an atom is a tuple or option the function made itself, which is not a proxy."""
+        return isinstance(a, ir.Var) and id(a) in self.fs.fresh
+
+    def tuple_component(self, t: str, ts: Shape, i: int, fresh: bool = False) -> str:
+        """The slot form of component i of the tuple t (an atom's C expression) of shape ts, through a proxy if t may
+        be one (and is not fresh, made by the function)."""
+        if fresh or not may_be_proxied(ts):
+            return f"({t})->_{i}"
+        comp = ts.components[i].shape
+        if not changes_view(comp):
+            # Read from the original as it is (its slot at the same offset)
+            return f"(({self.c_type(ts.type)})quest_unproxy({t}))->_{i}"
+        tmp = self.temp(self.slot_c_type(comp))
+        through = shape_qval_to_slot(f"quest_proxy_element({t}, {i})", comp)
+        self.emit(f"{tmp} = quest_is_proxy({t}) ? {through} : ({t})->_{i};")
+        return tmp
+
+    def option_tag(self, v: str, os: Shape, fresh: bool = False) -> str:
+        """The tag of the option v of shape os, in os's numbering (through a proxy if v may be one)."""
+        if fresh or not may_be_proxied(os):
+            return f"(({v})->tag)"
+        return f"(quest_is_proxy({v}) ? quest_proxy_tag({v}) : ({v})->tag)"
+
+    def option_component(self, v: str, os: Shape, tag: str, i: Optional[int]) -> str:
+        """The slot form of component i (None: the payload, when it is not a tuple) of the payload of case tag of
+        the option v of shape os, through a proxy if v may be one."""
+        raw = f"{v}->u.{tag}.val" if i is None else f"{v}->u.{tag}._{i}"
+        if not may_be_proxied(os):
+            return raw
+        case = os.case(tag)
+        comp = case.shape if i is None else case.shape.components[i].shape
+        if not changes_view(comp):
+            unproxied = f"(({shape_representation(os)})quest_unproxy({v}))"
+            return f"{unproxied}->u.{tag}.val" if i is None else f"{unproxied}->u.{tag}._{i}"
+        tmp = self.temp(self.slot_c_type(comp))
+        through = shape_qval_to_slot(f"quest_proxy_option_element({v}, {i or 0})", comp)
+        self.emit(f"{tmp} = quest_is_proxy({v}) ? {through} : {raw};")
+        return tmp
 
     def slot_field(self, a: ir.Atom, s: Shape):
         """An atom of shape s as a field of an aggregate being made holds it: its slot form, or for a record or variant
@@ -496,7 +545,7 @@ class CPrinter:
             case ir.Prim(op=op, args=args, offset=offset):
                 return self.prim(op, args, offset)
             case ir.Ordinal(value=v):
-                return f"(({self.atom(v)})->tag)"
+                return self.option_tag(self.atom(v), self.tag_shape(self.atom_type(v)))
             case ir.Call():
                 return self.call(o)
             case ir.ModuleMember(module=module, member=member):
@@ -544,16 +593,27 @@ class CPrinter:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
                 return self.slot_address(ptr, field)
             case ir.Addr(base=base, index=index) if isinstance(index, int):
-                component = shape(self.atom_type(base)).components[index].shape
-                return self.slot_address(f"(&({self.atom(base)}->_{index}))", component)
+                ts = shape(self.atom_type(base))
+                component = ts.components[index].shape
+                address = self.slot_address(f"(&({self.atom(base)}->_{index}))", component)
+                if not may_be_proxied(ts):
+                    return address
+                b = self.atom(base)
+                if not changes_view(component):
+                    return self.slot_address(f"(&((({self.c_type(ts.type)})quest_unproxy({b}))->_{index}))", component)
+                through = f"(({shape_location_representation(component)} *)quest_proxy_slot({b}, {index}))"
+                return f"(quest_is_proxy({b}) ? {through} : {address})"
             case ir.Addr(base=base, index=index, offset=offset):
                 return self.array_slot(self.atom(base), self.atom(index), self.element_shape(base), offset)
             case ir.MakeTuple(args=args):
                 components = shape(result.type).components
                 return self.make_tuple(result.type, [self.slot_field(a, c.shape) for a, c in zip(args, components)])
             case ir.TupleField(tuple=t, index=index):
-                component = shape(self.atom_type(t)).components[index].shape
-                value, self.pending_box = self.load_slot(f"({self.atom(t)}->_{index})", component)
+                ts = shape(self.atom_type(t))
+                component = ts.components[index].shape
+                value, self.pending_box = self.load_slot(
+                    self.tuple_component(self.atom(t), ts, index, self.is_fresh(t)), component
+                )
                 return value
             case ir.MakeRecord(fields=fields):
                 return self.make_record(fields, result.type)
@@ -571,7 +631,8 @@ class CPrinter:
                 return self.make_option(tag, payload, ordinal, result.type, offset)
             case ir.IsTag(value=v, tag=tag):
                 ts = self.tag_shape(self.atom_type(v))
-                return f"({self.atom(v)}{'.tag' if ts.kind == 'variant' else '->tag'} == {self.tag_index(ts, tag)}LL)"
+                tag_c = f"{self.atom(v)}.tag" if ts.kind == "variant" else self.option_tag(self.atom(v), ts)
+                return f"({tag_c} == {self.tag_index(ts, tag)}LL)"
             case ir.Payload(value=v, tag=tag, offset=offset):
                 return self.payload(v, tag, result.type, offset)
             case ir.MakeArray(args=args):
@@ -612,6 +673,11 @@ class CPrinter:
                 tagmap = f"tagmap_{shape_tag(target)}_{shape_tag(source)}"
                 return f"((QVariantVal){{ .tag = {tagmap}[{v}.tag], .payload = {v}.payload }})"
             case "cast":
+                source_s, target_s = shape(plan.source), shape(plan.target)
+                if target_s.kind in ("tuple", "option") and may_be_proxied(source_s) and not may_be_proxied(target_s):
+                    # A value of the target type is never a proxy: its components do not change view, so the
+                    # original serves
+                    return f"(({self.c_type(plan.target)})quest_unproxy({c}))"
                 return f"(({self.c_type(plan.target)}){c})"
             case "view":
                 converted = f"quest_convert({qval_wrap(c, plan.source)}, {self.descriptor(plan.source)}, " \
@@ -642,7 +708,7 @@ class CPrinter:
                 source_s, target_s = shape(plan.source), shape(plan.target)
                 for i, (tc, fp) in enumerate(zip(target_s.components, plan.fields)):
                     sc = source_s.components[i].shape
-                    fc = f"{src}->_{i}"
+                    fc = self.tuple_component(src, source_s, i)
                     if fp is not None:
                         fields.append(shape_slot_store(self.convert(shape_slot_load(fc, sc), fp), tc.shape))
                     elif self.slot_c_type(sc) == self.slot_c_type(tc.shape):
@@ -917,8 +983,9 @@ class CPrinter:
             pt = case.shape if case is not None else None
             p = self.atom(payload)
             if pt is not None and pt.kind == "tuple":
+                ps = shape(self.atom_type(payload))
                 for i, _ in enumerate(pt.components):
-                    self.emit(f"{tmp}->u.{tag}._{i} = {p}->_{i};")
+                    self.emit(f"{tmp}->u.{tag}._{i} = {self.tuple_component(p, ps, i, self.is_fresh(payload))};")
             else:
                 value = self.slot_value(payload, pt) if pt is not None else p
                 self.emit(f"{tmp}->u.{tag}.val = {value};")
@@ -946,14 +1013,14 @@ class CPrinter:
         case = os.case(tag)
         pt = case.shape if case is not None else None
         if offset:
-            self.emit(f"{tmp}->_0 = {opt}->tag;")
+            self.emit(f"{tmp}->_0 = {self.option_tag(opt, os)};")
         if pt is not None and pt.kind == "tuple":
             for i, _ in enumerate(pt.components):
                 if i + offset < len(ts.components):
-                    src = self.option_field(f"{opt}->u.{tag}._{i}", pt, i, ts.components[i + offset].shape)
+                    src = self.option_field(self.option_component(opt, os, tag, i), pt, i, ts.components[i + offset].shape)
                     self.emit(f"{tmp}->_{i + offset} = {src};")
         elif pt is not None:
-            self.emit(f"{tmp}->_{offset} = {opt}->u.{tag}.val;")
+            self.emit(f"{tmp}->_{offset} = {self.option_component(opt, os, tag, None)};")
         return tmp
 
     def payload(self, v: ir.Atom, tag: str, t: QType, offset: Optional[int]) -> str:
@@ -965,7 +1032,7 @@ class CPrinter:
             case = ts.case(tag)
             case_s = case.shape if case is not None and case.shape is not None else shape(t)
             return shape_qval_unwrap(f"{self.atom(v)}.payload", case_s)
-        self.emit(f"if ({self.atom(v)}->tag != {index}LL) quest_raise_variant_error_at({site});")
+        self.emit(f"if ({self.option_tag(self.atom(v), ts)} != {index}LL) quest_raise_variant_error_at({site});")
         return self.option_case_tuple(self.atom(v), ts, tag, t, 1)
 
     def array_get(self, arr: str, idx: str, elem: Shape) -> str:
@@ -1033,7 +1100,10 @@ class CPrinter:
                 negate = "" if op == "is" else "!"
                 return f"({negate}quest_val_is({self.descriptor(t)}, {left}, {right}))"
             t2 = self.atom_type(args[1]) if t is not None else None
-            if t2 is not None and self.c_type(t) != self.c_type(t2) and self.c_type(t).endswith("*"):
+            if t is not None and (may_be_proxied(shape(t)) or may_be_proxied(shape(t2))):
+                # A proxy is the object it views
+                left, right = f"quest_unproxy({left})", f"quest_unproxy({right})"
+            elif t2 is not None and self.c_type(t) != self.c_type(t2) and self.c_type(t).endswith("*"):
                 # Pointers to aggregates of different (subtype-related) types: compared as addresses
                 left, right = f"(const void *)({left})", f"(const void *)({right})"
             return f"(({left}) {'==' if op == 'is' else '!='} ({right}))"
@@ -1190,6 +1260,10 @@ class CPrinter:
                 if isinstance(value, ir.MakeClosure):
                     self.closures[id(var)] = value
                 self.pending_box = None
+                if isinstance(value, (ir.MakeTuple, ir.MakeOption)) or (
+                    isinstance(value, ir.Var) and id(value) in self.fs.fresh
+                ):
+                    self.fs.fresh.add(id(var))
                 c = self.operation(value, var)
                 box = self.fs.boxes.get(id(value)) if isinstance(value, ir.Var) else self.pending_box
                 self.pending_box = None
@@ -1212,8 +1286,19 @@ class CPrinter:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
                 self.emit(f"*{ptr} = {self.slot_value(value, field)};")
             case ir.Store(value=value, base=base, index=index) if isinstance(index, int):
-                component = shape(self.atom_type(base)).components[index].shape
-                self.emit(f"{self.atom(base)}->_{index} = {self.slot_value(value, component)};")
+                ts = shape(self.atom_type(base))
+                component = ts.components[index].shape
+                b, v = self.atom(base), self.slot_value(value, component)
+                if may_be_proxied(ts) and not changes_view(component):
+                    # Stored into the original as it is
+                    self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{index} = {v};")
+                elif may_be_proxied(ts):
+                    # A var component of a proxy is the original's
+                    self.emit(f"if (quest_is_proxy({b})) quest_proxy_store({b}, {index}, "
+                              f"{shape_slot_to_qval(v, component)});")
+                    self.emit(f"else {b}->_{index} = {v};")
+                else:
+                    self.emit(f"{b}->_{index} = {v};")
             case ir.Store(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
                 elem = self.element_shape(base)
@@ -1320,7 +1405,7 @@ class CPrinter:
         t = self.tag_shape(self.atom_type(value))
         is_variant = t.kind == "variant"
         self.types.append(t.structure)
-        self.emit(f"switch ({v}{'.tag' if is_variant else '->tag'}) {{")
+        self.emit(f"switch ({f'{v}.tag' if is_variant else self.option_tag(v, t)}) {{")
         self.indent += 1
         for c in cases:
             for tag in c.tags:
@@ -1335,7 +1420,7 @@ class CPrinter:
                 else:
                     case_s = t.case(c.tags[0])
                     payload_s = case_s.shape if case_s is not None and case_s.shape is not None else shape(c.binder.type)
-                    self.assign(c.binder, shape_slot_load(f"{v}->u.{c.tags[0]}.val", payload_s))
+                    self.assign(c.binder, shape_slot_load(self.option_component(v, t, c.tags[0], None), payload_s))
             self.body(c.body)
             self.emit("break;")
             self.indent -= 1

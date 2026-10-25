@@ -691,6 +691,55 @@ static inline QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_
     return *(const QRecordStoredTypes *)((const size_t *)rec.dict + (field_count > 0 ? field_count : 1));
 }
 
+/* Proxies (docs/c-representation.md §5.8). A tuple or option upcast to a supertype at which its immutable components
+ * change view (a record at a supertype, a variant or option whose cases the supertype numbers differently) is not
+ * copied: the upcast value is a proxy, a pointer to a QProxy tagged with QUEST_PROXY_TAG in its low bit, holding the
+ * original object (never itself a proxy), the descriptor of the type the original's components are stored at, and
+ * the descriptor of the type the proxy is used at. Reading a component through a proxy reads it from the original and
+ * converts it from its stored type to the view's (quest_convert); writing a var component writes the original. Values
+ * of types whose components cannot change view are never proxies (the compiler unwraps one upcast to such a type). */
+typedef struct QProxy {
+    const void            *orig;
+    const QTypeDescriptor *stored;
+    const QTypeDescriptor *view;
+    const int64_t         *tags;   /* an option's: for each tag of the stored type, the view's tag for its case */
+    QVal                  *cache;  /* the immutable elements read so far, converted (NULL until one is read) */
+    uint8_t               *cached; /* which of them have been */
+} QProxy;
+
+#define QUEST_PROXY_TAG ((uintptr_t)1)
+
+static inline bool quest_is_proxy(const void *p) {
+    return ((uintptr_t)p & QUEST_PROXY_TAG) != 0;
+}
+
+static inline const QProxy *quest_proxy_of(const void *p) {
+    return (const QProxy *)((uintptr_t)p - QUEST_PROXY_TAG);
+}
+
+/* The object a tuple or option value is: the original of a proxy, or the value itself */
+static inline void *quest_unproxy(const void *p) {
+    return quest_is_proxy(p) ? (void *)quest_proxy_of(p)->orig : (void *)p;
+}
+
+/* v (a tuple or option of type `from`, or a proxy of one) viewed at type `to`: v's original if its type is laid out as
+ * `to` is, and otherwise a proxy of the original (a proxy is never made of a proxy) */
+void   *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDescriptor *to);
+/* Through a proxy of a tuple: element i (in its QVal form, at the view's type), its slot in the original (when stored
+ * as the view lays it out), and a store into it (a var element, converted to the stored type) */
+QVal    quest_proxy_element(const void *p, size_t i);
+void   *quest_proxy_slot(const void *p, size_t i);
+void    quest_proxy_store(const void *p, size_t i, QVal v);
+/* Through a proxy of an option: its tag in the view's numbering, and element i of its case's payload */
+int64_t quest_proxy_tag(const void *p);
+QVal    quest_proxy_option_element(const void *p, size_t i);
+
+/* A tuple's element i, an option's tag, and element i of an option's case payload, through a proxy or not, for the
+ * runtime's readers of values by descriptor (t: the value's type) */
+QVal    quest_tuple_element(const void *tup, const QTypeDescriptor *t, size_t i);
+int64_t quest_option_tag(const void *opt);
+QVal    quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i);
+
 /* Values in aggregate slots (record fields, tuple elements, option payloads, array elements, auto payloads): every
  * slot is one word holding the value's QVal form (records and variants as pointers to immutable boxes, scalars in
  * their bits, pointers as they are), whatever the slot's type, and generic code's slots (QVal) alike */
@@ -818,6 +867,11 @@ static inline double quest_real_divide(double a, double b) { return quest_real_d
    where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs). */
 static inline bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     if (a.u == b.u) return true;
+    if (t != NULL && t->kind == QTYPE_KIND_STORED) t = ((const QStoredDescriptor *)t->extra)->type;
+    if (t != NULL && (t->kind == QTYPE_KIND_TUPLE || t->kind == QTYPE_KIND_OPTION)) {
+        /* A proxy is the object it is a view of */
+        return quest_unproxy(a.p) == quest_unproxy(b.p);
+    }
     return t != NULL && t->kind == QTYPE_KIND_REAL && a.r == b.r;
 }
 

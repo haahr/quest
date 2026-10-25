@@ -157,12 +157,14 @@ class Plan:
     native value to a QVal word, as generic code holds it) or `unbox` (back); `record_view` (a record viewed at a
     supertype, with that type's offset table); `variant_tags` (a variant's tag remapped to a supertype's); `cast` (a
     pointer viewed through another struct, whose layout agrees); `copy` (a new tuple, each component converted by its
-    plan in `fields`, None where it is used as it is); `runtime` (converted by the runtime, between the descriptors of
+    plan in `fields`, None where it is used as it is: an auto value's payload, stored in its witness-independent
+    layout); `runtime` (converted by the runtime, between the descriptors of
     the two layouts, for a value passed to or returned from a polymorphic callee that lays it out generically: the
     callee's type parameters' instantiation, and whether the value goes to the generic layout, are `layout`); `adapt`
     (a closure wrapped in a thunk of the target's C signature converting arguments and result: `fields` are the
-    parameters' plans, then the result's); `view` (a variant or option converted by the runtime between two views'
-    descriptors, from a bounded type parameter's view at its bound to another)."""
+    parameters' plans, then the result's); `view` (converted by the runtime between two views' descriptors: a tuple or
+    option upcast to a supertype at which components change view, as a proxy of the original; a variant or option
+    from a bounded type parameter's view at its bound to another)."""
     kind: str
     source: QType
     target: QType

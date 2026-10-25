@@ -654,7 +654,7 @@ static QVal quest_array_element(const QArray *arr, const QTypeDescriptor *elem_d
  * the tag comes first. */
 static const QVariantCaseDescriptor *quest_variant_case(const QTypeDescriptor *desc, const void *val, bool *bare) {
     const QVariantTypeDescriptor *meta = (const QVariantTypeDescriptor *)desc->extra;
-    int64_t tag = val != NULL ? *(const int64_t *)val : -1;
+    int64_t tag = val == NULL ? -1 : desc->kind == QTYPE_KIND_OPTION ? quest_option_tag(val) : *(const int64_t *)val;
     if (meta == NULL || tag < 0 || (size_t)tag >= meta->case_count) {
         quest_raise_dynamic_error();
     }
@@ -665,11 +665,6 @@ static const QVariantCaseDescriptor *quest_variant_case(const QTypeDescriptor *d
         quest_raise_dynamic_error();
     }
     return c;
-}
-
-/* The components of an option value's case */
-static const char *quest_option_components(const void *opt) {
-    return (const char *)opt + sizeof(int64_t);
 }
 
 /* Finds the records, tuples, and arrays reached more than once, and adds the types of dynamic values to the type
@@ -742,10 +737,10 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             if (meta == NULL || meta->element_count == 0) break;
             const void *tup = val.p;
             if (tup == NULL) quest_raise_dynamic_error();
-            if (quest_ptr_insert_or_inc(table, tup)->count > 1) return;
+            /* A proxy is shared as the object it views */
+            if (quest_ptr_insert_or_inc(table, quest_unproxy(tup))->count > 1) return;
             for (size_t i = 0; i < meta->element_count; ++i) {
-                const QTupleElementDescriptor *elem = &meta->elements[i];
-                quest_scan_value(elem->type, quest_slot_read((const char *)tup + elem->offset), table, g);
+                quest_scan_value(meta->elements[i].type, quest_tuple_element(tup, desc, i), table, g);
             }
             break;
         }
@@ -761,9 +756,7 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
             }
             const QTupleTypeDescriptor *payload = (const QTupleTypeDescriptor *)c->payload_type->extra;
             for (size_t i = 0; i < payload->element_count; ++i) {
-                const QTupleElementDescriptor *elem = &payload->elements[i];
-                QVal elem_val = quest_slot_read(quest_option_components(val.p) + elem->offset);
-                quest_scan_value(elem->type, elem_val, table, g);
+                quest_scan_value(payload->elements[i].type, quest_option_element(val.p, desc, i), table, g);
             }
             break;
         }
@@ -877,7 +870,7 @@ static void quest_emit_value(
                 break;
             }
             int id;
-            if (quest_emit_shared(val.p, table, next_id, wr, &id)) break;
+            if (quest_emit_shared(quest_unproxy(val.p), table, next_id, wr, &id)) break;
             if (id > 0) {
                 quest_write_raw(wr, "{\"@id\":");
                 quest_write_int(wr, id);
@@ -893,10 +886,8 @@ static void quest_emit_value(
                 }
             } else {
                 for (size_t i = 0; i < tup_meta->element_count; ++i) {
-                    const QTupleElementDescriptor *elem = &tup_meta->elements[i];
                     if (i > 0) quest_writer_put_char(wr, ',');
-                    QVal elem_val = quest_slot_read((const char *)val.p + elem->offset);
-                    quest_emit_value(elem->type, elem_val, table, g, next_id, wr);
+                    quest_emit_value(tup_meta->elements[i].type, quest_tuple_element(val.p, desc, i), table, g, next_id, wr);
                 }
             }
             quest_writer_put_char(wr, ']');
@@ -921,10 +912,8 @@ static void quest_emit_value(
                 const QTupleTypeDescriptor *payload = (const QTupleTypeDescriptor *)c->payload_type->extra;
                 quest_writer_put_char(wr, '[');
                 for (size_t i = 0; i < payload->element_count; ++i) {
-                    const QTupleElementDescriptor *elem = &payload->elements[i];
                     if (i > 0) quest_writer_put_char(wr, ',');
-                    QVal elem_val = quest_slot_read(quest_option_components(val.p) + elem->offset);
-                    quest_emit_value(elem->type, elem_val, table, g, next_id, wr);
+                    quest_emit_value(payload->elements[i].type, quest_option_element(val.p, desc, i), table, g, next_id, wr);
                 }
                 quest_writer_put_char(wr, ']');
             }

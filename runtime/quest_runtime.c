@@ -1199,34 +1199,225 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
     return dict;
 }
 
-/* Copies the elements of a tuple-shaped block (a tuple, or an option case's payload) from `from` to `to` layout */
-static void quest_convert_elements(const void *src, const QTypeDescriptor *from, void *dst, const QTypeDescriptor *to) {
-    const QTupleTypeDescriptor *f_meta = (const QTupleTypeDescriptor *)from->extra;
-    const QTupleTypeDescriptor *t_meta = (const QTupleTypeDescriptor *)to->extra;
-    if (f_meta == NULL || t_meta == NULL) return;
-    for (size_t i = 0; i < t_meta->element_count && i < f_meta->element_count; ++i) {
-        const QTupleElementDescriptor *fe = &f_meta->elements[i];
-        const QTupleElementDescriptor *te = &t_meta->elements[i];
-        QVal v = quest_slot_read((const char *)src + fe->offset);
-        quest_slot_write((char *)dst + te->offset, quest_convert(v, fe->type, te->type));
+/* ------------------------------------------------------------------------- */
+/* Proxies                                                                   */
+/* ------------------------------------------------------------------------- */
+
+static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor *d);
+static const QTypeDescriptor *quest_concrete_representation(const QTypeDescriptor *d);
+
+/* The tuple or option descriptor a descriptor stands for (looking through stored and abstract types) */
+static const QTypeDescriptor *quest_proxied_type(const QTypeDescriptor *d) {
+    return quest_concrete_representation(quest_stored_representation(d));
+}
+
+void *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    if (v == NULL) return (void *)v;
+    const void *orig = v;
+    if (quest_is_proxy(v)) {
+        orig = quest_proxy_of(v)->orig;
+        from = quest_proxy_of(v)->stored;
+    }
+    from = quest_proxied_type(from);
+    to = quest_proxied_type(to);
+    if (from == to || quest_layout_equivalent(from, to)) return (void *)orig;
+    QProxy *proxy = (QProxy *)quest_alloc(sizeof(QProxy));
+    proxy->orig = orig;
+    proxy->stored = from;
+    proxy->view = to;
+    if (to->kind == QTYPE_KIND_OPTION) {
+        const QVariantTypeDescriptor *f_meta = (const QVariantTypeDescriptor *)from->extra;
+        const QVariantTypeDescriptor *t_meta = (const QVariantTypeDescriptor *)to->extra;
+        size_t n = f_meta != NULL ? f_meta->case_count : 0;
+        int64_t *tags = (int64_t *)quest_alloc(sizeof(int64_t) * (n > 0 ? n : 1));
+        for (size_t i = 0; i < n; ++i) {
+            tags[i] = -1;
+            for (size_t j = 0; t_meta != NULL && j < t_meta->case_count; ++j) {
+                if (strcmp(t_meta->cases[j].name, f_meta->cases[i].name) == 0) {
+                    tags[i] = (int64_t)j;
+                    break;
+                }
+            }
+        }
+        proxy->tags = tags;
+    }
+    return (void *)((uintptr_t)proxy + QUEST_PROXY_TAG);
+}
+
+/* An immutable element of a proxy's original, converted, is kept in the proxy's cache (its slot never changes, and
+ * conversions make immutable values): a record is viewed, a nested tuple proxied, a closure adapted once */
+static QVal quest_proxy_cached(const void *p, size_t i, size_t n, QVal v, const QTypeDescriptor *from,
+                               const QTypeDescriptor *to) {
+    if (from == to) return v;
+    QProxy *proxy = (QProxy *)quest_proxy_of(p);
+    if (proxy->cache == NULL) {
+        proxy->cache = (QVal *)quest_alloc(sizeof(QVal) * n + n);
+        proxy->cached = (uint8_t *)(proxy->cache + n);
+    }
+    if (!proxy->cached[i]) {
+        proxy->cache[i] = quest_convert(v, from, to);
+        proxy->cached[i] = 1;
+    }
+    return proxy->cache[i];
+}
+
+QVal quest_proxy_element(const void *p, size_t i) {
+    const QProxy *proxy = quest_proxy_of(p);
+    const QTupleTypeDescriptor *view = (const QTupleTypeDescriptor *)proxy->view->extra;
+    const QTupleElementDescriptor *fe = &((const QTupleTypeDescriptor *)proxy->stored->extra)->elements[i];
+    const QTupleElementDescriptor *te = &view->elements[i];
+    QVal v = quest_slot_read((const char *)proxy->orig + fe->offset);
+    if (fe->type == te->type) return v;
+    if (te->is_var) return quest_convert(v, fe->type, te->type);
+    return quest_proxy_cached(p, i, view->element_count, v, fe->type, te->type);
+}
+
+void *quest_proxy_slot(const void *p, size_t i) {
+    const QProxy *proxy = quest_proxy_of(p);
+    const QTupleElementDescriptor *fe = &((const QTupleTypeDescriptor *)proxy->stored->extra)->elements[i];
+    const QTupleElementDescriptor *te = &((const QTupleTypeDescriptor *)proxy->view->extra)->elements[i];
+    /* A var element has the same type in both, but may be laid out differently (a bounded type parameter's) */
+    if (!quest_slot_layout_equivalent(fe->type, te->type)) quest_layout_conversion_error(proxy->stored, proxy->view);
+    return (char *)proxy->orig + fe->offset;
+}
+
+void quest_proxy_store(const void *p, size_t i, QVal v) {
+    const QProxy *proxy = quest_proxy_of(p);
+    const QTupleElementDescriptor *fe = &((const QTupleTypeDescriptor *)proxy->stored->extra)->elements[i];
+    const QTupleElementDescriptor *te = &((const QTupleTypeDescriptor *)proxy->view->extra)->elements[i];
+    quest_slot_write((char *)proxy->orig + fe->offset, fe->type == te->type ? v : quest_convert(v, te->type, fe->type));
+}
+
+int64_t quest_proxy_tag(const void *p) {
+    const QProxy *proxy = quest_proxy_of(p);
+    return proxy->tags[*(const int64_t *)proxy->orig];
+}
+
+/* An option's case payload follows its tag; a payload that is not a tuple is one slot */
+#define Q_OPTION_PAYLOAD_OFFSET sizeof(int64_t)
+
+static QVal quest_payload_element(const char *payload, const QTypeDescriptor *t, size_t i) {
+    if (t != NULL && t->kind == QTYPE_KIND_TUPLE) {
+        return quest_slot_read(payload + ((const QTupleTypeDescriptor *)t->extra)->elements[i].offset);
+    }
+    return quest_slot_read(payload);
+}
+
+static const QTypeDescriptor *quest_payload_element_type(const QTypeDescriptor *t, size_t i) {
+    if (t != NULL && t->kind == QTYPE_KIND_TUPLE) return ((const QTupleTypeDescriptor *)t->extra)->elements[i].type;
+    return t;
+}
+
+QVal quest_proxy_option_element(const void *p, size_t i) {
+    const QProxy *proxy = quest_proxy_of(p);
+    int64_t tag = *(const int64_t *)proxy->orig;
+    const QVariantCaseDescriptor *fc = &((const QVariantTypeDescriptor *)proxy->stored->extra)->cases[tag];
+    const QVariantCaseDescriptor *tc = &((const QVariantTypeDescriptor *)proxy->view->extra)->cases[proxy->tags[tag]];
+    QVal v = quest_payload_element((const char *)proxy->orig + Q_OPTION_PAYLOAD_OFFSET, fc->payload_type, i);
+    /* The original's case never changes: its payload's elements are cached as a tuple's are */
+    size_t n = tc->payload_type != NULL && tc->payload_type->kind == QTYPE_KIND_TUPLE
+        ? ((const QTupleTypeDescriptor *)tc->payload_type->extra)->element_count : 1;
+    if (tc->payload_type != NULL && tc->payload_type->kind == QTYPE_KIND_TUPLE &&
+        ((const QTupleTypeDescriptor *)tc->payload_type->extra)->elements[i].is_var) {
+        return quest_convert(v, quest_payload_element_type(fc->payload_type, i),
+                             quest_payload_element_type(tc->payload_type, i));
+    }
+    return quest_proxy_cached(p, i, n, v, quest_payload_element_type(fc->payload_type, i),
+                              quest_payload_element_type(tc->payload_type, i));
+}
+
+/* Whether a value of type d (a tuple or option) may be a proxy, as the compiler decides it for the type
+ * (may_be_proxied in codegen/layout.py), or less often: a tuple one of whose components is view-sensitive, an option
+ * of two or more cases or one of whose payloads' components is. A component is view-sensitive when values of its
+ * subtypes may be represented differently at its type: a record, variant, or auto value, a value stored as a type
+ * parameter, a function whose signature mentions a view-sensitive type, or a tuple or option that may be a proxy.
+ * (Abstract types, which the compiler counts as view-sensitive, are not here: the runtime cannot tell a module's
+ * abstract types from external C types, which are not.) Only values of such types are made proxies at run time;
+ * others are copied. */
+#define Q_PROXIED_TRAIL_MAX 64
+
+static bool quest_view_sensitive_rec(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth);
+
+static bool quest_may_be_proxied_rec(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth) {
+    if (d == NULL || depth >= Q_PROXIED_TRAIL_MAX) return false;
+    for (size_t i = 0; i < depth; ++i) {
+        if (trail[i] == d) return false;
+    }
+    trail[depth] = d;
+    if (d->kind == QTYPE_KIND_TUPLE) {
+        const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)d->extra;
+        for (size_t i = 0; meta != NULL && i < meta->element_count; ++i) {
+            if (quest_view_sensitive_rec(meta->elements[i].type, trail, depth + 1)) return true;
+        }
+        return false;
+    }
+    if (d->kind == QTYPE_KIND_OPTION) {
+        const QVariantTypeDescriptor *meta = (const QVariantTypeDescriptor *)d->extra;
+        if (meta == NULL) return false;
+        if (meta->case_count >= 2) return true;
+        for (size_t i = 0; i < meta->case_count; ++i) {
+            const QTypeDescriptor *p = meta->cases[i].payload_type;
+            if (p != NULL && p->kind == QTYPE_KIND_TUPLE && quest_may_be_proxied_rec(p, trail, depth + 1)) return true;
+        }
+    }
+    return false;
+}
+
+static bool quest_view_sensitive_rec(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth) {
+    if (d == NULL || depth >= Q_PROXIED_TRAIL_MAX) return false;
+    switch (d->kind) {
+        case QTYPE_KIND_RECORD:
+        case QTYPE_KIND_VARIANT:
+        case QTYPE_KIND_AUTO:
+        case QTYPE_KIND_STORED:
+        case QTYPE_KIND_BOUND_VAR:
+        case QTYPE_KIND_HOLE:
+            return true;
+        case QTYPE_KIND_TUPLE:
+        case QTYPE_KIND_OPTION:
+            return quest_may_be_proxied_rec(d, trail, depth);
+        case QTYPE_KIND_FUN: {
+            for (size_t i = 0; i < depth; ++i) {
+                if (trail[i] == d) return false;
+            }
+            trail[depth] = d;
+            const QFunTypeDescriptor *meta = (const QFunTypeDescriptor *)d->extra;
+            if (meta == NULL) return false;
+            if (meta->quantifier_count > 0) return true;
+            for (size_t i = 0; i < meta->param_count; ++i) {
+                if (quest_view_sensitive_rec(meta->params[i].type, trail, depth + 1)) return true;
+            }
+            return quest_view_sensitive_rec(meta->result_type, trail, depth + 1);
+        }
+        default:
+            return false;
     }
 }
 
-/* Option values point to { int64_t tag; union of case payloads } with each payload laid out as its tuple type */
-typedef struct QOptionLayout {
-    int64_t tag;
-    union {
-        QVal v;
-    } u;
-} QOptionLayout;
+static bool quest_may_be_proxied(const QTypeDescriptor *d) {
+    const QTypeDescriptor *trail[Q_PROXIED_TRAIL_MAX];
+    return quest_may_be_proxied_rec(d, trail, 0);
+}
 
-static QVal quest_convert_option(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
+/* A copy of v (a tuple or option of type `from`, a proxy or not) laid out as `to`, which values are never proxies of:
+ * its components converted. A copy does not share updates of var components, so a tuple with any is a fatal error. */
+static QVal quest_copy_viewed(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
+    char *dst = (char *)quest_alloc(to->size > 0 ? to->size : sizeof(void *));
+    if (to->kind == QTYPE_KIND_TUPLE) {
+        const QTupleTypeDescriptor *f_meta = (const QTupleTypeDescriptor *)from->extra;
+        const QTupleTypeDescriptor *t_meta = (const QTupleTypeDescriptor *)to->extra;
+        for (size_t i = 0; f_meta != NULL && i < t_meta->element_count && i < f_meta->element_count; ++i) {
+            if (t_meta->elements[i].is_var) quest_layout_conversion_error(from, to);
+            QVal e = quest_tuple_element(v.p, from, i);
+            quest_slot_write(dst + t_meta->elements[i].offset,
+                             quest_convert(e, f_meta->elements[i].type, t_meta->elements[i].type));
+        }
+        return (QVal){ .p = dst };
+    }
     const QVariantTypeDescriptor *f_meta = (const QVariantTypeDescriptor *)from->extra;
     const QVariantTypeDescriptor *t_meta = (const QVariantTypeDescriptor *)to->extra;
-    const char *src = (const char *)v.p;
-    if (src == NULL || f_meta == NULL || t_meta == NULL) return v;
-    int64_t tag = *(const int64_t *)src;
-    if (tag < 0 || (size_t)tag >= f_meta->case_count) return v;
+    int64_t tag = quest_option_tag(v.p);
+    if (f_meta == NULL || t_meta == NULL || tag < 0 || (size_t)tag >= f_meta->case_count) return v;
     const QVariantCaseDescriptor *fc = &f_meta->cases[tag];
     const QVariantCaseDescriptor *tc = NULL;
     for (size_t j = 0; j < t_meta->case_count; ++j) {
@@ -1236,27 +1427,36 @@ static QVal quest_convert_option(QVal v, const QTypeDescriptor *from, const QTyp
         }
     }
     if (tc == NULL) quest_raise_dynamic_error();
-    char *dst = (char *)quest_alloc(to->size > 0 ? to->size : sizeof(QOptionLayout));
     *(int64_t *)dst = tc->tag_index;
-    size_t payload_offset = offsetof(QOptionLayout, u);
     if (fc->payload_type != NULL && tc->payload_type != NULL) {
-        if (fc->payload_type->kind == QTYPE_KIND_TUPLE && tc->payload_type->kind == QTYPE_KIND_TUPLE) {
-            quest_convert_elements(src + payload_offset, fc->payload_type, dst + payload_offset, tc->payload_type);
-        } else {
-            QVal p = quest_slot_read(src + payload_offset);
-            quest_slot_write(dst + payload_offset, quest_convert(p, fc->payload_type, tc->payload_type));
+        size_t n = 1;
+        if (tc->payload_type->kind == QTYPE_KIND_TUPLE) n = ((const QTupleTypeDescriptor *)tc->payload_type->extra)->element_count;
+        for (size_t i = 0; i < n; ++i) {
+            const char *slot = dst + Q_OPTION_PAYLOAD_OFFSET;
+            if (tc->payload_type->kind == QTYPE_KIND_TUPLE) {
+                slot += ((const QTupleTypeDescriptor *)tc->payload_type->extra)->elements[i].offset;
+            }
+            QVal e = quest_option_element(v.p, from, i);
+            quest_slot_write((void *)slot, quest_convert(e, quest_payload_element_type(fc->payload_type, i),
+                                                         quest_payload_element_type(tc->payload_type, i)));
         }
     }
     return (QVal){ .p = dst };
 }
 
-/* True if a tuple-shaped descriptor has var components */
-static bool quest_tuple_has_var(const QTypeDescriptor *d) {
-    const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)d->extra;
-    for (size_t i = 0; meta != NULL && i < meta->element_count; ++i) {
-        if (meta->elements[i].is_var) return true;
-    }
-    return false;
+QVal quest_tuple_element(const void *tup, const QTypeDescriptor *t, size_t i) {
+    if (quest_is_proxy(tup)) return quest_proxy_element(tup, i);
+    return quest_slot_read((const char *)tup + ((const QTupleTypeDescriptor *)t->extra)->elements[i].offset);
+}
+
+int64_t quest_option_tag(const void *opt) {
+    return quest_is_proxy(opt) ? quest_proxy_tag(opt) : *(const int64_t *)opt;
+}
+
+QVal quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i) {
+    if (quest_is_proxy(opt)) return quest_proxy_option_element(opt, i);
+    const QVariantCaseDescriptor *c = &((const QVariantTypeDescriptor *)t->extra)->cases[*(const int64_t *)opt];
+    return quest_payload_element((const char *)opt + Q_OPTION_PAYLOAD_OFFSET, c->payload_type, i);
 }
 
 /* Reads and writes an auto value's component in its payload (see QAutoComponentDescriptor) */
@@ -1331,15 +1531,16 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
             if (v.p == NULL) return v;
             return (QVal){ .p = (void *)quest_variant_box(quest_variant_adapt(from, to, v)) };
         case QTYPE_KIND_OPTION:
-            if (quest_layout_equivalent(from, to)) return v;
-            return quest_convert_option(v, from, to);
-        case QTYPE_KIND_TUPLE: {
-            if (v.p == NULL || to->extra == NULL || quest_layout_equivalent(from, to)) return v;
-            if (quest_tuple_has_var(to)) quest_layout_conversion_error(from, to);
-            void *dst = quest_alloc(to->size > 0 ? to->size : sizeof(void *));
-            quest_convert_elements(v.p, from, dst, to);
-            return (QVal){ .p = dst };
-        }
+        case QTYPE_KIND_TUPLE:
+            /* Viewed at `to` through a proxy, not copied (the original's identity and var components are kept),
+             * where values of `to` may be proxies */
+            if (v.p == NULL || to->extra == NULL) return v;
+            if (!quest_is_proxy(v.p) && quest_layout_equivalent(from, to)) return v;
+            if (quest_may_be_proxied(to)) return (QVal){ .p = quest_make_proxy(v.p, from, to) };
+            if (quest_is_proxy(v.p) && quest_layout_equivalent(quest_proxy_of(v.p)->stored, to)) {
+                return (QVal){ .p = (void *)quest_proxy_of(v.p)->orig };
+            }
+            return quest_copy_viewed(v, from, to);
         case QTYPE_KIND_FUN: {
             const QFunTypeDescriptor *meta = (const QFunTypeDescriptor *)to->extra;
             if (v.p == NULL || meta == NULL || meta->adapt == NULL) return v;
@@ -1466,8 +1667,9 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
             const QVariantTypeDescriptor *va = (const QVariantTypeDescriptor *)a->extra;
             const QVariantTypeDescriptor *vb = (const QVariantTypeDescriptor *)b->extra;
             size_t na = va != NULL ? va->case_count : 0, nb = vb != NULL ? vb->case_count : 0;
-            result = na == nb;
-            for (size_t i = 0; result && i < nb; ++i) {
+            /* An option whose cases are a prefix of another's may be used as it */
+            result = a->kind == QTYPE_KIND_OPTION ? na <= nb : na == nb;
+            for (size_t i = 0; result && i < na; ++i) {
                 const QVariantCaseDescriptor *ca = &va->cases[i], *cb = &vb->cases[i];
                 result = strcmp(ca->name, cb->name) == 0 && ca->tag_index == cb->tag_index &&
                          (ca->payload_type == NULL) == (cb->payload_type == NULL) &&
@@ -1894,9 +2096,10 @@ static void quest_print_leave(void) {
 
 static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness);
 
-/* Writes the elements of a tuple-shaped block (a tuple, or an option case's payload) laid out as t, with its type
- * components among them */
-static void quest_put_elements(const char *base, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
+/* Writes the elements of a tuple of type t, or of the payload (of tuple type t) of an option of type opt_t, with its
+ * type components among them (through a proxy, or not) */
+static void quest_put_elements(const void *v, const QTypeDescriptor *t, const QTypeDescriptor *opt_t,
+                               const QTypeDescriptor *witness) {
     const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)t->extra;
     if (meta == NULL) return;
     size_t c = 0;
@@ -1908,14 +2111,16 @@ static void quest_put_elements(const char *base, const QTypeDescriptor *t, const
         const QTupleElementDescriptor *e = &meta->elements[i];
         putchar(' ');
         if (e->name != NULL && e->name[0] != '\0') printf("%s=", e->name);
-        quest_put_value(quest_slot_read(base + e->offset), e->type, witness);
+        QVal ev = opt_t != NULL ? quest_option_element(v, opt_t, i) : quest_tuple_element(v, t, i);
+        quest_put_value(ev, e->type, witness);
     }
 }
 
 /* Writes a tuple-shaped block as `tuple ... end` */
-static void quest_put_tuple(const char *base, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
-    if (!quest_print_enter(base, "tuple")) return;
-    quest_put_elements(base, t, witness);
+static void quest_put_tuple(const void *v, const QTypeDescriptor *t, const QTypeDescriptor *opt_t,
+                            const QTypeDescriptor *witness) {
+    if (!quest_print_enter(quest_unproxy(v), "tuple")) return;
+    quest_put_elements(v, t, opt_t, witness);
     fputs(" end", stdout);
     quest_print_leave();
 }
@@ -1952,7 +2157,7 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             fputs("<fun>", stdout);
             return;
         case QTYPE_KIND_TUPLE:
-            quest_put_tuple((const char *)v.p, t, witness);
+            quest_put_tuple(v.p, t, NULL, witness);
             return;
         case QTYPE_KIND_RECORD: {
             const QRecordVal *rec = (const QRecordVal *)v.p;
@@ -1980,8 +2185,8 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                 return;
             }
             /* A variant is a QVariantVal; an option points to its tag followed by its payload, laid out as the
-             * payload's tuple type (see QOptionLayout) */
-            int64_t tag = t->kind == QTYPE_KIND_VARIANT ? ((const QVariantVal *)v.p)->tag : *(const int64_t *)v.p;
+             * payload's tuple type; an option may be a proxy (quest_option_tag, quest_option_element) */
+            int64_t tag = t->kind == QTYPE_KIND_VARIANT ? ((const QVariantVal *)v.p)->tag : quest_option_tag(v.p);
             if (tag < 0 || (size_t)tag >= meta->case_count) {
                 fputs("<val>", stdout);
                 return;
@@ -1994,11 +2199,10 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                 if (t->kind == QTYPE_KIND_VARIANT) {
                     quest_put_value(((const QVariantVal *)v.p)->payload, payload_type, witness);
                 } else {
-                    const char *payload = (const char *)v.p + offsetof(QOptionLayout, u);
                     if (payload_type->kind == QTYPE_KIND_TUPLE) {
-                        quest_put_tuple(payload, payload_type, witness);
+                        quest_put_tuple(v.p, payload_type, t, witness);
                     } else {
-                        quest_put_value(quest_slot_read(payload), payload_type, witness);
+                        quest_put_value(quest_option_element(v.p, t, 0), payload_type, witness);
                     }
                 }
             }
@@ -3176,8 +3380,13 @@ uint64_t quest_hash_combine(uint64_t h1, uint64_t h2) {
 
 /* Hashes consistently with is (quest_val_is): ~0.0 hashes as 0.0. */
 uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x) {
+    if (t != NULL && t->kind == QTYPE_KIND_STORED) t = ((const QStoredDescriptor *)t->extra)->type;
     if (t != NULL && t->kind == QTYPE_KIND_REAL && x.r == 0.0) {
         x.u = 0;
+    }
+    if (t != NULL && (t->kind == QTYPE_KIND_TUPLE || t->kind == QTYPE_KIND_OPTION)) {
+        /* A proxy hashes as the object it is a view of, as is compares them */
+        x.p = quest_unproxy(x.p);
     }
     return quest_hash_mix64(x.u);
 }
