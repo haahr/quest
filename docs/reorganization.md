@@ -459,6 +459,7 @@ Stale docstrings and comments are fixed by whichever step touches their files.
 |---|---|
 | Records and variants at polymorphic boundaries (0a) | Boxed in aggregate slots and `QVal` words |
 | View changes in aggregates (0a) | V1: view-sensitive tuples and options carry the descriptor of their stored type |
+| How V1's views meet boxed slots (A2) | Prototype proxy objects (one pointer everywhere; a view-changing upcast allocates a proxy holding the original and its view) and measure against the bar |
 | Not pursued | One-word records and variants (per-site caches, boxing every variant); program-wide variant tags (awkward with separate compilation) |
 | Lost update after a view-changing upcast | Fixed by A2, not before |
 | `collect_aggregate_types` on shapes (left from A1) | In A2, under its `ABI_VERSION` bump |
