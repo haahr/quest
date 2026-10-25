@@ -1,0 +1,19 @@
+(* A named exception made inside an expression is made where its scope begins, so it exists throughout the scope,
+   whether or not the expression that makes it runs, and the expression gives that same exception. *)
+let f(c: Bool): Int = begin
+  let e: Exception = if c then exception I end else exception J end end;
+  try raise I end when I then 1 when J then 2 end
+end;
+let g(c: Bool): Bool = begin
+  let e: Exception = if c then exception I end else exception J end end;
+  e is I
+end;
+(* A new scope makes new exceptions each time it begins *)
+let h(): Exception = begin
+  let e: Exception = if false then exception K end else exception L end end;
+  K
+end;
+(* At the top level, and caught in the scope that names it *)
+let top: Exception = if false then exception T end else exception U end end;
+let caught = try raise T as String end when T then "T" when U then "U" end;
+tuple let fFalse = f(false) let fTrue = f(true) let gTrue = g(true) let gFalse = g(false) let fresh = not(h() is h()) let caught = caught end

@@ -4,8 +4,7 @@ Core invariants, checked here:
 
 - every operation's arguments are atoms (variables or constants);
 - every variable is bound by exactly one binder, and used only in its scope: after its let or declaration in the
-  same body (or a body within it), within its function, case, handler, or join point's continuation; a declared
-  variable (declare) is bound by one let in its scope, and is in scope from its declaration;
+  same body (or a body within it), within its function, case, handler, or join point's continuation;
 - a module reference is to a module the unit defines or imports;
 - a function does not use a mutable variable of an enclosing function (closures do not capture mutable locals;
   mutable variables of a unit's or module's top level are globals, which any function may use);
@@ -77,8 +76,6 @@ class _Verifier:
         # After closure conversion, the unit's functions, which closures must be of (None before)
         self.functions: Optional[set[int]] = None
         self.represented = False
-        # Variables declared, and not yet bound by their let
-        self.declared: set[int] = set()
 
     def problem(self, text: str) -> None:
         self.problems.append(text)
@@ -163,20 +160,9 @@ class _Verifier:
         match s:
             case ir.Let(var=var, value=value):
                 self.operation(value, scope, where)
-                if id(var) in self.declared:
-                    self.declared.discard(id(var))
-                    if id(var) not in scope.vars:
-                        self.problem(f"{where}: declared variable '{var.hint}' is bound outside its scope")
-                else:
-                    self.bind(var, where)
+                self.bind(var, where)
                 if var.mutable:
                     self.problem(f"{where}: let binds mutable variable '{var.hint}'")
-                return scope.with_vars(var)
-            case ir.Declare(var=var):
-                self.bind(var, where)
-                self.declared.add(id(var))
-                if var.mutable:
-                    self.problem(f"{where}: declare of mutable variable '{var.hint}'")
                 return scope.with_vars(var)
             case ir.VarDecl(var=var, init=init):
                 if init is not None:
@@ -307,9 +293,6 @@ def verify_unit(unit: ir.Unit) -> list[str]:
         v.problems.extend(_representation_problems(unit))
     if unit.at_least("described"):
         v.problems.extend(_descriptor_problems(unit))
-    # A declared exception made only on a path the lowering never reached would be left unbound
-    if v.declared:
-        v.problem(f"{len(v.declared)} declared variable(s) never bound")
     return v.problems
 
 

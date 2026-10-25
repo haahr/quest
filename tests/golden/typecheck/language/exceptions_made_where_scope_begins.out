@@ -1,0 +1,101 @@
+(TypedProgram
+  :phrases (
+    (TypedLetValue 'f' :type Fun(c: Bool): Int
+      :value (TypedFun :params (('c' : Bool)) :type Fun(c: Bool): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'e' :type Exception
+              :value (TypedIf :type Exception
+                :cond (TypedVar 'c' :type Bool)
+                :then (TypedException 'I' :type Exception)
+                :else (TypedException 'J' :type Exception)))
+          )
+          :result (TypedTry :type Int
+            :body (TypedRaise :type Int
+              :exc (TypedVar 'I' :type Exception))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'I' :type Exception)
+                :body (TypedInt 1 :type Int))
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'J' :type Exception)
+                :body (TypedInt 2 :type Int))
+            )))))
+    (TypedLetValue 'g' :type Fun(c: Bool): Bool
+      :value (TypedFun :params (('c' : Bool)) :type Fun(c: Bool): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 'e' :type Exception
+              :value (TypedIf :type Exception
+                :cond (TypedVar 'c' :type Bool)
+                :then (TypedException 'I' :type Exception)
+                :else (TypedException 'J' :type Exception)))
+          )
+          :result (TypedInfix 'is' :type Bool
+            :left (TypedVar 'e' :type Exception)
+            :right (TypedVar 'I' :type Exception)))))
+    (TypedLetValue 'h' :type Fun(): Exception
+      :value (TypedFun :params () :type Fun(): Exception
+        :body (TypedBlock :type Exception
+          :bindings (
+            (TypedLetValue 'e' :type Exception
+              :value (TypedIf :type Exception
+                :cond (TypedBool false)
+                :then (TypedException 'K' :type Exception)
+                :else (TypedException 'L' :type Exception)))
+          )
+          :result (TypedVar 'K' :type Exception))))
+    (TypedLetValue 'top' :type Exception
+      :value (TypedIf :type Exception
+        :cond (TypedBool false)
+        :then (TypedException 'T' :type Exception)
+        :else (TypedException 'U' :type Exception)))
+    (TypedLetValue 'caught' :type String
+      :value (TypedTry :type String
+        :body (TypedRaise :type String
+          :exc (TypedVar 'T' :type Exception))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'T' :type Exception)
+            :body (TypedString 'T' :type String))
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'U' :type Exception)
+            :body (TypedString 'U' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedTuple :type Tuple fFalse: Int fTrue: Int gTrue: Bool gFalse: Bool fresh: Bool caught: String end
+        :elements (
+          (TypedApp :type Int
+            :func (TypedVar 'f' :type Fun(c: Bool): Int)
+            :args (
+              (TypedBool false)
+            ))
+          (TypedApp :type Int
+            :func (TypedVar 'f' :type Fun(c: Bool): Int)
+            :args (
+              (TypedBool true)
+            ))
+          (TypedApp :type Bool
+            :func (TypedVar 'g' :type Fun(c: Bool): Bool)
+            :args (
+              (TypedBool true)
+            ))
+          (TypedApp :type Bool
+            :func (TypedVar 'g' :type Fun(c: Bool): Bool)
+            :args (
+              (TypedBool false)
+            ))
+          (TypedApp :type Bool
+            :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+            :args (
+              (TypedInfix 'is' :type Bool
+                :left (TypedApp :type Exception
+                  :func (TypedVar 'h' :type Fun(): Exception)
+                  :args ())
+                :right (TypedApp :type Exception
+                  :func (TypedVar 'h' :type Fun(): Exception)
+                  :args ()))
+            ))
+          (TypedVar 'caught' :type String)
+        )))
+  ))

@@ -7,7 +7,7 @@ several paths join through join points.
 
 Binders are objects: a Var is bound by exactly one binder (a let, a mutable variable's declaration, a function's
 parameter, a funs statement, a join point's parameter, a case's or handler's binder), and every use refers to that
-same object. A declared variable (Declare) is in scope from its declaration, and bound by one later let. Printing gives variables distinct names (ir/printer.py); the verifier checks that every use is in scope
+same object. Printing gives variables distinct names (ir/printer.py); the verifier checks that every use is in scope
 (ir/verify.py).
 
 Nodes are plain mutable dataclasses with identity equality, built once by lowering and then rewritten by passes.
@@ -479,15 +479,6 @@ class VarDecl:
 
 
 @dataclass(eq=False)
-class Declare:
-    """Declares a variable, in scope from here to the end of the body, whose value one later let in that scope binds:
-    a named exception made inside an expression, whose name the rest of the expression's scope sees. Closures may
-    use it, as it is not mutable; reading it before its let has run is undefined (the type checker allows an
-    exception made on a branch that does not run to be named later)."""
-    var: Var
-
-
-@dataclass(eq=False)
 class Assign:
     """var := atom, for a mutable variable."""
     var: Var
@@ -725,7 +716,7 @@ class Unreachable:
 
 Terminator = Union[Return, Jump, Break, Continue, Raise, Reraise, Unreachable]
 Statement = Union[
-    Let, VarDecl, Declare, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return,
+    Let, VarDecl, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return,
     Jump, Break, Continue, Raise, Reraise, Unreachable,
 ]
 TERMINATORS = (Return, Jump, Break, Continue, Raise, Reraise, Unreachable)

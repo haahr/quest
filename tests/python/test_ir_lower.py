@@ -66,8 +66,9 @@ class TestLowering(unittest.TestCase):
 
     def test_an_exception_made_inside_an_expression_is_visible_to_its_scope(self) -> None:
         _, text = lower("let g(x: Int): Int = try raise exception I: Int end with x end when I with n then n end; g(2)")
-        self.assertIn("declare I: Exception(Int)", text)
-        self.assertIn("let I: Exception(Int) = exception I: Int", text)
+        # Made before the binding that makes it, outside the try, whose pattern is then computed before it
+        self.assertIn("let I: Exception(Int) = exception I: Int\n", text)
+        self.assertLess(text.index("let I: Exception(Int)"), text.index("try catching (I)"))
         # A nested function may use it: it is a value, not a mutable variable
         _, text = lower(
             "let f(x: Int): Int = begin "

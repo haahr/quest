@@ -28,7 +28,7 @@ def statement_bodies(s) -> list[ir.Body]:
 def statement_binders(s) -> list[ir.Var]:
     """The variables a statement binds itself (not those bound in the bodies it contains)."""
     match s:
-        case ir.Let(var=v) | ir.VarDecl(var=v) | ir.Declare(var=v):
+        case ir.Let(var=v) | ir.VarDecl(var=v):
             return [v]
         case ir.Funs(functions=functions):
             return [f.var for f in functions]

@@ -1,0 +1,105 @@
+main {
+  funs {
+    fun f(c: Bool): Int {
+      let I: Exception = exception I
+      let J: Exception = exception J
+      join k1(e: Exception) {
+        join k2(r: Int) {
+          return r
+        } in {
+          try catching (I, J) {
+            raise I
+          } handle (e.1: Exception) {
+            let %1: Bool = prim is(e.1, I)
+            if %1 {
+              jump k2(1)
+            } else {
+              let %2: Bool = prim is(e.1, J)
+              if %2 {
+                jump k2(2)
+              } else {
+                reraise e.1
+              }
+            }
+          }
+        }
+      } in {
+        if c {
+          jump k1(I)
+        } else {
+          jump k1(J)
+        }
+      }
+    }
+  }
+  funs {
+    fun g(c.1: Bool): Bool {
+      let I.1: Exception = exception I
+      let J.1: Exception = exception J
+      join k3(e.2: Exception) {
+        let %3: Bool = prim is(e.2, I.1)
+        return %3
+      } in {
+        if c.1 {
+          jump k3(I.1)
+        } else {
+          jump k3(J.1)
+        }
+      }
+    }
+  }
+  funs {
+    fun h(): Exception {
+      let K: Exception = exception K
+      let L: Exception = exception L
+      join k4(e.3: Exception) {
+        return K
+      } in {
+        if false {
+          jump k4(K)
+        } else {
+          jump k4(L)
+        }
+      }
+    }
+  }
+  let T: Exception = exception T
+  let U: Exception = exception U
+  join k5(top: Exception) {
+    join k6(caught: String) {
+      let fFalse: Int = call f(false)
+      let fTrue: Int = call f(true)
+      let gTrue: Bool = call g(true)
+      let gFalse: Bool = call g(false)
+      let %4: Exception = call h()
+      let %5: Exception = call h()
+      let %6: Bool = prim is(%4, %5)
+      let fresh: Bool = prim not(%6)
+      let caught.1: String = caught
+      let %7: Tuple fFalse: Int fTrue: Int gTrue: Bool gFalse: Bool fresh: Bool caught: String end = tuple(fFalse, fTrue, gTrue, gFalse, fresh, caught.1)
+    } in {
+      try catching (T, U) {
+        raise T
+      } handle (e.4: Exception) {
+        let %8: Bool = prim is(e.4, T)
+        if %8 {
+          jump k6("T")
+        } else {
+          let %9: Bool = prim is(e.4, U)
+          if %9 {
+            jump k6("U")
+          } else {
+            reraise e.4
+          }
+        }
+      }
+    }
+  } in {
+    if false {
+      jump k5(T)
+    } else {
+      jump k5(U)
+    }
+  }
+}
+

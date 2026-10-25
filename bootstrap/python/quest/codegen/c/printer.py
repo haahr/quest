@@ -1126,8 +1126,6 @@ class CPrinter:
             case ir.VarDecl(var=var, init=init):
                 if init is not None:
                     self.assign(var, self.atom(init))
-            case ir.Declare():
-                pass
             case ir.Assign(var=var, value=value):
                 self.assign(var, self.atom(value))
             case ir.Store(value=value, address=address) if address is not None:
@@ -1398,7 +1396,7 @@ class CPrinter:
             if isinstance(s, ir.Try):
                 self.handler_vars.add(id(s.exception))
             for v in statement_binders(s):
-                # A declared variable is bound by its declaration and its let
+                # A let rec's variable is bound by the let rec and by the let in it that computes its value
                 if id(v) in seen or self.is_ok(v.type):
                     continue
                 seen.add(id(v))
@@ -1409,14 +1407,13 @@ class CPrinter:
         return decls
 
     def volatile_vars(self, body: ir.Body) -> set[int]:
-        """The variables a try body assigns (or binds, having been declared before it), which C must declare volatile
-        for the handler to read them after longjmp."""
+        """The variables a try body assigns, which C must declare volatile for the handler to read them after
+        longjmp."""
         found: set[int] = set()
-        declared = {id(s.var) for s in walk_statements(body, into_functions=False) if isinstance(s, ir.Declare)}
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Try):
                 for t in walk_statements(s.body, into_functions=False):
-                    if isinstance(t, ir.Assign) or (isinstance(t, ir.Let) and id(t.var) in declared):
+                    if isinstance(t, ir.Assign):
                         found.add(id(t.var))
         return found
 

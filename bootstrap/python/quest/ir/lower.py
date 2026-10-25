@@ -34,6 +34,8 @@ from quest.typechecker.typed_ast import (
     TypedDefKind,
     TypedDerefCell,
     TypedException,
+    named_exceptions_in,
+    scope_exceptions,
     TypedExit,
     TypedExpr,
     TypedExprStmt,
@@ -137,9 +139,9 @@ class _Lowerer:
         self.imports: list[ir.Import] = []
         # The modules the unit defines and imports, by the symbols their names bind
         self.module_refs: dict[int, ir.ModuleRef] = {}
-        # Exceptions made inside an expression, whose names the enclosing scope sees: declared before the binding
-        # containing them, and bound where they are made
-        self.declared: set[int] = set()
+        # Exceptions made inside an expression, whose names the enclosing scope sees: made before the binding
+        # containing them (make_scope_exceptions), and not yet reached where they are written
+        self.made: set[int] = set()
 
     # Building
 
@@ -278,12 +280,11 @@ class _Lowerer:
             case TypedAuto(witness_type=witness, auto_type=auto_type, payload=payload):
                 return self.let(ir.MakeAuto(witness, auto_type, self.value(payload)), e.type_val, into)
             case TypedException(name=name, payload_type=payload_type, symbol=symbol):
-                if symbol is not None and (declared := self.vars.get(symbol.symbol_id)) is not None:
-                    if id(declared) not in self.declared:
+                if symbol is not None and (made := self.vars.get(symbol.symbol_id)) is not None:
+                    if id(made) not in self.made:
                         raise LoweringError(f"exception '{name}' is bound twice")
-                    self.declared.discard(id(declared))
-                    self.emit(ir.Let(declared, ir.MakeException(name, payload_type)))
-                    return self.copy_into(declared, into)
+                    self.made.discard(id(made))
+                    return self.copy_into(made, into)
                 if symbol is not None:
                     bound = self.bind_symbol(symbol, e.type_val)
                     self.emit(ir.Let(bound, ir.MakeException(name, payload_type)))
@@ -633,11 +634,11 @@ class _Lowerer:
 
     def pure_pattern(self, e: TypedExpr) -> bool:
         """Whether a try's pattern has the same value computed before the try as in its handler: an immutable
-        variable already bound (not an exception declared before it is made), or a module's member."""
+        variable already bound, or a module's member."""
         match e:
             case TypedVar(symbol=symbol):
                 var = self.vars.get(symbol.symbol_id)
-                return var is not None and not var.mutable and id(var) not in self.declared
+                return var is not None and not var.mutable
             case TypedSelect(target=target):
                 return self.module_ref(target) is not None
         return False
@@ -707,7 +708,7 @@ class _Lowerer:
                 result = self.external_call(e.body, t, params, result_t)
             else:
                 # The body is a scope of its own: exceptions made inside it are visible throughout it
-                self.declare_exceptions(e.body)
+                self.make_scope_exceptions(e.body)
                 result = self.value(e.body)
             if not self.body.terminated:
                 self.terminate(ir.Return(result))
@@ -730,19 +731,18 @@ class _Lowerer:
 
     # Bindings
 
-    def declare_exceptions(self, b: TypedNode) -> None:
-        """Declares, before b, the named exceptions made inside b whose names b's scope sees (not those b is itself,
-        or binds directly, nor those inside functions and blocks, which bind them in their own scopes)."""
-        direct = b.expr if isinstance(b, TypedExprStmt) else b.value if isinstance(b, TypedLetValue) else b
-        for exc in _named_exceptions_in(b):
-            if exc is direct or exc.symbol is None or exc.symbol.symbol_id in self.vars:
+    def make_scope_exceptions(self, b: TypedNode) -> None:
+        """Makes, before b, the named exceptions b makes for its scope (scope_exceptions), which the expressions
+        that make them then refer to."""
+        for exc in scope_exceptions(b):
+            if exc.symbol.symbol_id in self.vars:
                 continue
             var = self.bind_symbol(exc.symbol, exc.type_val)
-            self.declared.add(id(var))
-            self.emit(ir.Declare(var))
+            self.made.add(id(var))
+            self.emit(ir.Let(var, ir.MakeException(exc.name, exc.payload_type)))
 
     def binding(self, b: TypedNode, show: bool = False) -> None:
-        self.declare_exceptions(b)
+        self.make_scope_exceptions(b)
         match b:
             case TypedLetValue(value=value, is_rec=True) if not isinstance(value, TypedFun):
                 self.rec_values((b,), show)
@@ -878,7 +878,7 @@ class _Lowerer:
                         self.add_imports(items)
                     case _:
                         self.binding(b)
-                        for exc in _named_exceptions_in(b):
+                        for exc in named_exceptions_in(b):
                             if exc.symbol is not None:
                                 members[exc.name] = self.vars[exc.symbol.symbol_id]
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
@@ -906,28 +906,6 @@ class _Lowerer:
                     case _:
                         self.binding(phrase, show)
         return ir.Unit(main, modules, tuple(self.imports), source_map=self.source_map)
-
-
-def _named_exceptions_in(node) -> list[TypedException]:
-    """The named exceptions made in node whose names bind in node's scope: not inside functions or blocks."""
-    found: list[TypedException] = []
-
-    def scan(n) -> None:
-        if n is None or isinstance(n, (QType, str, int, float, bool, TypedFun, TypedBlock, ValueSymbol)):
-            return
-        if isinstance(n, TypedException):
-            if n.name:
-                found.append(n)
-            return
-        if isinstance(n, (list, tuple)):
-            for item in n:
-                scan(item)
-        elif isinstance(n, TypedNode):
-            for f in n.__dataclass_fields__:
-                scan(getattr(n, f))
-
-    scan(node)
-    return found
 
 
 def _display(t: QType) -> str:

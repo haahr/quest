@@ -225,7 +225,7 @@ class _Cloner:
         """Makes fresh variables for every binder in body (and in the functions it binds)."""
         for s in body.statements:
             match s:
-                case ir.Let(var=v) | ir.VarDecl(var=v) | ir.Declare(var=v):
+                case ir.Let(var=v) | ir.VarDecl(var=v):
                     if id(v) not in self.vars:
                         self.fresh(v)
                 case ir.Funs(functions=functions):

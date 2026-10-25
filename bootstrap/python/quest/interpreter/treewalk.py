@@ -78,6 +78,8 @@ from quest.typechecker.typed_ast import (
     TypedDerefCell,
     TypedException,
     TypedExit,
+    TypedNode,
+    scope_exceptions,
     TypedExpr,
     TypedExprStmt,
     TypedExternal,
@@ -145,6 +147,9 @@ class RuntimeEnvironment:
         # Run-time type arguments: the types bound to the type parameters (by symbol id) of the polymorphic
         # functions being executed, for the operations that use types at run time
         self.type_bindings: dict[int, QType] = {}
+        # The named exceptions this scope made before the binding that makes them (by symbol id), which that
+        # binding's exception expressions return (make_scope_exceptions)
+        self.made_exceptions: dict[int, QExceptionVal] = {}
         if parent is not None:
             self.include_paths: list[Path] = parent.include_paths
             self.current_dir: Optional[Path] = parent.current_dir
@@ -179,6 +184,15 @@ class RuntimeEnvironment:
     def define(self, name: str, value: QValue) -> None:
         """Binds a variable in the current innermost scope frame."""
         self.bindings[name] = value
+
+    def made_exception(self, symbol_id: int) -> Optional[QExceptionVal]:
+        """The named exception of the symbol that an enclosing scope made in advance, if one did."""
+        env: Optional[RuntimeEnvironment] = self
+        while env is not None:
+            if symbol_id in env.made_exceptions:
+                return env.made_exceptions[symbol_id]
+            env = env.parent
+        return None
 
     def bind_types(self, bindings: dict[int, QType]) -> None:
         """Binds type parameters (by symbol id) to their run-time type arguments in the current scope frame."""
@@ -814,8 +828,10 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             raise QuestRuntimeError(f"Unhandled case tag '{target_val.tag}'", offset=offset)
 
         # 11. Exceptions
-        case TypedException(name=name):
-            exc_val = QExceptionVal(name=name)
+        case TypedException(name=name, symbol=symbol):
+            exc_val = env.made_exception(symbol.symbol_id) if symbol is not None else None
+            if exc_val is None:
+                exc_val = QExceptionVal(name=name)
             if name:
                 env.define(name, exc_val)
             return exc_val
@@ -948,6 +964,8 @@ def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
         call_env.bind_types(closure.type_bindings)
         for param_name, arg_val in zip(closure.params, args):
             call_env.define(param_name, arg_val)
+        # The body is a scope of its own: exceptions made inside it exist throughout it
+        call_env = make_scope_exceptions(closure.body, call_env)
         return eval_expr(closure.body, call_env)
     except QuestCompilerError as error:
         if error.source_map is None:
@@ -1043,11 +1061,26 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             raise QuestRuntimeError(f"Unhandled binding node: {binding.__class__.__name__}")
 
 
+def make_scope_exceptions(node: TypedNode, env: RuntimeEnvironment) -> RuntimeEnvironment:
+    """Makes, before node runs, the named exceptions it makes for its scope (scope_exceptions), defining their names,
+    and returns the frame it runs in: a frame of its own if a name rebinds one of env's frame, as eval_scoped_binding
+    gives a binding that rebinds one."""
+    exceptions = scope_exceptions(node)
+    if any(exc.name in env.bindings for exc in exceptions):
+        env = env.push_scope()
+    for exc in exceptions:
+        exc_val = QExceptionVal(name=exc.name)
+        env.define(exc.name, exc_val)
+        env.made_exceptions[exc.symbol.symbol_id] = exc_val
+    return env
+
+
 def eval_scoped_binding(binding: TypedBinding, env: RuntimeEnvironment) -> tuple[QValue, RuntimeEnvironment]:
     """Evaluates a binding of a block, a program, or a module in env's frame, returning its value and the frame the
     bindings after it are evaluated in. A binding that rebinds a name of env's frame gets a frame of its own, so that
     closures built earlier keep the binding they captured (scoping is lexical), and so do the members of a
     simultaneous declaration, so that closures built by their values keep the bindings the members shadow."""
+    env = make_scope_exceptions(binding, env)
     if isinstance(binding, TypedLetValueGroup) and not binding.is_rec:
         values = tuple(eval_bound_value(member.name, member.value, env) for member in binding.members)
         env = env.push_scope()
@@ -1079,6 +1112,7 @@ def eval_program_phrases(
                 val, env = eval_scoped_binding(phrase, env)
                 results.append((phrase, val))
             case TypedExpr():
+                env = make_scope_exceptions(phrase, env)
                 val = eval_expr(phrase, env)
                 results.append((phrase, val))
             case _:

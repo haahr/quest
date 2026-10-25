@@ -210,11 +210,6 @@ Operations that can raise (calls, array indexing, `payload` of the wrong tag, di
   `var`/`out` parameters are mutable; a use of one reads it, and how a `var` parameter is passed (by pointer) is the
   printer's business. `addr x` takes the address of one for a `var` or `out` argument (`@x`). Mutable variables of a
   unit's or module's top level are globals.
-- `declare x: τ` declares a variable whose value one later `let x = op` in its scope binds: a named exception made
-  inside an expression, whose name the rest of the enclosing scope sees (handlers of a `try` around it included).
-  It is a value, not a mutable variable, so closures capture it; reading it before its `let` has run is undefined
-  (the type checker allows naming an exception made on a branch that did not run, a gap in
-  [tasklist.md](tasklist.md)).
 - `let rec (x: τ ...) { body }` binds recursive values: `body` computes each variable's value (a constructor or a
   function), and closures made in it may refer to all of them.
 - `store r.name := a`, `store t.#i := a`, `store a[i] := v`, and `store *p := a` store into a `var` component, an

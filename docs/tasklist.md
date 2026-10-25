@@ -92,41 +92,6 @@ describe the rule.
 
 ---
 
-## An exception made on a branch that does not run can be named later
-
-**Problem.** A named exception made inside an expression (`exception I end`) binds its name for the rest of the
-enclosing scope, whether or not the expression that makes it runs. The type checker accepts a later use of the name
-after a branch that did not make it: the interpreter fails with an undefined runtime symbol, and compiled C reads an
-exception that was never made (a null pointer), so `raise I` there matches whichever handler compares equal to it.
-The IR declares such an exception before the binding that makes it (`declare`, `docs/ir.md` §5), and reading it before
-its let has run is undefined.
-
-**Reproduce.**
-
-```quest
-let f(c: Bool): Int = begin
-  let e: Exception = if c then exception I end else exception J end end;
-  try raise I end when I then 1 when J then 2 end
-end;
-f(false)
-```
-
-fails interpreted (`Undefined runtime symbol 'I'`) and prints `1` compiled.
-
-**Where to start.** `_synth_exception_expr` in `bootstrap/python/quest/typechecker/exceptions.py`, which declares the
-exception's name in the enclosing scope. Either the name should be visible only when the exception is made on every
-path to the use (a definite-assignment check), or only within the expression that makes it, or a named exception
-should be made where its scope begins rather than where it is written.
-
-**Decided.** A named exception is made where its scope begins, as the IR's `declare` already places it, so every
-exception a scope names exists throughout it; the program above prints `2` in every backend. Making an exception has
-no other effect, so nothing else observes the change.
-
-**Done when.** The program above prints `2` in every backend, a golden test covers it, and the language's
-description of exceptions says where a named exception is made.
-
----
-
 ## Auto types may not mention type parameters inside mutable data
 
 **Problem.** Generic code lays out values of types that mention its type parameters generically, and a value used

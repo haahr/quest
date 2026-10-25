@@ -748,6 +748,24 @@ The `StringOp` interface and `string` module provide substring comparison:
 - Compares slices `s1[start1 : start1 + size1]` and `s2[start2 : start2 + size2]` lexicographically. Raises
   `string.error` if any bounds are invalid.
 
+### 6.14. Named Exceptions and Their Scope
+
+`exception E [: T] end` generates a new exception each time it is evaluated (Cardelli §4.9), and when it is named,
+the name `E` binds for the rest of the enclosing scope (a block, a function's body, a module, or the program), even
+when the exception is made inside a larger expression: `let e = if c then exception I end else exception J end end`
+names both `I` and `J`. Such an exception is made where its scope begins, before the binding (or phrase) that makes
+it, so every exception a scope names exists throughout it, whether or not the expression that makes it runs; the
+expression gives that same exception. Making an exception has no other effect, so the difference shows only in which
+exception a name holds: after `if false then exception I end else ... end`, `raise I` raises the scope's `I`, and a
+handler `when I` catches it. Each time a scope begins, it makes its exceptions anew (a function's call, a block's
+evaluation). An exception that a binding is, or binds directly (`exception E end;`, `let e = exception E end;`), is
+made by the binding as it runs.
+
+`scope_exceptions` in `typechecker/typed_ast.py` finds the exceptions a binding makes in advance. The lowering makes
+them with `let`s before the binding (`make_scope_exceptions` in `ir/lower.py`), and the source interpreter defines
+them in the binding's frame (`make_scope_exceptions` in `interpreter/treewalk.py`), where the expression that makes
+one finds it.
+
 ---
 
 ## 7. Summary Complexity Matrix

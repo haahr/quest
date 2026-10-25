@@ -270,8 +270,6 @@ class _Printer:
                     self.emit(depth, f"var {self.decl(var)}")
                 else:
                     self.emit(depth, f"var {self.decl(var)} = {self.atom(init)}")
-            case ir.Declare(var=var):
-                self.emit(depth, f"declare {self.decl(var)}")
             case ir.Assign(var=var, value=value):
                 self.emit(depth, f"{self.name(var)} := {self.atom(value)}")
             case ir.Store(value=value, base=base, name=name, index=index, address=address):

@@ -47,6 +47,7 @@ from quest.interpreter.treewalk import (
     eval_program,
     eval_program_phrases,
     eval_scoped_binding,
+    make_scope_exceptions,
     note_frames,
 )
 from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str
@@ -338,6 +339,7 @@ class InterpretPhase(Phase):
 
                 case TypedExpr():
                     self._last_final_phrase = input_data
+                    ctx.runtime_env = make_scope_exceptions(input_data, ctx.runtime_env)
                     val = eval_expr(input_data, ctx.runtime_env)
                     self._last_phrase_results = [(input_data, val)]
                     if ctx.options.echo:

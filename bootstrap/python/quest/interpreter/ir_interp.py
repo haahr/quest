@@ -87,7 +87,7 @@ _INT_RELATIONAL = ("<", "<=", ">", ">=")
 _REAL_ARITHMETIC = ("++", "--", "**", "//", "^^")
 _REAL_RELATIONAL = ("<<", "<<=", ">>", ">>=")
 
-# The value of a declared variable before its let has run
+# The value of a let rec's variable before its value is computed
 _UNBOUND = object()
 
 
@@ -619,9 +619,6 @@ class Interpreter:
                     frame.values[id(var)] = v
             case ir.VarDecl(var=var, init=init):
                 frame.values[id(var)] = QRef(self.atom(init, frame) if init is not None else OK_VALUE)
-            case ir.Declare(var=var):
-                self.declared.add(id(var))
-                frame.values[id(var)] = _UNBOUND
             case ir.Assign(var=var, value=value):
                 frame.lookup(var).assign(self.atom(value, frame))
             case ir.Store():
