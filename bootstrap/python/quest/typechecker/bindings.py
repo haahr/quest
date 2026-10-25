@@ -17,6 +17,8 @@ from quest.types import (
     QType,
     QTypeVar,
     is_subkind,
+    is_subtype,
+    is_type_equal,
 )
 from quest.types.env import (
     Environment,
@@ -55,6 +57,33 @@ from quest.typechecker.escape import check_no_escaping_path_types
 TypeError = QuestTypeError
 
 
+def _param_mode(is_var: bool, is_out: bool) -> str:
+    """Describes a parameter mode for error messages."""
+    return "var" if is_var else ("out" if is_out else "a value parameter")
+
+
+def _require_param_type(param: ast.Param, written: QType, expected: QParam, env: Environment) -> None:
+    """Requires the type a parameter is written with to fit the expected parameter of the same mode, as subtyping of
+    function types does: a value parameter's written type must include the expected type (contravariance), a var
+    parameter's must equal it, and an out parameter's must be included in it."""
+    assert param.type_annot is not None
+    if expected.is_var:
+        ok = is_type_equal(written, expected.type_val, env)
+        relation = "equal to"
+    elif expected.is_out:
+        ok = is_subtype(written, expected.type_val, env)
+        relation = "a subtype of"
+    else:
+        ok = is_subtype(expected.type_val, written, env)
+        relation = "a supertype of"
+    if not ok:
+        raise TypeError(
+            f"Parameter '{param.name}' declared type '{written}' is not {relation} expected parameter type "
+            f"'{expected.type_val}'",
+            offset=param.type_annot.offset,
+        )
+
+
 class BindingMixin:
     """Function abstractions and the bindings of blocks, modules, and tuples.
 
@@ -74,10 +103,19 @@ class BindingMixin:
         for i, p in enumerate(params):
             is_var = p.mode == ast.ParamMode.VAR
             is_out = p.mode == ast.ParamMode.OUT
+            expected_param = expected_params[i] if expected_params is not None else None
+            if expected_param is not None and (is_var, is_out) != (expected_param.is_var, expected_param.is_out):
+                raise TypeError(
+                    f"Parameter '{p.name}' is declared {_param_mode(is_var, is_out)}, but the expected parameter "
+                    f"'{expected_param}' is {_param_mode(expected_param.is_var, expected_param.is_out)}",
+                    offset=p.offset,
+                )
             if p.type_annot is not None:
                 p_type = elaborate_type(p.type_annot, env)
-            elif expected_params is not None and i < len(expected_params):
-                p_type = expected_params[i].type_val
+                if expected_param is not None:
+                    _require_param_type(p, p_type, expected_param, env)
+            elif expected_param is not None:
+                p_type = expected_param.type_val
             else:
                 raise TypeError(
                     f"Parameter '{p.name}' requires a type annotation in synthesis mode",
@@ -114,10 +152,15 @@ class BindingMixin:
     ) -> TypedExpr:
         """Elaborates a function abstraction: fun[(type params)](params): RetType Body.
 
-        Against an expected function type, parameters without annotations take the expected parameters' types, and
-        the body is checked against the expected result type, which is the function's; the function's own type
-        parameters and result type annotation are not consulted. Against an expected polymorphic type, see
-        `_check_polymorphic_fun_expr`; against any other type, the function is synthesized and must be a subtype.
+        Against an expected function type, checking accepts what synthesizing the function and requiring a subtype
+        would, and lets the expected type flow into what the function leaves unwritten: each parameter must have its
+        expected parameter's mode, and a type annotation it writes must fit the expected parameter's type as
+        subtyping of function types requires (see `_require_param_type`); a parameter without one takes the expected
+        type. A result type annotation must be a subtype of the expected result type, and the body is checked against
+        it, or else against the expected result type; the function's type has the parameters' types and the
+        expected result type. A function with type parameters is synthesized and must be a subtype. Against
+        an expected polymorphic type, see `_check_polymorphic_fun_expr`; against any other type, the function is
+        synthesized and must be a subtype.
         Synthesized, every parameter needs an annotation, the body is checked against the result type annotation if
         there is one, and the result type may not mention the function's parameters.
         """
@@ -126,7 +169,9 @@ class BindingMixin:
             expected_lazy = expected_type.evaluate_lazily(env)
             if isinstance(expected_lazy, QAllType):
                 return self._check_polymorphic_fun_expr(expr, expected_type, expected_lazy, env, loop_depth)
-            if not isinstance(expected_lazy, QFunType):
+            # A function with type parameters is polymorphic, so it is checked against a function type as it would
+            # be against any other type of another form
+            if not isinstance(expected_lazy, QFunType) or getattr(expr, "type_params", ()):
                 return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Function")
             if len(expr.params) != len(expected_lazy.params):
                 raise TypeError(
@@ -138,35 +183,48 @@ class BindingMixin:
 
         with env.scoped("fun"):
             quants: list[QQuantifier] = []
-            if expected_fun is None:
-                for tp in getattr(expr, "type_params", ()):
-                    bound_kind = elaborate_kind(tp.bound, env)
-                    sym_id = env.fresh_symbol_id()
-                    env.current_scope.declare_type(
-                        TypeSymbol(name=tp.name, symbol_id=sym_id, kind=bound_kind)
-                    )
-                    self._type_param_ids.add(sym_id)
-                    quants.append(QQuantifier(name=tp.name, symbol_id=sym_id, bound=bound_kind))
+            for tp in getattr(expr, "type_params", ()):
+                bound_kind = elaborate_kind(tp.bound, env)
+                sym_id = env.fresh_symbol_id()
+                env.current_scope.declare_type(
+                    TypeSymbol(name=tp.name, symbol_id=sym_id, kind=bound_kind)
+                )
+                self._type_param_ids.add(sym_id)
+                quants.append(QQuantifier(name=tp.name, symbol_id=sym_id, bound=bound_kind))
 
             formal_params, q_params = self._declare_fun_params(
                 expr.params, expected_fun.params if expected_fun is not None else None, env
             )
 
             with self.in_function():
-                if expected_fun is not None:
-                    expected_ret: Optional[QType] = expected_fun.result_type
-                elif expr.return_type is not None:
-                    expected_ret = elaborate_type(expr.return_type, env)
+                # The type the body is checked against: the result type annotation, or else the expected result type
+                body_expected: Optional[QType]
+                if expr.return_type is not None:
+                    body_expected = elaborate_type(expr.return_type, env)
+                    if expected_fun is not None and not is_subtype(body_expected, expected_fun.result_type, env):
+                        raise TypeError(
+                            f"Function declared result type '{body_expected}' is not a subtype of expected result "
+                            f"type '{expected_fun.result_type}'",
+                            offset=expr.return_type.offset,
+                        )
+                elif expected_fun is not None:
+                    body_expected = expected_fun.result_type
                 else:
-                    expected_ret = None
+                    body_expected = None
                 body_typed = self._elaborate_subexpr(
-                    expr.body, expected_ret, env, loop_depth=self.loop_depth
+                    expr.body, body_expected, env, loop_depth=self.loop_depth
                 )
-                ret_type = expected_ret if expected_ret is not None else body_typed.type_val
+                if expected_fun is not None:
+                    ret_type = expected_fun.result_type
+                elif body_expected is not None:
+                    ret_type = body_expected
+                else:
+                    ret_type = body_typed.type_val
 
-            if expected_fun is None:
-                local_symbol_ids = {sym.symbol_id for sym in env.current_scope.values.values()}
-                check_no_escaping_path_types(ret_type, local_symbol_ids, "function scope", expr.offset)
+            # The result type may not mention the function's parameters (an expected one cannot, a written one can)
+            local_symbol_ids = {sym.symbol_id for sym in env.current_scope.values.values()}
+            escape_type = body_expected if body_expected is not None else ret_type
+            check_no_escaping_path_types(escape_type, local_symbol_ids, "function scope", expr.offset)
 
             if quants:
                 if q_params:
@@ -244,7 +302,18 @@ class BindingMixin:
                     inner_expr = expr.body
             else:
                 inner_expr = expr
-            inner_typed = self.check_expr(inner_expr, inner_exp, env, loop_depth)
+            body_exp = inner_exp
+            if written and not expr.params and expr.return_type is not None:
+                # Without value parameters, the body is checked against the result type annotation, which must be a
+                # subtype of the expected result type (the function's type keeps the expected one)
+                body_exp = elaborate_type(expr.return_type, env)
+                if not is_subtype(body_exp, inner_exp, env):
+                    raise TypeError(
+                        f"Function declared result type '{body_exp}' is not a subtype of expected result "
+                        f"type '{inner_exp}'",
+                        offset=expr.return_type.offset,
+                    )
+            inner_typed = self.check_expr(inner_expr, body_exp, env, loop_depth)
             inner_t = inner_typed.type_val if isinstance(inner_typed, TypedFun) else inner_exp
             return TypedFun(
                 params=inner_typed.params if isinstance(inner_typed, TypedFun) else (),
