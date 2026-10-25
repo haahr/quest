@@ -63,12 +63,14 @@ class ExceptionMixin:
     ) -> TypedRaise:
         """Elaborates a raise expression: raise Exc [with Payload] [as Type] end.
 
-        A raise diverges, so it has any expected type, and its `as` clause is not consulted then. Synthesized, its type
-        is the one the `as` clause declares, or Ok."""
+        A raise diverges, so it has any expected type, and its `as` clause then only has to be well formed
+        (`raise E as Int end` may stand where a Real is expected). Synthesized, its type is the one the
+        `as` clause declares, or Ok."""
+        as_type = elaborate_type(expr.as_type, env) if expr.as_type is not None else None
         if expected_type is not None:
             res_type = expected_type
-        elif expr.as_type is not None:
-            res_type = elaborate_type(expr.as_type, env)
+        elif as_type is not None:
+            res_type = as_type
         else:
             res_type = OK_TYPE
 

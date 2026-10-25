@@ -72,6 +72,14 @@ from quest.typechecker.checks import (
 TypeError = QuestTypeError
 
 
+# The phrases a block may hold and a tuple may not, as error messages name them
+_PHRASES_NOT_IN_TUPLES: dict[type, str] = {
+    ast.ImportPhrase: "an import",
+    ast.InterfaceDecl: "an interface declaration",
+    ast.ModuleDecl: "a module declaration",
+}
+
+
 class AggregateMixin:
     """Records, tuples, selection, options, variants, and arrays.
 
@@ -257,8 +265,14 @@ class AggregateMixin:
                     check_distinct_names(b.bindings)
                 fields.extend(b.bindings)
                 simultaneous_members.update((id(member), b.bindings) for member in b.bindings)
-            else:
+            elif isinstance(b, ast.TupleBinding):
                 fields.append(b)
+            else:
+                # Phrases a tuple cannot hold (imports, modules, interfaces), rejected before the arity is checked
+                raise TypeError(
+                    f"Unsupported tuple component: {_PHRASES_NOT_IN_TUPLES.get(type(b), type(b).__name__)}",
+                    offset=getattr(b, "offset", expr.offset),
+                )
         if expected_tuple is not None and len(fields) != len(expected_tuple.fields):
             raise TypeError(
                 f"Tuple arity mismatch: expected {len(expected_tuple.fields)} components, got {len(fields)}",
@@ -432,12 +446,8 @@ class AggregateMixin:
 
                     if not checking and id(b) in simultaneous_members and b is simultaneous_members[id(b)][0]:
                         check_distinct_names(simultaneous_members[id(b)])
+                    assert isinstance(b, ast.TupleBinding)
                     if exp_f is None:
-                        if not isinstance(b, ast.TupleBinding):
-                            raise TypeError(
-                                f"Unsupported tuple component '{b}'",
-                                offset=getattr(b, "offset", expr.offset),
-                            )
                         val_typed = self._synth_tuple_component(b, env, loop_depth)
                         q_fields.append(QTupleField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))
                         label_name, label_type, label_is_var = b.name, val_typed.type_val, b.is_var
