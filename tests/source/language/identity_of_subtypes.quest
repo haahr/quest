@@ -1,0 +1,23 @@
+(* is between values of different, subtype-related types: compared as addresses in C. Upcasts that change the view
+   of a component (a record at a supertype) still copy in C (docs/tasklist.md, "Upcasting a tuple whose components
+   change view copies it in C"), so they are not here. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let Big = Record a: Int b: Int end;
+let w: Tuple x: Int y: Int end = tuple let x = 1 let y = 2 end;
+let v: Tuple x: Int end = w;
+print(conv.bool(v is w) <> " " <> conv.bool(w isnot v));
+let u: Tuple x: Int end = tuple let x = 1 end;
+print(conv.bool(u is w));
+let pw: Tuple p: Big n: Int end = tuple let p = record a = 1 b = 2 end let n = 3 end;
+let pv: Tuple p: Big end = pw;
+print(conv.bool(pv is pw));
+let ab: Array(Big) = array of record a = 1 b = 2 end end;
+let ab2: Array(Big) = ab;
+print(conv.bool(ab is ab2));
+(* An option upcast whose payload components change view (converted by the runtime) *)
+Let Small = Record a: Int end;
+let o: Option some with x: Big end none end = option some of Option some with x: Big end none end with let x = record a = 4 b = 5 end end;
+let os: Option some with x: Small end none end = o;
+print(conv.int(os!some.x.a));

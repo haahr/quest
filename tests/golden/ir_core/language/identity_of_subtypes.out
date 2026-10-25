@@ -1,0 +1,51 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  let x: Int = 1
+  let y: Int = 2
+  let w: Tuple x: Int y: Int end = tuple(x, y)
+  let v: Tuple x: Int end = w
+  let %4: Bool = prim is(v, w)
+  let %5: String = call conv.bool(%4)
+  let %6: Bool = prim isnot(w, v)
+  let %7: String = call conv.bool(%6)
+  let %8: String = prim <>(" ", %7)
+  let %9: String = prim <>(%5, %8)
+  do call print(%9)
+  let x.1: Int = 1
+  let u: Tuple x: Int end = tuple(x.1)
+  let %10: Bool = prim is(u, w)
+  let %11: String = call conv.bool(%10)
+  do call print(%11)
+  let p: Record a: Int b: Int end = record(a = 1, b = 2)
+  let n: Int = 3
+  let pw: Tuple p: Big n: Int end = tuple(p, n)
+  let pv: Tuple p: Big end = pw
+  let %12: Bool = prim is(pv, pw)
+  let %13: String = call conv.bool(%12)
+  do call print(%13)
+  let %14: Record a: Int b: Int end = record(a = 1, b = 2)
+  let ab: Array(Big) = array(%14)
+  let ab2: Array(Big) = ab
+  let %15: Bool = prim is(ab, ab2)
+  let %16: String = call conv.bool(%15)
+  do call print(%16)
+  let x.2: Record a: Int b: Int end = record(a = 4, b = 5)
+  let %17: Tuple x: Big end = tuple(x.2)
+  let o: Option some with Tuple x: Big end none end = option(some, %17)
+  let os: Option some with Tuple x: Small end none end = o
+  let %18: Tuple Int x: Small end = payload(os, some)
+  let %19: Small = tuple_field(%18, 1)
+  let %20: Int = record_field(%19, a)
+  let %21: String = call conv.int(%20)
+  do call print(%21)
+}
+

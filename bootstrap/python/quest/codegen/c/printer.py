@@ -937,6 +937,10 @@ class CPrinter:
             if t is not None and self.c_type(t) == "QVal":
                 negate = "" if op == "is" else "!"
                 return f"({negate}quest_val_is({self.descriptor(t)}, {left}, {right}))"
+            t2 = self.atom_type(args[1]) if t is not None else None
+            if t2 is not None and self.c_type(t) != self.c_type(t2) and self.c_type(t).endswith("*"):
+                # Pointers to aggregates of different (subtype-related) types: compared as addresses
+                left, right = f"(const void *)({left})", f"(const void *)({right})"
             return f"(({left}) {'==' if op == 'is' else '!='} ({right}))"
         if op in _INT_OPS:
             return f"(({left}) {_INT_OPS[op]} ({right}))"

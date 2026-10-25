@@ -227,8 +227,11 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
         # From a bounded type parameter's view at its bound back to the type the caller holds it at: by the runtime,
         # between the two views' descriptors (no static tag map relates them)
         return ir.Plan("view", s_held.structure, t_held.structure)
-    if s_held.kind == t_held.kind == "option" and (_bounded_view(ss) or _bounded_view(ts)) \
-            and not _equal(s_held.type, t_held.type):
+    if s_held.kind == t_held.kind == "option" and not _equal(s_held.type, t_held.type) and (
+        _bounded_view(ss) or _bounded_view(ts) or shape_representation(s_held) != shape_representation(t_held)
+    ):
+        # Viewed at a bounded type parameter's bound, or an option of a subtype laid out in another struct: converted
+        # by the runtime (a copy, unless the layouts agree)
         return ir.Plan("view", s_held.structure, t_held.structure)
     if ss.kind == ts.kind == "tuple":
         if len(ss.components) < len(ts.components):
