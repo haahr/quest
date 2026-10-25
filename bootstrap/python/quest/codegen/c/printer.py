@@ -50,6 +50,7 @@ from quest.codegen.layout import (
     is_tuple_subtype,
     is_variant_subtype,
     qtype_to_name_str,
+    shape_location_representation,
     shape_representation,
     shape_slot_representation,
     shape_tag,
@@ -188,6 +189,9 @@ class CPrinter:
         # External C functions bound by lets (by variable), which are called directly
         self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
+        # The variables of record or variant types whose addresses are taken, held boxed (in their locations'
+        # representation, location_representation), so that a var or out parameter can point to them as to a slot
+        self.located: set[int] = set()
         self.types: list[QType] = []
         # The types echoed through descriptors of their own (echo_descriptor_form)
         self.echo_types: list[QType] = []
@@ -265,17 +269,22 @@ class CPrinter:
         return shape_slot_store(self.atom(a), s)
 
     def slot_address(self, ptr: str, s: Shape) -> str:
-        """The address of a slot holding values of shape s, as the address of a value of its representation: a Bool's
-        or Char's word through its first byte (the slot holds 0 or 1, or the character, in its low byte). A slot
-        holding a record or variant boxed has no such address; the represent pass passes a temporary instead."""
-        if is_boxed_in_slots(s):
-            raise NotImplementedError(f"C printing of the address of a slot of type {s.type}, which holds it boxed")
-        slot_c, c = self.slot_c_type(s), self.shape_c_type(s)
+        """The address of a slot holding values of shape s, as the address of a location of the value
+        (location_representation): a record's or variant's box, a Bool's or Char's word through its first byte (the
+        slot holds 0 or 1, or the character, in its low byte)."""
+        slot_c, c = self.slot_c_type(s), shape_location_representation(s)
         return ptr if slot_c == c else f"(({c} *){ptr})"
+
+    def located_shape(self, address: ir.Atom) -> Shape:
+        """The shape of the values at an address (of a var or out location)."""
+        s = shape(self.atom_type(address))
+        return s.element if s.kind in ("cell", "out") else s
 
     def var_c_type(self, var: ir.Var) -> str:
         if id(var) in self.handler_vars:
             return "QExceptionState"
+        if id(var) in self.located:
+            return self.location_c_type(var.type)
         return self.c_type(var.type)
 
     @staticmethod
@@ -380,12 +389,23 @@ class CPrinter:
         if id(a) in self.handler_vars:
             return f"{name}.exc"
         if a.mutable and self.is_pointer_param(a):
+            return f"(*(*{name}))" if self.is_boxed(a) else f"(*{name})"
+        if id(a) in self.located:
             return f"(*{name})"
         return name
 
     def is_pointer_param(self, var: ir.Var) -> bool:
         f = self.fs.function
         return f is not None and any(v is var and mode != "value" for v, mode in f.params)
+
+    @staticmethod
+    def is_boxed(var: ir.Var) -> bool:
+        return is_boxed_in_slots(shape(var.type))
+
+    def location_c_type(self, t: QType) -> str:
+        """The C type of a location of a value of t (location_representation): a record or variant boxed."""
+        self.types.append(t)
+        return shape_location_representation(shape(t))
 
     def const(self, c: ir.Const) -> str:
         v = c.value
@@ -449,14 +469,15 @@ class CPrinter:
                 if self.is_pointer_param(var):
                     return self.name(var)
                 if id(var) in self.fs.volatile:
-                    return f"(({self.c_type(var.type)} *)&{self.name(var)})"
+                    return f"(({self.location_c_type(var.type)} *)&{self.name(var)})"
                 return f"(&{self.name(var)})"
             case ir.Addr(cell=cell) if cell is not None:
-                cell_c = self.temp(self.c_type(cell.type if isinstance(cell, ir.Var) else cell.shape.type))
-                self.emit(f"{cell_c} = {self.atom(cell)};")
+                cell_t = self.atom_type(cell)
+                cell_c = self.temp(self.location_c_type(cell_t))
+                self.emit(f"{cell_c} = {self.slot_value(cell, shape(cell_t))};")
                 return f"(&{cell_c})"
             case ir.Load(address=a):
-                return f"(*{self.atom(a)})"
+                return shape_slot_load(f"(*{self.atom(a)})", self.located_shape(a))
             case ir.Addr(base=base, name=name) if name is not None:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
                 return self.slot_address(ptr, field)
@@ -599,8 +620,11 @@ class CPrinter:
             decls.append(f"const QTypeDescriptor *qd_{k}")
         for i, p in enumerate(params):
             names.append(f"qa_{i}")
-            c_t = "QVal" if self.is_ok(p.type_val) else self.c_type(p.type_val)
-            decls.append(f"{c_t} {'*' if p.is_var or p.is_out else ''}qa_{i}")
+            if p.is_var or p.is_out:
+                decls.append(f"{self.location_c_type(p.type_val)} *qa_{i}")
+            else:
+                c_t = "QVal" if self.is_ok(p.type_val) else self.c_type(p.type_val)
+                decls.append(f"{c_t} qa_{i}")
         return decls, descs, names
 
     def thunk(self, name: str, ret: str, decls: list[str], prologue: list[str]) -> None:
@@ -883,9 +907,7 @@ class CPrinter:
 
     def array_slot(self, arr: str, idx: str, elem: Shape, offset: Optional[int]) -> str:
         self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
-        if is_boxed_in_slots(elem):
-            raise NotImplementedError(f"C printing of the address of an element of type {elem.type}, held boxed")
-        c_elem = self.shape_c_type(elem)
+        c_elem = shape_location_representation(elem)
         if c_elem == "QVal":
             return f"(&({arr}->data[{idx}]))"
         if elem.kind == "int":
@@ -1072,12 +1094,16 @@ class CPrinter:
         self.body(body)
         self.indent -= 1
 
-    def assign(self, var: ir.Var, value: str) -> None:
+    def assign(self, var: ir.Var, value: str, atom: Optional[ir.Atom] = None) -> None:
+        """Assigns a variable (atom: the value's atom, if it is one); a variable held in a location boxes it."""
         if self.is_ok(var.type):
             if value != "Q_OK_VAL":
                 self.emit(f"(void)({value});")
             return
-        target = f"(*{self.name(var)})" if var.mutable and self.is_pointer_param(var) else self.name(var)
+        pointer = var.mutable and self.is_pointer_param(var)
+        if (pointer or id(var) in self.located) and self.is_boxed(var):
+            value = self.slot_value(atom, shape(var.type)) if atom is not None else shape_slot_store(value, shape(var.type))
+        target = f"(*{self.name(var)})" if pointer else self.name(var)
         self.emit(f"{target} = {value};")
 
     def leave_to(self, depth: int) -> None:
@@ -1102,13 +1128,13 @@ class CPrinter:
                 self.emit(f"{c};")
             case ir.VarDecl(var=var, init=init):
                 if init is not None:
-                    self.assign(var, self.atom(init))
+                    self.assign(var, self.atom(init), init)
             case ir.Declare():
                 pass
             case ir.Assign(var=var, value=value):
-                self.assign(var, self.atom(value))
+                self.assign(var, self.atom(value), value)
             case ir.Store(value=value, address=address) if address is not None:
-                self.emit(f"*{self.atom(address)} = {self.atom(value)};")
+                self.emit(f"*{self.atom(address)} = {self.slot_value(value, self.located_shape(address))};")
             case ir.Store(value=value, base=base, name=name) if name is not None:
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name)
                 self.emit(f"*{ptr} = {self.slot_value(value, field)};")
@@ -1476,8 +1502,10 @@ class CPrinter:
         for tp in own:
             params.append(f"const QTypeDescriptor *{self.descriptor_param(f, tp)}")
         for v, mode in f.params:
-            c_t = "QVal" if self.is_ok(v.type) else self.c_type(v.type)
-            params.append(f"{c_t} {'*' if mode != 'value' else ''}{self.name(v)}")
+            if mode != "value":
+                params.append(f"{self.location_c_type(v.type)} *{self.name(v)}")
+            else:
+                params.append(f"{'QVal' if self.is_ok(v.type) else self.c_type(v.type)} {self.name(v)}")
         ret = "void" if self.is_ok(f.result_type) else self.c_type(f.result_type)
         return f"static Q_UNUSED {ret} {self.code_name(f)}({', '.join(params)})"
 
@@ -1559,6 +1587,14 @@ class CPrinter:
                     # Called directly
                     self.externals[id(s.var)] = s.value
 
+        for body in [self.unit.main, *(m.init for m in self.unit.modules), *(f.body for f in self.unit.functions)]:
+            for s in walk_statements(body, into_functions=False):
+                if isinstance(s, ir.Let) and isinstance(s.value, ir.Addr) and s.value.var is not None \
+                        and self.is_boxed(s.value.var):
+                    self.located.add(id(s.value.var))
+        for f in self.unit.functions:
+            # A var or out parameter is a pointer to its location already
+            self.located.difference_update(id(v) for v, mode in f.params if mode != "value")
         functions = []
         for f in self.unit.functions:
             functions.extend(self.function(f))

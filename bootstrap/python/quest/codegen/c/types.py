@@ -16,6 +16,7 @@ from quest.codegen.descriptors import (
 from quest.codegen.layout import (
     PRINTED_TEXT_LIMIT,
     is_boxed_in_slots,
+    shape_location_representation,
     shape_slot_representation,
     option_struct_name,
     printed,
@@ -397,7 +398,7 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
         return f"{shape_representation(s)} (*)({', '.join(param_types)})"
     for p in s.params:
         if p.mode != "value":
-            param_types.append(f"{shape_representation(p.shape)} *")
+            param_types.append(f"{shape_location_representation(p.shape)} *")
         elif p.shape.kind == "ok":
             param_types.append("QVal")
         else:

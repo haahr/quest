@@ -1,0 +1,28 @@
+(* Records and variants held in aggregates, passed as var arguments: a var parameter points to the slot itself (which
+   holds the value boxed in C), so the callee's updates are seen through the aggregate at once, and generic code's
+   var parameters point to the same slots *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let P = Record a: Int end;
+Let V = Variant p: Int q: Bool end;
+let t: Tuple var r: P var v: V end = tuple let var r = record a = 1 end let var v = variant p of V with 1 end end;
+let setR(var x: P): Int = begin x := record a = 2 end; t.r.a end;
+print(conv.int(setR(@t.r)));
+let setV(var x: V): Bool = begin x := variant q of V with true end; t.v?q end;
+print(conv.bool(setV(@t.v)));
+let rec0 = record var r = record a = 3 end end;
+print(conv.int(setR(@rec0.r)) <> " " <> conv.int(rec0.r.a));
+let arr = array of record a = 5 end record a = 6 end end;
+let setG(A::TYPE var x: A y: A): Ok = x := y;
+let setGF: All(A::TYPE var x: A y: A) Ok = setG;
+setGF(:P @arr[1] record a = 7 end);
+setGF(:P @t.r record a = 8 end);
+print(conv.int(arr[1].a) <> " " <> conv.int(t.r.a));
+let var local: P = record a = 9 end;
+setGF(:P @local record a = 10 end);
+print(conv.int(local.a));
+let swap(A::TYPE var x: A var y: A): Ok = begin let z = x; x := y; y := z end;
+let swapF: All(A::TYPE var x: A var y: A) Ok = swap;
+swapF(:P @arr[0] @arr[1]);
+print(conv.int(arr[0].a) <> " " <> conv.int(arr[1].a));

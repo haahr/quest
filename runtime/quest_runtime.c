@@ -1376,7 +1376,8 @@ static Q_THREAD_LOCAL size_t quest_equiv_trail_len = 0;
 static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescriptor *b);
 
 /* Where a value is held: in an aggregate slot (a word holding its QVal form), in a register (a function's parameter or
- * result), or in the cell a var or out parameter points to (natively, a variable of the value's representation) */
+ * result), or in the cell a var or out parameter points to (natively, a variable of the value's representation, but
+ * a record or variant boxed, as in a slot) */
 typedef enum QPlace { QPLACE_SLOT, QPLACE_REGISTER, QPLACE_CELL } QPlace;
 
 /* Whether a place holding a value stored generically (`st`) holds it as `other` does. Stored as the type parameter's
@@ -1385,9 +1386,9 @@ static bool quest_stored_equivalent(const QStoredDescriptor *st, const QTypeDesc
     if (st->storage != NULL) return quest_layout_equiv_rec(st->storage, other);
     switch (other->kind) {
         case QTYPE_KIND_REAL:
-            return place != QPLACE_REGISTER;
-        case QTYPE_KIND_RECORD:
+        case QTYPE_KIND_RECORD:  /* boxed in slots and cells */
         case QTYPE_KIND_VARIANT:
+            return place != QPLACE_REGISTER;
         case QTYPE_KIND_BOOL:
         case QTYPE_KIND_CHAR:
         case QTYPE_KIND_OK:

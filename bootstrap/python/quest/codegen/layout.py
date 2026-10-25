@@ -147,6 +147,18 @@ def shape_slot_representation(s: Shape) -> str:
     return layout_of(s).slot
 
 
+def location_representation(t: QType) -> str:
+    """The C type of the location a var or out parameter points to (or a Var cell is): a record or variant boxed, as
+    a slot holds it, so that the address of a slot can be passed, and a generic parameter's location (a QVal) agrees
+    with it; any other value as its representation."""
+    return shape_location_representation(shape(t))
+
+
+def shape_location_representation(s: Shape) -> str:
+    """The location representation of the values of shape s (see location_representation)."""
+    return layout_of(s).slot if is_boxed_in_slots(s) else layout_of(s).representation
+
+
 def is_boxed_in_slots(s: Shape) -> bool:
     """Whether a slot holds values of shape s boxed: records and variants (a bounded type parameter's, viewed at its
     bound, among them)."""
@@ -288,7 +300,7 @@ def _shape_representation(s: Shape) -> str:
     if kind == "exception":
         return "const QException *"
     if kind in ("cell", "out"):
-        return f"{shape_representation(s.element)} *"
+        return f"{shape_location_representation(s.element)} *"
     return "QVal"
 
 
@@ -452,7 +464,8 @@ _REGISTER_WORDS = frozenset({"QInt", "QVal"})
 _CELL_WORDS = frozenset({"QInt", "QReal", "QVal", "uint64_t"})
 
 # Where a value is held: in an aggregate slot, in a register (a function's parameter or result), or in a cell that a
-# var or out parameter points to (a local variable natively, of its representation)
+# var or out parameter points to (a local variable natively, of its location representation: a record or variant
+# boxed, as in a slot)
 _SLOT, _REGISTER, _CELL = "slot", "register", "cell"
 
 
@@ -493,7 +506,8 @@ def _stored_value_agrees(var: Shape, arg: QType, place: str) -> bool:
     if place == _REGISTER:
         return arg_c in _REGISTER_WORDS or arg_c.endswith("*")
     if place == _CELL:
-        return arg_c in _CELL_WORDS or arg_c.endswith("*")
+        # A cell holds a record or variant boxed, as a QVal does
+        return arg_c in _CELL_WORDS or arg_c.endswith("*") or arg_c in ("QRecordVal", "QVariantVal")
     return True
 
 
@@ -585,7 +599,7 @@ def signature_representation(t: QType) -> tuple:
     return (
         shape_representation(result),
         count,
-        tuple(f"{shape_representation(p.shape)} *" if p.mode != "value"
+        tuple(f"{shape_location_representation(p.shape)} *" if p.mode != "value"
               else "QVal" if p.shape.kind == "ok" else shape_representation(p.shape) for p in params),
     )
 

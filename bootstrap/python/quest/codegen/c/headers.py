@@ -15,7 +15,7 @@ from typing import Optional
 import quest.syntax.ast as ast
 from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types
 from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
-from quest.codegen.layout import slot_representation
+from quest.codegen.layout import location_representation, slot_representation
 from quest.config.abi import header_stamp
 from quest.diagnostics import at_import, in_unit
 from quest.types.env import Environment, Scope
@@ -152,8 +152,10 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
                         p_name = p.name or "arg"
                         if p_name in C_KEYWORDS:
                             p_name = f"q_{p_name}"
-                        pointer = " *" if p.is_var or p.is_out else " "
-                        param_c_types.append(f"{qtype_to_c_type(p.type_val)}{pointer}{p_name}")
+                        if p.is_var or p.is_out:
+                            param_c_types.append(f"{location_representation(p.type_val)} *{p_name}")
+                        else:
+                            param_c_types.append(f"{qtype_to_c_type(p.type_val)} {p_name}")
                 params_decl = ", ".join(param_c_types) if param_c_types else "void"
                 lines.append(f"/* {sig.name}: {format_type_for_qi(val_t)} */")
                 lines.append(

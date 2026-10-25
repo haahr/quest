@@ -25,6 +25,7 @@ from quest.codegen.c.types import (
 )
 from quest.codegen.descriptors import fun_descriptor_tag
 from quest.codegen.layout import (
+    location_representation,
     option_struct_name,
     resolved_shape,
     shape_tag,
@@ -81,7 +82,8 @@ def module_function_signature(
     param_decls = [f"const QTypeDescriptor *descriptor_{q.name}" for q in quants]
     if isinstance(fun_t, QFunType):
         param_decls += [
-            f"{c_type(p.type_val)}{' *' if p.is_out or p.is_var else ' '}qv_p_{p.name}" for p in fun_t.params
+            f"{location_representation(p.type_val)} *qv_p_{p.name}" if p.is_out or p.is_var
+            else f"{c_type(p.type_val)} qv_p_{p.name}" for p in fun_t.params
         ]
     return ret_c, mangle_module_ident(clean_mod, name), param_decls
 
@@ -843,7 +845,7 @@ class CDeclarationEmitter:
                 name = f"qv_arg_{i}"
                 slot = f"qv_args[{nq + i}]"
                 if p.is_var or p.is_out:
-                    param_decls.append(f"{self.c_type(p.type_val)} *{name}")
+                    param_decls.append(f"{location_representation(p.type_val)} *{name}")
                     uniform.append(f"{slot}.p = (void *){name};")
                 elif p.type_val is OK_TYPE:
                     param_decls.append(f"QVal {name}")
@@ -909,7 +911,7 @@ class CDeclarationEmitter:
             for i, p in enumerate(params):
                 arg = f"args[{nq + i}]"
                 if p.is_var or p.is_out:
-                    inv_args.append(f"({self.c_type(p.type_val)} *){arg}.p")
+                    inv_args.append(f"({location_representation(p.type_val)} *){arg}.p")
                 elif p.type_val is OK_TYPE:
                     inv_args.append(arg)
                 else:

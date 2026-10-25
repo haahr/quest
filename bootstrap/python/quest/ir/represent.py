@@ -298,11 +298,6 @@ class _Representer:
         self.unit = unit
         self.joins: dict[str, tuple[ir.Var, ...]] = {}
         self.generic_results: list[tuple[QType, QType, dict]] = []
-        # The addresses of slots holding records or variants boxed (by variable), which have no address of the
-        # value's representation: a var or out argument of one is a temporary, read from and stored back into the
-        # slot (slot_argument), and its let is removed
-        self.slot_addresses: dict[int, tuple[ir.Let, ir.Addr]] = {}
-        self.removed: set[int] = set()
 
     def convert(self, a: ir.Atom, target: QType, before: list, layout=None) -> ir.Atom:
         """a, converted to be used at target (by a let added to before), or a itself."""
@@ -321,7 +316,7 @@ class _Representer:
             for b in statement_bodies(s):
                 self.body(b, function)
             statements.extend(self.statement(s, function))
-        body.statements = [s for s in statements if id(s) not in self.removed]
+        body.statements = statements
 
     def result(self, s: ir.Let, result_t: QType, after: list) -> None:
         """Converts the result of s's operation, of type result_t, to s's variable's type."""
@@ -336,10 +331,6 @@ class _Representer:
         before: list = []
         after: list = []
         match s:
-            case ir.Let(var=var, value=ir.Addr(base=base) as addr) if base is not None and isinstance(
-                var.type, (QVarType, QOutType)
-            ) and is_boxed_in_slots(shape(var.type.element_type)):
-                self.slot_addresses[id(var)] = (s, addr)
             case ir.Let(var=var, value=ir.Var() | ir.Const() as a):
                 s.value = self.convert(a, var.type, before)
             case ir.Let(var=var, value=ir.Call() as call):
@@ -491,8 +482,8 @@ class _Representer:
         """The address passed for a var or out argument: the location's own, or that of a temporary of the
         parameter's representation (a shadow cell of a generic parameter's QVal, or a cell of an out parameter's type
         where the location's is a supertype laid out differently), copied in from the location (for var) and out to
-        it after the call. A slot holding a record or variant boxed has no address of the record's or variant's
-        representation, so its argument is always such a temporary, read from the slot and stored back into it."""
+        it after the call. A location holds a record or variant boxed (location_representation), as a generic
+        parameter's QVal does, so its address is passed to a generic parameter as it is."""
         location_t = _type_of(address)
         if isinstance(location_t, (QVarType, QOutType)):
             location_t = location_t.element_type
@@ -500,26 +491,22 @@ class _Representer:
         layout_out = (instantiation, False) if instantiation else None
         p_out = plan(param_t, location_t, layout_out)
         p_in = None if param.is_out else plan(location_t, param_t, (instantiation, True) if instantiation else None)
-        slot = self.slot_addresses.get(id(address)) if isinstance(address, ir.Var) else None
-        if p_out is None and p_in is None and slot is None:
+        if p_out is None and p_in is None:
             return address
-        if slot is not None:
-            # A slot holding a record or variant boxed: read from and stored back into the slot itself
-            self.removed.add(id(slot[0]))
-            addr = slot[1]
-            if addr.name is not None:
-                read, store = ir.RecordField(addr.base, addr.name), dict(base=addr.base, name=addr.name)
-            elif isinstance(addr.index, int):
-                read, store = ir.TupleField(addr.base, addr.index), dict(base=addr.base, index=addr.index)
-            else:
-                read = ir.Index(addr.base, addr.index, addr.offset)
-                store = dict(base=addr.base, index=addr.index, offset=addr.offset)
+        ref_t = QOutType(element_type=param_t) if param.is_out else QVarType(element_type=param_t)
+        if is_boxed_in_slots(shape(location_t)) and shape_representation(shape(param_t)) == "QVal" and all(
+            p is None or p.kind in ("box", "unbox") for p in (p_in, p_out)
+        ):
+            # The location holds the record or variant boxed, as the generic parameter's QVal does
+            cast = ir.Var("", ref_t)
+            before.append(ir.Let(cast, ir.Convert(address, ir.Plan("cast", _type_of(address), ref_t))))
+            return cast
         temp = ir.Var("cell", param_t, mutable=True)
-        temp_address = ir.Var("", QOutType(element_type=param_t) if param.is_out else QVarType(element_type=param_t))
+        temp_address = ir.Var("", ref_t)
         init = None
         if not param.is_out:
             current = ir.Var("", location_t)
-            before.append(ir.Let(current, read if slot is not None else ir.Load(address)))
+            before.append(ir.Let(current, ir.Load(address)))
             init = current
             if p_in is not None:
                 init = ir.Var("", param_t)
@@ -532,7 +519,7 @@ class _Representer:
             converted = ir.Var("", location_t)
             after.append(ir.Let(converted, ir.Convert(written, p_out)))
             written = converted
-        after.append(ir.Store(written, **store) if slot is not None else ir.Store(written, address=address))
+        after.append(ir.Store(written, address=address))
         return temp_address
 
     def run(self) -> None:

@@ -69,10 +69,10 @@ class TestGenericLayoutAgrees(unittest.TestCase):
     def test_in_registers_only_integers_and_pointers_agree(self) -> None:
         for arg, agrees, in_cell in (("Int", True, True), ("String", True, True), ("Box(Bool)", True, True),
                                      ("Real", False, True), ("Bool", False, False), ("Char", False, False),
-                                     ("P", False, False)):
+                                     ("P", False, True)):
             with self.subTest(arg=arg):
                 self.assertEqual(self.agrees("Tuple f: All(x: A) A end", arg), agrees)
-                # A var parameter points to a cell: natively a variable of the value's representation
+                # A var parameter points to a cell: natively a variable of the value's representation, a record boxed
                 self.assertEqual(self.agrees("Tuple f: All(var x: A) Int end", arg), in_cell)
 
     def test_types_without_the_parameter_agree(self) -> None:
