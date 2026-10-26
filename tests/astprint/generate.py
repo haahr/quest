@@ -168,7 +168,7 @@ def tform(n):
         case A.TypeOption():
             return F("typeOption", variants=vec("ast.OptionFieldSig", [
                 f"tuple let tag = {qstr(v.tag)} let payloadSig = "
-                f"{vec('ast.FieldSig', [field_sig(f) for f in v.payload_sig])} end"
+                f"{vec('ast.Signature', [signature(f) for f in v.payload_sig])} end"
                 for v in n.variants]))
         case A.TypeVariant():
             return F("typeVariant", fields=vec("ast.VariantFieldSig", [
@@ -485,8 +485,12 @@ def check(phase: str, workers: int) -> int:
                 prog = parse(path)
             except Exception:
                 continue  # files that are meant not to parse
+            try:
+                source = program_source(prog)
+            except NotImplementedError:
+                continue  # an import, interface, or module below the top level, which the self-hosted AST cannot hold
             n = len(cases)
-            (work / f"{n}.quest").write_text(program_source(prog))
+            (work / f"{n}.quest").write_text(source)
             cases.append((path, A.ast_dump(prog) + "\n"))
         build = work / "build"
 
