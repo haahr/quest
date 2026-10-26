@@ -1,0 +1,19 @@
+(* Quest Self-Hosted Compiler: Closure Conversion Interface
+ *
+ * bootstrap/python/quest/ir/closure.py (docs/ir.md section 8.2): lifts every function to the unit's functions,
+ * making closures of them. Each funs statement becomes lets of closure code {captures...}: code is the lifted function,
+ * and its captures are the function's free variables other than globals, in the order of their first use, which the
+ * lifted function reads from its environment at its start. A function nested in a polymorphic one takes the enclosing
+ * functions' type parameters as its leading type parameters, which its closure supplies. A closure that captures
+ * another of its own recursive group (or itself) is made in a let rec. *)
+
+interface Closure
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+export
+    (* Raised for a function that captures a mutable variable (the bootstrap's ValueError) *)
+    capturesMutable: Exception(String)
+
+    (* Converts the unit's functions to closures of lifted functions, in place, returning it *)
+    closureConvertUnit(unit: nodes.Unit): nodes.Unit
+end

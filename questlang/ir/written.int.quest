@@ -1,0 +1,39 @@
+(* Quest Self-Hosted Compiler: The IR's Types as Written Interface
+ *
+ * bootstrap/python/quest/ir/written.py (docs/ir.md section 4.1): the one place below lowering that looks inside
+ * types as the program wrote them, with their alias names: the outermost constructor of a type as written, the type
+ * parameters, parameters, and result of a function type, whether a type argument is a type operator, and what echo
+ * writes from a type as written. *)
+
+interface Written
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/canonical : questlang/types/Canonical
+    util/maybe : util/Maybe
+export
+    (* t as written with its outermost constructor exposed, if t's shape is of the kind ("tuple", "array",
+     * "exception", or one of the kinds a type parameter bounded by one is held in the representation of, for which it
+     * is the bound) *)
+    writtenStructure(t: model.Type kind: String): maybe.T(model.Type)
+    (* The element type, as written, of an array type *)
+    arrayElement(t: model.Type): maybe.T(model.Type)
+    (* The universal quantifiers wrapping a function type as written, and the type they quantify *)
+    quantified(t: model.Type): canonical.FunQuantifiers
+    (* The parameters and result type, as written, of a (possibly polymorphic) function type *)
+    Def Signature = Tuple params: Array(model.Param) result: model.Type end
+    funSignature(t: model.Type): Signature
+    (* Whether t (a type argument) is a type operator, which is not the type of values and has no shape *)
+    isTypeOperator(t: model.Type): Bool
+    (* How echo writes a value of t, if t is an existential tuple type (a package) *)
+    packageText(t: model.Type): maybe.T(String)
+    (* A tuple type's type components as echo writes them, each with the number of value elements before it *)
+    Def TypeComponentText = Tuple position: Int text: String end
+    tupleTypeComponents(t: model.Type): Array(TypeComponentText)
+    (* The type whose structure echo writes a value of type t by *)
+    echoHead(t: model.Type): model.Type
+    (* What tells recursive types apart for echo: the id of the recursive type t is or names *)
+    recursiveIdentity(t: model.Type): maybe.T(Int)
+    (* The types of the parts of a value of type t that echo writes through descriptors of their own, by key *)
+    Def EchoChild = Tuple key: String type: model.Type end
+    echoChildren(t: model.Type): Array(EchoChild)
+end

@@ -5,13 +5,15 @@
  * constants) and are named by let; structured statements (if, switch, loop, try) contain bodies; values produced on
  * several paths join through join points.
  *
- * Binders are records with identity: a Variable is bound by exactly one binder, and every use refers to that same record
- * (same compares their ids). Nodes are built once by lowering and then rewritten by the passes in place: the fields
- * the passes set are var fields of the operations' and statements' payloads, which are shared.
+ * Binders are records with identity: a Variable (the bootstrap's Var) is bound by exactly one binder, and every use
+ * refers to that same record (same compares their ids). Nodes are built once by lowering and then rewritten by the
+ * passes in place: the fields the passes set are var fields. An operation's or statement's fields are a tuple, its
+ * case's one component n, so that a case binding it shares them: compiled code copies an option's payload when a case
+ * binds it.
  *
  * The bootstrap's operations and atoms are one family here (Op): a let binds an operation or an atom (opAtom). Its
- * fields named with keywords are renamed: tuple, record, array, var, module, exception, and ordinal are tup, recordAtom
- * (a module's record, recordVar), arr, v, moduleRef, exc, and ordinalAtom (a payload's, ordinalIndex). *)
+ * fields named with keywords are renamed: tuple, record, array, var, module, exception, and ordinal are tup,
+ * recordAtom (a module's record, recordVar), arr, v, moduleRef, exc, and ordinalAtom (a payload's, ordinalIndex). *)
 
 interface Nodes
 import
@@ -109,51 +111,38 @@ export
 
     (* The operations, the right-hand sides of let, and the atoms *)
     and Op = Option
-        opAtom with var atom: Atom end
-        opPrim with op: String var args: Array(Atom) offset: maybe.T(Int) var access: String
-            var descriptor: maybe.T(Descriptor) end
-        opCall with var callee: maybe.T(Variable) var typeArgs: Array(Type) var args: Array(Atom)
-            var moduleRef: maybe.T(ModuleRef) var member: maybe.T(String) var calleeType: maybe.T(Type)
-            var descriptors: Array(Descriptor) end
-        opTypeApp with var callee: maybe.T(Variable) var typeArgs: Array(Type) var moduleRef: maybe.T(ModuleRef)
-            var member: maybe.T(String) var calleeType: maybe.T(Type) var plans: Array(maybe.T(Plan))
-            var thunkSymbols: Array(Array(Int)) var descriptors: Array(Descriptor)
-            var thunkParams: maybe.T(Array(DescriptorParam)) end
-        opModuleMember with var moduleRef: ModuleRef var member: maybe.T(String) end
-        opBuiltin with name: String end
-        opExternal with symbol: String end
-        opCallExternal with symbol: String var typeArgs: Array(Type) var args: Array(Atom)
-            var descriptors: Array(Descriptor) end
-        opMakeClosure with var code: Function var captures: Array(Atom) var typeArgs: Array(Type)
-            var descriptors: Array(Descriptor) end
-        opEnvField with var env: Atom index: Int end
-        opConvert with var value: Atom var plan: Plan end
-        opMakeTuple with var args: Array(Atom) typeComponents: Array(TypeComponent) var embedded: Array(Int) end
-        opTupleField with var tup: Atom var index: Int var access: String var viewMap: maybe.T(Variable) end
-        opMakeRecord with var fields: Array(FieldAtom) var embedded: Array(Int) var runtimeOffsets: Bool
-            var descriptor: maybe.T(Descriptor) var offsets: maybe.T(OffsetTable)
-            var viewDescriptor: maybe.T(Descriptor) end
-        opRecordField with var recordAtom: Atom name: String var stored: Bool var descriptor: maybe.T(Descriptor)
-            var viewMap: maybe.T(Variable) end
-        opMakeVariant with tag: String var payload: maybe.T(Atom) end
-        opMakeOption with tag: maybe.T(String) var payload: maybe.T(Atom) var ordinalAtom: maybe.T(Atom)
-            offset: maybe.T(Int) cases: Array(String) var access: Array(String) end
-        opIsTag with var value: Atom tag: String var access: String var viewMap: maybe.T(Variable) end
-        opPayload with var value: Atom tag: String offset: maybe.T(Int) var access: String
-            var components: Array(String) ordinalIndex: maybe.T(Int) var viewMap: maybe.T(Variable) end
-        opOrdinal with var value: Atom cases: Array(String) var access: String var viewMap: maybe.T(Variable) end
-        opMakeArray with var args: Array(Atom) end
-        opArrayRep with var count: Atom var init: Atom offset: maybe.T(Int) end
-        opIndex with var arr: Atom var index: Atom offset: maybe.T(Int) end
-        opMakeAuto with witness: Type autoType: Type var payload: Atom var descriptor: maybe.T(Descriptor) end
-        opMakeException with name: String payloadType: maybe.T(Type) end
-        opExceptionPayload with var exc: Atom end
-        opAddrVar with var v: Variable end
-        opAddrCell with var init: Atom end
-        opAddrField with var base: Atom name: String var viewMap: maybe.T(Variable) end
-        opAddrComponent with var base: Atom index: Int var access: String var viewMap: maybe.T(Variable) end
-        opAddrElement with var base: Atom var index: Atom offset: maybe.T(Int) end
-        opLoad with var address: Atom end
+        opAtom with n: OpAtom end
+        opPrim with n: OpPrim end
+        opCall with n: OpCall end
+        opTypeApp with n: OpTypeApp end
+        opModuleMember with n: OpModuleMember end
+        opBuiltin with n: OpBuiltin end
+        opExternal with n: OpExternal end
+        opCallExternal with n: OpCallExternal end
+        opMakeClosure with n: OpMakeClosure end
+        opEnvField with n: OpEnvField end
+        opConvert with n: OpConvert end
+        opMakeTuple with n: OpMakeTuple end
+        opTupleField with n: OpTupleField end
+        opMakeRecord with n: OpMakeRecord end
+        opRecordField with n: OpRecordField end
+        opMakeVariant with n: OpMakeVariant end
+        opMakeOption with n: OpMakeOption end
+        opIsTag with n: OpIsTag end
+        opPayload with n: OpPayload end
+        opOrdinal with n: OpOrdinal end
+        opMakeArray with n: OpMakeArray end
+        opArrayRep with n: OpArrayRep end
+        opIndex with n: OpIndex end
+        opMakeAuto with n: OpMakeAuto end
+        opMakeException with n: OpMakeException end
+        opExceptionPayload with n: OpExceptionPayload end
+        opAddrVar with n: OpAddrVar end
+        opAddrCell with n: OpAddrCell end
+        opAddrField with n: OpAddrField end
+        opAddrComponent with n: OpAddrComponent end
+        opAddrElement with n: OpAddrElement end
+        opLoad with n: OpLoad end
     end
 
     and ParamEntry = Tuple v: Variable mode: String end
@@ -192,34 +181,170 @@ export
     end
 
     and Stmt = Option
-        sLet with var v: Variable var value: Op end
-        sVarDecl with var v: Variable var init: maybe.T(Atom) end
-        sAssign with var v: Variable var value: Atom end
-        sStoreAt with var value: Atom var address: Atom end
-        sStoreField with var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
-        sStoreComponent with var value: Atom var base: Atom index: Int var access: String var viewMap: maybe.T(Variable) end
-        sStoreElement with var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
-        sDo with var value: Op end
-        sFuns with var functions: Array(Function) recursive: Bool end
-        sLetRec with var vars: Array(Variable) var body: Body end
-        sIf with var cond: Atom var thenBody: Body var elseBody: Body end
-        sSwitch with var value: Atom var cases: Array(Case) var elseBody: maybe.T(Body) var access: String
-            var viewMap: maybe.T(Variable) end
-        sInspect with var value: Atom var cases: Array(InspectCase) var elseBody: maybe.T(Body)
-            autoType: maybe.T(Type) offset: maybe.T(Int) var witness: maybe.T(DescriptorParam) end
-        sLoop with label: String var body: Body end
-        sTry with var body: Body var exc: Variable var handler: Body catching: String var catches: Array(Atom) end
-        sJoin with label: String var params: Array(Variable) var continuation: Body var body: Body end
-        sEcho with var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
-        sEchoText with text: String end
-        sReturn with var value: Atom end
-        sJump with label: String var args: Array(Atom) end
-        sBreak with label: String end
-        sContinue with label: String end
-        sRaise with var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
-        sReraise with var exc: Variable end
+        sLet with n: StmtLet end
+        sVarDecl with n: StmtVarDecl end
+        sAssign with n: StmtAssign end
+        sStoreAt with n: StmtStoreAt end
+        sStoreField with n: StmtStoreField end
+        sStoreComponent with n: StmtStoreComponent end
+        sStoreElement with n: StmtStoreElement end
+        sDo with n: StmtDo end
+        sFuns with n: StmtFuns end
+        sLetRec with n: StmtLetRec end
+        sIf with n: StmtIf end
+        sSwitch with n: StmtSwitch end
+        sInspect with n: StmtInspect end
+        sLoop with n: StmtLoop end
+        sTry with n: StmtTry end
+        sJoin with n: StmtJoin end
+        sEcho with n: StmtEcho end
+        sEchoText with n: StmtEchoText end
+        sReturn with n: StmtReturn end
+        sJump with n: StmtJump end
+        sBreak with n: StmtBreak end
+        sContinue with n: StmtContinue end
+        sRaise with n: StmtRaise end
+        sReraise with n: StmtReraise end
         sUnreachable
     end
+    (* The fields of each operation and statement, which a case's binding shares (its payload is this tuple) *)
+    and OpAtom = Tuple var atom: Atom end
+    and OpPrim = Tuple
+        op: String
+        var args: Array(Atom)
+        offset: maybe.T(Int)
+        var access: String
+        var descriptor: maybe.T(Descriptor)
+    end
+    and OpCall = Tuple
+        var callee: maybe.T(Variable)
+        var typeArgs: Array(Type)
+        var args: Array(Atom)
+        var moduleRef: maybe.T(ModuleRef)
+        var member: maybe.T(String)
+        var calleeType: maybe.T(Type)
+        var descriptors: Array(Descriptor)
+    end
+    and OpTypeApp = Tuple
+        var callee: maybe.T(Variable)
+        var typeArgs: Array(Type)
+        var moduleRef: maybe.T(ModuleRef)
+        var member: maybe.T(String)
+        var calleeType: maybe.T(Type)
+        var plans: Array(maybe.T(Plan))
+        var thunkSymbols: Array(Array(Int))
+        var descriptors: Array(Descriptor)
+        var thunkParams: maybe.T(Array(DescriptorParam))
+    end
+    and OpModuleMember = Tuple var moduleRef: ModuleRef var member: maybe.T(String) end
+    and OpBuiltin = Tuple name: String end
+    and OpExternal = Tuple symbol: String end
+    and OpCallExternal = Tuple
+        symbol: String
+        var typeArgs: Array(Type)
+        var args: Array(Atom)
+        var descriptors: Array(Descriptor)
+    end
+    and OpMakeClosure = Tuple
+        var code: Function
+        var captures: Array(Atom)
+        var typeArgs: Array(Type)
+        var descriptors: Array(Descriptor)
+    end
+    and OpEnvField = Tuple var env: Atom index: Int end
+    and OpConvert = Tuple var value: Atom var plan: Plan end
+    and OpMakeTuple = Tuple var args: Array(Atom) typeComponents: Array(TypeComponent) var embedded: Array(Int) end
+    and OpTupleField = Tuple var tup: Atom var index: Int var access: String var viewMap: maybe.T(Variable) end
+    and OpMakeRecord = Tuple
+        var fields: Array(FieldAtom)
+        var embedded: Array(Int)
+        var runtimeOffsets: Bool
+        var descriptor: maybe.T(Descriptor)
+        var offsets: maybe.T(OffsetTable)
+        var viewDescriptor: maybe.T(Descriptor)
+    end
+    and OpRecordField = Tuple
+        var recordAtom: Atom
+        name: String
+        var stored: Bool
+        var descriptor: maybe.T(Descriptor)
+        var viewMap: maybe.T(Variable)
+    end
+    and OpMakeVariant = Tuple tag: String var payload: maybe.T(Atom) end
+    and OpMakeOption = Tuple
+        tag: maybe.T(String)
+        var payload: maybe.T(Atom)
+        var ordinalAtom: maybe.T(Atom)
+        offset: maybe.T(Int)
+        cases: Array(String)
+        var access: Array(String)
+    end
+    and OpIsTag = Tuple var value: Atom tag: String var access: String var viewMap: maybe.T(Variable) end
+    and OpPayload = Tuple
+        var value: Atom
+        tag: String
+        offset: maybe.T(Int)
+        var access: String
+        var components: Array(String)
+        ordinalIndex: maybe.T(Int)
+        var viewMap: maybe.T(Variable)
+    end
+    and OpOrdinal = Tuple var value: Atom cases: Array(String) var access: String var viewMap: maybe.T(Variable) end
+    and OpMakeArray = Tuple var args: Array(Atom) end
+    and OpArrayRep = Tuple var count: Atom var init: Atom offset: maybe.T(Int) end
+    and OpIndex = Tuple var arr: Atom var index: Atom offset: maybe.T(Int) end
+    and OpMakeAuto = Tuple witness: Type autoType: Type var payload: Atom var descriptor: maybe.T(Descriptor) end
+    and OpMakeException = Tuple name: String payloadType: maybe.T(Type) end
+    and OpExceptionPayload = Tuple var exc: Atom end
+    and OpAddrVar = Tuple var v: Variable end
+    and OpAddrCell = Tuple var init: Atom end
+    and OpAddrField = Tuple var base: Atom name: String var viewMap: maybe.T(Variable) end
+    and OpAddrComponent = Tuple var base: Atom index: Int var access: String var viewMap: maybe.T(Variable) end
+    and OpAddrElement = Tuple var base: Atom var index: Atom offset: maybe.T(Int) end
+    and OpLoad = Tuple var address: Atom end
+    and StmtLet = Tuple var v: Variable var value: Op end
+    and StmtVarDecl = Tuple var v: Variable var init: maybe.T(Atom) end
+    and StmtAssign = Tuple var v: Variable var value: Atom end
+    and StmtStoreAt = Tuple var value: Atom var address: Atom end
+    and StmtStoreField = Tuple var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
+    and StmtStoreComponent = Tuple
+        var value: Atom
+        var base: Atom
+        index: Int
+        var access: String
+        var viewMap: maybe.T(Variable)
+    end
+    and StmtStoreElement = Tuple var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
+    and StmtDo = Tuple var value: Op end
+    and StmtFuns = Tuple var functions: Array(Function) recursive: Bool end
+    and StmtLetRec = Tuple var vars: Array(Variable) var body: Body end
+    and StmtIf = Tuple var cond: Atom var thenBody: Body var elseBody: Body end
+    and StmtSwitch = Tuple
+        var value: Atom
+        var cases: Array(Case)
+        var elseBody: maybe.T(Body)
+        var access: String
+        var viewMap: maybe.T(Variable)
+    end
+    and StmtInspect = Tuple
+        var value: Atom
+        var cases: Array(InspectCase)
+        var elseBody: maybe.T(Body)
+        autoType: maybe.T(Type)
+        offset: maybe.T(Int)
+        var witness: maybe.T(DescriptorParam)
+    end
+    and StmtLoop = Tuple label: String var body: Body end
+    and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: String var catches: Array(Atom) end
+    and StmtJoin = Tuple label: String var params: Array(Variable) var continuation: Body var body: Body end
+    and StmtEcho = Tuple var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
+    and StmtEchoText = Tuple text: String end
+    and StmtReturn = Tuple var value: Atom end
+    and StmtJump = Tuple label: String var args: Array(Atom) end
+    and StmtBreak = Tuple label: String end
+    and StmtContinue = Tuple label: String end
+    and StmtRaise = Tuple var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+    and StmtReraise = Tuple var exc: Variable end
     (* A sequence of statements; a terminator, if any, is last *)
     and Body = Tuple id: Int var statements: vector.T(Stmt) end
 

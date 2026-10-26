@@ -32,6 +32,8 @@ import
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/printer : questlang/ir/Printer
     questlang/ir/verify : questlang/ir/Verify
+    questlang/ir/specialize : questlang/ir/Specialize
+    questlang/ir/closure : questlang/ir/Closure
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -42,13 +44,19 @@ import
     system : System
 ;
 
-let phases = array of "tokenize" "parse" "desugar" "typecheck" "ir_core" "run_ir_core" "interpret" end;
+(* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and runs (run_ir_STAGE) *)
+let irStages = array of "core" "specialized" "closed" end;
+
+let phases = array of
+    "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "run_ir_core" "run_ir_specialized"
+    "run_ir_closed" "interpret"
+end;
 
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
         writer.putString(writer.err
-            "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_core|run_ir_core|interpret] [--show-offsets] [--echo] "
+            "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret] [--show-offsets] [--echo] "
             <> "[--expected-exit N] (FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
         system.sysexit(2)
     end;
@@ -150,22 +158,45 @@ let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagno
         d
     end;
 
-(* A type-checked program lowered to the IR, verified when QUEST_CHECK_IR=1 *)
-let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool): nodes.Unit =
+(* The stage a phase dumps or runs the IR at (the phase's name after its prefix), if it is an IR phase *)
+let irStage(prefix: String): maybe.T(String) =
     begin
-        let unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
-        if verify.irChecksEnabled() then verify.checkUnit(unit) end
+        let var found = maybe.none(:String)
+        for i = 0 upto {extent irStages - 1} do
+            if stringOp.equal(options.stopAfter prefix <> irStages[i]) then found := maybe.some(:String irStages[i]) end
+        end
+        found
+    end;
+
+(* A type-checked program lowered to the IR and taken through the passes to stage, each result verified when
+ * QUEST_CHECK_IR=1 *)
+let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
+    begin
+        let var unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
+        let check = fun(u: nodes.Unit): Ok if verify.irChecksEnabled() then verify.checkUnit(u) end
+        check(unit)
+        let passes = array of
+            fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
+            fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
+        end
+        let var i = 1
+        while {i < extent irStages} andif not(stringOp.equal(irStages[i - 1] stage)) do
+            unit := passes[i - 1](unit)
+            check(unit)
+            i := i + 1
+        end
         unit
     end;
 
 (* Dumps the IR at the stage asked for, as the bootstrap's ir_STAGE phases do *)
-let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T stage: String): Ok =
     begin
         let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
         try
-            print(printer.formatUnit(lowered(program e sm false)))
+            print(printer.formatUnit(lowered(program e sm false stage)))
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
+        when closure.capturesMutable with m then internal(m)
         end
     end;
 
@@ -185,11 +216,11 @@ let runFrame(e: env.T sm: location.SourceMap): model.Frame =
 
 (* Runs a type-checked program's IR in the IR interpreter, as the bootstrap's run_ir_STAGE phases do: the IR prints
  * the last phrase's result itself (or every phrase's, with --echo) *)
-let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T stage: String): Ok =
     begin
         let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
         try
-            let unit = lowered(program e sm true)
+            let unit = lowered(program e sm true stage)
             let f = runFrame(e sm)
             try
                 irInterp.runUnit(unit f)
@@ -199,6 +230,7 @@ let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
         when irInterp.irInterpreterError with m then internal(m)
+        when closure.capturesMutable with m then internal(m)
         end
     end;
 
@@ -254,10 +286,10 @@ let run(): Ok =
                         let typed = maybe.unwrap(:typedAst.Program result.program)
                         if stringOp.equal(options.stopAfter "typecheck") then
                             print(typedAstPrint.dumpProgram(typed))
-                        elsif stringOp.equal(options.stopAfter "ir_core") then
-                            if not(diagbag.hasErrors(bag)) then dumpIr(typed e sm bag) end
-                        elsif stringOp.equal(options.stopAfter "run_ir_core") then
-                            if not(diagbag.hasErrors(bag)) then runIr(typed e sm bag) end
+                        elsif maybe.isSome(:String irStage("ir_")) then
+                            if not(diagbag.hasErrors(bag)) then dumpIr(typed e sm bag maybe.unwrap(:String irStage("ir_"))) end
+                        elsif maybe.isSome(:String irStage("run_ir_")) then
+                            if not(diagbag.hasErrors(bag)) then runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_"))) end
                         elsif not(diagbag.hasErrors(bag)) then
                             interpret(typed e sm bag)
                         end

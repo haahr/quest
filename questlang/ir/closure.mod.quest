@@ -1,0 +1,170 @@
+(* Quest Self-Hosted Compiler: Closure Conversion Implementation *)
+
+module closure : Closure
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+export
+    Let Variable = nodes.Variable
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+
+    let capturesMutable: Exception(String) = exception capturesMutable: String end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    Let Converter = Tuple unit: nodes.Unit globals: hashMap.T(Int Bool) end
+
+    let concat(a: Array(nodes.TypeParam) b: Array(nodes.TypeParam)): Array(nodes.TypeParam) =
+        begin
+            let result = vector.fromArray(:nodes.TypeParam a)
+            for i = 0 upto {extent b - 1} do vector.append(:nodes.TypeParam result b[i]) end
+            vector.toArray(:nodes.TypeParam result)
+        end
+
+    (* Replaces, in place, the uses in body of the variables renamed maps (none of which body binds) *)
+    let rename(b: Body renamed: hashMap.T(Int Variable)): Ok =
+        begin
+            let stmts = walk.walkStatements(b false)
+            let f = fun(v: Variable): Variable maybe.unwrapOr(:Variable hashMap.get(:Int :Variable renamed v.id) v)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do walk.replaceVarsInStmt(vector.get(:Stmt stmts i) f) end
+        end
+
+    Let Lifted = Tuple code: nodes.Function captures: Array(Variable) end
+
+    let rec convertBody(c: Converter b: Body typeParams: Array(nodes.TypeParam)): Ok =
+        begin
+            let statements = vector.new(:Stmt)
+            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                let s = vector.get(:Stmt b.statements i)
+                case s
+                    when sFuns with xPayload then let x = xPayload.n
+                        let lets = funs(c x.functions x.recursive typeParams)
+                        for j = 0 upto {extent lets - 1} do vector.append(:Stmt statements lets[j]) end
+                    else
+                        let bodies = walk.statementBodies(s)
+                        for j = 0 upto {extent bodies - 1} do convertBody(c bodies[j] typeParams) end
+                        vector.append(:Stmt statements s)
+                end
+            end
+            b.statements := statements
+        end
+
+    and funs(c: Converter functions: Array(nodes.Function) recursive: Bool typeParams: Array(nodes.TypeParam)): Array(Stmt) =
+        begin
+            let typeArgs = array of(extent typeParams model.okType)
+            for i = 0 upto {extent typeParams - 1} do
+                let tp = typeParams[i]
+                typeArgs[i] := model.typeVariable(tp.name tp.symbolId maybe.some(:model.Kind tp.kind))
+            end
+            let lets = vector.new(:Stmt)
+            let var capturesGroup = false
+            let group = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {extent functions - 1} do hashMap.insert(:Int :Bool group functions[i].v.id true) end
+            for i = 0 upto {extent functions - 1} do
+                let f = functions[i]
+                let lifted = lift(c f typeParams)
+                for j = 0 upto {extent lifted.captures - 1} do
+                    if hashMap.contains(:Int :Bool group lifted.captures[j].id) then capturesGroup := true end
+                end
+                let captures = array of(extent lifted.captures nodes.atomOfVar(f.v))
+                for j = 0 upto {extent lifted.captures - 1} do captures[j] := nodes.atomOfVar(lifted.captures[j]) end
+                vector.append(:Stmt lets nodes.letStmt(f.v option opMakeClosure of nodes.Op with let n = tuple
+                    let var code = lifted.code
+                    let var captures = captures
+                    let var typeArgs = typeArgs
+                    let var descriptors = array of :nodes.Descriptor end
+                end end))
+            end
+            if recursive andif capturesGroup then
+                let vars = array of(extent functions functions[0].v)
+                for i = 0 upto {extent functions - 1} do vars[i] := functions[i].v end
+                array of option sLetRec of Stmt with let n = tuple let var vars = vars let var body = nodes.bodyOf(vector.toArray(:Stmt lets)) end end end
+            else
+                vector.toArray(:Stmt lets)
+            end
+        end
+
+    (* The lifted function, added to the unit's, and the variables its closures capture *)
+    and lift(c: Converter f: nodes.Function typeParams: Array(nodes.TypeParam)): Lifted =
+        begin
+            convertBody(c f.body concat(typeParams f.typeParams))
+            let bound = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {extent f.params - 1} do hashMap.insert(:Int :Bool bound f.params[i].v.id true) end
+            let used = vector.new(:Variable)
+            let usedIds = hashMap.new(:Int :Bool intEqual hash.int)
+            let stmts = walk.walkStatements(f.body false)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let s = vector.get(:Stmt stmts i)
+                let binders = walk.statementBinders(s)
+                for j = 0 upto {extent binders - 1} do hashMap.insert(:Int :Bool bound binders[j].id true) end
+                let uses = walk.statementUses(s)
+                for j = 0 upto {extent uses - 1} do
+                    case uses[j]
+                        when atomVar with x then
+                            if not(hashMap.contains(:Int :Bool usedIds x.v.id)) then
+                                hashMap.insert(:Int :Bool usedIds x.v.id true)
+                                vector.append(:Variable used x.v)
+                            end
+                        else ok
+                    end
+                end
+            end
+            let captures = vector.new(:Variable)
+            for i = 0 upto {vector.length(:Variable used) - 1} do
+                let v = vector.get(:Variable used i)
+                if not(hashMap.contains(:Int :Bool bound v.id)) andif not(hashMap.contains(:Int :Bool c.globals v.id)) then
+                    vector.append(:Variable captures v)
+                end
+            end
+            let var env = maybe.none(:Variable)
+            if not(vector.empty(:Variable captures)) orif {extent typeParams > 0} then
+                (* The environment (of the captured values, and of the descriptors of the enclosing functions' type
+                 * parameters) is not a value of a Quest type; its type is a placeholder (it prints without one) *)
+                let e = nodes.newVar("env" model.okType false)
+                env := maybe.some(:Variable e)
+                let renamed = hashMap.new(:Int :Variable intEqual hash.int)
+                let prologue = vector.new(:Stmt)
+                for i = 0 upto {vector.length(:Variable captures) - 1} do
+                    let captured = vector.get(:Variable captures i)
+                    if captured.isMutable then
+                        raise capturesMutable with
+                            "function '" <> f.v.hint <> "' captures mutable variable '" <> captured.hint <> "'"
+                        end
+                    end
+                    let local = nodes.newVar(captured.hint captured.type false)
+                    hashMap.insert(:Int :Variable renamed captured.id local)
+                    vector.append(:Stmt prologue nodes.letStmt(local option opEnvField of nodes.Op with let n = tuple
+                        let var env = nodes.atomOfVar(e)
+                        let index = i
+                    end end))
+                end
+                rename(f.body renamed)
+                for i = 0 upto {vector.length(:Stmt f.body.statements) - 1} do
+                    vector.append(:Stmt prologue vector.get(:Stmt f.body.statements i))
+                end
+                f.body.statements := prologue
+            end
+            let code = nodes.newFunction(nodes.newVar(f.v.hint f.v.type false) concat(typeParams f.typeParams) f.params
+                f.resultType f.body f.traceName)
+            code.env := env
+            vector.append(:nodes.Function c.unit.functions code)
+            tuple let code = code let captures = vector.toArray(:Variable captures) end
+        end
+
+    let closureConvertUnit(unit: nodes.Unit): nodes.Unit =
+        begin
+            let c = tuple let unit = unit let globals = walk.globalVariables(unit) end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                convertBody(c vector.get(:nodes.Module unit.modules i).init array of :nodes.TypeParam end)
+            end
+            convertBody(c unit.main array of :nodes.TypeParam end)
+            unit.stage := "closed"
+            unit
+        end
+end

@@ -569,9 +569,9 @@ export
 
     and address(it: Interpreter o: Op f: Frame): Value =
         case o
-            when opAddrVar with x then lookup(f x.v)
-            when opAddrCell with x then model.cellValue(atom(it x.init f))
-            when opAddrField with x then
+            when opAddrVar with xPayload then let x = xPayload.n lookup(f x.v)
+            when opAddrCell with xPayload then let x = xPayload.n model.cellValue(atom(it x.init f))
+            when opAddrField with xPayload then let x = xPayload.n
                 case deref(atom(it x.base f))
                     when vRecord with r then
                         let cell = hashMap.get(:String :Value r.r.fields x.name)
@@ -579,13 +579,13 @@ export
                         else model.internalError(:Value "Field '" <> x.name <> "' is not mutable" none) end
                     else model.internalError(:Value "Field '" <> x.name <> "' is not mutable" none)
                 end
-            when opAddrComponent with x then
+            when opAddrComponent with xPayload then let x = xPayload.n
                 let base = tupleOf(atom(it x.base f))
                 let i = elementIndex(base x.index)
                 let element = base.elements[i]
                 if element?vRef then element
                 else option vRef of Value with let r = tuple let form = option tupleElement of model.RefForm with let tup = base let index = i end end end end
-            when opAddrElement with x then
+            when opAddrElement with xPayload then let x = xPayload.n
                 case deref(atom(it x.base f))
                     when vArray with a then
                         let idx = case atom(it x.index f) when vInt with n then n.n else ~1 end
@@ -629,42 +629,42 @@ export
 
     and operation(it: Interpreter o: Op f: Frame result: maybe.T(Variable)): Value =
         case o
-            when opAtom with x then atom(it x.atom f)
-            when opPrim with x then
+            when opAtom with xPayload then let x = xPayload.n atom(it x.atom f)
+            when opPrim with xPayload then let x = xPayload.n
                 let values = atoms(it x.args f)
                 at(:Value it x.offset fun(): Value prim(it x.op values))
-            when opCall with x then
+            when opCall with xPayload then let x = xPayload.n
                 checkDescriptors(it x.descriptors x.typeArgs f)
                 let var callee = calleeValue(it x.callee x.moduleRef x.member f)
                 if extent x.typeArgs > 0 then callee := typeApply(it callee resolveAll(f x.typeArgs)) end
                 apply(it callee atoms(it x.args f))
-            when opTypeApp with x then
+            when opTypeApp with xPayload then let x = xPayload.n
                 checkDescriptors(it x.descriptors x.typeArgs f)
                 typeApply(it calleeValue(it x.callee x.moduleRef x.member f) resolveAll(f x.typeArgs))
-            when opModuleMember with x then
+            when opModuleMember with xPayload then let x = xPayload.n
                 if maybe.isNone(:String x.member) then moduleValue(it x.moduleRef)
                 else member(it x.moduleRef maybe.unwrap(:String x.member)) end
-            when opBuiltin with x then treewalk.lookup(it.root x.name none)
-            when opMakeClosure with x then
+            when opBuiltin with xPayload then let x = xPayload.n treewalk.lookup(it.root x.name none)
+            when opMakeClosure with xPayload then let x = xPayload.n
                 checkDescriptors(it x.descriptors x.typeArgs f)
                 makeClosure(it x.code x.captures x.typeArgs f)
-            when opEnvField with x then
+            when opEnvField with xPayload then let x = xPayload.n
                 case atom(it x.env f)
                     when vArray with a then a.a[x.index]
                     else fail(:Value "env_field of a value other than an environment")
                 end
             (* A change of representation, which values here do not have *)
-            when opConvert with x then atom(it x.value f)
-            when opExternal with x then builtins.resolveExternal(x.symbol)
-            when opCallExternal with x then
+            when opConvert with xPayload then let x = xPayload.n atom(it x.value f)
+            when opExternal with xPayload then let x = xPayload.n builtins.resolveExternal(x.symbol)
+            when opCallExternal with xPayload then let x = xPayload.n
                 let ext = builtins.resolveExternal(x.symbol)
                 let values = atoms(it x.args f)
                 case ext when vBuiltin with b then b.b.fn(values) else ext end
-            when opMakeTuple with x then makeTuple(it atoms(it x.args f) x.typeComponents result f)
-            when opTupleField with x then
+            when opMakeTuple with xPayload then let x = xPayload.n makeTuple(it atoms(it x.args f) x.typeComponents result f)
+            when opTupleField with xPayload then let x = xPayload.n
                 let t = tupleOf(atom(it x.tup f))
                 t.elements[elementIndex(t x.index)]
-            when opMakeRecord with x then
+            when opMakeRecord with xPayload then let x = xPayload.n
                 let fields = model.newFields()
                 for i = 0 upto {extent x.fields - 1} do
                     let fa = x.fields[i]
@@ -672,7 +672,7 @@ export
                     hashMap.insert(:String :Value fields fa.name if fa.isVar then model.cellValue(v) else v end)
                 end
                 model.recordValue(fields)
-            when opRecordField with x then
+            when opRecordField with xPayload then let x = xPayload.n
                 case deref(atom(it x.recordAtom f))
                     when vTuple with t then model.tupleGet(t.t x.name)
                     when vRecord with r then
@@ -681,10 +681,10 @@ export
                         deref(maybe.unwrap(:Value found))
                     else model.internalError(:Value "not a record" none)
                 end
-            when opMakeVariant with x then
+            when opMakeVariant with xPayload then let x = xPayload.n
                 model.variantValue(x.tag if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f))
                     else maybe.none(:Value) end)
-            when opMakeOption with x then
+            when opMakeOption with xPayload then let x = xPayload.n
                 let p = if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f)) else maybe.none(:Value) end
                 if maybe.isSome(:Atom x.ordinalAtom) then
                     let n = case atom(it maybe.unwrap(:Atom x.ordinalAtom) f) when vInt with y then y.n else ~1 end
@@ -696,11 +696,11 @@ export
                 else
                     model.optionValue(maybe.unwrapOr(:String x.tag "") p)
                 end
-            when opIsTag with x then model.boolValue(eq(tagOf(atom(it x.value f)) x.tag))
-            when opPayload with x then
+            when opIsTag with xPayload then let x = xPayload.n model.boolValue(eq(tagOf(atom(it x.value f)) x.tag))
+            when opPayload with xPayload then let x = xPayload.n
                 let v = atom(it x.value f)
                 at(:Value it x.offset fun(): Value payloadOf(v x.tag x.ordinalIndex))
-            when opOrdinal with x then
+            when opOrdinal with xPayload then let x = xPayload.n
                 case atom(it x.value f)
                     when vOption with y then
                         let var index = ~1
@@ -709,13 +709,13 @@ export
                         model.intValue(index)
                     else model.internalError(:Value "ordinal expects Option, got " <> model.typeName(atom(it x.value f)) none)
                 end
-            when opMakeArray with x then option vArray of Value with let a = atoms(it x.args f) end
-            when opArrayRep with x then
+            when opMakeArray with xPayload then let x = xPayload.n option vArray of Value with let a = atoms(it x.args f) end
+            when opArrayRep with xPayload then let x = xPayload.n
                 let n = case atom(it x.count f) when vInt with y then y.n else 0 end
                 if n < 0 then raising(:Ok it primitives.arrayOpError x.offset) end
                 let v = atom(it x.init f)
                 option vArray of Value with let a = array of(n v) end
-            when opIndex with x then
+            when opIndex with xPayload then let x = xPayload.n
                 case atom(it x.arr f)
                     when vArray with a then
                         let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
@@ -723,13 +723,13 @@ export
                         a.a[idx]
                     else model.internalError(:Value "not an array" none)
                 end
-            when opMakeAuto with x then
+            when opMakeAuto with xPayload then let x = xPayload.n
                 if maybe.isSome(:nodes.Descriptor x.descriptor) then
                     checkDescriptors(it array of maybe.unwrap(:nodes.Descriptor x.descriptor) end array of x.witness end f)
                 end
                 option vAuto of Value with let a = tuple let value = atom(it x.payload f) let type = resolve(f x.witness) end end
-            when opMakeException with x then option vException of Value with let e = model.exceptionValue(x.name) end
-            when opExceptionPayload with x then
+            when opMakeException with xPayload then let x = xPayload.n option vException of Value with let e = model.exceptionValue(x.name) end
+            when opExceptionPayload with xPayload then let x = xPayload.n
                 let e = case x.exc
                     when atomVar with y then raisedError(f y.v)
                     else maybe.none(:model.RunError)
@@ -744,18 +744,18 @@ export
             when opAddrField then address(it o f)
             when opAddrComponent then address(it o f)
             when opAddrElement then address(it o f)
-            when opLoad with x then deref(atom(it x.address f))
+            when opLoad with xPayload then let x = xPayload.n deref(atom(it x.address f))
         end
 
     and store(it: Interpreter s: Stmt f: Frame): Ok =
         case s
-            when sStoreAt with x then
+            when sStoreAt with xPayload then let x = xPayload.n
                 let value = atom(it x.value f)
                 case atom(it x.address f)
                     when vRef with r then model.assign(r.r value)
                     else model.internalError(:Ok "a store through a value that is not an address" none)
                 end
-            when sStoreField with x then
+            when sStoreField with xPayload then let x = xPayload.n
                 let value = atom(it x.value f)
                 case deref(atom(it x.base f))
                     when vRecord with r then
@@ -768,7 +768,7 @@ export
                         end
                     else model.internalError(:Ok "a field store into a value that is not a record" none)
                 end
-            when sStoreComponent with x then
+            when sStoreComponent with xPayload then let x = xPayload.n
                 let value = atom(it x.value f)
                 let base = tupleOf(atom(it x.base f))
                 let i = elementIndex(base x.index)
@@ -776,7 +776,7 @@ export
                     when vRef with c then model.assign(c.r value)
                     else base.elements[i] := value
                 end
-            when sStoreElement with x then
+            when sStoreElement with xPayload then let x = xPayload.n
                 let value = atom(it x.value f)
                 case deref(atom(it x.base f))
                     when vArray with a then
@@ -804,14 +804,14 @@ export
 
     and statement(it: Interpreter s: Stmt f: Frame): Signals =
         case s
-            when sLet with x then
+            when sLet with xPayload then let x = xPayload.n
                 let v = operation(it x.value f maybe.some(:Variable x.v))
                 if hashMap.contains(:Int :Bool it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
                 noSignal
-            when sVarDecl with x then
+            when sVarDecl with xPayload then let x = xPayload.n
                 setValue(f x.v model.cellValue(if maybe.isSome(:Atom x.init) then atom(it maybe.unwrap(:Atom x.init) f) else model.okValue end))
                 noSignal
-            when sAssign with x then
+            when sAssign with xPayload then let x = xPayload.n
                 case lookup(f x.v)
                     when vRef with r then model.assign(r.r atom(it x.value f))
                     else fail(:Ok "an assignment to a variable that is not mutable")
@@ -821,14 +821,14 @@ export
             when sStoreField then begin store(it s f) noSignal end
             when sStoreComponent then begin store(it s f) noSignal end
             when sStoreElement then begin store(it s f) noSignal end
-            when sDo with x then begin operation(it x.value f maybe.none(:Variable)) noSignal end
-            when sFuns with x then
+            when sDo with xPayload then let x = xPayload.n begin operation(it x.value f maybe.none(:Variable)) noSignal end
+            when sFuns with xPayload then let x = xPayload.n
                 for i = 0 upto {extent x.functions - 1} do
                     let fn = x.functions[i]
                     setValue(f fn.v closureValue(it tuple let function = fn let frame = f let typeBindings = newTypes() let env = maybe.none(:Array(Value)) end))
                 end
                 noSignal
-            when sLetRec with x then
+            when sLetRec with xPayload then let x = xPayload.n
                 for i = 0 upto {extent x.vars - 1} do
                     hashMap.insert(:Int :Bool it.declared x.vars[i].id true)
                     hashMap.insert(:Int :maybe.T(Value) f.values x.vars[i].id maybe.none(:Value))
@@ -851,12 +851,12 @@ export
                     end
                 end
                 result
-            when sIf with x then
+            when sIf with xPayload then let x = xPayload.n
                 case atom(it x.cond f)
                     when vBool with b then runBody(it if b.b then x.thenBody else x.elseBody end f)
                     else model.internalError(:Signals "a condition that is not a Bool" none)
                 end
-            when sSwitch with x then
+            when sSwitch with xPayload then let x = xPayload.n
                 let v = atom(it x.value f)
                 let tag = tagOf(v)
                 let var chosen = maybe.none(:nodes.Case)
@@ -882,7 +882,7 @@ export
                 else
                     model.internalError(:Signals "Unhandled case tag '" <> tag <> "'" none)
                 end
-            when sInspect with x then
+            when sInspect with xPayload then let x = xPayload.n
                 case atom(it x.value f)
                     when vAuto with a then
                         let var chosen = maybe.none(:nodes.InspectCase)
@@ -909,7 +909,7 @@ export
                         end
                     else model.internalError(:Signals "Inspect target must be an auto value, got " <> model.typeName(atom(it x.value f)) none)
                 end
-            when sLoop with x then
+            when sLoop with xPayload then let x = xPayload.n
                 let var result = noSignal
                 let var running = true
                 while running do
@@ -929,7 +929,7 @@ export
                     end
                 end
                 result
-            when sTry with x then
+            when sTry with xPayload then let x = xPayload.n
                 try
                     runBody(it x.body f)
                 when model.runError with e then
@@ -941,7 +941,7 @@ export
                         else rethrow(:Signals e)
                     end
                 end
-            when sJoin with x then
+            when sJoin with xPayload then let x = xPayload.n
                 let s2 = runBody(it x.body f)
                 case maybe.unwrapOr(:Signal s2 option sigBreak of Signal with let label = "" end)
                     when sigJump with y then
@@ -953,7 +953,7 @@ export
                         end
                     else s2
                 end
-            when sEcho with x then
+            when sEcho with xPayload then let x = xPayload.n
                 let v = atom(it x.value f)
                 if stringOp.length(x.prefix) > 0 then
                     writer.putString(writer.output x.prefix <> formatting.formatValueWithType(v x.type) <> "\n")
@@ -961,12 +961,12 @@ export
                     writer.putString(writer.output formatting.formatValueWithType(v x.type) <> " : " <> tm.show(x.type) <> "\n")
                 end
                 noSignal
-            when sEchoText with x then begin writer.putString(writer.output x.text <> "\n") noSignal end
-            when sReturn with x then signal(option sigReturn of Signal with let value = atom(it x.value f) end)
-            when sJump with x then signal(option sigJump of Signal with let label = x.label let args = atoms(it x.args f) end)
-            when sBreak with x then signal(option sigBreak of Signal with let label = x.label end)
-            when sContinue with x then signal(option sigContinue of Signal with let label = x.label end)
-            when sRaise with x then
+            when sEchoText with xPayload then let x = xPayload.n begin writer.putString(writer.output x.text <> "\n") noSignal end
+            when sReturn with xPayload then let x = xPayload.n signal(option sigReturn of Signal with let value = atom(it x.value f) end)
+            when sJump with xPayload then let x = xPayload.n signal(option sigJump of Signal with let label = x.label let args = atoms(it x.args f) end)
+            when sBreak with xPayload then let x = xPayload.n signal(option sigBreak of Signal with let label = x.label end)
+            when sContinue with xPayload then let x = xPayload.n signal(option sigContinue of Signal with let label = x.label end)
+            when sRaise with xPayload then let x = xPayload.n
                 let exc = atom(it x.exc f)
                 let payload = if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f)) else maybe.none(:Value) end
                 let payloadType = if maybe.isSome(:Atom x.payload) then
@@ -984,7 +984,7 @@ export
                         end x.offset))
                     else model.internalError(:Signals "Target of raise must be Exception, got " <> model.typeName(exc) none)
                 end
-            when sReraise with x then
+            when sReraise with xPayload then let x = xPayload.n
                 let e = raisedError(f x.exc)
                 if maybe.isNone(:model.RunError e) then fail(:Ok "reraise of a value other than a handler's exception") end
                 rethrow(:Signals maybe.unwrap(:model.RunError e))

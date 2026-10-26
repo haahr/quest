@@ -228,12 +228,12 @@ export
 
     let op(p: Printer o: Op): String =
         case o
-            when opAtom with x then atom(p x.atom)
-            when opPrim with x then "prim " <> x.op <> "(" <> atoms(p x.args) <> ")" <> access(x.access) <> ofDescriptor(p x.descriptor)
-            when opCall with x then
+            when opAtom with xPayload then let x = xPayload.n atom(p x.atom)
+            when opPrim with xPayload then let x = xPayload.n "prim " <> x.op <> "(" <> atoms(p x.args) <> ")" <> access(x.access) <> ofDescriptor(p x.descriptor)
+            when opCall with xPayload then let x = xPayload.n
                 "call " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> "("
                     <> atoms(p x.args) <> ")"
-            when opTypeApp with x then
+            when opTypeApp with xPayload then let x = xPayload.n
                 let thunk = if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams)
                     andif {extent maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams) > 0} then
                     thunkDecls(p maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams))
@@ -250,30 +250,30 @@ export
                     ""
                 end
                 "type_app " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> converting
-            when opModuleMember with x then
+            when opModuleMember with xPayload then let x = xPayload.n
                 if maybe.isSome(:String x.member) then
                     "member " <> nodes.moduleRefName(x.moduleRef) <> "." <> maybe.unwrap(:String x.member)
                 else
                     "module " <> nodes.moduleRefName(x.moduleRef)
                 end
-            when opBuiltin with x then "builtin " <> x.name
-            when opExternal with x then "external " <> quoted(x.symbol)
-            when opCallExternal with x then
+            when opBuiltin with xPayload then let x = xPayload.n "builtin " <> x.name
+            when opExternal with xPayload then let x = xPayload.n "external " <> quoted(x.symbol)
+            when opCallExternal with xPayload then let x = xPayload.n
                 "call external " <> quoted(x.symbol) <> typeArgs(p x.typeArgs x.descriptors) <> "(" <> atoms(p x.args) <> ")"
-            when opMakeClosure with x then
+            when opMakeClosure with xPayload then let x = xPayload.n
                 "closure " <> name(p x.code.v) <> " {" <> atoms(p x.captures) <> "}" <> typeArgs(p x.typeArgs x.descriptors)
-            when opEnvField with x then "env_field(" <> atom(p x.env) <> ", " <> conv.int(x.index) <> ")"
-            when opConvert with x then "convert(" <> atom(p x.value) <> ", " <> plan(p maybe.some(:Plan x.plan)) <> ")"
-            when opMakeTuple with x then
+            when opEnvField with xPayload then let x = xPayload.n "env_field(" <> atom(p x.env) <> ", " <> conv.int(x.index) <> ")"
+            when opConvert with xPayload then let x = xPayload.n "convert(" <> atom(p x.value) <> ", " <> plan(p maybe.some(:Plan x.plan)) <> ")"
+            when opMakeTuple with xPayload then let x = xPayload.n
                 let types = vector.new(:String)
                 for i = 0 upto {extent x.typeComponents - 1} do
                     let c = x.typeComponents[i]
                     vector.append(:String types "Let " <> c.name <> " = " <> typeText(c.type) <> " ")
                 end
                 "tuple(" <> joinWith("" types) <> boxedAtoms(p x.args x.embedded) <> ")"
-            when opTupleField with x then
+            when opTupleField with xPayload then let x = xPayload.n
                 "tuple_field(" <> atom(p x.tup) <> ", " <> conv.int(x.index) <> ")" <> access(x.access)
-            when opMakeRecord with x then
+            when opMakeRecord with xPayload then let x = xPayload.n
                 let fields = vector.new(:String)
                 for i = 0 upto {extent x.fields - 1} do
                     let f = x.fields[i]
@@ -291,12 +291,12 @@ export
                     text := text <> " with " <> offsets(maybe.unwrap(:nodes.OffsetTable x.offsets))
                 end
                 text <> ofDescriptor(p x.descriptor)
-            when opRecordField with x then
+            when opRecordField with xPayload then let x = xPayload.n
                 let stored = if x.stored then " via stored types" <> ofDescriptor(p x.descriptor) else "" end
                 "record_field(" <> atom(p x.recordAtom) <> ", " <> x.name <> ")" <> stored
-            when opMakeVariant with x then
+            when opMakeVariant with xPayload then let x = xPayload.n
                 "variant(" <> x.tag <> if maybe.isSome(:Atom x.payload) then ", " <> atom(p maybe.unwrap(:Atom x.payload)) else "" end <> ")"
-            when opMakeOption with x then
+            when opMakeOption with xPayload then let x = xPayload.n
                 let head = if maybe.isNone(:Atom x.ordinalAtom) then
                     maybe.unwrapOr(:String x.tag "")
                 else
@@ -308,27 +308,27 @@ export
                     ""
                 end
                 "option(" <> head <> payloadText <> ")"
-            when opIsTag with x then "is_tag(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> access(x.access)
-            when opPayload with x then
+            when opIsTag with xPayload then let x = xPayload.n "is_tag(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> access(x.access)
+            when opPayload with xPayload then let x = xPayload.n
                 let ordinalText = if maybe.isSome(:Int x.ordinalIndex) then " #" <> conv.int(maybe.unwrap(:Int x.ordinalIndex)) else "" end
                 "payload(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> ordinalText <> access(x.access) <> accesses(x.components)
-            when opOrdinal with x then
+            when opOrdinal with xPayload then let x = xPayload.n
                 "ordinal(" <> atom(p x.value) <> ") in (" <> strutil.joinArray(" " x.cases) <> ")" <> access(x.access)
-            when opMakeArray with x then "array(" <> atoms(p x.args) <> ")"
-            when opArrayRep with x then "array_rep(" <> atom(p x.count) <> ", " <> atom(p x.init) <> ")"
-            when opIndex with x then "index(" <> atom(p x.arr) <> ", " <> atom(p x.index) <> ")"
-            when opMakeAuto with x then "auto[" <> typeText(x.witness) <> "](" <> atom(p x.payload) <> ")" <> ofDescriptor(p x.descriptor)
-            when opMakeException with x then
+            when opMakeArray with xPayload then let x = xPayload.n "array(" <> atoms(p x.args) <> ")"
+            when opArrayRep with xPayload then let x = xPayload.n "array_rep(" <> atom(p x.count) <> ", " <> atom(p x.init) <> ")"
+            when opIndex with xPayload then let x = xPayload.n "index(" <> atom(p x.arr) <> ", " <> atom(p x.index) <> ")"
+            when opMakeAuto with xPayload then let x = xPayload.n "auto[" <> typeText(x.witness) <> "](" <> atom(p x.payload) <> ")" <> ofDescriptor(p x.descriptor)
+            when opMakeException with xPayload then let x = xPayload.n
                 let shown = maybe.isSome(:model.Type x.payloadType)
                     andif not(eq(typeText(maybe.unwrap(:model.Type x.payloadType)) "Ok"))
                 "exception " <> x.name <> if shown then ": " <> typeText(maybe.unwrap(:model.Type x.payloadType)) else "" end
-            when opExceptionPayload with x then "exception_payload(" <> atom(p x.exc) <> ")"
-            when opAddrVar with x then "addr " <> name(p x.v)
-            when opAddrCell with x then "cell(" <> atom(p x.init) <> ")"
-            when opAddrField with x then "addr " <> atom(p x.base) <> "." <> x.name
-            when opAddrComponent with x then "addr " <> atom(p x.base) <> ".#" <> conv.int(x.index) <> access(x.access)
-            when opAddrElement with x then "addr " <> atom(p x.base) <> "[" <> atom(p x.index) <> "]"
-            when opLoad with x then "load " <> atom(p x.address)
+            when opExceptionPayload with xPayload then let x = xPayload.n "exception_payload(" <> atom(p x.exc) <> ")"
+            when opAddrVar with xPayload then let x = xPayload.n "addr " <> name(p x.v)
+            when opAddrCell with xPayload then let x = xPayload.n "cell(" <> atom(p x.init) <> ")"
+            when opAddrField with xPayload then let x = xPayload.n "addr " <> atom(p x.base) <> "." <> x.name
+            when opAddrComponent with xPayload then let x = xPayload.n "addr " <> atom(p x.base) <> ".#" <> conv.int(x.index) <> access(x.access)
+            when opAddrElement with xPayload then let x = xPayload.n "addr " <> atom(p x.base) <> "[" <> atom(p x.index) <> "]"
+            when opLoad with xPayload then let x = xPayload.n "load " <> atom(p x.address)
         end
 
     (* How an inspect case's components are obtained, after the represent pass *)
@@ -409,24 +409,24 @@ export
 
     and statement(p: Printer s: Stmt depth: Int): Ok =
         case s
-            when sLet with x then emit(p depth "let " <> decl(p x.v) <> " = " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
-            when sVarDecl with x then
+            when sLet with xPayload then let x = xPayload.n emit(p depth "let " <> decl(p x.v) <> " = " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
+            when sVarDecl with xPayload then let x = xPayload.n
                 if maybe.isNone(:Atom x.init) then
                     emit(p depth "var " <> decl(p x.v))
                 else
                     emit(p depth "var " <> decl(p x.v) <> " = " <> atom(p maybe.unwrap(:Atom x.init)))
                 end
-            when sAssign with x then emit(p depth name(p x.v) <> " := " <> atom(p x.value))
-            when sStoreAt with x then emit(p depth "store *" <> atom(p x.address) <> " := " <> atom(p x.value))
-            when sStoreField with x then
+            when sAssign with xPayload then let x = xPayload.n emit(p depth name(p x.v) <> " := " <> atom(p x.value))
+            when sStoreAt with xPayload then let x = xPayload.n emit(p depth "store *" <> atom(p x.address) <> " := " <> atom(p x.value))
+            when sStoreField with xPayload then let x = xPayload.n
                 emit(p depth "store " <> atom(p x.base) <> "." <> x.name <> " := " <> atom(p x.value) <> through(p x.viewMap))
-            when sStoreComponent with x then
+            when sStoreComponent with xPayload then let x = xPayload.n
                 emit(p depth "store " <> atom(p x.base) <> ".#" <> conv.int(x.index) <> " := " <> atom(p x.value)
                     <> access(x.access) <> through(p x.viewMap))
-            when sStoreElement with x then
+            when sStoreElement with xPayload then let x = xPayload.n
                 emit(p depth "store " <> atom(p x.base) <> "[" <> atom(p x.index) <> "] := " <> atom(p x.value))
-            when sDo with x then emit(p depth "do " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
-            when sFuns with x then
+            when sDo with xPayload then let x = xPayload.n emit(p depth "do " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
+            when sFuns with xPayload then let x = xPayload.n
                 begin
                     (* Members of a recursive group are named before their bodies, which refer to one another *)
                     if x.recursive then
@@ -439,13 +439,13 @@ export
                     end
                     emit(p depth "}")
                 end
-            when sLetRec with x then
+            when sLetRec with xPayload then let x = xPayload.n
                 begin
                     let decls = vector.new(:String)
                     for i = 0 upto {extent x.vars - 1} do vector.append(:String decls decl(p x.vars[i])) end
                     block(p "let rec (" <> joinWith(", " decls) <> ")" x.body depth)
                 end
-            when sIf with x then
+            when sIf with xPayload then let x = xPayload.n
                 begin
                     emit(p depth "if " <> atom(p x.cond) <> " {")
                     body(p x.thenBody depth + 1)
@@ -455,7 +455,7 @@ export
                     end
                     emit(p depth "}")
                 end
-            when sSwitch with x then
+            when sSwitch with xPayload then let x = xPayload.n
                 begin
                     emit(p depth "switch tag(" <> atom(p x.value) <> ")" <> access(x.access) <> through(p x.viewMap) <> " {")
                     for i = 0 upto {extent x.cases - 1} do
@@ -470,7 +470,7 @@ export
                     if maybe.isSome(:nodes.Body x.elseBody) then block(p "else:" maybe.unwrap(:nodes.Body x.elseBody) depth + 1) end
                     emit(p depth "}")
                 end
-            when sInspect with x then
+            when sInspect with xPayload then let x = xPayload.n
                 begin
                     let binding = if maybe.isSome(:nodes.DescriptorParam x.witness) then
                         " (" <> decl(p maybe.unwrap(:nodes.DescriptorParam x.witness).v) <> ")"
@@ -490,8 +490,8 @@ export
                     if maybe.isSome(:nodes.Body x.elseBody) then block(p "else:" maybe.unwrap(:nodes.Body x.elseBody) depth + 1) end
                     emit(p depth "}")
                 end
-            when sLoop with x then block(p "loop " <> x.label x.body depth)
-            when sTry with x then
+            when sLoop with xPayload then let x = xPayload.n block(p "loop " <> x.label x.body depth)
+            when sTry with xPayload then let x = xPayload.n
                 begin
                     if eq(x.catching nodes.catchUnknown) then
                         emit(p depth "try {")
@@ -505,7 +505,7 @@ export
                     body(p x.handler depth + 1)
                     emit(p depth "}")
                 end
-            when sJoin with x then
+            when sJoin with xPayload then let x = xPayload.n
                 begin
                     let decls = vector.new(:String)
                     for i = 0 upto {extent x.params - 1} do vector.append(:String decls decl(p x.params[i])) end
@@ -515,17 +515,17 @@ export
                     body(p x.body depth + 1)
                     emit(p depth "}")
                 end
-            when sEcho with x then
+            when sEcho with xPayload then let x = xPayload.n
                 emit(p depth "echo " <> quoted(x.prefix) <> " " <> atom(p x.value) <> " : " <> typeText(x.type) <> ofDescriptor(p x.descriptor))
-            when sEchoText with x then emit(p depth "echo " <> quoted(x.text))
-            when sReturn with x then emit(p depth "return " <> atom(p x.value))
-            when sJump with x then emit(p depth "jump " <> x.label <> "(" <> atoms(p x.args) <> ")")
-            when sBreak with x then emit(p depth "break " <> x.label)
-            when sContinue with x then emit(p depth "continue " <> x.label)
-            when sRaise with x then
+            when sEchoText with xPayload then let x = xPayload.n emit(p depth "echo " <> quoted(x.text))
+            when sReturn with xPayload then let x = xPayload.n emit(p depth "return " <> atom(p x.value))
+            when sJump with xPayload then let x = xPayload.n emit(p depth "jump " <> x.label <> "(" <> atoms(p x.args) <> ")")
+            when sBreak with xPayload then let x = xPayload.n emit(p depth "break " <> x.label)
+            when sContinue with xPayload then let x = xPayload.n emit(p depth "continue " <> x.label)
+            when sRaise with xPayload then let x = xPayload.n
                 emit(p depth "raise " <> atom(p x.exc)
                     <> if maybe.isSome(:Atom x.payload) then " with " <> atom(p maybe.unwrap(:Atom x.payload)) else "" end)
-            when sReraise with x then emit(p depth "reraise " <> name(p x.exc))
+            when sReraise with xPayload then let x = xPayload.n emit(p depth "reraise " <> name(p x.exc))
             when sUnreachable then emit(p depth "unreachable")
         end
 

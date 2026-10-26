@@ -1,0 +1,721 @@
+(* Quest Self-Hosted Compiler: Specialization Implementation *)
+
+module specialize : Specialize
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/ir/written : questlang/ir/Written
+    questlang/codegen/layout : questlang/codegen/Layout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+    Let Shape = shapes.Shape
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    (* The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion would
+     * otherwise specialize without end *)
+    let maxDepth = 16
+
+    Let Ids = hashMap.T(Int Bool)
+    let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
+    let withIds(ids: Ids more: Array(nodes.TypeParam)): Ids =
+        begin
+            let result = newIds()
+            hashMap.forEach(:Int :Bool ids fun(k: Int b: Bool): Ok begin hashMap.insert(:Int :Bool result k b) ok end)
+            for i = 0 upto {extent more - 1} do hashMap.insert(:Int :Bool result more[i].symbolId true) end
+            result
+        end
+
+    let mentionsAny(t: Type ids: Ids): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent t.fv - 1} do if hashMap.contains(:Int :Bool ids t.fv[i]) then found := true end end
+            found
+        end
+
+    let holdsRecordOrVariant(s0: Shape): Bool =
+        begin
+            let seen = newIds()
+            let rec holds(s: Shape): Bool =
+                if hashMap.contains(:Int :Bool seen s.id) then
+                    false
+                else
+                    hashMap.insert(:Int :Bool seen s.id true)
+                    let kind = s.kind
+                    if eq(kind "record") orif eq(kind "variant") then
+                        true
+                    elsif eq(kind "typevar") then
+                        maybe.isSome(:Shape s.bound) andif holds(maybe.unwrap(:Shape s.bound))
+                    elsif eq(kind "tuple") then
+                        let var found = false
+                        for i = 0 upto {extent s.components - 1} do
+                            if not(found) andif holds(shapes.componentShape(s.components[i])) then found := true end
+                        end
+                        found
+                    elsif eq(kind "option") then
+                        let var found = false
+                        for i = 0 upto {extent s.cases - 1} do
+                            let c = s.cases[i].shape
+                            if not(found) andif maybe.isSome(:Shape c) andif holds(maybe.unwrap(:Shape c)) then found := true end
+                        end
+                        found
+                    elsif eq(kind "array") orif eq(kind "cell") orif eq(kind "out") then
+                        holds(shapes.element(s))
+                    else
+                        false
+                    end
+                end
+            holds(s0)
+        end
+
+    let shouldSpecialize(f: nodes.Function typeArgs: Array(Type)): Bool =
+        begin
+            (* A type operator (the argument of a higher-kinded type parameter) is not the type of values, and has no
+             * shape *)
+            let var found = false
+            for i = 0 upto {extent typeArgs - 1} do
+                if not(found) andif not(written.isTypeOperator(typeArgs[i])) andif holdsRecordOrVariant(shapes.shape(typeArgs[i])) then
+                    found := true
+                end
+            end
+            let ids = withIds(newIds() f.typeParams)
+            for i = 0 upto {extent f.params - 1} do
+                let p = f.params[i]
+                if not(found) then
+                    if not(eq(p.mode "value")) andif mentionsAny(p.v.type ids) then found := true end
+                    if eq(shapes.shape(p.v.type).kind "tuple") andif mentionsAny(p.v.type ids) then found := true end
+                end
+            end
+            found orif {eq(shapes.shape(f.resultType).kind "tuple") andif mentionsAny(f.resultType ids)}
+        end
+
+    (* =========================================================================
+     * Cloning: a function copied with types substituted; every variable it binds is a fresh one, and every other node
+     * is copied, except module references and the free variables it uses
+     * ========================================================================= *)
+
+    Let Cloner = Tuple subst: model.Subst vars: hashMap.T(Int Variable) end
+
+    let ty(c: Cloner t: Type): Type = if extent t.fv > 0 then model.substitute(t c.subst) else t end
+    let tys(c: Cloner ts: Array(Type)): Array(Type) =
+        begin
+            let result = array of(extent ts model.okType)
+            for i = 0 upto {extent ts - 1} do result[i] := ty(c ts[i]) end
+            result
+        end
+    let optTy(c: Cloner t: maybe.T(Type)): maybe.T(Type) =
+        if maybe.isSome(:Type t) then maybe.some(:Type ty(c maybe.unwrap(:Type t))) else t end
+
+    let fresh(c: Cloner v: Variable): Variable =
+        begin
+            let created = nodes.newVar(v.hint ty(c v.type) v.isMutable)
+            hashMap.insert(:Int :Variable c.vars v.id created)
+            created
+        end
+
+    let var1(c: Cloner v: Variable): Variable = maybe.unwrapOr(:Variable hashMap.get(:Int :Variable c.vars v.id) v)
+    let optVar(c: Cloner v: maybe.T(Variable)): maybe.T(Variable) =
+        if maybe.isSome(:Variable v) then maybe.some(:Variable var1(c maybe.unwrap(:Variable v))) else v end
+    let vars(c: Cloner vs: Array(Variable)): Array(Variable) =
+        begin
+            let result = vector.new(:Variable)
+            for i = 0 upto {extent vs - 1} do vector.append(:Variable result var1(c vs[i])) end
+            vector.toArray(:Variable result)
+        end
+
+    let atom(c: Cloner a: Atom): Atom =
+        case a
+            when atomVar with x then nodes.atomOfVar(var1(c x.v))
+            when atomConst with x then nodes.atomOfConst(tuple let value = x.c.value let shape = x.c.shape end)
+        end
+    let atoms(c: Cloner items: Array(Atom)): Array(Atom) =
+        begin
+            let result = vector.new(:Atom)
+            for i = 0 upto {extent items - 1} do vector.append(:Atom result atom(c items[i])) end
+            vector.toArray(:Atom result)
+        end
+    let optAtom(c: Cloner a: maybe.T(Atom)): maybe.T(Atom) =
+        if maybe.isSome(:Atom a) then maybe.some(:Atom atom(c maybe.unwrap(:Atom a))) else a end
+
+    let staticDescriptor(c: Cloner d: nodes.StaticDescriptor): nodes.StaticDescriptor = nodes.newStaticDescriptor(ty(c d.type) d.echo)
+
+    let rec descriptor(c: Cloner d: nodes.Descriptor): nodes.Descriptor =
+        case d
+            when descVar with x then option descVar of nodes.Descriptor with let v = var1(c x.v) end
+            when descStatic with x then option descStatic of nodes.Descriptor with let d = staticDescriptor(c x.d) end
+            when descInstantiate with x then
+                option descInstantiate of nodes.Descriptor with let template = ty(c x.template) let args = descriptors(c x.args) end
+        end
+
+    and descriptors(c: Cloner ds: Array(nodes.Descriptor)): Array(nodes.Descriptor) =
+        begin
+            let result = vector.new(:nodes.Descriptor)
+            for i = 0 upto {extent ds - 1} do vector.append(:nodes.Descriptor result descriptor(c ds[i])) end
+            vector.toArray(:nodes.Descriptor result)
+        end
+
+    let optDescriptor(c: Cloner d: maybe.T(nodes.Descriptor)): maybe.T(nodes.Descriptor) =
+        if maybe.isSome(:nodes.Descriptor d) then maybe.some(:nodes.Descriptor descriptor(c maybe.unwrap(:nodes.Descriptor d))) else d end
+
+    let descriptorParams(c: Cloner ps: Array(nodes.DescriptorParam)): Array(nodes.DescriptorParam) =
+        begin
+            let result = vector.new(:nodes.DescriptorParam)
+            for i = 0 upto {extent ps - 1} do
+                vector.append(:nodes.DescriptorParam result tuple let v = var1(c ps[i].v) let symbols = ps[i].symbols end)
+            end
+            vector.toArray(:nodes.DescriptorParam result)
+        end
+
+    let tagMap(c: Cloner t: maybe.T(nodes.TagMap)): maybe.T(nodes.TagMap) =
+        if maybe.isSome(:nodes.TagMap t) then
+            let x = maybe.unwrap(:nodes.TagMap t)
+            maybe.some(:nodes.TagMap tuple let id = x.id let target = ty(c x.target) let source = ty(c x.source) end)
+        else
+            t
+        end
+
+    let rec plan(c: Cloner p: maybe.T(nodes.Plan)): maybe.T(nodes.Plan) =
+        if maybe.isNone(:nodes.Plan p) then
+            p
+        else
+            let x = maybe.unwrap(:nodes.Plan p)
+            let copy = nodes.newPlan(x.kind ty(c x.source) ty(c x.target))
+            let fields = vector.new(:maybe.T(nodes.Plan))
+            for i = 0 upto {extent x.fields - 1} do vector.append(:maybe.T(nodes.Plan) fields plan(c x.fields[i])) end
+            copy.fields := vector.toArray(:maybe.T(nodes.Plan) fields)
+            copy.layout := x.layout
+            copy.access := x.access
+            copy.thunkSymbols := x.thunkSymbols
+            copy.descriptors := descriptors(c x.descriptors)
+            copy.thunkParams := descriptorParams(c x.thunkParams)
+            copy.tagMap := tagMap(c x.tagMap)
+            maybe.some(:nodes.Plan copy)
+        end
+
+    let plans(c: Cloner ps: Array(maybe.T(nodes.Plan))): Array(maybe.T(nodes.Plan)) =
+        begin
+            let result = vector.new(:maybe.T(nodes.Plan))
+            for i = 0 upto {extent ps - 1} do vector.append(:maybe.T(nodes.Plan) result plan(c ps[i])) end
+            vector.toArray(:maybe.T(nodes.Plan) result)
+        end
+
+    let offsetTable(c: Cloner t: maybe.T(nodes.OffsetTable)): maybe.T(nodes.OffsetTable) =
+        if maybe.isSome(:nodes.OffsetTable t) then
+            let x = maybe.unwrap(:nodes.OffsetTable t)
+            let registered = if maybe.isSome(:nodes.Registered x.registered) then
+                let r = maybe.unwrap(:nodes.Registered x.registered)
+                maybe.some(:nodes.Registered tuple let view = staticDescriptor(c r.view) let layout = staticDescriptor(c r.layout) end)
+            else
+                x.registered
+            end
+            maybe.some(:nodes.OffsetTable tuple
+                let id = x.id
+                let view = ty(c x.view)
+                let layout = ty(c x.layout)
+                let var registered = registered
+            end)
+        else
+            t
+        end
+
+    let typeComponents(c: Cloner items: Array(nodes.TypeComponent)): Array(nodes.TypeComponent) =
+        begin
+            let result = vector.new(:nodes.TypeComponent)
+            for i = 0 upto {extent items - 1} do
+                vector.append(:nodes.TypeComponent result tuple let name = items[i].name let type = ty(c items[i].type) end)
+            end
+            vector.toArray(:nodes.TypeComponent result)
+        end
+
+    (* Makes fresh variables for every binder in body (and in the functions it binds) *)
+    let rec bindAll(c: Cloner b: Body): Ok =
+        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+            let s = vector.get(:Stmt b.statements i)
+            case s
+                when sLet with xPayload then let x = xPayload.n if not(hashMap.contains(:Int :Variable c.vars x.v.id)) then begin fresh(c x.v) ok end end
+                when sVarDecl with xPayload then let x = xPayload.n if not(hashMap.contains(:Int :Variable c.vars x.v.id)) then begin fresh(c x.v) ok end end
+                when sFuns with xPayload then let x = xPayload.n
+                    for j = 0 upto {extent x.functions - 1} do
+                        let f = x.functions[j]
+                        fresh(c f.v)
+                        for k = 0 upto {extent f.params - 1} do fresh(c f.params[k].v) end
+                        bindAll(c f.body)
+                    end
+                when sLetRec with xPayload then let x = xPayload.n for j = 0 upto {extent x.vars - 1} do fresh(c x.vars[j]) end
+                when sSwitch with xPayload then let x = xPayload.n
+                    for j = 0 upto {extent x.cases - 1} do
+                        if maybe.isSome(:Variable x.cases[j].binder) then begin fresh(c maybe.unwrap(:Variable x.cases[j].binder)) ok end end
+                    end
+                when sInspect with xPayload then let x = xPayload.n
+                    for j = 0 upto {extent x.cases - 1} do
+                        for k = 0 upto {extent x.cases[j].binders - 1} do fresh(c x.cases[j].binders[k]) end
+                    end
+                when sTry with xPayload then let x = xPayload.n begin fresh(c x.exc) ok end
+                when sJoin with xPayload then let x = xPayload.n for j = 0 upto {extent x.params - 1} do fresh(c x.params[j]) end
+                else ok
+            end
+            let bodies = walk.statementBodies(s)
+            for j = 0 upto {extent bodies - 1} do bindAll(c bodies[j]) end
+        end
+
+    let rec optBody(c: Cloner b: maybe.T(Body)): maybe.T(Body) =
+        if maybe.isSome(:Body b) then maybe.some(:Body copyBody(c maybe.unwrap(:Body b))) else b end
+
+    and copyFunction(c: Cloner f: nodes.Function): nodes.Function =
+        begin
+            let params = array of(extent f.params tuple let v = f.v let mode = "" end)
+            for i = 0 upto {extent f.params - 1} do params[i] := tuple let v = var1(c f.params[i].v) let mode = f.params[i].mode end end
+            nodes.newFunction(var1(c f.v) f.typeParams params ty(c f.resultType) copyBody(c f.body) f.traceName)
+        end
+
+    and moduleRef(r: maybe.T(nodes.ModuleRef)): maybe.T(nodes.ModuleRef) = r
+
+    and copyOp(c: Cloner o: Op): Op =
+        case o
+            when opAtom with xPayload then let x = xPayload.n nodes.opOfAtom(atom(c x.atom))
+            when opPrim with xPayload then let x = xPayload.n
+                option opPrim of Op with let n = tuple
+                    let op = x.op let var args = atoms(c x.args) let offset = x.offset let var access = x.access
+                    let var descriptor = optDescriptor(c x.descriptor)
+                end end
+            when opCall with xPayload then let x = xPayload.n
+                option opCall of Op with let n = tuple
+                    let var callee = optVar(c x.callee) let var typeArgs = tys(c x.typeArgs) let var args = atoms(c x.args)
+                    let var moduleRef = x.moduleRef let var member = x.member let var calleeType = optTy(c x.calleeType)
+                    let var descriptors = descriptors(c x.descriptors)
+                end end
+            when opTypeApp with xPayload then let x = xPayload.n
+                option opTypeApp of Op with let n = tuple
+                    let var callee = optVar(c x.callee) let var typeArgs = tys(c x.typeArgs) let var moduleRef = x.moduleRef
+                    let var member = x.member let var calleeType = optTy(c x.calleeType) let var plans = plans(c x.plans)
+                    let var thunkSymbols = x.thunkSymbols let var descriptors = descriptors(c x.descriptors)
+                    let var thunkParams = if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams) then
+                        maybe.some(:Array(nodes.DescriptorParam) descriptorParams(c maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams)))
+                    else
+                        x.thunkParams
+                    end
+                end end
+            when opModuleMember with xPayload then let x = xPayload.n option opModuleMember of Op with let n = tuple let var moduleRef = x.moduleRef let var member = x.member end end
+            when opBuiltin with xPayload then let x = xPayload.n option opBuiltin of Op with let n = tuple let name = x.name end end
+            when opExternal with xPayload then let x = xPayload.n option opExternal of Op with let n = tuple let symbol = x.symbol end end
+            when opCallExternal with xPayload then let x = xPayload.n
+                option opCallExternal of Op with let n = tuple
+                    let symbol = x.symbol let var typeArgs = tys(c x.typeArgs) let var args = atoms(c x.args)
+                    let var descriptors = descriptors(c x.descriptors)
+                end end
+            when opMakeClosure with xPayload then let x = xPayload.n
+                option opMakeClosure of Op with let n = tuple
+                    let var code = copyFunction(c x.code) let var captures = atoms(c x.captures) let var typeArgs = tys(c x.typeArgs)
+                    let var descriptors = descriptors(c x.descriptors)
+                end end
+            when opEnvField with xPayload then let x = xPayload.n option opEnvField of Op with let n = tuple let var env = atom(c x.env) let index = x.index end end
+            when opConvert with xPayload then let x = xPayload.n
+                option opConvert of Op with let n = tuple let var value = atom(c x.value) let var plan = maybe.unwrap(:nodes.Plan plan(c maybe.some(:nodes.Plan x.plan))) end end
+            when opMakeTuple with xPayload then let x = xPayload.n
+                option opMakeTuple of Op with let n = tuple
+                    let var args = atoms(c x.args) let typeComponents = typeComponents(c x.typeComponents) let var embedded = x.embedded
+                end end
+            when opTupleField with xPayload then let x = xPayload.n
+                option opTupleField of Op with let n = tuple
+                    let var tup = atom(c x.tup) let var index = x.index let var access = x.access let var viewMap = optVar(c x.viewMap)
+                end end
+            when opMakeRecord with xPayload then let x = xPayload.n
+                let fields = vector.new(:nodes.FieldAtom)
+                for i = 0 upto {extent x.fields - 1} do
+                    vector.append(:nodes.FieldAtom fields tuple let name = x.fields[i].name let atom = atom(c x.fields[i].atom) let isVar = x.fields[i].isVar end)
+                end
+                option opMakeRecord of Op with let n = tuple
+                    let var fields = vector.toArray(:nodes.FieldAtom fields) let var embedded = x.embedded
+                    let var runtimeOffsets = x.runtimeOffsets let var descriptor = optDescriptor(c x.descriptor)
+                    let var offsets = offsetTable(c x.offsets) let var viewDescriptor = optDescriptor(c x.viewDescriptor)
+                end end
+            when opRecordField with xPayload then let x = xPayload.n
+                option opRecordField of Op with let n = tuple
+                    let var recordAtom = atom(c x.recordAtom) let name = x.name let var stored = x.stored
+                    let var descriptor = optDescriptor(c x.descriptor) let var viewMap = optVar(c x.viewMap)
+                end end
+            when opMakeVariant with xPayload then let x = xPayload.n option opMakeVariant of Op with let n = tuple let tag = x.tag let var payload = optAtom(c x.payload) end end
+            when opMakeOption with xPayload then let x = xPayload.n
+                option opMakeOption of Op with let n = tuple
+                    let tag = x.tag let var payload = optAtom(c x.payload) let var ordinalAtom = optAtom(c x.ordinalAtom)
+                    let offset = x.offset let cases = x.cases let var access = x.access
+                end end
+            when opIsTag with xPayload then let x = xPayload.n
+                option opIsTag of Op with let n = tuple
+                    let var value = atom(c x.value) let tag = x.tag let var access = x.access let var viewMap = optVar(c x.viewMap)
+                end end
+            when opPayload with xPayload then let x = xPayload.n
+                option opPayload of Op with let n = tuple
+                    let var value = atom(c x.value) let tag = x.tag let offset = x.offset let var access = x.access
+                    let var components = x.components let ordinalIndex = x.ordinalIndex let var viewMap = optVar(c x.viewMap)
+                end end
+            when opOrdinal with xPayload then let x = xPayload.n
+                option opOrdinal of Op with let n = tuple
+                    let var value = atom(c x.value) let cases = x.cases let var access = x.access let var viewMap = optVar(c x.viewMap)
+                end end
+            when opMakeArray with xPayload then let x = xPayload.n option opMakeArray of Op with let n = tuple let var args = atoms(c x.args) end end
+            when opArrayRep with xPayload then let x = xPayload.n
+                option opArrayRep of Op with let n = tuple let var count = atom(c x.count) let var init = atom(c x.init) let offset = x.offset end end
+            when opIndex with xPayload then let x = xPayload.n
+                option opIndex of Op with let n = tuple let var arr = atom(c x.arr) let var index = atom(c x.index) let offset = x.offset end end
+            when opMakeAuto with xPayload then let x = xPayload.n
+                option opMakeAuto of Op with let n = tuple
+                    let witness = ty(c x.witness) let autoType = ty(c x.autoType) let var payload = atom(c x.payload)
+                    let var descriptor = optDescriptor(c x.descriptor)
+                end end
+            when opMakeException with xPayload then let x = xPayload.n
+                option opMakeException of Op with let n = tuple let name = x.name let payloadType = optTy(c x.payloadType) end end
+            when opExceptionPayload with xPayload then let x = xPayload.n option opExceptionPayload of Op with let n = tuple let var exc = atom(c x.exc) end end
+            when opAddrVar with xPayload then let x = xPayload.n option opAddrVar of Op with let n = tuple let var v = var1(c x.v) end end
+            when opAddrCell with xPayload then let x = xPayload.n option opAddrCell of Op with let n = tuple let var init = atom(c x.init) end end
+            when opAddrField with xPayload then let x = xPayload.n
+                option opAddrField of Op with let n = tuple let var base = atom(c x.base) let name = x.name let var viewMap = optVar(c x.viewMap) end end
+            when opAddrComponent with xPayload then let x = xPayload.n
+                option opAddrComponent of Op with let n = tuple
+                    let var base = atom(c x.base) let index = x.index let var access = x.access let var viewMap = optVar(c x.viewMap)
+                end end
+            when opAddrElement with xPayload then let x = xPayload.n
+                option opAddrElement of Op with let n = tuple let var base = atom(c x.base) let var index = atom(c x.index) let offset = x.offset end end
+            when opLoad with xPayload then let x = xPayload.n option opLoad of Op with let n = tuple let var address = atom(c x.address) end end
+        end
+
+    and copyCase(c: Cloner k: nodes.Case): nodes.Case =
+        tuple let tags = k.tags let var body = copyBody(c k.body) let var binder = optVar(c k.binder) let var components = k.components end
+
+    and copyArm(c: Cloner a: maybe.T(nodes.InspectArm)): maybe.T(nodes.InspectArm) =
+        if maybe.isNone(:nodes.InspectArm a) then
+            a
+        else
+            let x = maybe.unwrap(:nodes.InspectArm a)
+            let pairs = vector.new(:maybe.T(nodes.DescriptorPair))
+            for i = 0 upto {extent x.descriptors - 1} do
+                let p = x.descriptors[i]
+                vector.append(:maybe.T(nodes.DescriptorPair) pairs
+                    if maybe.isSome(:nodes.DescriptorPair p) then
+                        let dp = maybe.unwrap(:nodes.DescriptorPair p)
+                        maybe.some(:nodes.DescriptorPair tuple let source = descriptor(c dp.source) let target = descriptor(c dp.target) end)
+                    else
+                        p
+                    end)
+            end
+            maybe.some(:nodes.InspectArm tuple
+                let converted = x.converted let exact = x.exact let shared = x.shared let plan = plan(c x.plan)
+                let layoutError = x.layoutError let var descriptors = vector.toArray(:maybe.T(nodes.DescriptorPair) pairs)
+            end)
+        end
+
+    and copyInspectCase(c: Cloner k: nodes.InspectCase): nodes.InspectCase =
+        tuple
+            let matchType = ty(c k.matchType)
+            let var binders = vars(c k.binders)
+            let var body = copyBody(c k.body)
+            let exact = k.exact
+            let var arm = copyArm(c k.arm)
+            let var descriptor = optDescriptor(c k.descriptor)
+        end
+
+    and copyStmt(c: Cloner s: Stmt): Stmt =
+        case s
+            when sLet with xPayload then let x = xPayload.n option sLet of Stmt with let n = tuple let var v = var1(c x.v) let var value = copyOp(c x.value) end end
+            when sVarDecl with xPayload then let x = xPayload.n option sVarDecl of Stmt with let n = tuple let var v = var1(c x.v) let var init = optAtom(c x.init) end end
+            when sAssign with xPayload then let x = xPayload.n option sAssign of Stmt with let n = tuple let var v = var1(c x.v) let var value = atom(c x.value) end end
+            when sStoreAt with xPayload then let x = xPayload.n option sStoreAt of Stmt with let n = tuple let var value = atom(c x.value) let var address = atom(c x.address) end end
+            when sStoreField with xPayload then let x = xPayload.n
+                option sStoreField of Stmt with let n = tuple
+                    let var value = atom(c x.value) let var base = atom(c x.base) let name = x.name let var viewMap = optVar(c x.viewMap)
+                end end
+            when sStoreComponent with xPayload then let x = xPayload.n
+                option sStoreComponent of Stmt with let n = tuple
+                    let var value = atom(c x.value) let var base = atom(c x.base) let index = x.index let var access = x.access
+                    let var viewMap = optVar(c x.viewMap)
+                end end
+            when sStoreElement with xPayload then let x = xPayload.n
+                option sStoreElement of Stmt with let n = tuple
+                    let var value = atom(c x.value) let var base = atom(c x.base) let var index = atom(c x.index) let offset = x.offset
+                end end
+            when sDo with xPayload then let x = xPayload.n option sDo of Stmt with let n = tuple let var value = copyOp(c x.value) end end
+            when sFuns with xPayload then let x = xPayload.n
+                let functions = vector.new(:nodes.Function)
+                for i = 0 upto {extent x.functions - 1} do vector.append(:nodes.Function functions copyFunction(c x.functions[i])) end
+                option sFuns of Stmt with let n = tuple let var functions = vector.toArray(:nodes.Function functions) let recursive = x.recursive end end
+            when sLetRec with xPayload then let x = xPayload.n option sLetRec of Stmt with let n = tuple let var vars = vars(c x.vars) let var body = copyBody(c x.body) end end
+            when sIf with xPayload then let x = xPayload.n
+                option sIf of Stmt with let n = tuple let var cond = atom(c x.cond) let var thenBody = copyBody(c x.thenBody) let var elseBody = copyBody(c x.elseBody) end end
+            when sSwitch with xPayload then let x = xPayload.n
+                let cases = vector.new(:nodes.Case)
+                for i = 0 upto {extent x.cases - 1} do vector.append(:nodes.Case cases copyCase(c x.cases[i])) end
+                option sSwitch of Stmt with let n = tuple
+                    let var value = atom(c x.value) let var cases = vector.toArray(:nodes.Case cases) let var elseBody = optBody(c x.elseBody)
+                    let var access = x.access let var viewMap = optVar(c x.viewMap)
+                end end
+            when sInspect with xPayload then let x = xPayload.n
+                let cases = vector.new(:nodes.InspectCase)
+                for i = 0 upto {extent x.cases - 1} do vector.append(:nodes.InspectCase cases copyInspectCase(c x.cases[i])) end
+                option sInspect of Stmt with let n = tuple
+                    let var value = atom(c x.value) let var cases = vector.toArray(:nodes.InspectCase cases)
+                    let var elseBody = optBody(c x.elseBody) let autoType = optTy(c x.autoType) let offset = x.offset
+                    let var witness = if maybe.isSome(:nodes.DescriptorParam x.witness) then
+                        let w = maybe.unwrap(:nodes.DescriptorParam x.witness)
+                        maybe.some(:nodes.DescriptorParam tuple let v = var1(c w.v) let symbols = w.symbols end)
+                    else
+                        x.witness
+                    end
+                end end
+            when sLoop with xPayload then let x = xPayload.n option sLoop of Stmt with let n = tuple let label = x.label let var body = copyBody(c x.body) end end
+            when sTry with xPayload then let x = xPayload.n
+                option sTry of Stmt with let n = tuple
+                    let var body = copyBody(c x.body) let var exc = var1(c x.exc) let var handler = copyBody(c x.handler)
+                    let catching = x.catching let var catches = atoms(c x.catches)
+                end end
+            when sJoin with xPayload then let x = xPayload.n
+                option sJoin of Stmt with let n = tuple
+                    let label = x.label let var params = vars(c x.params) let var continuation = copyBody(c x.continuation)
+                    let var body = copyBody(c x.body)
+                end end
+            when sEcho with xPayload then let x = xPayload.n
+                option sEcho of Stmt with let n = tuple
+                    let var value = atom(c x.value) let type = ty(c x.type) let prefix = x.prefix let var descriptor = optDescriptor(c x.descriptor)
+                end end
+            when sEchoText with xPayload then let x = xPayload.n option sEchoText of Stmt with let n = tuple let text = x.text end end
+            when sReturn with xPayload then let x = xPayload.n option sReturn of Stmt with let n = tuple let var value = atom(c x.value) end end
+            when sJump with xPayload then let x = xPayload.n option sJump of Stmt with let n = tuple let label = x.label let var args = atoms(c x.args) end end
+            when sBreak with xPayload then let x = xPayload.n option sBreak of Stmt with let n = tuple let label = x.label end end
+            when sContinue with xPayload then let x = xPayload.n option sContinue of Stmt with let n = tuple let label = x.label end end
+            when sRaise with xPayload then let x = xPayload.n
+                option sRaise of Stmt with let n = tuple let var exc = atom(c x.exc) let var payload = optAtom(c x.payload) let offset = x.offset end end
+            when sReraise with xPayload then let x = xPayload.n option sReraise of Stmt with let n = tuple let var exc = var1(c x.exc) end end
+            when sUnreachable then s
+        end
+
+    and copyBody(c: Cloner b: Body): Body =
+        begin
+            let statements = vector.new(:Stmt)
+            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do vector.append(:Stmt statements copyStmt(c vector.get(:Stmt b.statements i))) end
+            tuple let id = nodes.newBody().id let var statements = statements end
+        end
+
+    (* The clone of a function the substitution instantiates (its type parameters are substituted away) *)
+    let cloneFunction(c: Cloner f: nodes.Function): nodes.Function =
+        begin
+            bindAll(c f.body)
+            let params = array of(extent f.params tuple let v = f.v let mode = "" end)
+            for i = 0 upto {extent f.params - 1} do params[i] := tuple let v = fresh(c f.params[i].v) let mode = f.params[i].mode end end
+            let resultType = ty(c f.resultType)
+            (* The clone's type is made from its parameters and result: the type of the variable naming the original may
+             * be elaborated with quantifiers of other symbols than the function's own type parameters *)
+            let inner = written.quantified(f.v.type).body
+            let names = case inner.form
+                when typeFun with x then
+                    let ns = array of(extent x.params "")
+                    for i = 0 upto {extent x.params - 1} do ns[i] := x.params[i].name end
+                    ns
+                else array of :String end
+            end
+            let cloneType = if inner.form?typeFun orif {extent params > 0} then
+                let ps = array of(extent params tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
+                for i = 0 upto {extent params - 1} do
+                    ps[i] := tuple
+                        let name = if i < extent names then names[i] else params[i].v.hint end
+                        let type = params[i].v.type
+                        let isVar = eq(params[i].mode "var")
+                        let isOut = eq(params[i].mode "out")
+                    end
+                end
+                model.funType(ps resultType)
+            else
+                resultType
+            end
+            let v = nodes.newVar(f.v.hint <> "_spec" cloneType f.v.isMutable)
+            nodes.newFunction(v array of :nodes.TypeParam end params resultType copyBody(c f.body) f.traceName)
+        end
+
+    (* =========================================================================
+     * The specializer
+     * ========================================================================= *)
+
+    (* A function bound by a funs statement, and where: its statement, the module whose member it is (if any), and the
+     * type parameters of the functions enclosing it *)
+    Let Definition = Tuple function: nodes.Function funs: Stmt owner: maybe.T(nodes.Module) enclosing: Ids end
+    Let Pending = Tuple clone: nodes.Function enclosing: Ids depth: Int end
+
+    Let Specializer = Tuple
+        definitions: hashMap.T(Int Definition)
+        clones: hashMap.T(String nodes.Function)
+        counts: hashMap.T(Int Int)
+        pending: vector.T(Pending)
+        var depth: Int
+    end
+
+    let rec collect(sp: Specializer b: Body m: maybe.T(nodes.Module) enclosing: Ids): Ok =
+        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+            let s = vector.get(:Stmt b.statements i)
+            case s
+                when sFuns with xPayload then let x = xPayload.n
+                    for j = 0 upto {extent x.functions - 1} do
+                        let f = x.functions[j]
+                        hashMap.insert(:Int :Definition sp.definitions f.v.id
+                            tuple let function = f let funs = s let owner = m let enclosing = enclosing end)
+                        collect(sp f.body maybe.none(:nodes.Module) withIds(enclosing f.typeParams))
+                    end
+                else
+                    let bodies = walk.statementBodies(s)
+                    for j = 0 upto {extent bodies - 1} do collect(sp bodies[j] m enclosing) end
+            end
+        end
+
+    let memberName(m: nodes.Module v: Variable): String =
+        begin
+            let var found = ""
+            let var done = false
+            for i = 0 upto {vector.length(:String m.members.names) - 1} do
+                let n = vector.get(:String m.members.names i)
+                if not(done) andif nodes.same(hashMap.find(:String :Variable m.members.vars n) v) then
+                    found := n
+                    done := true
+                end
+            end
+            found
+        end
+
+    let clone(sp: Specializer definition: Definition typeArgs: Array(Type)): maybe.T(nodes.Function) =
+        begin
+            let f = definition.function
+            (* By function and type arguments (by symbol and type identity, never by name) *)
+            let keyBuilder = vector.new(:String)
+            vector.append(:String keyBuilder conv.int(f.id))
+            for i = 0 upto {extent typeArgs - 1} do vector.append(:String keyBuilder layout.typeIdentityKey(typeArgs[i])) end
+            let keyText = strutil.join("|" keyBuilder)
+            let existing = hashMap.get(:String :nodes.Function sp.clones keyText)
+            if maybe.isSome(:nodes.Function existing) then
+                existing
+            elsif sp.depth >= maxDepth then
+                maybe.none(:nodes.Function)
+            else
+                let n = maybe.unwrapOr(:Int hashMap.get(:Int :Int sp.counts f.id) 0)
+                hashMap.insert(:Int :Int sp.counts f.id n + 1)
+                let subst = model.newSubst()
+                for i = 0 upto {extent f.typeParams - 1} do
+                    if i < extent typeArgs then hashMap.insert(:Int :Type subst f.typeParams[i].symbolId typeArgs[i]) end
+                end
+                let cloner = tuple let subst = subst let vars = hashMap.new(:Int :Variable intEqual hash.int) end
+                let cloned = cloneFunction(cloner f)
+                hashMap.insert(:String :nodes.Function sp.clones keyText cloned)
+                case definition.funs
+                    when sFuns with xPayload then let x = xPayload.n
+                        let functions = vector.fromArray(:nodes.Function x.functions)
+                        vector.append(:nodes.Function functions cloned)
+                        x.functions := vector.toArray(:nodes.Function functions)
+                    else ok
+                end
+                if maybe.isSome(:nodes.Module definition.owner) then
+                    let m = maybe.unwrap(:nodes.Module definition.owner)
+                    nodes.addMember(m.members memberName(m f.v) <> "_spec" <> conv.int(n + 1) cloned.v)
+                end
+                hashMap.insert(:Int :Definition sp.definitions cloned.v.id
+                    tuple let function = cloned let funs = definition.funs let owner = definition.owner let enclosing = definition.enclosing end)
+                (* The clone's local functions are definitions too, whose calls (in the clone) may be specialized *)
+                collect(sp cloned.body maybe.none(:nodes.Module) definition.enclosing)
+                vector.append(:Pending sp.pending tuple let clone = cloned let enclosing = definition.enclosing let depth = sp.depth + 1 end)
+                maybe.some(:nodes.Function cloned)
+            end
+        end
+
+    let specializeCall(sp: Specializer o: Op enclosing: Ids): Ok =
+        case o
+            when opCall with callPayload then let call = callPayload.n
+                if extent call.typeArgs > 0 then
+                    let definition = if maybe.isSome(:Variable call.callee) then
+                        hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable call.callee).id)
+                    elsif maybe.isSome(:nodes.ModuleRef call.moduleRef) then
+                        case maybe.unwrap(:nodes.ModuleRef call.moduleRef)
+                            when refModule with r then
+                                let member = nodes.member(r.m.members maybe.unwrapOr(:String call.member ""))
+                                if maybe.isSome(:Variable member) then hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable member).id)
+                                else maybe.none(:Definition) end
+                            (* A function of another unit, whose IR this unit does not have *)
+                            else maybe.none(:Definition)
+                        end
+                    else
+                        maybe.none(:Definition)
+                    end
+                    if maybe.isSome(:Definition definition) then
+                        let d = maybe.unwrap(:Definition definition)
+                        let f = d.function
+                        let var open = false
+                        for i = 0 upto {extent call.typeArgs - 1} do if mentionsAny(call.typeArgs[i] enclosing) then open := true end end
+                        if {extent call.typeArgs is extent f.typeParams} andif not(open) andif shouldSpecialize(f call.typeArgs) then
+                            let cloned = clone(sp d call.typeArgs)
+                            if maybe.isSome(:nodes.Function cloned) then
+                                let c = maybe.unwrap(:nodes.Function cloned)
+                                if maybe.isSome(:Variable call.callee) then
+                                    call.callee := maybe.some(:Variable c.v)
+                                else
+                                    call.member := maybe.some(:String memberName(maybe.unwrap(:nodes.Module d.owner) c.v))
+                                end
+                                call.typeArgs := array of :Type end
+                            end
+                        end
+                    end
+                end
+            else ok
+        end
+
+    let rec specializeBody(sp: Specializer b: Body enclosing: Ids): Ok =
+        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+            let s = vector.get(:Stmt b.statements i)
+            case s
+                when sLet with xPayload then let x = xPayload.n specializeCall(sp x.value enclosing)
+                when sDo with xPayload then let x = xPayload.n specializeCall(sp x.value enclosing)
+                when sFuns with xPayload then let x = xPayload.n
+                    let functions = x.functions
+                    for j = 0 upto {extent functions - 1} do
+                        specializeBody(sp functions[j].body withIds(enclosing functions[j].typeParams))
+                    end
+                else
+                    let bodies = walk.statementBodies(s)
+                    for j = 0 upto {extent bodies - 1} do specializeBody(sp bodies[j] enclosing) end
+            end
+        end
+
+    let specializeUnit(unit: nodes.Unit): nodes.Unit =
+        begin
+            let sp = tuple
+                let definitions = hashMap.new(:Int :Definition intEqual hash.int)
+                let clones = hashMap.new(:String :nodes.Function stringOp.equal hash.string)
+                let counts = hashMap.new(:Int :Int intEqual hash.int)
+                let pending = vector.new(:Pending)
+                let var depth = 0
+            end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                collect(sp m.init maybe.some(:nodes.Module m) newIds())
+            end
+            collect(sp unit.main maybe.none(:nodes.Module) newIds())
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                specializeBody(sp vector.get(:nodes.Module unit.modules i).init newIds())
+            end
+            specializeBody(sp unit.main newIds())
+            while not(vector.empty(:Pending sp.pending)) do
+                let p = vector.pop(:Pending sp.pending)
+                sp.depth := p.depth
+                specializeBody(sp p.clone.body p.enclosing)
+            end
+            unit.stage := "specialized"
+            unit
+        end
+end

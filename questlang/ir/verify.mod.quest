@@ -156,7 +156,7 @@ export
             case o
                 when opConvert then
                     if not(v.represented) then problem(v where <> ": convert before the represent pass") end
-                when opMakeClosure with x then
+                when opMakeClosure with xPayload then let x = xPayload.n
                     if maybe.isNone(:Ids v.functions) then
                         problem(v where <> ": MakeClosure before closure conversion")
                     elsif not(hashMap.contains(:Int :Bool maybe.unwrap(:Ids v.functions) x.code.id)) then
@@ -164,9 +164,9 @@ export
                     end
                 when opEnvField then
                     if maybe.isNone(:Ids v.functions) then problem(v where <> ": EnvField before closure conversion") end
-                when opCall with x then moduleRef(v x.moduleRef where)
-                when opTypeApp with x then moduleRef(v x.moduleRef where)
-                when opModuleMember with x then moduleRef(v maybe.some(:nodes.ModuleRef x.moduleRef) where)
+                when opCall with xPayload then let x = xPayload.n moduleRef(v x.moduleRef where)
+                when opTypeApp with xPayload then let x = xPayload.n moduleRef(v x.moduleRef where)
+                when opModuleMember with xPayload then let x = xPayload.n moduleRef(v maybe.some(:nodes.ModuleRef x.moduleRef) where)
                 else ok
             end
             let uses = walk.opUses(o)
@@ -204,10 +204,10 @@ export
                     end
                 end
             case o
-                when opOrdinal with y then
+                when opOrdinal with yPayload then let y = yPayload.n
                     case y.value when atomVar with z then check(y.cases z.v.type) else ok end
-                when opMakeOption with y then if maybe.isSome(:Atom y.ordinalAtom) then check(y.cases x.type) end
-                when opPayload with y then
+                when opMakeOption with yPayload then let y = yPayload.n if maybe.isSome(:Atom y.ordinalAtom) then check(y.cases x.type) end
+                when opPayload with yPayload then let y = yPayload.n
                     case y.value
                         when atomVar with z then
                             if maybe.isSome(:shapes.Shape optionShape(z.v.type)) andif maybe.isNone(:Int y.ordinalIndex) then
@@ -296,7 +296,7 @@ export
 
     and statement(v: Verifier s: Stmt scope: Scope where: String): Ok =
         case s
-            when sLet with x then
+            when sLet with xPayload then let x = xPayload.n
                 begin
                     operation(v x.value scope where)
                     optionCases(v x.value x.v where)
@@ -304,14 +304,14 @@ export
                     if x.v.isMutable then problem(v where <> ": let binds mutable variable '" <> x.v.hint <> "'") end
                     withVar(scope x.v)
                 end
-            when sVarDecl with x then
+            when sVarDecl with xPayload then let x = xPayload.n
                 begin
                     if maybe.isSome(:Atom x.init) then use(v maybe.unwrap(:Atom x.init) scope where) end
                     bind(v x.v where)
                     if not(x.v.isMutable) then problem(v where <> ": var declares immutable variable '" <> x.v.hint <> "'") end
                     withVar(scope x.v)
                 end
-            when sAssign with x then
+            when sAssign with xPayload then let x = xPayload.n
                 begin
                     useVar(v x.v scope where)
                     use(v x.value scope where)
@@ -321,8 +321,8 @@ export
             when sStoreField then useAll(v walk.statementUses(s) scope where)
             when sStoreComponent then useAll(v walk.statementUses(s) scope where)
             when sStoreElement then useAll(v walk.statementUses(s) scope where)
-            when sDo with x then operation(v x.value scope where)
-            when sFuns with x then
+            when sDo with xPayload then let x = xPayload.n operation(v x.value scope where)
+            when sFuns with xPayload then let x = xPayload.n
                 begin
                     if maybe.isSome(:Ids v.functions) then problem(v where <> ": a funs statement after closure conversion") end
                     for i = 0 upto {extent x.functions - 1} do bind(v x.functions[i].v where) end
@@ -334,20 +334,20 @@ export
                         for i = 0 upto {extent x.functions - 1} do withVar(scope x.functions[i].v) end
                     end
                 end
-            when sLetRec with x then
+            when sLetRec with xPayload then let x = xPayload.n
                 begin
                     (* The body computes the variables' values, and closures it makes may refer to them; they are in
                      * scope after it *)
                     withVars(scope x.vars)
                     body(v x.body scope where)
                 end
-            when sIf with x then
+            when sIf with xPayload then let x = xPayload.n
                 begin
                     use(v x.cond scope where)
                     body(v x.thenBody scope where)
                     body(v x.elseBody scope where)
                 end
-            when sSwitch with x then
+            when sSwitch with xPayload then let x = xPayload.n
                 begin
                     use(v x.value scope where)
                     for i = 0 upto {extent x.cases - 1} do
@@ -363,7 +363,7 @@ export
                     end
                     if maybe.isSome(:Body x.elseBody) then body(v maybe.unwrap(:Body x.elseBody) scope where) end
                 end
-            when sInspect with x then
+            when sInspect with xPayload then let x = xPayload.n
                 begin
                     use(v x.value scope where)
                     for i = 0 upto {extent x.cases - 1} do
@@ -377,7 +377,7 @@ export
                     end
                     if maybe.isSome(:Body x.elseBody) then body(v maybe.unwrap(:Body x.elseBody) scope where) end
                 end
-            when sLoop with x then
+            when sLoop with xPayload then let x = xPayload.n
                 begin
                     let var inUse = false
                     for i = 0 upto {vector.length(:String scope.loops) - 1} do
@@ -389,7 +389,7 @@ export
                     vector.pop(:String scope.loops)
                     ok
                 end
-            when sTry with x then
+            when sTry with xPayload then let x = xPayload.n
                 begin
                     useAll(v x.catches scope where)
                     body(v x.body scope where)
@@ -400,7 +400,7 @@ export
                             body(v x.handler scope where)
                         end)
                 end
-            when sJoin with x then
+            when sJoin with xPayload then let x = xPayload.n
                 begin
                     let var inUse = false
                     for i = 0 upto {vector.length(:JoinPoint scope.joins) - 1} do
@@ -418,14 +418,14 @@ export
                     vector.pop(:JoinPoint scope.joins)
                     ok
                 end
-            when sEcho with x then use(v x.value scope where)
+            when sEcho with xPayload then let x = xPayload.n use(v x.value scope where)
             when sEchoText then ok
-            when sReturn with x then
+            when sReturn with xPayload then let x = xPayload.n
                 begin
                     use(v x.value scope where)
                     if not(scope.inFunction) then problem(v where <> ": return outside a function") end
                 end
-            when sJump with x then
+            when sJump with xPayload then let x = xPayload.n
                 begin
                     useAll(v x.args scope where)
                     let var arity = ~1
@@ -440,14 +440,14 @@ export
                             <> conv.int(arity) <> " parameters")
                     end
                 end
-            when sBreak with x then loopLabel(v "break" x.label scope where)
-            when sContinue with x then loopLabel(v "continue" x.label scope where)
-            when sRaise with x then
+            when sBreak with xPayload then let x = xPayload.n loopLabel(v "break" x.label scope where)
+            when sContinue with xPayload then let x = xPayload.n loopLabel(v "continue" x.label scope where)
+            when sRaise with xPayload then let x = xPayload.n
                 begin
                     use(v x.exc scope where)
                     if maybe.isSome(:Atom x.payload) then use(v maybe.unwrap(:Atom x.payload) scope where) end
                 end
-            when sReraise with x then useVar(v x.exc scope where)
+            when sReraise with xPayload then let x = xPayload.n useVar(v x.exc scope where)
             when sUnreachable then ok
         end
 

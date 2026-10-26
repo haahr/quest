@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: Specialization Interface
+ *
+ * bootstrap/python/quest/ir/specialize.py (docs/ir.md section 8.1): clones polymorphic functions for calls whose
+ * type arguments call for it. A call of a function bound by a funs statement, with type arguments for all of its type
+ * parameters, is specialized when the arguments are closed and the selective trigger holds (shouldSpecialize). The
+ * clone is the function with its type parameters substituted and fresh binders, bound by the same funs statement as
+ * the original; a clone of a module's function is also a member of the module. Clones are specialized in turn, and
+ * specializations are shared by function and type arguments. The bootstrap's clone copies nodes by reflection; this
+ * one lists each node's fields. *)
+
+interface Specialize
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+export
+    (* Whether values of shape s are, or hold (in tuples, options, arrays, and cells), records or variants *)
+    holdsRecordOrVariant(s: shapes.Shape): Bool
+    (* The selective trigger (docs/c-representation.md section 6.4.3) *)
+    shouldSpecialize(f: nodes.Function typeArgs: Array(model.Type)): Bool
+    (* Specializes the unit's calls in place, returning it *)
+    specializeUnit(unit: nodes.Unit): nodes.Unit
+end

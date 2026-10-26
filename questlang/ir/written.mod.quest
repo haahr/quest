@@ -1,0 +1,178 @@
+(* Quest Self-Hosted Compiler: The IR's Types as Written Implementation *)
+
+module written : Written
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/canonical : questlang/types/Canonical
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/codegen/layout : questlang/codegen/Layout
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    (* The kinds of shapes in whose representation a type parameter bounded by one holds its values *)
+    let isViewedKind(kind: String): Bool = eq(kind "record") orif eq(kind "variant") orif eq(kind "option")
+
+    let writtenStructure(t: Type kind: String): maybe.T(Type) =
+        begin
+            let s = shapes.shape(t)
+            let held = if isViewedKind(kind) then layout.resolvedShape(s) else s end
+            if not(eq(held.kind kind)) then
+                maybe.none(:Type)
+            else
+                maybe.some(:Type canonical.normalizeType(if shapes.same(held s) then t else canonical.resolveTypeBound(t) end))
+            end
+        end
+
+    let arrayElement(t: Type): maybe.T(Type) =
+        begin
+            let w = writtenStructure(t "array")
+            if maybe.isSome(:Type w) then
+                case maybe.unwrap(:Type w).form
+                    when typeArray with x then maybe.some(:Type x.element)
+                    else maybe.none(:Type)
+                end
+            else
+                maybe.none(:Type)
+            end
+        end
+
+    let quantified(t: Type): canonical.FunQuantifiers = canonical.collectFunQuantifiers(t)
+
+    Def Signature = Tuple params: Array(model.Param) result: model.Type end
+
+    let funSignature(t: Type): Signature =
+        begin
+            let inner = quantified(t).body
+            case inner.form
+                when typeFun with x then tuple let params = x.params let result = x.result end
+                else tuple let params = array of :model.Param end let result = inner end
+            end
+        end
+
+    let isTypeOperator(t: Type): Bool = model.stripAliases(t).form?typeOperator
+
+    let packageText(t: Type): maybe.T(String) =
+        begin
+            let bare = model.stripAliases(t)
+            case bare.form
+                when typeTuple with x then
+                    if not(model.isExistential(x.fields)) then
+                        maybe.none(:String)
+                    else
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.fields - 1} do
+                            case x.fields[i]
+                                when tupleTypeFormal with c then vector.append(:String parts "<Hidden>::" <> model.showKind(c.bound))
+                                when tupleTypeBinding with c then vector.append(:String parts "Let " <> c.name <> " = " <> model.show(c.type))
+                                when tupleField with c then
+                                    let elem = case c.type.form
+                                        when typePath then "<hidden>"
+                                        when typeVariable then "<hidden>"
+                                        when typeFun then "<fun>"
+                                        when typeAll then "<fun>"
+                                        else "<val>"
+                                    end
+                                    let named = maybe.isSome(:String c.name) andif not(stringOp.isEmpty(maybe.unwrap(:String c.name)))
+                                    vector.append(:String parts if named then maybe.unwrap(:String c.name) <> "=" <> elem else elem end)
+                            end
+                        end
+                        maybe.some(:String if vector.empty(:String parts) then "tuple end"
+                            else "tuple " <> strutil.join(" " parts) <> " end" end)
+                    end
+                else maybe.none(:String)
+            end
+        end
+
+    Def TypeComponentText = Tuple position: Int text: String end
+
+    let tupleTypeComponents(t: Type): Array(TypeComponentText) =
+        begin
+            let found = vector.new(:TypeComponentText)
+            case t.form
+                when typeTuple with x then
+                    let var position = 0
+                    for i = 0 upto {extent x.fields - 1} do
+                        case x.fields[i]
+                            when tupleTypeFormal with c then
+                                vector.append(:TypeComponentText found
+                                    tuple let position = position let text = "<Hidden>::" <> model.showKind(c.bound) end)
+                            when tupleTypeBinding with c then
+                                vector.append(:TypeComponentText found
+                                    tuple let position = position let text = "Let " <> c.name <> " = " <> model.show(c.type) end)
+                            else position := position + 1
+                        end
+                    end
+                else ok
+            end
+            vector.toArray(:TypeComponentText found)
+        end
+
+    let isRecursiveType(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
+
+    let echoHead(t0: Type): Type =
+        begin
+            let var t = model.pruned(t0)
+            case t.form
+                when typeAlias with x then if isRecursiveType(x.target) then t := model.unfoldLazily(t) end
+                else ok
+            end
+            t := model.unalias(t)
+            if t.form?typeRec then t := model.unfoldLazily(t) end
+            model.unalias(t)
+        end
+
+    let recursiveIdentity(t0: Type): maybe.T(Int) =
+        begin
+            let var t = model.pruned(t0)
+            let var found = maybe.none(:Int)
+            let var more = true
+            while more do
+                case t.form
+                    when typeAlias with x then
+                        if isRecursiveType(x.target) then
+                            found := maybe.some(:Int x.target.id)
+                            more := false
+                        else
+                            t := x.target
+                        end
+                    else more := false
+                end
+            end
+            if maybe.isSome(:Int found) then found
+            elsif t.form?typeRec then maybe.some(:Int t.id)
+            else maybe.none(:Int) end
+        end
+
+    Def EchoChild = Tuple key: String type: model.Type end
+
+    let echoChildren(t0: Type): Array(EchoChild) =
+        begin
+            let t = echoHead(t0)
+            let found = vector.new(:EchoChild)
+            let add = fun(key: String child: Type): Ok vector.append(:EchoChild found tuple let key = key let type = child end)
+            case t.form
+                when typeTuple with x then
+                    let values = model.tupleValueFields(x.fields)
+                    for i = 0 upto {extent values - 1} do add(conv.int(i) values[i].type) end
+                when typeRecord with x then for i = 0 upto {extent x.fields - 1} do add(x.fields[i].name x.fields[i].type) end
+                when typeArray with x then add("" x.element)
+                when typeOption with x then
+                    for i = 0 upto {extent x.options - 1} do
+                        if maybe.isSome(:Type x.options[i].payload) then add(x.options[i].name maybe.unwrap(:Type x.options[i].payload)) end
+                    end
+                when typeVariant with x then
+                    for i = 0 upto {extent x.variants - 1} do
+                        if maybe.isSome(:Type x.variants[i].type) then add(x.variants[i].name maybe.unwrap(:Type x.variants[i].type)) end
+                    end
+                else ok
+            end
+            vector.toArray(:EchoChild found)
+        end
+end
