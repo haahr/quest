@@ -29,70 +29,84 @@ interpreter** (`questlang`). The self-hosted system replaces the Python bootstra
 ## 2. Subsystem Layout and Directory Structure
 
 All self-hosted compiler and interpreter source code lives under the `questlang/` directory with module path prefixes
-starting with `questlang/`.
+starting with `questlang/`. The tree follows the bootstrap (`bootstrap/python/quest/`) module for module: each
+bootstrap module becomes the Quest module of the same name, lowercased with its underscores removed (canonical names are
+letters and digits, [modules.md](modules.md) §2.3), so that a port is translation rather than redesign. Where Quest
+needs a split the bootstrap does not have (an import cycle, §5), the bootstrap is refactored first, so that the two
+trees stay the same.
 
 ```
 questlang/
 ├── common/                  # Cross-cutting foundational utilities
-│   ├── location             # Source coordinates (Pos, Span)
+│   ├── location             # Source coordinates (Pos, Span) and source maps (bootstrap syntax/sources)
 │   ├── diagnostics          # Diagnostic messages, error severity
 │   └── diagbag              # Diagnostic accumulator and reporter
 │
-├── syntax/                  # Concrete syntax and parsing
+├── syntax/                  # Concrete syntax and parsing (Milestone 1; desugar, Milestone 2)
 │   ├── tokens               # TokenKind and Token definitions
 │   ├── tokenizer            # Lexical scanner
 │   ├── ast                  # Abstract syntax tree: Node, TypeForm, ExprForm, PhraseForm (§3)
 │   ├── astprint             # Canonical S-expression printer, matching the bootstrap ast_dump
 │   ├── parser               # Parsing a program, a type, a kind, or a value (§4)
-│   └── parser/              # Data-driven PEG / Packrat parser
-│       ├── engine           # Generic PEG engine (constructs, syntax targets, rules, memo) and semantic values
-│       ├── grammar          # The grammar's syntax targets and rules
-│       └── actions          # Semantic actions constructing AST nodes
+│   ├── parser/              # Data-driven PEG / Packrat parser (bootstrap syntax/parser and grammar)
+│   │   ├── engine           # Generic PEG engine (constructs, syntax targets, rules, memo) and semantic values
+│   │   ├── grammar          # The grammar's syntax targets and rules
+│   │   └── actions          # Semantic actions constructing AST nodes
+│   └── desugar              # Rewriting syntactic sugar into the forms the type checker elaborates
 │
-├── types/                   # Semantic type system model
-│   ├── kind                 # Kind representations (Kind)
-│   ├── model                # Semantic type representations (Type)
-│   ├── env                  # Lexical scoping and type/term environments
-│   ├── subtyping            # Cardelli subtyping judgments and bound checks
-│   ├── normalize            # Type normalization and expansion
-│   └── builtins             # Predefined basic types and root interface models
+├── types/                   # Semantic types and kinds (Milestone 2; canonical, Milestone 4)
+│   ├── symbols              # Symbols and scopes
+│   ├── model                # Types, kinds, substitution, interning
+│   ├── kinds                # Kind synthesis and checking, operator signatures
+│   ├── subtyping            # Equi-recursive subtyping and type equivalence
+│   ├── contractiveness      # Contractiveness of recursive types
+│   ├── env                  # Type-checking environments and the builtin registry
+│   ├── dump                 # Canonical and compact type formatters
+│   └── canonical            # Reduced and canonical forms of types, for the backends
 │
-├── typecheck/               # Typechecker and semantic elaboration
-│   ├── typedast             # Type-annotated AST nodes
-│   ├── elaborate            # Syntactic TypeExpr -> semantic Type transformation
-│   ├── checkexpr            # Expression typechecking and bidirectional inference
-│   ├── checkdecl            # Declaration typechecking
-│   └── pattern              # Pattern matching exhaustiveness and reachability
+├── typechecker/             # Bidirectional type checker (Milestone 2)
+│   ├── typedast             # The typed AST
+│   ├── typedastprint        # Its printer, matching the bootstrap's typed AST dump
+│   ├── checker              # The checker's state, shared helpers, and dispatch hooks
+│   ├── checks, escape, lvalues, metas   # Shared checks
+│   ├── elaboratetypes       # Syntactic types and kinds to semantic ones
+│   ├── bindings, application, aggregates, control, exceptions, autovalues   # Construct families
+│   ├── typecheck            # Dispatch on expression forms, phrases, programs, entry points
+│   └── scoping              # Well-scopedness check of typed programs
 │
-├── modules/                 # Module system, dependency DAG, and linking
-│   ├── modid                # Hierarchical module paths and alias management
-│   ├── loader               # Filesystem module discovery and reading (QUESTPATH)
-│   ├── graph                # Dependency DAG construction, topological sort, cycle check
-│   ├── interfacecheck       # Module-to-interface conformance verification
-│   └── linker               # Compilation unit assembly and pre-linking
+├── modules/                 # Units, imports, interfaces, modules (Milestone 2 from source; artifacts, Milestone 5)
+│   ├── paths                # File discovery, search paths, canonical names
+│   ├── units                # Unit files
+│   ├── graph                # The unit graph: resolution, loaded units
+│   ├── abstracttypes        # Modules' abstract types by global name
+│   ├── loader               # Loading interfaces and modules
+│   ├── elaboration          # Elaborating interfaces, modules, and imports
+│   ├── stdlib               # The standard library's interfaces and module scopes
+│   ├── interfacecompiler, modulecompiler, manifest   # .qi and .qm artifacts, compiled modules
 │
-├── eval/                    # Tree-walking interpreter & runtime environment
-│   ├── value                # Runtime value representations (Val)
-│   ├── env                  # Runtime evaluation frames and closures
-│   ├── eval                 # Tree-walking evaluator
-│   ├── builtins             # Native execution hooks for stdlib interfaces
-│   └── dynamic              # Dynamic type boxing and JSON serialization
+├── values/                  # Runtime values (Milestone 3)
+│   ├── model                # Values
+│   └── dynamicjson          # The serialized form of dynamic values
 │
-├── codegen/                 # C code generator targeting C99
-│   ├── cmodel               # C intermediate representation
-│   ├── ctypes               # Quest-to-C type mapping and representation strategy
-│   ├── cclosure             # Closure capture analysis and environment layout
-│   ├── cdecl                # C typedefs, struct declarations, function prototypes
-│   ├── cemit                # C99 code emission for statements and expressions
-│   └── crunner              # C compiler invocation (clang/gcc) and linking
+├── interpreter/             # Interpreters (tree walking, Milestone 3; IR, Milestone 4)
+│   ├── primitives, formatting, builtins
+│   ├── treewalk             # Tree-walking interpreter over the typed AST
+│   └── irinterp             # IR interpreter
 │
-└── driver/                  # Compiler pipeline and CLI driver
-    ├── options              # Command-line option parsing (using util/argparse)
-    ├── pipeline             # Multi-phase execution orchestrator
-    └── main                 # Top-level executable entry point
+├── ir/                      # IR lowering and passes (Milestone 4; docs/ir.md)
+│   └── nodes, walk, lower, specialize, closure, shapes, represent, slots, describe, written, verify, printer
+│
+├── codegen/                 # Backends (Milestone 5)
+│   ├── backend, descriptors, layout, symbols, syntax
+│   └── c/                   # backend, declarations, headers, printer, types, compilerrunner
+│
+├── config/, build/          # ABI, options, build engine (Milestone 5)
+│
+└── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
+    └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
 ```
 
-So far `common/*` and `syntax/*` exist; the rest of the tree is the plan.
+So far `common/*` and `syntax/*` (but `desugar`) exist; the rest of the tree is the plan.
 
 ---
 
@@ -331,38 +345,34 @@ parsing is linear in the number of tokens.
 
 ## 5. Topological Dependency Layers
 
-Module imports strictly respect the following layered DAG:
+Module imports form a DAG. The layers, lowest first, by module rather than directory, since the module system sits
+between parts of the type checker:
 
 ```
-Layer 0: [questlang/common]
-             ↓
-Layer 1: [questlang/syntax/tokens] → [questlang/syntax/tokenizer]
-             ↓
-Layer 2: [questlang/syntax/ast]
-             ↓
-Layer 3: [questlang/syntax/astprint] ← [questlang/syntax/parser/*]
-             ↓
-Layer 4: [questlang/types/*] (kind, model, env, builtins, subtyping)
-             ↓
-Layer 5: [questlang/typecheck/*] (elaborate, checkexpr, checkdecl, pattern)
-             ↓
-Layer 6: [questlang/modules/*] (modid, loader, graph, interfacecheck, linker)
-             ↓
-┌────────────────────────────┴────────────────────────────┐
-↓                                                         ↓
-Layer 7a: [questlang/eval/*] (interpreter)    Layer 7b: [questlang/codegen/*] (C emitter)
-└────────────────────────────┬────────────────────────────┘
-                             ↓
-Layer 8:  [questlang/driver/*] (options, pipeline, main)
+Layer 0: common/*
+Layer 1: syntax/* (tokens, tokenizer, ast, astprint, parser, parser/*, desugar)
+Layer 2: types/symbols, model, dump → subtyping → kinds, contractiveness → env
+Layer 3: typechecker/typedast, typedastprint, elaboratetypes, checks, escape, lvalues, metas
+Layer 4: modules/paths, units, graph, abstracttypes, loader, elaboration, stdlib
+Layer 5: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
+         scoping
+Layer 6: values/*, interpreter/* | ir/*, types/canonical | codegen/*, modules' artifacts, config/*, build/*
+Layer 7: driver/*
 ```
+
+The bootstrap's lazy imports make cycles that this order does not allow; they are broken in the bootstrap before the
+port ([milestone-2.md](milestone-2.md) §1.1): symbols and scopes move to `types/symbols`; the unit graph resolves
+imports from a directory and search paths rather than an environment; module elaboration and loading take the
+checker's entry points as parameters rather than importing it; and the checker's construct families call the
+dispatch through `typechecker/checker` (in Quest, a tuple whose function fields `typecheck` fills).
 
 ---
 
 ## 6. Implementation Milestones
 
-Porting proceeds through four self-contained milestones:
+Porting proceeds through five self-contained milestones:
 
-### Milestone 1: Frontend & Syntax (`common` and `syntax`)
+### Milestone 1: Front End (`common` and `syntax`) — done
 - `questlang/common/location`, `diagnostics`, `diagbag`.
 - `questlang/syntax/tokens` and `questlang/syntax/tokenizer` (verified against `tokenize` goldens).
 - `questlang/syntax/ast` and `questlang/syntax/astprint` (verified against `ast_dump` for every parseable `.quest`
@@ -371,23 +381,22 @@ Porting proceeds through four self-contained milestones:
   for types, declarations, expressions, operators, and modules (verified against the bootstrap parser by the
   `parser_*` golden tests; see [testing.md](testing.md)).
 
-### Milestone 2: Types & Typechecking (`types` and `typecheck`)
-- Semantic `kind`, `model` (Cardelli types), and lexical `env`.
-- `subtyping` rules (Cardelli subtyping judgments, bound checking, and recursion contractiveness).
-- `elaborate` (syntactic `TypeExpr` $\to$ semantic `Type`) and `builtins` (initial typing environment and root
-  interface signatures).
-- `checkexpr`, `checkdecl` bidirectional typechecker, and `pattern` exhaustiveness analysis (verified against
-  `typecheck` goldens).
+### Milestone 2: Types & Type Checking (`types`, `typechecker`, `modules` from source)
+The plan is [milestone-2.md](milestone-2.md): `syntax/desugar`, the semantic types, the type checker (reporting every
+error it can), the module system's loading and elaboration of units from source, and a driver for the front end's
+phases, compiled, which must pass the bootstrap's tokenize, parse, and typecheck goldens and error tests.
 
-### Milestone 3: Modules & Interpreter (`modules` and `eval`)
-- `modules/modid`, `loader`, `graph` (dependency DAG and cycle validation), `interfacecheck`, and `linker`.
-- `eval/value`, `env`, `eval_builtins`, `eval/eval` tree-walking evaluator (verified against `interpret` goldens),
-  `eval/dynamic` serialization, and interactive REPL.
+### Milestone 3: Values & the Tree-Walking Interpreter (`values`, `interpreter`)
+- `values/model`, `interpreter/primitives`, `formatting`, `builtins`, and `treewalk`, verified against the
+  `interpret` goldens; `values/dynamicjson` for `dynamic.extern` and `intern`.
 
-### Milestone 4: C Code Generation & Self-Hosting (`codegen` and `driver`)
-- IR lowering and passes, `codegen` C99 emission, and compiler driver / runtime linking.
-- `driver/options`, `pipeline`, `main` entrypoint, and complete self-hosting verification (`questc` compiling
-  `questc`).
+### Milestone 4: IR (`ir`, `types/canonical`, the IR interpreter)
+- `ir/lower` and the IR passes, `types/canonical`, and `interpreter/irinterp`, which runs the IR of each pass and is
+  verified against the `run_ir_*` goldens.
+
+### Milestone 5: C Code Generation & Self-Hosting (`codegen`, artifacts, `driver`)
+- `codegen` C emission, the build artifacts (`.qi`, `.qm`, headers) and build engine, the full driver, and
+  self-hosting verification (`questc` compiling `questc`).
 
 ---
 
