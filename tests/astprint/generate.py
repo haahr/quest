@@ -473,9 +473,10 @@ def generate_tests() -> None:
 
 
 def check(phase: str, workers: int) -> int:
+    # Not the generated tests, whose inputs are checked (and whose own programs nest too deeply for the bootstrap)
     sources = sorted(
         p for d in ("lib", "questlang", "tests") for p in (ROOT_DIR / d).rglob("*.quest")
-        if "abi" not in p.relative_to(ROOT_DIR).parts
+        if "abi" not in p.relative_to(ROOT_DIR).parts and not (p.parent == TEST_DIR and p.name.startswith("astprint_"))
     )
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
