@@ -1,0 +1,366 @@
+(* Quest Self-Hosted Compiler: PEG / Packrat Parser Engine Implementation *)
+
+module engine : Engine
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/ast : questlang/syntax/Ast
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    (* =========================================================================
+     * 1. Semantic Values
+     * ========================================================================= *)
+
+    Let Rec Val = Option
+        absent
+        tok with val: tokens.Token end
+        str with val: String end
+        list with items: Array(Val) end
+        typeExpr with val: ast.TypeExpr end
+        expr with val: ast.Expr end
+        phrase with val: ast.Phrase end
+        program with val: ast.Program end
+        sig with val: ast.Signature span: location.Span end
+        recordFieldSig with val: ast.RecordFieldSig end
+        optionFieldSig with val: ast.OptionFieldSig end
+        recordBinding with val: ast.RecordBinding end
+        importItem with val: ast.ImportItem end
+        caseBranch with val: ast.CaseBranch end
+        inspectBranch with val: ast.InspectBranch end
+        tryBranch with val: ast.TryBranch end
+        typeOp with apply: All(operand: ast.TypeExpr) ast.TypeExpr end
+        exprOp with apply: All(operand: ast.Expr) ast.Expr end
+    end
+
+    let error: Exception(String) = exception error: String end
+
+    Let Ctx = Tuple file: String start: Int stop: Int bag: diagbag.T end
+
+    Let Action = All(ctx: Ctx args: Array(Val)) Val
+
+    let absent: Val = option absent of Val end
+    let list(items: vector.T(Val)): Val = option list of Val with let items = vector.toArray(:Val items) end
+    let elements(v: Val): Array(Val) = case v when list with l then l.items else raise error with "not a list" end end
+
+    (* =========================================================================
+     * 2. Grammar Constructs
+     * ========================================================================= *)
+
+    Let Rec Construct = Option
+        token with kind: tokens.TokenKind lexeme: maybe.T(String) silent: Bool end
+        target with target: Target end
+        optional with inner: Construct silent: Bool end
+        repeated with inner: Construct silent: Bool end
+        sequence with items: Array(Construct) silent: Bool single: Bool end
+        sepBy with item: Construct separator: Construct end
+    end
+    (* id numbers the target in its grammar *)
+    and Target = Tuple id: Int name: String rules: vector.T(Rule) end
+    and Rule = Tuple items: Array(Construct) action: Action end
+
+    Let Grammar = Tuple var count: Int end
+
+    let newGrammar(): Grammar = tuple let var count = 0 end
+
+    let target(g: Grammar name: String): Construct =
+        begin
+            let target: Target = tuple let id = g.count let name = name let rules = vector.new(:Rule) end
+            g.count := g.count + 1
+            option target of Construct with let target = target end
+        end
+
+    let rule(t: Construct action: Action): All(items: Array(Construct)) Ok =
+        case t
+            when target with x then
+                fun(items: Array(Construct)): Ok
+                    vector.append(:Rule x.target.rules tuple let items = items let action = action end)
+            else
+                raise error with "rule: not a syntax target" end
+        end
+
+    let token(kind: tokens.TokenKind lexeme: maybe.T(String) silent: Bool): Construct =
+        option token of Construct with let kind = kind let lexeme = lexeme let silent = silent end
+
+    let t(kind: tokens.TokenKind): Construct = token(kind maybe.none(:String) false)
+    let tLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(:String lexeme) false)
+    let p(kind: tokens.TokenKind): Construct = token(kind maybe.none(:String) true)
+    let pLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(:String lexeme) true)
+
+    let isSilent(c: Construct): Bool =
+        case c
+            when token with x then x.silent
+            when optional with x then x.silent
+            when repeated with x then x.silent
+            when sequence with x then x.silent
+            else false
+        end
+
+    (* A single item as it is, or a sequence of several *)
+    let sequenceOf(items: Array(Construct)): Construct =
+        if extent(items) is 1 then
+            items[0]
+        else
+            let var silentItems = 0
+            for i = 0 upto {extent(items) - 1} do
+                if isSilent(items[i]) then silentItems := silentItems + 1 end
+            end
+            option sequence of Construct with
+                let items = items
+                let silent = silentItems is extent(items)
+                let single = {extent(items) - silentItems} is 1
+            end
+        end
+
+    let opt(items: Array(Construct)): Construct =
+        begin
+            let inner = sequenceOf(items)
+            option optional of Construct with let inner = inner let silent = isSilent(inner) end
+        end
+
+    let rep(items: Array(Construct)): Construct =
+        begin
+            let inner = sequenceOf(items)
+            option repeated of Construct with let inner = inner let silent = isSilent(inner) end
+        end
+
+    let sepBy(item: Construct separator: Construct): Construct =
+        option sepBy of Construct with let item = item let separator = separator end
+
+    (* =========================================================================
+     * 3. Parser
+     * ========================================================================= *)
+
+    (* What a construct does at a position: fail, or match a value, ending before the token at next *)
+    Let Outcome = Option
+        failed
+        matched with val: Val next: Int end
+    end
+
+    let failed: Outcome = option failed of Outcome end
+    let matched(val: Val next: Int): Outcome = option matched of Outcome with let val = val let next = next end
+
+    (* A target's memo entry at a position: not yet tried, being tried (so a left-recursive attempt fails, as
+     * in the bootstrap), or its outcome *)
+    Let Memo = Option
+        unknown
+        inProgress
+        known with outcome: Outcome end
+    end
+
+    Let Parser = Tuple
+        file: String
+        bag: diagbag.T
+        (* The tokens other than EOF, followed by one EOF *)
+        toks: Array(tokens.Token)
+        targets: Int
+        (* Each target's memo entry at each position, at pos * targets + id *)
+        var memo: Array(Memo)
+        (* The farthest position at which a construct failed, and the names of what failed there *)
+        var farthest: Int
+        expected: vector.T(String)
+    end
+
+    let isEof(tok: tokens.Token): Bool = case tok.kind when eof then true else false end
+
+    let newParser(g: Grammar toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): Parser =
+        begin
+            let kept = vector.filter(:tokens.Token toks fun(tok: tokens.Token): Bool not(isEof(tok)))
+            vector.append(:tokens.Token kept
+                if vector.empty(:tokens.Token toks) then
+                    tokens.eofToken(location.file(sm) 0)
+                else
+                    vector.last(:tokens.Token toks)
+                end)
+            tuple
+                let file = location.file(sm)
+                let bag = bag
+                let toks = vector.toArray(:tokens.Token kept)
+                let targets = g.count
+                var memo = array of :Memo end
+                var farthest = 0
+                let expected = vector.new(:String)
+            end
+        end
+
+    let peek(ps: Parser pos: Int): tokens.Token =
+        if pos < extent(ps.toks) then ps.toks[pos] else ps.toks[extent(ps.toks) - 1] end
+
+    let recordFailure(ps: Parser pos: Int expected: String): Ok =
+        if pos > ps.farthest then
+            ps.farthest := pos
+            vector.clear(:String ps.expected)
+            vector.append(:String ps.expected expected)
+        elsif {pos is ps.farthest} andif
+            not(vector.fold(:String :Bool ps.expected false
+                fun(found: Bool name: String): Bool found orif stringOp.equal(name expected))) then
+            vector.append(:String ps.expected expected)
+        end
+
+    (* A failed token's name in the expected list: its kind, with its lexeme if it has one *)
+    let tokenName(kind: tokens.TokenKind lexeme: maybe.T(String)): String =
+        if maybe.isSome(:String lexeme) then
+            tokens.tokenKindName(kind) <> "('" <> maybe.unwrap(:String lexeme) <> "')"
+        else
+            tokens.tokenKindName(kind)
+        end
+
+    let sameKind(a: tokens.TokenKind b: tokens.TokenKind): Bool = ordinal(a) is ordinal(b)
+
+    let rec evaluate(ps: Parser c: Construct pos: Int): Outcome =
+        case c
+            when token with x then
+                let tok = peek(ps pos)
+                if sameKind(tok.kind x.kind) andif
+                    {maybe.isNone(:String x.lexeme) orif stringOp.equal(tok.lexeme maybe.unwrap(:String x.lexeme))} then
+                    matched(option tok of Val with let val = tok end {pos + 1})
+                else
+                    recordFailure(ps pos tokenName(x.kind x.lexeme))
+                    failed
+                end
+            when target with x then
+                let outcome = parseTarget(ps x.target pos)
+                case outcome when failed then recordFailure(ps pos x.target.name) else ok end
+                outcome
+            when optional with x then
+                let outcome = evaluate(ps x.inner pos)
+                case outcome when failed then matched(absent pos) else outcome end
+            when repeated with x then
+                let results = vector.new(:Val)
+                let var current = pos
+                loop
+                    case evaluate(ps x.inner current)
+                        when matched with m then
+                            (* Each repetition must make progress, so a construct that matches nothing ends it *)
+                            if m.next <= current then exit end
+                            vector.append(:Val results m.val)
+                            current := m.next
+                        else
+                            exit
+                    end
+                end
+                matched(list(results) current)
+            when sequence with x then
+                let outcome = matchItems(ps x.items pos)
+                case outcome
+                    when matched with m then
+                        if x.single then
+                            matched(elements(m.val)[0] m.next)
+                        else
+                            outcome
+                        end
+                    else
+                        outcome
+                end
+            when sepBy with x then
+                case evaluate(ps x.item pos)
+                    when matched with first then
+                        let results = vector.new(:Val)
+                        vector.append(:Val results first.val)
+                        let var current = first.next
+                        loop
+                            case evaluate(ps x.separator current)
+                                when matched with separator then
+                                    case evaluate(ps x.item separator.next)
+                                        when matched with item then
+                                            vector.append(:Val results item.val)
+                                            current := item.next
+                                        else
+                                            exit
+                                    end
+                                else
+                                    exit
+                            end
+                        end
+                        matched(list(results) current)
+                    else
+                        failed
+                end
+        end
+
+    (* Matches all of items in order: a list of the non-silent items' values *)
+    and matchItems(ps: Parser items: Array(Construct) pos: Int): Outcome =
+        begin
+            let results = vector.new(:Val)
+            let var current = pos
+            let var matching = true
+            let var i = 0
+            while matching andif {i < extent(items)} do
+                case evaluate(ps items[i] current)
+                    when matched with m then
+                        if not(isSilent(items[i])) then vector.append(:Val results m.val) end
+                        current := m.next
+                        i := i + 1
+                    else
+                        matching := false
+                end
+            end
+            if matching then matched(list(results) current) else failed end
+        end
+
+    (* The outcome of the first of a target's rules that matches at pos, memoized *)
+    and parseTarget(ps: Parser target: Target pos: Int): Outcome =
+        begin
+            let key = {pos * ps.targets} + target.id
+            case ps.memo[key]
+                when inProgress then
+                    failed
+                when known with k then
+                    k.outcome
+                else
+                    ps.memo[key] := option inProgress of Memo end
+                    let var outcome = failed
+                    let var i = 0
+                    let rules = target.rules
+                    while i < vector.length(:Rule rules) do
+                        let r = vector.get(:Rule rules i)
+                        case matchItems(ps r.items pos)
+                            when matched with m then
+                                let start = peek(ps pos).span.startOffset
+                                let stop = if m.next > pos then peek(ps {m.next - 1}).span.endOffset else start end
+                                let ctx: Ctx = tuple let file = ps.file let start = start let stop = stop let bag = ps.bag end
+                                outcome := matched(r.action(ctx elements(m.val)) m.next)
+                                i := vector.length(:Rule rules)
+                            else
+                                i := i + 1
+                        end
+                    end
+                    ps.memo[key] := option known of Memo with let outcome = outcome end
+                    outcome
+            end
+        end
+
+    (* Reports a syntax error at the farthest failure, as the bootstrap's ParserError does (addFatal raises) *)
+    let syntaxError(ps: Parser): Val =
+        begin
+            let tok = peek(ps ps.farthest)
+            sort.sortVector(:String ps.expected sort.stringCompare)
+            let expected = if vector.empty(:String ps.expected) then "valid syntax" else strutil.join(", " ps.expected) end
+            let length = tok.span.endOffset - tok.span.startOffset
+            let sp = location.span(ps.file tok.span.startOffset {tok.span.startOffset + {if length < 1 then 1 else length end}})
+            diagbag.addFatal(ps.bag sp
+                "Unexpected token " <> diagnostics.pyRepr(tok.lexeme) <> " (" <> tokens.tokenKindName(tok.kind) <>
+                    "), expected: " <> expected)
+            absent
+        end
+
+    let parse(ps: Parser start: Construct): Val =
+        begin
+            ps.memo := array of({extent(ps.toks) * ps.targets} option unknown of Memo end)
+            ps.farthest := 0
+            vector.clear(:String ps.expected)
+            (* The start target itself does not count as expected *)
+            let outcome = case start when target with x then parseTarget(ps x.target 0) else evaluate(ps start 0) end
+            case outcome
+                when matched with m then
+                    if isEof(peek(ps m.next)) then m.val else syntaxError(ps) end
+                else
+                    syntaxError(ps)
+            end
+        end
+end

@@ -1,0 +1,111 @@
+(* Self-Hosted Quest Compiler: Test the PEG Engine with a Small Grammar *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+(* @timeout: 300.0 *)
+
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
+    stringBuilder = util/stringbuilder : util/StringBuilder
+    writer : Writer
+    conv : Conv
+;
+
+let printStr(s: String): Ok =
+    begin
+        writer.putString(writer.output s)
+        writer.putString(writer.output "\n")
+    end;
+
+Let K = tokens.TokenKind;
+Let Val = engine.Val;
+
+(* =========================================================================
+ * 1. A Grammar of Nested Lists
+ *
+ *    Items: Item {, Item}
+ *    Item:  ident [= ident] | ( [Items] ) | begin {;} end
+ * ========================================================================= *)
+
+let g = engine.newGrammar();
+let items = engine.target(g "Items");
+let item = engine.target(g "Item");
+
+let tok(v: Val): tokens.Token = case v when tok with x then x.val else raise engine.error with "tok" end end;
+let str(s: String): Val = option str of Val with let val = s end;
+
+engine.rule(items fun(ctx: engine.Ctx args: Array(Val)): Val args[0]) of
+    engine.sepBy(item engine.p(option comma of K end))
+end;
+(* An identifier, with its definition if it has one *)
+engine.rule(item fun(ctx: engine.Ctx args: Array(Val)): Val
+    begin
+        let name = tok(args[0]).lexeme
+        case args[1]
+            when absent then str(name)
+            else str(name <> "=" <> tok(args[1]).lexeme)
+        end
+    end) of
+    engine.t(option ident of K end) engine.opt of engine.p(option equal of K end) engine.t(option ident of K end) end
+end;
+(* A parenthesized list, which shows where it starts and stops *)
+engine.rule(item fun(ctx: engine.Ctx args: Array(Val)): Val
+    case args[0]
+        when absent then str("()@" <> conv.int(ctx.start) <> "-" <> conv.int(ctx.stop))
+        else args[0]
+    end) of
+    engine.p(option lparen of K end) engine.opt of items end engine.p(option rparen of K end)
+end;
+(* begin {;} end matches only silent items *)
+engine.rule(item fun(ctx: engine.Ctx args: Array(Val)): Val str("block of " <> conv.int(extent(args)))) of
+    engine.p(option kwBegin of K end) engine.rep of engine.p(option semicolon of K end) end
+    engine.pLex(option kwEnd of K end "end")
+end;
+
+(* =========================================================================
+ * 2. Parsing
+ * ========================================================================= *)
+
+let rec show(v: Val): String =
+    case v
+        when absent then "absent"
+        when str with s then s.val
+        when list with l then
+            begin
+                let b = stringBuilder.new().char('[')
+                for i = 0 upto {extent(l.items) - 1} do
+                    if i > 0 then b.char(' ') end
+                    b.str(show(l.items[i]))
+                end
+                b.char(']').toString()
+            end
+        else "?"
+    end;
+
+let parse(text: String): Ok =
+    begin
+        let sm = location.newSourceMap("engine.quest" text)
+        let bag = diagbag.new()
+        let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
+        try
+            printStr(text <> " => " <> show(engine.parse(engine.newParser(g toks sm bag) items)))
+        when diagbag.fatalError with d then
+            let sp = diagnostics.span(d)
+            printStr(text <> " => error at " <> conv.int(sp.startOffset) <> "-" <> conv.int(sp.endOffset) <> ": " <>
+                diagnostics.message(d))
+        end
+    end;
+
+parse("a");
+parse("a, b=c, (d, (e)), ()");
+parse("( ) , begin ;; end");
+(* Errors: the farthest failure, and what was expected there, sorted *)
+parse("");
+parse("a b");
+parse("a, (b, c");
+parse("a = 1");
+parse("begin ; ;");
+parse("a, \"it's\"");
