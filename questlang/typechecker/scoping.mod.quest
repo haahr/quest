@@ -64,7 +64,8 @@ export
             when exprException then "TypedException" when exprRaise then "TypedRaise" when exprTry then "TypedTry"
         end
 
-    (* A child of a node: an expression or a binding, in the order of the node's fields *)
+    (* A child of a node: an expression or a binding, in the order of the node's
+     * fields *)
     Let Child = Option
         childExpr with e: Expr end
         childBinding with b: Binding end
@@ -209,9 +210,9 @@ export
 
     Let State = Tuple problems: vector.T(String) localIds: Ids paramIds: Ids end
 
-    (* =========================================================================
+    (* ======================================================================
      * The local binders, and the type parameters
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec collectExpr(st: State e: Expr): Ok =
         begin
@@ -279,9 +280,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * The check
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let checkType(st: State t: model.Type typeScope: Ids whereName: String whereOffset: Int): Ok =
         begin
@@ -299,7 +300,8 @@ export
             end
         end
 
-    (* The types and value symbols a node holds directly, which are checked against the type parameters in scope *)
+    (* The types and value symbols a node holds directly, which are checked
+     * against the type parameters in scope *)
     let checkDirect(st: State e: Expr types: Ids): Ok =
         begin
             let name = nodeName(e)
@@ -343,7 +345,8 @@ export
                     end
                 when exprFun with x then
                     begin
-                        (* The function's type parameters are the quantifiers of its own type *)
+                        (* The function's type parameters are the quantifiers of
+                         * its own type *)
                         let quants = quantifierIds(e)
                         let innerTypes = withIds(types if extent quants > 0 then quants else x.typeParamIds end)
                         let paramIds = vector.new(:Int)
@@ -367,7 +370,8 @@ export
                                 for j = 0 upto {extent lets - 1} do hashMap.insert(:Int :Bool scope lets[j].symbol.symbolId true) end
                                 walkBinding(st b copyIds(scope) types)
                             else
-                                (* The values see the bindings in scope before the declaration, not its members *)
+                                (* The values see the bindings in scope before
+                                 * the declaration, not its members *)
                                 walkBinding(st b copyIds(scope) types)
                                 for j = 0 upto {extent lets - 1} do hashMap.insert(:Int :Bool scope lets[j].symbol.symbolId true) end
                             end

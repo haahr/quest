@@ -1,18 +1,24 @@
-"""A check that a typed program is well scoped: every variable refers to a binder in scope, and every use of a
-function's type parameter is inside that function.
+"""A check that a typed program is well scoped: every variable refers to a
+binder in scope, and every use of a function's type parameter is inside that
+function.
 
-Symbols, not names, identify binders (docs/ir.md §2), so a pass that re-elaborates a declaration with fresh symbols, or
-a transformation that moves code out of a binder's scope, leaves references that no binder in scope declares. The
-typed AST does not show this: names still match. This check finds it. It runs after type checking when
-QUEST_CHECK_SCOPES=1, which the test runners set; production builds skip it.
+Symbols, not names, identify binders (docs/ir.md §2), so a pass that
+re-elaborates a declaration with fresh symbols, or a transformation that moves
+code out of a binder's scope, leaves references that no binder in scope
+declares. The typed AST does not show this: names still match. This check finds
+it. It runs after type checking when QUEST_CHECK_SCOPES=1, which the test
+runners set; production builds skip it.
 
 What it checks:
 
-- **Local values.** A variable bound locally (a parameter, a block's let, a for variable, a case, try, or inspect
-  binder) is used only within the binder's scope: after a let in its block (or within it, for let rec), within its
-  function, branch, or loop body. Variables of top-level and module bindings, imports, and builtins are global.
-- **Type parameters.** A polymorphic function's type_param_ids are the quantifiers of its own type, and a type
-  mentioning a function's type parameter occurs only inside that function.
+- **Local values.** A variable bound locally (a parameter, a block's let, a for
+  variable, a case, try, or inspect binder) is used only within the binder's
+  scope: after a let in its block (or within it, for let rec), within its
+  function, branch, or loop body. Variables of top-level and module bindings,
+  imports, and builtins are global.
+- **Type parameters.** A polymorphic function's type_param_ids are the
+  quantifiers of its own type, and a type mentioning a function's type parameter
+  occurs only inside that function.
 """
 
 from __future__ import annotations
@@ -50,7 +56,8 @@ def _quantifier_ids(fun: TypedFun) -> tuple[int, ...]:
 
 
 def _local_binders(node: Any) -> Iterator[tuple[ValueSymbol, str]]:
-    """The local binders in node (not top-level or module bindings), with what binds them."""
+    """The local binders in node (not top-level or module bindings), with what
+    binds them."""
     seen: set[int] = set()
 
     def walk(n: Any, top: bool) -> Iterator[tuple[ValueSymbol, str]]:
@@ -151,7 +158,8 @@ class _Checker:
             case TypedVar():
                 self._check_var(n, values)
             case TypedFun(params=params, body=body):
-                # The function's type parameters are the quantifiers of its own type (checked against type_param_ids)
+                # The function's type parameters are the quantifiers of its own
+                # type (checked against type_param_ids)
                 inner_types = types | set(_quantifier_ids(n) or n.type_param_ids)
                 inner_values = values | {p.symbol.symbol_id for p in params}
                 for p in params:
@@ -167,7 +175,8 @@ class _Checker:
                         scope |= {m.symbol.symbol_id for m in lets}
                         self.walk(b, frozenset(scope), types)
                     else:
-                        # The values see the bindings in scope before the declaration, not its members
+                        # The values see the bindings in scope before the
+                        # declaration, not its members
                         self.walk(b, frozenset(scope), types)
                         scope |= {m.symbol.symbol_id for m in lets}
                 self.walk(result, frozenset(scope), types)
@@ -200,7 +209,8 @@ class _Checker:
 
 
 def check_well_scoped(prog: TypedProgram) -> list[str]:
-    """The scoping problems of a typed program (empty when it is well scoped)."""
+    """The scoping problems of a typed program (empty when it is well
+    scoped)."""
     checker = _Checker(prog)
     checker.walk(prog, frozenset(), frozenset())
     return checker.problems

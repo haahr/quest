@@ -1,9 +1,11 @@
 (* Quest Self-Hosted Compiler: Symbols and Lexical Scopes Interface
  *
- * The symbols and scopes of bootstrap/python/quest/types/symbols.py. Symbols name values, types, and kinds; a scope
- * holds the symbols declared in it, in declaration order. Symbol ids are unique for the life of the process
- * (allocateSymbolId), and every declared type and kind symbol is also found by its id, globally. This module is below
- * subtyping and the unit graph, which need symbols and scopes but not the type-checking environment (types/env),
+ * The symbols and scopes of bootstrap/python/quest/types/symbols.py. Symbols
+ * name values, types, and kinds; a scope holds the symbols declared in it, in
+ * declaration order. Symbol ids are unique for the life of the process
+ * (allocateSymbolId), and every declared type and kind symbol is also found by
+ * its id, globally. This module is below subtyping and the unit graph, which
+ * need symbols and scopes but not the type-checking environment (types/env),
  * which holds them. *)
 
 interface Symbols
@@ -16,11 +18,12 @@ export
     (* Raised when a type symbol that has a definition is given another *)
     redefined: Exception(String)
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Symbols
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A value: x : Type. Its id, if not given, comes from a counter of value symbols of its own. *)
+    (* A value: x : Type. Its id, if not given, comes from a counter of value
+     * symbols of its own. *)
     Def ValueSymbol = Tuple
         name: String
         type: model.Type
@@ -31,8 +34,9 @@ export
         symbolId: Int
     end
 
-    (* A type: X :: Kind [= Definition]. A definition may be supplied after declaration (defineType) but never
-     * replaced: a symbol id means one thing for the life of the process. *)
+    (* A type: X :: Kind [= Definition]. A definition may be supplied after
+     * declaration (defineType) but never replaced: a symbol id means one thing
+     * for the life of the process. *)
     Def TypeSymbol = Tuple
         name: String
         symbolId: Int
@@ -53,12 +57,13 @@ export
     newValueSymbol(
         name: String type: model.Type isVar: Bool isOut: Bool isParam: Bool functionDepth: Int symbolId: Int
     ): ValueSymbol
-    (* A plain value symbol: not var, out, or a parameter, at function depth 0 *)
+    (* A plain value symbol: not var, out, or a parameter, at function depth
+     * 0 *)
     valueSymbol(name: String type: model.Type): ValueSymbol
 
     newTypeSymbol(name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)): TypeSymbol
-    (* Supplies a type symbol's definition (the bootstrap's assignment to TypeSymbol.definition); raises redefined if
-     * it has another *)
+    (* Supplies a type symbol's definition (the bootstrap's assignment to
+     * TypeSymbol.definition); raises redefined if it has another *)
     defineType(sym: TypeSymbol definition: model.Type): Ok
     isAbstract(sym: TypeSymbol): Bool
 
@@ -66,9 +71,9 @@ export
 
     symbolName(s: Symbol): String
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Scopes
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Def Rec Scope = Tuple
         parent: maybe.T(Scope)
@@ -104,33 +109,37 @@ export
     lookupKind(s: Scope name: String): maybe.T(KindSymbol)
     lookupKindById(s: Scope symbolId: Int): maybe.T(KindSymbol)
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Symbol ids and meanings
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* A globally unique positive symbol id *)
     allocateSymbolId(): Int
 
-    (* Every declared type or kind symbol of an id, which a lookup that finds none, or a type without a definition,
-     * records as seen undefined (the bootstrap's Environment.lookup_type_by_id and lookup_kind_by_id) *)
+    (* Every declared type or kind symbol of an id, which a lookup that finds
+     * none, or a type without a definition, records as seen undefined (the
+     * bootstrap's Environment.lookup_type_by_id and lookup_kind_by_id) *)
     typeSymbolById(symbolId: Int): maybe.T(TypeSymbol)
     kindSymbolById(symbolId: Int): maybe.T(KindSymbol)
 
-    (* The definitions and kinds of symbols by id, globally, for lazy evaluation *)
+    (* The definitions and kinds of symbols by id, globally, for lazy
+     * evaluation *)
     lookup: model.Lookup
 
-    (* The number of times a symbol id gained a meaning after some lookup saw it without one: judgments cached about
-     * types (the subtype cache) go stale only then *)
+    (* The number of times a symbol id gained a meaning after some lookup saw it
+     * without one: judgments cached about types (the subtype cache) go stale
+     * only then *)
     meaningsChanged(): Ok
     meaningGeneration(): Int
 
     (* =========================================================================
      * 4. Poisoned symbols
      *
-     * The symbols that the names of a failed declaration are bound to, so that their uses fail without another error
-     * (diagnostics.silentError; docs/milestone-2.md section 2): value symbols by their ids, and type and kind symbols
-     * by theirs.
-     * ========================================================================= *)
+     * The symbols that the names of a failed declaration are bound to, so that
+     * their uses fail without another error (diagnostics.silentError;
+     * docs/milestone-2.md section 2): value symbols by their ids, and type and
+     * kind symbols by theirs.
+     * ====================================================================== *)
 
     poisonValue(symbolId: Int): Ok
     isPoisonedValue(symbolId: Int): Bool

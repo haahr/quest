@@ -1,6 +1,7 @@
-"""Cells of the conversion matrix (tests/conversions/generate.py) that C generation rejects: unspecialized calls that
-would have to copy mutable data laid out differently. The error suite cannot express errors of C generation, so they
-are checked here."""
+"""Cells of the conversion matrix (tests/conversions/generate.py) that C
+generation rejects: unspecialized calls that would have to copy mutable data
+laid out differently. The error suite cannot express errors of C generation, so
+they are checked here."""
 
 from __future__ import annotations
 

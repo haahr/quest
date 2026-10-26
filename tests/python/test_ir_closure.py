@@ -1,7 +1,8 @@
 """Closure conversion (quest/ir/closure.py, docs/ir.md §8.2).
 
-Every golden test program is closure-converted, verified, and run (run_tests.py's run_ir_closed phase), and the
-interpreter gives lifted functions only the globals, so a missed capture fails; these tests check the pass's
+Every golden test program is closure-converted, verified, and run
+(run_tests.py's run_ir_closed phase), and the interpreter gives lifted functions
+only the globals, so a missed capture fails; these tests check the pass's
 decisions on small programs."""
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ import tests.python.helpers  # noqa: F401  (enables the invariant checks)
 
 
 def convert(source: str) -> tuple[str, str]:
-    """The closure-converted IR's text, and its output when run (which prints the last phrase's result)."""
+    """The closure-converted IR's text, and its output when run (which prints
+    the last phrase's result)."""
     options = CompilerOptions(stop_after="typecheck")
     ctx = CompilerContext.create(source_text=source, file_name="<test>", options=options)
     res = default_pipeline().execute(source, "<test>", options=options, ctx=ctx)

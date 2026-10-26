@@ -1,5 +1,6 @@
-"""Polymorphic functions checked against an expected type (a let-function's header, or an annotation): the function's
-type is the expected one with its quantifiers renamed, and its parameters and body refer to those quantifiers."""
+"""Polymorphic functions checked against an expected type (a let-function's
+header, or an annotation): the function's type is the expected one with its
+quantifiers renamed, and its parameters and body refer to those quantifiers."""
 
 from __future__ import annotations
 

@@ -15,9 +15,9 @@ export
     (* Raised on an internal error: a limit of the model reached *)
     let internalError: Exception(String) = exception internalError: String end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Reserved symbol ids
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let ReservedSymbolUse = Option
         dynamicParam
@@ -54,9 +54,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Types, kinds, and their components
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Rec Type = Tuple
         id: Int
@@ -128,11 +128,12 @@ export
     (* =========================================================================
      * 3. Free variables
      *
-     * A node records, at construction, the symbol ids that a substitution could replace inside it, and whether it
-     * contains a metavariable, mirroring what substitute does: a binder removes its own ids from the parts it
-     * scopes over, and parts substitute leaves alone (such as the bounds of an operator's formals) contribute
-     * nothing.
-     * ========================================================================= *)
+     * A node records, at construction, the symbol ids that a substitution could
+     * replace inside it, and whether it contains a metavariable, mirroring what
+     * substitute does: a binder removes its own ids from the parts it scopes
+     * over, and parts substitute leaves alone (such as the bounds of an
+     * operator's formals) contribute nothing.
+     * ====================================================================== *)
 
     let noIds: Array(Int) = array of :Int end
 
@@ -145,7 +146,8 @@ export
             found
         end
 
-    (* Free variables being gathered: ids (with repeats), and whether a metavariable was seen *)
+    (* Free variables being gathered: ids (with repeats), and whether a
+     * metavariable was seen *)
     Let Acc = Tuple ids: vector.T(Int) var hasMeta: Bool end
 
     let newAcc(): Acc = tuple let ids = vector.new(:Int) let var hasMeta = false end
@@ -210,7 +212,8 @@ export
             case form
                 when typeException with x then addType(acc x.payload none)
                 when typeTuple with x then
-                    (* A type formal's bound sees the substitution; later components do not see the formal's id *)
+                    (* A type formal's bound sees the substitution; later
+                     * components do not see the formal's id *)
                     begin
                         let bound = vector.new(:Int)
                         for i = 0 upto {extent x.fields - 1} do
@@ -236,8 +239,8 @@ export
                 when typeArray with x then addType(acc x.element none)
                 when typeOut with x then addType(acc x.element none)
                 when typeAll with x then
-                    (* The quantifiers are a telescope: each bound may refer to the quantifiers before it, and the
-                     * body sees them all *)
+                    (* The quantifiers are a telescope: each bound may refer to
+                     * the quantifiers before it, and the body sees them all *)
                     begin
                         let earlier = vector.new(:Int)
                         for i = 0 upto {extent x.quantifiers - 1} do
@@ -303,11 +306,12 @@ export
     (* =========================================================================
      * 4. Hash-consing
      *
-     * Constructing a node gives the canonical node of its structure. The key is the form's tag and every field,
-     * display-only fields included (record provenance, binder and path names), so nodes that would print
-     * differently are never merged; child nodes appear in keys by id, since they are canonical already. Nodes
-     * containing a metavariable are not hash-consed.
-     * ========================================================================= *)
+     * Constructing a node gives the canonical node of its structure. The key is
+     * the form's tag and every field, display-only fields included (record
+     * provenance, binder and path names), so nodes that would print differently
+     * are never merged; child nodes appear in keys by id, since they are
+     * canonical already. Nodes containing a metavariable are not hash-consed.
+     * ====================================================================== *)
 
     Let Counters = Tuple var node: Int var meta: Int end
     let counters: Counters = tuple let var node = 0 let var meta = 0 end
@@ -556,9 +560,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Constructors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let typeKind: Kind = makeKind(option kindType of KindForm end)
     let powerKind(bound: Type): Kind = makeKind(option kindPower of KindForm with let bound = bound end)
@@ -665,9 +669,9 @@ export
             end
         end)
 
-    (* =========================================================================
+    (* ======================================================================
      * 6. Substitution
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Subst = hashMap.T(Int Type)
     Let KindSubst = hashMap.T(Int Kind)
@@ -697,8 +701,9 @@ export
             subst
         end
 
-    (* Whether a substitution leaves a node with these free variables alone; a node with a metavariable is never
-     * skipped, since the metavariable may be solved to anything *)
+    (* Whether a substitution leaves a node with these free variables alone; a
+     * node with a metavariable is never skipped, since the metavariable may be
+     * solved to anything *)
     let untouched(fv: Array(Int) hasMeta: Bool subst: Subst): Bool =
         begin
             let var clear = not(hasMeta)
@@ -867,7 +872,8 @@ export
             when typeOut with x then
                 begin let e = substitute(x.element subst) if same(e x.element) then t else outType(e) end end
             when typeAll with x then
-                (* A bound does not see the quantifiers before it substituted, nor does the body any quantifier *)
+                (* A bound does not see the quantifiers before it substituted,
+                 * nor does the body any quantifier *)
                 begin
                     let var active = subst
                     let var changed = false
@@ -950,7 +956,8 @@ export
                     if sameKind(bound x.bound) then t else pathType(x.rootName x.rootSymbolId x.fieldName bound) end
                 end
             when typeAlias with x then
-                (* A substitution that changes the target leaves a type that is no longer the named alias *)
+                (* A substitution that changes the target leaves a type that is
+                 * no longer the named alias *)
                 begin
                     let target = substitute(x.target subst)
                     if same(target x.target) then t else target end
@@ -1017,9 +1024,9 @@ export
             else k
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 7. Unfolding recursive types, and lazy evaluation
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* The nodes of a recursive group's bindings, shared by all of them *)
     let siblings(t: Type): Array(Type) =
@@ -1065,8 +1072,9 @@ export
                         when typeRec with r then substitute(r.body singleSubst(r.symbolId t))
                         when typeRecGroup with g then
                             begin
-                                (* Each other binding of the group is an alias named after it, qualified as this
-                                 * alias is (m.Forest unfolds with m.Tree) *)
+                                (* Each other binding of the group is an alias
+                                 * named after it, qualified as this alias is
+                                 * (m.Forest unfolds with m.Tree) *)
                                 let current = g.bindings[g.activeIndex].name
                                 let qualifier = if strutil.endsWith(a.name current) then
                                     stringOp.getSub(a.name 0 {stringOp.length(a.name) - stringOp.length(current)})
@@ -1168,9 +1176,9 @@ export
             else k
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 8. Components and queries
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let ValueField = Tuple name: maybe.T(String) type: Type isVar: Bool end
 
@@ -1296,8 +1304,9 @@ export
             else raise internalError with "autoPayloadType: not an auto type" end
         end
 
-    (* Whether inspect may select a branch whose type is a proper supertype of an auto value's type: only when the
-     * type parameter occurs in the signature solely as the whole type of immutable components *)
+    (* Whether inspect may select a branch whose type is a proper supertype of
+     * an auto value's type: only when the type parameter occurs in the
+     * signature solely as the whole type of immutable components *)
     let autoMatchesSubtypes(t: Type): Bool =
         case t.form
             when typeAuto with x then
@@ -1335,11 +1344,12 @@ export
     let aliasReference(name: String symbolId: Int target: Type): Type =
         if isBuiltinPrimitive(name target) then target else aliasType(name symbolId target) end
 
-    (* =========================================================================
+    (* ======================================================================
      * 9. Traversals
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A node's parts in the order of its fields (the bootstrap's type_fields): its child types and kinds *)
+    (* A node's parts in the order of its fields (the bootstrap's type_fields):
+     * its child types and kinds *)
     Def Part = Option
         partType with t: Type end
         partKind with k: Kind end
@@ -1423,8 +1433,9 @@ export
             parts
         end
 
-    (* A type with its child types and kinds mapped (in mapAliases and stripAliases): t itself if every part maps
-     * to itself. A closure cannot assign a var, so a part's change is noted in a tuple's field. *)
+    (* A type with its child types and kinds mapped (in mapAliases and
+     * stripAliases): t itself if every part maps to itself. A closure cannot
+     * assign a var, so a part's change is noted in a tuple's field. *)
     Let Changed = Tuple var any: Bool end
 
     let rebuild(t: Type ft: All(x: Type) Type fk: All(x: Kind) Kind): Type =
@@ -1856,13 +1867,14 @@ export
             visit(t)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 10. Metavariables
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let isSolved(m: Meta): Bool = maybe.isSome(:Type m.instance)
 
-    (* The unsolved metavariables in a type or a kind (looking through solved ones), in order *)
+    (* The unsolved metavariables in a type or a kind (looking through solved
+     * ones), in order *)
     let metasIn(start: Part): Array(Type) =
         begin
             let found = vector.new(:Type)
@@ -1901,9 +1913,9 @@ export
     (* Substitution prunes solved metavariables *)
     let resolveMetas(t: Type): Type = substitute(t newSubst())
 
-    (* =========================================================================
+    (* ======================================================================
      * 11. Printing, as the bootstrap's __str__ methods do
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let joinStrings(items: vector.T(String)): String = strutil.join(" " items)
 

@@ -19,9 +19,9 @@ export
     Let TypeForm = ast.TypeForm
     Let ExprForm = ast.ExprForm
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Values
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let wrong(A::TYPE what: String): A = raise engine.error with "expected " <> what end
 
@@ -65,9 +65,9 @@ export
 
     let firstOf(A::TYPE v: vector.T(A)): A = vector.get(:A v 0)
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Positions and Errors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* From start to the end of the rule's match *)
     let from(ctx: Ctx start: Int): location.Span = location.span(ctx.file start ctx.stop)
@@ -87,8 +87,8 @@ export
             else "This phrase"
         end
 
-    (* A phrase other than at the top level: a declaration (an import is one) or an expression statement, as the AST
-     * holds it *)
+    (* A phrase other than at the top level: a declaration (an import is one) or
+     * an expression statement, as the AST holds it *)
     let decl(ctx: Ctx v: Val): ast.Expr =
         case v
             when expr with x then x.val
@@ -102,9 +102,9 @@ export
         end
     let decls(ctx: Ctx v: Val): vector.T(ast.Expr) = each(:ast.Expr optItems(v) fun(b: Val): ast.Expr decl(ctx b))
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Node Construction
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let mValue = option modeValue of ast.ParamMode end
     let mVar = option modeVar of ast.ParamMode end
@@ -129,8 +129,8 @@ export
     let callArgs(ctx: Ctx bindings: Val): vector.T(ast.Expr) =
         each(:ast.Expr optItems(bindings) fun(b: Val): ast.Expr stmtExpr(decl(ctx b)))
 
-    (* The expression for a body of phrases: a lone expression itself, otherwise a block (including a lone
-     * declaration, which is not an expression) *)
+    (* The expression for a body of phrases: a lone expression itself, otherwise
+     * a block (including a lone declaration, which is not an expression) *)
     let body(ctx: Ctx bindings: Val start: Int): ast.Expr =
         begin
             let phrases = decls(ctx bindings)
@@ -168,7 +168,8 @@ export
                 option exprArray of ExprForm with let elements = elements let elementType = leading end)
         end
 
-    (* The tuple component a let declares: a function's parameters become a function value *)
+    (* The tuple component a let declares: a function's parameters become a
+     * function value *)
     let tupleBinding(ctx: Ctx e: ast.Expr): ast.TupleFieldBinding =
         case e.form
             when declLetVal with x then
@@ -196,8 +197,8 @@ export
             begin
                 let e = decl(ctx b)
                 case e.form
-                    (* Recursive declarations keep their parameters and annotations, which type them before their
-                     * values *)
+                    (* Recursive declarations keep their parameters and
+                     * annotations, which type them before their values *)
                     when declLetVal with x then
                         if x.isRec then fieldDecl(e) else fieldVal(tupleBinding(ctx e)) end
                     when declLetValGroup with x then
@@ -222,7 +223,8 @@ export
                 end
             end)
 
-    (* An option's payload from the phrases of its with clause: a lone tuple itself *)
+    (* An option's payload from the phrases of its with clause: a lone tuple
+     * itself *)
     let optionPayload(ctx: Ctx withBindings: Val start: Int): maybe.T(ast.Expr) =
         begin
             let phrases = optItems(withBindings)
@@ -244,11 +246,12 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 4. Signatures and Curried Functions
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* The name a signature item declares (none for an anonymous field), or "_" for a group of declarations *)
+    (* The name a signature item declares (none for an anonymous field), or "_"
+     * for a group of declarations *)
     let signatureName(s: ast.Signature): maybe.T(String) =
         case s
             when sigValue with x then x.val.name
@@ -276,7 +279,8 @@ export
                 wrong(:ast.TypeBinding "a type declaration")
         end
 
-    (* A declaration in a signature: a type declaration or a group of them, or a kind declaration *)
+    (* A declaration in a signature: a type declaration or a group of them, or a
+     * kind declaration *)
     let declSig(e: ast.Expr): Val =
         case e.form
             when declTypeBinding then
@@ -304,8 +308,9 @@ export
             else reject(:ast.FieldSig ctx sigSpan(v) what <> " has only values")
         end
 
-    (* The quantifier for one signature item of All(...) or of a curried parameter group: a type parameter keeps
-     * its kind; a value parameter x: T is bounded by POWER(T) *)
+    (* The quantifier for one signature item of All(...) or of a curried
+     * parameter group: a type parameter keeps its kind; a value parameter x: T
+     * is bounded by POWER(T) *)
     let quantifier(ctx: Ctx v: Val defaultStart: Int): ast.Quantifier =
         case sigOf(v)
             when sigType with x then
@@ -334,7 +339,8 @@ export
                 end
         end
 
-    (* The type All(group1) ... All(groupN) result of a curried function signature *)
+    (* The type All(group1) ... All(groupN) result of a curried function
+     * signature *)
     let curriedType(ctx: Ctx groups: Args result: ast.TypeExpr start: Int): ast.TypeExpr =
         begin
             let var current = result
@@ -354,7 +360,8 @@ export
                 fun(v: Val): Bool case sigOf(v) when sigType then true else false end)
             typeFormalOf)
 
-    (* One parenthesized parameter group's value parameters (its named fields) *)
+    (* One parenthesized parameter group's value parameters (its named
+     * fields) *)
     let valueParams(group: Val): vector.T(ast.FormalParam) =
         vector.filterMap(:Val :ast.FormalParam vector.fromArray(:Val items(group)) fun(v: Val): maybe.T(ast.FormalParam)
             case sigOf(v)
@@ -369,7 +376,8 @@ export
                     maybe.none(:ast.FormalParam)
             end)
 
-    (* One function per parameter group, nested; the return type annotates the innermost one *)
+    (* One function per parameter group, nested; the return type annotates the
+     * innermost one *)
     let curriedFun(ctx: Ctx groups: Args returnType: maybe.T(ast.TypeExpr) body: ast.Expr start: Int): ast.Expr =
         if extent(groups) is 0 then
             ast.makeExpr(from(ctx start) option exprFun of ExprForm with
@@ -391,9 +399,9 @@ export
             current
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Generic Actions
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let first(ctx: Ctx args: Args): Val = args[0]
 
@@ -410,9 +418,9 @@ export
 
     let lexeme(ctx: Ctx args: Args): Val = vStr(tok(args[0]).lexeme)
 
-    (* =========================================================================
+    (* ======================================================================
      * 6. Identifiers, Paths, and Imports
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let ideList(ctx: Ctx args: Args): Val = eachVal(items(args[0]) fun(t: Val): Val vStr(tok(t).lexeme))
 
@@ -470,11 +478,12 @@ export
                 if aliased then somePaths(paths) else noPaths end dirPath(ifacePath)))
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 7. Kinds
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* Curries ALL(A,B::K1 C::K2) K into ALL(A::K1) ALL(B::K1) ALL(C::K2) K (Cardelli's ALL(TypeSignature)Kind) *)
+    (* Curries ALL(A,B::K1 C::K2) K into ALL(A::K1) ALL(B::K1) ALL(C::K2) K
+     * (Cardelli's ALL(TypeSignature)Kind) *)
     let kindAll(ctx: Ctx args: Args): Val =
         begin
             let leftParen = tok(args[1])
@@ -482,7 +491,8 @@ export
             let var kind = ty(args[3])
             for i = {extent(signatures) - 1} downto 0 do
                 let s = sigOf(signatures[i])
-                (* A type formal's or type declaration's bound; any other item's parameter is a type *)
+                (* A type formal's or type declaration's bound; any other item's
+                 * parameter is a type *)
                 let paramKind = case s
                     when sigType with x then x.val.bound
                     when sigTypeBinding with x then maybe.unwrapOr(:ast.KindExpr x.val.bound typeKind(at(ctx leftParen)))
@@ -513,9 +523,9 @@ export
 
     let hasKindSubtype(ctx: Ctx args: Args): Val = vType(powerKind(at(ctx tok(args[0])) ty(args[1])))
 
-    (* =========================================================================
+    (* ======================================================================
      * 8. Types
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let typeInfix(ctx: Ctx args: Args): Val =
         if present(args[1]) then
@@ -661,14 +671,16 @@ export
     let typeExternal(ctx: Ctx args: Args): Val =
         mkType(at(ctx tok(args[0])) option typeExternal of TypeForm with let cType = stringValue(tok(args[1])) end)
 
-    (* =========================================================================
+    (* ======================================================================
      * 9. Signatures
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let sigKindDecl(ctx: Ctx args: Args): Val = vList(array of declSig(ex(args[0])) end)
 
-    (* Let [Rec] or Def [Rec] TypeDecl {and TypeDecl}: one declaration is a binding positioned at the keyword; two or
-     * more are a group positioned at the keyword, whose members share its Rec and Def and keep their own positions *)
+    (* Let [Rec] or Def [Rec] TypeDecl {and TypeDecl}: one declaration is a
+     * binding positioned at the keyword; two or more are a group positioned at
+     * the keyword, whose members share its Rec and Def and keep their own
+     * positions *)
     let typeBinding(ctx: Ctx keyword: tokens.Token recToken: Val declarations: Val isDef: Bool): ast.Expr =
         begin
             let withFlags = fun(e: ast.Expr sp: location.Span): ast.Expr
@@ -696,7 +708,8 @@ export
     let sigDefType(ctx: Ctx args: Args): Val =
         vList(array of declSig(typeBinding(ctx tok(args[0]) args[1] args[2] true)) end)
 
-    (* [var | out] IdeList {( Signature )} : Type: each name's field, of a curried type if it has parameters *)
+    (* [var | out] IdeList {( Signature )} : Type: each name's field, of a
+     * curried type if it has parameters *)
     let fieldSigs(ctx: Ctx args: Args): Val =
         begin
             let colon = tok(args[4])
@@ -711,7 +724,8 @@ export
 
     let sigMutField(ctx: Ctx args: Args): Val = vList(array of args[0] end)
 
-    (* [IdeList] HasKind: a formal for each name, or an anonymous one, positioned at the kind *)
+    (* [IdeList] HasKind: a formal for each name, or an anonymous one,
+     * positioned at the kind *)
     let typeFormals(ctx: Ctx args: Args): Val =
         begin
             let bound = ty(args[1])
@@ -744,7 +758,8 @@ export
             vList(vector.toArray(:Val result))
         end
 
-    (* {ide {, ide} [with Signature end]}: the tags are matched as tokens for their positions *)
+    (* {ide {, ide} [with Signature end]}: the tags are matched as tokens for
+     * their positions *)
     let optionFieldSigs(ctx: Ctx args: Args): Val =
         begin
             let result = vector.new(:Val)
@@ -769,9 +784,9 @@ export
                 let val = ast.fieldSig(tok(args[0]).span.startOffset maybe.none(:String) maybe.some(:ast.TypeExpr ty(args[1])) mode)
             end at(ctx tok(args[0])))
 
-    (* =========================================================================
+    (* ======================================================================
      * 10. Values
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let valueInfix(ctx: Ctx args: Args): Val =
         if present(args[1]) then
@@ -999,8 +1014,9 @@ export
             end)
         end
 
-    (* --- Case, inspect, and try: {when Pattern [with Binder [: Type]] then Binding} [else Binding], which match as
-     * a list of the branches and the else body --- *)
+    (* --- Case, inspect, and try: {when Pattern [with Binder [: Type]] then
+     * Binding} [else Binding], which match as a list of the branches and the
+     * else body --- *)
 
     let branches(ctx: Ctx args: Args branch: All(whenToken: tokens.Token pattern: Val binder: Val bindings: Val) Val): Val =
         vList(array of
@@ -1149,9 +1165,9 @@ export
                 end
             end)
 
-    (* =========================================================================
+    (* ======================================================================
      * 11. Declarations and Phrases
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let kindDecl(ctx: Ctx args: Args): Val =
         mkExpr(at(ctx tok(args[0])) option declDefKind of ExprForm with
@@ -1159,7 +1175,8 @@ export
             let kindVal = ty(args[1])
         end)
 
-    (* ide {( TypeFormals )} [HasKind] = Type: a type operator's formals make its value a Fun *)
+    (* ide {( TypeFormals )} [HasKind] = Type: a type operator's formals make
+     * its value a Fun *)
     let typeDecl(ctx: Ctx args: Args): Val =
         begin
             let ide = tok(args[0])
@@ -1187,8 +1204,9 @@ export
             end)
         end
 
-    (* [var] ide {( Signature )} [: Type] = Value: let f(x: Int): Int = ... keeps its parameters on the binding;
-     * other parameters make the value a (curried) function *)
+    (* [var] ide {( Signature )} [: Type] = Value: let f(x: Int): Int = ...
+     * keeps its parameters on the binding; other parameters make the value a
+     * (curried) function *)
     let valueDecl(ctx: Ctx args: Args): Val =
         begin
             let ide = tok(args[1])
@@ -1267,8 +1285,9 @@ export
 
     let isVarDecl(e: ast.Expr): Bool = case e.form when declLetVal with x then x.isVar else false end
 
-    (* let [rec] ValueDecl {and ValueDecl}: one declaration is positioned at let; two or more are a group positioned
-     * at let, whose members share its rec and keep their own positions *)
+    (* let [rec] ValueDecl {and ValueDecl}: one declaration is positioned at
+     * let; two or more are a group positioned at let, whose members share its
+     * rec and keep their own positions *)
     let letValue(ctx: Ctx args: Args): Val =
         begin
             let isRec = present(args[1])
@@ -1303,8 +1322,9 @@ export
             let phrase = tuple let items = imports(args[1]) end
         end))
 
-    (* A top-level phrase: a type or kind argument is an expression, other expressions and declarations are
-     * declarations (an expression is an expression statement) *)
+    (* A top-level phrase: a type or kind argument is an expression, other
+     * expressions and declarations are declarations (an expression is an
+     * expression statement) *)
     let topPhrase(v: Val): ast.Phrase =
         case v
             when phrase with x then

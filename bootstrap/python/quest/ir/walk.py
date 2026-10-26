@@ -1,6 +1,8 @@
-"""Traversals of the IR shared by the passes and the verifier: the bodies a statement contains, the variables it
-binds, the atoms it uses, and the global variables of a unit; and the IR's explicit traversal, which every walker of
-nodes' fields uses (fields_of and rebuild, contents, replace_vars, view_map_of), with a case for each class of node."""
+"""Traversals of the IR shared by the passes and the verifier: the bodies a
+statement contains, the variables it binds, the atoms it uses, and the global
+variables of a unit; and the IR's explicit traversal, which every walker of
+nodes' fields uses (fields_of and rebuild, contents, replace_vars, view_map_of),
+with a case for each class of node."""
 
 from __future__ import annotations
 
@@ -10,7 +12,8 @@ from quest.ir import nodes as ir
 
 
 def statement_bodies(s) -> list[ir.Body]:
-    """The bodies a statement contains (not those of the functions a funs statement binds)."""
+    """The bodies a statement contains (not those of the functions a funs
+    statement binds)."""
     match s:
         case ir.If(then_body=t, else_body=e):
             return [t, e]
@@ -26,7 +29,8 @@ def statement_bodies(s) -> list[ir.Body]:
 
 
 def statement_binders(s) -> list[ir.Var]:
-    """The variables a statement binds itself (not those bound in the bodies it contains)."""
+    """The variables a statement binds itself (not those bound in the bodies it
+    contains)."""
     match s:
         case ir.Let(var=v) | ir.VarDecl(var=v):
             return [v]
@@ -46,7 +50,8 @@ def statement_binders(s) -> list[ir.Var]:
 
 
 def _atoms_of(node) -> Iterator[ir.Atom]:
-    """The atoms an operation or a statement uses directly (not in the bodies or functions it contains)."""
+    """The atoms an operation or a statement uses directly (not in the bodies or
+    functions it contains)."""
     if isinstance(node, (ir.Var, ir.Const)):
         yield node
         return
@@ -63,8 +68,9 @@ def _atoms_of(node) -> Iterator[ir.Atom]:
 
 
 def statement_uses(s) -> list[ir.Atom]:
-    """The atoms a statement uses directly: its operation's, or its own (a condition, a value, a jump's arguments);
-    not those of the bodies or functions it contains, nor its binders."""
+    """The atoms a statement uses directly: its operation's, or its own (a
+    condition, a value, a jump's arguments); not those of the bodies or
+    functions it contains, nor its binders."""
     match s:
         case ir.Let(value=value) | ir.Do(value=value):
             return list(_atoms_of(value))
@@ -88,8 +94,8 @@ def statement_uses(s) -> list[ir.Atom]:
 
 
 def walk_statements(body: ir.Body, into_functions: bool = True) -> Iterator:
-    """Every statement in body and the bodies it contains (and in the functions funs statements bind, unless
-    into_functions is false), in order."""
+    """Every statement in body and the bodies it contains (and in the functions
+    funs statements bind, unless into_functions is false), in order."""
     for s in body.statements:
         yield s
         if into_functions and isinstance(s, ir.Funs):
@@ -100,8 +106,9 @@ def walk_statements(body: ir.Body, into_functions: bool = True) -> Iterator:
 
 
 def global_variables(unit: ir.Unit) -> set[int]:
-    """The variables (by identity) a unit's main body and its modules' initializers bind outside loops and functions:
-    each is bound at most once in a run, and is a global, which functions use rather than capture."""
+    """The variables (by identity) a unit's main body and its modules'
+    initializers bind outside loops and functions: each is bound at most once in
+    a run, and is a global, which functions use rather than capture."""
     found: set[int] = set()
 
     def visit(body: ir.Body) -> None:
@@ -120,26 +127,30 @@ def global_variables(unit: ir.Unit) -> set[int]:
 # The explicit traversal: a case for each class of node
 
 def fields_of(node) -> Optional[tuple]:
-    """The values of an IR node's fields, in order; None for a value that is not an IR node."""
+    """The values of an IR node's fields, in order; None for a value that is not
+    an IR node."""
     accessor = _FIELDS_OF.get(type(node))
     return accessor(node) if accessor is not None else None
 
 
 def contents(node) -> Optional[tuple]:
-    """The values of an IR node's fields, in order, but for its descriptor operands (ir.DESCRIPTOR_FIELDS) and the
-    describe pass's other results (an inspect's witness, a unit's static data): what the program computes, as the
+    """The values of an IR node's fields, in order, but for its descriptor
+    operands (ir.DESCRIPTOR_FIELDS) and the describe pass's other results (an
+    inspect's witness, a unit's static data): what the program computes, as the
     passes before describe make it; None for a value that is not an IR node."""
     accessor = _CONTENTS.get(type(node))
     return accessor(node) if accessor is not None else None
 
 
 def rebuild(node, values: tuple):
-    """A new IR node of node's class whose fields are values (as fields_of gives them)."""
+    """A new IR node of node's class whose fields are values (as fields_of gives
+    them)."""
     return _REBUILD[type(node)](node, values)
 
 
 def _replaced(value, f):
-    """value with each variable v in it (it, or in the tuples it is) replaced by f(v)."""
+    """value with each variable v in it (it, or in the tuples it is) replaced by
+    f(v)."""
     if isinstance(value, ir.Var):
         return f(value)
     if isinstance(value, tuple):
@@ -149,9 +160,10 @@ def _replaced(value, f):
 
 
 def replace_vars(node, f) -> None:
-    """Replaces, in place, each variable v that a statement or operation holds in its fields (directly or in
-    tuples; and in a let's or do's operation) by f(v); not those in the bodies, functions, cases, or plans it
-    contains, nor a closure's code."""
+    """Replaces, in place, each variable v that a statement or operation holds
+    in its fields (directly or in tuples; and in a let's or do's operation) by
+    f(v); not those in the bodies, functions, cases, or plans it contains, nor a
+    closure's code."""
     match node:
         case ir.Prim():
             node.args = _replaced(node.args, f)
@@ -291,8 +303,8 @@ def replace_vars(node, f) -> None:
 
 
 def view_map_of(node) -> Optional[ir.Var]:
-    """The view map an operation or a statement reads a value through its type's bound by (after the describe pass),
-    if it has one."""
+    """The view map an operation or a statement reads a value through its type's
+    bound by (after the describe pass), if it has one."""
     match node:
         case ir.TupleField() | ir.RecordField() | ir.IsTag() | ir.Payload() | ir.Ordinal() | ir.AddrField() | \
                 ir.AddrComponent() | ir.StoreField() | ir.StoreComponent() | ir.Switch():

@@ -1,4 +1,5 @@
-(* Quest Self-Hosted Compiler: Interface, Module, and Import Elaboration Implementation *)
+(* Quest Self-Hosted Compiler: Interface, Module, and Import Elaboration
+ * Implementation *)
 
 module elaboration : Elaboration
 import
@@ -112,7 +113,8 @@ export
             end
         end
 
-    (* body with the current scope s, which is restored even if body raises an error *)
+    (* body with the current scope s, which is restored even if body raises an
+     * error *)
     let inScope(A::TYPE e: env.T s: Scope body: All() A): A =
         begin
             let saved = e.currentScope
@@ -129,9 +131,9 @@ export
             result
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Module export scopes
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let createModuleExportScope(
         moduleName: String canon: String interfaceScope: Scope e: env.T concreteDefs: maybe.T(hashMap.T(String Type))
@@ -179,7 +181,8 @@ export
             exportScope
         end
 
-    (* The external type declarations (Let T = external "...") of a module's source file *)
+    (* The external type declarations (Let T = external "...") of a module's
+     * source file *)
     let extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String Type) =
         begin
             let defs = hashMap.new(:String :Type stringOp.equal hash.string)
@@ -240,7 +243,8 @@ export
             scope
         end
 
-    (* Records the abstract types a module exports with their representations (docs/dynamic.md section 2.3) *)
+    (* Records the abstract types a module exports with their representations
+     * (docs/dynamic.md section 2.3) *)
     let registerAbstractTypes(canon: String exportScope: Scope internalScope: Scope): Ok =
         begin
             let types = pairs(:symbols.TypeSymbol exportScope.types)
@@ -258,9 +262,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Interfaces
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let elaborateInterface(decl: ast.InterfaceDecl offset: Int e: env.T): typedAst.Binding =
         begin
@@ -268,7 +272,8 @@ export
             let interfaceScope = symbols.newScope(maybe.some(:Scope importScope) "interface_" <> decl.name)
             interfaceScope.moduleName := maybe.some(:String decl.name)
 
-            (* 1. Imports, into the import scope (available for signatures, not exported by the interface) *)
+            (* 1. Imports, into the import scope (available for signatures, not
+             *    exported by the interface) *)
             for i = 0 upto {vector.length(:ast.ImportItem decl.imports) - 1} do
                 let imp = vector.get(:ast.ImportItem decl.imports i)
                 env.atImport(:Ok e imp.offset 1 fun(): Ok
@@ -276,7 +281,8 @@ export
                         let ifacePath = effectiveInterfacePath(imp)
                         let source = importInterface(ifacePath imp.interfaceName e)
                         if vector.empty(:String imp.names) then
-                            (* An unaliased interface import: interface inheritance *)
+                            (* An unaliased interface import: interface
+                             * inheritance *)
                             let isAlias = maybe.isSome(:String imp.interfacePath) andif
                                 not(stringOp.equal(imp.interfaceName ifacePath))
                             declareTypesAndKinds(source if isAlias then importScope else interfaceScope end)
@@ -377,9 +383,9 @@ export
             end)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Modules
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let typeOf(sym: symbols.TypeSymbol): Type =
         if maybe.isSome(:Type sym.definition) then
@@ -437,8 +443,9 @@ export
                             "' incompatibly with interface '" <> decl.interfaceName <> "'" offset)
                     end
                 end
-                (* A defined type has the interface's kind if it is a member of it, whatever kind it was declared with;
-                 * an undefined one must have been declared with a subkind *)
+                (* A defined type has the interface's kind if it is a member of
+                 * it, whatever kind it was declared with; an undefined one must
+                 * have been declared with a subkind *)
                 let satisfies = if maybe.isSome(:Type modSym.definition) then
                     try
                         kinds.checkKind(maybe.unwrap(:Type modSym.definition) ifaceSym.kind maybe.some(:env.T e))
@@ -572,12 +579,14 @@ export
                             state.failed := true
                         end
                     end
-                    (* A member that failed was reported: the module fails without another error *)
+                    (* A member that failed was reported: the module fails
+                     * without another error *)
                     if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end
                     checkConformance(decl offset targetInterface internalScope e)
                 end)
 
-            (* 4. The exported scope, opaque for the interface's abstract types *)
+            (* 4. The exported scope, opaque for the interface's abstract
+             *    types *)
             let canon = graph.canonicalName(env.resolveModule(e decl.name))
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
             let exportScope = if maybe.isNone(:Scope u.exportScope) then
@@ -586,8 +595,10 @@ export
                 for i = 0 upto {extent types - 1} do
                     let entry = types[i]
                     if maybe.isSome(:Type entry.value.definition) then
-                        (* An external type is named as extractModuleExternalTypes names it, as the bootstrap's
-                         * typecheck-only runs, which type modules with fresh artifacts through their interfaces, have
+                        (* An external type is named as
+                         * extractModuleExternalTypes names it, as the
+                         * bootstrap's typecheck-only runs, which type modules
+                         * with fresh artifacts through their interfaces, have
                          * it (module.T) *)
                         let def = maybe.unwrap(:Type entry.value.definition)
                         let named = case def.form
@@ -631,9 +642,9 @@ export
             end)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Imports
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let elaborateImport(phrase: ast.ImportPhrase offset: Int e: env.T): typedAst.Binding =
         begin
@@ -645,7 +656,8 @@ export
                         let ifacePath = effectiveInterfacePath(item)
                         let ifaceScope = importInterface(ifacePath item.interfaceName e)
                         if vector.empty(:String item.names) then
-                            (* import : Interface binds the interface's types and kinds *)
+                            (* import : Interface binds the interface's types
+                             * and kinds *)
                             declareTypesAndKinds(ifaceScope e.currentScope)
                             vector.append(:typedAst.ImportItem items importItem(item maybe.none(:Array(String))
                                 maybe.none(:Array(maybe.T(Int))) maybe.some(:Array(String) array of :String end)))

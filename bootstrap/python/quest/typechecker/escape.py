@@ -37,9 +37,11 @@ def check_dynamic_type_args(
     offset: int,
     check: Callable[[QType, str, int], None],
 ) -> None:
-    """Checks with `check` (the closedness check) the type argument of a function shaped like dynamic.new
-    (A::TYPE a:A): T or dynamic.be (A::TYPE d:T): A for an auto type T, which record or test the type argument at
-    run time (inside the function it is a type parameter, which the closedness check allows)."""
+    """Checks with `check` (the closedness check) the type argument of a
+    function shaped like dynamic.new (A::TYPE a:A): T or dynamic.be (A::TYPE
+    d:T): A for an auto type T, which record or test the type argument at run
+    time (inside the function it is a type parameter, which the closedness check
+    allows)."""
     body = all_type.body
     if len(all_type.quantifiers) != 1 or not isinstance(body, QFunType) or len(body.params) != 1 or not type_args:
         return
@@ -57,8 +59,9 @@ def check_dynamic_type_args(
 
 
 def check_no_package_types(t: QType, what: str, offset: int) -> None:
-    """Rejects a type that mentions an abstract type projected from a package value (t.A): its identity is the
-    package's hidden type, which is not known at run time."""
+    """Rejects a type that mentions an abstract type projected from a package
+    value (t.A): its identity is the package's hidden type, which is not known
+    at run time."""
     paths = find_path_types(strip_aliases(t))
     if paths:
         names = ", ".join(sorted({f"{p.root_name}.{p.field_name}" for p in paths}))
@@ -75,7 +78,8 @@ def check_no_escaping_path_types(
     context_desc: str,
     offset: int = 0,
 ) -> None:
-    """Ensures that no abstract path-dependent types rooted at local variables escape."""
+    """Ensures that no abstract path-dependent types rooted at local variables
+    escape."""
     for p in find_path_types(typ):
         if p.root_symbol_id in local_symbol_ids:
             raise QuestTypeError(

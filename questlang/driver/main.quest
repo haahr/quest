@@ -1,12 +1,17 @@
 (* Quest Self-Hosted Compiler: Driver
  *
- * Runs the self-hosted compiler's phases on a Quest file, as the bootstrap driver (bootstrap/python/quest_driver.py)
- * runs the bootstrap's: `main --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar, or
- * typecheck) in the bootstrap's format on standard output, and the diagnostics on standard error, exiting with 1 if
- * there are errors. The interpret phase, the default, runs the program in the tree-walking interpreter and prints its
- * last phrase's result (or, with --echo, every phrase's); `-e PROGRAM` runs a program given as a string. The
- * arguments after FILE are the program's, as are those after a `--` (which is how `-e` gets any). run_tests.py --self-hosted compiles it and checks it against the
- * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section 3). *)
+ * Runs the self-hosted compiler's phases on a Quest file, as the bootstrap
+ * driver (bootstrap/python/quest_driver.py) runs the bootstrap's: `main
+ * --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar,
+ * or typecheck) in the bootstrap's format on standard output, and the
+ * diagnostics on standard error, exiting with 1 if there are errors. The
+ * interpret phase, the default, runs the program in the tree-walking
+ * interpreter and prints its last phrase's result (or, with --echo, every
+ * phrase's); `-e PROGRAM` runs a program given as a string. The arguments after
+ * FILE are the program's, as are those after a `--` (which is how `-e` gets
+ * any). run_tests.py --self-hosted compiles it and checks it against the
+ * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section
+ * 3). *)
 
 import
     questlang/common/location : questlang/common/Location
@@ -46,7 +51,8 @@ import
     system : System
 ;
 
-(* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and runs (run_ir_STAGE) *)
+(* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and runs
+ * (run_ir_STAGE) *)
 let irStages = array of "core" "specialized" "closed" "represented" "described" end;
 
 let phases = array of
@@ -63,7 +69,8 @@ let usage(message: String): Ok =
         system.sysexit(2)
     end;
 
-(* The command line: the phase to stop after, the file or the program given, and the program's arguments *)
+(* The command line: the phase to stop after, the file or the program given, and
+ * the program's arguments *)
 let options =
     begin
         let var stopAfter = "interpret"
@@ -79,7 +86,8 @@ let options =
                 stopAfter := system.args[i + 1]
                 i := i + 2
             elsif {stringOp.equal(arg "--expected-exit")} andif {{i + 1} < extent system.args} then
-                (* What a compiled program's exit status must be; the interpreter's is the program's own *)
+                (* What a compiled program's exit status must be; the
+                 * interpreter's is the program's own *)
                 i := i + 2
             elsif {stringOp.equal(arg "-e")} andif {{i + 1} < extent system.args} then
                 code := maybe.some(:String system.args[i + 1])
@@ -142,7 +150,8 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
         system.sysexit(if diagbag.hasErrors(bag) then 1 else 0 end)
     end;
 
-(* The diagnostic of an error raised while running, in the file whose code raised it, with its frames *)
+(* The diagnostic of an error raised while running, in the file whose code
+ * raised it, with its frames *)
 let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic =
     begin
         let file = if maybe.isSome(:location.SourceMap err.sourceMap) then
@@ -160,7 +169,8 @@ let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagno
         d
     end;
 
-(* The stage a phase dumps or runs the IR at (the phase's name after its prefix), if it is an IR phase *)
+(* The stage a phase dumps or runs the IR at (the phase's name after its
+ * prefix), if it is an IR phase *)
 let irStage(prefix: String): maybe.T(String) =
     begin
         let var found = maybe.none(:String)
@@ -170,8 +180,8 @@ let irStage(prefix: String): maybe.T(String) =
         found
     end;
 
-(* A type-checked program lowered to the IR and taken through the passes to stage, each result verified when
- * QUEST_CHECK_IR=1 *)
+(* A type-checked program lowered to the IR and taken through the passes to
+ * stage, each result verified when QUEST_CHECK_IR=1 *)
 let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
     begin
         let var unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
@@ -207,7 +217,8 @@ let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         end
     end;
 
-(* The tree-walking interpreter's root frame for a program, with its arguments *)
+(* The tree-walking interpreter's root frame for a program, with its
+ * arguments *)
 let runFrame(e: env.T sm: location.SourceMap): model.Frame =
     begin
         let f = treewalk.newRoot(e.units)
@@ -221,8 +232,9 @@ let runFrame(e: env.T sm: location.SourceMap): model.Frame =
         f
     end;
 
-(* Runs a type-checked program's IR in the IR interpreter, as the bootstrap's run_ir_STAGE phases do: the IR prints
- * the last phrase's result itself (or every phrase's, with --echo) *)
+(* Runs a type-checked program's IR in the IR interpreter, as the bootstrap's
+ * run_ir_STAGE phases do: the IR prints the last phrase's result itself (or
+ * every phrase's, with --echo) *)
 let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T stage: String): Ok =
     begin
         let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
@@ -248,7 +260,8 @@ let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag
 let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let f = runFrame(e sm)
-        (* The program's phrases run in the outermost frame (docs/exceptions.md section 4) *)
+        (* The program's phrases run in the outermost frame (docs/exceptions.md
+         * section 4) *)
         vector.append(:String f.root.callStack diagnostics.mainFrame)
         try
             let results = treewalk.evalProgramPhrases(program f fun(r: treewalk.PhraseResult): Ok

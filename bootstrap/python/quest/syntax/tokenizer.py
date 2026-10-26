@@ -16,7 +16,8 @@ from quest.diagnostics import QuestCompilerError
 
 
 class TokenizerError(QuestCompilerError):
-    """Raised on lexical errors (unterminated literals, invalid characters, etc.)."""
+    """Raised on lexical errors (unterminated literals, invalid characters,
+    etc.)."""
 
 
 # Single-character escapes: \n \t \r \b \f \\ \' \"
@@ -67,7 +68,8 @@ class Tokenizer:
         return ""
 
     def _skip_while(self, predicate: Callable[[str], bool], limit: int | None = None) -> str:
-        """Consumes characters (at most limit of them) while predicate holds; returns them."""
+        """Consumes characters (at most limit of them) while predicate holds;
+        returns them."""
         start = self.cursor
         while self.cursor < self.length and (limit is None or self.cursor - start < limit):
             if not predicate(self.source_text[self.cursor]):
@@ -144,7 +146,8 @@ class Tokenizer:
         return Token(kind, lexeme, number_value, start)
 
     def _lex_escape_sequence(self) -> str:
-        """Lexes the escape sequence after a backslash (already consumed) and returns its character."""
+        """Lexes the escape sequence after a backslash (already consumed) and
+        returns its character."""
         escape_start = self.cursor - 1
         if self.cursor >= self.length:
             raise TokenizerError("Unterminated escape sequence", escape_start, 1)
@@ -219,7 +222,8 @@ class Tokenizer:
 
     def _lex_symbolic_or_punctuation(self) -> Token:
         start = self.cursor
-        # Stop before ~ followed by a digit (the start of a negative number literal)
+        # Stop before ~ followed by a digit (the start of a negative number
+        # literal)
         while self._peek() in SYMBOLIC_CHARS and not (self._peek() == "~" and self._peek(1).isdigit()):
             self.cursor += 1
 
@@ -227,7 +231,8 @@ class Tokenizer:
         return Token(RESERVED_PUNCTUATION.get(lexeme, TokenKind.SYMBOLIC_INFIX), lexeme, None, start)
 
     def next_token(self) -> Token:
-        """Returns the next Token from the input stream, returning EOF at end."""
+        """Returns the next Token from the input stream, returning EOF at
+        end."""
         self._skip_whitespace_and_comments()
 
         if self.cursor >= self.length:
@@ -236,7 +241,8 @@ class Tokenizer:
         start = self.cursor
         char = self._peek()
 
-        # 1. Delimiters (single characters); a comment opener (* was already skipped
+        # 1. Delimiters (single characters); a comment opener (* was already
+        #    skipped
         if char in DELIMITERS:
             self.cursor += 1
             return Token(DELIMITERS[char], char, None, start)

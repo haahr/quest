@@ -1,4 +1,5 @@
-"""Hash-consing of types, and the per-alias definition objects that keep alias names printable."""
+"""Hash-consing of types, and the per-alias definition objects that keep alias
+names printable."""
 
 from __future__ import annotations
 

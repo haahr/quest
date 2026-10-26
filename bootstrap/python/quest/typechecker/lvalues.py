@@ -15,7 +15,8 @@ def check_lvalue_mode_type(
     offset: int,
     env: Environment,
 ) -> QType:
-    """Unwraps reference cell types and validates invariance (var) or covariance (out)."""
+    """Unwraps reference cell types and validates invariance (var) or covariance
+    (out)."""
     dest_type = (
         dest_raw_type.element_type
         if isinstance(dest_raw_type, (QVarType, QOutType))

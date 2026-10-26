@@ -1,9 +1,12 @@
-"""The tree-walking interpreter of the typed AST: the `interpret` phase and the REPL.
+"""The tree-walking interpreter of the typed AST: the `interpret` phase and the
+REPL.
 
-Evaluates typed expressions, bindings, and programs in lexically scoped runtime environments (RuntimeEnvironment),
-loading and evaluating the modules a program imports (load_module_for_interpreter). Primitive operations and the
-standard library's runtime errors are quest.interpreter.primitives', and printing values by their types
-quest.interpreter.formatting's; the IR interpreter (quest.interpreter.ir_interp) shares them.
+Evaluates typed expressions, bindings, and programs in lexically scoped runtime
+environments (RuntimeEnvironment), loading and evaluating the modules a program
+imports (load_module_for_interpreter). Primitive operations and the standard
+library's runtime errors are quest.interpreter.primitives', and printing values
+by their types quest.interpreter.formatting's; the IR interpreter
+(quest.interpreter.ir_interp) shares them.
 """
 
 from __future__ import annotations
@@ -131,7 +134,8 @@ from quest.typechecker.typed_ast import (
 # ============================================================================
 
 class _LoopExit(Exception):
-    """Internal control-flow signal raised by TypedExit to break out of loops."""
+    """Internal control-flow signal raised by TypedExit to break out of
+    loops."""
     pass
 
 
@@ -140,16 +144,19 @@ class _LoopExit(Exception):
 # ============================================================================
 
 class RuntimeEnvironment:
-    """Lexically scoped symbol table mapping variable names to QValue instances."""
+    """Lexically scoped symbol table mapping variable names to QValue
+    instances."""
 
     def __init__(self, parent: Optional[RuntimeEnvironment] = None):
         self.parent = parent
         self.bindings: dict[str, QValue] = {}
-        # Run-time type arguments: the types bound to the type parameters (by symbol id) of the polymorphic
-        # functions being executed, for the operations that use types at run time
+        # Run-time type arguments: the types bound to the type parameters (by
+        # symbol id) of the polymorphic functions being executed, for the
+        # operations that use types at run time
         self.type_bindings: dict[int, QType] = {}
-        # The named exceptions this scope made before the binding that makes them (by symbol id), which that
-        # binding's exception expressions return (make_scope_exceptions)
+        # The named exceptions this scope made before the binding that makes
+        # them (by symbol id), which that binding's exception expressions return
+        # (make_scope_exceptions)
         self.made_exceptions: dict[int, QExceptionVal] = {}
         if parent is not None:
             self.include_paths: list[Path] = parent.include_paths
@@ -163,17 +170,21 @@ class RuntimeEnvironment:
             self.include_paths: list[Path] = []
             self.current_dir: Optional[Path] = None
             self.program_dir: Optional[Path] = None
-            # The program's units (docs/build-process.md §2.1), whose typed modules the interpreter evaluates; the
-            # type checker's graph itself, when the program was type checked by a pipeline
+            # The program's units (docs/build-process.md §2.1), whose typed
+            # modules the interpreter evaluates; the type checker's graph
+            # itself, when the program was type checked by a pipeline
             # (CompilerContext.runtime_env)
             self.units: UnitGraph = UnitGraph()
-            # The values of the modules run so far, the records of their members, by canonical name, shared by every
-            # scope: each module is run once per program (load_module_for_interpreter)
+            # The values of the modules run so far, the records of their
+            # members, by canonical name, shared by every scope: each module is
+            # run once per program (load_module_for_interpreter)
             self.module_values: dict[str, QValue] = {}
-            # The source map of the file whose code runs in this scope (the program's, or a module file's), where
-            # the offsets of the errors that code raises are (docs/exceptions.md §3.2)
+            # The source map of the file whose code runs in this scope (the
+            # program's, or a module file's), where the offsets of the errors
+            # that code raises are (docs/exceptions.md §3.2)
             self.source_map: Optional[Any] = None
-            # The frames running, outermost first, shared by every scope (docs/exceptions.md §4)
+            # The frames running, outermost first, shared by every scope
+            # (docs/exceptions.md §4)
             self.call_stack: list[str] = []
 
     def push_scope(self) -> RuntimeEnvironment:
@@ -191,7 +202,8 @@ class RuntimeEnvironment:
         self.bindings[name] = value
 
     def made_exception(self, symbol_id: int) -> Optional[QExceptionVal]:
-        """The named exception of the symbol that an enclosing scope made in advance, if one did."""
+        """The named exception of the symbol that an enclosing scope made in
+        advance, if one did."""
         env: Optional[RuntimeEnvironment] = self
         while env is not None:
             if symbol_id in env.made_exceptions:
@@ -200,7 +212,8 @@ class RuntimeEnvironment:
         return None
 
     def bind_types(self, bindings: dict[int, QType]) -> None:
-        """Binds type parameters (by symbol id) to their run-time type arguments in the current scope frame."""
+        """Binds type parameters (by symbol id) to their run-time type arguments
+        in the current scope frame."""
         self.type_bindings.update(bindings)
 
     def lookup_type(self, symbol_id: int) -> Optional[QType]:
@@ -213,7 +226,8 @@ class RuntimeEnvironment:
         return None
 
     def resolve_type(self, t: QType) -> QType:
-        """t with the run-time type arguments of the type parameters it mentions substituted."""
+        """t with the run-time type arguments of the type parameters it mentions
+        substituted."""
         subst = {}
         for symbol_id in t._fv:
             bound = self.lookup_type(symbol_id)
@@ -222,7 +236,8 @@ class RuntimeEnvironment:
         return t.substitute(subst) if subst else t
 
     def lookup(self, name: str, offset: Optional[int] = None) -> QValue:
-        """Resolves a variable recursively outward from innermost to outermost scope."""
+        """Resolves a variable recursively outward from innermost to outermost
+        scope."""
         if name in self.bindings:
             return self.bindings[name]
         if self.parent is not None:
@@ -242,7 +257,8 @@ class RuntimeEnvironment:
         raise QuestRuntimeError(f"Undefined runtime symbol '{name}'", offset=offset)
 
     def assign(self, name: str, new_value: QValue, offset: Optional[int] = None) -> None:
-        """Mutates an existing binding or updates its mutable QRef cell in place."""
+        """Mutates an existing binding or updates its mutable QRef cell in
+        place."""
         if name in self.bindings:
             curr = self.bindings[name]
             if isinstance(curr, QRef):
@@ -256,7 +272,8 @@ class RuntimeEnvironment:
         raise QuestRuntimeError(f"Cannot assign to undefined symbol '{name}'", offset=offset)
 
     def snapshot(self) -> dict[str, Any]:
-        """Captures a shallow copy of the current bindings, parent pointer, and module values."""
+        """Captures a shallow copy of the current bindings, parent pointer, and
+        module values."""
         return {
             "bindings": dict(self.bindings),
             "parent": self.parent,
@@ -264,9 +281,11 @@ class RuntimeEnvironment:
         }
 
     def restore(self, snap: dict[str, Any]) -> None:
-        """Restores bindings, parent, and module values from a previous snapshot. The module values are restored in
-        place, since every scope shares them: the modules run since are forgotten, and run again when imported again,
-        as the unit graph's restore forgets their typed forms."""
+        """Restores bindings, parent, and module values from a previous
+        snapshot. The module values are restored in place, since every scope
+        shares them: the modules run since are forgotten, and run again when
+        imported again, as the unit graph's restore forgets their typed
+        forms."""
         self.bindings = dict(snap["bindings"])
         self.parent = snap["parent"]
         self.module_values.clear()
@@ -276,7 +295,8 @@ class RuntimeEnvironment:
 
     @classmethod
     def create_root_env(cls) -> RuntimeEnvironment:
-        """Creates the global root environment with standard constants pre-populated."""
+        """Creates the global root environment with standard constants
+        pre-populated."""
         env = cls()
         if cls._cached_base_bindings is not None:
             env.bindings = dict(cls._cached_base_bindings)
@@ -350,7 +370,8 @@ class RuntimeEnvironment:
             "extent",
             QBuiltinFun("extent", lambda a: QInt(len(a.elements))),
         )
-        # ordinal counts in its operand's static type, so its applications are evaluated as such (TypedApp)
+        # ordinal counts in its operand's static type, so its applications are
+        # evaluated as such (TypedApp)
         env.define(
             "ordinal",
             QBuiltinFun(
@@ -370,24 +391,33 @@ class RuntimeEnvironment:
 def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
     """Evaluates a typed expression in env and returns its value.
 
-    This interpreter is the most direct reading of the typed AST: each node is evaluated by the case for its class,
-    recursively, with Python's stack serving as the program's. Values are QValues (values/model.py): an Int is a QInt, a
-    record a QRecord of named fields, and a function a QClosure holding its parameters' names, its body, and the
-    environment it was made in. A RuntimeEnvironment is a chain of frames mapping names to values. Names suffice,
-    without symbols, because the checker has already resolved every name, and a binding that rebinds a name of its
-    frame gets a frame of its own (eval_scoped_binding), so that closures made before it keep what they captured. A
-    mutable variable is bound to a QRef, a cell, which an explicit dereference (TypedDerefCell) reads, and which a var
-    argument passes in place of its contents.
+    This interpreter is the most direct reading of the typed AST: each node is
+    evaluated by the case for its class, recursively, with Python's stack
+    serving as the program's. Values are QValues (values/model.py): an Int is a
+    QInt, a record a QRecord of named fields, and a function a QClosure holding
+    its parameters' names, its body, and the environment it was made in. A
+    RuntimeEnvironment is a chain of frames mapping names to values. Names
+    suffice, without symbols, because the checker has already resolved every
+    name, and a binding that rebinds a name of its frame gets a frame of its own
+    (eval_scoped_binding), so that closures made before it keep what they
+    captured. A mutable variable is bound to a QRef, a cell, which an explicit
+    dereference (TypedDerefCell) reads, and which a var argument passes in place
+    of its contents.
 
-    Control flow beyond expressions uses Python exceptions: exit raises _LoopExit, which the nearest loop catches, and a
-    Quest raise raises QuestException, which the nearest try with a branch for that exception catches. One that nothing
-    catches propagates out of the interpreter, to be reported as an error.
+    Control flow beyond expressions uses Python exceptions: exit raises
+    _LoopExit, which the nearest loop catches, and a Quest raise raises
+    QuestException, which the nearest try with a branch for that exception
+    catches. One that nothing catches propagates out of the interpreter, to be
+    reported as an error.
 
-    Types are mostly unneeded at run time, but a few operations use them: inspect, auto values, and dynamic values. So
-    a polymorphic function's type arguments are carried at run time. A type application (TypedTypeApp) binds them in a
-    copy of the closure (QClosure.instantiate), the body runs with them bound (RuntimeEnvironment.type_bindings), and
-    env.resolve_type replaces a type's parameters by their bindings. A polymorphic constant, such as list.nil, is a
-    closure without value parameters, so instantiating it, as list.nil() does, also runs it.
+    Types are mostly unneeded at run time, but a few operations use them:
+    inspect, auto values, and dynamic values. So a polymorphic function's type
+    arguments are carried at run time. A type application (TypedTypeApp) binds
+    them in a copy of the closure (QClosure.instantiate), the body runs with
+    them bound (RuntimeEnvironment.type_bindings), and env.resolve_type replaces
+    a type's parameters by their bindings. A polymorphic constant, such as
+    list.nil, is a closure without value parameters, so instantiating it, as
+    list.nil() does, also runs it.
     """
     match expr:
         # 1. Literals
@@ -683,9 +713,11 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             labels: Optional[tuple[Optional[str], ...]] = None
             if isinstance(type_val, QTupleType):
                 labels = tuple(f.name for f in type_val.fields)
-            # Each component's label is bound for the components after it. A simultaneous declaration's labels are
-            # bound, in a frame of their own, once all of its members' values are computed; the closures of a let rec
-            # find their labels in the frame they capture, bound before they are called.
+            # Each component's label is bound for the components after it. A
+            # simultaneous declaration's labels are bound, in a frame of their
+            # own, once all of its members' values are computed; the closures of
+            # a let rec find their labels in the frame they capture, bound
+            # before they are called.
             group_of = {group[0]: group for group in simultaneous_groups}
             tup_env = env.push_scope()
             elems: list[QValue] = []
@@ -946,15 +978,17 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
 # ============================================================================
 
 def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ...], env: RuntimeEnvironment) -> None:
-    """Binds the members of a simultaneous value declaration to their values, computed beforehand."""
+    """Binds the members of a simultaneous value declaration to their values,
+    computed beforehand."""
     for member, val in zip(members, values):
         env.define(member.name, QRef(val) if member.symbol.is_var else val)
 
 
 def make_closure(fun: TypedFun, env: RuntimeEnvironment, binder: Optional[str] = None,
                  name: Optional[str] = None) -> QClosure:
-    """The closure of fun in env, bound to binder if it is let-bound, named in tracebacks by the frame making it
-    (docs/exceptions.md §2.3). A recursive function's closure also has its name (name), which printing shows."""
+    """The closure of fun in env, bound to binder if it is let-bound, named in
+    tracebacks by the frame making it (docs/exceptions.md §2.3). A recursive
+    function's closure also has its name (name), which printing shows."""
     enclosing = env.call_stack[-1] if env.call_stack else MAIN_FRAME
     return QClosure(
         params=tuple(p.name for p in fun.params),
@@ -967,14 +1001,16 @@ def make_closure(fun: TypedFun, env: RuntimeEnvironment, binder: Optional[str] =
 
 
 def note_frames(error: QuestCompilerError, env: RuntimeEnvironment) -> None:
-    """Records on an error the frames running where it was raised, the first time it leaves a frame."""
+    """Records on an error the frames running where it was raised, the first
+    time it leaves a frame."""
     if error.frames is None:
         error.frames = tuple(reversed(env.call_stack))
 
 
 def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
-    """Applies a closure to its arguments, in its frame: an external's built-in implementation, or the closure's body.
-    An error raised inside is located in the file the closure was made in, unless code it called located it already,
+    """Applies a closure to its arguments, in its frame: an external's built-in
+    implementation, or the closure's body. An error raised inside is located in
+    the file the closure was made in, unless code it called located it already,
     and records the frames running (docs/exceptions.md §3.2, §4)."""
     env = closure.env
     env.call_stack.append(closure.trace_name)
@@ -988,7 +1024,8 @@ def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
         call_env.bind_types(closure.type_bindings)
         for param_name, arg_val in zip(closure.params, args):
             call_env.define(param_name, arg_val)
-        # The body is a scope of its own: exceptions made inside it exist throughout it
+        # The body is a scope of its own: exceptions made inside it exist
+        # throughout it
         call_env = make_scope_exceptions(closure.body, call_env)
         return eval_expr(closure.body, call_env)
     except QuestCompilerError as error:
@@ -1001,8 +1038,9 @@ def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
 
 
 def run_module_init(name: str, bindings, mod_env: RuntimeEnvironment) -> RuntimeEnvironment:
-    """Runs a module's bindings in its frame, locating the errors they raise in the module's file (mod_env's), and
-    returns the frame its last binding was evaluated in, where its exports are found (eval_scoped_binding)."""
+    """Runs a module's bindings in its frame, locating the errors they raise in
+    the module's file (mod_env's), and returns the frame its last binding was
+    evaluated in, where its exports are found (eval_scoped_binding)."""
     mod_env.call_stack.append(init_frame(name))
     try:
         for b in bindings:
@@ -1018,14 +1056,16 @@ def run_module_init(name: str, bindings, mod_env: RuntimeEnvironment) -> Runtime
 
 
 def eval_bound_value(name: str, value: TypedExpr, env: RuntimeEnvironment) -> QValue:
-    """The value of a let binding of name: a function's closure is bound to the name."""
+    """The value of a let binding of name: a function's closure is bound to the
+    name."""
     if isinstance(value, TypedFun):
         return make_closure(value, env, name)
     return eval_expr(value, env)
 
 
 def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
-    """Evaluates a declaration or binding inside a block or top-level program."""
+    """Evaluates a declaration or binding inside a block or top-level
+    program."""
     match binding:
         case TypedLetValue(name=name, value=value, is_rec=is_rec, symbol=symbol):
             if is_rec and isinstance(value, TypedFun):
@@ -1040,8 +1080,9 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             return val
 
         case TypedLetValueGroup(members=members, is_rec=True):
-            # Each member's closure captures env, where the others are defined before any is called; the result
-            # holds the members' values, for echo
+            # Each member's closure captures env, where the others are defined
+            # before any is called; the result holds the members' values, for
+            # echo
             values = tuple(eval_binding(member, env) for member in members)
             return QTuple(values, tuple(member.name for member in members))
 
@@ -1056,8 +1097,9 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             return OK_VALUE
 
         case TypedModule(name=mod_name, bindings=mod_bindings, scope=mod_scope):
-            # A module declared in the program is run where it is declared, each time (a REPL input that declares a
-            # module again gets the new one); modules in files are run once (load_module_for_interpreter)
+            # A module declared in the program is run where it is declared, each
+            # time (a REPL input that declares a module again gets the new one);
+            # modules in files are run once (load_module_for_interpreter)
             mod_env = run_module_init(mod_name, mod_bindings, env.push_scope())
             exported_fields: dict[str, QValue] = {}
             for val_name in mod_scope.values:
@@ -1068,8 +1110,9 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
 
         case TypedImport(items=items):
             for item in items:
-                # Evaluated modules are shared by canonical name, which distinguishes modules imported by the same
-                # name from different directories (docs/modules.md §2.3).
+                # Evaluated modules are shared by canonical name, which
+                # distinguishes modules imported by the same name from different
+                # directories (docs/modules.md §2.3).
                 for local_name, mod_path, canon in zip(
                     item.names, item.effective_module_paths, item.effective_canonical_module_paths
                 ):
@@ -1085,15 +1128,17 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             raise QuestRuntimeError(f"Unhandled binding node: {binding.__class__.__name__}")
 
 
-# The scope_exceptions of each node evaluated so far, by identity, with the node, which keeps its id from being reused:
-# a binding in a loop or a function's body runs many times, and finding them walks its whole tree
+# The scope_exceptions of each node evaluated so far, by identity, with the
+# node, which keeps its id from being reused: a binding in a loop or a
+# function's body runs many times, and finding them walks its whole tree
 _scope_exceptions: dict[int, tuple[TypedNode, list[TypedException]]] = {}
 
 
 def make_scope_exceptions(node: TypedNode, env: RuntimeEnvironment) -> RuntimeEnvironment:
-    """Makes, before node runs, the named exceptions it makes for its scope (scope_exceptions), defining their names,
-    and returns the frame it runs in: a frame of its own if a name rebinds one of env's frame, as eval_scoped_binding
-    gives a binding that rebinds one."""
+    """Makes, before node runs, the named exceptions it makes for its scope
+    (scope_exceptions), defining their names, and returns the frame it runs in:
+    a frame of its own if a name rebinds one of env's frame, as
+    eval_scoped_binding gives a binding that rebinds one."""
     cached = _scope_exceptions.get(id(node))
     if cached is None:
         cached = _scope_exceptions[id(node)] = (node, scope_exceptions(node))
@@ -1108,10 +1153,12 @@ def make_scope_exceptions(node: TypedNode, env: RuntimeEnvironment) -> RuntimeEn
 
 
 def eval_scoped_binding(binding: TypedBinding, env: RuntimeEnvironment) -> tuple[QValue, RuntimeEnvironment]:
-    """Evaluates a binding of a block, a program, or a module in env's frame, returning its value and the frame the
-    bindings after it are evaluated in. A binding that rebinds a name of env's frame gets a frame of its own, so that
-    closures built earlier keep the binding they captured (scoping is lexical), and so do the members of a
-    simultaneous declaration, so that closures built by their values keep the bindings the members shadow."""
+    """Evaluates a binding of a block, a program, or a module in env's frame,
+    returning its value and the frame the bindings after it are evaluated in. A
+    binding that rebinds a name of env's frame gets a frame of its own, so that
+    closures built earlier keep the binding they captured (scoping is lexical),
+    and so do the members of a simultaneous declaration, so that closures built
+    by their values keep the bindings the members shadow."""
     env = make_scope_exceptions(binding, env)
     if isinstance(binding, TypedLetValueGroup) and not binding.is_rec:
         values = tuple(eval_bound_value(member.name, member.value, env) for member in binding.members)
@@ -1128,11 +1175,13 @@ def eval_program_phrases(
     env: Optional[RuntimeEnvironment] = None,
     on_result: Optional[Callable[[TypedBinding | TypedExpr, QValue], None]] = None,
 ) -> tuple[list[tuple[TypedBinding | TypedExpr, QValue]], RuntimeEnvironment]:
-    """Evaluates an entire typed program sequentially, returning (phrase, value) pairs, and the frame its last phrase
-    was evaluated in, which phrases evaluated after the program (in the REPL) continue in (eval_scoped_binding).
+    """Evaluates an entire typed program sequentially, returning (phrase, value)
+    pairs, and the frame its last phrase was evaluated in, which phrases
+    evaluated after the program (in the REPL) continue in (eval_scoped_binding).
 
-    on_result, if given, is called with each pair as soon as its phrase is evaluated, before later phrases can
-    change the value (by assigning to a component of it) or write output of their own.
+    on_result, if given, is called with each pair as soon as its phrase is
+    evaluated, before later phrases can change the value (by assigning to a
+    component of it) or write output of their own.
     """
     if env is None:
         env = RuntimeEnvironment.create_root_env()
@@ -1156,7 +1205,8 @@ def eval_program_phrases(
 
 
 def eval_program(program: TypedProgram, env: Optional[RuntimeEnvironment] = None) -> QValue:
-    """Evaluates an entire typed program sequentially, returning the final phrase value."""
+    """Evaluates an entire typed program sequentially, returning the final
+    phrase value."""
     results, _ = eval_program_phrases(program, env)
     return results[-1][1] if results else OK_VALUE
 
@@ -1167,14 +1217,18 @@ def load_module_for_interpreter(
     r_env: RuntimeEnvironment,
     canonical_name: Optional[str] = None,
 ) -> Optional[QValue]:
-    """Loads and evaluates module `name`, as imported from r_env.current_dir, for the interpreter.
+    """Loads and evaluates module `name`, as imported from r_env.current_dir,
+    for the interpreter.
 
-    The module is the unit r_env.units resolves the import to; it is evaluated from that unit's typed module, which
-    the type checker elaborated, or which is elaborated here in an environment of its own (a module the program
-    uses without importing it, such as a standard library module named in an expression). Its value is kept by
-    canonical name (r_env.module_values), so each module is evaluated once, whatever path imports it
-    (docs/modules.md §2.3), until a REPL input that loaded it is rolled back (RuntimeEnvironment.restore). An import
-    that knows the module's canonical name (from the type checker) passes it, and a module already run is found by
+    The module is the unit r_env.units resolves the import to; it is evaluated
+    from that unit's typed module, which the type checker elaborated, or which
+    is elaborated here in an environment of its own (a module the program uses
+    without importing it, such as a standard library module named in an
+    expression). Its value is kept by canonical name (r_env.module_values), so
+    each module is evaluated once, whatever path imports it (docs/modules.md
+    §2.3), until a REPL input that loaded it is rolled back
+    (RuntimeEnvironment.restore). An import that knows the module's canonical
+    name (from the type checker) passes it, and a module already run is found by
     it without resolving the import again.
     """
     from quest.types.env import Environment

@@ -1,4 +1,5 @@
-"""The well-scopedness check of typed programs (quest/typechecker/scoping.py)."""
+"""The well-scopedness check of typed programs
+(quest/typechecker/scoping.py)."""
 
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ from tests.python.helpers import run_source
 
 
 def _typecheck(source: str):
-    # The check runs inside the type checker in tests; it is called directly here on altered programs
+    # The check runs inside the type checker in tests; it is called directly
+    # here on altered programs
     saved = os.environ.pop("QUEST_CHECK_SCOPES", None)
     try:
         res = run_source(source, options=CompilerOptions(stop_after="typecheck"))
@@ -30,7 +32,8 @@ def _typecheck(source: str):
 
 
 def _replace_first(node, cls, fn):
-    """node with the first node of class cls (in field order) replaced by fn(it)."""
+    """node with the first node of class cls (in field order) replaced by
+    fn(it)."""
     done = [False]
 
     def walk(n):
@@ -64,7 +67,8 @@ class TestScoping(unittest.TestCase):
 
     def test_variable_outside_its_block(self) -> None:
         prog = _typecheck("let f(x: Int): Int = begin let y = x + 1 y end; let z = 0; f(z)")
-        # Give the program's last use of a top-level variable the symbol of the block-local y
+        # Give the program's last use of a top-level variable the symbol of the
+        # block-local y
         fun = prog.phrases[0].value
         local_y = fun.body.bindings[0].symbol
         broken = _replace_first(
@@ -77,7 +81,8 @@ class TestScoping(unittest.TestCase):
         self.assertIn("outside the scope of its binder", problems[0])
 
     def test_parameter_annotations_with_other_symbols(self) -> None:
-        # The bug the check was made for: a function's parameters naming its type parameter by another symbol
+        # The bug the check was made for: a function's parameters naming its
+        # type parameter by another symbol
         prog = _typecheck("let id(A::TYPE x: A): A = x; id(:Int 1)")
         fun = prog.phrases[0].value
         (quant,) = fun.type_val.quantifiers
@@ -96,7 +101,8 @@ class TestQuantifierTelescopes(unittest.TestCase):
         b = QQuantifier(name="B", symbol_id=910002, bound=QPowerKind(a_var))
         t = QAllType(quantifiers=(a, b), body=QTypeVar(name="B", symbol_id=b.symbol_id, bound=b.bound))
         self.assertEqual(set(t._fv), set())
-        # Substituting for A from outside does not reach the bound that refers to the quantifier A
+        # Substituting for A from outside does not reach the bound that refers
+        # to the quantifier A
         self.assertIs(t.substitute({a.symbol_id: INT_TYPE}), t)
         # A free variable in a bound is still free, and substituted
         c_var = QTypeVar(name="C", symbol_id=910003, bound=TYPE_KIND)

@@ -1,10 +1,13 @@
 (* Quest Self-Hosted Compiler: Typed AST Interface
  *
- * The typed AST of bootstrap/python/quest/typechecker/typed_ast.py, node for node: what the type checker elaborates
- * expressions, bindings, and programs into. An expression has its type; a binding (a declaration, a statement, an
- * import, an interface, or a module) has none. Every node has the offset of the syntax it was elaborated from.
+ * The typed AST of bootstrap/python/quest/typechecker/typed_ast.py, node for
+ * node: what the type checker elaborates expressions, bindings, and programs
+ * into. An expression has its type; a binding (a declaration, a statement, an
+ * import, an interface, or a module) has none. Every node has the offset of the
+ * syntax it was elaborated from.
  *
- * The bootstrap's TypedTypeWitness has a kind (TYPE) as its type_val, which nothing reads; here its type is Ok. *)
+ * The bootstrap's TypedTypeWitness has a kind (TYPE) as its type_val, which
+ * nothing reads; here its type is Ok. *)
 
 interface TypedAst
 import
@@ -27,13 +30,15 @@ export
         exprOk
         exprExternal with symbol: String end
         exprVar with name: String symbol: symbols.ValueSymbol end
-        (* Functions and applications; a function's type parameter ids are those its body refers to *)
+        (* Functions and applications; a function's type parameter ids are those
+         * its body refers to *)
         exprFun with params: Array(Param) body: Expr typeParamIds: Array(Int) end
         exprApp with func: Expr args: Array(Expr) end
         exprTypeApp with func: Expr typeArgs: Array(model.Type) end
         exprInfix with left: Expr op: String right: Expr end
-        (* Aggregates and projections. A tuple's groups list the indices of the components declared together:
-         * recursive ones, and simultaneous ones (let ... and ...); labels the symbol each component's label binds for
+        (* Aggregates and projections. A tuple's groups list the indices of the
+         * components declared together: recursive ones, and simultaneous ones
+         * (let ... and ...); labels the symbol each component's label binds for
          * the components after it. *)
         exprRecord with fields: Array(RecordField) end
         exprTypeWitness with name: String witnessType: model.Type bound: maybe.T(model.Kind) end
@@ -75,7 +80,8 @@ export
         exprLoop with body: Expr end
         exprFor with varName: String symbol: symbols.ValueSymbol start: Expr isDownto: Bool stop: Expr body: Expr end
         exprExit
-        (* Exceptions; a named exception also binds its name (symbol) in the scope where it appears *)
+        (* Exceptions; a named exception also binds its name (symbol) in the
+         * scope where it appears *)
         exprException with name: String payloadType: maybe.T(model.Type) symbol: maybe.T(symbols.ValueSymbol) end
         exprRaise with exc: Expr payload: maybe.T(Expr) end
         exprTry with body: Expr branches: Array(TryBranch) elseBranch: maybe.T(Expr) end
@@ -90,7 +96,8 @@ export
     end
     and RecordField = Tuple offset: Int name: String value: Expr isVar: Bool end
     and CaseBranch = Tuple offset: Int tags: Array(String) body: Expr binder: maybe.T(symbols.ValueSymbol) end
-    (* Selected when the inspected type is a subtype of matchType, or if exact, equal to it *)
+    (* Selected when the inspected type is a subtype of matchType, or if exact,
+     * equal to it *)
     and InspectBranch = Tuple
         offset: Int
         matchType: model.Type
@@ -102,14 +109,16 @@ export
     and Binding = Tuple offset: Int form: BindingForm end
     and BindingForm = Option
         bindLetValue with value: LetValue end
-        (* Values declared together: mutually recursive with rec (each member's isRec), else simultaneous *)
+        (* Values declared together: mutually recursive with rec (each member's
+         * isRec), else simultaneous *)
         bindLetValueGroup with members: Array(LetValue) end
         bindLetType with value: LetType end
         bindLetTypeGroup with members: Array(LetType) end
         bindDefKind with name: String symbol: symbols.KindSymbol end
         bindExprStmt with expr: Expr end
         bindInterface with name: String signatures: Array(Binding) scope: symbols.Scope end
-        (* The id of the value symbol the module's name binds, which uses of the module refer to *)
+        (* The id of the value symbol the module's name binds, which uses of the
+         * module refer to *)
         bindModule with
             name: String
             interfaceName: String
@@ -123,8 +132,9 @@ export
     end
     and LetValue = Tuple offset: Int name: String value: Expr symbol: symbols.ValueSymbol isRec: Bool end
     and LetType = Tuple offset: Int name: String symbol: symbols.TypeSymbol end
-    (* The canonical names of the imported modules, where they are not the paths as written, and the ids of the value
-     * symbols the names bind to modules (none for a name that imports a type, value, or kind of the interface) *)
+    (* The canonical names of the imported modules, where they are not the paths
+     * as written, and the ids of the value symbols the names bind to modules
+     * (none for a name that imports a type, value, or kind of the interface) *)
     and ImportItem = Tuple
         offset: Int
         names: Array(String)
@@ -141,26 +151,32 @@ export
     expr(offset: Int type: model.Type form: ExprForm): Expr
     binding(offset: Int form: BindingForm): Binding
 
-    (* An import item's module paths and interface path, as written or else its names and interface name *)
+    (* An import item's module paths and interface path, as written or else its
+     * names and interface name *)
     effectiveModulePaths(item: ImportItem): Array(String)
     effectiveInterfacePath(item: ImportItem): String
     effectiveCanonicalModulePaths(item: ImportItem): Array(String)
 
-    (* The bindings a binding declares: a group's members, or the binding itself *)
+    (* The bindings a binding declares: a group's members, or the binding
+     * itself *)
     bindingMembers(b: Binding): Array(Binding)
-    (* The name a binding declares by itself: a value's, a type's, a kind's, an interface's, or a module's *)
+    (* The name a binding declares by itself: a value's, a type's, a kind's, an
+     * interface's, or a module's *)
     declaredName(b: Binding): maybe.T(String)
 
-    (* An expression or binding with f applied to the types of its nodes (an expression's type, a parameter's, type
-     * arguments, witnesses, an inspect branch's matched type, an exception's payload type), as
-     * bootstrap/python/quest/typechecker/typed_ast.py's traversal reaches them (not symbols, nor kinds) *)
+    (* An expression or binding with f applied to the types of its nodes (an
+     * expression's type, a parameter's, type arguments, witnesses, an inspect
+     * branch's matched type, an exception's payload type), as
+     * bootstrap/python/quest/typechecker/typed_ast.py's traversal reaches them
+     * (not symbols, nor kinds) *)
     mapTypes(e: Expr f: All(t: model.Type) model.Type): Expr
     mapBindingTypes(b: Binding f: All(t: model.Type) model.Type): Binding
 
-    (* The named exceptions (exprException nodes) that a binding, or an expression (a phrase, a function's body),
-     * makes for its scope before it runs, so that each exists throughout the scope (scope_exceptions): those made in
-     * it but not inside functions or blocks, except the one it is itself or binds directly, which it makes as it
-     * runs *)
+    (* The named exceptions (exprException nodes) that a binding, or an
+     * expression (a phrase, a function's body), makes for its scope before it
+     * runs, so that each exists throughout the scope (scope_exceptions): those
+     * made in it but not inside functions or blocks, except the one it is
+     * itself or binds directly, which it makes as it runs *)
     scopeExceptions(b: Binding): Array(Expr)
     exprScopeExceptions(e: Expr): Array(Expr)
     (* The named exceptions made in a binding whose names bind in its scope: not inside functions or blocks

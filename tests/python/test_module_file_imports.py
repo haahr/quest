@@ -4,10 +4,12 @@ Tests:
 - Search of -I include paths, and the current directory's precedence over them
 - Errors in imported units located in their own files, in C builds too
 
-Programs importing units beside them are golden tests in tests/source/modules: case normalization in file search
-(capitalized_unit_names), interfaces importing interfaces (interface_imports_interface), and modules shared by their
-importers (diamond_dependency). Rejected units (missing files, files that are not one interface or module, names
-that do not match, and cycles of imports) are error tests in tests/errors/typecheck/units.
+Programs importing units beside them are golden tests in tests/source/modules:
+case normalization in file search (capitalized_unit_names), interfaces importing
+interfaces (interface_imports_interface), and modules shared by their importers
+(diamond_dependency). Rejected units (missing files, files that are not one
+interface or module, names that do not match, and cycles of imports) are error
+tests in tests/errors/typecheck/units.
 """
 
 import os
@@ -48,7 +50,8 @@ class TestModuleFileImports(unittest.TestCase):
         return res, ctx
 
     def test_include_path_search(self):
-        """Tests that files in -I directories are found when not in current dir."""
+        """Tests that files in -I directories are found when not in current
+        dir."""
         lib_dir = self.temp_dir / "lib"
         lib_dir.mkdir()
 
@@ -91,7 +94,8 @@ class TestModuleFileImports(unittest.TestCase):
         self.assertEqual(ctx.runtime_env.lookup("msg"), QString("Hello World"))
 
     def test_current_directory_precedence_over_include_path(self):
-        """Tests that active file directory shadows files in -I include paths."""
+        """Tests that active file directory shadows files in -I include
+        paths."""
         inc_dir = self.temp_dir / "inc"
         inc_dir.mkdir()
 
@@ -155,10 +159,12 @@ class TestModuleFileImports(unittest.TestCase):
 
 
 class TestDiagnosticsInImportedUnits(unittest.TestCase):
-    """An error in an imported unit is reported in the unit's own file, in every phase (docs/diagnostics.md §4.4).
+    """An error in an imported unit is reported in the unit's own file, in every
+    phase (docs/diagnostics.md §4.4).
 
-    Error tests cover typecheck; this covers C compilation, where a module's body is compiled only when the program
-    is linked, which no error test reaches (its typecheck precursor reports the error first).
+    Error tests cover typecheck; this covers C compilation, where a module's
+    body is compiled only when the program is linked, which no error test
+    reaches (its typecheck precursor reports the error first).
     """
 
     def setUp(self):

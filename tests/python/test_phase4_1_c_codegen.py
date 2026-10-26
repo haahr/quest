@@ -1,5 +1,6 @@
-"""Tests of C compilation that golden tests cannot express: the compile pipeline's phases, --nogc, and the
-`quest compile` command. The programs of Phase 4.1 are golden tests (language/c_codegen_basics)."""
+"""Tests of C compilation that golden tests cannot express: the compile
+pipeline's phases, --nogc, and the `quest compile` command. The programs of
+Phase 4.1 are golden tests (language/c_codegen_basics)."""
 
 import shutil
 import subprocess
@@ -47,8 +48,10 @@ class TestPhase41Codegen(unittest.TestCase):
         )
 
     def test_nogc_compilation(self):
-        """Compiles and runs strings, functions, closures, and arrays with --nogc (the same programs without it are
-        golden tests, such as language/c_codegen_basics, which have no directive for compiler flags)."""
+        """Compiles and runs strings, functions, closures, and arrays with
+        --nogc (the same programs without it are golden tests, such as
+        language/c_codegen_basics, which have no directive for compiler
+        flags)."""
         code = """
         let greeting = "Quest " <> "C Backend";
         let f(x: Int): Int = x + 10;
@@ -62,7 +65,8 @@ class TestPhase41Codegen(unittest.TestCase):
         self.assertIn('tuple "Quest C Backend" 15 15 2 end', proc.stdout)
 
     def test_cli_driver_compile_and_run(self):
-        """Tests quest compile CLI end-to-end: the binary is silent unless built with --print-result."""
+        """Tests quest compile CLI end-to-end: the binary is silent unless built
+        with --print-result."""
         with tempfile.NamedTemporaryFile(suffix=".quest", mode="w", delete=False) as src_f:
             src_f.write("let x = 123; x\n")
             src_path = Path(src_f.name)

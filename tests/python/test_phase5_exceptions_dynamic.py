@@ -1,5 +1,7 @@
-"""Unit tests for the Bottom type. Typing exceptions, raise, try, dynamic values, and inspect is the golden test
-tests/source/language/core_exceptions_dynamic, and rejecting them the error tests in tests/errors/typecheck."""
+"""Unit tests for the Bottom type. Typing exceptions, raise, try, dynamic
+values, and inspect is the golden test
+tests/source/language/core_exceptions_dynamic, and rejecting them the error
+tests in tests/errors/typecheck."""
 
 import unittest
 

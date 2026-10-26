@@ -1,21 +1,28 @@
-"""An interpreter for the IR (docs/ir.md §12, step 4), a test oracle for the lowering and the passes.
+"""An interpreter for the IR (docs/ir.md §12, step 4), a test oracle for the
+lowering and the passes.
 
-The test runner runs every golden test program's IR through it and compares the output with the source interpreter's
-(tests/golden/run), so that a lowering or a pass that changes a program's meaning fails at that stage, before any C is
-printed. Values are the tree-walking interpreter's (quest/values/model.py), and the modules a unit imports, the
-standard library included, are loaded and run by the source interpreter; functions of either kind may call the
-other's.
+The test runner runs every golden test program's IR through it and compares the
+output with the source interpreter's (tests/golden/run), so that a lowering or a
+pass that changes a program's meaning fails at that stage, before any C is
+printed. Values are the tree-walking interpreter's (quest/values/model.py), and
+the modules a unit imports, the standard library included, are loaded and run by
+the source interpreter; functions of either kind may call the other's.
 
-Variables are looked up by identity in frames: a frame per function activation, its parent the frame its closure was
-made in, and a frame per loop iteration, so that a closure made in one iteration keeps that iteration's values. A
-mutable variable holds a cell (QRef), which `addr x` yields and a var or out parameter receives. Statements return
-None when they fall through, or the terminator's signal (return, jump, break, continue); a raise is a Python
-exception (QuestException), as in the source interpreter.
+Variables are looked up by identity in frames: a frame per function activation,
+its parent the frame its closure was made in, and a frame per loop iteration, so
+that a closure made in one iteration keeps that iteration's values. A mutable
+variable holds a cell (QRef), which `addr x` yields and a var or out parameter
+receives. Statements return None when they fall through, or the terminator's
+signal (return, jump, break, continue); a raise is a Python exception
+(QuestException), as in the source interpreter.
 
-From the described stage on, operations carry descriptor operands (ir/describe.py), which a run evaluates to the types
-they describe and checks against the types they stand for (type arguments, auto values' witnesses, and inspect cases'
-types), so that a descriptor made wrong fails here too: a descriptor variable is its type parameter's type argument, a
-static descriptor its type, and an instantiated template its type with the holes replaced by the arguments'.
+From the described stage on, operations carry descriptor operands
+(ir/describe.py), which a run evaluates to the types they describe and checks
+against the types they stand for (type arguments, auto values' witnesses, and
+inspect cases' types), so that a descriptor made wrong fails here too: a
+descriptor variable is its type parameter's type argument, a static descriptor
+its type, and an instantiated template its type with the holes replaced by the
+arguments'.
 """
 
 from __future__ import annotations
@@ -88,7 +95,8 @@ _UNBOUND = object()
 
 
 class IRInterpreterError(Exception):
-    """IR the interpreter cannot run (a malformed unit, not an error in the program)."""
+    """IR the interpreter cannot run (a malformed unit, not an error in the
+    program)."""
 
 
 class _Frame:
@@ -97,14 +105,17 @@ class _Frame:
     def __init__(self, parent: Optional[_Frame], types: Optional[dict[int, QType]] = None) -> None:
         self.parent = parent
         self.values: dict[int, Any] = {}
-        # The type arguments of the type parameters (by symbol id) of the functions being run
+        # The type arguments of the type parameters (by symbol id) of the
+        # functions being run
         self.types: dict[int, QType] = types if types is not None else {}
-        # The frame of the top level (the main body, or a module's initializer) this frame runs in: the parent of
-        # lifted functions' frames, which see only its globals
+        # The frame of the top level (the main body, or a module's initializer)
+        # this frame runs in: the parent of lifted functions' frames, which see
+        # only its globals
         self.top: _Frame = parent.top if parent is not None else self
 
     def peek(self, var: ir.Var) -> Any:
-        """The value a variable holds, _UNBOUND if it is declared and not yet bound."""
+        """The value a variable holds, _UNBOUND if it is declared and not yet
+        bound."""
         key = id(var)
         frame: Optional[_Frame] = self
         while frame is not None:
@@ -145,7 +156,8 @@ class _Frame:
         return None
 
     def resolve(self, t: QType) -> QType:
-        """t with the type arguments of the type parameters it mentions substituted."""
+        """t with the type arguments of the type parameters it mentions
+        substituted."""
         subst = {}
         for symbol_id in t._fv:
             bound = self.lookup_type(symbol_id)
@@ -155,8 +167,8 @@ class _Frame:
 
 
 class _Raised(QValue):
-    """A handler's exception variable: the exception raised, with its payload, which `exception_payload` reads and
-    a raise of the variable raises again."""
+    """A handler's exception variable: the exception raised, with its payload,
+    which `exception_payload` reads and a raise of the variable raises again."""
 
     def __init__(self, raised: QuestException) -> None:
         self.raised = raised
@@ -170,8 +182,9 @@ class _Raised(QValue):
 
 
 class _Closure(QBuiltinFun):
-    """An IR function value: its function, the frame it was made in, and the types bound to its type parameters.
-    It is a built-in function to the source interpreter, so that library functions written in Quest can call it."""
+    """An IR function value: its function, the frame it was made in, and the
+    types bound to its type parameters. It is a built-in function to the source
+    interpreter, so that library functions written in Quest can call it."""
 
     def __init__(self, interp: Interpreter, function: ir.Function, frame: _Frame,
                  type_bindings: Optional[dict[int, QType]] = None, env: Optional[list[QValue]] = None) -> None:
@@ -196,15 +209,18 @@ class Interpreter:
     def __init__(self, runtime_env: RuntimeEnvironment) -> None:
         self.renv = runtime_env
         self.root = RuntimeEnvironment.create_root_env()
-        # The unit's modules and those it imports (by identity), as records of their members
+        # The unit's modules and those it imports (by identity), as records of
+        # their members
         self.modules: dict[int, QValue] = {}
         self.declared: set[int] = set()
-        # For each let rec being run, the captures of closures made in it of variables it has yet to bind: (the
-        # closure's captured values, the index, the variable, the let rec's frame)
+        # For each let rec being run, the captures of closures made in it of
+        # variables it has yet to bind: (the closure's captured values, the
+        # index, the variable, the let rec's frame)
         self.fixups: list[list[tuple[list[QValue], int, ir.Var, _Frame]]] = []
         # The source map of the unit's file, where its nodes' offsets are
         self.source_map: Optional[Any] = None
-        # The symbols of the type parameters the unit's functions' descriptor variables describe (by variable)
+        # The symbols of the type parameters the unit's functions' descriptor
+        # variables describe (by variable)
         self.descriptor_symbols: dict[int, int] = {}
 
     # Units
@@ -212,8 +228,9 @@ class Interpreter:
     def run(self, unit: ir.Unit) -> None:
         self.source_map = unit.source_map
         self.descriptor_symbols = {id(p.var): p.symbols[0] for f in unit.functions for p in f.descriptor_params}
-        # Everything runs in the program's frame, imported modules' initializers included, as the source interpreter
-        # runs them when the program's import runs (docs/exceptions.md §4)
+        # Everything runs in the program's frame, imported modules' initializers
+        # included, as the source interpreter runs them when the program's
+        # import runs (docs/exceptions.md §4)
         stack = self.renv.call_stack
         stack.append(MAIN_FRAME)
         try:
@@ -231,7 +248,8 @@ class Interpreter:
             stack.pop()
 
     def in_frame(self, name: str, body: ir.Body, frame: _Frame) -> Optional[tuple]:
-        """Runs body in the frame name, which errors raised inside record (docs/exceptions.md §4)."""
+        """Runs body in the frame name, which errors raised inside record
+        (docs/exceptions.md §4)."""
         stack = self.renv.call_stack
         stack.append(name)
         try:
@@ -248,7 +266,8 @@ class Interpreter:
             raise IRInterpreterError(f"a top level ends with {signal[0]}")
 
     def import_module(self, imp: ir.Import) -> None:
-        # Run once per program, and kept in its unit (as the source interpreter's imports are)
+        # Run once per program, and kept in its unit (as the source
+        # interpreter's imports are)
         value = load_module_for_interpreter(imp.module_path, imp.interface_path, self.renv, imp.canonical_path)
         if value is None:
             raise IRInterpreterError(f"module '{imp.module_path}' could not be loaded")
@@ -284,7 +303,8 @@ class Interpreter:
             case "char":
                 return QChar(v)
             case "string":
-                # A new string each time, as each evaluation of a string literal is (is compares strings by identity)
+                # A new string each time, as each evaluation of a string literal
+                # is (is compares strings by identity)
                 return QString(v)
         raise IRInterpreterError(f"constant {v!r} of shape {a.shape.kind}")
 
@@ -315,8 +335,9 @@ class Interpreter:
         raise QuestRuntimeError(f"Cannot call non-function of type {callee.type_name}")
 
     def type_apply(self, callee: QValue, type_args: tuple[QType, ...]) -> QValue:
-        """A polymorphic value applied to types: its instance (the value, for a polymorphic function with no value
-        parameters, as the source interpreter computes it)."""
+        """A polymorphic value applied to types: its instance (the value, for a
+        polymorphic function with no value parameters, as the source interpreter
+        computes it)."""
         match callee:
             case _Closure(function=f):
                 inst = callee.instantiate(self, type_args)
@@ -337,8 +358,9 @@ class Interpreter:
     # Operations
 
     def located(self, error: QuestCompilerError, offset: Optional[int]) -> QuestCompilerError:
-        """error, raised by an operation at offset in the unit, located there unless it already is (an exception a
-        library function raised is located in its own unit, or nowhere)."""
+        """error, raised by an operation at offset in the unit, located there
+        unless it already is (an exception a library function raised is located
+        in its own unit, or nowhere)."""
         if error.offset is None and error.source_map is None and offset is not None:
             error.offset, error.source_map = offset, self.source_map
         return error
@@ -490,17 +512,20 @@ class Interpreter:
         return frame.resolve(d.template).substitute(args)
 
     def check_descriptors(self, descriptors, types, frame: _Frame) -> None:
-        """Checks that descriptor operands describe the types they stand for (after the describe pass)."""
+        """Checks that descriptor operands describe the types they stand for
+        (after the describe pass)."""
         for d, t in zip(descriptors, types):
             if not is_type_equal(self.described(d, frame), frame.resolve(t)):
                 raise IRInterpreterError(f"a descriptor of {self.described(d, frame)} stands for {frame.resolve(t)}")
 
     def make_closure(self, code: ir.Function, captures, type_args, frame: _Frame) -> _Closure:
-        """A closure of a lifted function, whose frames see only the globals of the top level that makes it."""
+        """A closure of a lifted function, whose frames see only the globals of
+        the top level that makes it."""
         values: list[QValue] = []
         for i, a in enumerate(captures):
             if isinstance(a, ir.Var) and frame.peek(a) is _UNBOUND and self.fixups:
-                # A variable of an enclosing let rec, bound once its body has run
+                # A variable of an enclosing let rec, bound once its body has
+                # run
                 self.fixups[-1].append((values, i, a, frame))
                 values.append(_UNBOUND)
             else:
@@ -509,8 +534,9 @@ class Interpreter:
         return _Closure(self, code, frame.top, bindings, values)
 
     def make_tuple(self, values: list[QValue], type_components, result: ir.Var, frame: _Frame) -> QTuple:
-        """A tuple laid out as the source interpreter lays it out: its type components are elements too (type
-        values), which printing a tuple expects."""
+        """A tuple laid out as the source interpreter lays it out: its type
+        components are elements too (type values), which printing a tuple
+        expects."""
         t = exposed_type(result.type)
         if not isinstance(t, QTupleType) or not type_components:
             labels = tuple(f.name for f in t.fields) if isinstance(t, QTupleType) else None
@@ -716,7 +742,8 @@ def _deref(v: QValue) -> QValue:
 
 
 def _element_index(tup: QTuple, index: int) -> int:
-    """The element of a tuple holding its index'th value component (its type components are elements too)."""
+    """The element of a tuple holding its index'th value component (its type
+    components are elements too)."""
     n = -1
     for i, element in enumerate(tup.elements):
         if not isinstance(element, QTypeValue):
@@ -727,8 +754,9 @@ def _element_index(tup: QTuple, index: int) -> int:
 
 
 def _payload(v: QValue, tag: str, ordinal_index: Optional[int]) -> QValue:
-    """A variant's payload, or an option's components (its ordinal in its static type first) as a tuple, as the
-    source interpreter's `v!tag` computes them."""
+    """A variant's payload, or an option's components (its ordinal in its static
+    type first) as a tuple, as the source interpreter's `v!tag` computes
+    them."""
     if v.tag != tag:
         raise QuestException(VARIANT_ERROR_EXC)
     if isinstance(v, QOption):
@@ -747,8 +775,8 @@ def _payload(v: QValue, tag: str, ordinal_index: Optional[int]) -> QValue:
 
 
 def _is_function_type(f: ir.Function) -> bool:
-    """Whether a polymorphic function, applied to all its types, is a function (rather than a value computed when it
-    is instantiated)."""
+    """Whether a polymorphic function, applied to all its types, is a function
+    (rather than a value computed when it is instantiated)."""
     t = exposed_type(f.var.type)
     while isinstance(t, QAllType):
         t = exposed_type(t.body)
@@ -756,5 +784,6 @@ def _is_function_type(f: ir.Function) -> bool:
 
 
 def run_unit(unit: ir.Unit, runtime_env: RuntimeEnvironment) -> None:
-    """Runs a unit: its imports, its modules' initializers, then its main body."""
+    """Runs a unit: its imports, its modules' initializers, then its main
+    body."""
     Interpreter(runtime_env).run(unit)

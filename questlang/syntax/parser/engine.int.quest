@@ -1,8 +1,8 @@
 (* Quest Self-Hosted Compiler: PEG / Packrat Parser Engine Interface
  *
- * The engine of bootstrap/python/quest/syntax/parser.py: grammar constructs, syntax targets and their rules, and
- * a packrat parser that evaluates them over a token stream. The grammar itself is in grammar, its actions in
- * actions. *)
+ * The engine of bootstrap/python/quest/syntax/parser.py: grammar constructs,
+ * syntax targets and their rules, and a packrat parser that evaluates them over
+ * a token stream. The grammar itself is in grammar, its actions in actions. *)
 
 interface Engine
 import
@@ -12,14 +12,16 @@ import
     questlang/syntax/ast : questlang/syntax/Ast
     collections/vector : collections/Vector
 export
-    (* =========================================================================
+    (* ======================================================================
      * 1. Semantic Values
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* The value a construct matches, which rules' actions receive and return: an optional construct that did
-     * not match (Python's None); a token; a string; the results of a repetition, a separated list, or a sequence
-     * of several non-silent items; or one of the AST's values. A signature item keeps its position, which
-     * ast.Signature does not have; a postfix operator is a function from its operand to the node. *)
+    (* The value a construct matches, which rules' actions receive and return:
+     * an optional construct that did not match (Python's None); a token; a
+     * string; the results of a repetition, a separated list, or a sequence of
+     * several non-silent items; or one of the AST's values. A signature item
+     * keeps its position, which ast.Signature does not have; a postfix operator
+     * is a function from its operand to the node. *)
     Def Rec Val = Option
         absent
         tok with val: tokens.Token end
@@ -41,62 +43,73 @@ export
         exprOp with apply: All(operand: ast.Expr) ast.Expr end
     end
 
-    (* Raised by an action given a value of the wrong kind, which is a bug in the grammar *)
+    (* Raised by an action given a value of the wrong kind, which is a bug in
+     * the grammar *)
     error: Exception(String)
 
-    (* Where a rule matched: from the start of its first token to the end of its last (stop is start if it
-     * matched no tokens), and the bag for the errors its action finds *)
+    (* Where a rule matched: from the start of its first token to the end of its
+     * last (stop is start if it matched no tokens), and the bag for the errors
+     * its action finds *)
     Def Ctx = Tuple file: String start: Int stop: Int bag: diagbag.T end
 
     (* A rule's action: from the rule's non-silent results to its value *)
     Def Action = All(ctx: Ctx args: Array(Val)) Val
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Grammar Constructs
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A grammar construct. A silent construct must match, but its result is not passed to the enclosing rule's
-     * action or included in the enclosing sequence's result. *)
+    (* A grammar construct. A silent construct must match, but its result is not
+     * passed to the enclosing rule's action or included in the enclosing
+     * sequence's result. *)
     Construct::TYPE
 
-    (* The syntax targets of one grammar, which numbers them for the parser's memo *)
+    (* The syntax targets of one grammar, which numbers them for the parser's
+     * memo *)
     Grammar::TYPE
     newGrammar(): Grammar
 
     (* A new syntax target (non-terminal) of the grammar, without rules *)
     target(g: Grammar name: String): Construct
 
-    (* rule(t action) of items end adds a rule to target t: the sequence of items and the action applied to their
-     * non-silent results. A target tries its rules in order. *)
+    (* rule(t action) of items end adds a rule to target t: the sequence of
+     * items and the action applied to their non-silent results. A target tries
+     * its rules in order. *)
     rule(t: Construct action: Action): All(items: Array(Construct)) Ok
 
-    (* A token of a kind, optionally with a lexeme; p and pLex are their silent versions (punctuation) *)
+    (* A token of a kind, optionally with a lexeme; p and pLex are their silent
+     * versions (punctuation) *)
     t(kind: tokens.TokenKind): Construct
     tLex(kind: tokens.TokenKind lexeme: String): Construct
     p(kind: tokens.TokenKind): Construct
     pLex(kind: tokens.TokenKind lexeme: String): Construct
 
-    (* [items]: the items' value, or absent if they do not match; silent if the items are. The value of several
-     * items, here and in rep, is that of the one non-silent item if there is one, otherwise a list of the
-     * non-silent items' values. *)
+    (* [items]: the items' value, or absent if they do not match; silent if the
+     * items are. The value of several items, here and in rep, is that of the
+     * one non-silent item if there is one, otherwise a list of the non-silent
+     * items' values. *)
     opt(items: Array(Construct)): Construct
 
-    (* {items}: a list of the items' values, for as long as they match; silent if the items are *)
+    (* {items}: a list of the items' values, for as long as they match; silent
+     * if the items are *)
     rep(items: Array(Construct)): Construct
 
-    (* item {separator item}: a list of the items' values (one or more); a trailing separator is not consumed *)
+    (* item {separator item}: a list of the items' values (one or more); a
+     * trailing separator is not consumed *)
     sepBy(item: Construct separator: Construct): Construct
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Parser
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Parser::TYPE
 
-    (* A parser for tokens (as tokenizer.tokenizeAll returns them) from a source, reporting errors to bag *)
+    (* A parser for tokens (as tokenizer.tokenizeAll returns them) from a
+     * source, reporting errors to bag *)
     newParser(g: Grammar toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): Parser
 
-    (* The value of start matching all the tokens. Otherwise, it adds an error to the bag at the farthest token any
-     * construct failed to match, naming what was expected there, and raises diagbag.fatalError. *)
+    (* The value of start matching all the tokens. Otherwise, it adds an error
+     * to the bag at the farthest token any construct failed to match, naming
+     * what was expected there, and raises diagbag.fatalError. *)
     parse(p: Parser start: Construct): Val
 end

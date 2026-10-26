@@ -45,7 +45,8 @@ export
             s <> last
         end
 
-    (* The text of a unit's file, with its source map registered for diagnostics *)
+    (* The text of a unit's file, with its source map registered for
+     * diagnostics *)
     let readUnit(file: String what: String): location.SourceMap =
         begin
             let text = paths.readText(file)
@@ -57,7 +58,8 @@ export
             sm
         end
 
-    (* body with e's current directory dir and name pushed on loading; both are restored if body raises an error *)
+    (* body with e's current directory dir and name pushed on loading; both are
+     * restored if body raises an error *)
     let loading(A::TYPE e: env.T dir: String stack: vector.T(String) name: String body: All() A): A =
         begin
             let savedDir = e.currentDir
@@ -192,7 +194,8 @@ export
                 if u.precompiled then
                     synthesizePrecompiled()
                 elsif maybe.isNone(:String filePath) then
-                    (* Without a source, the module's canonical name is the name imported *)
+                    (* Without a source, the module's canonical name is the name
+                     * imported *)
                     let objFile = paths.resolveObjectFile(name e.currentDir vector.toArray(:String e.includePaths))
                     if maybe.isSome(:String objFile) then
                         u.precompiled := true
@@ -244,8 +247,9 @@ export
                         diagnostics.fail(:Ok "Module '" <> decl.name <> "' in '" <> fileName <> "' implements interface '" <>
                             decl.interfaceName <> "', expected '" <> expectedInterface <> "'" 0)
                     end
-                    (* The interface the importer expects, which the module's header names unless it cannot be resolved
-                     * from the module's directory *)
+                    (* The interface the importer expects, which the module's
+                     * header names unless it cannot be resolved from the
+                     * module's directory *)
                     let importerInterface = env.lookupInterface(e expectedInterface)
                     let savedScope = e.currentScope
                     let restoreScope = fun(): Ok e.currentScope := savedScope
@@ -272,7 +276,8 @@ export
                     restoreScope()
                     elaborated
                 end)
-            (* The module is named in C symbols by its canonical name, as importers refer to it *)
+            (* The module is named in C symbols by its canonical name, as
+             * importers refer to it *)
             let named = case typed.form
                 when bindModule with x then
                     if stringOp.equal(paths.lower(x.name) paths.lower(canon)) then

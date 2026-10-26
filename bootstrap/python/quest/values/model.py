@@ -1,5 +1,6 @@
-"""Quest values in Python: the interpreters' values (quest.interpreter), and the data of the dynamic format
-(quest.values.dynamic_json), which `.qi` interface files are written in too, so compilation uses them as well.
+"""Quest values in Python: the interpreters' values (quest.interpreter), and the
+data of the dynamic format (quest.values.dynamic_json), which `.qi` interface
+files are written in too, so compilation uses them as well.
 
 The value hierarchy (QValue) and its operational semantics:
 - Primitive values (Ok, Bool, Int, Real, Char, String)
@@ -7,7 +8,8 @@ The value hierarchy (QValue) and its operational semantics:
 - Sum types (Variant, Option)
 - First-class functions and closures (QClosure, QBuiltinFun)
 - Mutable heap cells (QRef)
-- Auto values (including dynamic values) and exception values (QAutoVal, QExceptionVal)
+- Auto values (including dynamic values) and exception values (QAutoVal,
+  QExceptionVal)
 - Cardelli 'is'/'isnot' identity predicate and recursive structural equality.
 """
 
@@ -195,7 +197,8 @@ class QReal(QValue):
 
 
 class QChar(QValue):
-    """A character value: a byte, with code 0 to 255, of which only ASCII has a defined meaning."""
+    """A character value: a byte, with code 0 to 255, of which only ASCII has a
+    defined meaning."""
 
     def __init__(self, value: str):
         if len(value) != 1:
@@ -442,8 +445,9 @@ class QVariant(QValue):
 
 
 class QOption(QValue):
-    """Ordered tagged option value with optional payload. Its ordinal is its case's index in the static type it is
-    used at (option_case_names), not in the type it was made at."""
+    """Ordered tagged option value with optional payload. Its ordinal is its
+    case's index in the static type it is used at (option_case_names), not in
+    the type it was made at."""
 
     def __init__(
         self,
@@ -486,12 +490,14 @@ class QClosure(QValue):
         self.name = name
         # The closure's frame in tracebacks (docs/exceptions.md §2.3)
         self.trace_name = trace_name
-        # A polymorphic function's type parameters (symbol ids), and the types bound to them by type applications
+        # A polymorphic function's type parameters (symbol ids), and the types
+        # bound to them by type applications
         self.type_param_ids = tuple(type_param_ids)
         self.type_bindings: dict[int, Any] = dict(type_bindings or {})
 
     def instantiate(self, type_args: Sequence[Any]) -> QClosure:
-        """This closure with its next unbound type parameters bound to type_args (a type application)."""
+        """This closure with its next unbound type parameters bound to type_args
+        (a type application)."""
         unbound = [i for i in self.type_param_ids if i not in self.type_bindings]
         bindings = dict(self.type_bindings)
         bindings.update(zip(unbound, type_args))
@@ -616,8 +622,9 @@ class QTupleElementRef(QRef):
 # ============================================================================
 
 class QAutoVal(QValue):
-    """Auto value (Cardelli §4.6): a tuple of components packaged with the closed type that determines their shape.
-    type_val is the type component; value is the QTuple of components. A dynamic value is an auto value of type
+    """Auto value (Cardelli §4.6): a tuple of components packaged with the
+    closed type that determines their shape. type_val is the type component;
+    value is the QTuple of components. A dynamic value is an auto value of type
     Auto A::TYPE with a:A end, whose one component is the packaged value."""
 
     def __init__(self, value: Any, type_val: Any):
@@ -674,8 +681,8 @@ class QWriter(QValue):
 
 
 class QStringBuilder(QValue):
-    """The native buffer of a string builder (lib/util/stringbuilder): the pieces appended so far, as Python strings
-    taken when they are appended."""
+    """The native buffer of a string builder (lib/util/stringbuilder): the
+    pieces appended so far, as Python strings taken when they are appended."""
 
     def __init__(self) -> None:
         self.pieces: list[str] = []
@@ -875,7 +882,8 @@ def qvalue_to_str(val: QValue) -> str:
 # ============================================================================
 
 class QuestException(QuestCompilerError):
-    """Language-level Quest exception (e.g. int.error or user-raised exception)."""
+    """Language-level Quest exception (e.g. int.error or user-raised
+    exception)."""
 
     def __init__(
         self,
@@ -906,5 +914,6 @@ class QuestException(QuestCompilerError):
         )
 
 
-# Raised by the dynamic format's reader and writer (quest.values.dynamic_json), as by the dynamic module
+# Raised by the dynamic format's reader and writer (quest.values.dynamic_json),
+# as by the dynamic module
 DYNAMIC_ERROR_EXC = QExceptionVal("dynamic.error")

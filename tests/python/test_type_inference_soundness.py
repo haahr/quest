@@ -1,4 +1,5 @@
-"""Soundness checks for implicit type argument inference and the subtyping proof trail."""
+"""Soundness checks for implicit type argument inference and the subtyping proof
+trail."""
 
 from __future__ import annotations
 
@@ -94,8 +95,9 @@ class TestSubtypeTrail(unittest.TestCase):
         self.assertNotEqual(SubtypeTrail.key(p1), SubtypeTrail.key(QPathType("x", 3, "U", TYPE_KIND)))
 
     def test_structural_types_are_keyed_by_identity(self) -> None:
-        # Types are hash-consed, so identity is structural identity. (Keep the objects alive: a freed
-        # object's id can be reused, which is exactly what the trail guards against.)
+        # Types are hash-consed, so identity is structural identity. (Keep the
+        # objects alive: a freed object's id can be reused, which is exactly
+        # what the trail guards against.)
         one, one_again, two = QTupleType((INT_TYPE,)), QTupleType((INT_TYPE,)), QTupleType((INT_TYPE, INT_TYPE))
         self.assertEqual(SubtypeTrail.key(one), SubtypeTrail.key(one_again))
         self.assertNotEqual(SubtypeTrail.key(one), SubtypeTrail.key(two))
@@ -109,7 +111,8 @@ class TestSubtypeTrail(unittest.TestCase):
         sub_ref, sup_ref = weakref.ref(sub), weakref.ref(sup)
         del sub, sup
         gc.collect()
-        # While the trail lives, the ids in its keys cannot be reused by other objects.
+        # While the trail lives, the ids in its keys cannot be reused by other
+        # objects.
         self.assertIsNotNone(sub_ref())
         self.assertIsNotNone(sup_ref())
         self.assertIn(pair, trail)

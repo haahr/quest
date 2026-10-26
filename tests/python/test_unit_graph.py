@@ -1,7 +1,9 @@
-"""The graph of program units (quest/modules/graph.py, docs/build-process.md §2.1): resolving each import once per
-compilation, the names a resolved unit has, sharing loaded units by canonical name, and rolling them back.
+"""The graph of program units (quest/modules/graph.py, docs/build-process.md
+§2.1): resolving each import once per compilation, the names a resolved unit
+has, sharing loaded units by canonical name, and rolling them back.
 
-The tree used throughout: a program directory prog/ beside an include root lib/, holding
+The tree used throughout: a program directory prog/ beside an include root lib/,
+holding
 
     lib/util/counter.int.quest   interface Counter, importing Base (a sibling)
     lib/util/counter.mod.quest   module counter : Counter
@@ -75,7 +77,8 @@ class TestUnitGraph(unittest.TestCase):
     def test_names_of_a_resolved_unit(self) -> None:
         resolver = Resolver()
         iface = resolver.interface("util/Counter", self.prog, self.roots)
-        # The unit's key is its file's path below its root; importers record the declared base name.
+        # The unit's key is its file's path below its root; importers record the
+        # declared base name.
         self.assertEqual(iface.canonical_name, "util/counter")
         self.assertEqual(iface.interface_name, "util/Counter")
         self.assertEqual(iface.artifact_name, "util/counter")

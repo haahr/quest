@@ -1,12 +1,13 @@
 """Unit tests for Phase 2: Interface Import Resolution and Decoupling.
 
 Tests:
-- Pure interface compilation on-demand (does not touch or require .mod.quest), with the C header written
-  only by C compilation
+- Pure interface compilation on-demand (does not touch or require .mod.quest),
+  with the C header written only by C compilation
 - Rule 1 staleness: regenerated when .int.quest is newer than .qi
 - Rule 2 staleness: regenerated when artifacts are incomplete
 - Rule 3 precompiled mode: loaded from .qi when .int.quest does not exist
-- Decoupled module elaboration: module compiles against interface without module source
+- Decoupled module elaboration: module compiles against interface without module
+  source
 """
 
 from __future__ import annotations
@@ -45,8 +46,9 @@ class TestInterfaceResolution(unittest.TestCase):
         return env
 
     def test_pure_interface_compilation(self) -> None:
-        """Tests that loading an interface generates its .qi without requiring a module, and that its C header is
-        left to C compilation, which writes it beside the .qi."""
+        """Tests that loading an interface generates its .qi without requiring a
+        module, and that its C header is left to C compilation, which writes it
+        beside the .qi."""
         intf_file = self.dir_path / "service.int.quest"
         intf_file.write_text("interface Service export ping(): Int end;\n", encoding="utf-8")
 
@@ -55,14 +57,16 @@ class TestInterfaceResolution(unittest.TestCase):
         self.assertIsNotNone(scope)
         self.assertIn("ping", scope.values)
 
-        # Verify the .qi was created under .build, and the header only when C compilation asks for it
+        # Verify the .qi was created under .build, and the header only when C
+        # compilation asks for it
         qi_file = self.build_dir / "service.qi"
         self.assertTrue(qi_file.is_file())
         self.assertFalse((self.build_dir / "service.int.h").exists())
         qi_mtime = qi_file.stat().st_mtime_ns
         self.assertEqual(ensure_imported_interface_header("Service", env), self.build_dir.resolve() / "service.int.h")
         self.assertTrue((self.build_dir / "service.int.h").is_file())
-        # Writing the header leaves the fresh .qi, and so what depends on it, untouched
+        # Writing the header leaves the fresh .qi, and so what depends on it,
+        # untouched
         self.assertEqual(qi_file.stat().st_mtime_ns, qi_mtime)
         # Verify no module artifacts were created
         self.assertFalse((self.build_dir / "service.c").is_file())
@@ -70,7 +74,8 @@ class TestInterfaceResolution(unittest.TestCase):
         self.assertFalse((self.build_dir / "service.qm").is_file())
 
     def test_interface_rule1_staleness(self) -> None:
-        """Tests Rule 1: interface is recompiled when .int.quest is newer than .qi / .h."""
+        """Tests Rule 1: interface is recompiled when .int.quest is newer than
+        .qi / .h."""
         intf_file = self.dir_path / "metrics.int.quest"
         intf_file.write_text("interface Metrics export count(): Int end;\n", encoding="utf-8")
 
@@ -97,7 +102,8 @@ class TestInterfaceResolution(unittest.TestCase):
         self.assertGreater(qi_file.stat().st_mtime, initial_mtime)
 
     def test_interface_rule3_precompiled(self) -> None:
-        """Tests Rule 3: precompiled .qi and .h are used when source .int.quest does not exist."""
+        """Tests Rule 3: precompiled .qi and .h are used when source .int.quest
+        does not exist."""
         intf_file = self.dir_path / "pre.int.quest"
         intf_file.write_text("interface Pre export magic(): Int end;\n", encoding="utf-8")
         compile_interface_with_header(intf_file, build_dir=self.build_dir, include_paths=[self.dir_path])
@@ -114,7 +120,8 @@ class TestInterfaceResolution(unittest.TestCase):
         self.assertIn("magic", scope.values)
 
     def test_module_compiles_without_imported_module_source(self) -> None:
-        """Tests compiling module A that imports B, when only B's interface exists."""
+        """Tests compiling module A that imports B, when only B's interface
+        exists."""
         intf_b = self.dir_path / "depb.int.quest"
         intf_b.write_text("interface DepB export getValue(): Int end;\n", encoding="utf-8")
         compile_interface_with_header(intf_b, build_dir=self.build_dir, include_paths=[self.dir_path])

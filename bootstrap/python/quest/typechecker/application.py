@@ -1,5 +1,6 @@
-"""Elaboration of function application: monomorphic calls, polymorphic calls with explicit or inferred type
-arguments, and the lvalue arguments of var and out parameters."""
+"""Elaboration of function application: monomorphic calls, polymorphic calls
+with explicit or inferred type arguments, and the lvalue arguments of var and
+out parameters."""
 
 from __future__ import annotations
 
@@ -53,8 +54,9 @@ TypeError = QuestTypeError
 class ApplicationMixin(Checker):
     """Function application.
 
-    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
-    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    A construct family of the checker (`checker.Checker`): its methods use the
+    checker's state and helpers, reach the dispatch (`check_expr`, `synth_expr`)
+    through it, and call the families below this one (checker.py) through
     `self`.
     """
 
@@ -66,7 +68,8 @@ class ApplicationMixin(Checker):
         loop_depth: int,
         offset: int,
     ) -> list[TypedExpr]:
-        """Validates arity and elaborates call arguments against formal parameter modes."""
+        """Validates arity and elaborates call arguments against formal
+        parameter modes."""
         if len(args) != len(params):
             raise TypeError(
                 f"Function expects {len(params)} arguments, but got {len(args)}",
@@ -89,10 +92,13 @@ class ApplicationMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedExpr:
-        """Elaborates a function application, handling polymorphic type inference, var, and out params.
+        """Elaborates a function application, handling polymorphic type
+        inference, var, and out params.
 
-        The expected type, if there is one, can determine the implicit type arguments of a polymorphic call; the
-        application's type is still synthesized, and check_expr requires it to be a subtype of the expected type.
+        The expected type, if there is one, can determine the implicit type
+        arguments of a polymorphic call; the application's type is still
+        synthesized, and check_expr requires it to be a subtype of the expected
+        type.
         """
         # Special built-in monadic operator: ordinal (Cardelli §4.5)
         if isinstance(expr.func, ast.ExprId) and expr.func.name == "ordinal":
@@ -152,14 +158,16 @@ class ApplicationMixin(Checker):
         loop_depth: int,
         is_out: bool,
     ) -> TypedExpr:
-        """Validates that arg is a mutable lvalue location for var or out parameters."""
+        """Validates that arg is a mutable lvalue location for var or out
+        parameters."""
         # Case 1: @target (Explicit reference passing, Cardelli §4.8)
         if isinstance(arg, ast.ExprDerefCell):
             return self._check_lvalue_target(
                 arg.target, param_type, env, loop_depth, is_out, arg.offset
             )
 
-        # Case 2: var(initial_value) (Fresh on-the-fly mutable variable, Cardelli §4.8)
+        # Case 2: var(initial_value) (Fresh on-the-fly mutable variable,
+        # Cardelli §4.8)
         if isinstance(arg, ast.ExprVarCell):
             val_typed = self.check_expr(arg.value, param_type, env, loop_depth)
             return TypedVarCell(value=val_typed, type_val=QVarType(param_type), offset=arg.offset)
@@ -180,22 +188,30 @@ class ApplicationMixin(Checker):
         is_out: bool,
         offset: int,
     ) -> TypedExpr:
-        """Elaborates the target of an argument @target passed to a var or out parameter, as a reference to it.
+        """Elaborates the target of an argument @target passed to a var or out
+        parameter, as a reference to it.
 
-        A var or out parameter receives a location rather than a value: one the callee may read and assign (var) or only
-        assign (out). The caller passes @x, @r.f, @t.f, or @a[i], or var(e) for a fresh location (_check_lvalue_arg); @y
-        forwards a var or out parameter y, passing on the location it already holds. This method finds the location and
-        returns a node of type Var(T) for it (TypedVar for a variable, TypedSelectRef, TypedTupleSelectRef, or
-        TypedIndexRef), so that later phases pass its address rather than its contents. T is the location's own type,
-        which for out may differ from the parameter's.
+        A var or out parameter receives a location rather than a value: one the
+        callee may read and assign (var) or only assign (out). The caller passes
+        @x, @r.f, @t.f, or @a[i], or var(e) for a fresh location
+        (_check_lvalue_arg); @y forwards a var or out parameter y, passing on
+        the location it already holds. This method finds the location and
+        returns a node of type Var(T) for it (TypedVar for a variable,
+        TypedSelectRef, TypedTupleSelectRef, or TypedIndexRef), so that later
+        phases pass its address rather than its contents. T is the location's
+        own type, which for out may differ from the parameter's.
 
-        The location must be mutable: a variable or field declared var, or an array element (arrays are always mutable).
-        Mutability shows in two ways, and the conditions below test both: a declaration marks its symbol or field
-        is_var, while a cell made by var(e) and bound by an ordinary let is mutable through its type, Var(T). Its type
-        must then fit the parameter's mode (check_lvalue_mode_type). For var it must be exactly the parameter's type:
-        passing @x, where x is a Record p: Int q: Int end, to var r: Record p: Int end would let the callee store a
-        record without q into x. For out, which the callee only assigns, any supertype of the parameter's type will do.
-        As with any use of a mutable local, passing one from a closure that would capture it is rejected
+        The location must be mutable: a variable or field declared var, or an
+        array element (arrays are always mutable). Mutability shows in two ways,
+        and the conditions below test both: a declaration marks its symbol or
+        field is_var, while a cell made by var(e) and bound by an ordinary let
+        is mutable through its type, Var(T). Its type must then fit the
+        parameter's mode (check_lvalue_mode_type). For var it must be exactly
+        the parameter's type: passing @x, where x is a Record p: Int q: Int end,
+        to var r: Record p: Int end would let the callee store a record without
+        q into x. For out, which the callee only assigns, any supertype of the
+        parameter's type will do. As with any use of a mutable local, passing
+        one from a closure that would capture it is rejected
         (_check_capturable).
         """
         mode_name = "out" if is_out else "var"
@@ -230,7 +246,8 @@ class ApplicationMixin(Checker):
                 rec_typed = self.synth_expr(target.target, env, loop_depth)
                 rec_type = rec_typed.type_val.evaluate_lazily(env)
                 if not isinstance(rec_type, QTupleType) and resolve_record_bound(rec_type, env) is None:
-                    # A type parameter bounded by a tuple type: its components are its bound's
+                    # A type parameter bounded by a tuple type: its components
+                    # are its bound's
                     rec_type = resolve_tuple_bound(rec_type, env) or rec_type
 
                 # Check for mutable tuple component: @t.f or @t.1
@@ -327,27 +344,37 @@ class ApplicationMixin(Checker):
         loop_depth: int,
         expected_type: Optional[QType] = None,
     ) -> TypedExpr:
-        """Elaborates a call f(args) of a polymorphic function, f: All(A::K) Fun(x: A): R, finding its type arguments.
+        """Elaborates a call f(args) of a polymorphic function, f: All(A::K)
+        Fun(x: A): R, finding its type arguments.
 
-        Type arguments may be written, as in f(:Int 42). They are substituted for f's type parameters, and the rest of
-        the call is elaborated as an ordinary call; written ones may cover only the first type parameters, and the rest
-        are then inferred. Omitted, they are inferred, following Cardelli (The Quest Language and System §4). Each type
-        parameter is replaced by a metavariable, a placeholder for the unknown type, and checking the arguments against
-        the parameter types fills the placeholders in. If some remain unsolved, the type the context requires of the
-        result (expected_type) is tried, as when list.nil() is checked against list.T(Int). Each solution is then
-        checked against its type parameter's bound, which solving ignores.
+        Type arguments may be written, as in f(:Int 42). They are substituted
+        for f's type parameters, and the rest of the call is elaborated as an
+        ordinary call; written ones may cover only the first type parameters,
+        and the rest are then inferred. Omitted, they are inferred, following
+        Cardelli (The Quest Language and System §4). Each type parameter is
+        replaced by a metavariable, a placeholder for the unknown type, and
+        checking the arguments against the parameter types fills the
+        placeholders in. If some remain unsolved, the type the context requires
+        of the result (expected_type) is tried, as when list.nil() is checked
+        against list.T(Int). Each solution is then checked against its type
+        parameter's bound, which solving ignores.
 
-        Inference is local and greedy: is_subtype solves a metavariable with the first type it is compared with, and
-        nothing is backtracked, so the order of the comparisons can matter. For f(a b) with f: All(A) Fun(x: A y: A), if
-        a's type is a proper subtype of b's, A becomes a's type and b is rejected, though the reverse order would
-        succeed. A type argument that cannot be inferred is an error, except in a call nested in another's arguments
-        whose expected type still mentions the outer call's unsolved metavariables, as nil() in cons(nil() tail): it
-        hands its unsolved ones to the outer call (_pending_type_args), which solves them, and rewrites the nested
-        call's node with the solutions, when it finishes.
+        Inference is local and greedy: is_subtype solves a metavariable with the
+        first type it is compared with, and nothing is backtracked, so the order
+        of the comparisons can matter. For f(a b) with f: All(A) Fun(x: A y: A),
+        if a's type is a proper subtype of b's, A becomes a's type and b is
+        rejected, though the reverse order would succeed. A type argument that
+        cannot be inferred is an error, except in a call nested in another's
+        arguments whose expected type still mentions the outer call's unsolved
+        metavariables, as nil() in cons(nil() tail): it hands its unsolved ones
+        to the outer call (_pending_type_args), which solves them, and rewrites
+        the nested call's node with the solutions, when it finishes.
 
-        An empty application of a polymorphic constant (list.nil(), for nil: All(A::TYPE) T(A)) instantiates it.
+        An empty application of a polymorphic constant (list.nil(), for nil:
+        All(A::TYPE) T(A)) instantiates it.
         """
-        # 1. Check for explicit type / kind arguments (e.g. f(:Int 42), id(:Int))
+        # 1. Check for explicit type / kind arguments (e.g. f(:Int 42),
+        #    id(:Int))
         num_targs = 0
         while num_targs < len(expr.args) and isinstance(
             expr.args[num_targs], (ast.TypeArgument, ast.KindArgument)
@@ -422,11 +449,13 @@ class ApplicationMixin(Checker):
                 offset=expr.offset,
             )
 
-        # 2. Metavariable inference for implicit type arguments. The metavariables (QTypeMeta, printed ?A) exist only
-        #    during this call: they are replaced by their solutions before its node is returned, and an assertion
-        #    below fails if any remain.
+        # 2. Metavariable inference for implicit type arguments. The
+        #    metavariables (QTypeMeta, printed ?A) exist only during this call:
+        #    they are replaced by their solutions before its node is returned,
+        #    and an assertion below fails if any remain.
         fn_body = all_type.body.evaluate_lazily(env)
-        # An empty application of a polymorphic constant instantiates it (Cardelli: nil()).
+        # An empty application of a polymorphic constant instantiates it
+        # (Cardelli: nil()).
         is_instantiation = not isinstance(fn_body, QFunType)
         if is_instantiation and expr.args:
             raise TypeError(
@@ -441,7 +470,8 @@ class ApplicationMixin(Checker):
         instantiated_fn = fn_body.substitute(meta_map)
         result_type = instantiated_fn if is_instantiation else instantiated_fn.result_type
 
-        # This call's type arguments, plus any that calls nested in its arguments defer to it.
+        # This call's type arguments, plus any that calls nested in its
+        # arguments defer to it.
         type_args: list[tuple[QTypeMeta, QQuantifier, int]] = [
             (meta_map[q.symbol_id], q, expr.offset) for q in all_type.quantifiers
         ]
@@ -455,7 +485,8 @@ class ApplicationMixin(Checker):
             self._pending_type_args = enclosing_type_args
 
         if expected_type is not None and any(m.prune() is m for m, _, _ in type_args):
-            # Inference from the type required by this instance (a failed match is reported by the caller).
+            # Inference from the type required by this instance (a failed match
+            # is reported by the caller).
             is_subtype(result_type, expected_type, env)
 
         unsolved = [entry for entry in type_args if entry[0].prune() is entry[0]]
@@ -480,8 +511,9 @@ class ApplicationMixin(Checker):
         resolved_targs = [resolve_metas(meta_map[q.symbol_id]) for q in all_type.quantifiers]
         final_fn = resolve_metas(instantiated_fn)
         if self._pending_type_args is None:
-            # Arguments elaborated in check mode (e.g. an array literal checked against Array(?A)) and
-            # nested calls that deferred to this one still refer to the now-solved metavariables.
+            # Arguments elaborated in check mode (e.g. an array literal checked
+            # against Array(?A)) and nested calls that deferred to this one
+            # still refer to the now-solved metavariables.
             memo: dict[int, Any] = {}
             typed_args = [resolve_typed_metas(a, memo) for a in typed_args]
             leaked = unsolved_metas(final_fn) + [m for t in resolved_targs for m in unsolved_metas(t)]

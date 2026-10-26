@@ -1,8 +1,10 @@
-"""The standard library's external C functions and values, implemented in Python for the interpreters: each
-`external "symbol"` of lib/ resolves to a Python function, value, or exception (resolve_external_symbol), and
-system.args is set from the driver's arguments (set_system_args). A character is a byte, as in C, so files, the
-standard streams (use_byte_streams), and strings from the OS are read and written a byte per character. The library's
-interfaces and modules, which the type checker loads, are quest.modules.stdlib's."""
+"""The standard library's external C functions and values, implemented in Python
+for the interpreters: each `external "symbol"` of lib/ resolves to a Python
+function, value, or exception (resolve_external_symbol), and system.args is set
+from the driver's arguments (set_system_args). A character is a byte, as in C,
+so files, the standard streams (use_byte_streams), and strings from the OS are
+read and written a byte per character. The library's interfaces and modules,
+which the type checker loads, are quest.modules.stdlib's."""
 
 from __future__ import annotations
 
@@ -65,7 +67,8 @@ from quest.values.model import (
 
 
 def qchecked(error_exc: Optional[QExceptionVal], *expected_types: type) -> Callable:
-    """Decorator to validate that arguments passed to a builtin function match expected types.
+    """Decorator to validate that arguments passed to a builtin function match
+    expected types.
 
     If error_exc is provided, raises QuestException(error_exc) on mismatch;
     otherwise, raises QuestRuntimeError with a descriptive message.
@@ -244,7 +247,8 @@ def _conv_real(r: QValue) -> QString:
     if not isinstance(r, QReal):
         return QString("")
     val = r.value
-    # Quest writes negation as ~, including for negative zero and negative infinity.
+    # Quest writes negation as ~, including for negative zero and negative
+    # infinity.
     is_neg = math.copysign(1.0, val) < 0
     abs_val = -val if is_neg else val
     if math.isinf(abs_val):
@@ -274,13 +278,15 @@ def _real_exp(a: QReal, b: QReal) -> QReal:
     return QReal(real_pow(a.value, b.value))
 
 def _real_to_int(r: float) -> QInt:
-    """An integral real as an Int; an infinity or a value outside Int's range raises real.error."""
+    """An integral real as an Int; an infinity or a value outside Int's range
+    raises real.error."""
     if not math.isfinite(r) or not (-(2**63) <= r < 2**63):
         raise QuestException(REAL_ERROR_EXC)
     return QInt(int(r))
 
 def _real_round(r: float) -> float:
-    """Rounds half away from zero, as C's round does (Python's round rounds half to even)."""
+    """Rounds half away from zero, as C's round does (Python's round rounds half
+    to even)."""
     if not math.isfinite(r):
         return r
     t = float(math.trunc(r))
@@ -682,7 +688,8 @@ def _quest_identity_hash(v: QValue) -> QWord:
         case QChar(value=val):
             raw = ord(val)
         case QReal(value=val):
-            # 0.0 is ~0.0, so both must hash alike; adding 0.0 turns ~0.0 into 0.0.
+            # 0.0 is ~0.0, so both must hash alike; adding 0.0 turns ~0.0 into
+            # 0.0.
             raw = struct.unpack(">Q", struct.pack(">d", val + 0.0))[0]
         case QOk():
             raw = 0
@@ -904,7 +911,8 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_string_precedes": lambda s1, s2: QBool(s1.value <= s2.value),
     "quest_string_precedes_sub": _string_precedes_sub,
 
-    # Strutil (strutil.tryToReal has checked the syntax; float rounds correctly, as C's strtod does)
+    # Strutil (strutil.tryToReal has checked the syntax; float rounds correctly,
+    # as C's strtod does)
     "quest_strutil_to_real": lambda s: QReal(float(s.value)),
 
     # StringBuilder
@@ -987,7 +995,8 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
 }
 
 
-# The external C values the interpreter has (exceptions, the standard streams, numeric limits), by symbol
+# The external C values the interpreter has (exceptions, the standard streams,
+# numeric limits), by symbol
 EXTERNAL_VALUES: dict[str, QValue] = {
     # Writer
     "(&quest_exc_writer_error)": WRITER_ERROR_EXC,
@@ -1054,7 +1063,8 @@ EXTERNAL_VALUES: dict[str, QValue] = {
 
 
 def resolve_external_symbol(symbol: str) -> QValue:
-    """Resolves an external C symbol into a value for interpreter evaluation: a QBuiltinFun for a function."""
+    """Resolves an external C symbol into a value for interpreter evaluation: a
+    QBuiltinFun for a function."""
     clean = symbol.strip("(&)").strip()
     for name in (symbol, clean):
         if name in EXTERNAL_FUNCTIONS:
@@ -1065,13 +1075,15 @@ def resolve_external_symbol(symbol: str) -> QValue:
 
 
 def set_system_args(args: list[str]) -> None:
-    """Updates system.args with the provided argument list, as Python decoded it from the OS."""
+    """Updates system.args with the provided argument list, as Python decoded it
+    from the OS."""
     EXTERNAL_VALUES["quest_system_args"] = QArray(tuple(QString(os_text(a)) for a in args))
 
 
 def use_byte_streams() -> None:
-    """Makes the standard streams read and write a byte per character, as C's do. Text the compiler itself writes that
-    is not a character per byte, a file name from the OS, say, is written with escapes."""
+    """Makes the standard streams read and write a byte per character, as C's
+    do. Text the compiler itself writes that is not a character per byte, a file
+    name from the OS, say, is written with escapes."""
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding=BYTE_ENCODING, errors="strict" if stream is sys.stdin else "backslashreplace")

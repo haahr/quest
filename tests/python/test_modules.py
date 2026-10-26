@@ -1,4 +1,5 @@
-"""Unit tests for Quest Module, Interface, and Import Elaboration (quest/modules.py)."""
+"""Unit tests for Quest Module, Interface, and Import Elaboration
+(quest/modules.py)."""
 
 import os
 import sys

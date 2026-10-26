@@ -122,34 +122,47 @@ def elaborate_kind(ast_kind: ast.Kind, env: Environment) -> QKind:
 # ============================================================================
 
 def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
-    """Elaborates a type as written (an ast.Type) into the checker's semantic type (a QType).
+    """Elaborates a type as written (an ast.Type) into the checker's semantic
+    type (a QType).
 
-    Annotations and type declarations are syntax, but the checker reasons about QTypes, in which every name has been
-    resolved to its symbol, so that a type means the same thing wherever it is carried, even out of the scope it was
-    written in. Elaboration is a recursive walk that resolves names in env, opens a scope for each construct that binds
-    type names (a tuple with type components, a type operator, All, Auto, Rec), and checks some of what constructs
-    require of their parts: that a field's type is a type of values (kind TYPE, not a type operator), and that a
-    recursive type is contractive (its recursion passes through a constructor, so that it is not defined as itself).
-    The kind of a declared type as a whole is checked by its declaration (elaborate_type_binding). A name with a
-    definition (a type alias) becomes a QAliasType, which the checker sees through to its definition but which keeps
-    the name written, for printing; a name without one (a type parameter, or an interface's abstract type) becomes a
-    QTypeVar referring to its symbol.
+    Annotations and type declarations are syntax, but the checker reasons about
+    QTypes, in which every name has been resolved to its symbol, so that a type
+    means the same thing wherever it is carried, even out of the scope it was
+    written in. Elaboration is a recursive walk that resolves names in env,
+    opens a scope for each construct that binds type names (a tuple with type
+    components, a type operator, All, Auto, Rec), and checks some of what
+    constructs require of their parts: that a field's type is a type of values
+    (kind TYPE, not a type operator), and that a recursive type is contractive
+    (its recursion passes through a constructor, so that it is not defined as
+    itself). The kind of a declared type as a whole is checked by its
+    declaration (elaborate_type_binding). A name with a definition (a type
+    alias) becomes a QAliasType, which the checker sees through to its
+    definition but which keeps the name written, for printing; a name without
+    one (a type parameter, or an interface's abstract type) becomes a QTypeVar
+    referring to its symbol.
 
-    Most cases translate directly. The two that do not, names with paths and All, are explained where they are handled.
+    Most cases translate directly. The two that do not, names with paths and
+    All, are explained where they are handled.
     """
     match ast_type:
-        # A name T is looked up in scope. A path A.B.T names a type inside something else, tried in this order:
+        # A name T is looked up in scope. A path A.B.T names a type inside
+        # something else, tried in this order:
         #
-        # 1. A module or interface: walk the nested modules to T, which is an alias or a variable as above, named by
-        #    its whole path. Modules come first, so a value of the same name does not hide a module's types.
-        # 2. An immutable value x (or a field of one, x.y) whose type is a tuple with type components, such as
-        #    Tuple A::TYPE f: A end: x.A is a path type, standing for whatever type x's component A is, unknown here.
-        #    Such a component is how Quest hides a type behind a signature, and x.A lets code use values of that type
-        #    without knowing it. Two path types are the same type when they have the same root symbol and component,
-        #    so the root must be immutable: were x reassigned, x.A could change under code that relied on it. What
-        #    x.A's bound (what is known of it) says of other components B is restated in terms of x.B, since outside
-        #    the tuple only x.B names them. A component defined in the tuple's type (A = Int) is known, and its
-        #    definition is returned instead.
+        # 1. A module or interface: walk the nested modules to T, which is an
+        #    alias or a variable as above, named by its whole path. Modules come
+        #    first, so a value of the same name does not hide a module's types.
+        # 2. An immutable value x (or a field of one, x.y) whose type is a tuple
+        #    with type components, such as Tuple A::TYPE f: A end: x.A is a path
+        #    type, standing for whatever type x's component A is, unknown here.
+        #    Such a component is how Quest hides a type behind a signature, and
+        #    x.A lets code use values of that type without knowing it. Two path
+        #    types are the same type when they have the same root symbol and
+        #    component, so the root must be immutable: were x reassigned, x.A
+        #    could change under code that relied on it. What x.A's bound (what
+        #    is known of it) says of other components B is restated in terms of
+        #    x.B, since outside the tuple only x.B names them. A component
+        #    defined in the tuple's type (A = Int) is known, and its definition
+        #    is returned instead.
         # 3. Otherwise the path is undefined.
         case ast.TypePath(path=path, offset=offset):
             if len(path) == 1:
@@ -191,7 +204,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     )
                     return QTypeVar(name=var_name, symbol_id=sym.symbol_id, bound=sym.kind)
 
-                # 2. Value binding lookup for path-dependent types (e.g. x.A or x.y.A)
+                # 2. Value binding lookup for path-dependent types (e.g. x.A or
+                #    x.y.A)
                 val_sym = env.lookup_value(path[0])
                 if val_sym is not None:
                     if val_sym.is_var:
@@ -318,10 +332,12 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                                 )
 
                         case ast.TypeBinding() | ast.TypeBindingGroup():
-                            # The members of a group are elaborated together, then declared together
+                            # The members of a group are elaborated together,
+                            # then declared together
                             for member, symbol, bound_kind in elaborate_tuple_type_bindings(f, env):
                                 env.current_scope.declare_type(symbol)
-                                # Without a bound, a component is a type (checked), as a tuple value's says
+                                # Without a bound, a component is a type
+                                # (checked), as a tuple value's says
                                 components.append(
                                     QTupleTypeBinding(
                                         name=member.name, type_val=symbol.definition, bound=bound_kind or TYPE_KIND
@@ -372,7 +388,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 if not opt.payload_sig:
                     options.append(QOptionField(name=opt.tag, payload_type=None))
                 else:
-                    # A case's payload is a tuple type: it may have type components and var fields
+                    # A case's payload is a tuple type: it may have type
+                    # components and var fields
                     payload = elaborate_type(ast.TypeTuple(fields=opt.payload_sig, offset=opt.offset), env)
                     options.append(QOptionField(name=opt.tag, payload_type=payload))
             return QOptionType(tuple(options))
@@ -406,12 +423,15 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 return QExceptionType(payload_type=args[0])
             return QTypeApp(constructor=ctor_type, arguments=args)
 
-        # All(...) R lists type parameters (A::K or A <: B) and value parameters (x: T) together, as a function's
-        # signature does. The parser makes each a quantifier: a type parameter marked is_type, and a value parameter
-        # with the kind POWER(T), the kind whose members are T's subtypes. Here they part again: the type parameters
-        # become the quantifiers of an All type and the value parameters the parameters of a function type, giving
-        # All(A::K) Fun(x: T): R; with no type parameters, just the function type, and with no value parameters (but
-        # some type parameters), All(A::K) R.
+        # All(...) R lists type parameters (A::K or A <: B) and value parameters
+        # (x: T) together, as a function's signature does. The parser makes each
+        # a quantifier: a type parameter marked is_type, and a value parameter
+        # with the kind POWER(T), the kind whose members are T's subtypes. Here
+        # they part again: the type parameters become the quantifiers of an All
+        # type and the value parameters the parameters of a function type,
+        # giving All(A::K) Fun(x: T): R; with no type parameters, just the
+        # function type, and with no value parameters (but some type
+        # parameters), All(A::K) R.
         case ast.TypeAll(quantifiers=quants_ast, result_type=res_type):
             with env.scoped("all_type"):
                 quants: list[QQuantifier] = []
@@ -425,7 +445,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                         )
                         quants.append(QQuantifier(name=q.name, symbol_id=symbol_id, bound=bound_kind))
                     elif isinstance(bound_kind, QPowerKind):
-                        # Value formal parameter: x : T (represented via Power(T))
+                        # Value formal parameter: x : T (represented via
+                        # Power(T))
                         val_type = bound_kind.bound
                         is_var = q.mode == ast.ParamMode.VAR
                         is_out = q.mode == ast.ParamMode.OUT
@@ -539,7 +560,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
 # ============================================================================
 
 def elaborate_kind_binding(binding: ast.DefKindBinding, env: Environment) -> KindSymbol:
-    """Elaborates a DEF K = Kind declaration and registers it in the current scope."""
+    """Elaborates a DEF K = Kind declaration and registers it in the current
+    scope."""
     kind_val = elaborate_kind(binding.kind_val, env)
     check_kind_well_formed(kind_val, env)
     symbol = KindSymbol(name=binding.name, symbol_id=env.fresh_symbol_id(), kind=kind_val)
@@ -559,8 +581,8 @@ def _check_distinct_member_names(group: ast.TypeBindingGroup) -> None:
 
 
 def tuple_type_binding_members(binding: ast.TypeBinding | ast.TypeBindingGroup) -> tuple[ast.TypeBinding, ...]:
-    """Returns the type bindings declared by one component of a tuple or tuple type: the binding itself, or the
-    members of a group."""
+    """Returns the type bindings declared by one component of a tuple or tuple
+    type: the binding itself, or the members of a group."""
     if isinstance(binding, ast.TypeBindingGroup):
         _check_distinct_member_names(binding)
         return binding.bindings
@@ -571,11 +593,13 @@ def elaborate_tuple_type_bindings(
     binding: ast.TypeBinding | ast.TypeBindingGroup,
     env: Environment,
 ) -> list[tuple[ast.TypeBinding, TypeSymbol, Optional[QKind]]]:
-    """Elaborates the type bindings one component of a tuple or tuple type declares, without declaring them in the
-    tuple's scope: each member with its symbol and its declared bound, if any.
+    """Elaborates the type bindings one component of a tuple or tuple type
+    declares, without declaring them in the tuple's scope: each member with its
+    symbol and its declared bound, if any.
 
-    The members of a group without Rec are elaborated simultaneously. Recursive ones, alone or in a group, are
-    elaborated as anywhere else, in a scope of their own.
+    The members of a group without Rec are elaborated simultaneously. Recursive
+    ones, alone or in a group, are elaborated as anywhere else, in a scope of
+    their own.
     """
     members = tuple_type_binding_members(binding)
     if members[0].is_rec:
@@ -585,7 +609,8 @@ def elaborate_tuple_type_bindings(
             else:
                 symbols = [elaborate_type_binding(binding, env)]
         for member, symbol in zip(members, symbols):
-            # Like any type component, a recursive one must be a type unless it declares a bound
+            # Like any type component, a recursive one must be a type unless it
+            # declares a bound
             check_kind(symbol.definition, symbol.kind if member.bound is not None else TYPE_KIND, env)
         return [
             (member, symbol, symbol.kind if member.bound is not None else None)
@@ -608,7 +633,8 @@ def _elaborate_tuple_type_binding(
     binding: ast.TypeBinding,
     env: Environment,
 ) -> tuple[QType, Optional[QKind]]:
-    """Elaborates the definition of a type binding in a tuple type and its declared bound, if any."""
+    """Elaborates the definition of a type binding in a tuple type and its
+    declared bound, if any."""
     bound_kind = elaborate_kind(binding.bound, env) if binding.bound else None
     m_type = elaborate_type(binding.type_val, env)
     check_kind(m_type, bound_kind or TYPE_KIND, env)
@@ -616,8 +642,9 @@ def _elaborate_tuple_type_binding(
 
 
 class _RecOperatorSymbol(TypeSymbol):
-    """A recursive type operator (Let Rec T(A::K) = ...) while its definition is elaborated. There it may occur only
-    applied to exactly its own parameters, as T(A), which stands for the variable of the recursive type the operator
+    """A recursive type operator (Let Rec T(A::K) = ...) while its definition is
+    elaborated. There it may occur only applied to exactly its own parameters,
+    as T(A), which stands for the variable of the recursive type the operator
     returns (uniform recursion)."""
 
     def __init__(self, name: str, symbol_id: int, kind: QKind, formals: tuple[QTypeFormal, ...], rec_var: QTypeVar):
@@ -626,7 +653,8 @@ class _RecOperatorSymbol(TypeSymbol):
         self.rec_var = rec_var
 
     def apply(self, args: tuple[QType, ...], offset: int) -> QTypeVar:
-        """The recursive variable, for an application of the operator to exactly its parameters."""
+        """The recursive variable, for an application of the operator to exactly
+        its parameters."""
         if len(args) != len(self.formals) or not all(
             isinstance(arg, QTypeVar) and arg.symbol_id == formal.symbol_id for arg, formal in zip(args, self.formals)
         ):
@@ -643,7 +671,8 @@ class _RecOperatorSymbol(TypeSymbol):
 
 
 def _rec_operator_named(ctor: ast.Type, env: Environment) -> Optional[_RecOperatorSymbol]:
-    """The recursive type operator a type application applies, if it is one being defined."""
+    """The recursive type operator a type application applies, if it is one
+    being defined."""
     if isinstance(ctor, ast.TypePath) and len(ctor.path) == 1:
         sym = env.lookup_type(ctor.path[0])
         if isinstance(sym, _RecOperatorSymbol):
@@ -652,7 +681,8 @@ def _rec_operator_named(ctor: ast.Type, env: Environment) -> Optional[_RecOperat
 
 
 def _operator_kind(formals: list[QTypeFormal] | tuple[QTypeFormal, ...], result_kind: QKind) -> QKind:
-    """The kind of a type operator with the given parameters and result kind: ALL(X::K) ... result_kind."""
+    """The kind of a type operator with the given parameters and result kind:
+    ALL(X::K) ... result_kind."""
     kind = result_kind
     for formal in reversed(formals):
         kind = QAllKind(param_name=formal.name, param_id=formal.symbol_id, param_kind=formal.bound, result_kind=kind)
@@ -660,17 +690,20 @@ def _operator_kind(formals: list[QTypeFormal] | tuple[QTypeFormal, ...], result_
 
 
 def _is_rec_type_operator(binding: ast.TypeBinding) -> bool:
-    """Whether a recursive type declaration declares a type operator: Let Rec T(A::K) = ..., which the parser makes
-    Let Rec T = Fun(A::K) ...."""
+    """Whether a recursive type declaration declares a type operator: Let Rec
+    T(A::K) = ..., which the parser makes Let Rec T = Fun(A::K) ...."""
     return isinstance(binding.type_val, ast.TypeFun)
 
 
 def elaborate_rec_type_operators(members: list[ast.TypeBinding], env: Environment) -> list[TypeSymbol]:
-    """Elaborates recursive type operators, alone or as a group, into their symbols, without declaring them.
+    """Elaborates recursive type operators, alone or as a group, into their
+    symbols, without declaring them.
 
-    Let Rec T(A::K) = Body means Fun(A::K) Rec(T) Body, with T(A) in Body standing for the recursive variable. The
-    members of a group must take the same parameters, which they share: Let Rec T(A::K) = B1 and U(A::K) = B2 makes
-    T Fun(A::K) Rec(T) B1 and U Fun(A::K) Rec(U) B2, as one group of the two recursive types.
+    Let Rec T(A::K) = Body means Fun(A::K) Rec(T) Body, with T(A) in Body
+    standing for the recursive variable. The members of a group must take the
+    same parameters, which they share: Let Rec T(A::K) = B1 and U(A::K) = B2
+    makes T Fun(A::K) Rec(T) B1 and U Fun(A::K) Rec(U) B2, as one group of the
+    two recursive types.
     """
     shapes: list[tuple[tuple[ast.TypeFormal, ...], Optional[ast.Kind], ast.Type]] = []
     for member in members:
@@ -751,10 +784,12 @@ def elaborate_type_binding_group(
     group: ast.TypeBindingGroup,
     env: Environment,
 ) -> list[TypeSymbol]:
-    """Elaborates simultaneous type declarations: Let [Rec] T1 = ... and T2 = ..., or the same with Def.
+    """Elaborates simultaneous type declarations: Let [Rec] T1 = ... and T2 =
+    ..., or the same with Def.
 
-    Without Rec, each member is elaborated in the enclosing scope, so members do not see one another, and all are
-    declared once every member has been elaborated. With Rec, the members are mutually recursive.
+    Without Rec, each member is elaborated in the enclosing scope, so members do
+    not see one another, and all are declared once every member has been
+    elaborated. With Rec, the members are mutually recursive.
     """
     _check_distinct_member_names(group)
     if group.bindings[0].is_rec:
@@ -778,7 +813,8 @@ def _elaborate_type_binding_symbol(
     binding: ast.TypeBinding,
     env: Environment,
 ) -> TypeSymbol:
-    """Elaborates a single type declaration into its symbol, without declaring it."""
+    """Elaborates a single type declaration into its symbol, without declaring
+    it."""
     if binding.is_rec and _is_rec_type_operator(binding):
         return elaborate_rec_type_operators([binding], env)[0]
     symbol_id = env.fresh_symbol_id()
@@ -789,7 +825,8 @@ def _elaborate_type_binding_symbol(
         declared_bound = None
 
     if binding.params:
-        # Desugar parameterized type definition Let T(X::K): ResultKind = Body into TypeFun
+        # Desugar parameterized type definition Let T(X::K): ResultKind = Body
+        # into TypeFun
         target_bound = declared_bound if declared_bound is not None else TYPE_KIND
         with env.scoped(f"type_fun_{binding.name}"):
             formals: list[QTypeFormal] = []
@@ -838,7 +875,8 @@ def elaborate_mutual_rec_type_group(
     bindings: list[ast.TypeBinding],
     env: Environment,
 ) -> list[TypeSymbol]:
-    """Elaborates a mutually recursive group of type declarations (Let Rec T1 = ... and T2 = ...)."""
+    """Elaborates a mutually recursive group of type declarations (Let Rec T1 =
+    ... and T2 = ...)."""
     # 1. Allocate symbol IDs and declared bounds for all bindings
     pre_symbols: list[tuple[str, int, QKind, ast.TypeBinding]] = []
     for b in bindings:
@@ -867,7 +905,8 @@ def elaborate_mutual_rec_type_group(
             )
             group_entries.append((name, sym_id, bound, body_type))
 
-    # 4. Construct QRecGroupType for each binding and declare in the enclosing scope
+    # 4. Construct QRecGroupType for each binding and declare in the enclosing
+    #    scope
     group_tuple = tuple(group_entries)
     declared_symbols: list[TypeSymbol] = []
     for idx, (name, sym_id, bound, _) in enumerate(group_entries):

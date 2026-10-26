@@ -61,7 +61,8 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("(LetValueBinding", res.dump_outputs["parse"])
 
     def test_dump_after_intermediate(self):
-        """Verifies --dump-after captures intermediate output while pipeline continues."""
+        """Verifies --dump-after captures intermediate output while pipeline
+        continues."""
         opts = CompilerOptions(dump_after={"parse"}, stop_after="typecheck")
         res = self.pipeline.execute("let x: Int = 10;", "<test>", options=opts)
         self.assertTrue(res.success)
@@ -70,7 +71,8 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("typecheck", res.dump_outputs)
 
     def test_target_option(self):
-        """Verifies target option allows parsing types, kinds, or expressions directly."""
+        """Verifies target option allows parsing types, kinds, or expressions
+        directly."""
         opts_type = CompilerOptions(stop_after="parse", target="type")
         res_type = self.pipeline.execute("Record x: Int end", "<test>", options=opts_type)
         self.assertTrue(res_type.success)
@@ -87,7 +89,8 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("parse", res_expr.artifacts)
 
     def test_target_polymorphism_full_pipeline(self):
-        """Verifies full pipeline execution with expression, type, kind, and phrase targets."""
+        """Verifies full pipeline execution with expression, type, kind, and
+        phrase targets."""
         # 1. Expression target executed through interpret
         res_expr = self.pipeline.execute("1 + 2", "<test>", target="expr")
         self.assertTrue(res_expr.success)
@@ -138,7 +141,8 @@ class TestPipeline(unittest.TestCase):
             temp_path.unlink()
 
     def test_compile_phrase_stateful_context(self):
-        """Verifies compile_phrase preserves environment bindings across interactive phrases."""
+        """Verifies compile_phrase preserves environment bindings across
+        interactive phrases."""
         env = Environment()
         ctx = CompilerContext.create("", "<repl>", env=env)
 
@@ -160,7 +164,8 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(any("Unexpected token" in d.message for d in res.diagnostics))
 
     def test_interpret_dump(self):
-        """Verifies --dump-after interpret emits formatted value for expressions."""
+        """Verifies --dump-after interpret emits formatted value for
+        expressions."""
         opts = CompilerOptions(dump_after={"interpret"})
         res = self.pipeline.execute("40 + 2;", "<test>", options=opts)
         self.assertTrue(res.success)
@@ -169,7 +174,8 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(res.dump_outputs["interpret"], "42 : Int")
 
     def test_interpret_dump_ok_silent(self):
-        """Verifies --dump-after interpret produces empty output for ok / statements."""
+        """Verifies --dump-after interpret produces empty output for ok /
+        statements."""
         opts = CompilerOptions(dump_after={"interpret"})
         res = self.pipeline.execute("ok;", "<test>", options=opts)
         self.assertTrue(res.success)
@@ -178,7 +184,8 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(res.dump_outputs["interpret"], "")
 
     def test_interpret_dump_declaration(self):
-        """Verifies --dump-after interpret produces signature for declarations."""
+        """Verifies --dump-after interpret produces signature for
+        declarations."""
         opts = CompilerOptions(dump_after={"interpret"})
         res = self.pipeline.execute("let x: Int = 10;", "<test>", options=opts)
         self.assertTrue(res.success)
@@ -187,7 +194,8 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(res.dump_outputs["interpret"], "let x:Int = 10")
 
     def test_interpret_dump_import(self):
-        """Verifies --dump-after interpret produces empty output for imports and evaluates imported calls."""
+        """Verifies --dump-after interpret produces empty output for imports and
+        evaluates imported calls."""
         opts = CompilerOptions(dump_after={"interpret"})
         res = self.pipeline.execute(
             'import conv: Conv; conv.int(0 - 5);',
@@ -200,7 +208,8 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(res.dump_outputs["interpret"], '"~5" : String')
 
     def test_driver_run_file_prints_last_expression(self):
-        """Verifies running a .quest file through run_driver prints the final phrase result."""
+        """Verifies running a .quest file through run_driver prints the final
+        phrase result."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_path = Path(tmp_dir) / "test.quest"
             file_path.write_text("let x = 10;\nx + 5;\n", encoding="utf-8")

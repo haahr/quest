@@ -1,23 +1,30 @@
-"""Desugaring: rewrites the parser's syntactic sugar into the core forms the type checker elaborates.
+"""Desugaring: rewrites the parser's syntactic sugar into the core forms the
+type checker elaborates.
 
-The pass runs between parsing and type checking (the pipeline's `desugar` phase, and every other path that parses a
-unit and checks it), so that the type checker never rewrites syntax. It is purely syntactic: it needs neither types
-nor scopes, and it keeps the offsets of the syntax it replaces, so that errors point at the source as written
-(docs/syntax.md §5, docs/pipeline.md §2).
+The pass runs between parsing and type checking (the pipeline's `desugar` phase,
+and every other path that parses a unit and checks it), so that the type checker
+never rewrites syntax. It is purely syntactic: it needs neither types nor
+scopes, and it keeps the offsets of the syntax it replaces, so that errors point
+at the source as written (docs/syntax.md §5, docs/pipeline.md §2).
 
-- `a andif b` becomes `if a then b else false end`, and `a orif b` becomes `if a then true else b end`, marked
-  short_circuit: the type checker checks their operands against Bool and gives them type Bool.
+- `a andif b` becomes `if a then b else false end`, and `a orif b` becomes `if a
+  then true else b end`, marked short_circuit: the type checker checks their
+  operands against Bool and gives them type Bool.
 - An infix operator that is not built in, `a op b`, becomes the call `op(a, b)`.
-- `a[i] := v` becomes `ExprIndexAssign` (other assignments stay infix: their targets are told apart by scope).
-- `if c1 then e1 elsif c2 then e2 ... [else e] end` becomes conditionals nested in the else branches, each at its
-  elsif's condition; a chain without an else branch ends with `ok`. A conditional with neither elsif nor else
-  branches is left alone: it is a statement, of type Ok.
-- `let f(params): T = e`, not recursive and not external, becomes `let f = fun(params): T e`. A recursive one keeps
-  its parameters and result annotation, which declare its type before any value is checked; so does an external one,
+- `a[i] := v` becomes `ExprIndexAssign` (other assignments stay infix: their
+  targets are told apart by scope).
+- `if c1 then e1 elsif c2 then e2 ... [else e] end` becomes conditionals nested
+  in the else branches, each at its elsif's condition; a chain without an else
+  branch ends with `ok`. A conditional with neither elsif nor else branches is
+  left alone: it is a statement, of type Ok.
+- `let f(params): T = e`, not recursive and not external, becomes `let f =
+  fun(params): T e`. A recursive one keeps its parameters and result annotation,
+  which declare its type before any value is checked; so does an external one,
   whose parameters declare the external function's type.
 
-The rewrite is bottom up and returns its input unchanged (the same object) when there is nothing to desugar, so it
-can be applied to any AST node, including a phrase, a type, or a kind.
+The rewrite is bottom up and returns its input unchanged (the same object) when
+there is nothing to desugar, so it can be applied to any AST node, including a
+phrase, a type, or a kind.
 """
 
 from __future__ import annotations
@@ -27,10 +34,12 @@ from typing import Any, TypeVar
 
 import quest.syntax.ast as ast
 
-# Infix operators the type checker elaborates itself; every other infix operator is a call. The arithmetic,
-# relational, concatenation, and eager boolean operators are those typed by quest.types.env.INFIX_OPERATORS, which
-# maps them to their operand and result types (test_desugar checks that the two agree); == and != are rejected with
-# a suggestion. The table stays with the types it names, so that syntax does not depend on types.
+# Infix operators the type checker elaborates itself; every other infix operator
+# is a call. The arithmetic, relational, concatenation, and eager boolean
+# operators are those typed by quest.types.env.INFIX_OPERATORS, which maps them
+# to their operand and result types (test_desugar checks that the two agree); ==
+# and != are rejected with a suggestion. The table stays with the types it
+# names, so that syntax does not depend on types.
 BUILTIN_INFIX_OPERATORS = frozenset((
     "+", "-", "*", "/", "%", "mod", "<", "<=", ">", ">=",
     "++", "--", "**", "//", "^^", "<<", "<<=", ">>", ">>=",
@@ -42,7 +51,8 @@ N = TypeVar("N")
 
 
 def desugar(node: N) -> N:
-    """Returns node (an AST node, or a tuple of them) with its syntactic sugar rewritten into core forms."""
+    """Returns node (an AST node, or a tuple of them) with its syntactic sugar
+    rewritten into core forms."""
     return _walk(node)
 
 

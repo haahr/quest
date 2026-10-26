@@ -1,4 +1,5 @@
-"""Type symbols are resolved by globally unique symbol id, independent of the current scope."""
+"""Type symbols are resolved by globally unique symbol id, independent of the
+current scope."""
 
 from __future__ import annotations
 

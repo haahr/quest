@@ -93,7 +93,8 @@ export
 
     let setTrace(d: Diagnostic frames: Array(String)): Ok = d.trace := frames
 
-    (* The lines listing a traceback's frames, a run of the same frame shown once with its count *)
+    (* The lines listing a traceback's frames, a run of the same frame shown
+     * once with its count *)
     let traceLines(sb: stringBuilder.T frames: Array(String)): Ok =
         begin
             let var i = 0
@@ -159,7 +160,8 @@ export
                 sb.str("    ").repeat(' ' padCount).repeat('^' spanLen).char('\n')
             end
 
-            (* Secondary labels, each in its own file (an import in the main file, say) *)
+            (* Secondary labels, each in its own file (an import in the main
+             * file, say) *)
             for i = 0 upto {vector.length(:Label d.labels) - 1} do
                 let label = vector.get(:Label d.labels i)
                 if not(label.isPrimary) then
@@ -203,16 +205,17 @@ export
     let render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok =
         writer.putString(w format(d sm))
 
-    (* =========================================================================
+    (* ======================================================================
      * Quoting
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
-    (* Python's repr of a string: single quotes unless the string holds a single quote and no double quote *)
-    (* =========================================================================
+    (* Python's repr of a string: single quotes unless the string holds a single
+     * quote and no double quote *)
+    (* ======================================================================
      * Errors raised where they are found
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let CompilerError = Tuple
         message: String
@@ -221,7 +224,8 @@ export
         isFatal: Bool
         help: maybe.T(String)
         notes: vector.T(String)
-        (* The file of the unit the error was raised in, once it propagates out of it (the bootstrap's in_unit) *)
+        (* The file of the unit the error was raised in, once it propagates out
+         * of it (the bootstrap's in_unit) *)
         file: maybe.T(String)
         silent: Bool
         labels: vector.T(Label)
@@ -352,7 +356,8 @@ export
                 elsif code is 13 then b.str("\\r")
                 elsif code is 9 then b.str("\\t")
                 elsif {code < 32} orif {{code >= 127} andif {code <= 160}} orif {code is 173} then
-                    (* Python's repr escapes the bytes that are not printable Latin-1 characters *)
+                    (* Python's repr escapes the bytes that are not printable
+                     * Latin-1 characters *)
                     b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
                 else b.char(c)
                 end

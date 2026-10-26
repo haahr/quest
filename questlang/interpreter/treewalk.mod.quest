@@ -41,9 +41,9 @@ export
     (* Raises an error again, at any type *)
     let rethrow(A::TYPE e: model.RunError): A = raise model.runError with e end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Frames
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let newFrame(parent: maybe.T(Frame) currentDir: maybe.T(String) sourceMap: maybe.T(location.SourceMap)
             root: model.Root): Frame =
@@ -91,7 +91,8 @@ export
             end
         end
 
-    (* t with the run-time type arguments of the type parameters it mentions substituted *)
+    (* t with the run-time type arguments of the type parameters it mentions
+     * substituted *)
     let resolveType(f: Frame t: tm.Type): tm.Type =
         begin
             let subst = tm.newSubst()
@@ -104,8 +105,8 @@ export
             if hashMap.empty(:Int :tm.Type subst) then t else tm.substitute(t subst) end
         end
 
-    (* The standard library module named name (or named so but for case), which a program may use without importing
-     * it *)
+    (* The standard library module named name (or named so but for case), which
+     * a program may use without importing it *)
     let standardModule(name: String): maybe.T(Array(String)) =
         begin
             let var found = maybe.none(:Array(String))
@@ -125,7 +126,8 @@ export
             found
         end
 
-    (* Set by section 5: loads and runs a module (load_module_for_interpreter) *)
+    (* Set by section 5: loads and runs a module
+     * (load_module_for_interpreter) *)
     let hooks = tuple
         let var loadModule = fun(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value
             model.okValue
@@ -166,7 +168,8 @@ export
             end
         end
 
-    (* The values of two Int operands of an operator, or an error naming their types *)
+    (* The values of two Int operands of an operator, or an error naming their
+     * types *)
     let intOperand(op: String v: Value w: Value offset: maybe.T(Int)): Int =
         case v
             when vInt with x then x.n
@@ -242,8 +245,8 @@ export
             model.internalError(:Value "Unsupported infix operator '" <> op <> "'" offset)
         end
 
-    (* An operator as a function of two values; its errors are located at the start of the file, as the bootstrap's
-     * are (offset 0) *)
+    (* An operator as a function of two values; its errors are located at the
+     * start of the file, as the bootstrap's are (offset 0) *)
     let operatorFunction(op: String): Value =
         model.builtinValue(op fun(args: Array(Value)): Value infix(op args[0] args[1] at(0)))
 
@@ -269,15 +272,16 @@ export
                 case args[0] when vBool with x then model.boolValue(not(x.b)) else model.falseValue end))
             define(f "extent" model.builtinValue("extent" fun(args: Array(Value)): Value
                 case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end))
-            (* ordinal counts in its operand's static type, so its applications are evaluated as such (exprApp) *)
+            (* ordinal counts in its operand's static type, so its applications
+             * are evaluated as such (exprApp) *)
             define(f "ordinal" model.builtinValue("ordinal" fun(args: Array(Value)): Value
                 model.internalError(:Value "ordinal needs its operand's static type" none)))
             f
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Closures and frames of the call stack
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let makeClosure(fun0: Expr f: Frame binder: maybe.T(String) name: maybe.T(String)): Value =
         case fun0.form
@@ -312,7 +316,8 @@ export
             end
         end
 
-    (* The closure with its next unbound type parameters bound to typeArgs (a type application) *)
+    (* The closure with its next unbound type parameters bound to typeArgs (a
+     * type application) *)
     let instantiate(c: model.Closure typeArgs: Array(tm.Type)): model.Closure =
         begin
             let bindings = hashMap.new(:Int :tm.Type intEqual hash.int)
@@ -342,8 +347,8 @@ export
     let noteFrames(e: model.RunError f: Frame): Ok =
         if maybe.isNone(:Array(String) e.frames) then e.frames := maybe.some(:Array(String) reversedStack(f)) end
 
-    (* An error leaving code that ran in f: located in f's file unless code it called located it already, with the
-     * frames running *)
+    (* An error leaving code that ran in f: located in f's file unless code it
+     * called located it already, with the frames running *)
     let leaving(e: model.RunError f: Frame): Ok =
         begin
             if maybe.isNone(:location.SourceMap e.sourceMap) then e.sourceMap := f.sourceMap end
@@ -352,12 +357,13 @@ export
 
     let popStack(f: Frame): Ok = begin vector.pop(:String f.root.callStack) ok end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Named exceptions made in advance
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* Makes, before code runs, the named exceptions it makes for its scope, defining their names, and returns the
-     * frame it runs in: one of its own if a name rebinds one of f's frame *)
+    (* Makes, before code runs, the named exceptions it makes for its scope,
+     * defining their names, and returns the frame it runs in: one of its own if
+     * a name rebinds one of f's frame *)
     let makeScopeExceptions(exceptions: Array(Expr) f: Frame): Frame =
         begin
             let var g = f
@@ -384,9 +390,9 @@ export
             g
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 4. Expressions
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec unwrapRefs(v: Value): Value =
         case v when vRef with r then unwrapRefs(model.deref(r.r)) else v end
@@ -440,7 +446,8 @@ export
             end
         end
 
-    (* The labels of a tuple's components, its types' included, if its type is a tuple type *)
+    (* The labels of a tuple's components, its types' included, if its type is a
+     * tuple type *)
     let tupleLabels(t: tm.Type): maybe.T(Array(maybe.T(String))) =
         case t.form
             when typeTuple with x then
@@ -893,8 +900,9 @@ export
             else model.internalError(:Int "Array index must be Int, got " <> model.typeName(v) offset)
         end
 
-    (* A tuple: each component's label is bound for the components after it; a simultaneous declaration's labels are
-     * bound, in a frame of their own, once all of its members' values are computed *)
+    (* A tuple: each component's label is bound for the components after it; a
+     * simultaneous declaration's labels are bound, in a frame of their own,
+     * once all of its members' values are computed *)
     and evalTuple(type: tm.Type elements: Array(Expr) groups: Array(Array(Int)) f: Frame): Value =
         begin
             let labels = tupleLabels(type)
@@ -948,11 +956,12 @@ export
             result
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Bindings and programs
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* The value of a let binding of name: a function's closure is bound to the name *)
+    (* The value of a let binding of name: a function's closure is bound to the
+     * name *)
     and evalBoundValue(name: String value: Expr f: Frame): Value =
         if value.form?exprFun then makeClosure(value f maybe.some(:String name) maybe.none(:String))
         else evalExpr(value f) end
@@ -1012,7 +1021,8 @@ export
             when bindLetValueGroup with x then
                 let values = array of(extent x.members model.okValue)
                 if {extent x.members > 0} andif x.members[0].isRec then
-                    (* Each member's closure captures f, where the others are defined before any is called *)
+                    (* Each member's closure captures f, where the others are
+                     * defined before any is called *)
                     for i = 0 upto {extent x.members - 1} do values[i] := evalLetValue(x.members[i] f) end
                 else
                     for i = 0 upto {extent x.members - 1} do
@@ -1068,10 +1078,12 @@ export
             end
         end
 
-    (* Loads and runs module name, as imported from f's directory (load_module_for_interpreter): the unit f's graph
-     * resolves the import to, run from its typed module, which the type checker elaborated, or which is elaborated
-     * here in an environment of its own (a module the program uses without importing it). Its value is kept by
-     * canonical name, so each module is run once. *)
+    (* Loads and runs module name, as imported from f's directory
+     * (load_module_for_interpreter): the unit f's graph resolves the import to,
+     * run from its typed module, which the type checker elaborated, or which is
+     * elaborated here in an environment of its own (a module the program uses
+     * without importing it). Its value is kept by canonical name, so each
+     * module is run once. *)
     let loadModuleForInterpreter(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value =
         begin
             let root = f.root

@@ -75,7 +75,8 @@ class TestDiagnosticDataStructures(unittest.TestCase):
 
 
 class TestDiagnosticSink(unittest.TestCase):
-    """Tests for DiagnosticSink collection, severity counts, and fatal aborts."""
+    """Tests for DiagnosticSink collection, severity counts, and fatal
+    aborts."""
 
     def test_accumulation_and_counts(self):
         sink = DiagnosticSink()
@@ -161,7 +162,8 @@ class TestDiagnosticRenderer(unittest.TestCase):
 
 
 class TestCompilerExceptionIntegration(unittest.TestCase):
-    """Tests that existing compiler exceptions convert cleanly to diagnostics."""
+    """Tests that existing compiler exceptions convert cleanly to
+    diagnostics."""
 
     def setUp(self):
         self.source = "let x = 10;\nlet y = 20;\n"
@@ -222,7 +224,8 @@ class TestCompilerExceptionIntegration(unittest.TestCase):
         self.assertIn("test.quest:1:5: error: Exception: int.error", formatted)
 
     def test_quest_compiler_error_hierarchy(self):
-        """Verifies that all compiler phase exceptions inherit from QuestCompilerError."""
+        """Verifies that all compiler phase exceptions inherit from
+        QuestCompilerError."""
         for exc_cls in [
             TokenizerError,
             ParserError,

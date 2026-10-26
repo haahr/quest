@@ -54,20 +54,25 @@ class KindLookupEnv(Protocol):
 # Reserved Symbol Ids
 # ============================================================================
 #
-# Symbol ids from the environment are positive, and inference metavariables count down from -1. A few type variables
-# are made outside any environment (Dynamic's type parameter, and placeholders the C back end substitutes into types);
-# their ids are negative too, so each use needs ids that no other use (and no metavariable) can produce.
+# Symbol ids from the environment are positive, and inference metavariables
+# count down from -1. A few type variables are made outside any environment
+# (Dynamic's type parameter, and placeholders the C back end substitutes into
+# types); their ids are negative too, so each use needs ids that no other use
+# (and no metavariable) can produce.
 #
-# A reserved id is the negation of a prefix naming its use, times 2**32, plus an index within that use:
+# A reserved id is the negation of a prefix naming its use, times 2**32, plus an
+# index within that use:
 #
 #     reserved_symbol_id(use, index) == -(use * 2**32 + index)
 #
-# Ids for different uses differ in their prefix, so they never coincide. Metavariable ids have prefix 0 (and
-# QTypeMeta refuses to count past 2**32), so they never coincide with reserved ids either.
+# Ids for different uses differ in their prefix, so they never coincide.
+# Metavariable ids have prefix 0 (and QTypeMeta refuses to count past 2**32), so
+# they never coincide with reserved ids either.
 
 
 class ReservedSymbolUse(enum.IntEnum):
-    """The uses of reserved symbol ids; each value is the prefix of that use's ids."""
+    """The uses of reserved symbol ids; each value is the prefix of that use's
+    ids."""
     DYNAMIC_PARAM = 1  # Dynamic's type parameter (index 0)
     BOUND_VAR = 2  # placeholder for a bound type parameter of a polymorphic function type, by de Bruijn index
     CANONICAL_QUANTIFIER = 3  # quantifier of a polymorphic function type in canonical form, by position
@@ -88,7 +93,8 @@ def reserved_symbol_id(use: ReservedSymbolUse, index: int) -> int:
 
 
 def reserved_symbol_use(symbol_id: int) -> Optional[tuple[ReservedSymbolUse, int]]:
-    """Decodes a reserved symbol id into its use and index, or returns None for any other id."""
+    """Decodes a reserved symbol id into its use and index, or returns None for
+    any other id."""
     if symbol_id >= 0:
         return None
     prefix, index = divmod(-symbol_id, RESERVED_INDEX_LIMIT)
@@ -98,7 +104,8 @@ def reserved_symbol_use(symbol_id: int) -> Optional[tuple[ReservedSymbolUse, int
 
 
 def reserved_symbol_index(symbol_id: int, use: ReservedSymbolUse) -> Optional[int]:
-    """The index of a symbol id reserved for `use`, or None if the id is not one of that use's."""
+    """The index of a symbol id reserved for `use`, or None if the id is not one
+    of that use's."""
     decoded = reserved_symbol_use(symbol_id)
     if decoded is None or decoded[0] is not use:
         return None
@@ -109,13 +116,15 @@ def reserved_symbol_index(symbol_id: int, use: ReservedSymbolUse) -> Optional[in
 # 0. Free-Variable Metadata
 # ============================================================================
 #
-# Every type node (and every component and kind) records, at construction, the symbol ids that a
-# substitution could replace inside it (_fv) and whether it contains a metavariable (_has_meta).
-# These mirror exactly what each substitute method does: a binder removes its own id from the
-# substitution for the parts it scopes over, and parts that substitute leaves alone (such as the
-# bounds of a QTypeFun's formals) contribute nothing. QType.substitute uses them to return a node
-# untouched, without traversal, when no free variable is substituted. A node containing a
-# metavariable is never skipped, because the metavariable may later be solved to anything.
+# Every type node (and every component and kind) records, at construction, the
+# symbol ids that a substitution could replace inside it (_fv) and whether it
+# contains a metavariable (_has_meta). These mirror exactly what each substitute
+# method does: a binder removes its own id from the substitution for the parts
+# it scopes over, and parts that substitute leaves alone (such as the bounds of
+# a QTypeFun's formals) contribute nothing. QType.substitute uses them to return
+# a node untouched, without traversal, when no free variable is substituted. A
+# node containing a metavariable is never skipped, because the metavariable may
+# later be solved to anything.
 
 _NO_FREE_VARS: frozenset[int] = frozenset()
 
@@ -147,16 +156,18 @@ def _init_free_vars(node: Any, *parts: Any, bound_ids: Any = ()) -> None:
 # 0b. Hash-Consing
 # ============================================================================
 #
-# Types, kinds, and their components are hash-consed: constructing a node returns the canonical
-# object for its structure, so structurally identical nodes are one object and `is` decides
-# structural identity. The key is the class and every field, display-only fields included (record
-# provenance, binder and path names), so two nodes that would print differently are never merged.
-# Child nodes appear in keys by identity, which is sound because they are canonical already.
-# Structural identity is not type equality: an alias and its target, a recursive type and its
-# unfolding, and types differing only in binder names are equal (is_type_equal) but distinct objects.
-# Nodes containing a metavariable are not interned: a metavariable is mutable, and a node that is
-# shared must not change meaning when one inside it is solved. The table holds canonical nodes
-# weakly, so types no longer referenced can be freed.
+# Types, kinds, and their components are hash-consed: constructing a node
+# returns the canonical object for its structure, so structurally identical
+# nodes are one object and `is` decides structural identity. The key is the
+# class and every field, display-only fields included (record provenance, binder
+# and path names), so two nodes that would print differently are never merged.
+# Child nodes appear in keys by identity, which is sound because they are
+# canonical already. Structural identity is not type equality: an alias and its
+# target, a recursive type and its unfolding, and types differing only in binder
+# names are equal (is_type_equal) but distinct objects. Nodes containing a
+# metavariable are not interned: a metavariable is mutable, and a node that is
+# shared must not change meaning when one inside it is solved. The table holds
+# canonical nodes weakly, so types no longer referenced can be freed.
 
 _INTERN_TABLE: "weakref.WeakValueDictionary[tuple[Any, ...], Any]" = weakref.WeakValueDictionary()
 
@@ -189,28 +200,32 @@ def _intern(node: Any) -> Any:
     return canonical
 
 
-# The family's traversal: each class of types, kinds, and components registers its fields' accessor and its rebuilder
-# right after its definition, so that interning an instance (which reads its fields) finds its class's entry
+# The family's traversal: each class of types, kinds, and components registers
+# its fields' accessor and its rebuilder right after its definition, so that
+# interning an instance (which reads its fields) finds its class's entry
 
 _TYPE_FIELDS: dict[type, Callable[[Any], tuple]] = {}
 _REBUILD_TYPE: dict[type, Callable[[Any, tuple], Any]] = {}
 
 
 def type_fields(node: Any) -> Optional[tuple]:
-    """The values of the fields of a type, kind, or component (a field, a parameter, a quantifier...), in order; None
-    for any other value. The one traversal of the family's structure: interning, rebuilding, and every walker read a
-    node's parts through it."""
+    """The values of the fields of a type, kind, or component (a field, a
+    parameter, a quantifier...), in order; None for any other value. The one
+    traversal of the family's structure: interning, rebuilding, and every walker
+    read a node's parts through it."""
     accessor = _TYPE_FIELDS.get(type(node))
     return accessor(node) if accessor is not None else None
 
 
 def rebuild_type(node: Any, values: tuple) -> Any:
-    """A type, kind, or component of node's class whose fields are values (as type_fields gives them)."""
+    """A type, kind, or component of node's class whose fields are values (as
+    type_fields gives them)."""
     return _REBUILD_TYPE[type(node)](node, values)
 
 
 class _InternedNode(type):
-    """Metaclass returning the canonical (hash-consed) instance for each constructed node."""
+    """Metaclass returning the canonical (hash-consed) instance for each
+    constructed node."""
 
     def __call__(cls, *args: Any, **kwargs: Any) -> Any:
         return _intern(super().__call__(*args, **kwargs))
@@ -364,7 +379,8 @@ TYPE_KIND = QTypeKind()
 
 
 def _all_same(new: Any, old: Any) -> bool:
-    """True if two equal-length sequences hold identical objects; substitute returns self then."""
+    """True if two equal-length sequences hold identical objects; substitute
+    returns self then."""
     return all(a is b for a, b in zip(new, old))
 
 
@@ -383,42 +399,54 @@ def register_type_formatter(fn: Callable[[QType, Optional[Any]], str]) -> None:
 
 
 class QType(metaclass=_InternedNode):
-    """Base class for semantic Quest types: the types the checker reasons about, as opposed to types as written
-    (ast.Type), which elaboration translates into these.
+    """Base class for semantic Quest types: the types the checker reasons about,
+    as opposed to types as written (ast.Type), which elaboration translates into
+    these.
 
-    A type is an immutable structure of nodes, one class per constructor (QRecordType, QFunType, ...) or kind of name
-    (QTypeVar and its relatives, described above QTypeVar), with every name resolved to its symbol. Identical
-    structures are one object (they are interned; see the comment above _INTERN_TABLE), so types are compared with
-    is_subtype and is_type_equal, never with ==. A recursive type, Rec(X) T, stands for an infinite tree but is kept
-    finite: unfolding it substitutes the Rec node itself for X in T.
+    A type is an immutable structure of nodes, one class per constructor
+    (QRecordType, QFunType, ...) or kind of name (QTypeVar and its relatives,
+    described above QTypeVar), with every name resolved to its symbol. Identical
+    structures are one object (they are interned; see the comment above
+    _INTERN_TABLE), so types are compared with is_subtype and is_type_equal,
+    never with ==. A recursive type, Rec(X) T, stands for an infinite tree but
+    is kept finite: unfolding it substitutes the Rec node itself for X in T.
 
-    evaluate_lazily is the operation most code needs before looking at a type. It returns a type whose outermost node is
-    a constructor, or a name that cannot be expanded: it looks through aliases, unfolds recursive types, reduces
-    applications of type operators, and, given an environment, expands a type variable whose symbol has a definition.
-    It takes only the outermost step, and the parts are left as written; that keeps alias names for messages, and
-    makes evaluating a recursive type terminate (recursive types are contractive, so an unfolding's outermost node is a
-    constructor). Code that tests a type's constructor (isinstance or match) must evaluate it first, or it will meet an
-    alias where it expects a record.
+    evaluate_lazily is the operation most code needs before looking at a type.
+    It returns a type whose outermost node is a constructor, or a name that
+    cannot be expanded: it looks through aliases, unfolds recursive types,
+    reduces applications of type operators, and, given an environment, expands a
+    type variable whose symbol has a definition. It takes only the outermost
+    step, and the parts are left as written; that keeps alias names for
+    messages, and makes evaluating a recursive type terminate (recursive types
+    are contractive, so an unfolding's outermost node is a constructor). Code
+    that tests a type's constructor (isinstance or match) must evaluate it
+    first, or it will meet an alias where it expects a record.
 
-    substitute(subst) replaces type variables, by symbol id, avoiding capture: inside a binder (All, a type operator, a
-    recursive type, a tuple's type components), the binder's own variables are not replaced. Each node records the ids
-    a substitution could replace in it (_fv) and whether it contains a metavariable (_has_meta), so that substitute
-    returns a type untouched, without walking it, when nothing in it would change. A new class of type must set both in
-    __post_init__ (_init_free_vars), override _substitute_full if it has parts, and register its fields and rebuilder
-    (_TYPE_FIELDS, _REBUILD_TYPE), through which interning and the generic walkers reach its parts.
+    substitute(subst) replaces type variables, by symbol id, avoiding capture:
+    inside a binder (All, a type operator, a recursive type, a tuple's type
+    components), the binder's own variables are not replaced. Each node records
+    the ids a substitution could replace in it (_fv) and whether it contains a
+    metavariable (_has_meta), so that substitute returns a type untouched,
+    without walking it, when nothing in it would change. A new class of type
+    must set both in __post_init__ (_init_free_vars), override _substitute_full
+    if it has parts, and register its fields and rebuilder (_TYPE_FIELDS,
+    _REBUILD_TYPE), through which interning and the generic walkers reach its
+    parts.
     """
 
     _fv: frozenset[int] = _NO_FREE_VARS
     _has_meta: bool = False
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
-        """Evaluates type aliases and applications lazily to expose the outermost constructor."""
+        """Evaluates type aliases and applications lazily to expose the
+        outermost constructor."""
         return self
 
     def substitute(self, subst: dict[int, QType]) -> QType:
         """Performs capture-avoiding substitution using symbol_id keys.
 
-        Returns self, without traversal, when no free variable of this type is substituted.
+        Returns self, without traversal, when no free variable of this type is
+        substituted.
         """
         if not self._has_meta and self._fv.isdisjoint(subst):
             return self
@@ -429,13 +457,15 @@ class QType(metaclass=_InternedNode):
         return self
 
     def format(self, env: Optional[Any] = None) -> str:
-        """Formats this type into a readable string, utilizing env aliases and bounded recursions."""
+        """Formats this type into a readable string, utilizing env aliases and
+        bounded recursions."""
         if _type_formatter is not None:
             return _type_formatter(self, env)
         return str(self)
 
-    # The __str__ methods of types, their components, and kinds are mirrored by _printed_parts in
-    # quest/codegen/layout.py, which digests types without printing them; change both together.
+    # The __str__ methods of types, their components, and kinds are mirrored by
+    # _printed_parts in quest/codegen/layout.py, which digests types without
+    # printing them; change both together.
     def __str__(self) -> str:
         return self.__class__.__name__
 
@@ -511,7 +541,8 @@ _REBUILD_TYPE[QOkType] = lambda node, values: QOkType()
 
 @dataclass(frozen=True)
 class QBottomType(QType):
-    """Internal bottom type: subtype of all types, used for divergent expressions like raise."""
+    """Internal bottom type: subtype of all types, used for divergent
+    expressions like raise."""
     def __str__(self) -> str:
         return "Bottom"
 
@@ -569,7 +600,8 @@ OK_TYPE = QOkType()
 BOTTOM_TYPE = QBottomType()
 EXCEPTION_TYPE = QExceptionType()
 
-# The names under which the environment declares the primitive types (Environment._init_builtins).
+# The names under which the environment declares the primitive types
+# (Environment._init_builtins).
 _BUILTIN_PRIMITIVE_NAMES: dict[str, QType] = {
     "Int": INT_TYPE, "Real": REAL_TYPE, "Bool": BOOL_TYPE, "Char": CHAR_TYPE, "String": STRING_TYPE,
     "Ok": OK_TYPE, "Exception": EXCEPTION_TYPE,
@@ -583,7 +615,8 @@ _BUILTIN_PRIMITIVE_NAMES: dict[str, QType] = {
 
 @dataclass(frozen=True)
 class QTupleField(metaclass=_InternedNode):
-    """A single (optionally named) value component in an ordered tuple type: [name:] T."""
+    """A single (optionally named) value component in an ordered tuple type:
+    [name:] T."""
     name: Optional[str]
     type_val: QType
     is_var: bool = False
@@ -676,7 +709,8 @@ class QTupleType(QType):
             else:
                 normalized.append(QTupleField(name=None, type_val=item))
         object.__setattr__(self, "fields", tuple(normalized))
-        # A type formal's bound sees the substitution; later fields do not see the formal's id.
+        # A type formal's bound sees the substitution; later fields do not see
+        # the formal's id.
         free: set[int] = set()
         bound_ids: set[int] = set()
         has_meta = False
@@ -797,7 +831,8 @@ _REBUILD_TYPE[QRecordField] = lambda node, values: QRecordField(name=values[0], 
 
 @dataclass(frozen=True)
 class QRecordType(QType):
-    """Unordered record type with structural subtyping: Record [var] x: T ... end."""
+    """Unordered record type with structural subtyping: Record [var] x: T ...
+    end."""
     fields: tuple[QRecordField, ...]
     provenance: Optional[str] = field(default=None, compare=False)
 
@@ -826,9 +861,11 @@ _REBUILD_TYPE[QRecordType] = lambda node, values: QRecordType(fields=values[0], 
 
 
 def binds_module(name: str, t: QType) -> bool:
-    """Whether a value binding of name with type t is the module bound to that name, not a binding shadowing it.
+    """Whether a value binding of name with type t is the module bound to that
+    name, not a binding shadowing it.
 
-    A module's binding has the module's record type, whose provenance is the name the module is bound to.
+    A module's binding has the module's record type, whose provenance is the
+    name the module is bound to.
     """
     return isinstance(t, QRecordType) and t.provenance == name
 
@@ -1091,8 +1128,9 @@ class QAllType(QType):
     body: QType
 
     def __post_init__(self) -> None:
-        # The quantifiers are a telescope: each bound may refer to the quantifiers before it (All(A B <: A) T), which
-        # bind it there, and the body sees them all.
+        # The quantifiers are a telescope: each bound may refer to the
+        # quantifiers before it (All(A B <: A) T), which bind it there, and the
+        # body sees them all.
         free: set[int] = set()
         has_meta = self.body._has_meta
         earlier: set[int] = set()
@@ -1103,8 +1141,8 @@ class QAllType(QType):
         _set_free_vars(self, free | (set(self.body._fv) - earlier), has_meta)
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
-        # Avoid capturing bound quantifiers: a bound does not see the quantifiers before it substituted, nor does
-        # the body any quantifier
+        # Avoid capturing bound quantifiers: a bound does not see the
+        # quantifiers before it substituted, nor does the body any quantifier
         quantifiers_list: list[QQuantifier] = []
         active_subst = dict(subst)
         for q in self.quantifiers:
@@ -1165,10 +1203,12 @@ _REBUILD_TYPE[QAutoType] = lambda node, values: QAutoType(
 
 
 def auto_payload_type(auto: QAutoType, witness: Optional[QType] = None) -> QTupleType:
-    """The tuple type of an auto value's payload: Tuple S[witness] end for the signature S.
+    """The tuple type of an auto value's payload: Tuple S[witness] end for the
+    signature S.
 
-    Without a witness, the result is the witness-independent layout used to store payloads, in which the
-    type parameter is an abstract type bounded by the auto type's kind.
+    Without a witness, the result is the witness-independent layout used to
+    store payloads, in which the type parameter is an abstract type bounded by
+    the auto type's kind.
     """
     if witness is None:
         witness = QAbstractType(name=auto.type_param, symbol_id=auto.symbol_id, bound=auto.kind_bound)
@@ -1180,12 +1220,15 @@ def auto_payload_type(auto: QAutoType, witness: Optional[QType] = None) -> QTupl
 
 
 def auto_matches_subtypes(auto: QAutoType) -> bool:
-    """True if inspect may select a branch whose type is a proper supertype of an auto value's type.
+    """True if inspect may select a branch whose type is a proper supertype of
+    an auto value's type.
 
-    That is sound only when the type parameter occurs in the signature solely as the whole type of
-    immutable components (fst,snd:A), so that each component may be viewed at the supertype. Otherwise
-    (e.g. f(x:A):Int, l:List(A)) a branch is selected only when the types are equal. A signature with
-    var components also matches exactly, so that the binders always share the auto value's components.
+    That is sound only when the type parameter occurs in the signature solely as
+    the whole type of immutable components (fst,snd:A), so that each component
+    may be viewed at the supertype. Otherwise (e.g. f(x:A):Int, l:List(A)) a
+    branch is selected only when the types are equal. A signature with var
+    components also matches exactly, so that the binders always share the auto
+    value's components.
     """
     for f in auto.signature:
         if f.is_var:
@@ -1206,7 +1249,8 @@ class QTypeFormal(metaclass=_InternedNode):
     bound: QKind
 
     def __post_init__(self) -> None:
-        # (A QTypeFun's own free variables leave its formals' bounds out, as its substitution does)
+        # (A QTypeFun's own free variables leave its formals' bounds out, as its
+        # substitution does)
         _init_free_vars(self, self.bound)
 
     def __str__(self) -> str:
@@ -1296,8 +1340,9 @@ class QRecType(QType):
     def unfold_lazily(self) -> QType:
         """Unfolds Rec(X) T lazily by substituting Rec(X) T for X in T.
 
-        The unfolding is a pure function of this immutable node, so it is computed once and cached;
-        since it refers back to self, repeated unfoldings share one finite object graph.
+        The unfolding is a pure function of this immutable node, so it is
+        computed once and cached; since it refers back to self, repeated
+        unfoldings share one finite object graph.
         """
         unfolded = self.__dict__.get("_unfolded")
         if unfolded is None:
@@ -1347,7 +1392,8 @@ class QRecGroupType(QType):
         return self.bindings[self.active_index][0]
 
     def siblings(self) -> tuple[QRecGroupType, ...]:
-        """The canonical node for each binding of this group, shared by all of them."""
+        """The canonical node for each binding of this group, shared by all of
+        them."""
         siblings = self.__dict__.get("_siblings")
         if siblings is None:
             siblings = tuple(
@@ -1365,8 +1411,9 @@ class QRecGroupType(QType):
     def unfold_lazily(self) -> QType:
         """Unfolds the active mutually recursive binding lazily.
 
-        Cached like QRecType.unfold_lazily; substituting the shared sibling nodes keeps the unfoldings
-        of all bindings of the group within one finite object graph.
+        Cached like QRecType.unfold_lazily; substituting the shared sibling
+        nodes keeps the unfoldings of all bindings of the group within one
+        finite object graph.
         """
         unfolded = self.__dict__.get("_unfolded")
         if unfolded is None:
@@ -1388,7 +1435,8 @@ class QRecGroupType(QType):
         return QRecGroupType(bindings=new_bindings, active_index=self.active_index)
 
     def __str__(self) -> str:
-        # Like Rec(X::K) T, with the active binding's body; the other bindings' variables print as their names
+        # Like Rec(X::K) T, with the active binding's body; the other bindings'
+        # variables print as their names
         name, _, bound, body = self.bindings[self.active_index]
         return f"Rec({name} :: {bound}) {body}"
 
@@ -1397,21 +1445,28 @@ _TYPE_FIELDS[QRecGroupType] = lambda node: (node.bindings, node.active_index)
 _REBUILD_TYPE[QRecGroupType] = lambda node, values: QRecGroupType(bindings=values[0], active_index=values[1])
 
 
-# Five kinds of type stand for a type by name rather than by structure. They differ in where they come from and in what
-# evaluate_lazily, and so subtyping, sees through:
+# Five kinds of type stand for a type by name rather than by structure. They
+# differ in where they come from and in what evaluate_lazily, and so subtyping,
+# sees through:
 #
-# - QTypeVar, a name referring to a type symbol: a type parameter (of a function, an All type, a type operator, or a
-#   recursive type), a type component of a tuple type, or an interface's abstract type. Two are the same type when they
-#   refer to the same symbol, and otherwise all that is known of one is its bound. Given an environment in which its
-#   symbol has a definition, though, evaluate_lazily expands it, so a type may compare differently with an environment
-#   and without (the subtype cache keeps the two apart).
-# - QAbstractType, a type known only by its bound, never expanded: an auto type's type parameter in the layout that
-#   stores auto values' payloads whatever their witnesses (auto_payload_type).
-# - QPathType, x.A: the type component A of the value x, whose type hides it (see elaborate_type). It is identified by
-#   x's symbol and A, and never expanded.
-# - QAliasType, a reference to a type alias, kept to print the name written: always seen through, to its target.
-# - QTypeMeta, ?A: a placeholder for a type argument being inferred, solved by subtyping (see _prove_subtype_step). It
-#   is the only mutable type, and so is never shared by interning.
+# - QTypeVar, a name referring to a type symbol: a type parameter (of a
+#   function, an All type, a type operator, or a recursive type), a type
+#   component of a tuple type, or an interface's abstract type. Two are the same
+#   type when they refer to the same symbol, and otherwise all that is known of
+#   one is its bound. Given an environment in which its symbol has a definition,
+#   though, evaluate_lazily expands it, so a type may compare differently with
+#   an environment and without (the subtype cache keeps the two apart).
+# - QAbstractType, a type known only by its bound, never expanded: an auto
+#   type's type parameter in the layout that stores auto values' payloads
+#   whatever their witnesses (auto_payload_type).
+# - QPathType, x.A: the type component A of the value x, whose type hides it
+#   (see elaborate_type). It is identified by x's symbol and A, and never
+#   expanded.
+# - QAliasType, a reference to a type alias, kept to print the name written:
+#   always seen through, to its target.
+# - QTypeMeta, ?A: a placeholder for a type argument being inferred, solved by
+#   subtyping (see _prove_subtype_step). It is the only mutable type, and so is
+#   never shared by interning.
 
 @dataclass(frozen=True)
 class QTypeVar(QType):
@@ -1464,7 +1519,8 @@ _REBUILD_TYPE[QAbstractType] = lambda node, values: QAbstractType(name=values[0]
 
 @dataclass(frozen=True)
 class QPathType(QType):
-    """Path-dependent abstract type projected from an immutable value binding: x.A."""
+    """Path-dependent abstract type projected from an immutable value binding:
+    x.A."""
     root_name: str
     root_symbol_id: int
     field_name: str
@@ -1503,13 +1559,16 @@ _REBUILD_TYPE[QPathType] = lambda node, values: QPathType(
 
 @dataclass(frozen=True)
 class QAliasType(QType):
-    """A reference to a type alias, as written in the source (Span, location.Span, ast.Expr).
+    """A reference to a type alias, as written in the source (Span,
+    location.Span, ast.Expr).
 
-    The node is transparent: evaluation (and so subtyping and kinding) looks straight through it to
-    the alias's definition, its target. It exists so that the printer and the .qi writer can show the
-    name that was written. Hash-consing keeps references to different aliases (or the same alias
-    spelled differently) apart, because the name and symbol are part of the key. C code generation
-    never sees alias nodes; they are stripped at the codegen boundary (strip_aliases).
+    The node is transparent: evaluation (and so subtyping and kinding) looks
+    straight through it to the alias's definition, its target. It exists so that
+    the printer and the .qi writer can show the name that was written.
+    Hash-consing keeps references to different aliases (or the same alias
+    spelled differently) apart, because the name and symbol are part of the key.
+    C code generation never sees alias nodes; they are stripped at the codegen
+    boundary (strip_aliases).
     """
     name: str
     symbol_id: int
@@ -1524,15 +1583,18 @@ class QAliasType(QType):
         return self.target.evaluate_lazily(env)
 
     def unfold_lazily(self) -> QType:
-        """Unfolds an alias of a recursive type through the alias: Rec(X) T, named N, unfolds to T[N/X].
+        """Unfolds an alias of a recursive type through the alias: Rec(X) T,
+        named N, unfolds to T[N/X].
 
-        Equivalent to unfolding the target (the alias equals it), but recursive occurrences keep
-        printing as the alias's name. Cached like QRecType.unfold_lazily; the unfolding refers back to
-        this node, so it stays a finite object graph.
+        Equivalent to unfolding the target (the alias equals it), but recursive
+        occurrences keep printing as the alias's name. Cached like
+        QRecType.unfold_lazily; the unfolding refers back to this node, so it
+        stays a finite object graph.
 
-        A binding of a mutually recursive group unfolds likewise, with each other binding of the group
-        replaced by an alias named after it, qualified as this alias is (m.Forest unfolds with m.Tree).
-        Those aliases are the nodes that references to the other bindings elaborate to, so the
+        A binding of a mutually recursive group unfolds likewise, with each
+        other binding of the group replaced by an alias named after it,
+        qualified as this alias is (m.Forest unfolds with m.Tree). Those aliases
+        are the nodes that references to the other bindings elaborate to, so the
         unfoldings of a group's aliases also share one finite object graph.
         """
         unfolded = self.__dict__.get("_unfolded")
@@ -1557,7 +1619,8 @@ class QAliasType(QType):
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
         target = self.target.substitute(subst)
-        # A substitution that changes the target leaves a type that is no longer the named alias.
+        # A substitution that changes the target leaves a type that is no longer
+        # the named alias.
         return self if target is self.target else target
 
     def __str__(self) -> str:
@@ -1569,10 +1632,12 @@ _REBUILD_TYPE[QAliasType] = lambda node, values: QAliasType(name=values[0], symb
 
 
 def alias_reference(name: str, symbol_id: int, target: QType) -> QType:
-    """The elaboration of a reference to the alias `name`: an alias node, except for builtin primitives.
+    """The elaboration of a reference to the alias `name`: an alias node, except
+    for builtin primitives.
 
-    A primitive's own name (Int, Ok, ...) is declared as a type symbol defined as the primitive; it is
-    not a user alias and prints the same either way, so its references elaborate to the primitive.
+    A primitive's own name (Int, Ok, ...) is declared as a type symbol defined
+    as the primitive; it is not a user alias and prints the same either way, so
+    its references elaborate to the primitive.
     """
     if _BUILTIN_PRIMITIVE_NAMES.get(name) is target:
         return target
@@ -1586,10 +1651,12 @@ def unalias(t: QType) -> QType:
     return t
 
 
-# Cardelli's Dynamic_T (Typeful Programming §9.1): a value of any type packaged with its type, the auto type
-# Auto A::TYPE with a:A end. (His appendix writes the component unnamed, Auto A::TYPE with :A end, but an unnamed
-# component cannot be selected, so this follows §9.1.) The global type name Dynamic denotes it, as does the
-# dynamic module's T. Its type parameter has a reserved symbol id.
+# Cardelli's Dynamic_T (Typeful Programming §9.1): a value of any type packaged
+# with its type, the auto type Auto A::TYPE with a:A end. (His appendix writes
+# the component unnamed, Auto A::TYPE with :A end, but an unnamed component
+# cannot be selected, so this follows §9.1.) The global type name Dynamic
+# denotes it, as does the dynamic module's T. Its type parameter has a reserved
+# symbol id.
 _DYNAMIC_PARAM_ID = reserved_symbol_id(ReservedSymbolUse.DYNAMIC_PARAM, 0)
 DYNAMIC_TYPE = QAutoType(
     type_param="A",
@@ -1599,15 +1666,17 @@ DYNAMIC_TYPE = QAutoType(
 )
 
 
-# strip_aliases results for canonical nodes, which are immutable: (node, result) by id(node).
+# strip_aliases results for canonical nodes, which are immutable: (node, result)
+# by id(node).
 _STRIPPED: dict[int, tuple[Any, Any]] = {}
 
 
 def map_aliases(
     node: Any, replace: Callable[[QAliasType], Optional[QType]], memo: Optional[dict[int, Any]] = None
 ) -> Any:
-    """Rebuilds a type (or kind, or component) with each alias reference replaced by what replace gives for it, or
-    kept if it gives None (strip_aliases replaces them all by their targets)."""
+    """Rebuilds a type (or kind, or component) with each alias reference
+    replaced by what replace gives for it, or kept if it gives None
+    (strip_aliases replaces them all by their targets)."""
     if memo is None:
         memo = {}
     key = id(node)
@@ -1635,7 +1704,8 @@ def map_aliases(
 
 
 def strip_aliases(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
-    """Rebuilds a type (or kind, or component) with every alias reference replaced by its target."""
+    """Rebuilds a type (or kind, or component) with every alias reference
+    replaced by its target."""
     if memo is None:
         memo = {}
     key = id(node)
@@ -1851,12 +1921,14 @@ class QTypeMeta(QType):
 
 
 def pruned(t: Any) -> Any:
-    """t, or for a metavariable, what it stands for (pruned: its solution, if it is solved)."""
+    """t, or for a metavariable, what it stands for (pruned: its solution, if it
+    is solved)."""
     return t.prune() if isinstance(t, QTypeMeta) else t
 
 
 def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
-    """Returns the unsolved metavariables occurring in t (looking through solved ones), in order."""
+    """Returns the unsolved metavariables occurring in t (looking through solved
+    ones), in order."""
     found: list[QTypeMeta] = []
     visited: set[int] = set()
 
@@ -1882,15 +1954,18 @@ def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
 
 
 def resolve_metas(t: QType) -> QType:
-    """Replaces solved metavariables in t by their solutions (substitution prunes them)."""
+    """Replaces solved metavariables in t by their solutions (substitution
+    prunes them)."""
     return t.substitute({})
 
 
 def structurally_equal(a: Any, b: Any) -> bool:
-    """True if two types (or kinds, or components) have identical structure, field by field.
+    """True if two types (or kinds, or components) have identical structure,
+    field by field.
 
-    Metavariables compare by identity after pruning. This is not type equivalence (see
-    is_type_equal); it is used to cross-check optimizations that must not change any structure.
+    Metavariables compare by identity after pruning. This is not type
+    equivalence (see is_type_equal); it is used to cross-check optimizations
+    that must not change any structure.
     """
 
     assumed: set[tuple[int, int]] = set()

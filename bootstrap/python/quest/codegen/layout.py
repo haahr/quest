@@ -1,13 +1,17 @@
-"""How values are laid out, for every backend (docs/c-representation.md), computed from shapes (ir/shapes.py) and
-cached per shape: each type's layout tag (which names its struct and descriptor), digests and identity keys of types,
-and its representation, the runtime's (runtime/quest_runtime.h): a scalar, a QVal word, a 16-byte record or variant
-value, or a pointer (to a tuple's or option's struct, a closure, an array, ...), and its slot representation, as an
-aggregate slot or a QVal word holds it (slot_representation): a record or variant as a pointer to an immutable
-16-byte box, a Bool or Char in a word of its own, and anything else as its representation, so that every slot is one
-word and native and generic layouts agree in memory. Representations are named by the runtime's C types, which a
-native backend lays out as C does, to share the runtime and link with C units. Also whether generic code's layout of
-a type agrees with the native one (generic_layout_agrees), and whether a value of a tuple or option type may be a
-proxy, a view of an object of a subtype (may_be_proxied)."""
+"""How values are laid out, for every backend (docs/c-representation.md),
+computed from shapes (ir/shapes.py) and cached per shape: each type's layout tag
+(which names its struct and descriptor), digests and identity keys of types, and
+its representation, the runtime's (runtime/quest_runtime.h): a scalar, a QVal
+word, a 16-byte record or variant value, or a pointer (to a tuple's or option's
+struct, a closure, an array, ...), and its slot representation, as an aggregate
+slot or a QVal word holds it (slot_representation): a record or variant as a
+pointer to an immutable 16-byte box, a Bool or Char in a word of its own, and
+anything else as its representation, so that every slot is one word and native
+and generic layouts agree in memory. Representations are named by the runtime's
+C types, which a native backend lays out as C does, to share the runtime and
+link with C units. Also whether generic code's layout of a type agrees with the
+native one (generic_layout_agrees), and whether a value of a tuple or option
+type may be a proxy, a view of an object of a subtype (may_be_proxied)."""
 
 from __future__ import annotations
 
@@ -64,8 +68,9 @@ from quest.modules.abstract_types import is_abstract_type_symbol
 # Layouts of shapes
 # ============================================================================
 #
-# A type's layout (its tag and representation) depends only on its shape, and shapes are built once per canonical
-# type, so each layout is computed once per shape and kept for the whole process.
+# A type's layout (its tag and representation) depends only on its shape, and
+# shapes are built once per canonical type, so each layout is computed once per
+# shape and kept for the whole process.
 
 
 _UNSET = object()
@@ -109,7 +114,8 @@ class Layout:
         return self._slot
 
 
-# Layouts by the id of their shape (shapes are kept for the whole process, so ids are not reused)
+# Layouts by the id of their shape (shapes are kept for the whole process, so
+# ids are not reused)
 _LAYOUTS: dict[int, Layout] = {}
 
 
@@ -122,8 +128,9 @@ def layout_of(s: Shape) -> Layout:
 
 
 def resolved_shape(s: Shape) -> Shape:
-    """s, or for a type variable or abstract type bounded by POWER(T), the shape its bounds resolve to: generic code
-    holds a value of a bounded type parameter as a value of its bound."""
+    """s, or for a type variable or abstract type bounded by POWER(T), the shape
+    its bounds resolve to: generic code holds a value of a bounded type
+    parameter as a value of its bound."""
     seen: set[int] = set()
     while s.kind in ("typevar", "abstract") and s.bound is not None and id(s) not in seen:
         seen.add(id(s))
@@ -132,10 +139,11 @@ def resolved_shape(s: Shape) -> Shape:
 
 
 def held_at_bound(s: Shape) -> bool:
-    """Whether values of shape s, of a type with a bound, are held viewed at the bound: a module's abstract type (as
-    code outside the module holds it), an abstract type elaborated as such, or a path type. Generic code holds the
-    values of a bounded type parameter at their own view, their type argument's, in the representation of the bound
-    (docs/c-representation.md §5.1)."""
+    """Whether values of shape s, of a type with a bound, are held viewed at the
+    bound: a module's abstract type (as code outside the module holds it), an
+    abstract type elaborated as such, or a path type. Generic code holds the
+    values of a bounded type parameter at their own view, their type argument's,
+    in the representation of the bound (docs/c-representation.md §5.1)."""
     if s.bound is None or s.kind not in ("typevar", "abstract"):
         return False
     if s.kind == "abstract":
@@ -145,8 +153,9 @@ def held_at_bound(s: Shape) -> bool:
 
 
 def own_view(s: Shape) -> bool:
-    """Whether s is a bounded type parameter's shape, whose values generic code holds at their own view (their type
-    argument's) and reads through the bound by a view map (ir.ViewMapParam) when the bound is a record, variant, or
+    """Whether s is a bounded type parameter's shape, whose values generic code
+    holds at their own view (their type argument's) and reads through the bound
+    by a view map (ir.ViewMapParam) when the bound is a record, variant, or
     option type."""
     return s.kind == "typevar" and s.bound is not None and not held_at_bound(s)
 
@@ -157,60 +166,71 @@ def is_word_type(t: QType) -> bool:
 
 
 def representation(t: QType) -> str:
-    """The representation of a value of t, named by the runtime's C type for it (`QInt`, `QVal`, `QRecordVal`, a
-    tuple's struct pointer `QTuple_Int_Real *`, ...): values of types with the same representation are laid out
-    alike."""
+    """The representation of a value of t, named by the runtime's C type for it
+    (`QInt`, `QVal`, `QRecordVal`, a tuple's struct pointer `QTuple_Int_Real *`,
+    ...): values of types with the same representation are laid out alike."""
     return layout_of(shape(t)).representation
 
 
 def slot_representation(t: QType) -> str:
-    """The C type of a value of t in an aggregate slot (a tuple component, option payload, record field, array element,
-    or auto payload) or a QVal word: a record or variant is a pointer to an immutable 16-byte box (QRecordVal *,
-    QVariantVal *), a Bool or Char a word of its own (QBoolSlot, QCharSlot), and any other value as it is
-    (docs/c-representation.md §5). Every slot is one word, so a slot of a type parameter (a QVal) agrees in memory with
-    a slot of its type argument."""
+    """The C type of a value of t in an aggregate slot (a tuple component,
+    option payload, record field, array element, or auto payload) or a QVal
+    word: a record or variant is a pointer to an immutable 16-byte box
+    (QRecordVal *, QVariantVal *), a Bool or Char a word of its own (QBoolSlot,
+    QCharSlot), and any other value as it is (docs/c-representation.md §5).
+    Every slot is one word, so a slot of a type parameter (a QVal) agrees in
+    memory with a slot of its type argument."""
     return layout_of(shape(t)).slot
 
 
 def shape_slot_representation(s: Shape) -> str:
-    """The slot representation of the values of shape s (see slot_representation)."""
+    """The slot representation of the values of shape s (see
+    slot_representation)."""
     return layout_of(s).slot
 
 
 def location_representation(t: QType) -> str:
-    """The C type of the location a var or out parameter points to (or a Var cell is): a record or variant boxed, as
-    a slot holds it, so that the address of a slot can be passed, and a generic parameter's location (a QVal) agrees
+    """The C type of the location a var or out parameter points to (or a Var
+    cell is): a record or variant boxed, as a slot holds it, so that the address
+    of a slot can be passed, and a generic parameter's location (a QVal) agrees
     with it; any other value as its representation."""
     return shape_location_representation(shape(t))
 
 
 def shape_location_representation(s: Shape) -> str:
-    """The location representation of the values of shape s (see location_representation)."""
+    """The location representation of the values of shape s (see
+    location_representation)."""
     return layout_of(s).slot if is_boxed_in_slots(s) else layout_of(s).representation
 
 
 def may_be_proxied(s: Shape) -> bool:
-    """Whether a value of shape s, a tuple or option, may be a proxy (docs/c-representation.md §5.8): a view of an
-    object of a subtype at which some component changes view, so that reading a component may have to convert it.
-    A tuple may be when one of its components may change view (see changes_view); an option when it has two or
-    more cases (a subtype numbers them differently) or one of its payloads' components may change view. Code
-    reading a component of such a value checks for a proxy; a value of any other type is never one."""
+    """Whether a value of shape s, a tuple or option, may be a proxy
+    (docs/c-representation.md §5.8): a view of an object of a subtype at which
+    some component changes view, so that reading a component may have to convert
+    it. A tuple may be when one of its components may change view (see
+    changes_view); an option when it has two or more cases (a subtype numbers
+    them differently) or one of its payloads' components may change view. Code
+    reading a component of such a value checks for a proxy; a value of any other
+    type is never one."""
     return s.kind in ("tuple", "option") and layout_of(s).proxied
 
 
 def changes_view(s: Shape) -> bool:
-    """Whether a component of shape s may change view when its tuple or option is upcast: it is view-sensitive (see
-    _view_sensitive), or an aggregate a subtype's value of which may be a proxy where a value of s is never one (see
-    _holds_proxies). One that may not is read through a proxy from the original's slot as it is (every slot being a
-    word, at the same offset)."""
+    """Whether a component of shape s may change view when its tuple or option
+    is upcast: it is view-sensitive (see _view_sensitive), or an aggregate a
+    subtype's value of which may be a proxy where a value of s is never one (see
+    _holds_proxies). One that may not is read through a proxy from the
+    original's slot as it is (every slot being a word, at the same offset)."""
     return _component_changes_view(s, set())
 
 
 def _holds_proxies(s: Shape) -> bool:
-    """Whether a component of shape s may hold a proxy as a subtype's value, though a value of s itself may not be a
-    proxy: a tuple (a prefix of a tuple with a component that changes view), or an option with a payload (whose
-    payload's components may be subtypes'). Upcasting a tuple or option holding such a component to a type at which
-    it is never a proxy converts it, so its tuple or option may be a proxy too."""
+    """Whether a component of shape s may hold a proxy as a subtype's value,
+    though a value of s itself may not be a proxy: a tuple (a prefix of a tuple
+    with a component that changes view), or an option with a payload (whose
+    payload's components may be subtypes'). Upcasting a tuple or option holding
+    such a component to a type at which it is never a proxy converts it, so its
+    tuple or option may be a proxy too."""
     return s.kind == "tuple" or (s.kind == "option" and any(c.shape is not None for c in s.cases))
 
 
@@ -219,10 +239,12 @@ def _component_changes_view(s: Shape, seen: set[int]) -> bool:
 
 
 def _view_sensitive(s: Shape, seen: set[int]) -> bool:
-    """Whether values of subtypes of s may be represented differently at s (so that a component of this shape may
-    change view when its tuple or option is upcast): records and variants (offset tables, tags), options of several
-    cases, tuples and options that may be proxies, type variables (whose arguments may be any of these, or which are
-    viewed at their bounds), and functions whose signatures mention any of these (adapted)."""
+    """Whether values of subtypes of s may be represented differently at s (so
+    that a component of this shape may change view when its tuple or option is
+    upcast): records and variants (offset tables, tags), options of several
+    cases, tuples and options that may be proxies, type variables (whose
+    arguments may be any of these, or which are viewed at their bounds), and
+    functions whose signatures mention any of these (adapted)."""
     kind = s.kind
     if kind in ("record", "variant", "typevar", "abstract", "auto", "operator"):
         return True
@@ -255,8 +277,8 @@ def _may_be_proxied(s: Shape, seen: set[int]) -> bool:
 
 
 def is_boxed_in_slots(s: Shape) -> bool:
-    """Whether a slot holds values of shape s boxed: records and variants (a bounded type parameter's, viewed at its
-    bound, among them)."""
+    """Whether a slot holds values of shape s boxed: records and variants (a
+    bounded type parameter's, viewed at its bound, among them)."""
     return layout_of(s).representation in ("QRecordVal", "QVariantVal")
 
 
@@ -286,12 +308,13 @@ _SCALAR_REPRESENTATIONS = {
 
 
 def _recursive_tag(s: Shape) -> str:
-    """The tag of a recursive type whose unfolding's tag is built from its parts' tags (a tuple, record, variant,
-    option, array, cell, or auto type).
+    """The tag of a recursive type whose unfolding's tag is built from its
+    parts' tags (a tuple, record, variant, option, array, cell, or auto type).
 
-    The tag names the recursive type itself rather than its unfolding, whose tag would contain the tag being defined:
-    its body, its variable replaced by a placeholder numbered by nesting depth, so that the tag is finite and the same
-    for alpha-equivalent types.
+    The tag names the recursive type itself rather than its unfolding, whose tag
+    would contain the tag being defined: its body, its variable replaced by a
+    placeholder numbered by nesting depth, so that the tag is finite and the
+    same for alpha-equivalent types.
     """
     t = s.type
     level = sum(1 for sym in t._fv if is_rec_self_symbol(sym))
@@ -308,8 +331,9 @@ _AGGREGATE_TAG_PREFIXES = ("QTuple_", "QRecord_", "QVariant_", "QOption_", "Auto
 
 
 def _element_tag(s: Shape) -> str:
-    """The tag of a component's shape inside another type's tag: an aggregate's tag, which lists its own components,
-    is closed with _end, so that tags of different nestings differ (Tuple (Tuple A Int) end and Tuple (Tuple A) Int
+    """The tag of a component's shape inside another type's tag: an aggregate's
+    tag, which lists its own components, is closed with _end, so that tags of
+    different nestings differ (Tuple (Tuple A Int) end and Tuple (Tuple A) Int
     end)."""
     tag = _component_tag(s)
     if tag.startswith(_AGGREGATE_TAG_PREFIXES) and not tag.endswith("_empty"):
@@ -318,8 +342,9 @@ def _element_tag(s: Shape) -> str:
 
 
 def _component_tag(s: Shape) -> str:
-    # A component is named as its type is: a type containing recursion by its own canonical form, which a part of
-    # another type's canonical form need not be
+    # A component is named as its type is: a type containing recursion by its
+    # own canonical form, which a part of another type's canonical form need not
+    # be
     return shape_tag(shape(s.type))
 
 
@@ -328,7 +353,8 @@ def _shape_tag(s: Shape) -> str:
     if s.kind == "typevar" and (self_level := rec_self_level(s.type)) is not None:
         return f"Self{c_int(self_level)}"
     if (canonical := shape(s.type)) is not s:
-        # Equal types share a tag: a type containing recursion is named by its canonical form
+        # Equal types share a tag: a type containing recursion is named by its
+        # canonical form
         return shape_tag(canonical)
     if s.is_recursive and s.kind in _SELF_NAMED_KINDS:
         return _recursive_tag(s)
@@ -374,7 +400,8 @@ def _shape_representation(s: Shape) -> str:
     if kind in _SCALAR_REPRESENTATIONS:
         return _SCALAR_REPRESENTATIONS[kind]
     if kind == "auto":
-        # An auto value (including a dynamic value): its type component's descriptor and its payload
+        # An auto value (including a dynamic value): its type component's
+        # descriptor and its payload
         return "QAuto *"
     if kind == "external":
         return s.name
@@ -400,15 +427,17 @@ def _shape_representation(s: Shape) -> str:
 
 
 def type_digest(t: QType) -> str:
-    """A short digest of a type's printed text, telling apart types that type_tag conflates (see printed): the text
-    of the structure of its canonical form (the unfolding of a recursive type)."""
+    """A short digest of a type's printed text, telling apart types that
+    type_tag conflates (see printed): the text of the structure of its canonical
+    form (the unfolding of a recursive type)."""
     return printed(shape(t).structure)[1][:16]
 
 
 def type_identity_key(t: QType) -> str:
-    """A key telling types apart where type_tag does not (all function types are QClosure): the tag and a
-    digest of the canonical type's text. Equal types elaborated separately get the same key; Python == is not
-    defined on types, so this stands in for them in dictionaries."""
+    """A key telling types apart where type_tag does not (all function types are
+    QClosure): the tag and a digest of the canonical type's text. Equal types
+    elaborated separately get the same key; Python == is not defined on types,
+    so this stands in for them in dictionaries."""
     return f"{type_tag(t)}#{type_digest(t)}"
 
 
@@ -416,17 +445,19 @@ def text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-# Digests of types stand for their printed text (str), which is the same in every compilation, but printing
-# shares nothing, so a large recursive type prints as megabytes. A type whose text is at most this long is
-# digested from its text; a longer one from the text of its outermost node with the digests of its parts
-# in place of theirs, computed once per hash-consed node. Either way types that print differently get
-# different digests.
+# Digests of types stand for their printed text (str), which is the same in
+# every compilation, but printing shares nothing, so a large recursive type
+# prints as megabytes. A type whose text is at most this long is digested from
+# its text; a longer one from the text of its outermost node with the digests of
+# its parts in place of theirs, computed once per hash-consed node. Either way
+# types that print differently get different digests.
 PRINTED_TEXT_LIMIT = 1024
 
 
 def _printed_parts(node: Any) -> list[Any]:
-    """The text of str(node) as a list of literal strings and the parts (types, components, kinds) printed
-    in between. It mirrors the __str__ methods in quest.types; a node not listed prints as one string."""
+    """The text of str(node) as a list of literal strings and the parts (types,
+    components, kinds) printed in between. It mirrors the __str__ methods in
+    quest.types; a node not listed prints as one string."""
 
     def spaced(items: Any) -> list[Any]:
         out: list[Any] = []
@@ -522,13 +553,15 @@ def _printed_uncached(node: Any) -> tuple[int, str]:
     return length, hashlib.sha256(("\1" + joined("", pieces)).encode("utf-8")).hexdigest()
 
 
-# The printed lengths and digests of hash-consed nodes (types, components, kinds) without metavariables, by id, kept
-# with the node so that its id is not reused
+# The printed lengths and digests of hash-consed nodes (types, components,
+# kinds) without metavariables, by id, kept with the node so that its id is not
+# reused
 _PRINTED_PARTS: dict[int, tuple[Any, tuple[int, str]]] = {}
 
 
 def printed(node: Any) -> tuple[int, str]:
-    """The length of str(node) and a digest of that text, for a type, type component, or kind."""
+    """The length of str(node) and a digest of that text, for a type, type
+    component, or kind."""
     node = pruned(node)
     if node._has_meta:
         return _printed_uncached(node)
@@ -549,36 +582,45 @@ def option_struct_name(t: QType) -> str:
     return type_tag(t)
 
 
-# The C types of scalar values, which a slot holds in a word of its own: stored as a bounded type parameter's value
-# (of the same scalar bound), they agree with the native value in memory, and in registers only for integers
+# The C types of scalar values, which a slot holds in a word of its own: stored
+# as a bounded type parameter's value (of the same scalar bound), they agree
+# with the native value in memory, and in registers only for integers
 _WORD_SCALARS = frozenset({"QInt", "QReal", "QBool", "QChar", "QVal", "void"})
 
 
 _REGISTER_WORDS = frozenset({"QInt", "QVal"})
 
-# The C types of native values that a QVal cell holds in the same eight bytes (a var or out parameter points to one)
+# The C types of native values that a QVal cell holds in the same eight bytes (a
+# var or out parameter points to one)
 _CELL_WORDS = frozenset({"QInt", "QReal", "QVal", "uint64_t"})
 
-# Where a value is held: in an aggregate slot, in a register (a function's parameter or result), or in a cell that a
-# var or out parameter points to (a local variable natively, of its location representation: a record or variant
+# Where a value is held: in an aggregate slot, in a register (a function's
+# parameter or result), or in a cell that a var or out parameter points to (a
+# local variable natively, of its location representation: a record or variant
 # boxed, as in a slot)
 _SLOT, _REGISTER, _CELL = "slot", "register", "cell"
 
 
 def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
-    """Whether a value of t.substitute(subst), laid out natively, is laid out as generic code lays out t, where each
-    variable in subst is a type parameter of that code: so that the value can be used there as it is, through a
-    pointer cast, and a value made there can be used natively.
+    """Whether a value of t.substitute(subst), laid out natively, is laid out as
+    generic code lays out t, where each variable in subst is a type parameter of
+    that code: so that the value can be used there as it is, through a pointer
+    cast, and a value made there can be used natively.
 
-    Generic code stores a value of an unbounded type parameter as a QVal, and one of a bounded parameter as its type
-    argument's own value, in the representation of the bound. Every slot is one word (slot_representation), so in
-    memory a QVal agrees with any native value: a scalar or pointer in its bits, a record or variant boxed. In
-    registers (function parameters and results) it agrees only with integers and pointers, and in the cell a var or out
-    parameter points to (natively a variable of the value's representation) only with eight-byte scalars and pointers.
-    A value of a bounded parameter agrees with the native value (which has the bound's representation). A module's
-    abstract type's value is held viewed at its bound, which agrees with a native value only when both are the same
-    scalar. Aggregates agree when their components do; recursive types are compared coinductively. This mirrors
-    quest_layout_equivalent in the runtime, conservatively: False means only that the value may need converting.
+    Generic code stores a value of an unbounded type parameter as a QVal, and
+    one of a bounded parameter as its type argument's own value, in the
+    representation of the bound. Every slot is one word (slot_representation),
+    so in memory a QVal agrees with any native value: a scalar or pointer in its
+    bits, a record or variant boxed. In registers (function parameters and
+    results) it agrees only with integers and pointers, and in the cell a var or
+    out parameter points to (natively a variable of the value's representation)
+    only with eight-byte scalars and pointers. A value of a bounded parameter
+    agrees with the native value (which has the bound's representation). A
+    module's abstract type's value is held viewed at its bound, which agrees
+    with a native value only when both are the same scalar. Aggregates agree
+    when their components do; recursive types are compared coinductively. This
+    mirrors quest_layout_equivalent in the runtime, conservatively: False means
+    only that the value may need converting.
     """
     if not subst:
         return True
@@ -586,22 +628,24 @@ def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
 
 
 def _mentions(s: Shape, subst: dict[int, QType]) -> bool:
-    """Whether the type of shape s mentions one of the type parameters in subst (free type variables keep their
-    symbols in canonical forms)."""
+    """Whether the type of shape s mentions one of the type parameters in subst
+    (free type variables keep their symbols in canonical forms)."""
     return bool(s.type._fv & subst.keys())
 
 
 def _stored_value_agrees(var: Shape, arg: QType, place: str) -> bool:
-    """Whether a native value of arg agrees with a value of the type parameter of shape var as generic code holds it
-    in the place (_SLOT, _REGISTER, or _CELL)."""
+    """Whether a native value of arg agrees with a value of the type parameter
+    of shape var as generic code holds it in the place (_SLOT, _REGISTER, or
+    _CELL)."""
     arg_c = representation(arg)
     if var.bound is not None and own_view(var):
-        # Held as arg's own value, in the representation of the bound, which arg's is (a pointer to another struct
-        # holds the same object)
+        # Held as arg's own value, in the representation of the bound, which
+        # arg's is (a pointer to another struct holds the same object)
         bound_c = shape_representation(var.bound)
         return arg_c == bound_c or (arg_c.endswith("*") and bound_c.endswith("*"))
     if var.bound is not None:
-        # Held as a value of the bound, viewed at it, which agrees with one of arg only when both are the same scalar
+        # Held as a value of the bound, viewed at it, which agrees with one of
+        # arg only when both are the same scalar
         return arg_c == shape_representation(var.bound) and arg_c in _WORD_SCALARS and (
             place != _REGISTER or arg_c in _REGISTER_WORDS
         )
@@ -614,8 +658,8 @@ def _stored_value_agrees(var: Shape, arg: QType, place: str) -> bool:
 
 
 def _type_parameter(s: Shape) -> Optional[int]:
-    """The symbol of the type variable s is the shape of (a type parameter bounded by Word.T is a word shape), or
-    None."""
+    """The symbol of the type variable s is the shape of (a type parameter
+    bounded by Word.T is a word shape), or None."""
     return s.type.symbol_id if isinstance(s.type, QTypeVar) else None
 
 
@@ -634,7 +678,8 @@ def _generic_layout_agrees(s: Shape, subst: dict[int, QType], place: str, seen: 
 
     kind = s.kind
     if kind == "abstract" and isinstance(s.type, QTypeApp):
-        # An application of an abstract operator, whose values are opaque pointers
+        # An application of an abstract operator, whose values are opaque
+        # pointers
         return True
     if kind in ("tuple", "record"):
         return all(slot(c.shape) for c in s.components)
@@ -650,14 +695,16 @@ def _generic_layout_agrees(s: Shape, subst: dict[int, QType], place: str, seen: 
         ) and _generic_layout_agrees(s.result, subst, _REGISTER, seen)
     if kind == "all":
         return _generic_layout_agrees(s.body, subst, place, seen)
-    # Anything else that mentions a type parameter (auto types, exception types, path types) may differ
+    # Anything else that mentions a type parameter (auto types, exception types,
+    # path types) may differ
     return False
 
 
 def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> bool:
-    """Whether converting a value of t between the generic layout and the native one at subst (see
-    generic_layout_agrees) would copy mutable data whose layouts differ: an array, a Var cell, or a var component
-    holding a value that does not agree. The copy would not share the original's updates."""
+    """Whether converting a value of t between the generic layout and the native
+    one at subst (see generic_layout_agrees) would copy mutable data whose
+    layouts differ: an array, a Var cell, or a var component holding a value
+    that does not agree. The copy would not share the original's updates."""
     seen: set[int] = set()
 
     def disagrees(component: Shape, place: str = _SLOT) -> bool:
@@ -676,7 +723,8 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
         if kind in ("cell", "out"):
             return disagrees(s.element, _CELL) or visit(s.element)
         if kind == "tuple":
-            # A tuple is converted through a proxy, which reads and writes its original's components
+            # A tuple is converted through a proxy, which reads and writes its
+            # original's components
             return any(visit(c.shape) for c in s.components)
         if kind == "record":
             return any((c.is_var and disagrees(c.shape)) or visit(c.shape) for c in s.components)
@@ -691,8 +739,9 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
 
 
 def signature_representation(t: QType) -> tuple:
-    """The representation of a function type's calls: its result's and its parameters' representations (pointers
-    for var and out parameters) and its number of type parameters, which closures of types with the same signature
+    """The representation of a function type's calls: its result's and its
+    parameters' representations (pointers for var and out parameters) and its
+    number of type parameters, which closures of types with the same signature
     representation are called by alike."""
     s = shape(t)
     count = 0
@@ -710,8 +759,8 @@ def signature_representation(t: QType) -> tuple:
 
 
 def qtype_to_name_str(t: QType) -> str:
-    """Returns the human-readable Quest type name string for runtime diagnostics and printing (with its alias name,
-    which only the type as written has)."""
+    """Returns the human-readable Quest type name string for runtime diagnostics
+    and printing (with its alias name, which only the type as written has)."""
     t = pruned(t)
     if isinstance(t, QAliasType):
         return t.name

@@ -32,13 +32,15 @@ TypeError = QuestTypeError
 class ExceptionMixin(Checker):
     """Exception declarations, raise, and try.
 
-    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
-    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    A construct family of the checker (`checker.Checker`): its methods use the
+    checker's state and helpers, reach the dispatch (`check_expr`, `synth_expr`)
+    through it, and call the families below this one (checker.py) through
     `self`.
     """
 
     def _synth_exception_expr(self, expr: ast.ExprException, env: Environment, loop_depth: int) -> TypedException:
-        """Synthesizes an exception constructor: exception Name [: PayloadType] end."""
+        """Synthesizes an exception constructor: exception Name [: PayloadType]
+        end."""
         payload_type = elaborate_type(expr.type_annot, env) if expr.type_annot else OK_TYPE
         exc_type = QExceptionType(payload_type=payload_type)
         sym = ValueSymbol(
@@ -63,11 +65,13 @@ class ExceptionMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedRaise:
-        """Elaborates a raise expression: raise Exc [with Payload] [as Type] end.
+        """Elaborates a raise expression: raise Exc [with Payload] [as Type]
+        end.
 
-        A raise diverges, so it has any expected type, and its `as` clause then only has to be well formed
-        (`raise E as Int end` may stand where a Real is expected). Synthesized, its type is the one the
-        `as` clause declares, or Ok."""
+        A raise diverges, so it has any expected type, and its `as` clause then
+        only has to be well formed (`raise E as Int end` may stand where a Real
+        is expected). Synthesized, its type is the one the `as` clause declares,
+        or Ok."""
         as_type = elaborate_type(expr.as_type, env) if expr.as_type is not None else None
         if expected_type is not None:
             res_type = expected_type
@@ -105,8 +109,9 @@ class ExceptionMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedTry:
-        """Elaborates a try expression: its body, handler branches, and else branch are checked against the
-        expected type if there is one; otherwise its type is the join of their synthesized types."""
+        """Elaborates a try expression: its body, handler branches, and else
+        branch are checked against the expected type if there is one; otherwise
+        its type is the join of their synthesized types."""
         body_typed = self._elaborate_subexpr(expr.body, expected_type, env, loop_depth)
 
         typed_branches: list[TypedTryBranch] = []

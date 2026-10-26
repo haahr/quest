@@ -227,7 +227,8 @@ RESERVED_PUNCTUATION: dict[str, TokenKind] = {
     "_": TokenKind.UNDERSCORE,
 }
 
-# Single-character punctuation tokens that are not part of symbolic operator characters
+# Single-character punctuation tokens that are not part of symbolic operator
+# characters
 DELIMITERS: dict[str, TokenKind] = {
     "(": TokenKind.LPAREN,
     ")": TokenKind.RPAREN,

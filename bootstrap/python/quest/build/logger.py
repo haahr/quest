@@ -9,7 +9,8 @@ from typing import Optional
 
 
 class BuildLogger:
-    """Records timestamped build events to an audit log file and optionally streams to stderr."""
+    """Records timestamped build events to an audit log file and optionally
+    streams to stderr."""
 
     def __init__(
         self,

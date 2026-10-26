@@ -1,9 +1,11 @@
-"""Separate compilation must type programs exactly as elaborating module and interface sources does.
+"""Separate compilation must type programs exactly as elaborating module and
+interface sources does.
 
-In C compilation mode imported interfaces are read back from compiled .qi files and imported modules
-are known only through their interfaces. These tests check that this path agrees with the source
-path both semantically (abstract types stay abstract and distinct per module) and in the typed AST
-dump (type names print identically).
+In C compilation mode imported interfaces are read back from compiled .qi files
+and imported modules are known only through their interfaces. These tests check
+that this path agrees with the source path both semantically (abstract types
+stay abstract and distinct per module) and in the typed AST dump (type names
+print identically).
 """
 
 from __future__ import annotations
@@ -160,7 +162,8 @@ class TestSeparateCompilationTypes(unittest.TestCase):
         )
 
     def _typecheck_dumps(self, program: str) -> tuple[str, str]:
-        """Returns the typecheck dump from source interfaces and from compiled .qi files."""
+        """Returns the typecheck dump from source interfaces and from compiled
+        .qi files."""
         src = self._driver("--stop-after", "typecheck", str(self.root / program))
         self.assertEqual(src.returncode, 0, src.stderr)
         sep = self._driver(
@@ -199,7 +202,8 @@ class TestSeparateCompilationTypes(unittest.TestCase):
                     self.assertIn(message, proc.stderr)
 
     def _pipeline_env(self, program: str, stop_after: str):
-        """Runs the pipeline in-process with the test's build directory and returns its environment."""
+        """Runs the pipeline in-process with the test's build directory and
+        returns its environment."""
         source = (self.root / program).read_text(encoding="utf-8")
         options = CompilerOptions(stop_after=stop_after, include_paths=[self.root], build_dir=self.build_dir)
         ctx = CompilerContext.create(source, str(self.root / program), options=options)
@@ -229,7 +233,8 @@ class TestSeparateCompilationTypes(unittest.TestCase):
         self.assertEqual(built.returncode, 0, built.stderr)
         env = self._pipeline_env("uses_geo.quest", "typecheck")
         self.assertTrue(env.units.typed_module("geo/coord").is_precompiled)
-        # Interpreting needs the module bodies, so they are still elaborated from source.
+        # Interpreting needs the module bodies, so they are still elaborated
+        # from source.
         env = self._pipeline_env("uses_geo.quest", "interpret")
         self.assertFalse(env.units.typed_module("geo/coord").is_precompiled)
 

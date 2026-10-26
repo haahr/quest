@@ -1,6 +1,7 @@
 (* Quest Self-Hosted Compiler: Desugaring Implementation
  *
- * The rewrite is bottom up, as the bootstrap's: a node's subexpressions are desugared first, then the node. *)
+ * The rewrite is bottom up, as the bootstrap's: a node's subexpressions are
+ * desugared first, then the node. *)
 
 module desugar : Desugar
 import
@@ -13,7 +14,8 @@ export
     Let ExprForm = ast.ExprForm
     Let PhraseForm = ast.PhraseForm
 
-    (* The infix operators the type checker elaborates itself (the bootstrap's BUILTIN_INFIX_OPERATORS) *)
+    (* The infix operators the type checker elaborates itself (the bootstrap's
+     * BUILTIN_INFIX_OPERATORS) *)
     let builtinInfix = array of
         "+" "-" "*" "/" "%" "mod" "<" "<=" ">" ">="
         "++" "--" "**" "//" "^^" "<<" "<<=" ">>" ">>="
@@ -30,9 +32,9 @@ export
             found
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Rewriting one node, whose subexpressions are desugared
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* A conditional with an else branch and no elsifs *)
     let conditional(sp: location.Span c: ast.Expr t: ast.Expr f: ast.Expr shortCircuit: Bool): ast.Expr =
@@ -74,7 +76,8 @@ export
             end
         end
 
-    (* elsifs become conditionals nested in the else branches, each at its elsif's condition *)
+    (* elsifs become conditionals nested in the else branches, each at its
+     * elsif's condition *)
     let nestElsifs(e: ast.Expr x: Tuple
             cond: ast.Expr
             thenBranch: ast.Expr
@@ -126,9 +129,9 @@ export
             else e
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. The walk
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec expr(e: ast.Expr): ast.Expr = rewrite(ast.makeExpr(e.span walk(e.form)))
     and exprs(v: vector.T(ast.Expr)): vector.T(ast.Expr) = vector.map(:ast.Expr :ast.Expr v expr)
@@ -308,9 +311,9 @@ export
             else f
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Phrases and programs
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let phrase(p: ast.Phrase): ast.Phrase =
         case p.form

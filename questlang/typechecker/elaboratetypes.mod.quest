@@ -39,10 +39,12 @@ export
     (* =========================================================================
      * Recursive type operators being defined
      *
-     * The bootstrap's _RecOperatorSymbol: while the definition of Let Rec T(A::K) = ... is elaborated, T may occur
-     * only applied to exactly its own parameters, as T(A), which stands for the variable of the recursive type the
-     * operator returns (uniform recursion). The symbols declared for operators are recorded here, by id.
-     * ========================================================================= *)
+     * The bootstrap's _RecOperatorSymbol: while the definition of Let Rec
+     * T(A::K) = ... is elaborated, T may occur only applied to exactly its own
+     * parameters, as T(A), which stands for the variable of the recursive type
+     * the operator returns (uniform recursion). The symbols declared for
+     * operators are recorded here, by id.
+     * ====================================================================== *)
 
     Let RecOperator = Tuple name: String formals: Array(model.TypeFormal) recVar: Type end
     let recOperators: hashMap.T(Int RecOperator) =
@@ -61,7 +63,8 @@ export
                 op.name <> "(" <> params <> "), in its definition; non-uniform recursion is not supported" offset)
         end
 
-    (* The recursive variable, for an application of the operator to exactly its parameters *)
+    (* The recursive variable, for an application of the operator to exactly its
+     * parameters *)
     let applyRecOperator(op: RecOperator args: Array(Type) offset: Int): Type =
         begin
             let var uniform = {extent args is extent op.formals}
@@ -78,7 +81,8 @@ export
             op.recVar
         end
 
-    (* The recursive type operator a type application applies, if it is one being defined *)
+    (* The recursive type operator a type application applies, if it is one
+     * being defined *)
     let recOperatorNamed(ctor: ast.TypeExpr e: env.T): maybe.T(RecOperator) =
         case ctor.form
             when typePath with x then
@@ -95,7 +99,8 @@ export
             else maybe.none(:RecOperator)
         end
 
-    (* The kind of a type operator with the given parameters and result kind: ALL(X::K) ... resultKind *)
+    (* The kind of a type operator with the given parameters and result kind:
+     * ALL(X::K) ... resultKind *)
     let operatorKind(formals: Array(model.TypeFormal) resultKind: Kind): Kind =
         begin
             let var kind = resultKind
@@ -128,9 +133,9 @@ export
             if maybe.isSome(:symbols.Scope m) then m else env.lookupInterface(e name) end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Kind Elaboration
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec elaborateKind(k: ast.KindExpr e: env.T): Kind =
         case k.form
@@ -179,9 +184,9 @@ export
             else diagnostics.fail(:Kind "Unsupported AST kind node" k.span.startOffset)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Type Elaboration
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     and elaborateType(t: ast.TypeExpr e: env.T): Type =
         begin
@@ -233,7 +238,8 @@ export
                         let options = vector.new(:model.OptionField)
                         for i = 0 upto {vector.length(:ast.OptionFieldSig x.variants) - 1} do
                             let opt = vector.get(:ast.OptionFieldSig x.variants i)
-                            (* A case's payload is a tuple type: it may have type components and var fields *)
+                            (* A case's payload is a tuple type: it may have
+                             * type components and var fields *)
                             let payload = if vector.empty(:ast.Signature opt.payloadSig) then
                                 maybe.none(:Type)
                             else
@@ -367,8 +373,9 @@ export
             else
                 let modScope = moduleOrInterface(e first)
                 if maybe.isSome(:symbols.Scope modScope) then
-                    (* Module or interface scope lookup. Scopes hold no modules, so a longer path names none (the
-                     * bootstrap's Scope has no lookup_module). *)
+                    (* Module or interface scope lookup. Scopes hold no modules,
+                     * so a longer path names none (the bootstrap's Scope has no
+                     * lookup_module). *)
                     if n > 2 then
                         diagnostics.fail(:Ok "Undefined module/interface '" <> vector.get(:String path 1) <>
                             "' in type path '" <> joinPath(path) <> "'" offset)
@@ -387,7 +394,8 @@ export
                     end
                     reference(joinPath(path) varName maybe.unwrap(:symbols.TypeSymbol sym))
                 else
-                    (* Value binding lookup for path-dependent types (e.g. x.A or x.y.A) *)
+                    (* Value binding lookup for path-dependent types (e.g. x.A
+                     * or x.y.A) *)
                     let valSym = env.lookupValue(e first)
                     if maybe.isNone(:symbols.ValueSymbol valSym) then
                         diagnostics.fail(:Ok "Undefined identifier '" <> first <> "' in type path '" <> joinPath(path) <>
@@ -529,7 +537,8 @@ export
             for i = 0 upto {extent bindings - 1} do
                 let b = bindings[i]
                 declare(e b.sym)
-                (* Without a bound, a component is a type (checked), as a tuple value's says *)
+                (* Without a bound, a component is a type (checked), as a tuple
+                 * value's says *)
                 vector.append(:model.TupleComponent components option tupleTypeBinding of model.TupleComponent with
                     let name = b.member.name
                     let type = maybe.unwrap(:Type b.sym.definition)
@@ -547,7 +556,8 @@ export
                     let q = vector.get(:ast.Quantifier quantifiers i)
                     let bound = elaborateKind(q.bound e)
                     if not(q.isType) andif model.isPower(bound) then
-                        (* Value formal parameter: x : T (represented via Power(T)) *)
+                        (* Value formal parameter: x : T (represented via
+                         * Power(T)) *)
                         let valType = model.powerBound(bound)
                         let isVar = case q.mode when modeVar then true else false end
                         let isOut = case q.mode when modeOut then true else false end
@@ -577,9 +587,9 @@ export
                 end
             end)
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Type and Kind Declarations Elaboration
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* Rejects a simultaneous declaration that declares one name twice *)
     and checkDistinctMemberNames(members: vector.T(ast.TypeBinding)): Ok =
@@ -618,7 +628,8 @@ export
                     let member = vector.get(:ast.TypeBinding members i)
                     let sym = syms[i]
                     let hasBound = maybe.isSome(:ast.KindExpr member.bound)
-                    (* Like any type component, a recursive one must be a type unless it declares a bound *)
+                    (* Like any type component, a recursive one must be a type
+                     * unless it declares a bound *)
                     checkKind(maybe.unwrap(:Type sym.definition) if hasBound then sym.kind else model.typeKind end e)
                 end
                 for i = 0 upto {n - 1} do
@@ -654,13 +665,14 @@ export
         diagnostics.errorAt("The members of a recursive group must all have the same type parameters, as '" <>
             first.name <> "' and '" <> member.name <> "' do not" member.offset)
 
-    (* Whether a recursive type declaration declares a type operator: Let Rec T(A::K) = ..., which the parser makes
-     * Let Rec T = Fun(A::K) .... *)
+    (* Whether a recursive type declaration declares a type operator: Let Rec
+     * T(A::K) = ..., which the parser makes Let Rec T = Fun(A::K) .... *)
     and isRecTypeOperator(b: ast.TypeBinding): Bool =
         case b.typeVal.form when typeFun then true else false end
 
-    (* Let Rec T(A::K) = Body means Fun(A::K) Rec(T) Body, with T(A) in Body standing for the recursive variable. The
-     * members of a group must take the same parameters, which they share. *)
+    (* Let Rec T(A::K) = Body means Fun(A::K) Rec(T) Body, with T(A) in Body
+     * standing for the recursive variable. The members of a group must take the
+     * same parameters, which they share. *)
     and elaborateRecTypeOperators(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol) =
         begin
             Let Shape = Tuple
@@ -791,7 +803,8 @@ export
             let result = vector.new(:symbols.TypeSymbol)
             for i = 0 upto {extent r.operators - 1} do
                 let operator = r.operators[i]
-                (* The symbol defined has the operator's id, but is an ordinary type symbol *)
+                (* The symbol defined has the operator's id, but is an ordinary
+                 * type symbol *)
                 hashMap.delete(:Int :RecOperator recOperators operator.symbolId)
                 vector.append(:symbols.TypeSymbol result symbols.newTypeSymbol(operator.name operator.symbolId
                     operator.kind maybe.some(:Type model.typeOperator(r.params recursiveTypes[i]))))
@@ -847,7 +860,8 @@ export
             Let Elaborated = Tuple type: Type kind: Kind end
             let elaborated: Elaborated =
                 if not(vector.empty(:ast.TypeFormal b.params)) then
-                    (* Desugar parameterized type definition Let T(X::K): ResultKind = Body into a type operator *)
+                    (* Desugar parameterized type definition Let T(X::K):
+                     * ResultKind = Body into a type operator *)
                     env.scoped(:Elaborated e "type_fun_" <> b.name fun(s: symbols.Scope): Elaborated
                         begin
                             let formals = elaborateFormals(b.params e)
@@ -906,7 +920,8 @@ export
                 checkKindWellFormed(bound e)
                 vector.append(:Pre pre tuple let name = b.name let symbolId = symbolId let bound = bound let b = b end)
             end
-            (* 2. A scope of the group's abstract type symbols, where 3. each body is elaborated *)
+            (* 2. A scope of the group's abstract type symbols, where 3. each
+             *    body is elaborated *)
             let entries = env.scoped(:Array(model.RecBinding) e "mutual_rec_group"
                 fun(s: symbols.Scope): Array(model.RecBinding)
                     begin
@@ -928,7 +943,8 @@ export
                         end
                         vector.toArray(:model.RecBinding entries)
                     end)
-            (* 4. A group type for each binding, declared in the enclosing scope *)
+            (* 4. A group type for each binding, declared in the enclosing
+             *    scope *)
             let result = vector.new(:symbols.TypeSymbol)
             for i = 0 upto {n - 1} do
                 let x = entries[i]

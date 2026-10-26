@@ -1,4 +1,5 @@
-"""The artifact contract may change only together with ABI_VERSION (docs/build-process.md §5.2.3)."""
+"""The artifact contract may change only together with ABI_VERSION
+(docs/build-process.md §5.2.3)."""
 
 from __future__ import annotations
 

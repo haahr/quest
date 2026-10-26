@@ -1,4 +1,5 @@
-"""Simultaneous type declarations: Let [Rec] A = ... and B = ..., and the same with Def."""
+"""Simultaneous type declarations: Let [Rec] A = ... and B = ..., and the same
+with Def."""
 
 from __future__ import annotations
 
@@ -35,7 +36,8 @@ class TestTypeBindingGroups(unittest.TestCase):
         self.assertEqual(group.offset, 0)
         self.assertEqual([member.name for member in group.bindings], ["A", "B"])
         self.assertTrue(all(member.is_rec and not member.is_def for member in group.bindings))
-        # The first member is positioned at its name, not at the keyword (that is the group's position)
+        # The first member is positioned at its name, not at the keyword (that
+        # is the group's position)
         self.assertEqual(group.bindings[0].offset, source.index("A ="))
         self.assertEqual(group.bindings[1].offset, source.index("B ="))
 
@@ -76,7 +78,8 @@ class TestTypeBindingGroupElaboration(unittest.TestCase):
         self.assertIsInstance(tree.definition, QRecGroupType)
         self.assertIs(forest.definition.bindings, tree.definition.bindings)
         self.assertEqual((forest.definition.active_index, tree.definition.active_index), (0, 1))
-        # Each unfolds to its body, with the sibling's variable bound to the sibling
+        # Each unfolds to its body, with the sibling's variable bound to the
+        # sibling
         forest_body = forest.definition.unfold_lazily()
         self.assertIsInstance(forest_body, QRecordType)
         element = forest_body.fields[0].type_val
@@ -91,8 +94,9 @@ class TestTypeBindingGroupElaboration(unittest.TestCase):
         self.assertIsInstance(forest, QAliasType)
         body = forest.unfold_lazily()
         self.assertEqual(str(body), "Record trees: Array(Tree) end")
-        # The sibling in the unfolding is the node that a reference to Tree elaborates to, and its unfolding
-        # refers back to the reference to Forest: one finite graph
+        # The sibling in the unfolding is the node that a reference to Tree
+        # elaborates to, and its unfolding refers back to the reference to
+        # Forest: one finite graph
         self.assertIs(body.fields[0].type_val.element_type, tree)
         self.assertIs(tree.unfold_lazily().variants[1].type_val, forest)
 

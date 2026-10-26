@@ -146,18 +146,21 @@ class TestShapes(unittest.TestCase):
         kinds: set[str] = set()
         for program in SWEEP_PROGRAMS:
             path = ROOT_DIR / program
-            # Named by its path, so that the interfaces and modules beside it are found
+            # Named by its path, so that the interfaces and modules beside it
+            # are found
             options = CompilerOptions(stop_after="typecheck")
             res = default_pipeline().execute(path.read_text(), str(path), options=options)
             self.assertTrue(res.success, program)
             types: list[QType] = []
             _types_in(res.artifacts["typecheck"], set(), types)
             for t in types:
-                # Type operators (in type declarations) are not the types of values, and have no shapes
+                # Type operators (in type declarations) are not the types of
+                # values, and have no shapes
                 if isinstance(t, QTypeFun) or getattr(t, "_has_meta", False):
                     continue
                 kinds.update(s.kind for s in shapes_reachable(shape(t)))
-        # (Abstract types of modules are type variables too: see the typevar kind)
+        # (Abstract types of modules are type variables too: see the typevar
+        # kind)
         self.assertLessEqual({"tuple", "record", "variant", "option", "array", "fun", "all", "auto", "typevar"}, kinds)
 
 

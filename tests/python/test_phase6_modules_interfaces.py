@@ -1,4 +1,5 @@
-"""Unit tests for Phase 6: Modules, Interfaces, Conformance, and Information Hiding."""
+"""Unit tests for Phase 6: Modules, Interfaces, Conformance, and Information
+Hiding."""
 
 import unittest
 
@@ -26,10 +27,12 @@ from tests.python.helpers import parse_expr, parse_phrase, run_source
 
 
 class Phase6ModulesInterfacesTest(unittest.TestCase):
-    """Test suite for interface declarations, module conformance, opacity, and qualified dot access."""
+    """Test suite for interface declarations, module conformance, opacity, and
+    qualified dot access."""
 
     def test_interface_elaboration_and_scope(self) -> None:
-        """Elaborate an interface with abstract types and function signatures."""
+        """Elaborate an interface with abstract types and function
+        signatures."""
         env = Environment()
         interface_src = """
         interface IntStack export
@@ -97,9 +100,11 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         self.assertIsInstance(mod_val_sym.type_val, QRecordType)
 
     def test_module_qualified_access_and_information_hiding(self) -> None:
-        """Accessing intStack.empty synthesizes intStack.Stack. Selecting a field of it is rejected
-        (tests/errors/typecheck/modules/opaque_type_field_access), as are modules missing a member or giving one an
-        incompatible type (module_missing_member, module_incompatible_member)."""
+        """Accessing intStack.empty synthesizes intStack.Stack. Selecting a
+        field of it is rejected
+        (tests/errors/typecheck/modules/opaque_type_field_access), as are
+        modules missing a member or giving one an incompatible type
+        (module_missing_member, module_incompatible_member)."""
         env = Environment()
         source = """
         interface IntStack export
@@ -145,7 +150,8 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         self.assertEqual(typed_pop.type_val, INT_TYPE)
 
     def test_manifest_type_transparency(self) -> None:
-        """Manifest types in interfaces remain transparent outside the module."""
+        """Manifest types in interfaces remain transparent outside the
+        module."""
         env = Environment()
         source = """
         interface Math export
@@ -188,7 +194,8 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         self.assertIn("step", extended_scope.values)
 
     def test_whole_program_elaboration_golden_file(self) -> None:
-        """Whole-program elaboration on tests/source/06_interfaces_modules.quest succeeds."""
+        """Whole-program elaboration on tests/source/06_interfaces_modules.quest
+        succeeds."""
         env = Environment()
         with open("tests/source/06_interfaces_modules.quest") as f:
             text = f.read()

@@ -1,6 +1,7 @@
-"""Whether values laid out natively agree with the layout generic code gives them (generic_layout_agrees): in
-memory always, since every slot is one word, except where generic code views a bounded type parameter's values at
-its bound; in registers and cells, only where the representations do."""
+"""Whether values laid out natively agree with the layout generic code gives
+them (generic_layout_agrees): in memory always, since every slot is one word,
+except where generic code views a bounded type parameter's values at its bound;
+in registers and cells, only where the representations do."""
 
 from __future__ import annotations
 
@@ -43,7 +44,8 @@ class TestGenericLayoutAgrees(unittest.TestCase):
                 elaborate_type_binding_group(binding, self.env)
             else:
                 elaborate_type_binding(binding, self.env)
-        # A type parameter bounded by a record type, whose values generic code views at the bound
+        # A type parameter bounded by a record type, whose values generic code
+        # views at the bound
         self.c = self.declare_param("C", QPowerKind(elaborate_test_type("P", self.env)))
 
     def declare_param(self, name: str, kind) -> QTypeVar:
@@ -57,7 +59,8 @@ class TestGenericLayoutAgrees(unittest.TestCase):
         return generic_layout_agrees(elaborate_test_type(generic, self.env), {param.symbol_id: elaborate_test_type(arg, self.env)})
 
     def test_every_value_agrees_in_memory(self) -> None:
-        # Every slot is one word: scalars and pointers in their bits, records and variants boxed
+        # Every slot is one word: scalars and pointers in their bits, records
+        # and variants boxed
         for generic in ("Tuple x: A end", "Box(A)", "Maybe(A)", "Option none some with value: A end end", "List(A)",
                         "Tree(A)", "Forest(A)", "Tuple first: Box(A) second: Int end", "Array(Box(A))", "Array(A)",
                         "Tuple var x: A end"):
@@ -72,7 +75,8 @@ class TestGenericLayoutAgrees(unittest.TestCase):
                                      ("P", False, True)):
             with self.subTest(arg=arg):
                 self.assertEqual(self.agrees("Tuple f: All(x: A) A end", arg), agrees)
-                # A var parameter points to a cell: natively a variable of the value's representation, a record boxed
+                # A var parameter points to a cell: natively a variable of the
+                # value's representation, a record boxed
                 self.assertEqual(self.agrees("Tuple f: All(var x: A) Int end", arg), in_cell)
 
     def test_types_without_the_parameter_agree(self) -> None:
@@ -93,7 +97,8 @@ class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
         )
 
     def test_mutable_data_whose_layout_differs(self) -> None:
-        # A bounded parameter's values are held at their own view, so mutable data holding them agrees
+        # A bounded parameter's values are held at their own view, so mutable
+        # data holding them agrees
         for generic in ("Array(Box(C))", "Array(C)", "Var(Box(C))", "Box(Array(Box(C)))", "Tuple var x: C end"):
             with self.subTest(generic=generic):
                 self.assertFalse(self.copies(generic, "Q", self.c))
@@ -101,7 +106,8 @@ class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
             with self.subTest(generic=generic):
                 self.assertFalse(self.copies(generic, "P"))
                 self.assertFalse(self.copies(generic, "Bool"))
-        # A closure returning a value a register holds differently from a QVal, in mutable data
+        # A closure returning a value a register holds differently from a QVal,
+        # in mutable data
         self.assertTrue(self.copies("Array(All(x: Int) A)", "Bool"))
 
     def test_immutable_data_is_copied(self) -> None:
@@ -112,7 +118,8 @@ class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
 
 
 class TestPolymorphicCallsInC(unittest.TestCase):
-    """The code generated for values passed to and returned from polymorphic functions."""
+    """The code generated for values passed to and returned from polymorphic
+    functions."""
 
     PRELUDE = """
         Let P = Record a: Int end;
@@ -145,13 +152,15 @@ class TestPolymorphicCallsInC(unittest.TestCase):
         self.assertNotIn("quest_convert(", main)
 
     def test_tuples_over_type_parameters_are_specialized(self) -> None:
-        # A tuple parameter or result over the type parameters, however written (Box(A) is one), specializes a call
+        # A tuple parameter or result over the type parameters, however written
+        # (Box(A) is one), specializes a call
         main = self.c_code("let b: Box(Bool) = mkBox(:Bool true); getBox(:Bool b)").split(MAIN_DEFINITION)[1]
         self.assertIn("qf_mkBox_spec(", main)
         self.assertIn("qf_getBox_spec(", main)
 
     def test_bounded_parameters_are_not_converted(self) -> None:
-        # Generic code holds a bounded parameter's values at their own view, as the caller does
+        # Generic code holds a bounded parameter's values at their own view, as
+        # the caller does
         main = self.c_code(
             "Let Q = Record a: Int b: Int end;"
             "let mkC(C <: P v: C): Box(C) = tuple let x = v end;"
@@ -168,7 +177,8 @@ class TestPolymorphicCallsInC(unittest.TestCase):
             "let f: All(C <: P a: Array(Box(C))) C = first;"
             "f(:Q array of mkBox(:Q record a = 5 b = 6 end) end).b"
         )
-        # Closures returning a value a register holds differently from a QVal, in mutable data, would be copied
+        # Closures returning a value a register holds differently from a QVal,
+        # in mutable data, would be copied
         res = self.generate(
             "let first(A::TYPE fs: Array(All(x: Int) A)): A = fs[0](1);"
             "let f: All(A::TYPE fs: Array(All(x: Int) A)) A = first; f(:Bool array of fun(x: Int): Bool true end)"

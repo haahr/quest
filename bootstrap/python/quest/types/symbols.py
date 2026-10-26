@@ -1,9 +1,11 @@
 """Quest Symbols and Lexical Scopes.
 
-Symbols name values, types, and kinds; a scope holds the symbols declared in it, in declaration order. Symbol ids are
-unique for the life of the process (allocate_symbol_id), and every declared type and kind symbol is also found by its
-id, globally. This module is below subtyping and the unit graph, which need symbols and scopes but not the type-checking
-environment (types.env), which holds them.
+Symbols name values, types, and kinds; a scope holds the symbols declared in it,
+in declaration order. Symbol ids are unique for the life of the process
+(allocate_symbol_id), and every declared type and kind symbol is also found by
+its id, globally. This module is below subtyping and the unit graph, which need
+symbols and scopes but not the type-checking environment (types.env), which
+holds them.
 """
 
 from __future__ import annotations
@@ -56,8 +58,9 @@ class TypeSymbol(Symbol):
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name == "definition":
-            # A symbol id must mean one thing for the life of the process (it is looked up globally), so
-            # a definition may be supplied after declaration (None -> T) but never replaced.
+            # A symbol id must mean one thing for the life of the process (it is
+            # looked up globally), so a definition may be supplied after
+            # declaration (None -> T) but never replaced.
             current = self.__dict__.get("definition")
             if current is not None:
                 if value is current:
@@ -92,15 +95,17 @@ class KindSymbol(Symbol):
 # 2. Lexical Scope
 # ============================================================================
 
-# Every declared type symbol, by symbol id. Symbol ids are unique for the life of the process
-# (allocate_symbol_id), so a type variable can be resolved in O(1) regardless of the current scope.
+# Every declared type symbol, by symbol id. Symbol ids are unique for the life
+# of the process (allocate_symbol_id), so a type variable can be resolved in
+# O(1) regardless of the current scope.
 _TYPE_SYMBOLS_BY_ID: dict[int, TypeSymbol] = {}
 # Likewise every declared kind symbol.
 _KIND_SYMBOLS_BY_ID: dict[int, KindSymbol] = {}
 
-# Symbol ids that some lookup found undeclared (or, for types, without a definition). Meanings only
-# become more defined, so cached subtyping results can go stale only when one of these ids gains a
-# meaning; the subtype cache is cleared then (see the subtype cache notes in types.py).
+# Symbol ids that some lookup found undeclared (or, for types, without a
+# definition). Meanings only become more defined, so cached subtyping results
+# can go stale only when one of these ids gains a meaning; the subtype cache is
+# cleared then (see the subtype cache notes in types.py).
 _TYPE_IDS_SEEN_UNDEFINED: set[int] = set()
 _KIND_IDS_SEEN_UNDEFINED: set[int] = set()
 
@@ -120,7 +125,8 @@ class Scope:
 
     @property
     def declarations(self) -> list[Symbol]:
-        """Returns all symbols declared in this scope in strict declaration order."""
+        """Returns all symbols declared in this scope in strict declaration
+        order."""
         return list(self._declarations)
 
     @property
@@ -160,7 +166,8 @@ class Scope:
         kind: QKind,
         definition: Optional[QType] = None,
     ) -> TypeSymbol:
-        """Declares a type symbol from its constituent attributes in the current scope."""
+        """Declares a type symbol from its constituent attributes in the current
+        scope."""
         return self.declare_type(
             TypeSymbol(
                 name=name,
@@ -242,14 +249,17 @@ def allocate_symbol_id() -> int:
     return _GLOBAL_SYMBOL_COUNTER
 
 
-# The number of times a symbol id gained a meaning after some lookup saw it without one. Meanings only become more
-# defined, so judgments cached about types (the subtype cache, types.subtyping) can go stale only then; a cache
-# records the generation it was filled in and is dropped when the generation changes.
+# The number of times a symbol id gained a meaning after some lookup saw it
+# without one. Meanings only become more defined, so judgments cached about
+# types (the subtype cache, types.subtyping) can go stale only then; a cache
+# records the generation it was filled in and is dropped when the generation
+# changes.
 _meaning_generation: int = 0
 
 
 def meanings_changed() -> None:
-    """Records that a symbol id that some lookup saw undefined has gained a meaning."""
+    """Records that a symbol id that some lookup saw undefined has gained a
+    meaning."""
     global _meaning_generation
     _meaning_generation += 1
 

@@ -1,28 +1,36 @@
-"""Representation (docs/ir.md §8.3): inserts `convert` wherever a value's representation differs from the one its use
-requires.
+"""Representation (docs/ir.md §8.3): inserts `convert` wherever a value's
+representation differs from the one its use requires.
 
-A value's representation is its type's (codegen/layout.py: the runtime's, shared by every backend): an unbounded type
-parameter's values are held as QVal words, a bounded one's at their own view (their type argument's) in the bound's
-representation, and other types natively (a module's abstract type's viewed at its bound). A use
-requires the representation of the type it expects: a call's argument, its callee's parameter type (in a polymorphic
-callee, mentioning the callee's type parameters, so a QVal where the parameter is one); a call's result, its callee's
-result type; a component of a tuple, record, variant, option, or array being made or stored into, the component's
-type; a component read, as its aggregate's type gives it; a let's copy, a return, a jump's argument, and an
-assignment, the type of what they bind or assign. Where the two differ, the value is converted by the plan of the
-pair (`plan`).
+A value's representation is its type's (codegen/layout.py: the runtime's, shared
+by every backend): an unbounded type parameter's values are held as QVal words,
+a bounded one's at their own view (their type argument's) in the bound's
+representation, and other types natively (a module's abstract type's viewed at
+its bound). A use requires the representation of the type it expects: a call's
+argument, its callee's parameter type (in a polymorphic callee, mentioning the
+callee's type parameters, so a QVal where the parameter is one); a call's
+result, its callee's result type; a component of a tuple, record, variant,
+option, or array being made or stored into, the component's type; a component
+read, as its aggregate's type gives it; a let's copy, a return, a jump's
+argument, and an assignment, the type of what they bind or assign. Where the two
+differ, the value is converted by the plan of the pair (`plan`).
 
-The plans box and unbox between QVal and native values, view records at supertypes, remap variants' tags, cast
-aggregates whose layouts agree (unwrapping a proxy where the target cannot be one), view tuples and options whose
-components change view through proxies of the originals (docs/c-representation.md §5.8), copy auto payloads into
-their stored layouts, adapt closures, and convert by descriptor at run time; any other change of representation is
-reported as unsupported, rather than printed wrong. The pass also decides what the C printer would otherwise: how
-inspect cases get their components (ir.InspectArm), the thunks' plans of type applications, and, in its last step
-(ir/slots.py), boxing at slots and reads through proxies.
+The plans box and unbox between QVal and native values, view records at
+supertypes, remap variants' tags, cast aggregates whose layouts agree
+(unwrapping a proxy where the target cannot be one), view tuples and options
+whose components change view through proxies of the originals
+(docs/c-representation.md §5.8), copy auto payloads into their stored layouts,
+adapt closures, and convert by descriptor at run time; any other change of
+representation is reported as unsupported, rather than printed wrong. The pass
+also decides what the C printer would otherwise: how inspect cases get their
+components (ir.InspectArm), the thunks' plans of type applications, and, in its
+last step (ir/slots.py), boxing at slots and reads through proxies.
 
-Every decision is made on shapes (ir/shapes.py). The variables the pass makes have types as written, with their alias
-names, which the IR prints (docs/ir.md §5), found through ir/written.py: the types of the components of a type as
-written (written_structure), and the signatures of function types as written, whose type parameters' symbols are
-those the call's type arguments and the callee's parts refer to (a shape's are its canonical form's, named afresh).
+Every decision is made on shapes (ir/shapes.py). The variables the pass makes
+have types as written, with their alias names, which the IR prints (docs/ir.md
+§5), found through ir/written.py: the types of the components of a type as
+written (written_structure), and the signatures of function types as written,
+whose type parameters' symbols are those the call's type arguments and the
+callee's parts refer to (a shape's are its canonical form's, named afresh).
 """
 
 from __future__ import annotations
@@ -65,15 +73,17 @@ class UnsupportedConversion(Exception):
     """A change of representation the represent pass does not handle."""
 
 
-# The kinds of shapes whose values change view at a supertype: a module's abstract type bounded by one is held viewed
-# at its bound
+# The kinds of shapes whose values change view at a supertype: a module's
+# abstract type bounded by one is held viewed at its bound
 _VIEWED_KINDS = ("record", "variant", "option")
 
 
 def held_shape(t: QType, kind: str) -> Optional[Shape]:
-    """The shape of t's values as they are held, if it is of the kind ("record", "variant", or "option"): t's own, or
-    for a type parameter bounded by a type of the kind, its bound's (in whose representation they are held, at their
-    own view, read through the bound by a view map; a module's abstract type's viewed at it)."""
+    """The shape of t's values as they are held, if it is of the kind ("record",
+    "variant", or "option"): t's own, or for a type parameter bounded by a type
+    of the kind, its bound's (in whose representation they are held, at their
+    own view, read through the bound by a view map; a module's abstract type's
+    viewed at it)."""
     held = resolved_shape(shape(t))
     return held if held.kind == kind else None
 
@@ -87,14 +97,15 @@ def array_element(t: QType) -> QType:
 
 
 def _bounded_view(s: Shape) -> bool:
-    """Whether s is a module's abstract type's (or an abstract or path type's) bounded by a record, variant, or option
-    type, held viewed at its bound."""
+    """Whether s is a module's abstract type's (or an abstract or path type's)
+    bounded by a record, variant, or option type, held viewed at its bound."""
     return held_at_bound(s) and resolved_shape(s).kind in _VIEWED_KINDS
 
 
 def _own_viewed(s: Shape) -> bool:
-    """Whether s is a type parameter's bounded by a record, variant, option, or tuple type, whose values are held at
-    their own view, so that they change view when used at another type."""
+    """Whether s is a type parameter's bounded by a record, variant, option, or
+    tuple type, whose values are held at their own view, so that they change
+    view when used at another type."""
     return own_view(s) and resolved_shape(s).kind in _VIEWED_KINDS + ("tuple",)
 
 
@@ -102,12 +113,14 @@ def _equal(a: QType, b: QType) -> bool:
     return a is b or is_type_equal(a, b)
 
 
-# The type variables in each type met, by the type's identity (types are hash-consed and long-lived)
+# The type variables in each type met, by the type's identity (types are
+# hash-consed and long-lived)
 _TYPE_VARS: dict[int, tuple[Any, frozenset]] = {}
 
 
 def _type_vars(t: Any) -> frozenset:
-    """The type variables (as objects, which carry their bounds) in type t, or in a component of one."""
+    """The type variables (as objects, which carry their bounds) in type t, or
+    in a component of one."""
     cached = _TYPE_VARS.get(id(t))
     if cached is not None and cached[0] is t:
         return cached[1]
@@ -125,8 +138,9 @@ def _type_vars(t: Any) -> frozenset:
 
 
 def _same_views(a: QType, b: QType) -> bool:
-    """Whether two equal types hold their type parameters at the same views: a type parameter renamed with another
-    bound (shared_signatures) is the same type, but held viewed at another bound."""
+    """Whether two equal types hold their type parameters at the same views: a
+    type parameter renamed with another bound (shared_signatures) is the same
+    type, but held viewed at another bound."""
     if not (a._fv and b._fv):
         return True
     bounds: dict[int, Any] = {}
@@ -138,7 +152,8 @@ def _same_views(a: QType, b: QType) -> bool:
 
 
 def _variant_subtype(s: Shape, t: Shape) -> bool:
-    """Whether every case of the variant shape s is a case of t, with an equal payload."""
+    """Whether every case of the variant shape s is a case of t, with an equal
+    payload."""
     payloads = {c.name: c.shape for c in t.cases}
     for c in s.cases:
         if c.name not in payloads:
@@ -150,14 +165,17 @@ def _variant_subtype(s: Shape, t: Shape) -> bool:
 
 
 class RejectedConversion(Exception):
-    """A conversion that would copy mutable data laid out differently, which would then not share its updates: a
-    compile-time error (docs/c-representation.md §5.1, Polymorphic Calls)."""
+    """A conversion that would copy mutable data laid out differently, which
+    would then not share its updates: a compile-time error
+    (docs/c-representation.md §5.1, Polymorphic Calls)."""
 
 
 def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bool]) -> Optional[ir.Plan]:
-    """How a value passed to or returned from a polymorphic callee converts between the callee's generic layout of
-    its type and the native layout at the call's type arguments (layout: the instantiation, and whether the value goes
-    to the generic layout, target being the callee's type, or comes from it, source being)."""
+    """How a value passed to or returned from a polymorphic callee converts
+    between the callee's generic layout of its type and the native layout at the
+    call's type arguments (layout: the instantiation, and whether the value goes
+    to the generic layout, target being the callee's type, or comes from it,
+    source being)."""
     instantiation, to_generic = layout
     generic_t = target if to_generic else source
     native_t = generic_t.substitute(instantiation)
@@ -180,9 +198,11 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
 
 
 def shared_signatures(source: QType, target: QType) -> tuple[tuple, QType, tuple, QType]:
-    """Two (possibly polymorphic) function types' parameters and results as written, target's type parameters renamed
-    to source's, so that they can be compared. A renamed parameter keeps target's bound where it is stronger than
-    source's ([TIncl Π], types/subtyping.py); both hold its values at their own view."""
+    """Two (possibly polymorphic) function types' parameters and results as
+    written, target's type parameters renamed to source's, so that they can be
+    compared. A renamed parameter keeps target's bound where it is stronger than
+    source's ([TIncl Π], types/subtyping.py); both hold its values at their own
+    view."""
     s_quants, s_inner = quantified(source)
     t_quants, t_inner = quantified(target)
     if s_quants and len(s_quants) == len(t_quants):
@@ -208,13 +228,16 @@ _ADAPTING: set[tuple] = set()
 
 
 def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
-    """How a closure of type source is used at type target: as it is, when the C signatures agree and no argument or
-    result converts, or else wrapped in a thunk of target's signature (`adapt`), which converts each argument from
-    target's parameter type to source's (the other way from the closure) and the result from source's to target's,
-    by the plans in `fields` (the parameters', then the result's)."""
+    """How a closure of type source is used at type target: as it is, when the C
+    signatures agree and no argument or result converts, or else wrapped in a
+    thunk of target's signature (`adapt`), which converts each argument from
+    target's parameter type to source's (the other way from the closure) and the
+    result from source's to target's, by the plans in `fields` (the parameters',
+    then the result's)."""
     if _equal(source, target) and not (layout is not None and layout[0]):
         return None
-    # Recursive function types are compared coinductively: a pair being compared needs no conversion of its own
+    # Recursive function types are compared coinductively: a pair being compared
+    # needs no conversion of its own
     key = (id(shape(source)), id(shape(target)), layout is not None and layout[1])
     if key in _ADAPTING:
         return None
@@ -232,8 +255,8 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
         _ADAPTING.discard(key)
     if all(p is None for p in fields) and signature_representation(source) == signature_representation(target):
         return None
-    # The thunk takes target's type parameters, which the fields' types name by source's symbols (shared_signatures)
-    # or target's own
+    # The thunk takes target's type parameters, which the fields' types name by
+    # source's symbols (shared_signatures) or target's own
     s_quants, _ = quantified(source)
     t_quants, _ = quantified(target)
     thunk_symbols = tuple(
@@ -242,18 +265,21 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
     return ir.Plan("adapt", source, target, fields, layout, thunk_symbols=thunk_symbols)
 
 
-# The pairs of shapes being planned (with their layouts), for recursive types, which are compared coinductively
+# The pairs of shapes being planned (with their layouts), for recursive types,
+# which are compared coinductively
 _PLANNING: set[tuple] = set()
 
 
 def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]] = None) -> Optional[ir.Plan]:
-    """How a value of type source is converted to be used at type target (None when it is used as it is). layout is
-    set for a value passed to or returned from a polymorphic callee (see layout_plan)."""
+    """How a value of type source is converted to be used at type target (None
+    when it is used as it is). layout is set for a value passed to or returned
+    from a polymorphic callee (see layout_plan)."""
     if source is target:
         return None
     key = (id(shape(source)), id(shape(target)), None if layout is None else (id(layout[0]), layout[1]))
     if key in _PLANNING:
-        # A pair being planned (a recursive type's component): needs no conversion of its own
+        # A pair being planned (a recursive type's component): needs no
+        # conversion of its own
         return None
     _PLANNING.add(key)
     try:
@@ -263,8 +289,9 @@ def plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], 
 
 
 def _unproxied(p: Optional[ir.Plan]) -> Optional[ir.Plan]:
-    """p, or for a cast from a tuple or option type that may be proxied to one that may not, an `unproxy` plan: a value
-    of the target type is never a proxy, and its components do not change view, so the original serves."""
+    """p, or for a cast from a tuple or option type that may be proxied to one
+    that may not, an `unproxy` plan: a value of the target type is never a
+    proxy, and its components do not change view, so the original serves."""
     if p is None or p.kind != "cast":
         return p
     source_s, target_s = shape(p.source), shape(p.target)
@@ -282,11 +309,13 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         return adapt_plan(source, target, layout)
     if layout is not None and layout[0] and cs != "QVal" and ct != "QVal":
         lp = layout_plan(source, target, layout)
-        # A module's abstract type's value is held viewed at its bound, whatever the layouts: a record or variant of
-        # another type converts to the bound's view (and back), as below
+        # A module's abstract type's value is held viewed at its bound, whatever
+        # the layouts: a record or variant of another type converts to the
+        # bound's view (and back), as below
         if lp is not None or not (_bounded_view(ss) or _bounded_view(ts)):
             return lp
-    # A value of a type parameter, held as a QVal word: a scalar or pointer in its bits, a record or variant boxed
+    # A value of a type parameter, held as a QVal word: a scalar or pointer in
+    # its bits, a record or variant boxed
     if ct == "QVal" and cs != "QVal":
         return ir.Plan("box", source, target)
     if cs == "QVal" and ct != "QVal":
@@ -294,13 +323,15 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
     if cs == "QVal" or (_equal(source, target) and _same_views(source, target)):
         return None
     if own_view(ss) and own_view(ts) and ss.symbol_id == ts.symbol_id:
-        # One type parameter, at whatever bounds (a function used where its parameter's bound is stronger): its values
-        # are held at their own view either way
+        # One type parameter, at whatever bounds (a function used where its
+        # parameter's bound is stronger): its values are held at their own view
+        # either way
         return None
     if _own_viewed(ss) or _own_viewed(ts):
-        # A bounded type parameter's value is held at its own view, its type argument's: used at another type, it is
-        # converted by the runtime between the two types' descriptors (a record viewed at the other, a variant's tags
-        # remapped, a tuple or option through a proxy)
+        # A bounded type parameter's value is held at its own view, its type
+        # argument's: used at another type, it is converted by the runtime
+        # between the two types' descriptors (a record viewed at the other, a
+        # variant's tags remapped, a tuple or option through a proxy)
         return ir.Plan("view", source, target)
     s_held, t_held = resolved_shape(ss), resolved_shape(ts)
     if s_held.kind == t_held.kind == "record":
@@ -310,20 +341,23 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         if all(index.get(case.name) == i for i, case in enumerate(s_held.cases)):
             if not _variant_payloads_change(s_held, t_held):
                 return None
-            # A payload changes view (a record's view, a tuple or option that may be a proxy where the supertype's
-            # cannot be): converted by the runtime, which converts the payload (a variant is a value, so nothing is
-            # shared)
+            # A payload changes view (a record's view, a tuple or option that
+            # may be a proxy where the supertype's cannot be): converted by the
+            # runtime, which converts the payload (a variant is a value, so
+            # nothing is shared)
             return ir.Plan("view", s_held.structure, t_held.structure)
         if _variant_subtype(s_held, t_held):
             return ir.Plan("variant_tags", source, target)
-        # From a bounded type parameter's view at its bound back to the type the caller holds it at: by the runtime,
-        # between the two views' descriptors (no static tag map relates them)
+        # From a bounded type parameter's view at its bound back to the type the
+        # caller holds it at: by the runtime, between the two views' descriptors
+        # (no static tag map relates them)
         return ir.Plan("view", s_held.structure, t_held.structure)
     if s_held.kind == t_held.kind == "option" and not _equal(s_held.type, t_held.type):
         if not (_bounded_view(ss) or _bounded_view(ts)) and _option_cases_agree(s_held, t_held):
             return None if cs == ct else ir.Plan("cast", source, target)
-        # Viewed at a bounded type parameter's bound, or an option of a subtype whose cases are numbered differently or
-        # whose payloads change view: a proxy (made by the runtime, between the two views' descriptors)
+        # Viewed at a bounded type parameter's bound, or an option of a subtype
+        # whose cases are numbered differently or whose payloads change view: a
+        # proxy (made by the runtime, between the two views' descriptors)
         return ir.Plan("view", s_held.structure, t_held.structure)
     if ss.kind == ts.kind == "tuple":
         if len(ss.components) < len(ts.components):
@@ -334,15 +368,16 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         changing = [p for p in fields if p is not None and p.kind not in ("box", "unbox")]
         if not changing:
             return None if cs == ct else ir.Plan("cast", source, target)
-        # Components change view: a proxy of the tuple, which converts them as they are read (a closure by an
-        # adapter, made once per proxy)
+        # Components change view: a proxy of the tuple, which converts them as
+        # they are read (a closure by an adapter, made once per proxy)
         return ir.Plan("view", source, target)
     if cs == ct and ts.kind not in ("fun", "all", "option", "array"):
         return None
     if ss.kind == ts.kind == "array" and cs == ct:
-        # An array is shared and assigned through, so its elements cannot change view: it serves as it is when they
-        # need no conversion either way (as for a module's abstract type and its definition), or only a box or unbox,
-        # which changes no element (an element holds a value's QVal form)
+        # An array is shared and assigned through, so its elements cannot change
+        # view: it serves as it is when they need no conversion either way (as
+        # for a module's abstract type and its definition), or only a box or
+        # unbox, which changes no element (an element holds a value's QVal form)
         both_ways = (plan(ss.element.type, ts.element.type), plan(ts.element.type, ss.element.type))
         if all(p is None or p.kind in ("box", "unbox") for p in both_ways):
             return None
@@ -350,8 +385,9 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
 
 
 def _variant_payloads_change(s: Shape, t: Shape) -> bool:
-    """Whether a payload of a variant of shape s changes representation as one of t's (a supertype's with the same
-    case indices): a payload is a QVal word, so boxing changes nothing."""
+    """Whether a payload of a variant of shape s changes representation as one
+    of t's (a supertype's with the same case indices): a payload is a QVal word,
+    so boxing changes nothing."""
     payloads = {c.name: c.shape for c in t.cases}
     for c in s.cases:
         other = payloads.get(c.name)
@@ -364,9 +400,11 @@ def _variant_payloads_change(s: Shape, t: Shape) -> bool:
 
 
 def _option_cases_agree(s: Shape, t: Shape) -> bool:
-    """Whether an option of shape s is laid out as one of shape t (a supertype): each of its cases has the same index
-    in t, with a payload that converts by a cast at most (not an unproxy: a payload component that may be a proxy,
-    used where its type cannot be one, must be converted, through a proxy of the option)."""
+    """Whether an option of shape s is laid out as one of shape t (a supertype):
+    each of its cases has the same index in t, with a payload that converts by a
+    cast at most (not an unproxy: a payload component that may be a proxy, used
+    where its type cannot be one, must be converted, through a proxy of the
+    option)."""
     for i, case in enumerate(s.cases):
         if i >= len(t.cases) or t.cases[i].name != case.name:
             return False
@@ -387,17 +425,20 @@ def is_type_variable(t: QType, symbol_id: int) -> bool:
 
 
 def _slots_agree(source: Shape, target: Shape) -> bool:
-    """Whether a slot of shape source holds its value as a slot of shape target does: the same slot representation,
-    or a QVal word (a value's QVal form, which every slot holds)."""
+    """Whether a slot of shape source holds its value as a slot of shape target
+    does: the same slot representation, or a QVal word (a value's QVal form,
+    which every slot holds)."""
     s_c, t_c = shape_slot_representation(source), shape_slot_representation(target)
     return s_c == t_c or (t_c == "QVal" and s_c != "void")
 
 
 def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.Plan]:
-    """How an auto value's components are stored, in the auto type's witness-independent layout: a component of the
-    type component's type keeps its own representation (inspect reads it by the stored type component's
-    descriptor), in its QVal form where the layout holds a QVal, which its slot already holds (a bounded type
-    parameter's value, at its own view, as the witness's); the others convert to their stored types."""
+    """How an auto value's components are stored, in the auto type's
+    witness-independent layout: a component of the type component's type keeps
+    its own representation (inspect reads it by the stored type component's
+    descriptor), in its QVal form where the layout holds a QVal, which its slot
+    already holds (a bounded type parameter's value, at its own view, as the
+    witness's); the others convert to their stored types."""
     source = shape(payload_t).components
     target = shape(stored_t).components
     fields = []
@@ -416,9 +457,10 @@ def auto_payload_plan(payload_t: QType, stored_t: QType, auto_t) -> Optional[ir.
 
 
 def auto_layouts_agree(stored_t: QType, arm_t: QType) -> bool:
-    """Whether an auto value's stored payload can be read in place as an inspect case's components: each component
-    has the same slot representation (a closure the same signature representation), or is stored as a QVal holding
-    a scalar or pointer."""
+    """Whether an auto value's stored payload can be read in place as an inspect
+    case's components: each component has the same slot representation (a
+    closure the same signature representation), or is stored as a QVal holding a
+    scalar or pointer."""
     for stored_f, arm_f in zip(shape(stored_t).components, shape(arm_t).components):
         stored_c = shape_slot_representation(stored_f.shape)
         arm_c = shape_slot_representation(arm_f.shape)
@@ -433,7 +475,8 @@ def auto_layouts_agree(stored_t: QType, arm_t: QType) -> bool:
 
 
 def inspect_arm(auto_t, case: ir.InspectCase) -> ir.InspectArm:
-    """How an inspect case of an auto value of type auto_t obtains its components (ir.InspectArm)."""
+    """How an inspect case of an auto value of type auto_t obtains its
+    components (ir.InspectArm)."""
     stored_t = auto_payload_type(auto_t)
     arm_t = auto_payload_type(auto_t, case.match_type)
     has_var = any(f.is_var for f in auto_t.signature)
@@ -458,12 +501,14 @@ def inspect_arm(auto_t, case: ir.InspectCase) -> ir.InspectArm:
 
 def type_app_plans(orig_t: QType, type_args: tuple[QType, ...],
                    target_t: QType) -> tuple[tuple[Optional[ir.Plan], ...], tuple[tuple[int, ...], ...]]:
-    """How a polymorphic value of type orig_t applied to the type arguments is used at target_t (ir.TypeApp.plans):
-    for a value of no parameters, its value's plan from the generic result at the type arguments; for a function, the
-    plans of a thunk of target_t's signature, converting each argument from target_t's parameter type to the
-    function's generic one at the type arguments (None for var and out parameters), and the result back. The type
-    parameters the type arguments do not bind stand for target_t's own, the thunk's, whose symbols are returned too
-    (ir.TypeApp.thunk_symbols)."""
+    """How a polymorphic value of type orig_t applied to the type arguments is
+    used at target_t (ir.TypeApp.plans): for a value of no parameters, its
+    value's plan from the generic result at the type arguments; for a function,
+    the plans of a thunk of target_t's signature, converting each argument from
+    target_t's parameter type to the function's generic one at the type
+    arguments (None for var and out parameters), and the result back. The type
+    parameters the type arguments do not bind stand for target_t's own, the
+    thunk's, whose symbols are returned too (ir.TypeApp.thunk_symbols)."""
     quants, inner = quantified(orig_t)
     instantiation = {q.symbol_id: t for q, t in zip(quants, type_args)}
     if not isinstance(inner, QFunType):
@@ -494,7 +539,8 @@ class _Representer:
         self.function: Optional[ir.Function] = None
 
     def convert(self, a: ir.Atom, target: QType, before: list, layout=None) -> ir.Atom:
-        """a, converted to be used at target (by a let added to before), or a itself."""
+        """a, converted to be used at target (by a let added to before), or a
+        itself."""
         p = plan(_type_of(a), target, layout)
         if p is None:
             return a
@@ -514,7 +560,8 @@ class _Representer:
         body.statements = statements
 
     def result(self, s: ir.Let, result_t: QType, after: list) -> None:
-        """Converts the result of s's operation, of type result_t, to s's variable's type."""
+        """Converts the result of s's operation, of type result_t, to s's
+        variable's type."""
         p = plan(result_t, s.var.type)
         if p is not None:
             result = ir.Var(s.var.hint, result_t)
@@ -522,7 +569,8 @@ class _Representer:
             s.var = result
 
     def statement(self, s, function: Optional[ir.Function]) -> list:
-        """The statements s becomes: conversions of its operands, s, and a conversion of its result."""
+        """The statements s becomes: conversions of its operands, s, and a
+        conversion of its result."""
         before: list = []
         after: list = []
         match s:
@@ -533,7 +581,8 @@ class _Representer:
                 self.generic_results = []
                 result_t = self.call(call, before, writebacks)
                 if self.generic_results:
-                    # The callee's generic result, converted to its type at the type arguments, then to the let's
+                    # The callee's generic result, converted to its type at the
+                    # type arguments, then to the let's
                     generic_t, instantiated_t, instantiation = self.generic_results[0]
                     step = plan(generic_t, instantiated_t, (instantiation, False))
                     if step is not None:
@@ -547,7 +596,8 @@ class _Representer:
                         else:
                             after.append(ir.Let(var, ir.Convert(instantiated, final)))
                     else:
-                        # The generic result is laid out as the native one at the type arguments
+                        # The generic result is laid out as the native one at
+                        # the type arguments
                         self.result(s, instantiated_t, after)
                 else:
                     self.result(s, result_t, after)
@@ -582,13 +632,14 @@ class _Representer:
 
     @staticmethod
     def type_params(function: Optional[ir.Function]) -> set[int]:
-        """The symbols of the type parameters in scope in a function's body (its own and those its closure supplies),
-        whose descriptors it is passed."""
+        """The symbols of the type parameters in scope in a function's body (its
+        own and those its closure supplies), whose descriptors it is passed."""
         return {tp.symbol_id for tp in function.type_params} if function is not None else set()
 
     def inspect_case(self, auto_t, case: ir.InspectCase, function: Optional[ir.Function]) -> None:
-        """Decides how an inspect case obtains its components (its arm), and converts them to its binders' types: a
-        binder that needs converting is bound by a let at the case's start, from a binder of the arm's type."""
+        """Decides how an inspect case obtains its components (its arm), and
+        converts them to its binders' types: a binder that needs converting is
+        bound by a let at the case's start, from a binder of the arm's type."""
         if not case.binders:
             return
         case.arm = inspect_arm(auto_t, case)
@@ -607,8 +658,9 @@ class _Representer:
         case.body.statements[:0] = lets
 
     def operation(self, o, result_t: QType, before: list) -> Optional[QType]:
-        """Converts an operation's operands to the types it stores them at, returning the type of its result as the
-        operation gives it (None when that is the let's own)."""
+        """Converts an operation's operands to the types it stores them at,
+        returning the type of its result as the operation gives it (None when
+        that is the let's own)."""
         match o:
             case ir.MakeTuple(args=args):
                 t = written_structure(result_t, "tuple")
@@ -663,7 +715,8 @@ class _Representer:
         return None
 
     def stored_type(self, s) -> Optional[QType]:
-        """The type of the location a store stores into (None for one through an address)."""
+        """The type of the location a store stores into (None for one through an
+        address)."""
         match s:
             case ir.StoreField(base=base, name=name):
                 rt = written_structure(_type_of(base), "record")
@@ -677,23 +730,27 @@ class _Representer:
         return None
 
     def call(self, call: ir.Call, before: list, after: list) -> QType:
-        """Converts a call's arguments to its callee's parameter types, returning its callee's result type. A var or
-        out argument whose location is laid out differently from the parameter is a temporary of the parameter's
-        type, converted into the location after the call (added to after)."""
+        """Converts a call's arguments to its callee's parameter types,
+        returning its callee's result type. A var or out argument whose location
+        is laid out differently from the parameter is a temporary of the
+        parameter's type, converted into the location after the call (added to
+        after)."""
         self.generic_results = []
         if call.callee is not None:
             callee_t = call.callee.type
         elif isinstance(call.module, ir.Module):
-            # A member of one of the unit's modules, called from outside it at its interface's types (abstract
-            # types among them), works at the module's own: its arguments and result convert at the boundary
+            # A member of one of the unit's modules, called from outside it at
+            # its interface's types (abstract types among them), works at the
+            # module's own: its arguments and result convert at the boundary
             callee_t = call.module.members[call.member].type
         else:
             callee_t = call.callee_type
         if callee_t is None:
             raise UnsupportedConversion(f"a call of {call.member} whose type is unknown")
         params, result_t = fun_signature(callee_t)
-        # A polymorphic callee's parameters at the call's type arguments: an argument is converted to its parameter's
-        # type there (a record viewed at the type argument), then to the parameter's generic representation
+        # A polymorphic callee's parameters at the call's type arguments: an
+        # argument is converted to its parameter's type there (a record viewed
+        # at the type argument), then to the parameter's generic representation
         quants, _ = quantified(callee_t)
         instantiation = {q.symbol_id: t for q, t in zip(quants, call.type_args)}
         args = []
@@ -711,11 +768,14 @@ class _Representer:
         return result_t
 
     def ref_argument(self, address: ir.Atom, param, instantiation: dict, before: list, after: list) -> ir.Atom:
-        """The address passed for a var or out argument: the location's own, or that of a temporary of the
-        parameter's representation (a shadow cell of a generic parameter's QVal, or a cell of an out parameter's type
-        where the location's is a supertype laid out differently), copied in from the location (for var) and out to
-        it after the call. A location holds a record or variant boxed (location_representation), as a generic
-        parameter's QVal does, so its address is passed to a generic parameter as it is."""
+        """The address passed for a var or out argument: the location's own, or
+        that of a temporary of the parameter's representation (a shadow cell of
+        a generic parameter's QVal, or a cell of an out parameter's type where
+        the location's is a supertype laid out differently), copied in from the
+        location (for var) and out to it after the call. A location holds a
+        record or variant boxed (location_representation), as a generic
+        parameter's QVal does, so its address is passed to a generic parameter
+        as it is."""
         location_t = _type_of(address)
         if isinstance(location_t, (QVarType, QOutType)):
             location_t = location_t.element_type
@@ -729,7 +789,8 @@ class _Representer:
         if is_boxed_in_slots(shape(location_t)) and shape_representation(shape(param_t)) == "QVal" and all(
             p is None or p.kind in ("box", "unbox") for p in (p_in, p_out)
         ):
-            # The location holds the record or variant boxed, as the generic parameter's QVal does
+            # The location holds the record or variant boxed, as the generic
+            # parameter's QVal does
             cast = ir.Var("", ref_t)
             before.append(ir.Let(cast, ir.Convert(address, ir.Plan("cast", _type_of(address), ref_t))))
             return cast

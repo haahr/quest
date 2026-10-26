@@ -1,13 +1,15 @@
 """Quest Module Compiler (Phase 4.16 Step 2).
 
 Compiles Quest module implementation files (.mod.quest) into:
-1. Standard C99 source (<name>.mod.c) including the interface header and defining
-   direct C functions (qv_<mod>_<func>), closure trampolines, module record
-   (QRecordVal qm_<mod>), and idempotent initialization (qv_mod_<mod>_init).
+1. Standard C99 source (<name>.mod.c) including the interface header and
+   defining direct C functions (qv_<mod>_<func>), closure trampolines, module
+   record (QRecordVal qm_<mod>), and idempotent initialization
+   (qv_mod_<mod>_init).
 2. Native relocatable object file (<name>.o) via the host C compiler.
 
-Generated file names keep the .int/.mod of their sources' names, so that the header of an interface named like a
-C standard header (math.int.h, not math.h) cannot shadow it (<math.h>) on the C compiler's include path.
+Generated file names keep the .int/.mod of their sources' names, so that the
+header of an interface named like a C standard header (math.int.h, not math.h)
+cannot shadow it (<math.h>) on the C compiler's include path.
 """
 
 from __future__ import annotations
@@ -55,7 +57,8 @@ class ModuleCompileResult(tuple):
 
 
 def header_search_dirs(output_dir: Path, env: Environment, include_paths: Optional[list[Path]]) -> list[Path]:
-    """The directories a module file's C translation is compiled with, where its interface's header is found."""
+    """The directories a module file's C translation is compiled with, where its
+    interface's header is found."""
     search_dirs = [output_dir]
     if env.current_dir:
         search_dirs.append(env.current_dir)
@@ -66,10 +69,12 @@ def header_search_dirs(output_dir: Path, env: Environment, include_paths: Option
 
 
 def find_interface_header(interface_name: str, search_dirs: list[Path], header: Optional[Path]) -> Optional[str]:
-    """The name a module file's C translation includes its interface's header (.int.h) by, if it has one.
+    """The name a module file's C translation includes its interface's header
+    (.int.h) by, if it has one.
 
-    The interface path as written names the header if the C compiler finds one by that name on its include path;
-    otherwise header, the interface's header as C compilation brought it up to date (ensure_imported_interface_header),
+    The interface path as written names the header if the C compiler finds one
+    by that name on its include path; otherwise header, the interface's header
+    as C compilation brought it up to date (ensure_imported_interface_header),
     is named relative to the include path.
     """
     header_name = f"{interface_name.lower()}.int.h"
@@ -137,7 +142,8 @@ def compile_module(
     if target_interface_scope is None:
         target_interface_scope = load_interface(module_decl.interface_name, env)
 
-    # The manifest records each import as the unit graph resolved it (docs/build-process.md §2.1, §4.3)
+    # The manifest records each import as the unit graph resolved it
+    # (docs/build-process.md §2.1, §4.3)
     target = resolve_interface(module_decl.interface_name, env)
     tgt_src = target.source
     canon_target_interface = target.interface_name
@@ -186,7 +192,8 @@ def compile_module(
     # 3. Elaborate module
     typed_mod = elaborate_module(module_decl, env)
 
-    # 4. Bring the interface's header (.int.h), which the C translation includes, up to date, and find it
+    # 4. Bring the interface's header (.int.h), which the C translation
+    #    includes, up to date, and find it
     header = ensure_imported_interface_header(module_decl.interface_name, env)
     search_dirs = header_search_dirs(output_dir, env, include_paths)
     interface_header = find_interface_header(module_decl.interface_name, search_dirs, header)
@@ -230,7 +237,8 @@ def compile_module(
                     if obj_rel not in dep_objects:
                         dep_objects.append(obj_rel)
                 else:
-                    # A module with a source is always a dependency, even before its object is built.
+                    # A module with a source is always a dependency, even before
+                    # its object is built.
                     if f_path is not None or resolve_object_file(canon, env.current_dir, env.include_paths) is not None:
                         obj_rel = f"{canon.lower()}.o"
                         if obj_rel not in dep_objects:
@@ -273,8 +281,9 @@ def compile_module_file(
 ) -> ModuleCompileResult:
     """Compiles a Quest module file (.mod.quest) into .mod.c, .o, and .qm files.
 
-    program_dir is the directory of the program the module is built for, which names units under no include root
-    (docs/modules.md §2.3). The module is elaborated in an environment of its own, whose imports resolver resolves
+    program_dir is the directory of the program the module is built for, which
+    names units under no include root (docs/modules.md §2.3). The module is
+    elaborated in an environment of its own, whose imports resolver resolves
     (the build's, or a new one if None).
     """
     mod_path = Path(mod_path).resolve()
@@ -283,7 +292,8 @@ def compile_module_file(
 
     source_text = read_source(mod_path)
     source_map = SourceMap(source_text, display_file_name(mod_path))
-    # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
+    # Errors are located in this file, and the imports it makes are located in
+    # it (docs/diagnostics.md §4.4)
     with in_unit(source_map):
         prog = parse_unit(source_text, mod_path, source_map)
 

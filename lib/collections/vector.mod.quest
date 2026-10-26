@@ -1,14 +1,16 @@
 (* Growable vector implementation backed by contiguous Quest arrays.
  *
  * Resizing & Memory Strategy:
- * - Growth: When appending exceeds the backing array capacity, capacity grows by
- *   a factor of 1.5x (cap + cap / 2), with an initial floor capacity of floorSize (6).
- * - Shrinking: When vector utilization drops to 25% or below (length * 4 <= capacity)
- *   and capacity exceeds floorSize, the backing array shrinks by half (50%), with a
- *   lower bound of floorSize.
- * - GC & Cleanup: On pop and delete, vacated slots are overwritten with element 0 to
- *   release unneeded references immediately. When length reaches 0, the backing array
- *   is reset to a zero-length array (array of :A end) so all references are released.
+ * - Growth: When appending exceeds the backing array capacity, capacity grows
+ *   by a factor of 1.5x (cap + cap / 2), with an initial floor capacity of
+ *   floorSize (6).
+ * - Shrinking: When vector utilization drops to 25% or below (length * 4 <=
+ *   capacity) and capacity exceeds floorSize, the backing array shrinks by half
+ *   (50%), with a lower bound of floorSize.
+ * - GC & Cleanup: On pop and delete, vacated slots are overwritten with element
+ *   0 to release unneeded references immediately. When length reaches 0, the
+ *   backing array is reset to a zero-length array (array of :A end) so all
+ *   references are released.
  *)
 
 module vector : Vector
@@ -108,7 +110,8 @@ export
             ok
         end
 
-    (* Helper to overwrite cleared slot and shrink backing storage when utilization is low *)
+    (* Helper to overwrite cleared slot and shrink backing storage when
+     * utilization is low *)
     let shrinkAfterRemoval(A::TYPE)(v: T(A)): Ok =
         if v.length is 0 then
             v.data := array of :A end
@@ -132,7 +135,8 @@ export
             ok
         end
 
-    (* Remove and return the last element of a vector, or raise error if empty *)
+    (* Remove and return the last element of a vector, or raise error if
+     * empty *)
     let pop(A::TYPE)(v: T(A)): A =
         if v.length is 0 then
             raise error end
@@ -143,7 +147,8 @@ export
             res
         end
 
-    (* Delete the element at index and shift subsequent elements left; takes linear time in vector length *)
+    (* Delete the element at index and shift subsequent elements left; takes
+     * linear time in vector length *)
     let delete(A::TYPE)(v: T(A) index: Int): Ok =
         if {index < 0} \/ {index >= v.length} then
             raise error end

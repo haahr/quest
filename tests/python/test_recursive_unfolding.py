@@ -30,7 +30,8 @@ def _int_list() -> QRecType:
 
 
 def _even_odd() -> QRecGroupType:
-    """Let Rec Even = Option z s with Odd end and Odd = Option s with Even end"""
+    """Let Rec Even = Option z s with Odd end and Odd = Option s with Even
+    end"""
     even = QTypeVar("Even", 9101, TYPE_KIND)
     odd = QTypeVar("Odd", 9102, TYPE_KIND)
     even_body = QOptionType((QOptionField("z"), QOptionField("s", odd)))
@@ -60,7 +61,8 @@ class TestRecursiveUnfolding(unittest.TestCase):
         rec = _int_list()
         rec.unfold_lazily()
         self.assertEqual([f.name for f in dataclasses.fields(rec)], ["var_name", "symbol_id", "bound", "body"])
-        # Rebuilding the node yields the canonical (hash-consed) object, cache included.
+        # Rebuilding the node yields the canonical (hash-consed) object, cache
+        # included.
         self.assertIs(dataclasses.replace(rec), rec)
 
     def test_recursive_types_compare_equal(self) -> None:

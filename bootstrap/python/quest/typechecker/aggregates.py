@@ -1,5 +1,6 @@
-"""Elaboration of aggregates: records, tuples (with their type components and labels), member selection, options,
-variants and their tag queries and assertions, arrays, and indexing."""
+"""Elaboration of aggregates: records, tuples (with their type components and
+labels), member selection, options, variants and their tag queries and
+assertions, arrays, and indexing."""
 
 from __future__ import annotations
 
@@ -87,8 +88,9 @@ _PHRASES_NOT_IN_TUPLES: dict[type, str] = {
 class AggregateMixin(Checker):
     """Records, tuples, selection, options, variants, and arrays.
 
-    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
-    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    A construct family of the checker (`checker.Checker`): its methods use the
+    checker's state and helpers, reach the dispatch (`check_expr`, `synth_expr`)
+    through it, and call the families below this one (checker.py) through
     `self`.
     """
 
@@ -100,7 +102,8 @@ class AggregateMixin(Checker):
         offset: int,
         env: Optional[Environment] = None,
     ) -> tuple[Optional[QType], bool]:
-        """Resolves payload type and option flag for a tag on Variant or Option target types."""
+        """Resolves payload type and option flag for a tag on Variant or Option
+        target types."""
         if isinstance(target_type, QVariantType):
             field = target_type.get_variant(tag)
             if field is None:
@@ -148,10 +151,12 @@ class AggregateMixin(Checker):
     ) -> TypedExpr:
         """Elaborates a record constructor: record [var] x = e1 ... end.
 
-        Against an expected record type, every expected field must be given, and is checked against its type in the
-        expected type's order (a var field must be var, with exactly its type); the fields the expected type does not
-        have are then synthesized, and the record has the expected type. Against any other type, the record is
-        synthesized and must be a subtype. Synthesized, its fields are synthesized in order.
+        Against an expected record type, every expected field must be given, and
+        is checked against its type in the expected type's order (a var field
+        must be var, with exactly its type); the fields the expected type does
+        not have are then synthesized, and the record has the expected type.
+        Against any other type, the record is synthesized and must be a subtype.
+        Synthesized, its fields are synthesized in order.
         """
         expected_rec: Optional[QRecordType] = None
         if expected_type is not None:
@@ -208,7 +213,8 @@ class AggregateMixin(Checker):
         return TypedRecord(fields=tuple(field_typeds), type_val=rec_type, offset=expr.offset)
 
     def _synth_tuple_component(self, b: ast.TupleBinding, env: Environment, loop_depth: int) -> TypedExpr:
-        """Synthesizes the value of a tuple's value component, without declaring its label."""
+        """Synthesizes the value of a tuple's value component, without declaring
+        its label."""
         if b.type_annot is not None:
             return self.check_expr(b.value, elaborate_type(b.type_annot, env), env, loop_depth)
         return self.synth_expr(b.value, env, loop_depth)
@@ -226,18 +232,24 @@ class AggregateMixin(Checker):
     ) -> TypedExpr:
         """Elaborates a tuple constructor: tuple ... end.
 
-        Each member of a group is a component of its own, and a manifest kind is not a component: it names a kind
-        for the components after it. Components are elaborated in order, and each value component's label is
-        declared for the ones after it; a simultaneous declaration's labels are declared after its last member, and
-        a recursive declaration's members before any of their values.
+        Each member of a group is a component of its own, and a manifest kind is
+        not a component: it names a kind for the components after it. Components
+        are elaborated in order, and each value component's label is declared
+        for the ones after it; a simultaneous declaration's labels are declared
+        after its last member, and a recursive declaration's members before any
+        of their values.
 
-        Against an expected tuple type, the components must match its fields one for one: a type formal takes a
-        type witness, which must have the formal's bound (with earlier witnesses substituted) and is substituted into
-        the later fields; a manifest type binding takes a type binding equal to it; and a value field takes a value
-        component of its name (if both have one), checked against its type (a var field must be var, with exactly
-        its type; a component's type annotation must be a subtype). Labels then have the expected fields' names and
-        types, and the tuple has the expected type. Against any other type, the tuple is synthesized and must be a
-        subtype. Synthesized, its type is made of its components' types.
+        Against an expected tuple type, the components must match its fields one
+        for one: a type formal takes a type witness, which must have the
+        formal's bound (with earlier witnesses substituted) and is substituted
+        into the later fields; a manifest type binding takes a type binding
+        equal to it; and a value field takes a value component of its name (if
+        both have one), checked against its type (a var field must be var, with
+        exactly its type; a component's type annotation must be a subtype).
+        Labels then have the expected fields' names and types, and the tuple has
+        the expected type. Against any other type, the tuple is synthesized and
+        must be a subtype. Synthesized, its type is made of its components'
+        types.
         """
         expected_tuple: Optional[QTupleType] = None
         if expected_type is not None:
@@ -247,16 +259,20 @@ class AggregateMixin(Checker):
             expected_tuple = expected_lazy
         checking = expected_tuple is not None
 
-        # 1. Flatten the components. A group (let ... and ..., or a group of type bindings) contributes each of its
-        #    members, so that fields[i] lines up with the expected type's i-th field; the maps below remember the group
-        #    each member came from, since a group's members are declared together. Then the count is checked.
+        # 1. Flatten the components. A group (let ... and ..., or a group of
+        #    type bindings) contributes each of its members, so that fields[i]
+        #    lines up with the expected type's i-th field; the maps below
+        #    remember the group each member came from, since a group's members
+        #    are declared together. Then the count is checked.
         #
-        # The components, with the manifest kinds declared just before the component that follows them
-        # (kinds_before[i] precedes fields[i]). Against an expected type, the names in groups are checked here,
-        # before the arity; synthesized, as each group is reached.
+        # The components, with the manifest kinds declared just before the
+        # component that follows them (kinds_before[i] precedes fields[i]).
+        # Against an expected type, the names in groups are checked here, before
+        # the arity; synthesized, as each group is reached.
         fields: list[ast.BindingNode] = []
-        # The type binding or group each type member comes from, and the recursive (let rec) and simultaneous
-        # (let ... and ...) value declarations each value member belongs to, with their members
+        # The type binding or group each type member comes from, and the
+        # recursive (let rec) and simultaneous (let ... and ...) value
+        # declarations each value member belongs to, with their members
         type_bindings: dict[int, ast.TypeBinding | ast.TypeBindingGroup] = {}
         rec_members: dict[int, tuple[ast.BindingNode, tuple[ast.LetValueBinding, ...]]] = {}
         simultaneous_members: dict[int, tuple[ast.TupleBinding, ...]] = {}
@@ -286,7 +302,8 @@ class AggregateMixin(Checker):
                 case ast.TupleBinding():
                     fields.append(b)
                 case _:
-                    # Phrases a tuple cannot hold (imports, modules, interfaces), rejected before the arity is checked
+                    # Phrases a tuple cannot hold (imports, modules,
+                    # interfaces), rejected before the arity is checked
                     raise TypeError(
                         f"Unsupported tuple component: {_PHRASES_NOT_IN_TUPLES.get(type(b), type(b).__name__)}",
                         offset=b.offset,
@@ -297,31 +314,37 @@ class AggregateMixin(Checker):
                 offset=expr.offset,
             )
 
-        # 2. Elaborate the components in order, in a scope of their own, so that each type component and each label (a
-        #    value component's name) is in scope for the components after it. Each component falls into one of four
-        #    cases, chosen by what the expected type says of it (checking) or what it is (synthesizing).
+        # 2. Elaborate the components in order, in a scope of their own, so that
+        #    each type component and each label (a value component's name) is in
+        #    scope for the components after it. Each component falls into one of
+        #    four cases, chosen by what the expected type says of it (checking)
+        #    or what it is (synthesizing).
         with env.scoped("tuple_check" if checking else "tuple_synth"):
             witness_subst: dict[int, QType] = {}
             elem_typeds: list[TypedExpr] = []
             # The components of a synthesized tuple's type
             q_fields: list[QTupleComponent] = []
             witnesses: dict[int, tuple[TypeSymbol, Optional[QKind]]] = {}
-            # The symbols of recursive value members, declared once the first member of their declaration is
-            # reached (checking), or their typed declarations, elaborated then (synthesizing)
+            # The symbols of recursive value members, declared once the first
+            # member of their declaration is reached (checking), or their typed
+            # declarations, elaborated then (synthesizing)
             rec_symbols: dict[int, ValueSymbol] = {}
             rec_typed: dict[int, TypedLetValue] = {}
             rec_groups: list[tuple[int, ...]] = []
             simultaneous_groups: list[tuple[int, ...]] = []
-            # The labels of a simultaneous declaration's members, declared once its last member has been elaborated,
-            # as (element index, name, type, is_var, symbol); a synthesized label's symbol is made when it is declared
+            # The labels of a simultaneous declaration's members, declared once
+            # its last member has been elaborated, as (element index, name,
+            # type, is_var, symbol); a synthesized label's symbol is made when
+            # it is declared
             pending_labels: list[tuple[int, str, QType, bool, Optional[ValueSymbol]]] = []
             # The symbol of each labeled element's label, by element index
             labels: dict[int, ValueSymbol] = {}
             group_indices: list[int] = []
 
             def witness_of(binding: ast.TypeBinding) -> tuple[TypeSymbol, Optional[QKind]]:
-                """Elaborates a type binding's witness, with its declared bound if any; the members of a group are
-                elaborated together, before any of them is declared."""
+                """Elaborates a type binding's witness, with its declared bound
+                if any; the members of a group are elaborated together, before
+                any of them is declared."""
                 if id(binding) not in witnesses:
                     for member, symbol, bound in elaborate_tuple_type_bindings(type_bindings[id(binding)], env):
                         witnesses[id(member)] = (symbol, bound)
@@ -332,10 +355,13 @@ class AggregateMixin(Checker):
                     elaborate_kind_binding(kind_binding, env)
                 exp_f = expected_tuple.fields[index] if expected_tuple is not None else None
 
-                # A type formal of the expected type, A::K: the component is A's witness, the type hidden behind A. It
-                # must have A's bound. A is declared under the formal's own symbol with the witness as its definition,
-                # so that the later components see through it, while the tuple's type, the expected one, keeps A
-                # abstract; witness_subst carries the witness into the later expected fields.
+                # A type formal of the expected type, A::K: the component is A's
+                # witness, the type hidden behind A. It must have A's bound. A
+                # is declared under the formal's own symbol with the witness as
+                # its definition, so that the later components see through it,
+                # while the tuple's type, the expected one, keeps A abstract;
+                # witness_subst carries the witness into the later expected
+                # fields.
                 if isinstance(exp_f, QTupleTypeFormal):
                     if not isinstance(b, ast.TypeBinding):
                         raise TypeError(
@@ -368,7 +394,8 @@ class AggregateMixin(Checker):
                         )
                     )
 
-                # A type defined by the expected type, A = T: the component must define A as T
+                # A type defined by the expected type, A = T: the component must
+                # define A as T
                 elif isinstance(exp_f, QTupleTypeBinding):
                     if not isinstance(b, ast.TypeBinding):
                         raise TypeError(
@@ -405,8 +432,9 @@ class AggregateMixin(Checker):
                         )
                     )
 
-                # Synthesizing, a type component: it is declared for the components after it, and is a defined type
-                # component of the tuple's type
+                # Synthesizing, a type component: it is declared for the
+                # components after it, and is a defined type component of the
+                # tuple's type
                 elif isinstance(b, ast.TypeBinding):
                     if exp_f is not None:
                         raise TypeError(
@@ -426,8 +454,10 @@ class AggregateMixin(Checker):
                     )
                     q_fields.append(QTupleTypeBinding(name=b.name, type_val=symbol.definition, bound=k_bound))
 
-                # A value component. The members of a let rec are all declared when the first is reached, so that
-                # each can refer to the others; those of a let ... and ... have their labels declared after the last.
+                # A value component. The members of a let rec are all declared
+                # when the first is reached, so that each can refer to the
+                # others; those of a let ... and ... have their labels declared
+                # after the last.
                 else:
                     if exp_f is not None:
                         assert isinstance(exp_f, QTupleField)
@@ -534,7 +564,8 @@ class AggregateMixin(Checker):
             for kind_binding in kinds_before.get(len(fields), ()):
                 elaborate_kind_binding(kind_binding, env)
 
-            # 3. Checking, the tuple has the expected type; synthesizing, the type made of its components' types
+            # 3. Checking, the tuple has the expected type; synthesizing, the
+            #    type made of its components' types
             return TypedTuple(
                 elements=tuple(elem_typeds),
                 type_val=expected_tuple if expected_tuple is not None else QTupleType(tuple(q_fields)),
@@ -545,25 +576,32 @@ class AggregateMixin(Checker):
             )
 
     def _synth_select_expr(self, expr: ast.ExprSelect, env: Environment, loop_depth: int) -> TypedSelect:
-        """Synthesizes a selection target.field from a module, a record, or a tuple.
+        """Synthesizes a selection target.field from a module, a record, or a
+        tuple.
 
-        m.f, where m names an imported module that no value shadows, has the type the module gives f. A record's field
-        has the type it was declared with. A tuple's field is the interesting case, because its type may mention the
-        tuple's own type components: in a value t of type Tuple A::TYPE f: A end, the field f has type A, a name that
-        means nothing outside the tuple. When t is a variable, t.f has the path type t.A instead (see elaborate_type),
-        which names "t's A" without revealing what it is. Such a field can be selected only from an immutable
-        variable: an arbitrary expression has no name to root a path type at, and a mutable variable's components
-        could change. A component the tuple's type defines (A = Int) is known, and is replaced by its definition
-        (_outside_tuple). A value whose type is a type parameter bounded by a record or tuple type is selected from as
-        a value of its bound.
+        m.f, where m names an imported module that no value shadows, has the
+        type the module gives f. A record's field has the type it was declared
+        with. A tuple's field is the interesting case, because its type may
+        mention the tuple's own type components: in a value t of type Tuple
+        A::TYPE f: A end, the field f has type A, a name that means nothing
+        outside the tuple. When t is a variable, t.f has the path type t.A
+        instead (see elaborate_type), which names "t's A" without revealing what
+        it is. Such a field can be selected only from an immutable variable: an
+        arbitrary expression has no name to root a path type at, and a mutable
+        variable's components could change. A component the tuple's type defines
+        (A = Int) is known, and is replaced by its definition (_outside_tuple).
+        A value whose type is a type parameter bounded by a record or tuple type
+        is selected from as a value of its bound.
 
-        A path type must not outlive its root: a block, function, or case branch whose type mentions a path type rooted
-        at one of its own variables is rejected (check_no_escaping_path_types).
+        A path type must not outlive its root: a block, function, or case branch
+        whose type mentions a path type rooted at one of its own variables is
+        rejected (check_no_escaping_path_types).
         """
         if isinstance(expr.target, ast.ExprId):
             module_scope = env.lookup_module(expr.target.name)
             mod_sym = env.lookup_value(expr.target.name)
-            # A value binding that shadows the module is selected from as any other value
+            # A value binding that shadows the module is selected from as any
+            # other value
             if module_scope is not None and (mod_sym is None or binds_module(expr.target.name, mod_sym.type_val)):
                 if mod_sym is None:
                     raise TypeError(
@@ -593,7 +631,8 @@ class AggregateMixin(Checker):
         target_type = target_typed.type_val.evaluate_lazily(env)
 
         if not isinstance(target_type, (QRecordType, QTupleType)) and resolve_record_bound(target_type, env) is None:
-            # A type parameter bounded by a tuple type: selected from as from its bound
+            # A type parameter bounded by a tuple type: selected from as from
+            # its bound
             target_type = resolve_tuple_bound(target_type, env) or target_type
         match target_type:
             case QRecordType():
@@ -673,9 +712,11 @@ class AggregateMixin(Checker):
                 )
 
     def _outside_tuple(self, t: QType, tuple_type: QTupleType) -> QType:
-        """The type t of a field selected from a value of tuple_type, as seen outside the tuple, where the names of
-        the tuple's type definitions mean nothing: with the definitions in their place. (Naming them through the
-        variable the tuple was selected from, as `lists.L`, would print types that outlive the variable's scope.)
+        """The type t of a field selected from a value of tuple_type, as seen
+        outside the tuple, where the names of the tuple's type definitions mean
+        nothing: with the definitions in their place. (Naming them through the
+        variable the tuple was selected from, as `lists.L`, would print types
+        that outlive the variable's scope.)
         """
         definitions = {(c.name, c.type_val) for c in tuple_type.fields if isinstance(c, QTupleTypeBinding)}
         if not definitions:
@@ -720,7 +761,8 @@ class AggregateMixin(Checker):
         return self.check_expr(payload_expr, expected_type, env, loop_depth)
 
     def _synth_option_expr(self, expr: ast.ExprOption, env: Environment, loop_depth: int) -> TypedOption:
-        """Synthesizes an option injection: option (tag | ordinal(expr)) [with payload] of OptionType end."""
+        """Synthesizes an option injection: option (tag | ordinal(expr)) [with
+        payload] of OptionType end."""
         opt_type = elaborate_type(expr.option_type, env)
         opt_lazy = opt_type.evaluate_lazily(env)
         if not isinstance(opt_lazy, QOptionType):
@@ -785,7 +827,8 @@ class AggregateMixin(Checker):
         )
 
     def _synth_variant_expr(self, expr: ast.ExprVariant, env: Environment, loop_depth: int) -> TypedVariant:
-        """Synthesizes a variant injection: variant tag [with payload] of VariantType end."""
+        """Synthesizes a variant injection: variant tag [with payload] of
+        VariantType end."""
         var_type = elaborate_type(expr.variant_type, env)
         var_lazy = var_type.evaluate_lazily(env)
         if not isinstance(var_lazy, QVariantType):
@@ -857,10 +900,11 @@ class AggregateMixin(Checker):
     ) -> TypedExpr:
         """Elaborates an array literal: array [of :T] e1 e2 ... end.
 
-        The elements are checked against the element type the literal annotates, which must be a subtype of an
-        expected array type's, or else against the expected element type; with neither, they are synthesized and
-        the element type is the join of theirs. Against a type that is not an array type, the literal is
-        synthesized and must be a subtype.
+        The elements are checked against the element type the literal annotates,
+        which must be a subtype of an expected array type's, or else against the
+        expected element type; with neither, they are synthesized and the
+        element type is the join of theirs. Against a type that is not an array
+        type, the literal is synthesized and must be a subtype.
         """
         expected_array: Optional[QArrayType] = None
         if expected_type is not None:
@@ -911,9 +955,11 @@ class AggregateMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedExpr:
-        """Elaborates an array repetition: array of (count init) end. Its initial value is checked against an
-        expected array type's element type, and the array has the expected type; synthesized, its element type is
-        the initial value's. Against a type that is not an array type, it is synthesized and must be a subtype."""
+        """Elaborates an array repetition: array of (count init) end. Its
+        initial value is checked against an expected array type's element type,
+        and the array has the expected type; synthesized, its element type is
+        the initial value's. Against a type that is not an array type, it is
+        synthesized and must be a subtype."""
         expected_array: Optional[QArrayType] = None
         if expected_type is not None:
             expected_lazy = expected_type.evaluate_lazily(env)

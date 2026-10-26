@@ -1,9 +1,12 @@
-"""The spelling of C text (docs/self-hosting-refactorings.md §2): literals and the forms the C backend repeats.
+"""The spelling of C text (docs/self-hosting-refactorings.md §2): literals and
+the forms the C backend repeats.
 
-Every piece of C the backend writes is a string built from these and from strings: a value interpolated into C text is
-a string (numbers go through c_int or c_int_literal), and lists of C are joined only here. This keeps each line of the
-backend a line of Quest when it is ported, where text is concatenated with `<>` and a number is never spelled by
-`conv.int` alone (which writes negative numbers with `~`).
+Every piece of C the backend writes is a string built from these and from
+strings: a value interpolated into C text is a string (numbers go through c_int
+or c_int_literal), and lists of C are joined only here. This keeps each line of
+the backend a line of Quest when it is ported, where text is concatenated with
+`<>` and a number is never spelled by `conv.int` alone (which writes negative
+numbers with `~`).
 """
 
 from __future__ import annotations
@@ -15,7 +18,8 @@ from typing import Iterable
 # Literals
 
 def c_int(n: int) -> str:
-    """A nonnegative integer in decimal: an index, a count, or a number in a name (`_0`, `c1`, `d2`)."""
+    """A nonnegative integer in decimal: an index, a count, or a number in a
+    name (`_0`, `c1`, `d2`)."""
     assert n >= 0, n
     return str(n)
 
@@ -26,8 +30,9 @@ def c_int_literal(n: int) -> str:
 
 
 def c_real(r: float) -> str:
-    """A double constant: Python's repr of it (the shortest digits that read back as it, as conv.real writes them), with
-    `.0` appended when it would read as an integer; an infinity is `INFINITY` or `(-INFINITY)`."""
+    """A double constant: Python's repr of it (the shortest digits that read
+    back as it, as conv.real writes them), with `.0` appended when it would read
+    as an integer; an infinity is `INFINITY` or `(-INFINITY)`."""
     if math.isinf(r):
         return "INFINITY" if r > 0 else "(-INFINITY)"
     s = repr(r)
@@ -39,9 +44,11 @@ _ESCAPES = {"\"": "\\\"", "'": "\\'", "\\": "\\\\", "\n": "\\n", "\t": "\\t", "\
 
 
 def _c_char_text(ch: str, quote: str) -> str:
-    """A character as it appears inside a C literal delimited by quote: printable ASCII as itself (the quote and the
-    backslash escaped), the common control characters by their letter escapes, and any other character as a
-    three-digit octal escape, which ends where it should whatever character follows (a hex escape does not)."""
+    """A character as it appears inside a C literal delimited by quote:
+    printable ASCII as itself (the quote and the backslash escaped), the common
+    control characters by their letter escapes, and any other character as a
+    three-digit octal escape, which ends where it should whatever character
+    follows (a hex escape does not)."""
     if ch == quote or ch == "\\" or ch in "\n\t\r":
         return _ESCAPES[ch]
     code = ord(ch)

@@ -33,7 +33,8 @@ class TestModuleCompiler(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_basic_module_compilation(self) -> None:
-        """Tests that .mod.quest compiles to .c and .o with correct ABI symbols."""
+        """Tests that .mod.quest compiles to .c and .o with correct ABI
+        symbols."""
         intf_file = self.dir_path / "counter.int.quest"
         intf_file.write_text(
             "interface Counter export\n"
@@ -83,17 +84,20 @@ class TestModuleCompiler(unittest.TestCase):
         # Idempotent initializer declared with external linkage
         self.assertIn("void qv_mod_counter_init(void) {", c_source)
         self.assertIn("if (qv_mod_counter_initialized) return;", c_source)
-        # Direct C functions exported without static, conforming to interface ABI (QVal for abstract T)
+        # Direct C functions exported without static, conforming to interface
+        # ABI (QVal for abstract T)
         self.assertIn("QInt qv_counter_read(QVal qv_p_c) {", c_source)
         self.assertIn("void qv_counter_inc(QVal qv_p_c) {", c_source)
         self.assertNotIn("static QInt qv_counter_read(QVal", c_source)
         self.assertNotIn("static void qv_counter_inc(QVal", c_source)
-        # The module's own functions are static and take its representation of T, a record
+        # The module's own functions are static and take its representation of
+        # T, a record
         self.assertIn("static Q_UNUSED QInt qf_read(void *_raw_env, QRecordVal ", c_source)
         self.assertIn("static Q_UNUSED void qf_inc(void *_raw_env, QRecordVal ", c_source)
 
     def test_chained_module_initialization(self) -> None:
-        """Tests that a module importing another module chains initialization calls."""
+        """Tests that a module importing another module chains initialization
+        calls."""
         # 1. Base interface & module
         base_intf = self.dir_path / "base.int.quest"
         base_intf.write_text(
@@ -175,7 +179,8 @@ class TestModuleCompiler(unittest.TestCase):
             nogc=True,
         )
 
-        # Write C test driver that exercises both direct function calling and closure calling
+        # Write C test driver that exercises both direct function calling and
+        # closure calling
         driver_c = self.dir_path / "test_driver.c"
         driver_c.write_text(
             '#include <stdio.h>\n'
@@ -257,7 +262,8 @@ class TestModuleCompiler(unittest.TestCase):
         self.assertTrue(o_file.is_file())
 
     def test_emit_deps_flag(self) -> None:
-        """Tests that --emit-deps generates .deps/<stem>.d with correct prerequisites."""
+        """Tests that --emit-deps generates .deps/<stem>.d with correct
+        prerequisites."""
         intf_c = self.dir_path / "depc.int.quest"
         intf_c.write_text("interface DepC export val: Int end;\n", encoding="utf-8")
         self.assertEqual(quest_driver.run_driver(["-c", str(intf_c), "-I", str(self.dir_path)]), 0)
@@ -290,7 +296,8 @@ class TestModuleCompiler(unittest.TestCase):
         self.assertIn("depc.o", dep_b_file.read_text(encoding="utf-8"))
 
     def test_transitive_deps_linking(self) -> None:
-        """Tests that compiler driver reads .d files to transitively link dependent .o files."""
+        """Tests that compiler driver reads .d files to transitively link
+        dependent .o files."""
         intf_c = self.dir_path / "basec.int.quest"
         intf_c.write_text("interface BaseC export getVal(): Int end;\n", encoding="utf-8")
         self.assertEqual(quest_driver.run_driver(["-c", str(intf_c), "-I", str(self.dir_path)]), 0)

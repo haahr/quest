@@ -1,4 +1,5 @@
-"""Unit and integration tests for Phase 4.16 Step 3: Client Compilation & Object Linking."""
+"""Unit and integration tests for Phase 4.16 Step 3: Client Compilation & Object
+Linking."""
 
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ from quest_driver import run_compile, run_driver
 
 
 class TestObjectLinking(unittest.TestCase):
-    """Verifies that client programs can compile and link against precompiled .o modules."""
+    """Verifies that client programs can compile and link against precompiled .o
+    modules."""
 
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -62,7 +64,8 @@ class TestObjectLinking(unittest.TestCase):
         self.assertTrue(self.c_file.exists())
         self.assertTrue(self.o_file.exists())
 
-        # Remove the .mod.quest file to guarantee that client compilation does NOT rely on module source!
+        # Remove the .mod.quest file to guarantee that client compilation does
+        # NOT rely on module source!
         self.mod_file.unlink()
         self.assertFalse(self.mod_file.exists())
 
@@ -70,7 +73,8 @@ class TestObjectLinking(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_explicit_object_linking_and_execution(self) -> None:
-        """Client compiles and links against explicitly provided .o file without module source."""
+        """Client compiles and links against explicitly provided .o file without
+        module source."""
         main_file = self.dir_path / "main.quest"
         main_file.write_text(
             "import counter : Counter;\n"
@@ -99,7 +103,8 @@ class TestObjectLinking(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "20")
 
     def test_autodiscovery_object_linking(self) -> None:
-        """Client automatically discovers counter.o in -I search path when imported."""
+        """Client automatically discovers counter.o in -I search path when
+        imported."""
         main_file = self.dir_path / "main_auto.quest"
         main_file.write_text(
             "import counter : Counter;\n"
@@ -112,7 +117,8 @@ class TestObjectLinking(unittest.TestCase):
         )
         out_bin = self.dir_path / "main_auto"
 
-        # Do NOT pass counter.o explicitly on the CLI: it must be auto-discovered in -I
+        # Do NOT pass counter.o explicitly on the CLI: it must be
+        # auto-discovered in -I
         ret = run_compile([
             str(main_file),
             "-o", str(out_bin),
@@ -127,7 +133,8 @@ class TestObjectLinking(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "15")
 
     def test_run_driver_cli_invocation_with_object(self) -> None:
-        """Unified CLI driver 'quest counter.o -o main main.quest' compiles and links native binary."""
+        """Unified CLI driver 'quest counter.o -o main main.quest' compiles and
+        links native binary."""
         main_file = self.dir_path / "main_driver.quest"
         main_file.write_text(
             "import counter : Counter;\n"
@@ -157,7 +164,8 @@ class TestObjectLinking(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "25")
 
     def test_dual_calling_direct_and_closure(self) -> None:
-        """Verifies both direct function calls and closure access through module record."""
+        """Verifies both direct function calls and closure access through module
+        record."""
         main_file = self.dir_path / "main_dual.quest"
         main_file.write_text(
             "import counter : Counter;\n"
@@ -186,7 +194,8 @@ class TestObjectLinking(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "15")
 
     def test_emitted_c_dual_declarations(self) -> None:
-        """Checks that generated C contains extern declarations for module and direct C functions."""
+        """Checks that generated C contains extern declarations for module and
+        direct C functions."""
         main_file = self.dir_path / "main_inspect.quest"
         main_file.write_text(
             "import counter : Counter;\n"

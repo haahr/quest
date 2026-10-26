@@ -1,14 +1,19 @@
-"""The ABI corpus: generated interface artifacts that pin the artifact contract (docs/build-process.md §5.2.3).
+"""The ABI corpus: generated interface artifacts that pin the artifact contract
+(docs/build-process.md §5.2.3).
 
-The corpus is generated from a frozen snapshot of the interfaces in lib/ and questlang/ (tests/abi/inputs), so
-that it changes only when the compiler's output for the same input changes, not when the library evolves. It holds
-each interface's generated .qi file and C header, normalized so that only contract-relevant content remains (no
-producer stamp, no comments), plus a digest of the runtime interface (runtime/quest_runtime.h) and the ABI version
-the corpus was generated with. tests/python/test_abi_corpus.py regenerates it and fails if it changed while
-ABI_VERSION did not.
+The corpus is generated from a frozen snapshot of the interfaces in lib/ and
+questlang/ (tests/abi/inputs), so that it changes only when the compiler's
+output for the same input changes, not when the library evolves. It holds each
+interface's generated .qi file and C header, normalized so that only
+contract-relevant content remains (no producer stamp, no comments), plus a
+digest of the runtime interface (runtime/quest_runtime.h) and the ABI version
+the corpus was generated with. tests/python/test_abi_corpus.py regenerates it
+and fails if it changed while ABI_VERSION did not.
 
-    python tests/abi/corpus.py --update          # after bumping ABI_VERSION: regenerate the corpus
-    python tests/abi/corpus.py --refresh-inputs  # re-snapshot lib/ and questlang/ interfaces, then regenerate
+    # After bumping ABI_VERSION, regenerate the corpus:
+    python tests/abi/corpus.py --update
+    # Re-snapshot lib/ and questlang/ interfaces, then regenerate:
+    python tests/abi/corpus.py --refresh-inputs
 """
 
 from __future__ import annotations
@@ -30,7 +35,8 @@ from quest.codegen.c.headers import compile_interface_with_header  # noqa: E402
 ABI_DIR = Path(__file__).resolve().parent
 CORPUS_DIR = ABI_DIR / "corpus"
 INPUTS_DIR = ABI_DIR / "inputs"
-# Snapshot layout mirrors the search roots: inputs/lib/... (like lib/) and inputs/questlang/... (under the project).
+# Snapshot layout mirrors the search roots: inputs/lib/... (like lib/) and
+# inputs/questlang/... (under the project).
 SNAPSHOT_SOURCES = ((ROOT_DIR / "lib", INPUTS_DIR / "lib"), (ROOT_DIR / "questlang", INPUTS_DIR / "questlang"))
 RUNTIME_HEADER = ROOT_DIR / "runtime" / "quest_runtime.h"
 
@@ -40,7 +46,8 @@ def _normalize_qi(text: str) -> str:
     value = data.get("value", {})
     value.pop("producer", None)
     value.pop("abi", None)
-    # The recorded source is an absolute path; keep only its location within the inputs.
+    # The recorded source is an absolute path; keep only its location within the
+    # inputs.
     if value.get("source"):
         value["source"] = Path(value["source"]).relative_to(INPUTS_DIR.resolve()).as_posix()
     # So are the directories and sources of the interfaces it depends on.

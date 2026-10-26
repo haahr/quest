@@ -1,12 +1,16 @@
-"""The abstract types that modules export, by global name, for serializing dynamic values (docs/dynamic.md §2.3).
+"""The abstract types that modules export, by global name, for serializing
+dynamic values (docs/dynamic.md §2.3).
 
-A module's abstract type is closed: it is named through the global name space of modules, as the module's
-canonical path, a dot, and the type's name ("geo/coord.P"). Its opaque type has one symbol id per global name in
-the process, so that every environment that elaborates or imports the module (the interpreter evaluates modules in
-environments of their own) agrees on it. Elaborating a module records each abstract type it exports with its
-representation, so that dynamic.extern can write a value of the type at its representation, and dynamic.intern can
-check a recorded representation against the module's. dynamic.intern also records the types of modules the
-program does not link, as opaque types with the representations they were written with.
+A module's abstract type is closed: it is named through the global name space of
+modules, as the module's canonical path, a dot, and the type's name
+("geo/coord.P"). Its opaque type has one symbol id per global name in the
+process, so that every environment that elaborates or imports the module (the
+interpreter evaluates modules in environments of their own) agrees on it.
+Elaborating a module records each abstract type it exports with its
+representation, so that dynamic.extern can write a value of the type at its
+representation, and dynamic.intern can check a recorded representation against
+the module's. dynamic.intern also records the types of modules the program does
+not link, as opaque types with the representations they were written with.
 """
 
 from __future__ import annotations
@@ -22,10 +26,12 @@ from quest.types import QType, QTypeVar
 class ModuleAbstractType:
     """An abstract type (or abstract type operator) exported by a module.
 
-    `linked` is false for a type read from a module the program does not link. `rep` is the type that implements a
-    linked module's type (a type operator for an abstract type operator), once the module has been elaborated from
-    its source. An unlinked type's representations are in `instances`: each pair is the arguments of an application
-    (empty for a type) and the representation it was written with.
+    `linked` is false for a type read from a module the program does not link.
+    `rep` is the type that implements a linked module's type (a type operator
+    for an abstract type operator), once the module has been elaborated from its
+    source. An unlinked type's representations are in `instances`: each pair is
+    the arguments of an application (empty for a type) and the representation it
+    was written with.
     """
 
     global_name: str
@@ -42,7 +48,8 @@ _BY_NAME: dict[str, ModuleAbstractType] = {}
 
 
 def abstract_type_symbol_id(global_name: str) -> int:
-    """The symbol id of the opaque type of the module abstract type with this global name."""
+    """The symbol id of the opaque type of the module abstract type with this
+    global name."""
     symbol_id = _SYMBOL_IDS.get(global_name)
     if symbol_id is None:
         symbol_id = _SYMBOL_IDS[global_name] = allocate_symbol_id()
@@ -51,7 +58,8 @@ def abstract_type_symbol_id(global_name: str) -> int:
 
 
 def is_abstract_type_symbol(symbol_id: int) -> bool:
-    """Whether a symbol id is that of a module abstract type's opaque type (abstract_type_symbol_id)."""
+    """Whether a symbol id is that of a module abstract type's opaque type
+    (abstract_type_symbol_id)."""
     return symbol_id in _ABSTRACT_SYMBOL_IDS
 
 
@@ -70,7 +78,8 @@ def register_exported_abstract_type(global_name: str, type_var: QTypeVar) -> Non
 
 
 def register_abstract_type_representation(global_name: str, type_var: QTypeVar, rep: QType) -> None:
-    """Records the representation of an exported abstract type, from the module's source."""
+    """Records the representation of an exported abstract type, from the
+    module's source."""
     _record(global_name, type_var, linked=True).rep = rep
 
 
@@ -88,7 +97,8 @@ def abstract_type_by_name(global_name: str) -> Optional[ModuleAbstractType]:
 
 
 def module_abstract_types(canon: str) -> list[ModuleAbstractType]:
-    """The abstract types the module with canonical name canon exports, with their representations, by name."""
+    """The abstract types the module with canonical name canon exports, with
+    their representations, by name."""
     prefix = canon + "."
     return sorted(
         (e for name, e in _BY_NAME.items() if e.linked and e.rep is not None and name.startswith(prefix)

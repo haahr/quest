@@ -1,6 +1,7 @@
-"""C spellings for the C backend: the C types of representations (codegen/layout.py), function pointer types, QVal
-wrapping and unwrapping, loading from and storing into aggregate slots (a record or variant boxed), literals, record
-struct and offset table names, and descriptor expressions."""
+"""C spellings for the C backend: the C types of representations
+(codegen/layout.py), function pointer types, QVal wrapping and unwrapping,
+loading from and storing into aggregate slots (a record or variant boxed),
+literals, record struct and offset table names, and descriptor expressions."""
 
 from __future__ import annotations
 
@@ -56,8 +57,9 @@ from quest.types import (
 
 
 def _opaque_name(t: QType) -> str:
-    """The name of an opaque descriptor, by which descriptors are compared: a module abstract type's global name, or
-    the type as printed, or for a type that prints longer than PRINTED_TEXT_LIMIT, the start of it followed by the
+    """The name of an opaque descriptor, by which descriptors are compared: a
+    module abstract type's global name, or the type as printed, or for a type
+    that prints longer than PRINTED_TEXT_LIMIT, the start of it followed by the
     digest of the whole."""
     if (global_name := module_abstract_type_name(t)) is not None:
         return global_name
@@ -68,17 +70,20 @@ def _opaque_name(t: QType) -> str:
 
 
 class MissingDescriptorError(Exception):
-    """A type has no runtime type descriptor (such as Var(T) or a type operator)."""
+    """A type has no runtime type descriptor (such as Var(T) or a type
+    operator)."""
 
 
 @dataclass(frozen=True)
 class DescriptorForm:
     """How a type is described at run time.
 
-    kind is one of base and bound_var (expr is the descriptor expression), or record, tuple, variant, option,
-    array, exception, fun, auto, opaque, and hole (the descriptor is quest_type_<tag>, describing `type`; an opaque
-    descriptor is compared by `name` and, for an application of an abstract type operator (`type` is a QTypeApp),
-    its arguments; a hole's `name` is its index).
+    kind is one of base and bound_var (expr is the descriptor expression), or
+    record, tuple, variant, option, array, exception, fun, auto, opaque, and
+    hole (the descriptor is quest_type_<tag>, describing `type`; an opaque
+    descriptor is compared by `name` and, for an application of an abstract type
+    operator (`type` is a QTypeApp), its arguments; a hole's `name` is its
+    index).
     """
     kind: str
     tag: str = ""
@@ -86,8 +91,8 @@ class DescriptorForm:
     name: str = ""
     expr: str = ""
     struct: str = ""  # the C struct laid out as `type`, when its name is not derived from `type` itself
-    # For a descriptor that only echo uses (echo_descriptor_form): the type as written, with alias names, whose type
-    # components the descriptor writes
+    # For a descriptor that only echo uses (echo_descriptor_form): the type as
+    # written, with alias names, whose type components the descriptor writes
     display: Optional[QType] = None
 
     @property
@@ -102,23 +107,28 @@ _BASE_DESCRIPTORS = {
 
 
 def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> DescriptorForm:
-    """Decides the runtime descriptor of a closed type (type parameters in scope are the printer's business).
+    """Decides the runtime descriptor of a closed type (type parameters in scope
+    are the printer's business).
 
-    Each distinct type gets its own tag: tags of compound types include a digest of the type, because C tags
-    conflate types with the same representation (every closure is a QClosure, every type variable a QVal).
-    Recursive types are described by their unfoldings, which refer back to them by tag, so their descriptors are
-    cyclic. Raises MissingDescriptorError for types that have none.
+    Each distinct type gets its own tag: tags of compound types include a digest
+    of the type, because C tags conflate types with the same representation
+    (every closure is a QClosure, every type variable a QVal). Recursive types
+    are described by their unfoldings, which refer back to them by tag, so their
+    descriptors are cyclic. Raises MissingDescriptorError for types that have
+    none.
     """
     s = shape(t)
     if (index := hole_index(s.type)) is not None:
-        # A template's hole (described as such, not by the bound a bounded type variable resolves to)
+        # A template's hole (described as such, not by the bound a bounded type
+        # variable resolves to)
         bound = s.type.bound
         tag = f"hole_{c_int(index)}"
         if isinstance(bound, QPowerKind):
             tag = f"{tag}_{type_digest(bound.bound)}"
         return DescriptorForm("hole", tag=tag, type=s.type, name=c_int(index))
-    # Equal types share a descriptor: a type is described by its shape's structure, the unfolding of its canonical
-    # form (in which equal types containing recursion are one type)
+    # Equal types share a descriptor: a type is described by its shape's
+    # structure, the unfolding of its canonical form (in which equal types
+    # containing recursion are one type)
     t = s.structure
     if s.kind in _BASE_DESCRIPTORS:
         return DescriptorForm("base", expr=_BASE_DESCRIPTORS[s.kind])
@@ -133,10 +143,12 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         and isinstance(t.bound, QPowerKind)
         and (global_name := module_abstract_type_name(t)) is not None
     ):
-        # A module's abstract type with a bound: opaque, and held outside the module in the representation of its
-        # bound, viewed at the bound (a stored descriptor, `viewed`)
+        # A module's abstract type with a bound: opaque, and held outside the
+        # module in the representation of its bound, viewed at the bound (a
+        # stored descriptor, `viewed`)
         return DescriptorForm("stored", tag=f"stored_{text_digest(global_name)}", name=global_name, type=t)
-    # A type variable bounded by a record, variant, or option type is described by its bound
+    # A type variable bounded by a record, variant, or option type is described
+    # by its bound
     held = resolved_shape(s)
     if held.kind == "record":
         rec_t = held.structure
@@ -156,8 +168,8 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         )
     match t:
         case QTypeApp():
-            # An application of an abstract type operator (list.T(Int)): opaque, compared by the operator's name and the
-            # arguments
+            # An application of an abstract type operator (list.T(Int)): opaque,
+            # compared by the operator's name and the arguments
             name = _opaque_name(t.constructor)
             return DescriptorForm("opaque", tag=f"opaque_{type_digest(t)}", name=name, type=t)
         case QArrayType():
@@ -175,7 +187,8 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
         case QTypeVar() | QAbstractType():
             return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(t.name)}", name=t.name)
         case QPathType():
-            # An abstract type of a package value (t.A): opaque, and distinct for each binding of t
+            # An abstract type of a package value (t.A): opaque, and distinct
+            # for each binding of t
             name = f"{t.root_name}.{t.field_name}#{c_int(t.root_symbol_id)}"
             return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
         case QAutoType():
@@ -185,7 +198,8 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
             # The type of a var or out parameter: described by its element type
             return descriptor_form(t.element_type, ctx)
         case QTypeFun():
-            # A type operator, passed for a higher-kinded type parameter: opaque, compared by name
+            # A type operator, passed for a higher-kinded type parameter:
+            # opaque, compared by name
             name = _opaque_name(t)
             return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
         case _:
@@ -201,11 +215,13 @@ def record_struct_name(t: QRecordType, ctx: Optional[RecordNamingContext] = None
 
 
 class RecordNamingContext:
-    """Names record types and evidence dictionaries in C, after a type alias for the record where there is one.
+    """Names record types and evidence dictionaries in C, after a type alias for
+    the record where there is one.
 
-    Every name ends with a digest of the record's shape, so a name stands for one layout in every C unit: the generated
-    headers of interfaces define record structs under include guards named after them, and a unit includes headers
-    whose records were named in other compilations.
+    Every name ends with a digest of the record's shape, so a name stands for
+    one layout in every C unit: the generated headers of interfaces define
+    record structs under include guards named after them, and a unit includes
+    headers whose records were named in other compilations.
     """
 
     def __init__(self) -> None:
@@ -213,10 +229,11 @@ class RecordNamingContext:
         self.shape_to_canonical_name: dict[tuple[tuple[str, str, str], ...], str] = {}
 
     def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
-        # Records share a struct (and so a descriptor) only if their fields have the same types, not merely the same
-        # C representations: type_tag is QClosure for every function type and QVal for every type variable. The
-        # fields are those of the record's shape (the structure of its canonical form), so that a record type is
-        # named alike however it is written.
+        # Records share a struct (and so a descriptor) only if their fields have
+        # the same types, not merely the same C representations: type_tag is
+        # QClosure for every function type and QVal for every type variable. The
+        # fields are those of the record's shape (the structure of its canonical
+        # form), so that a record type is named alike however it is written.
         s = shape(t)
         fields = s.structure.fields if s.kind == "record" else t.fields
         sorted_fields = sorted(fields, key=lambda f: f.name)
@@ -254,7 +271,8 @@ class RecordNamingContext:
 
 
 def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
-    """The C type of a value of t: its representation (codegen/layout.py), which is named by the runtime's C type."""
+    """The C type of a value of t: its representation (codegen/layout.py), which
+    is named by the runtime's C type."""
     return representation(t)
 
 
@@ -264,8 +282,9 @@ def qval_wrap(expr_str: str, t: QType) -> str:
 
 
 def shape_qval_wrap(expr_str: str, s: Shape) -> str:
-    """Wraps a scalar or pointer expression of shape s into a QVal union initializer (a value of a bounded type
-    parameter is a value of its bound)."""
+    """Wraps a scalar or pointer expression of shape s into a QVal union
+    initializer (a value of a bounded type parameter is a value of its
+    bound)."""
     s = resolved_shape(s)
     kind = s.kind
     if shape_representation(s) == "QVal":
@@ -286,13 +305,14 @@ def shape_qval_wrap(expr_str: str, s: Shape) -> str:
 
 
 def qval_unwrap(qval_expr: str, t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
-    """Extracts the underlying concrete scalar or pointer from a QVal expression."""
+    """Extracts the underlying concrete scalar or pointer from a QVal
+    expression."""
     return shape_qval_unwrap(qval_expr, shape(t))
 
 
 def shape_qval_unwrap(qval_expr: str, s: Shape) -> str:
-    """Extracts the underlying concrete scalar or pointer of shape s from a QVal expression (a value of a bounded
-    type parameter is a value of its bound)."""
+    """Extracts the underlying concrete scalar or pointer of shape s from a QVal
+    expression (a value of a bounded type parameter is a value of its bound)."""
     s = resolved_shape(s)
     kind = s.kind
     c_t = shape_representation(s)
@@ -314,15 +334,17 @@ def shape_qval_unwrap(qval_expr: str, s: Shape) -> str:
 
 
 def shape_slot_load(slot_expr: str, s: Shape) -> str:
-    """The value of shape s held in a slot (slot_representation): a record or variant read from its box, a Bool or
-    Char narrowed from its word (implicitly), anything else as it is."""
+    """The value of shape s held in a slot (slot_representation): a record or
+    variant read from its box, a Bool or Char narrowed from its word
+    (implicitly), anything else as it is."""
     if is_boxed_in_slots(s):
         return f"(*({slot_expr}))"
     return slot_expr
 
 
 def shape_slot_store(expr: str, s: Shape) -> str:
-    """A value of shape s in the form a slot holds it: a record or variant in a new box."""
+    """A value of shape s in the form a slot holds it: a record or variant in a
+    new box."""
     if is_boxed_in_slots(s):
         box = "quest_record_box" if shape_representation(s) == "QRecordVal" else "quest_variant_box"
         return f"{box}({expr})"
@@ -330,7 +352,8 @@ def shape_slot_store(expr: str, s: Shape) -> str:
 
 
 def shape_slot_to_qval(slot_expr: str, s: Shape) -> str:
-    """The QVal form of the slot contents of a value of shape s (a box is its QVal form)."""
+    """The QVal form of the slot contents of a value of shape s (a box is its
+    QVal form)."""
     slot_c = shape_slot_representation(s)
     if slot_c == "QVal":
         return slot_expr
@@ -340,7 +363,8 @@ def shape_slot_to_qval(slot_expr: str, s: Shape) -> str:
 
 
 def shape_qval_to_slot(qval_expr: str, s: Shape) -> str:
-    """The slot contents of a value of shape s from its QVal form (a box is its QVal form)."""
+    """The slot contents of a value of shape s from its QVal form (a box is its
+    QVal form)."""
     slot_c = shape_slot_representation(s)
     if slot_c == "QVal":
         return qval_expr
@@ -350,8 +374,9 @@ def shape_qval_to_slot(qval_expr: str, s: Shape) -> str:
 
 
 def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = None) -> str:
-    """Constructs the C function pointer cast type for invoking a closure: its environment, its type parameters'
-    descriptors, and its parameters (a recursive function type is called as its unfolding is)."""
+    """Constructs the C function pointer cast type for invoking a closure: its
+    environment, its type parameters' descriptors, and its parameters (a
+    recursive function type is called as its unfolding is)."""
     s = shape(fun_type)
     param_types = ["void *"]
     while s.kind == "all":
@@ -371,12 +396,15 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
 
 
 def _echo_key(t: QType, recursive: tuple[int, ...] = ()) -> Optional[str]:
-    """What tells apart the echo-only descriptors of t: the type components that echo writes for it and its parts,
-    with their alias names, or None if it writes none (and t's shared descriptor will do).
+    """What tells apart the echo-only descriptors of t: the type components that
+    echo writes for it and its parts, with their alias names, or None if it
+    writes none (and t's shared descriptor will do).
 
-    recursive holds the recursive types being unfolded around t: an occurrence of one adds nothing (its components
-    are those already being keyed), which keeps the key finite. Its descriptor, keyed on its own, is the one being
-    made where the occurrence is the type keyed, so a recursive type's echo-only descriptor refers to itself."""
+    recursive holds the recursive types being unfolded around t: an occurrence
+    of one adds nothing (its components are those already being keyed), which
+    keeps the key finite. Its descriptor, keyed on its own, is the one being
+    made where the occurrence is the type keyed, so a recursive type's echo-only
+    descriptor refers to itself."""
     identity = recursive_identity(t)
     if identity is not None:
         if identity in recursive:
@@ -391,12 +419,15 @@ def _echo_key(t: QType, recursive: tuple[int, ...] = ()) -> Optional[str]:
 
 
 def echo_descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> Optional[DescriptorForm]:
-    """The descriptor echo writes a value of the closed type t by, when t's shared descriptor would leave out type
-    components (which only echo writes) or write them without their alias names, or None.
+    """The descriptor echo writes a value of the closed type t by, when t's
+    shared descriptor would leave out type components (which only echo writes)
+    or write them without their alias names, or None.
 
-    Descriptors are shared by types equal but for alias names (descriptor_form), but echo writes type components as
-    the interpreter does, with alias names (Let N = P, not Let N = Tuple a: Int end), so it uses descriptors of its
-    own: copies of the shared ones, laid out the same, told apart by the components' text."""
+    Descriptors are shared by types equal but for alias names (descriptor_form),
+    but echo writes type components as the interpreter does, with alias names
+    (Let N = P, not Let N = Tuple a: Int end), so it uses descriptors of its
+    own: copies of the shared ones, laid out the same, told apart by the
+    components' text."""
     key = _echo_key(t)
     if key is None:
         return None

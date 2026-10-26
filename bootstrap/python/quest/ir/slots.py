@@ -1,31 +1,43 @@
-"""The represent pass's last step (docs/ir.md §8.3): how values are stored into and read from aggregates' slots, and
-how tuples and options that may be proxies are read.
+"""The represent pass's last step (docs/ir.md §8.3): how values are stored into
+and read from aggregates' slots, and how tuples and options that may be proxies
+are read.
 
-Slots (docs/ir.md §4.2). Every slot of an aggregate holds a record or variant boxed (slot_representation in
-codegen/layout.py), as does the location a var or out parameter points to. The step makes the boxes explicit:
+Slots (docs/ir.md §4.2). Every slot of an aggregate holds a record or variant
+boxed (slot_representation in codegen/layout.py), as does the location a var or
+out parameter points to. The step makes the boxes explicit:
 
-- an operation that reads a record or variant from a slot (a tuple's component, a record's field, an array's element,
-  a location, a module's member, a variant's or exception's payload, a QVal word unboxed, and a record being made,
-  which is made in its box) binds a boxed variable, the box, as does a case of a variant whose binder takes its
-  payload, and a `slot_unbox` conversion binds the value from it; the value's box is remembered (and a copy's is its
-  original's), so that storing the value into another slot, or boxing it into a QVal word, reuses the box (boxes
-  are immutable) rather than allocating another;
-- an operation that stores a record or variant into a slot (a tuple, record, option, variant, or array being made, a
-  store, a fresh cell, an assignment of a boxed mutable variable, an exception's payload raised, and a value echoed,
-  which is passed as a QVal word) takes its box: the one remembered, or a new one (a `slot_box` conversion); a tuple
-  or record being made boxes the others in its own allocation instead (`embedded`);
-- a mutable variable of a record or variant type whose address is taken, and a var or out parameter of one, are
-  boxed: they hold their locations' boxes, so that a var or out parameter can point to them as to a slot.
+- an operation that reads a record or variant from a slot (a tuple's component,
+  a record's field, an array's element, a location, a module's member, a
+  variant's or exception's payload, a QVal word unboxed, and a record being
+  made, which is made in its box) binds a boxed variable, the box, as does a
+  case of a variant whose binder takes its payload, and a `slot_unbox`
+  conversion binds the value from it; the value's box is remembered (and a
+  copy's is its original's), so that storing the value into another slot, or
+  boxing it into a QVal word, reuses the box (boxes are immutable) rather than
+  allocating another;
+- an operation that stores a record or variant into a slot (a tuple, record,
+  option, variant, or array being made, a store, a fresh cell, an assignment of
+  a boxed mutable variable, an exception's payload raised, and a value echoed,
+  which is passed as a QVal word) takes its box: the one remembered, or a new
+  one (a `slot_box` conversion); a tuple or record being made boxes the others
+  in its own allocation instead (`embedded`);
+- a mutable variable of a record or variant type whose address is taken, and a
+  var or out parameter of one, are boxed: they hold their locations' boxes, so
+  that a var or out parameter can point to them as to a slot.
 
-Proxies (docs/c-representation.md §5.8). A tuple or option whose type may be proxied (may_be_proxied) may be a view
-of an object of a subtype. Each read of a component (and each write of a tuple's var component, and each address of
-one) is DIRECT when the value cannot be a proxy (its type cannot be, or the function made it itself, for a tuple's
-component read), ORIGINAL when it may be but the component cannot change view (read from the original's slot), and
-PROXY otherwise (checked, and read through the proxy, converted); `is` compares originals (ORIGINAL). A copy of a tuple
-the function made reads its components directly.
+Proxies (docs/c-representation.md §5.8). A tuple or option whose type may be
+proxied (may_be_proxied) may be a view of an object of a subtype. Each read of a
+component (and each write of a tuple's var component, and each address of one)
+is DIRECT when the value cannot be a proxy (its type cannot be, or the function
+made it itself, for a tuple's component read), ORIGINAL when it may be but the
+component cannot change view (read from the original's slot), and PROXY
+otherwise (checked, and read through the proxy, converted); `is` compares
+originals (ORIGINAL). A copy of a tuple the function made reads its components
+directly.
 
-The step also decides how a record's field is read (through the offset table's stored types, when a subtype's payload
-may store it at another type) and whether a record literal's offset table is known statically.
+The step also decides how a record's field is read (through the offset table's
+stored types, when a subtype's payload may store it at another type) and whether
+a record literal's offset table is known statically.
 """
 
 from __future__ import annotations
@@ -52,8 +64,9 @@ _VIEWED_KINDS = ("record", "variant", "option")
 
 
 def may_be_stored_as_subtype(s: Shape) -> bool:
-    """Whether a value of shape s may be laid out as a subtype's value, and so need converting when read at s's type
-    (records, variants, options, nonempty tuples, and functions)."""
+    """Whether a value of shape s may be laid out as a subtype's value, and so
+    need converting when read at s's type (records, variants, options, nonempty
+    tuples, and functions)."""
     if s.kind == "tuple":
         return bool(s.components)
     return s.kind in ("fun", "all") or resolved_shape(s).kind in _VIEWED_KINDS
@@ -83,22 +96,25 @@ def _exception_payload(t: QType) -> Optional[Shape]:
 
 
 def tuple_access(ts: Shape, index: int, fresh: bool = False) -> str:
-    """How component index of a tuple of shape ts is read (or written): DIRECT if the tuple cannot be a proxy (its type
-    cannot be, or it is fresh, made by the function reading it), ORIGINAL if the component cannot change view, PROXY
-    otherwise."""
+    """How component index of a tuple of shape ts is read (or written): DIRECT
+    if the tuple cannot be a proxy (its type cannot be, or it is fresh, made by
+    the function reading it), ORIGINAL if the component cannot change view,
+    PROXY otherwise."""
     if fresh or not may_be_proxied(ts):
         return ir.DIRECT
     return ir.PROXY if changes_view(ts.components[index].shape) else ir.ORIGINAL
 
 
 def option_tag_access(os: Shape) -> str:
-    """How the tag of an option of shape os is read: through a proxy (PROXY) if it may be one, else DIRECT."""
+    """How the tag of an option of shape os is read: through a proxy (PROXY) if
+    it may be one, else DIRECT."""
     return ir.PROXY if may_be_proxied(os) else ir.DIRECT
 
 
 def option_component_accesses(os: Shape, tag: Optional[str]) -> tuple[str, ...]:
-    """How the payload components of case tag of an option of shape os are read: one for each component of a tuple
-    payload, or one for a payload that is not a tuple."""
+    """How the payload components of case tag of an option of shape os are read:
+    one for each component of a tuple payload, or one for a payload that is not
+    a tuple."""
     case = os.case(tag) if tag is not None else None
     if case is None or case.shape is None:
         return ()
@@ -115,8 +131,9 @@ def _located_shape(address: ir.Atom) -> Shape:
 
 
 def _option_case_tag(os: Shape, o: ir.MakeOption) -> Optional[str]:
-    """The case whose layout an option being made stores its payload in: its tag's, or for a computed ordinal, a
-    constant one's, else the first case's (whose components the union overlays on the others')."""
+    """The case whose layout an option being made stores its payload in: its
+    tag's, or for a computed ordinal, a constant one's, else the first case's
+    (whose components the union overlays on the others')."""
     if o.ordinal is None:
         return o.tag
     n = o.ordinal.value if isinstance(o.ordinal, ir.Const) else -1
@@ -125,9 +142,11 @@ def _option_case_tag(os: Shape, o: ir.MakeOption) -> Optional[str]:
 
 class _Slots:
     def __init__(self) -> None:
-        # The boxes of the records and variants read from slots (by the variable bound to the value)
+        # The boxes of the records and variants read from slots (by the variable
+        # bound to the value)
         self.boxes: dict[int, ir.Var] = {}
-        # The tuples and options the function made (by variable), which are not proxies
+        # The tuples and options the function made (by variable), which are not
+        # proxies
         self.fresh: set[int] = set()
 
     def top_level(self, body: ir.Body) -> None:
@@ -140,8 +159,8 @@ class _Slots:
         return isinstance(a, ir.Var) and id(a) in self.fresh
 
     def slot(self, a: ir.Atom, before: list) -> ir.Atom:
-        """A record or variant atom in its slot form: its box (remembered, or a new one, made by a let added to
-        before)."""
+        """A record or variant atom in its slot form: its box (remembered, or a
+        new one, made by a let added to before)."""
         if isinstance(a, ir.Var) and a.boxed and not a.mutable:
             return a
         if isinstance(a, ir.Var) and id(a) in self.boxes:
@@ -180,8 +199,8 @@ class _Slots:
                 field = next((f.shape for f in rs.sorted_components() if f.name == name), None) if rs else None
                 s.value = self.slot_if_boxed(s.value, field, before)
             case ir.StoreComponent(base=base, index=index) if own_view(shape(_type_of(base))):
-                # Into a tuple-bounded type parameter's value, through the view map (a var component's type is the
-                # bound's)
+                # Into a tuple-bounded type parameter's value, through the view
+                # map (a var component's type is the bound's)
                 ts = resolved_shape(shape(_type_of(base)))
                 s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
             case ir.StoreComponent(base=base, index=index):
@@ -194,8 +213,9 @@ class _Slots:
             case ir.Switch(value=value, cases=cases):
                 ts = _tag_shape(_type_of(value))
                 if own_view(shape(_type_of(value))):
-                    # A bounded type parameter's value (at its own view): its payloads are read through the view map,
-                    # converted, as values
+                    # A bounded type parameter's value (at its own view): its
+                    # payloads are read through the view map, converted, as
+                    # values
                     pass
                 elif ts is not None and ts.kind == "option":
                     s.access = option_tag_access(ts)
@@ -211,8 +231,9 @@ class _Slots:
         return before + [s]
 
     def variant_case(self, vs: Shape, c: ir.Case) -> None:
-        """A switch's case of a variant, whose binder takes the payload: a record or variant in its slot form (a boxed
-        variable, from which the value is read)."""
+        """A switch's case of a variant, whose binder takes the payload: a
+        record or variant in its slot form (a boxed variable, from which the
+        value is read)."""
         b = c.binder
         if b is None or shape(b.type).kind == "ok":
             return
@@ -222,7 +243,8 @@ class _Slots:
             self.unbox_binder(c)
 
     def unbox_binder(self, c: ir.Case) -> None:
-        """Binds a case's binder to its payload's box, from which a let at the case's start reads the value."""
+        """Binds a case's binder to its payload's box, from which a let at the
+        case's start reads the value."""
         b = c.binder
         box = ir.Var(f"{b.hint}_box" if b.hint else "box", b.type, boxed=True)
         c.binder = box
@@ -230,8 +252,9 @@ class _Slots:
         self.boxes[id(b)] = box
 
     def option_case(self, os: Shape, c: ir.Case) -> None:
-        """A switch's case of an option, whose binder takes the payload: a tuple of its components, read as decided, or
-        a payload that is not a tuple in its slot form (a boxed variable, from which the value is read)."""
+        """A switch's case of an option, whose binder takes the payload: a tuple
+        of its components, read as decided, or a payload that is not a tuple in
+        its slot form (a boxed variable, from which the value is read)."""
         b = c.binder
         if b is None or shape(b.type).kind == "ok":
             return
@@ -256,19 +279,22 @@ class _Slots:
         before: list = []
         if not self.operation(value, var, before):
             return before + [s]
-        # The operation reads the value in its slot form, a box: bound to a boxed variable, from which the value is read
+        # The operation reads the value in its slot form, a box: bound to a
+        # boxed variable, from which the value is read
         box = ir.Var(f"{var.hint}_box" if var.hint else "box", var.type, boxed=True)
         s.var = box
         self.boxes[id(var)] = box
         return before + [s, ir.Let(var, ir.Convert(box, ir.Plan("slot_unbox", var.type, var.type)))]
 
     def operation(self, o, var: Optional[ir.Var], before: list) -> bool:
-        """Decides how an operation reads and stores slots, converting the atoms it stores to their slot forms (by lets
-        added to before); returns whether it yields a record or variant in its slot form, which the let binding it
+        """Decides how an operation reads and stores slots, converting the atoms
+        it stores to their slot forms (by lets added to before); returns whether
+        it yields a record or variant in its slot form, which the let binding it
         then binds to a boxed variable."""
         match o:
             case ir.TupleField(tuple=t) if own_view(shape(_type_of(t))):
-                # A tuple-bounded type parameter's value: read through the view map, converted, as a value
+                # A tuple-bounded type parameter's value: read through the view
+                # map, converted, as a value
                 return False
             case ir.TupleField(tuple=t, index=index):
                 ts = shape(_type_of(t))
@@ -283,9 +309,10 @@ class _Slots:
                 own = own_view(shape(_type_of(r)))
                 if not field.is_var and (own or shape_representation(field.shape) == "QVal"
                                          or may_be_stored_as_subtype(field.shape)):
-                    # A subtype's payload may store it at another type, or a bounded type parameter's value (at its own
-                    # view) at its type argument's type for it: read through the offset table (and the view map) and
-                    # converted, as a value
+                    # A subtype's payload may store it at another type, or a
+                    # bounded type parameter's value (at its own view) at its
+                    # type argument's type for it: read through the offset table
+                    # (and the view map) and converted, as a value
                     o.stored = True
                     return False
                 return _boxed(field.shape)
@@ -300,10 +327,12 @@ class _Slots:
                     # A QVal word holds a record or variant as its box
                     return True
                 if p.kind == "box" and isinstance(v, ir.Var) and id(v) in self.boxes:
-                    # A record's or variant's QVal word is its box: the one it was read from serves
+                    # A record's or variant's QVal word is its box: the one it
+                    # was read from serves
                     o.value = self.boxes[id(v)]
                 if p.kind == "copy" and self.is_fresh(v):
-                    # A copy of a tuple the function made reads its components directly
+                    # A copy of a tuple the function made reads its components
+                    # directly
                     o.plan = dataclasses.replace(p, access=tuple(ir.DIRECT for _ in p.access))
                 return False
             case ir.MakeRecord(fields=fields):
@@ -385,8 +414,9 @@ class _Slots:
 
 
 def _runtime_offsets(o: ir.MakeRecord, var: Optional[ir.Var]) -> bool:
-    """Whether the offset table of a record literal's view (the let's type, or a bounded type parameter's bound) is
-    found at run time: when the view is not the literal's type or a supertype of it by width alone."""
+    """Whether the offset table of a record literal's view (the let's type, or a
+    bounded type parameter's bound) is found at run time: when the view is not
+    the literal's type or a supertype of it by width alone."""
     if var is None:
         return False
     concrete = QRecordType(tuple(QRecordField(name=n, type_val=_type_of(a), is_var=v) for n, a, v in o.fields))
@@ -396,10 +426,12 @@ def _runtime_offsets(o: ir.MakeRecord, var: Optional[ir.Var]) -> bool:
 
 
 def decide_slots(unit: ir.Unit) -> None:
-    """Decides, in place, how the unit's values are stored into and read from slots, and read through proxies."""
+    """Decides, in place, how the unit's values are stored into and read from
+    slots, and read through proxies."""
     bodies = [m.init for m in unit.modules] + [unit.main] + [f.body for f in unit.functions]
-    # The mutable variables of record or variant types whose addresses are taken are held boxed, as are var and out
-    # parameters of those types (pointers to locations holding them boxed)
+    # The mutable variables of record or variant types whose addresses are taken
+    # are held boxed, as are var and out parameters of those types (pointers to
+    # locations holding them boxed)
     for body in bodies:
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Let) and isinstance(s.value, ir.AddrVar):

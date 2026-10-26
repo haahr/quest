@@ -1,9 +1,11 @@
 """Quest Interface Compiler (Phase 4.16 Step 1).
 
-Compiles interface files (.int.quest) to .qi files: portable, cycle-safe JSON/JSOG metadata encoded using shadow
-Quest record types compatible with dynamic.extern / dynamic.intern, from which importers load interfaces, and keeps
-them up to date (docs/build-process.md §5). An interface's C header (.int.h) is the C backend's: it is written from
-the compiled interface by quest.codegen.c.headers, when C compilation needs it.
+Compiles interface files (.int.quest) to .qi files: portable, cycle-safe
+JSON/JSOG metadata encoded using shadow Quest record types compatible with
+dynamic.extern / dynamic.intern, from which importers load interfaces, and keeps
+them up to date (docs/build-process.md §5). An interface's C header (.int.h) is
+the C backend's: it is written from the compiled interface by
+quest.codegen.c.headers, when C compilation needs it.
 """
 
 from __future__ import annotations
@@ -117,7 +119,8 @@ def format_type_for_qi(
     t: QType | None,
     visited: Optional[set[int]] = None,
 ) -> str:
-    """Formats a semantic QType into Quest type syntax for .qi metadata; alias references keep their names."""
+    """Formats a semantic QType into Quest type syntax for .qi metadata; alias
+    references keep their names."""
     if t is None:
         return ""
     t = pruned(t)
@@ -254,7 +257,8 @@ def format_type_for_qi(
 
 
 def format_kind_for_qi(k: ast.Kind | QKind | None) -> str:
-    """Formats an AST or semantic Kind into a valid Quest syntax string for .qi metadata."""
+    """Formats an AST or semantic Kind into a valid Quest syntax string for .qi
+    metadata."""
     if k is None or isinstance(k, (ast.KindType, QTypeKind)):
         return "TYPE"
     if isinstance(k, QPowerKind):
@@ -275,7 +279,8 @@ def format_kind_for_qi(k: ast.Kind | QKind | None) -> str:
 
 
 def _parse_and_elaborate_kind_in_env(kind_str: str, env: Environment) -> QKind:
-    """Parses and elaborates a Quest kind string within an existing environment/scope."""
+    """Parses and elaborates a Quest kind string within an existing
+    environment/scope."""
     source_map = SourceMap(kind_str, "<kind>")
     tokens = Tokenizer(kind_str, "<kind>").tokenize_all()
     ast_k = parse_quest_program(tokens, source_map, target="Kind")
@@ -290,14 +295,17 @@ def _parse_type(type_str: str) -> ast.Type:
 
 
 def _parse_and_elaborate_type_in_env(type_str: str, env: Environment) -> QType:
-    """Parses and elaborates a Quest type string within an existing environment/scope."""
+    """Parses and elaborates a Quest type string within an existing
+    environment/scope."""
     return elaborate_type(_parse_type(type_str), env)
 
 
 def _format_rec_operator_member_for_qi(definition: QTypeFun, kind: QKind) -> str:
-    """Formats a member of a group of recursive type operators (Fun(A::K) applied to a group) as the operator it
-    declares, Fun(A::K) Body, with the group's variables written as their operators applied to the parameters, as in
-    its declaration; the loader elaborates the group's members together, like Let Rec T(A::K) = Body and ...."""
+    """Formats a member of a group of recursive type operators (Fun(A::K)
+    applied to a group) as the operator it declares, Fun(A::K) Body, with the
+    group's variables written as their operators applied to the parameters, as
+    in its declaration; the loader elaborates the group's members together, like
+    Let Rec T(A::K) = Body and ...."""
     group = definition.body
     assert isinstance(group, QRecGroupType)
     params = tuple(QTypeVar(name=p.name, symbol_id=p.symbol_id, bound=p.bound) for p in definition.params)
@@ -318,8 +326,9 @@ def _format_rec_operator_member_for_qi(definition: QTypeFun, kind: QKind) -> str
 def _type_signatures(
     decl: ast.InterfaceDecl,
 ) -> list[tuple[ast.TypeFormal | ast.TypeBinding | ast.FieldSig | ast.DefKindBinding, int]]:
-    """The signatures of an interface with each simultaneous type declaration replaced by its members, paired with
-    the number of the recursive group each belongs to (counting from 1), or 0 if it is not in one. The members of a
+    """The signatures of an interface with each simultaneous type declaration
+    replaced by its members, paired with the number of the recursive group each
+    belongs to (counting from 1), or 0 if it is not in one. The members of a
     group without Rec are independent declarations once elaborated."""
     result: list[tuple[Any, int]] = []
     groups = 0
@@ -342,11 +351,14 @@ def compile_interface_to_qi(
     source: Optional[Path] = None,
     deps: Optional[list[InterfaceDependency]] = None,
 ) -> str:
-    """Serializes interface declarations to portable JSON/JSOG .qi format using shadow Quest records.
+    """Serializes interface declarations to portable JSON/JSOG .qi format using
+    shadow Quest records.
 
-    source is the .int.quest the interface was compiled from; it is recorded (resolved) so that a .qi is used only
-    for the source it was built from (docs/build-process.md §5). deps are the interfaces it depends on
-    (Resolver.interface_dependencies), recorded so that the .qi is stale when one of them changes.
+    source is the .int.quest the interface was compiled from; it is recorded
+    (resolved) so that a .qi is used only for the source it was built from
+    (docs/build-process.md §5). deps are the interfaces it depends on
+    (Resolver.interface_dependencies), recorded so that the .qi is stale when
+    one of them changes.
     """
     imports_elems: list[QString] = []
     for imp in decl.imports:
@@ -365,12 +377,14 @@ def compile_interface_to_qi(
     type_records: list[QRecord] = []
     value_records: list[QRecord] = []
 
-    # Collect types. A member of a recursive group records its body, with the other members as their names, and
-    # the group's number; the loader rebuilds the group from its members' records.
+    # Collect types. A member of a recursive group records its body, with the
+    # other members as their names, and the group's number; the loader rebuilds
+    # the group from its members' records.
     for sig, group in _type_signatures(decl):
         match sig:
             case ast.TypeFormal():
-                # The elaborated kind, whose bound (for POWER) is printed as a type, not as syntax
+                # The elaborated kind, whose bound (for POWER) is printed as a
+                # type, not as syntax
                 formal_sym = iface_scope.lookup_type_local(sig.name)
                 kind_str = format_kind_for_qi(formal_sym.kind if formal_sym is not None else sig.bound)
                 type_records.append(
@@ -453,10 +467,12 @@ def indirect_interface_refs(
     program_dir: Optional[Path] = None,
     resolver: Optional[Resolver] = None,
 ) -> list[ImportedInterfaceRef]:
-    """The manifest entries for the interfaces a unit depends on through the interfaces it imports itself.
+    """The manifest entries for the interfaces a unit depends on through the
+    interfaces it imports itself.
 
-    direct are the unit's own imported interfaces. Each entry records the directory its path was resolved from, so
-    that the staleness checks resolve it again the same way (graph.import_resolution_change). Interfaces the unit
+    direct are the unit's own imported interfaces. Each entry records the
+    directory its path was resolved from, so that the staleness checks resolve
+    it again the same way (graph.import_resolution_change). Interfaces the unit
     also imports directly are left out.
     """
     resolver = resolver or Resolver()
@@ -486,37 +502,45 @@ def indirect_interface_refs(
 
 @dataclass(frozen=True)
 class CompiledInterface:
-    """An interface compiled from its source: its declaration and elaborated scope, from which the C backend writes
-    its header, and its .qi (written unless the compilation only elaborated the interface)."""
+    """An interface compiled from its source: its declaration and elaborated
+    scope, from which the C backend writes its header, and its .qi (written
+    unless the compilation only elaborated the interface)."""
     decl: ast.InterfaceDecl
     scope: Scope
     source: Path
     source_map: SourceMap
     qi_file: Path
-    # The search paths the interface was compiled with, from which its imports were resolved
+    # The search paths the interface was compiled with, from which its imports
+    # were resolved
     include_paths: tuple[Path, ...]
 
 
-# What a caller of compile_interface_file or ensure_resolved_interface_artifacts does with each interface they compile,
-# including the interfaces compiled because it imports them (the C backend writes their headers)
+# What a caller of compile_interface_file or ensure_resolved_interface_artifacts
+# does with each interface they compile, including the interfaces compiled
+# because it imports them (the C backend writes their headers)
 OnCompiled = Callable[[CompiledInterface], None]
 
 
 @dataclass(frozen=True)
 class InterfaceArtifacts:
-    """Where an interface's .qi is, as ensure_resolved_interface_artifacts found or rebuilt it."""
-    # The .qi, which may not exist if the interface has neither a source nor prebuilt artifacts (a builtin)
+    """Where an interface's .qi is, as ensure_resolved_interface_artifacts found
+    or rebuilt it."""
+    # The .qi, which may not exist if the interface has neither a source nor
+    # prebuilt artifacts (a builtin)
     qi_file: Path
     canonical_name: str
-    # The .int.quest it is built from, None without one (a binary distribution, Rule 3, or a builtin)
+    # The .int.quest it is built from, None without one (a binary distribution,
+    # Rule 3, or a builtin)
     source: Optional[Path]
-    # Where the interface's artifacts are rebuilt in the build directory, and the search paths they are built with
+    # Where the interface's artifacts are rebuilt in the build directory, and
+    # the search paths they are built with
     target_dir: Path
     search_paths: tuple[Path, ...]
 
 
-# The interface files being compiled, outermost first, with their canonical names. Compiling an interface first
-# compiles the interfaces it imports, each in an environment of its own, so a cycle of imports is detected here.
+# The interface files being compiled, outermost first, with their canonical
+# names. Compiling an interface first compiles the interfaces it imports, each
+# in an environment of its own, so a cycle of imports is detected here.
 _compiling_interfaces: list[tuple[Path, str]] = []
 
 
@@ -530,11 +554,14 @@ def compile_interface_file(
     on_compiled: Optional[OnCompiled] = None,
     resolver: Optional[Resolver] = None,
 ) -> CompiledInterface:
-    """Compiles a .int.quest file to a .qi file, or with write_qi False, only elaborates it.
+    """Compiles a .int.quest file to a .qi file, or with write_qi False, only
+    elaborates it.
 
-    With a build directory, the interfaces it imports are brought up to date there first. on_compiled is called
-    for each interface compiled, the interfaces it imports first and this one last. The interface is elaborated in
-    an environment of its own, whose imports resolver resolves (a new one if None).
+    With a build directory, the interfaces it imports are brought up to date
+    there first. on_compiled is called for each interface compiled, the
+    interfaces it imports first and this one last. The interface is elaborated
+    in an environment of its own, whose imports resolver resolves (a new one if
+    None).
     """
 
     key = file_path.resolve()
@@ -572,7 +599,8 @@ def _compile_interface_file(
         raise QuestTypeError(f"Error reading interface file '{file_path}': {err}")
 
     source_map = SourceMap(source_text, display_file_name(file_path))
-    # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
+    # Errors are located in this file, and the imports it makes are located in
+    # it (docs/diagnostics.md §4.4)
     with in_unit(source_map):
         prog = parse_unit(source_text, file_path, source_map)
 
@@ -585,16 +613,18 @@ def _compile_interface_file(
             b_dir = Path(build_dir).resolve()
             if b_dir not in env.include_paths:
                 env.include_paths.insert(0, b_dir)
-            # Imported interfaces are loaded from their (fresh or rebuilt) artifacts in the same build directory
-            # rather than re-elaborated from source in every nested compilation.
+            # Imported interfaces are loaded from their (fresh or rebuilt)
+            # artifacts in the same build directory rather than re-elaborated
+            # from source in every nested compilation.
             env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
         env.current_dir = file_path.parent
         env.program_dir = program_dir
         env.source_map = source_map
 
         if build_dir is not None:
-            # Every interface it imports is brought up to date in the build directory, including builtin
-            # interfaces that are never loaded from source, so that their artifacts exist beside its own.
+            # Every interface it imports is brought up to date in the build
+            # directory, including builtin interfaces that are never loaded from
+            # source, so that their artifacts exist beside its own.
             roots = Roots.of(env.include_paths, program_dir)
             for imp in decl.imports:
                 with at_import(imp.offset, source_map):
@@ -641,8 +671,9 @@ def ensure_interface_artifacts(
     on_compiled: Optional[OnCompiled] = None,
     resolver: Optional[Resolver] = None,
 ) -> InterfaceArtifacts:
-    """Rebuilds interface `name`'s .qi under build_dir if stale (docs/build-process.md §5), resolving the import of
-    `name` from current_dir with include_paths (ensure_resolved_interface_artifacts)."""
+    """Rebuilds interface `name`'s .qi under build_dir if stale
+    (docs/build-process.md §5), resolving the import of `name` from current_dir
+    with include_paths (ensure_resolved_interface_artifacts)."""
     resolver = resolver or Resolver()
     resolved = resolver.interface(name, current_dir, Roots.of(include_paths, program_dir))
     return ensure_resolved_interface_artifacts(resolved, build_dir, on_compiled=on_compiled, resolver=resolver)
@@ -654,10 +685,12 @@ def ensure_resolved_interface_artifacts(
     on_compiled: Optional[OnCompiled] = None,
     resolver: Optional[Resolver] = None,
 ) -> InterfaceArtifacts:
-    """Rebuilds the .qi of a resolved interface under build_dir if stale (docs/build-process.md §5).
+    """Rebuilds the .qi of a resolved interface under build_dir if stale
+    (docs/build-process.md §5).
 
-    The interface is rebuilt with the search paths it was resolved with, and build_dir first. on_compiled is called
-    for each interface compiled (compile_interface_file); resolver resolves the imports of those compiled.
+    The interface is rebuilt with the search paths it was resolved with, and
+    build_dir first. on_compiled is called for each interface compiled
+    (compile_interface_file); resolver resolves the imports of those compiled.
     """
     resolver = resolver or Resolver()
     include_paths = list(resolved.roots.search_paths)
@@ -676,8 +709,9 @@ def ensure_resolved_interface_artifacts(
         return InterfaceArtifacts(qi, canon_name, src if has_source else None, target_dir, tuple(search_paths))
 
     def current(qi: Path) -> bool:
-        """Rules 1 and 2 plus the ABI version: the .qi exists, is fresh, matches this compiler, was built from this
-        source (not a same-named interface elsewhere), and none of the interfaces it depends on has changed or
+        """Rules 1 and 2 plus the ABI version: the .qi exists, is fresh, matches
+        this compiler, was built from this source (not a same-named interface
+        elsewhere), and none of the interfaces it depends on has changed or
         would resolve elsewhere."""
         if not qi.is_file() or not has_current_abi(qi):
             return False
@@ -692,15 +726,16 @@ def ensure_resolved_interface_artifacts(
             and dependency_change(deps, include_paths, qi_mtime, resolver) is None
         )
 
-    # A fresh .qi found elsewhere on the search path (e.g. next to the source, from a standalone compilation) is
-    # used like one in the build directory.
+    # A fresh .qi found elsewhere on the search path (e.g. next to the source,
+    # from a standalone compilation) is used like one in the build directory.
     if not current(qi_file):
         file_path = fresh_interface_qi(resolved)
         if file_path is not None and file_path.suffix == ".qi":
             if current(file_path) or (src is None and not qi_file.is_file()):
                 qi_file = file_path
 
-    # Rule 3: without a source, existing artifacts cannot be rebuilt (binary distribution).
+    # Rule 3: without a source, existing artifacts cannot be rebuilt (binary
+    # distribution).
     if src is None or not src.is_file():
         if qi_file.is_file() and not has_current_abi(qi_file):
             raise QuestTypeError(incompatible_artifact_message(qi_file))
@@ -715,7 +750,8 @@ def ensure_resolved_interface_artifacts(
 
 
 def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
-    """Loads and deserializes an interface Scope directly from a precompiled .qi file."""
+    """Loads and deserializes an interface Scope directly from a precompiled .qi
+    file."""
     if not has_current_abi(file_path):
         raise QuestTypeError(incompatible_artifact_message(file_path))
     try:
@@ -790,7 +826,8 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
     try:
         if "types" in rec.fields and isinstance(rec.fields["types"], QArray):
             type_records_list: list[tuple[str, bool, str, str, TypeSymbol, int]] = []
-            # Pass 1: Declare all type symbols with fresh IDs and bound kinds so they are visible in iface_scope
+            # Pass 1: Declare all type symbols with fresh IDs and bound kinds so
+            # they are visible in iface_scope
             for t_item in rec.fields["types"].elements:
                 if isinstance(t_item, QRecord):
                     t_name = str(t_item.fields["name"].value)
@@ -817,11 +854,13 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                     iface_scope.declare_type(type_sym)
                     type_records_list.append((t_name, is_manifest, kind_str, manifest_str, type_sym, group))
 
-            # Pass 2: Elaborate concrete definitions with all interface types in scope. The members of a recursive
-            # group are consecutive; their bodies are elaborated before any member is defined, so that each refers
-            # to the others by their symbols, which become the group's variables.
-            # The members of a group of recursive type operators are recorded as Fun(A::K) Body, with each other
-            # applied to the parameters, and are elaborated together as declared.
+            # Pass 2: Elaborate concrete definitions with all interface types in
+            # scope. The members of a recursive group are consecutive; their
+            # bodies are elaborated before any member is defined, so that each
+            # refers to the others by their symbols, which become the group's
+            # variables. The members of a group of recursive type operators are
+            # recorded as Fun(A::K) Body, with each other applied to the
+            # parameters, and are elaborated together as declared.
             group_members: list[tuple[str, TypeSymbol, QType]] = []
             operator_members: list[tuple[TypeSymbol, ast.TypeBinding]] = []
             for idx, (t_name, is_manifest, kind_str, manifest_str, type_sym, group) in enumerate(

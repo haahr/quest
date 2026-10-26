@@ -1,14 +1,18 @@
 (* Quest Self-Hosted Compiler: Semantic Types and Kinds Interface
  *
- * The semantic types and kinds of bootstrap/python/quest/types/model.py: their forms, hash-consing, free variables,
- * substitution, lazy evaluation of aliases, applications, and recursive types, and inference metavariables.
+ * The semantic types and kinds of bootstrap/python/quest/types/model.py: their
+ * forms, hash-consing, free variables, substitution, lazy evaluation of
+ * aliases, applications, and recursive types, and inference metavariables.
  *
- * A type or a kind is a node: its form, which holds its parts, and what the bootstrap caches on its objects (the
- * symbol ids a substitution could replace inside it, and whether it contains a metavariable). Nodes are hash-consed
- * as the bootstrap's are: constructing a node gives the canonical node of its structure, so two nodes are the same
- * type (Python's `is`) when their ids are equal (same). A node containing a metavariable is not hash-consed, since a
- * metavariable is mutable. The components of types (fields, parameters, quantifiers, ...) are plain tuples; their
- * identity is that of the types they hold. *)
+ * A type or a kind is a node: its form, which holds its parts, and what the
+ * bootstrap caches on its objects (the symbol ids a substitution could replace
+ * inside it, and whether it contains a metavariable). Nodes are hash-consed as
+ * the bootstrap's are: constructing a node gives the canonical node of its
+ * structure, so two nodes are the same type (Python's `is`) when their ids are
+ * equal (same). A node containing a metavariable is not hash-consed, since a
+ * metavariable is mutable. The components of types (fields, parameters,
+ * quantifiers, ...) are plain tuples; their identity is that of the types they
+ * hold. *)
 
 interface Model
 import
@@ -22,10 +26,11 @@ export
     (* =========================================================================
      * 1. Reserved symbol ids
      *
-     * Symbol ids from the environment are positive, and inference metavariables count down from -1. A few type
-     * variables are made outside any environment; their ids are negative too: the negation of a prefix naming
+     * Symbol ids from the environment are positive, and inference metavariables
+     * count down from -1. A few type variables are made outside any
+     * environment; their ids are negative too: the negation of a prefix naming
      * their use, times 2**32, plus an index within that use.
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Def ReservedSymbolUse = Option
         dynamicParam
@@ -42,18 +47,21 @@ export
     Def Decoded = Tuple use: ReservedSymbolUse index: Int end
     reservedSymbolUse(symbolId: Int): maybe.T(Decoded)
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Types, kinds, and their components
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Def Rec Type = Tuple
-        (* The node's identity: hash-consed nodes of one structure have one id *)
+        (* The node's identity: hash-consed nodes of one structure have one
+         * id *)
         id: Int
         form: TypeForm
-        (* The symbol ids a substitution could replace inside the node, sorted *)
+        (* The symbol ids a substitution could replace inside the node,
+         * sorted *)
         fv: Array(Int)
         hasMeta: Bool
-        (* A recursive type's, or an alias of one's, unfolding, computed once; a group binding's siblings *)
+        (* A recursive type's, or an alias of one's, unfolding, computed once; a
+         * group binding's siblings *)
         var unfolded: maybe.T(Type)
         var siblings: Array(Type)
     end
@@ -114,13 +122,14 @@ export
     (* An inference metavariable (?T1), which a solution instantiates *)
     and Meta = Tuple symbolId: Int bound: Kind name: String var instance: maybe.T(Type) end
 
-    (* Whether two types, or two kinds, are the same node (the bootstrap's `is`) *)
+    (* Whether two types, or two kinds, are the same node (the bootstrap's
+     * `is`) *)
     same(a: Type b: Type): Bool
     sameKind(a: Kind b: Kind): Bool
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Constructors, which hash-cons
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     typeKind: Kind
     powerKind(bound: Type): Kind
@@ -163,34 +172,38 @@ export
     (* A tuple's value component *)
     tupleField(name: maybe.T(String) type: Type isVar: Bool): TupleComponent
 
-    (* Cardelli's Dynamic: Auto A::TYPE with a: A end, its parameter's id reserved *)
+    (* Cardelli's Dynamic: Auto A::TYPE with a: A end, its parameter's id
+     * reserved *)
     dynamicType: Type
 
-    (* =========================================================================
+    (* ======================================================================
      * 4. Looking up symbols, and lazy evaluation
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* What evaluation needs of an environment: the definition of a type symbol, and the kind of a kind symbol, by
-     * id (the bootstrap's TypeLookupEnv and KindLookupEnv) *)
+    (* What evaluation needs of an environment: the definition of a type symbol,
+     * and the kind of a kind symbol, by id (the bootstrap's TypeLookupEnv and
+     * KindLookupEnv) *)
     Def Lookup = Tuple
         typeDefinition: All(symbolId: Int) maybe.T(Type)
         kindOf: All(symbolId: Int) maybe.T(Kind)
     end
-    (* The lookup that finds nothing, as evaluation without an environment does *)
+    (* The lookup that finds nothing, as evaluation without an environment
+     * does *)
     noLookup: Lookup
 
-    (* A type with its aliases, applications, and recursive types evaluated until its outermost constructor shows *)
+    (* A type with its aliases, applications, and recursive types evaluated
+     * until its outermost constructor shows *)
     evaluateLazily(t: Type env: Lookup): Type
     evaluateKindLazily(k: Kind env: Lookup): Kind
-    (* Rec(X) T unfolded to T[Rec(X) T/X] (or, for an alias of a recursive type or a group binding, as model.py
-     * describes), computed once *)
+    (* Rec(X) T unfolded to T[Rec(X) T/X] (or, for an alias of a recursive type
+     * or a group binding, as model.py describes), computed once *)
     unfoldLazily(t: Type): Type
     (* The nodes of a recursive group's bindings, shared by all of them *)
     siblings(t: Type): Array(Type)
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Substitution
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Def Subst = hashMap.T(Int Type)
     Def KindSubst = hashMap.T(Int Kind)
@@ -199,16 +212,18 @@ export
     (* A substitution of one id *)
     singleSubst(symbolId: Int t: Type): Subst
 
-    (* Capture-avoiding substitution by symbol id; t itself when nothing it holds is substituted *)
+    (* Capture-avoiding substitution by symbol id; t itself when nothing it
+     * holds is substituted *)
     substitute(t: Type subst: Subst): Type
     substituteInKind(k: Kind subst: Subst): Kind
     substituteKinds(k: Kind subst: KindSubst): Kind
-    (* A tuple component substituted (a type formal's bound, a field's or binding's type) *)
+    (* A tuple component substituted (a type formal's bound, a field's or
+     * binding's type) *)
     substituteComponent(c: TupleComponent subst: Subst): TupleComponent
 
-    (* =========================================================================
+    (* ======================================================================
      * 6. Components and queries
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* A node's parts in the order of its fields (the bootstrap's type_fields): its child types and kinds *)
     Def Part = Option
@@ -235,28 +250,33 @@ export
     (* A power kind's bound *)
     powerBound(k: Kind): Type
 
-    (* Whether a value binding of name with type t is the module bound to that name *)
+    (* Whether a value binding of name with type t is the module bound to that
+     * name *)
     bindsModule(name: String t: Type): Bool
-    (* The tuple type of an auto value's payload, at a witness, or at its abstract type parameter *)
+    (* The tuple type of an auto value's payload, at a witness, or at its
+     * abstract type parameter *)
     autoPayloadType(t: Type witness: maybe.T(Type)): Type
     autoMatchesSubtypes(t: Type): Bool
-    (* A reference to an alias: an alias node, but a builtin primitive's own name is the primitive *)
+    (* A reference to an alias: an alias node, but a builtin primitive's own
+     * name is the primitive *)
     aliasReference(name: String symbolId: Int target: Type): Type
     unalias(t: Type): Type
     (* The path types occurring in t, in the order found *)
     findPathTypes(t: Type): Array(Type)
     typeMentionsSymbolIds(t: Type ids: hashMap.T(Int Bool)): Bool
 
-    (* A type with every alias reference replaced by what replace gives, or kept (none) *)
+    (* A type with every alias reference replaced by what replace gives, or kept
+     * (none) *)
     mapAliases(t: Type replace: All(alias: Type) maybe.T(Type)): Type
     stripAliases(t: Type): Type
 
-    (* =========================================================================
+    (* ======================================================================
      * 7. Metavariables
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     isSolved(m: Meta): Bool
-    (* A metavariable's solution, its chains flattened, or the metavariable itself if unsolved *)
+    (* A metavariable's solution, its chains flattened, or the metavariable
+     * itself if unsolved *)
     prune(t: Type): Type
     (* t, or if a metavariable, what it stands for *)
     pruned(t: Type): Type
@@ -266,9 +286,9 @@ export
     (* t with solved metavariables replaced by their solutions *)
     resolveMetas(t: Type): Type
 
-    (* =========================================================================
+    (* ======================================================================
      * 8. Printing, as the bootstrap's __str__ methods do
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     show(t: Type): String
     showKind(k: Kind): String

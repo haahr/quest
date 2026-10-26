@@ -1,12 +1,17 @@
-"""The compiler's static judgement of layouts (generic_layout_agrees) against the runtime's (quest_layout_equivalent).
+"""The compiler's static judgement of layouts (generic_layout_agrees) against
+the runtime's (quest_layout_equivalent).
 
-For each pair of a type over a type parameter, S(A), and a type argument T, a generated program makes a dynamic value
-of S(T) in generic code, called through a first-class value so that it is not specialized (whose descriptor is S's template instantiated at T, describing the generic layout) and
-another in code that knows T (whose descriptor describes the native layout). A harness appended to the program's C
-asks the runtime whether values laid out natively can be used as laid out generically. Wherever the compiler says
-the layouts agree, the runtime must: otherwise compiled code would use a value through the wrong struct. Where only
-the runtime says they agree, the compiler is merely conservative (it converts a value the runtime would return
-unchanged), which is reported but allowed.
+For each pair of a type over a type parameter, S(A), and a type argument T, a
+generated program makes a dynamic value of S(T) in generic code, called through
+a first-class value so that it is not specialized (whose descriptor is S's
+template instantiated at T, describing the generic layout) and another in code
+that knows T (whose descriptor describes the native layout). A harness appended
+to the program's C asks the runtime whether values laid out natively can be used
+as laid out generically. Wherever the compiler says the layouts agree, the
+runtime must: otherwise compiled code would use a value through the wrong
+struct. Where only the runtime says they agree, the compiler is merely
+conservative (it converts a value the runtime would return unchanged), which is
+reported but allowed.
 """
 
 from __future__ import annotations
@@ -34,8 +39,8 @@ from quest.pipeline import CompilerContext, compile_pipeline, link_dependencies 
 from quest.types import TYPE_KIND  # noqa: E402
 from tests.python.helpers import elaborate_test_type, parse_phrase  # noqa: E402
 
-# Dynamic values cannot have types that mention a type parameter inside mutable data, and the bare parameter is
-# trivially laid out alike
+# Dynamic values cannot have types that mention a type parameter inside mutable
+# data, and the bare parameter is trivially laid out alike
 SHAPES = [s for s in generate.SHAPES if s.name not in ("Arr", "Bare")]
 RANDOM_PAIRS = 60
 SEED = 20261022
@@ -92,7 +97,8 @@ class TestLayoutDifferential(unittest.TestCase):
                 packs[generic] = len(packs)
                 i = packs[generic]
                 lines.append(f"let packD{i}(A::TYPE s: {generic}): Dynamic = dynamic.new(:{generic} s);")
-                # Called through a first-class value, so that calls are not specialized at record or variant types
+                # Called through a first-class value, so that calls are not
+                # specialized at record or variant types
                 lines.append(f"let pack{i}: All(A::TYPE s: {generic}) Dynamic = packD{i};")
         for k, (shapes, arg) in enumerate(pairs):
             native = _type(shapes, arg.name)
@@ -108,7 +114,8 @@ class TestLayoutDifferential(unittest.TestCase):
         res = compile_pipeline().execute(source, "<layouts>", options=options, ctx=ctx)
         self.assertTrue(res.success, [d.message for d in res.diagnostics])
         c_code = res.artifacts["codegen_c"]
-        # The modules the program imports (dynamic), compiled on their own and linked with it
+        # The modules the program imports (dynamic), compiled on their own and
+        # linked with it
         objects = link_dependencies(ctx)
         program_main = "int main(int argc, char **argv) {"
         self.assertEqual(c_code.count(program_main), 1)

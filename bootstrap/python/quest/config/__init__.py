@@ -1,8 +1,10 @@
 """Compiler configuration, options, and artifact ABI contracts.
 
 This package provides:
-- quest.config.options: CompilerOptions dataclass with compilation flags and directories.
-- quest.config.abi: ABI version, producer information, and artifact contract verification.
+- quest.config.options: CompilerOptions dataclass with compilation flags and
+  directories.
+- quest.config.abi: ABI version, producer information, and artifact contract
+  verification.
 """
 
 from __future__ import annotations

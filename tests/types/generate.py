@@ -1,11 +1,15 @@
-"""Generates the self-hosted type system's golden tests (questlang/types/*) from the bootstrap's.
+"""Generates the self-hosted type system's golden tests (questlang/types/*) from
+the bootstrap's.
 
-The cases below build types and kinds with the bootstrap's model (bootstrap/python/quest/types/model.py) and apply
-operations to them. tests/source/questlang/types_model.quest applies the model's: printing (str, format_type_compact,
-qtype_dump, short_type_name), hash-consing, free variables, substitution, lazy evaluation and unfolding,
-metavariables, and the model's queries. tests/source/questlang/types_judgments.quest applies the judgments of
-subtyping, kinds, and contractiveness, the resolution of bounds, and the environment's builtins. Each builds the same
-types with the self-hosted modules and applies the same operations; its golden holds what the bootstrap gives.
+The cases below build types and kinds with the bootstrap's model
+(bootstrap/python/quest/types/model.py) and apply operations to them.
+tests/source/questlang/types_model.quest applies the model's: printing (str,
+format_type_compact, qtype_dump, short_type_name), hash-consing, free variables,
+substitution, lazy evaluation and unfolding, metavariables, and the model's
+queries. tests/source/questlang/types_judgments.quest applies the judgments of
+subtyping, kinds, and contractiveness, the resolution of bounds, and the
+environment's builtins. Each builds the same types with the self-hosted modules
+and applies the same operations; its golden holds what the bootstrap gives.
 
     python tests/types/generate.py
 
@@ -132,8 +136,9 @@ def qopt_str(s: Optional[str]) -> str:
 # =========================================================================
 
 class Emitter:
-    """Emits a let for each node the cases build, once, in an order that defines each before its uses, so that the
-    Quest program builds the same graph (and so the same identities) as the bootstrap's."""
+    """Emits a let for each node the cases build, once, in an order that defines
+    each before its uses, so that the Quest program builds the same graph (and
+    so the same identities) as the bootstrap's."""
 
     def __init__(self) -> None:
         self.lines: list[str] = []
@@ -491,7 +496,8 @@ def build_cases(em: Emitter) -> list[tuple[str, str]]:
 
 
 def build_judgments(em: Emitter) -> list[tuple[str, str]]:
-    """The judgments' checks: (Quest expression of a String, the bootstrap's value)."""
+    """The judgments' checks: (Quest expression of a String, the bootstrap's
+    value)."""
     checks: list[tuple[str, str]] = []
 
     def check(label: str, quest: str, value: str) -> None:
@@ -808,8 +814,9 @@ def write(name: str, header: str, prelude: str, build: Callable[[Emitter], list[
     em = Emitter()
     QTypeMeta.reset_counter()
     checks = build(em)
-    # The lets (and statements) come before the checks: each check's types are bound by then. Metavariables are made
-    # among the lets, in the order the bootstrap made them.
+    # The lets (and statements) come before the checks: each check's types are
+    # bound by then. Metavariables are made among the lets, in the order the
+    # bootstrap made them.
     body = [header, prelude, "\n", "\n".join(em.lines), "\n\n"]
     body.extend(f"emit({q});\n" for q, _ in checks)
     test_file = TEST_DIR / f"{name}.quest"

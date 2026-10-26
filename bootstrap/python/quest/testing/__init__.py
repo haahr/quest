@@ -1,6 +1,7 @@
 """Quest Testing Infrastructure.
 
-Provides the end-to-end golden test runner and diagnostic error testing framework.
+Provides the end-to-end golden test runner and diagnostic error testing
+framework.
 """
 
 from __future__ import annotations

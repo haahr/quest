@@ -1,5 +1,6 @@
-"""Unit tests that the C runtime's characters are bytes, as in Typeful Programming: the primitives pass bytes above 127
-through unchanged, as the interpreter's builtins do (test_builtins.TestByteCharacters)."""
+"""Unit tests that the C runtime's characters are bytes, as in Typeful
+Programming: the primitives pass bytes above 127 through unchanged, as the
+interpreter's builtins do (test_builtins.TestByteCharacters)."""
 
 import os
 import sys

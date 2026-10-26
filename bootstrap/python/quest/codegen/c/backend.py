@@ -1,5 +1,6 @@
-"""The C backend's entry points: a typed program or module file lowered to the IR, the IR's passes run
-(codegen/backend.py), and the described IR printed as C (c/printer.py)."""
+"""The C backend's entry points: a typed program or module file lowered to the
+IR, the IR's passes run (codegen/backend.py), and the described IR printed as C
+(c/printer.py)."""
 
 from __future__ import annotations
 
@@ -23,7 +24,8 @@ def program_to_c(prog: TypedProgram, env: Any, echo: bool = False, print_result:
 
 
 def module_file_to_c(mod: TypedModule, env: Any, interface_header: Optional[str] = None) -> str:
-    """A module file's C translation, which exports its interface's members (c/declarations.py)."""
+    """A module file's C translation, which exports its interface's members
+    (c/declarations.py)."""
     unit = lower_module_file(mod, env)
     if ir_checks_enabled():
         check_unit(unit)

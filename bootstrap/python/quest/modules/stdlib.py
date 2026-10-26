@@ -1,6 +1,7 @@
-"""The standard library's modules and interfaces, as the type checker and the compilers see them: their names, and
-their interfaces and module scopes, loaded on demand. Their implementations are elsewhere: C (runtime/, lib/) for
-compiled code, and Python (quest.interpreter.builtins) for the interpreters."""
+"""The standard library's modules and interfaces, as the type checker and the
+compilers see them: their names, and their interfaces and module scopes, loaded
+on demand. Their implementations are elsewhere: C (runtime/, lib/) for compiled
+code, and Python (quest.interpreter.builtins) for the interpreters."""
 
 from __future__ import annotations
 
@@ -42,7 +43,8 @@ for _mod in STANDARD_LIBRARY_MODULES:
 
 
 class BuiltinModuleRegistry:
-    """The standard library's interfaces and modules, loaded on demand into an Environment (its builtin_registry)."""
+    """The standard library's interfaces and modules, loaded on demand into an
+    Environment (its builtin_registry)."""
 
     _cached_interfaces: dict[str, Scope] = {}
     _cached_mod_scopes: dict[str, Scope] = {}
@@ -52,7 +54,8 @@ class BuiltinModuleRegistry:
 
     @classmethod
     def ensure_interface(cls, iface_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
-        """Loads and caches standard library interface `iface_name`, registering it in `env`."""
+        """Loads and caches standard library interface `iface_name`, registering
+        it in `env`."""
         target_iface = STANDARD_LIBRARY_INTERFACES.get(iface_name)
         if target_iface is None:
             return None
@@ -74,7 +77,8 @@ class BuiltinModuleRegistry:
 
     @classmethod
     def ensure_module(cls, mod_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
-        """Loads and caches standard library module `mod_name`, registering it in `env`."""
+        """Loads and caches standard library module `mod_name`, registering it
+        in `env`."""
         norm_mod = STANDARD_LIBRARY_MODULE_NAMES.get(mod_name)
         if norm_mod is None:
             return None

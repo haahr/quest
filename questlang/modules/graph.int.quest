@@ -1,9 +1,10 @@
 (* Quest Self-Hosted Compiler: The Unit Graph Interface
  *
- * bootstrap/python/quest/modules/graph.py, without artifacts (Milestone 5): resolving an import path, from a
- * directory with given search paths and program directory, to the unit's file and its names, once per path; and the
- * units an environment has loaded, by kind and canonical name, with their type-checked forms (docs/build-process.md
- * section 2.1). *)
+ * bootstrap/python/quest/modules/graph.py, without artifacts (Milestone 5):
+ * resolving an import path, from a directory with given search paths and
+ * program directory, to the unit's file and its names, once per path; and the
+ * units an environment has loaded, by kind and canonical name, with their
+ * type-checked forms (docs/build-process.md section 2.1). *)
 
 interface Graph
 import
@@ -13,11 +14,13 @@ import
     collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 export
-    (* What resolving an import and naming a unit depend on, besides the importing directory *)
+    (* What resolving an import and naming a unit depend on, besides the
+     * importing directory *)
     Def Roots = Tuple searchPaths: Array(String) programDir: maybe.T(String) questLib: String end
     rootsOf(searchPaths: Array(String) programDir: maybe.T(String)): Roots
 
-    (* An import path resolved from a directory: the unit it names (its source file, if it has one) *)
+    (* An import path resolved from a directory: the unit it names (its source
+     * file, if it has one) *)
     Def Resolved = Tuple
         kind: units.UnitKind
         path: String
@@ -27,9 +30,10 @@ export
         var canonical: maybe.T(String)
         var ifaceName: maybe.T(String)
     end
-    (* The unit's canonical name, which keys it in a graph: its file's path relative to its root; for a unit without a
-     * file, the path imported (lowercased for an interface). Raises diagnostics.compilerError if the path is not a
-     * valid name. *)
+    (* The unit's canonical name, which keys it in a graph: its file's path
+     * relative to its root; for a unit without a file, the path imported
+     * (lowercased for an interface). Raises diagnostics.compilerError if the
+     * path is not a valid name. *)
     canonicalName(r: Resolved): String
     (* An interface's canonical name as importers record it (util/Path) *)
     interfaceName(r: Resolved): String
@@ -41,8 +45,9 @@ export
     (* The unit in a file given directly, rather than imported *)
     resolveFile(res: Resolver file: String roots: Roots): Resolved
 
-    (* An interface or module an environment has loaded, with its type-checked forms: an interface's scope, a
-     * module's typed module (a typedAst bindModule), and the export scope of a module known only through its
+    (* An interface or module an environment has loaded, with its type-checked
+     * forms: an interface's scope, a module's typed module (a typedAst
+     * bindModule), and the export scope of a module known only through its
      * interface *)
     Def Unit = Tuple
         kind: units.UnitKind
@@ -62,10 +67,12 @@ export
     interfaceScope(g: UnitGraph canonicalName: String): maybe.T(symbols.Scope)
     typedModule(g: UnitGraph canonicalName: String): maybe.T(typedAst.Binding)
     isPrecompiled(g: UnitGraph name: String): Bool
-    (* The loaded interfaces' scopes, and the export scopes of modules known through their interfaces, by name *)
+    (* The loaded interfaces' scopes, and the export scopes of modules known
+     * through their interfaces, by name *)
     Def NamedScope = Tuple name: String scope: symbols.Scope end
     interfaceScopes(g: UnitGraph): Array(NamedScope)
     exportScopes(g: UnitGraph): Array(NamedScope)
-    (* Takes interfaces and export scopes another environment loaded (the standard library's) *)
+    (* Takes interfaces and export scopes another environment loaded (the
+     * standard library's) *)
     adopt(g: UnitGraph interfaceScopes: Array(NamedScope) exportScopes: Array(NamedScope)): Ok
 end

@@ -1,4 +1,5 @@
-"""Artifacts record the ABI version, and only fresh artifacts with the current version are reused."""
+"""Artifacts record the ABI version, and only fresh artifacts with the current
+version are reused."""
 
 from __future__ import annotations
 

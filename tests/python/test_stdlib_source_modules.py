@@ -2,7 +2,8 @@
 
 Verifies that standard library interfaces and modules are loaded directly from
 Quest source files (.int.quest and .mod.quest) in lib/. Programs using them are
-golden tests (such as stdlib/core_library_modules), run in the interpreter and C.
+golden tests (such as stdlib/core_library_modules), run in the interpreter and
+C.
 """
 
 from __future__ import annotations
@@ -22,10 +23,12 @@ from quest.modules.paths import (
 
 
 class TestStdlibSourceModules(unittest.TestCase):
-    """Test suite verifying standard library loading and execution from lib/ source files."""
+    """Test suite verifying standard library loading and execution from lib/
+    source files."""
 
     def test_disk_file_resolution(self) -> None:
-        """Verifies that all standard library interfaces and modules resolve to lib/ files on disk."""
+        """Verifies that all standard library interfaces and modules resolve to
+        lib/ files on disk."""
         modules = [
             ("Writer", "writer"),
             ("Reader", "reader"),
@@ -52,7 +55,8 @@ class TestStdlibSourceModules(unittest.TestCase):
             self.assertEqual(mod_path.parent, DEFAULT_LIB_DIR.resolve())
 
     def test_module_elaboration_from_disk(self) -> None:
-        """Verifies that each module in lib/ elaborates against its interface."""
+        """Verifies that each module in lib/ elaborates against its
+        interface."""
         modules = [
             ("Writer", "writer"),
             ("Reader", "reader"),

@@ -63,16 +63,19 @@ export
             else vector.fromArray(:ast.Decl array of d end)
         end
 
-    (* The name and offset of a let declaration, for checks.checkDistinctNames *)
+    (* The name and offset of a let declaration, for
+     * checks.checkDistinctNames *)
     let named(d: ast.Decl): checks.Named =
         case d.form
             when declLetVal with x then tuple let name = x.name let offset = d.span.startOffset end
             else tuple let name = "" let offset = d.span.startOffset end
         end
 
-    (* Requires the type a parameter is written with to fit the expected parameter of the same mode, as subtyping of
-     * function types does: a value parameter's written type must include the expected type (contravariance), a var
-     * parameter's must equal it, and an out parameter's must be included in it *)
+    (* Requires the type a parameter is written with to fit the expected
+     * parameter of the same mode, as subtyping of function types does: a value
+     * parameter's written type must include the expected type (contravariance),
+     * a var parameter's must equal it, and an out parameter's must be included
+     * in it *)
     let requireParamType(p: ast.FormalParam written: Type expected: model.Param e: env.T): Ok =
         begin
             let lookup = env.lookupOf(e)
@@ -157,9 +160,11 @@ export
             let params = params let body = body let typeParamIds = typeParamIds(quants)
         end
 
-    (* Checks a function abstraction against an expected polymorphic type All(X::K ...) T. The function's type
-     * parameters are the expected quantifiers renamed by position, with fresh symbols, the names the function gives
-     * them (or the expected names), and the expected bounds, with earlier quantifiers renamed. *)
+    (* Checks a function abstraction against an expected polymorphic type
+     * All(X::K ...) T. The function's type parameters are the expected
+     * quantifiers renamed by position, with fresh symbols, the names the
+     * function gives them (or the expected names), and the expected bounds,
+     * with earlier quantifiers renamed. *)
     let rec checkPolymorphicFun(
         c: checker.T expr: ast.Expr expectedType: Type expectedLazy: Type e: env.T loopDepth: Int
     ): typedAst.Expr =
@@ -218,8 +223,10 @@ export
                                     end
                                     let var bodyExp = innerExp
                                     if {nWritten > 0} andif not(hasParams) andif maybe.isSome(:ast.TypeExpr x.returnType) then
-                                        (* Without value parameters, the body is checked against the result type
-                                         * annotation, which must be a subtype of the expected result type *)
+                                        (* Without value parameters, the body is
+                                         * checked against the result type
+                                         * annotation, which must be a subtype
+                                         * of the expected result type *)
                                         let rt = maybe.unwrap(:ast.TypeExpr x.returnType)
                                         bodyExp := elaborateTypes.elaborateType(rt e)
                                         if not(subtyping.isSubtype(bodyExp innerExp env.lookupOf(e))) then
@@ -260,8 +267,10 @@ export
                                 early := maybe.some(:typedAst.Expr
                                     checkPolymorphicFun(c expr expectedType expectedLazy e loopDepth))
                             when typeFun with f then
-                                (* A function with type parameters is polymorphic, so it is checked against a function
-                                 * type as it would be against any other type of another form *)
+                                (* A function with type parameters is
+                                 * polymorphic, so it is checked against a
+                                 * function type as it would be against any
+                                 * other type of another form *)
                                 if hasTypeParams then
                                     early := maybe.some(:typedAst.Expr checker.checkSubsumption(c expr expectedType e
                                         loopDepth maybe.some(:String "Function")))
@@ -324,8 +333,9 @@ export
                     Let Body = Tuple typed: typedAst.Expr expected: maybe.T(Type) ret: Type end
                     let b = checker.inFunction(:Body c fun(): Body
                         begin
-                            (* The type the body is checked against: the result type annotation, or else the expected
-                             * result type *)
+                            (* The type the body is checked against: the result
+                             * type annotation, or else the expected result
+                             * type *)
                             let bodyExpected = if maybe.isSome(:ast.TypeExpr returnType) then
                                 let rt = maybe.unwrap(:ast.TypeExpr returnType)
                                 let t = elaborateTypes.elaborateType(rt e)
@@ -347,7 +357,8 @@ export
                             end
                             tuple let typed = typed let expected = bodyExpected let ret = ret end
                         end)
-                    (* The result type may not mention the function's parameters *)
+                    (* The result type may not mention the function's
+                     * parameters *)
                     escape.checkNoEscapingPathTypes(maybe.unwrapOr(:Type b.expected b.ret) valueIds(e.currentScope)
                         "function scope" expr.span.startOffset)
                     let quantArray = vector.toArray(:model.Quantifier quants)
@@ -364,7 +375,8 @@ export
                 end)
         end
 
-    (* The parameters' types of a declaration with parameters, which must be annotated *)
+    (* The parameters' types of a declaration with parameters, which must be
+     * annotated *)
     let annotatedParams(params: vector.T(ast.FormalParam) e: env.T): Array(model.Param) =
         begin
             let formals = vector.new(:model.Param)
@@ -511,7 +523,8 @@ export
             end
         end
 
-    (* An external function: its parameters and result annotation declare its type *)
+    (* An external function: its parameters and result annotation declare its
+     * type *)
     and elaborateExternal(c: checker.T b: ast.Decl e: env.T): typedAst.Binding =
         case b.form
             when declLetVal with x then
@@ -543,8 +556,9 @@ export
             else internal(:typedAst.Binding "a let declaration" b.span.startOffset)
         end
 
-    (* let [rec] x = ... and y = ...: with rec, every member is declared before any value is checked; without, each
-     * member is elaborated in a scope of its own, and all are declared once every member has been elaborated *)
+    (* let [rec] x = ... and y = ...: with rec, every member is declared before
+     * any value is checked; without, each member is elaborated in a scope of
+     * its own, and all are declared once every member has been elaborated *)
     and elaborateValueGroup(c: checker.T b: ast.Decl members: vector.T(ast.Decl) e: env.T loopDepth: Int): typedAst.Binding =
         begin
             checks.checkDistinctNames(vector.toArray(:checks.Named vector.map(:ast.Decl :checks.Named members named)))
@@ -575,12 +589,13 @@ export
             end)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Recovery
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* The type a let declaration declares, if it declares one that elaborates: its annotation, or a function's whose
-     * parameters and result are annotated *)
+    (* The type a let declaration declares, if it declares one that elaborates:
+     * its annotation, or a function's whose parameters and result are
+     * annotated *)
     let declaredType(b: ast.Decl e: env.T): maybe.T(Type) =
         case b.form
             when declLetVal with x then

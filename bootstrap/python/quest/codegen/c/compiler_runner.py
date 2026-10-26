@@ -25,9 +25,10 @@ def find_c_compiler() -> str:
 
 @functools.lru_cache(maxsize=None)
 def traceback_flags(compiler: str) -> tuple[str, ...]:
-    """Flags that keep tracebacks' frames (docs/exceptions.md §5.3): GCC moves the cold paths of functions, which
-    hold the calls that raise, into separate sections that tracebacks cannot attribute to the functions. (Clang does
-    not, and gcc on macOS is clang.)"""
+    """Flags that keep tracebacks' frames (docs/exceptions.md §5.3): GCC moves
+    the cold paths of functions, which hold the calls that raise, into separate
+    sections that tracebacks cannot attribute to the functions. (Clang does not,
+    and gcc on macOS is clang.)"""
     if "Free Software Foundation" in _compiler_version(compiler):
         return ("-fno-reorder-blocks-and-partition",)
     return ()
@@ -68,9 +69,10 @@ def detect_gc_flags(nogc: bool = False) -> list[str]:
 
 @functools.cache
 def detect_readline_flags() -> tuple[str, ...]:
-    """Detects the line editor quest_readline.c is compiled with (docs/self-hosted-repl.md §1.1): GNU readline where
-    it is installed, else libedit's readline-compatible API, else none (-DQUEST_NOREADLINE). QUEST_READLINE, if set,
-    chooses one: gnu, edit, or none."""
+    """Detects the line editor quest_readline.c is compiled with
+    (docs/self-hosted-repl.md §1.1): GNU readline where it is installed, else
+    libedit's readline-compatible API, else none (-DQUEST_NOREADLINE).
+    QUEST_READLINE, if set, chooses one: gnu, edit, or none."""
     choice = os.environ.get("QUEST_READLINE", "")
     if choice not in ("", "gnu", "edit", "none"):
         raise RuntimeError(f"QUEST_READLINE must be gnu, edit, or none, not '{choice}'")
@@ -78,7 +80,8 @@ def detect_readline_flags() -> tuple[str, ...]:
         for prefix in (Path("/opt/homebrew/opt/readline"), Path("/usr/local/opt/readline"), Path("/usr")):
             inc = prefix / "include"
             lib = prefix / "lib"
-            # GNU readline's own headers, which libedit's compatibility headers do not have
+            # GNU readline's own headers, which libedit's compatibility headers
+            # do not have
             if (inc / "readline" / "rlconf.h").exists() and any(
                 (lib / f"libreadline.{suffix}").exists() for suffix in ("dylib", "so", "a")
             ):
@@ -123,7 +126,8 @@ def base_c_flags(compiler: str) -> list[str]:
 
 
 def compile_flags_of(flags: list[str] | tuple[str, ...]) -> list[str]:
-    """flags without the linker's (-L and -l), which compiling alone does not use."""
+    """flags without the linker's (-L and -l), which compiling alone does not
+    use."""
     return [flag for flag in flags if not flag.startswith(("-L", "-l"))]
 
 
@@ -136,7 +140,8 @@ def _compiler_version(compiler: str) -> str:
 
 
 def runtime_cache_dir() -> Path:
-    """Where the runtime's objects are kept: QUEST_RUNTIME_CACHE, or the checkout's .build/runtime."""
+    """Where the runtime's objects are kept: QUEST_RUNTIME_CACHE, or the
+    checkout's .build/runtime."""
     configured = os.environ.get("QUEST_RUNTIME_CACHE")
     if configured:
         return Path(configured)
@@ -146,10 +151,12 @@ def runtime_cache_dir() -> Path:
 def runtime_objects(
     compiler: str, nogc: bool = False, extra_flags: Optional[list[str]] = None
 ) -> list[str]:
-    """The runtime's object files, compiled once and kept for every link (docs/testing.md §5.2). They are kept under a
-    key of what they are compiled from: the runtime's sources and headers, the compiler and its version, and the
-    flags, so that changing any of them compiles them again. Each object is written to a temporary file and renamed,
-    so that processes linking at once never see half of one."""
+    """The runtime's object files, compiled once and kept for every link
+    (docs/testing.md §5.2). They are kept under a key of what they are compiled
+    from: the runtime's sources and headers, the compiler and its version, and
+    the flags, so that changing any of them compiles them again. Each object is
+    written to a temporary file and renamed, so that processes linking at once
+    never see half of one."""
     runtime_dir = get_runtime_dir()
     flags = [
         *base_c_flags(compiler),
@@ -244,7 +251,8 @@ def run_binary(
     input_data: Optional[str] = None,
     timeout: float = 10.0,
 ) -> subprocess.CompletedProcess[str]:
-    """Executes a compiled binary and returns stdout/stderr/returncode, a character per byte."""
+    """Executes a compiled binary and returns stdout/stderr/returncode, a
+    character per byte."""
     cmd = [str(binary_path)] + (args or [])
     return subprocess.run(
         cmd,
@@ -308,7 +316,8 @@ def link_objects(
     compiler_path: Optional[str] = None,
     extra_flags: Optional[list[str]] = None,
 ) -> Path:
-    """Links object files and the runtime's (runtime_objects) into an executable binary."""
+    """Links object files and the runtime's (runtime_objects) into an executable
+    binary."""
     target_bin = Path(output_binary)
     target_bin.parent.mkdir(parents=True, exist_ok=True)
     compiler = compiler_path or find_c_compiler()
@@ -319,7 +328,8 @@ def link_objects(
         "-o",
         str(target_bin),
     ])
-    # The libraries' linker flags; the runtime's objects were compiled with the rest
+    # The libraries' linker flags; the runtime's objects were compiled with the
+    # rest
     cmd.extend(flag for flag in (*detect_gc_flags(nogc=nogc), *detect_readline_flags()) if flag.startswith(("-L", "-l")))
     if extra_flags:
         cmd.extend(extra_flags)

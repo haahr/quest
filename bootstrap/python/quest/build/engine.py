@@ -54,7 +54,8 @@ from quest.typechecker.typecheck import TypeElaborator
 
 
 class BuildError(Exception):
-    """Raised when the build process fails due to syntax, type, cycle, or linking errors."""
+    """Raised when the build process fails due to syntax, type, cycle, or
+    linking errors."""
     pass
 
 
@@ -68,7 +69,8 @@ class BuildResult:
 
 
 def interfaces_conform(actual: Optional[str], expected: Optional[str]) -> bool:
-    """Checks whether an actual module interface matches an expected interface name."""
+    """Checks whether an actual module interface matches an expected interface
+    name."""
     if not actual or not expected:
         return True
     return actual == expected
@@ -109,10 +111,12 @@ def unit_module_refs(
     program_dir: Optional[Path] = None,
     resolver: Optional[Resolver] = None,
 ) -> list[ImportedModuleRef]:
-    """Returns the modules a compiled C unit links against, with the interfaces it expects of them.
+    """Returns the modules a compiled C unit links against, with the interfaces
+    it expects of them.
 
-    These are the explicitly imported modules plus the modules (by name and interface name) the unit uses without
-    importing them (standard library modules, §6.2), resolved from current_dir by resolver (a new one if None).
+    These are the explicitly imported modules plus the modules (by name and
+    interface name) the unit uses without importing them (standard library
+    modules, §6.2), resolved from current_dir by resolver (a new one if None).
     """
     resolver = resolver or Resolver()
     roots = Roots.of(include_paths, program_dir)
@@ -149,9 +153,10 @@ def compile_unit_file(
     output: Optional[Path] = None,
     emit_deps: bool = False,
 ) -> None:
-    """Compiles a unit file alone, as `quest -c` does: an interface file to its .qi and C header, a module file to its
-    .qm, .mod.c, and .o (docs/build-process.md §2). Its artifacts go in build_dir, else beside output, else beside the
-    file (§3.1).
+    """Compiles a unit file alone, as `quest -c` does: an interface file to its
+    .qi and C header, a module file to its .qm, .mod.c, and .o
+    (docs/build-process.md §2). Its artifacts go in build_dir, else beside
+    output, else beside the file (§3.1).
     """
     kind = file_unit_kind(file_path)
     out_dir = output.parent if output is not None else None
@@ -168,7 +173,8 @@ def compile_unit_file(
 
 
 def _manifest_name(qm_path: Path) -> Optional[str]:
-    """Returns the canonical module name a .qm records, or None if it cannot be read."""
+    """Returns the canonical module name a .qm records, or None if it cannot be
+    read."""
     manifest = read_qm(qm_path)
     return manifest.name if manifest is not None else None
 
@@ -189,7 +195,8 @@ class BuildEngine:
         resolver: Optional[Resolver] = None,
     ) -> None:
         self.build_dir = (build_dir or Path(".build")).resolve()
-        # Resolves the imports of every unit the build compiles or checks, each once (docs/build-process.md §2.1)
+        # Resolves the imports of every unit the build compiles or checks, each
+        # once (docs/build-process.md §2.1)
         self.resolver = resolver or Resolver()
         self.include_paths = [Path(p).resolve() for p in (include_paths or [])]
         self.extra_objects = [Path(p).resolve() for p in (extra_objects or [])]
@@ -204,8 +211,9 @@ class BuildEngine:
     def _get_search_paths(self) -> list[Path]:
         """Returns the include paths of the units the engine compiles.
 
-        The program's directory is not one of them: it is searched only by sibling search from the main
-        routine, and it names only units under no include root (docs/modules.md §2.3).
+        The program's directory is not one of them: it is searched only by
+        sibling search from the main routine, and it names only units under no
+        include root (docs/modules.md §2.3).
         """
         paths = [self.build_dir]
         for obj in self.extra_objects:
@@ -222,11 +230,13 @@ class BuildEngine:
         return paths
 
     def main_artifact_base(self, main_file: Path) -> Path:
-        """Where a main routine's artifacts go: build_dir/<dir>/<stem>, without a suffix (docs/build-process.md §3.2).
+        """Where a main routine's artifacts go: build_dir/<dir>/<stem>, without
+        a suffix (docs/build-process.md §3.2).
 
-        <dir> is the main routine's directory relative to the current directory, so a/main.quest and b/main.quest
-        get their own artifacts; a main routine outside the current directory gets build_dir/<stem>. Main routines
-        are never imported, so unlike modules they need no canonical name.
+        <dir> is the main routine's directory relative to the current directory,
+        so a/main.quest and b/main.quest get their own artifacts; a main routine
+        outside the current directory gets build_dir/<stem>. Main routines are
+        never imported, so unlike modules they need no canonical name.
         """
         main_file = main_file.resolve()
         try:
@@ -238,8 +248,8 @@ class BuildEngine:
     def main_artifact_paths(self, main_file: Path) -> tuple[Path, Path, Path]:
         """A main routine's .main.qm, .main.c, and .main.o.
 
-        The .main suffix keeps them apart from a module's .qm and .o with the same canonical name, as .mod.c and
-        .int.h do for modules and interfaces.
+        The .main suffix keeps them apart from a module's .qm and .o with the
+        same canonical name, as .mod.c and .int.h do for modules and interfaces.
         """
         base = self.main_artifact_base(main_file)
         return (
@@ -252,7 +262,8 @@ class BuildEngine:
         self,
         main_file: Path,
     ) -> tuple[Path, Path, Path, list[ImportedModuleRef]]:
-        """Compiles a main routine (.quest) into .main.qm, .main.c, and .main.o under build_dir."""
+        """Compiles a main routine (.quest) into .main.qm, .main.c, and .main.o
+        under build_dir."""
         qm_path, c_path, o_path = self.main_artifact_paths(main_file)
         c_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -276,7 +287,8 @@ class BuildEngine:
         env.current_dir = main_file.parent
         env.program_dir = main_file.parent
         env.include_paths = search_paths
-        # Where the sites of raises compiled code reports are (docs/exceptions.md §3.3)
+        # Where the sites of raises compiled code reports are
+        # (docs/exceptions.md §3.3)
         env.source_map = source_map
         env.options = CompilerOptions(
             build_dir=self.build_dir,
@@ -345,10 +357,12 @@ class BuildEngine:
     def _unit_staleness(
         self, source: Path, qm_path: Path, c_path: Path, o_path: Path, program_dir: Optional[Path]
     ) -> Optional[str]:
-        """Returns why a unit with a source file must be recompiled, or None if it is up to date (§7.1).
+        """Returns why a unit with a source file must be recompiled, or None if
+        it is up to date (§7.1).
 
-        Besides the artifacts' own freshness, the unit's imports must still resolve to the files it was compiled
-        against: its compilation resolves them from its own directory and the engine's search paths, which may
+        Besides the artifacts' own freshness, the unit's imports must still
+        resolve to the files it was compiled against: its compilation resolves
+        them from its own directory and the engine's search paths, which may
         have changed since (a different -I, say).
         """
         search_paths = self._get_search_paths()
@@ -363,7 +377,8 @@ class BuildEngine:
         main_file: Path,
         output_binary: Optional[Path] = None,
     ) -> BuildResult:
-        """Executes full separate compilation and linking for a Quest main routine."""
+        """Executes full separate compilation and linking for a Quest main
+        routine."""
         main_file = main_file.resolve()
         if not main_file.is_file():
             raise BuildError(f"Main routine file not found: {main_file}")
@@ -430,14 +445,17 @@ class BuildEngine:
         program_dir: Optional[Path] = None,
         compiled_units: Optional[list[str]] = None,
     ) -> list[Path]:
-        """Brings the transitive closure of modules imported by a unit up to date (§7.1).
+        """Brings the transitive closure of modules imported by a unit up to
+        date (§7.1).
 
-        `roots` are the modules the unit `importer` imports, with the interfaces it expects of them, and
-        `program_dir` is the program's directory, which names modules under no include root.
-        Stale or missing modules are (re)compiled into the build directory, interface conformance and
-        acyclicity are verified, and the objects to link are returned: the engine's extra objects
-        first, then one object per module in queue order. The importer's own object is not included.
-        Names of recompiled modules are appended to `compiled_units` when given.
+        `roots` are the modules the unit `importer` imports, with the interfaces
+        it expects of them, and `program_dir` is the program's directory, which
+        names modules under no include root. Stale or missing modules are
+        (re)compiled into the build directory, interface conformance and
+        acyclicity are verified, and the objects to link are returned: the
+        engine's extra objects first, then one object per module in queue order.
+        The importer's own object is not included. Names of recompiled modules
+        are appended to `compiled_units` when given.
         """
         if compiled_units is None:
             compiled_units = []
@@ -461,8 +479,9 @@ class BuildEngine:
         ) -> None:
             if not expected_iface:
                 return
-            # Modules are keyed by their canonical names, ignoring case as mangling does; distinct modules may
-            # share a base name (docs/modules.md §2.3).
+            # Modules are keyed by their canonical names, ignoring case as
+            # mangling does; distinct modules may share a base name
+            # (docs/modules.md §2.3).
             norm_name = mod_name.lower()
             expected_interfaces.setdefault(norm_name, []).append((importer, expected_iface))
 
@@ -514,8 +533,8 @@ class BuildEngine:
             item_name = work_queue.popleft()
             self.logger.log("POP QUEUE", f"'{item_name}' (kind=module)")
 
-            # The importer records the source it found; a manifest without one names its modules only by
-            # their canonical names.
+            # The importer records the source it found; a manifest without one
+            # names its modules only by their canonical names.
             mod_src = module_sources.get(item_name)
             if mod_src is None or not mod_src.is_file():
                 mod_src = find_canonical_module_source(item_name, search_paths, program_dir)
@@ -531,7 +550,8 @@ class BuildEngine:
 
             reason: Optional[str] = None
             if mod_src is None:
-                # Binary distribution: a prebuilt object (and .qm) without source is up to date.
+                # Binary distribution: a prebuilt object (and .qm) without
+                # source is up to date.
                 found_obj: Optional[Path] = None
                 for obj in self.extra_objects:
                     if obj.stem.lower() in (stem, item_name.lower()):
@@ -554,8 +574,9 @@ class BuildEngine:
             else:
                 reason = self._unit_staleness(mod_src, qm_path, c_path, o_path, program_dir)
                 if reason is not None:
-                    # Fresh artifacts next to the source (from a standalone compilation) are used like
-                    # those in the build directory (docs/build-process.md §5.2).
+                    # Fresh artifacts next to the source (from a standalone
+                    # compilation) are used like those in the build directory
+                    # (docs/build-process.md §5.2).
                     beside = list(ModuleArtifacts.in_dir(mod_src.parent, stem).paths())
                     if (
                         beside[0] != qm_path
@@ -603,7 +624,8 @@ class BuildEngine:
 
         self.logger.log("QUEUE EMPTY", f"transitive closure verified ({len(linked_objects)} units)")
 
-        # Verify all expected interface constraints across the transitive closure
+        # Verify all expected interface constraints across the transitive
+        # closure
         for mod_name, reqs in expected_interfaces.items():
             manifest = module_manifests.get(mod_name)
             if manifest and manifest.interface:

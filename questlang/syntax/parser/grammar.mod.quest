@@ -18,9 +18,9 @@ export
     let sepBy = engine.sepBy
     let rule = engine.rule
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Token Kinds
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let intLit = option intLit of K end
     let realLit = option realLit of K end
@@ -119,9 +119,9 @@ export
     let mVar = option modeVar of ast.ParamMode end
     let mOut = option modeOut of ast.ParamMode end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Syntax Targets (Non-Terminals)
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Targets = Tuple
         program: C phrase: C linkage: C importList: C importItem: C
@@ -180,9 +180,9 @@ export
             let hasKind = engine.target(g "HasKind")
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Rules
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let identifierRules(x: Targets): Ok =
         begin
@@ -257,7 +257,8 @@ export
             rule(x.primaryType actions.typeOut) of t(kwOutType) p(lparen) x.type p(rparen) end
             (* ide _ ide (Manifest type) *)
             rule(x.primaryType actions.typeManifest) of t(ident) p(underscore) t(ident) end
-            (* ide (Named type: Int, Real, Bool, String, Char, Ok, Exception, or User Type) *)
+            (* ide (Named type: Int, Real, Bool, String, Char, Ok, Exception, or
+             * User Type) *)
             rule(x.primaryType actions.typeName) of t(ident) end
             rule(x.primaryType actions.typeException) of t(kwExceptionType) end
             (* { infix } *)
@@ -278,20 +279,24 @@ export
             rule(x.typeSignature actions.sigKindDecl) of p(kwDefKind) x.kindDecl end
             (* Def [Rec] TypeDecl {and TypeDecl} *)
             rule(x.typeSignature actions.sigDefType) of t(kwDef) opt of t(kwRecType) end sepBy(x.typeDecl p(kwAnd)) end
-            (* [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals; plain fields have no groups) *)
+            (* [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals;
+             * plain fields have no groups) *)
             rule(x.typeSignature actions.fieldSigs) of
                 opt of t(kwVar) end opt of t(kwOut) end x.ideList rep of p(lparen) x.signature p(rparen) end t(colon) x.type
             end
             (* [IdeList] HasKind *)
             rule(x.typeSignature actions.first) of x.typeFormal end
             rule(x.typeFormal actions.typeFormals) of opt of x.ideList end x.hasKind end
-            (* Operator parameters (Fun and Let X(...)) are type formals only: X::K or X <: T *)
+            (* Operator parameters (Fun and Let X(...)) are type formals only:
+             * X::K or X <: T *)
             rule(x.typeFormals actions.flatten) of rep of x.typeFormal end end
-            (* HasMutType (Anonymous tuple/signature field :Int or :Var(Int) or :Out(Int)) *)
+            (* HasMutType (Anonymous tuple/signature field :Int or :Var(Int) or
+             * :Out(Int)) *)
             rule(x.typeSignature actions.sigMutField) of x.hasMutType end
             (* [var] IdeList HasType (Record/Variant type signatures) *)
             rule(x.valueSignature actions.recordFieldSigs) of rep of opt of t(kwVar) end x.ideList x.hasType end end
-            (* IdeList [with Signature end] (the tags are matched as tokens for their positions) *)
+            (* IdeList [with Signature end] (the tags are matched as tokens for
+             * their positions) *)
             rule(x.optionSignature actions.optionFieldSigs) of
                 rep of sepBy(x.ide p(comma)) opt of p(kwWith) x.signature p(kwEnd) end end
             end
@@ -332,7 +337,8 @@ export
             rule(x.primaryValue actions.exprExit) of t(kwExit) end
             rule(x.primaryValue actions.exprExternal) of t(kwExternal) t(stringLit) end
 
-            (* if Binding [then Binding] {elsif Binding [then Binding]} [else Binding] end *)
+            (* if Binding [then Binding] {elsif Binding [then Binding]}
+             * [else Binding] end *)
             rule(x.primaryValue actions.exprIf) of
                 t(kwIf) x.value opt of p(kwThen) end x.binding
                 rep of t(kwElsif) x.value opt of p(kwThen) end x.binding end
@@ -401,7 +407,8 @@ export
             rule(x.primaryValue actions.exprPrefixApp) of t(symbolicInfix) p(lparen) opt of x.binding end p(rparen) end
             (* { Value } *)
             rule(x.primaryValue actions.first) of p(lbrace) x.value p(rbrace) end
-            (* Monadic Operators: not, extent, ordinal (Cardelli sections 4.2, 4.3, 4.5), applied or stand-alone *)
+            (* Monadic Operators: not, extent, ordinal (Cardelli sections 4.2,
+             * 4.3, 4.5), applied or stand-alone *)
             rule(x.primaryValue actions.monadicApp) of t(kwNot) x.postfixValue end
             rule(x.primaryValue actions.exprId) of t(kwNot) end
             rule(x.primaryValue actions.monadicApp) of t(kwExtent) x.postfixValue end
@@ -427,7 +434,8 @@ export
             end
         end
 
-    (* Case, Inspect, Try Branches: {when Pattern [with Binder [: Type]] then Binding} [else Binding] *)
+    (* Case, Inspect, Try Branches:
+     * {when Pattern [with Binder [: Type]] then Binding} [else Binding] *)
     let branchRules(x: Targets): Ok =
         begin
             rule(x.caseBranches actions.caseBranches) of
@@ -448,8 +456,8 @@ export
     let hasRules(x: Targets): Ok =
         begin
             rule(x.hasType actions.first) of p(colon) x.type end
-            (* : Var(Type), : Out(Type), var : Type, out : Type, : Type (an anonymous field; its position is that of
-             * the first token) *)
+            (* : Var(Type), : Out(Type), var : Type, out : Type, : Type (an
+             * anonymous field; its position is that of the first token) *)
             rule(x.hasMutType actions.mutField(mVar)) of t(colon) p(kwVarType) p(lparen) x.type p(rparen) end
             rule(x.hasMutType actions.mutField(mOut)) of t(colon) p(kwOutType) p(lparen) x.type p(rparen) end
             rule(x.hasMutType actions.mutField(mVar)) of t(kwVar) p(colon) x.type end
@@ -476,7 +484,8 @@ export
             rule(x.phrase actions.letType) of t(kwLetType) opt of t(kwRecType) end sepBy(x.typeDecl p(kwAnd)) end
             (* let [rec] ValueDecl {and ValueDecl} *)
             rule(x.phrase actions.letValue) of t(kwLet) opt of t(kwRec) end sepBy(x.valueDecl p(kwAnd)) end
-            (* var ValueDecl (allows 'var x = 0' inside tuples, blocks, or module phrases) *)
+            (* var ValueDecl (allows 'var x = 0' inside tuples, blocks, or
+             * module phrases) *)
             rule(x.phrase actions.varDecl) of t(kwVar) x.valueDecl end
             (* DEF KindDecl *)
             rule(x.phrase actions.first) of p(kwDefKind) x.kindDecl end
@@ -501,13 +510,15 @@ export
             rule(x.importItem actions.importAliasInterface) of t(colon) t(ident) p(equal) p(colon) x.path end
             (* 4. Interface-only, unaliased: :IfacePath *)
             rule(x.importItem actions.importInterface) of t(colon) x.path end
-            (* 5. Module & interface (including module aliases and unaliased paths):
+            (* 5. Module & interface (including module aliases and unaliased
+             *    paths):
              *    m1 = p1, m2 = p2 : IfacePath  OR  p1, p2 : IfacePath *)
             rule(x.importItem actions.importModules) of x.moduleEntryList t(colon) x.path end
 
             rule(x.importList actions.first) of rep of x.importItem end end
 
-            (* Semicolons appear only here, ending top-level phrases ({[Phrase] ";"} in the paper), and are optional *)
+            (* Semicolons appear only here, ending top-level phrases
+             * ({[Phrase] ";"} in the paper), and are optional *)
             rule(x.program actions.program) of rep of p(semicolon) end rep of x.phrase rep of p(semicolon) end end end
         end
 

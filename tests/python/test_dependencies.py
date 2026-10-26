@@ -1,9 +1,11 @@
-"""Dependencies between the compiler's packages: compilation does not depend on the interpreters, and only C
-compilation reaches the C backend, directly or through other modules (not the IR, nor what every backend shares,
-nor the type checker and the loading of interfaces).
+"""Dependencies between the compiler's packages: compilation does not depend on
+the interpreters, and only C compilation reaches the C backend, directly or
+through other modules (not the IR, nor what every backend shares, nor the type
+checker and the loading of interfaces).
 
-The import graph is read from the sources (every `import` and `from ... import`, including those inside functions,
-which run only when called), so a dependency is found whether or not the tests exercise it."""
+The import graph is read from the sources (every `import` and `from ... import`,
+including those inside functions, which run only when called), so a dependency
+is found whether or not the tests exercise it."""
 
 from __future__ import annotations
 
@@ -25,8 +27,9 @@ COMPILATION = (
     "quest.values",
 )
 INTERPRETERS = ("quest.interpreter", "quest.repl")
-# C compilation: the C backend (which writes interfaces' C headers too), and what drives it (the build engine,
-# compiling module files, and the pipeline, whose phases include C's). Only these may import the C backend.
+# C compilation: the C backend (which writes interfaces' C headers too), and
+# what drives it (the build engine, compiling module files, and the pipeline,
+# whose phases include C's). Only these may import the C backend.
 C_COMPILATION = (
     "quest.build",
     "quest.codegen.c",
@@ -51,7 +54,8 @@ def _within(name: str, packages: tuple[str, ...]) -> bool:
 
 
 def import_graph() -> dict[str, set[str]]:
-    """Each module of the quest package, and the quest modules importing it runs."""
+    """Each module of the quest package, and the quest modules importing it
+    runs."""
     modules = _modules()
 
     def resolve(name: str) -> str | None:
@@ -82,7 +86,8 @@ def import_graph() -> dict[str, set[str]]:
 
 
 def reached(graph: dict[str, set[str]], sources: tuple[str, ...], targets: tuple[str, ...]) -> list[str]:
-    """The import paths from modules within sources to modules within targets."""
+    """The import paths from modules within sources to modules within
+    targets."""
     return paths_to(graph, [m for m in graph if _within(m, sources)], targets)
 
 
@@ -121,8 +126,10 @@ class TestDependencies(unittest.TestCase):
         self.assertEqual(paths_to(graph, outside, C_BACKEND), [], "modules outside C compilation reach the C backend")
 
     def test_the_front_end_does_not_reach_later_phases(self) -> None:
-        """Tokenizing, parsing, and desugaring (quest.syntax) need no types, scopes, units, or back end."""
-        # The package's __init__, which every import of a submodule runs, re-exports the whole compiler
+        """Tokenizing, parsing, and desugaring (quest.syntax) need no types,
+        scopes, units, or back end."""
+        # The package's __init__, which every import of a submodule runs,
+        # re-exports the whole compiler
         graph = {m: imported - {"quest"} for m, imported in import_graph().items()}
         self.assertIn("quest.syntax.desugar", graph)
         later = (

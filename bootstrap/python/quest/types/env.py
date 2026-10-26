@@ -1,5 +1,6 @@
-"""Quest Type-Checking Environments: the scope stack, the builtins, and the interfaces, modules, and units in
-scope. Symbols and scopes are quest.types.symbols's (and are re-exported here)."""
+"""Quest Type-Checking Environments: the scope stack, the builtins, and the
+interfaces, modules, and units in scope. Symbols and scopes are
+quest.types.symbols's (and are re-exported here)."""
 
 from __future__ import annotations
 
@@ -47,8 +48,9 @@ from quest.types.symbols import (
 # Operator Signatures (Cardelli §4.2)
 # ============================================================================
 
-# Operator signature table for non-overloaded Quest infix operators, which the environment declares as functions:
-# Maps operator symbol -> (expected_left_type, expected_right_type, result_type)
+# Operator signature table for non-overloaded Quest infix operators, which the
+# environment declares as functions: Maps operator symbol ->
+# (expected_left_type, expected_right_type, result_type)
 INFIX_OPERATORS: dict[str, tuple[QType, QType, QType]] = {
     # Integer arithmetic
     "+": (INT_TYPE, INT_TYPE, INT_TYPE),
@@ -86,7 +88,8 @@ INFIX_OPERATORS: dict[str, tuple[QType, QType, QType]] = {
 # ============================================================================
 
 class BuiltinRegistry(Protocol):
-    """Protocol for a registry that populates standard library modules and interfaces into an Environment."""
+    """Protocol for a registry that populates standard library modules and
+    interfaces into an Environment."""
 
     def populate_environment(self, env: Environment) -> None:
         ...
@@ -99,13 +102,15 @@ class BuiltinRegistry(Protocol):
 
 
 class Environment:
-    """Manages the active lexical scope stack, built-in definitions, and module linkages."""
+    """Manages the active lexical scope stack, built-in definitions, and module
+    linkages."""
 
     _default_builtin_registry: ClassVar[Optional[BuiltinRegistry]] = None
 
     @classmethod
     def set_default_builtin_registry(cls, registry: Optional[BuiltinRegistry]) -> None:
-        """Configures the default builtin registry used when none is provided to __init__."""
+        """Configures the default builtin registry used when none is provided to
+        __init__."""
         cls._default_builtin_registry = registry
 
     def __init__(
@@ -122,18 +127,21 @@ class Environment:
         self._modules: dict[str, Scope] = {}
         self.include_paths: list[Path] = []
         self.current_dir: Optional[Path] = None
-        # The source map of the file being elaborated (the program, or an imported unit; see unit_source), which
-        # imports are located in when they report errors in the units they load
+        # The source map of the file being elaborated (the program, or an
+        # imported unit; see unit_source), which imports are located in when
+        # they report errors in the units they load
         self.source_map: Optional[Any] = None
-        # The directory of the program being compiled, which names units under no include root (docs/modules.md §2.3)
+        # The directory of the program being compiled, which names units under
+        # no include root (docs/modules.md §2.3)
         self.program_dir: Optional[Path] = None
         self._units: Optional[UnitGraph] = None
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []
         self.subtype_cache: dict[tuple[int, int], bool] = {}
         self.options: Optional[Any] = None
-        # The interface and module names in _interfaces and _modules are those of the unit being elaborated: the
-        # builtins and the unit's imports. The units loaded from files are in units, by canonical name.
+        # The interface and module names in _interfaces and _modules are those
+        # of the unit being elaborated: the builtins and the unit's imports. The
+        # units loaded from files are in units, by canonical name.
         self._builtin_interfaces: dict[str, Scope] = {}
         self._builtin_modules: dict[str, Scope] = {}
         self._init_builtins()
@@ -146,8 +154,9 @@ class Environment:
 
     @property
     def units(self) -> UnitGraph:
-        """The units this environment has loaded, with their type-checked forms, and the resolver of its imports
-        (quest.modules.graph.UnitGraph, docs/build-process.md §2.1)."""
+        """The units this environment has loaded, with their type-checked forms,
+        and the resolver of its imports (quest.modules.graph.UnitGraph,
+        docs/build-process.md §2.1)."""
         if self._units is None:
             self._units = UnitGraph()
         return self._units
@@ -175,7 +184,8 @@ class Environment:
 
     @contextmanager
     def scoped(self, name: str = "local") -> Iterator[Scope]:
-        """RAII context manager for entering and exiting a lexical child scope."""
+        """RAII context manager for entering and exiting a lexical child
+        scope."""
         self.push_scope(name)
         try:
             yield self.current_scope
@@ -245,8 +255,9 @@ class Environment:
 
     @contextmanager
     def unit_source(self, source_map: Any) -> Iterator[None]:
-        """Elaborates a unit loaded from the file of source_map: errors raised inside are located in that file
-        (diagnostics.in_unit), and imports it makes are located in it (source_map)."""
+        """Elaborates a unit loaded from the file of source_map: errors raised
+        inside are located in that file (diagnostics.in_unit), and imports it
+        makes are located in it (source_map)."""
         saved = self.source_map
         self.source_map = source_map
         try:
@@ -257,12 +268,14 @@ class Environment:
 
     @contextmanager
     def unit_names(self) -> Iterator[None]:
-        """Gives a unit being loaded from a file its own interface and module names.
+        """Gives a unit being loaded from a file its own interface and module
+        names.
 
-        Inside, only the builtin names are registered, so the unit's imports are resolved from its own directory
-        rather than taken from its importer's names, which may name different units (a sibling `counter` of a
-        unit in util/ is util/counter). The importer's names are restored afterwards; loaded units are shared
-        through units, by canonical name.
+        Inside, only the builtin names are registered, so the unit's imports are
+        resolved from its own directory rather than taken from its importer's
+        names, which may name different units (a sibling `counter` of a unit in
+        util/ is util/counter). The importer's names are restored afterwards;
+        loaded units are shared through units, by canonical name.
         """
         saved = (self._interfaces, self._modules)
         self._interfaces = dict(self._builtin_interfaces)
@@ -273,7 +286,8 @@ class Environment:
             self._interfaces, self._modules = saved
 
     def snapshot(self) -> dict[str, Any]:
-        """Captures a snapshot of the current environment state for rollback on error."""
+        """Captures a snapshot of the current environment state for rollback on
+        error."""
         return {
             "symbol_counter": self._symbol_counter,
             "interfaces": dict(self._interfaces),
@@ -304,7 +318,8 @@ class Environment:
     # --- Built-in Initialization ---
 
     def _init_builtins(self) -> None:
-        """Populates the base scope with primitives, and global scope with pre-linked modules."""
+        """Populates the base scope with primitives, and global scope with
+        pre-linked modules."""
         # Built-in Kinds
         self.base_scope.declare_kind(
             KindSymbol(name="TYPE", symbol_id=self.fresh_symbol_id(), kind=TYPE_KIND)
@@ -347,7 +362,8 @@ class Environment:
             )
             self.base_scope.declare_value(ValueSymbol(name=op, type_val=op_fn_type))
 
-        # Built-in monadic operators: not, extent, ordinal (Cardelli §4.2, §4.3, §4.5)
+        # Built-in monadic operators: not, extent, ordinal (Cardelli §4.2, §4.3,
+        # §4.5)
         self.base_scope.declare_value(
             ValueSymbol(
                 name="not",

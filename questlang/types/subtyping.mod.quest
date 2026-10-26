@@ -27,18 +27,22 @@ export
     (* =========================================================================
      * 1. The subtype cache
      *
-     * Results of subtyping proofs, by the ids of hash-consed types and whether an environment was given (without one,
-     * aliases are not expanded). Pairs involving a metavariable are never cached, because isSubtype solves
-     * metavariables as a side effect. Results are committed only when a top-level proof finishes: a nested goal
-     * decided while a coinductive assumption is still open may be true only because of it.
+     * Results of subtyping proofs, by the ids of hash-consed types and whether
+     * an environment was given (without one, aliases are not expanded). Pairs
+     * involving a metavariable are never cached, because isSubtype solves
+     * metavariables as a side effect. Results are committed only when a
+     * top-level proof finishes: a nested goal decided while a coinductive
+     * assumption is still open may be true only because of it.
      *
-     * - When a top-level proof returns true, every pair it decided or assumed is a true fact, and all are cached.
-     * - False results are always cached: extra assumptions only make more goals provable.
+     * - When a top-level proof returns true, every pair it decided or assumed
+     *   is a true fact, and all are cached.
+     * - False results are always cached: extra assumptions only make more goals
+     *   provable.
      * - Conditional true results of a proof that returns false are discarded.
      *
-     * Symbol meanings only become more defined, so the cache is dropped when an id that some lookup saw as undefined
-     * gains a meaning (types/symbols).
-     * ========================================================================= *)
+     * Symbol meanings only become more defined, so the cache is dropped when an
+     * id that some lookup saw as undefined gains a meaning (types/symbols).
+     * ====================================================================== *)
 
     let cacheLimit = 250000
 
@@ -77,8 +81,9 @@ export
     (* =========================================================================
      * 2. Trails: the coinductive assumptions of one proof
      *
-     * Named type variables are keyed by symbol and everything else by node identity.
-     * ========================================================================= *)
+     * Named type variables are keyed by symbol and everything else by node
+     * identity.
+     * ====================================================================== *)
 
     Let Pair = Tuple sub: Type sup: Type end
     Let Result = Tuple sub: Type sup: Type result: Bool end
@@ -124,9 +129,9 @@ export
                 fun(r: Result): Ok if not(r.result) then cacheStore(r.sub r.sup env false) end)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Proofs
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let isNamed(t: Type): Bool =
         case t.form
@@ -155,7 +160,8 @@ export
             else 0
         end
 
-    (* The upper bound of a type variable, abstract type, or path type, if a power kind *)
+    (* The upper bound of a type variable, abstract type, or path type, if a
+     * power kind *)
     let namedBound(t: Type): maybe.T(Type) =
         begin
             let bound = case t.form
@@ -220,13 +226,15 @@ export
                 end)
             end
             let fuel = fuel0 - 1
-            (* 0. Coinductive cycle detection for recursive types before lazy unfolding *)
+            (* 0. Coinductive cycle detection for recursive types before lazy
+             *    unfolding *)
             let typePair = pairKey(sub0 sup0)
             if isAssumed(trail typePair) then
                 true
             else
                 if isRecursive(sub0) orif isRecursive(sup0) then assume(trail typePair sub0 sup0) end
-                (* 1. Evaluate both types lazily to expose outermost constructors *)
+                (* 1. Evaluate both types lazily to expose outermost
+                 *    constructors *)
                 let sub = evaluate(sub0 env)
                 let sup = evaluate(sup0 env)
                 (* 2. Reflexivity *)
@@ -381,8 +389,8 @@ export
             when typeFun with s then
                 case sup.form
                     when typeFun with t then
-                        (* Contravariant value parameters, invariant var parameters, covariant out parameters and
-                         * result *)
+                        (* Contravariant value parameters, invariant var
+                         * parameters, covariant out parameters and result *)
                         if extent s.params isnot extent t.params then
                             false
                         else
@@ -438,8 +446,9 @@ export
             when typeAuto with s then
                 case sup.form
                     when typeAuto with t then
-                        (* Subkind for the type component; for the signature, a prefix match with matching names,
-                         * covariant immutable and invariant mutable components *)
+                        (* Subkind for the type component; for the signature, a
+                         * prefix match with matching names, covariant immutable
+                         * and invariant mutable components *)
                         if {extent s.signature < extent t.signature} orif
                             not(isSubkind(s.kindBound t.kindBound env)) then
                             false
@@ -470,7 +479,8 @@ export
             when typeOperator with s then
                 case sup.form
                     when typeOperator with t then
-                        (* Parameter kinds match, bodies subtype under substitution *)
+                        (* Parameter kinds match, bodies subtype under
+                         * substitution *)
                         if extent s.params isnot extent t.params then
                             false
                         else
@@ -517,7 +527,8 @@ export
                 end
             else false
         end
-    (* Tuples: a prefix match, with matching names, covariant elements, and subkinds *)
+    (* Tuples: a prefix match, with matching names, covariant elements, and
+     * subkinds *)
     and tuples(
         subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: Env trail: Trail fuel: Int
     ): Bool =
@@ -584,8 +595,9 @@ export
             end
             good
         end
-    (* Universal quantifiers: bounds contravariant, body covariant, compared under the supertype's bounds. As in full
-     * F<: this is undecidable; fuel keeps it terminating *)
+    (* Universal quantifiers: bounds contravariant, body covariant, compared
+     * under the supertype's bounds. As in full F<: this is undecidable; fuel
+     * keeps it terminating *)
     and quantified(s: Tuple quantifiers: Array(model.Quantifier) body: Type end
             t: Tuple quantifiers: Array(model.Quantifier) body: Type end env: Env trail: Trail fuel0: Int): Bool =
         if extent s.quantifiers isnot extent t.quantifiers then
@@ -594,7 +606,8 @@ export
             false
         else
             let fuel = fuel0 - quantifierFuel
-            (* Both sides' quantifiers become fresh variables, with the supertype's bounds *)
+            (* Both sides' quantifiers become fresh variables, with the
+             * supertype's bounds *)
             let subSubst = model.newSubst()
             let supSubst = model.newSubst()
             let var good = true
@@ -657,7 +670,8 @@ export
                     when kindAll with s then
                         case sup.form
                             when kindAll with t then
-                                (* ALL(X :: K1) K2 <= ALL(Y :: K1') K2' iff K1' <= K1 and K2 <= K2'[Y -> X] *)
+                                (* ALL(X :: K1) K2 <= ALL(Y :: K1') K2' iff K1'
+                                 * <= K1 and K2 <= K2'[Y -> X] *)
                                 if not(isSubkind(t.paramKind s.paramKind env)) then
                                     false
                                 else

@@ -1,19 +1,26 @@
-"""Generates the conversion matrix: golden tests of values converted between representations in compiled code.
+"""Generates the conversion matrix: golden tests of values converted between
+representations in compiled code.
 
-Compiled code lays out a type that mentions a type parameter generically in polymorphic code (a QVal for each value
-of the parameter) and natively elsewhere, and converts values between the two, and between subtypes, wherever a value
-crosses: polymorphic calls, closures, type applications, dynamic values, subsumption, and stores (docs/ir.md §8.3,
-docs/c-representation.md §5.1). The interpreter has no layouts, so its output is the expected output.
+Compiled code lays out a type that mentions a type parameter generically in
+polymorphic code (a QVal for each value of the parameter) and natively
+elsewhere, and converts values between the two, and between subtypes, wherever a
+value crosses: polymorphic calls, closures, type applications, dynamic values,
+subsumption, and stores (docs/ir.md §8.3, docs/c-representation.md §5.1). The
+interpreter has no layouts, so its output is the expected output.
 
-Each context below gives one program, tests/source/conversions/CONTEXT.quest, exercising every shape (a type operator
-over a type parameter) at every type argument; each cell prints a label, so that a failure points at its cell.
+Each context below gives one program, tests/source/conversions/CONTEXT.quest,
+exercising every shape (a type operator over a type parameter) at every type
+argument; each cell prints a label, so that a failure points at its cell.
 
-    python tests/conversions/generate.py           # regenerate the programs
-    python run_tests.py -k conversions/ --update-golden    # then regenerate their goldens (from the interpreter)
+    # Regenerate the programs, then their goldens (from the interpreter):
+    python tests/conversions/generate.py
+    python run_tests.py -k conversions/ --update-golden
 
-Cells listed in KNOWN_FAILURES compile but behave differently in C, for a recorded reason; they are generated into
-CONTEXT_known_failures.quest, which skips the compiled phase. Cells listed in REJECTED are compile-time errors of C
-generation (conversions that would copy mutable data), checked by tests/python/test_conversion_rejections.py.
+Cells listed in KNOWN_FAILURES compile but behave differently in C, for a
+recorded reason; they are generated into CONTEXT_known_failures.quest, which
+skips the compiled phase. Cells listed in REJECTED are compile-time errors of C
+generation (conversions that would copy mutable data), checked by
+tests/python/test_conversion_rejections.py.
 """
 
 from __future__ import annotations
@@ -29,7 +36,8 @@ OUT_DIR = ROOT_DIR / "tests" / "source" / "conversions"
 
 @dataclass(frozen=True)
 class Arg:
-    """A type argument: its name, two sample values, and how to print a value of it."""
+    """A type argument: its name, two sample values, and how to print a value of
+    it."""
     name: str
     value: str
     other: str
@@ -57,16 +65,19 @@ Let B = Tuple a: Int end;"""
 
 @dataclass(frozen=True)
 class Shape:
-    """A type over a type parameter: its declaration (if any), the type at an argument, how to make a value of it from
-    a value of the argument, and how to get the argument's value back."""
+    """A type over a type parameter: its declaration (if any), the type at an
+    argument, how to make a value of it from a value of the argument, and how to
+    get the argument's value back."""
     name: str
     decl: Optional[str]
     type_of: str  # a format with {A}
     make: str  # a format with {A} and {v}
     get: str  # a format with {s}
-    # A pointer to a tuple or option (or a recursive one), whose identity `is` can observe
+    # A pointer to a tuple or option (or a recursive one), whose identity `is`
+    # can observe
     has_identity: bool = False
-    # A wider type of which the shape at {A} is a supertype, and a value of it made from {v}
+    # A wider type of which the shape at {A} is a supertype, and a value of it
+    # made from {v}
     wider: Optional[tuple[str, str]] = None
 
     def at(self, a: str) -> str:
@@ -117,7 +128,8 @@ SHAPES = (
 
 @dataclass(frozen=True)
 class Context:
-    """A place where values convert: generic definitions per shape, and the code of one cell (shape, argument)."""
+    """A place where values convert: generic definitions per shape, and the code
+    of one cell (shape, argument)."""
     name: str
     description: str
     defs: Callable[[Shape], list[str]]
@@ -312,7 +324,8 @@ CONTEXTS = (
     ),
     Context(
         "dynamic", "dynamic values made and narrowed in generic code", _dynamic_defs, _dynamic_cell,
-        # The type checker rejects dynamic values whose types mention a type parameter inside mutable data
+        # The type checker rejects dynamic values whose types mention a type
+        # parameter inside mutable data
         applies=lambda shape, arg: shape.name not in ("Bare", "Arr"), imports=("dynamic: Dynamic",),
     ),
     Context(
@@ -329,12 +342,14 @@ CONTEXTS = (
     ),
 )
 
-# (context, shape, argument) -> why compiled code behaves differently (a docs/tasklist.md task where there is one)
+# (context, shape, argument) -> why compiled code behaves differently (a
+# docs/tasklist.md task where there is one)
 KNOWN_FAILURES: dict[tuple[str, str, str], str] = {}
 
-# (context, shape, argument) -> the compile-time error of C generation: unspecialized calls that would have to copy
-# mutable data laid out differently (an array of closures returning a value that a register holds differently from a
-# QVal; every slot holds one word, records and variants boxed, so slots agree)
+# (context, shape, argument) -> the compile-time error of C generation:
+# unspecialized calls that would have to copy mutable data laid out differently
+# (an array of closures returning a value that a register holds differently from
+# a QVal; every slot holds one word, records and variants boxed, so slots agree)
 MUTABLE_DATA_ERROR = "would copy mutable data"
 REJECTED: dict[tuple[str, str, str], str] = {
     ("stores", "Thunk", arg): MUTABLE_DATA_ERROR for arg in ("Bool", "Real", "Char")

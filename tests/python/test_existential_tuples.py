@@ -1,4 +1,5 @@
-"""Unit tests for existential tuple signature elaboration and type representation."""
+"""Unit tests for existential tuple signature elaboration and type
+representation."""
 
 import unittest
 
@@ -89,7 +90,8 @@ class TestExistentialTuplesPhase1(unittest.TestCase):
         self.assertEqual(inner_tup.fields[1].type_val.symbol_id, formal_a.symbol_id)
 
     def test_manifest_type_in_tuple_signature(self) -> None:
-        """Tuple signature with manifest type definition: Tuple Def A::TYPE = Int a:A end."""
+        """Tuple signature with manifest type definition: Tuple Def A::TYPE =
+        Int a:A end."""
         self.run_source("Let T = Tuple Def A::TYPE = Int a:A end;")
 
         sym = self.env.lookup_type("T")
@@ -104,7 +106,8 @@ class TestExistentialTuplesPhase1(unittest.TestCase):
         self.assertEqual(comp_0.type_val, INT_TYPE)
 
     def test_anonymous_type_formal_rejected(self) -> None:
-        """Anonymous type formal (::TYPE) in tuple signature must be rejected."""
+        """Anonymous type formal (::TYPE) in tuple signature must be
+        rejected."""
         ast_tuple = TypeTuple(
             fields=(
                 TypeFormal(name="_", bound=KindType(offset=10), offset=10),
@@ -116,7 +119,8 @@ class TestExistentialTuplesPhase1(unittest.TestCase):
         self.assertIn("must have an identifier", str(cm.exception))
 
     def test_tuple_type_substitute_shadowing(self) -> None:
-        """Substitution must shadow type formal symbol IDs for subsequent components."""
+        """Substitution must shadow type formal symbol IDs for subsequent
+        components."""
         formal_id = self.env.fresh_symbol_id()
         formal = QTupleTypeFormal(name="A", symbol_id=formal_id, bound=TYPE_KIND)
         field = QTupleField(name="a", type_val=QTypeVar("A", symbol_id=formal_id, bound=TYPE_KIND))
@@ -164,7 +168,8 @@ class TestExistentialTuplesPhase2(unittest.TestCase):
         self.assertFalse(is_subtype(point_type, color_point_type, self.env))
 
     def test_component_name_mismatch_rejected(self) -> None:
-        """Rule 4: Component names must match identically (no alpha-conversion)."""
+        """Rule 4: Component names must match identically (no
+        alpha-conversion)."""
         t1 = elaborate_test_type("Tuple A::TYPE a:A end", self.env)
         t2 = elaborate_test_type("Tuple B::TYPE a:B end", self.env)
 
@@ -189,7 +194,8 @@ class TestExistentialTuplesPhase2(unittest.TestCase):
         self.assertFalse(is_subtype(sup_tup, sub_tup, self.env))
 
     def test_manifest_type_binding_subtype_of_formal(self) -> None:
-        """Manifest type binding Tuple Def A::TYPE = Int a:A end <: Tuple A::TYPE a:A end."""
+        """Manifest type binding Tuple Def A::TYPE = Int a:A end <: Tuple
+        A::TYPE a:A end."""
         manifest_sub = elaborate_test_type("Tuple Def A::TYPE = Int a:A end", self.env)
         sup_tup = elaborate_test_type("Tuple A::TYPE a:A end", self.env)
 

@@ -1,4 +1,5 @@
-"""Unit tests for Phase 4.8a: C Runtime Type Descriptors, Interning, and Dynamic Operations."""
+"""Unit tests for Phase 4.8a: C Runtime Type Descriptors, Interning, and Dynamic
+Operations."""
 
 import os
 import subprocess
@@ -14,7 +15,8 @@ from quest.codegen.c.compiler_runner import compile_c_source, run_binary
 
 
 class TestRuntimeDescriptors(unittest.TestCase):
-    """Tests QTypeDescriptor static allocation, interning table, and dynamic operations."""
+    """Tests QTypeDescriptor static allocation, interning table, and dynamic
+    operations."""
 
     def compile_and_run_c(self, c_code: str, nogc: bool = False) -> subprocess.CompletedProcess[str]:
         with tempfile.NamedTemporaryFile(suffix="", delete=False) as f:
@@ -29,7 +31,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
                 bin_path.unlink()
 
     def test_base_type_descriptors(self):
-        """Tests that base type descriptors exist, have correct names/sizes, and can be interned."""
+        """Tests that base type descriptors exist, have correct names/sizes, and
+        can be interned."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -80,7 +83,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertIn("BASE_DESCRIPTORS_OK", proc.stdout)
 
     def test_array_descriptor_interning(self):
-        """Tests that array descriptors are memoized such that Array(Int) == Array(Int)."""
+        """Tests that array descriptors are memoized such that Array(Int) ==
+        Array(Int)."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -123,7 +127,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertIn("ARRAY_INTERN_OK", proc.stdout)
 
     def test_opaque_descriptor_identity(self):
-        """Tests that opaque type descriptors have nominal identity (never equal even with same name)."""
+        """Tests that opaque type descriptors have nominal identity (never equal
+        even with same name)."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -151,7 +156,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertIn("OPAQUE_IDENTITY_OK", proc.stdout)
 
     def test_auto_value_and_conversion_success(self):
-        """Tests packaging a value as an auto value and converting it at a matching descriptor (as dynamic.be does)."""
+        """Tests packaging a value as an auto value and converting it at a
+        matching descriptor (as dynamic.be does)."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -185,7 +191,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertIn("DYNAMIC_SUCCESS_OK", proc.stdout)
 
     def test_conversion_failure_raises_dynamic_error(self):
-        """Tests that a record conversion raises quest_exc_dynamic_error when the layout lacks a field of the view."""
+        """Tests that a record conversion raises quest_exc_dynamic_error when
+        the layout lacks a field of the view."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -233,7 +240,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertIn("DYNAMIC_ERROR_CAUGHT_OK", proc.stdout)
 
     def test_compound_record_subtyping_and_adaptation(self):
-        """Tests record width/depth subtyping and dynamic dictionary synthesis."""
+        """Tests record width/depth subtyping and dynamic dictionary
+        synthesis."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -357,7 +365,8 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
 
     def test_templates_instances_and_layout_conversion(self):
-        """Templates are instantiated at run time; instances describe generic layouts, which convert to native ones."""
+        """Templates are instantiated at run time; instances describe generic
+        layouts, which convert to native ones."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>

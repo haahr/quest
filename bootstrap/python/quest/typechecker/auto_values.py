@@ -1,5 +1,6 @@
-"""Elaboration of auto values (Cardelli's dynamic types, The Quest Language and System §4.6): their
-construction, inspect, and the closedness check on types used at run time."""
+"""Elaboration of auto values (Cardelli's dynamic types, The Quest Language and
+System §4.6): their construction, inspect, and the closedness check on types
+used at run time."""
 
 from __future__ import annotations
 
@@ -50,8 +51,9 @@ TypeError = QuestTypeError
 class AutoValueMixin(Checker):
     """Auto values and inspect.
 
-    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
-    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    A construct family of the checker (`checker.Checker`): its methods use the
+    checker's state and helpers, reach the dispatch (`check_expr`, `synth_expr`)
+    through it, and call the families below this one (checker.py) through
     `self`.
     """
 
@@ -62,8 +64,9 @@ class AutoValueMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedInspect:
-        """Elaborates an inspect expression on an auto value: its branches are checked against the expected type if
-        there is one; otherwise its type is the join of their synthesized types (Ok if it has none)."""
+        """Elaborates an inspect expression on an auto value: its branches are
+        checked against the expected type if there is one; otherwise its type is
+        the join of their synthesized types (Ok if it has none)."""
         target_typed = self.synth_expr(expr.target, env, loop_depth)
         target_type = target_typed.type_val.evaluate_lazily(env)
         if not isinstance(target_type, QAutoType):
@@ -104,9 +107,11 @@ class AutoValueMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> tuple[list[TypedInspectBranch], Optional[TypedExpr]]:
-        """Elaborates the branches of an inspect on an auto value (Cardelli §4.6).
+        """Elaborates the branches of an inspect on an auto value (Cardelli
+        §4.6).
 
-        In the branch for type T, the binders denote the auto value's components, with signature S[T].
+        In the branch for type T, the binders denote the auto value's
+        components, with signature S[T].
         """
         exact = not auto_matches_subtypes(auto_type)
         typed_branches: list[TypedInspectBranch] = []
@@ -149,14 +154,17 @@ class AutoValueMixin(Checker):
         return typed_branches, else_typed
 
     def _check_closed_type(self, t: QType, what: str, offset: int) -> None:
-        """Checks a type that is used at run time (Cardelli §4.6 requires it to be closed).
+        """Checks a type that is used at run time (Cardelli §4.6 requires it to
+        be closed).
 
-        A type that mentions type parameters of enclosing polymorphic functions is allowed: their run-time type
-        arguments are known when the function runs. Inside generic code such a type's values are laid out
-        generically, which agrees with the native layout at any type argument (every slot holds one word, and a
-        bounded type parameter's value is held at its own view), so they are used at a particular type argument as
-        they are, mutable data included. An abstract type projected from a package value (t.A) has no run-time
-        identity.
+        A type that mentions type parameters of enclosing polymorphic functions
+        is allowed: their run-time type arguments are known when the function
+        runs. Inside generic code such a type's values are laid out generically,
+        which agrees with the native layout at any type argument (every slot
+        holds one word, and a bounded type parameter's value is held at its own
+        view), so they are used at a particular type argument as they are,
+        mutable data included. An abstract type projected from a package value
+        (t.A) has no run-time identity.
         """
         check_no_package_types(t, what, offset)
 
@@ -167,8 +175,9 @@ class AutoValueMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedAuto:
-        """Checks an auto value auto [let A [HasKind] =] :W with Binding end against an Auto type. An auto value's
-        type cannot be synthesized: it needs an expected type."""
+        """Checks an auto value auto [let A [HasKind] =] :W with Binding end
+        against an Auto type. An auto value's type cannot be synthesized: it
+        needs an expected type."""
         if expected_type is None:
             raise TypeError(
                 "Cannot infer the type of an auto value; give it an expected Auto type "

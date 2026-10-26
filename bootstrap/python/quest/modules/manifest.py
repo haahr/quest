@@ -18,11 +18,12 @@ from quest.config.abi import ABI_VERSION, PRODUCER
 class ImportedModuleRef:
     """Reference to an imported module and its declared interface.
 
-    source is the module's source file as the importer found it, or "" if it has none (a builtin or prebuilt
-    module). The build engine builds that file: units under different include roots can share a canonical name,
-    so the name alone does not identify one. path is the module path the importer resolved (as written in its
-    import, or the name of an implicitly used module), so that a later build can check that it still resolves to
-    the same file.
+    source is the module's source file as the importer found it, or "" if it has
+    none (a builtin or prebuilt module). The build engine builds that file:
+    units under different include roots can share a canonical name, so the name
+    alone does not identify one. path is the module path the importer resolved
+    (as written in its import, or the name of an implicitly used module), so
+    that a later build can check that it still resolves to the same file.
     """
     name: str
     interface: str
@@ -32,12 +33,15 @@ class ImportedModuleRef:
 
 @dataclass
 class ImportedInterfaceRef:
-    """Reference to an imported interface: its canonical name, source file, and timestamp.
+    """Reference to an imported interface: its canonical name, source file, and
+    timestamp.
 
-    path is the interface path the importer resolved (as written in its import), so that a later build can check
-    that it still resolves to the same file. dir is "" for an interface the unit imports itself (resolved from the
-    unit's directory), and otherwise, for an interface the unit depends on through an imported interface's
-    imports, the directory of the interface that imports it, which the path was resolved from.
+    path is the interface path the importer resolved (as written in its import),
+    so that a later build can check that it still resolves to the same file. dir
+    is "" for an interface the unit imports itself (resolved from the unit's
+    directory), and otherwise, for an interface the unit depends on through an
+    imported interface's imports, the directory of the interface that imports
+    it, which the path was resolved from.
     """
     name: str
     source: str
@@ -55,8 +59,9 @@ class ModuleManifest:
     object: str
     imported_modules: list[ImportedModuleRef] = field(default_factory=list)
     imported_interfaces: list[ImportedInterfaceRef] = field(default_factory=list)
-    # The artifact contract version and compiler the artifacts were produced with (docs/build-process.md §5.2);
-    # None when read from a manifest that records none.
+    # The artifact contract version and compiler the artifacts were produced
+    # with (docs/build-process.md §5.2); None when read from a manifest that
+    # records none.
     abi: Optional[int] = ABI_VERSION
     producer: Optional[str] = PRODUCER
 
@@ -127,7 +132,8 @@ def read_qm(path: Path) -> Optional[ModuleManifest]:
 
 
 def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
-    """Checks whether the compiled artifacts for a module or main routine are out of date."""
+    """Checks whether the compiled artifacts for a module or main routine are
+    out of date."""
     if manifest.abi != ABI_VERSION:
         return True
     obj_path = Path(manifest.object)
@@ -145,7 +151,8 @@ def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
         except OSError:
             return True
     elif not src_path or not src_path.exists():
-        # Precompiled / binary mode: if .qm and .o exist without source, it is up to date
+        # Precompiled / binary mode: if .qm and .o exist without source, it is
+        # up to date
         return False
 
     # Transitive interface staleness check
@@ -169,15 +176,18 @@ def unit_staleness(
     o_path: Path,
     imports_changed: Optional[Callable[[ModuleManifest], Optional[str]]] = None,
 ) -> Optional[str]:
-    """Returns why a unit with a source file must be recompiled, or None if its artifacts are up to date.
+    """Returns why a unit with a source file must be recompiled, or None if its
+    artifacts are up to date.
 
-    Up to date means: the .qm, .c, and .o exist and are no older than the source (and the .o no older than the
-    .c), and the manifest records this source, the current ABI version, and no newer interface
-    (docs/build-process.md §5.2, §7.1). Artifacts are named by canonical unit name only, so the recorded source
-    tells a unit's artifacts from those of a same-named unit elsewhere.
+    Up to date means: the .qm, .c, and .o exist and are no older than the source
+    (and the .o no older than the .c), and the manifest records this source, the
+    current ABI version, and no newer interface (docs/build-process.md §5.2,
+    §7.1). Artifacts are named by canonical unit name only, so the recorded
+    source tells a unit's artifacts from those of a same-named unit elsewhere.
 
-    imports_changed, when given, says why the unit's imports would now resolve to other files than the manifest
-    records (for example after a change of include paths), or returns None if they would not
+    imports_changed, when given, says why the unit's imports would now resolve
+    to other files than the manifest records (for example after a change of
+    include paths), or returns None if they would not
     (graph.import_resolution_change).
     """
     if not qm_path.is_file() or not c_path.is_file() or not o_path.is_file():

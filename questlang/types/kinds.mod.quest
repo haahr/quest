@@ -44,9 +44,9 @@ export
 
     let noDefinition: maybe.T(Type) = maybe.none(:Type)
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. The kind memo
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Memo = Tuple kinds: hashMap.T(Int Kind) e: Env end
     Let MemoState = Tuple var active: maybe.T(Memo) end
@@ -61,9 +61,9 @@ export
             maybe.isNone(:env.T a) andif maybe.isNone(:env.T b)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Well-formed kinds, and kind checking
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec checkKindWellFormed(kind: Kind e: Env): Ok =
         begin
@@ -71,7 +71,8 @@ export
             case k.form
                 when kindType then ok
                 when kindPower with x then
-                    (* The bound of a power kind must be a proper type, of kind TYPE *)
+                    (* The bound of a power kind must be a proper type, of kind
+                     * TYPE *)
                     checkKind(x.bound model.typeKind e)
                 when kindAll with x then
                     begin
@@ -114,10 +115,12 @@ export
                 end
             end
         end
-    (* Kinds synthesized during the current top-level check, by node: elaborated types are DAGs (aliases are
-     * shared), so without it every shared subterm is checked again on every path to it. A node's kind depends only on
-     * the node and the binders in scope, which have unique ids, so a shared node has one kind wherever it occurs.
-     * Metavariables are not memoized, and a nested call with another environment bypasses the memo. *)
+    (* Kinds synthesized during the current top-level check, by node: elaborated
+     * types are DAGs (aliases are shared), so without it every shared subterm
+     * is checked again on every path to it. A node's kind depends only on the
+     * node and the binders in scope, which have unique ids, so a shared node
+     * has one kind wherever it occurs. Metavariables are not memoized, and a
+     * nested call with another environment bypasses the memo. *)
     and synthKind(t: Type e: Env): Kind =
         case t.form
             when typeMeta then synthUncached(t e)
@@ -332,9 +335,9 @@ export
             else kindError(:Kind "Cannot synthesize kind for unknown type node '" <> model.show(t) <> "'")
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Unfolding, and resolving bounds
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let unfoldHead(t: Type): maybe.T(Type) =
         case t.form
@@ -360,7 +363,8 @@ export
             else maybe.none(:Type)
         end
 
-    (* The id a variable is visited by: its symbol, or for a path type its node *)
+    (* The id a variable is visited by: its symbol, or for a path type its
+     * node *)
     let boundedVariable(t: Type): maybe.T(Tuple id: Int bound: Type end) =
         begin
             Let Bounded = Tuple id: Int bound: Type end

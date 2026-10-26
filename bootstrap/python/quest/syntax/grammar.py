@@ -81,8 +81,8 @@ ALL_SYNTAX_TARGETS: tuple[SyntaxTarget, ...] = tuple(
 # 2. AST Construction Helpers
 # ============================================================================
 
-# Postfix operator rules evaluate to functions from the operand to the resulting node;
-# a postfix chain applies them left to right.
+# Postfix operator rules evaluate to functions from the operand to the resulting
+# node; a postfix chain applies them left to right.
 PostfixOp = Callable[[Any], Any]
 
 
@@ -98,13 +98,14 @@ def _select_type(name: str) -> PostfixOp:
 
 
 def _call_args(bindings: tuple[Any, ...]) -> tuple[ast.Expr, ...]:
-    """Converts the phrases of a call's argument list to argument expressions."""
+    """Converts the phrases of a call's argument list to argument
+    expressions."""
     return tuple(argument.expr if isinstance(argument, ast.ExprStmt) else argument for argument in bindings)
 
 
 def _body(bindings: tuple[Any, ...], offset: int) -> ast.Expr:
-    """The expression for a body of phrases: a lone expression itself, otherwise a block
-    (including a lone declaration, which is not an expression)."""
+    """The expression for a body of phrases: a lone expression itself, otherwise
+    a block (including a lone declaration, which is not an expression)."""
     if len(bindings) == 1 and isinstance(bindings[0], ast.ExprStmt):
         return bindings[0].expr
     return ast.ExprBlock(bindings=bindings, offset=offset)
@@ -131,7 +132,8 @@ def _basename(path: str) -> str:
 
 
 def _build_array_expr(offset: int, bindings: tuple[Any, ...]) -> ast.ExprArray:
-    """Builds an ExprArray from bindings, extracting leading element type if present."""
+    """Builds an ExprArray from bindings, extracting leading element type if
+    present."""
     elem_type = None
     if bindings and isinstance(bindings[0], ast.TypeArgument):
         elem_type = bindings[0].type_val
@@ -140,7 +142,8 @@ def _build_array_expr(offset: int, bindings: tuple[Any, ...]) -> ast.ExprArray:
 
 
 def _tuple_binding(item: ast.LetValueBinding) -> ast.TupleBinding:
-    """The tuple component a `let` declares: a function's parameters become a function value."""
+    """The tuple component a `let` declares: a function's parameters become a
+    function value."""
     if item.params:
         fn_expr = ast.ExprFun(
             params=item.params,
@@ -166,7 +169,8 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
             case ast.TypeBinding() | ast.TypeBindingGroup() | ast.DefKindBinding():
                 result.append(item)
             case ast.LetValueBinding(is_rec=True):
-                # Recursive declarations keep their parameters and annotations, which type them before their values
+                # Recursive declarations keep their parameters and annotations,
+                # which type them before their values
                 result.append(item)
             case ast.LetValueBindingGroup(bindings=members) if members[0].is_rec:
                 result.append(item)
@@ -183,13 +187,15 @@ def _process_tuple_bindings(bindings: tuple[Any, ...]) -> tuple[Any, ...]:
             case ast.Expr():
                 result.append(ast.TupleBinding(name=None, value=item, offset=item.offset))
             case _:
-                # Phrases a tuple cannot hold (imports, modules, interfaces) are rejected by the typechecker
+                # Phrases a tuple cannot hold (imports, modules, interfaces) are
+                # rejected by the typechecker
                 result.append(item)
     return tuple(result)
 
 
 def _build_option_payload(with_bindings: Optional[tuple[Any, ...]], offset: int) -> Optional[ast.Expr]:
-    """Processes the phrases of an option's with clause (None if absent) into a payload."""
+    """Processes the phrases of an option's with clause (None if absent) into a
+    payload."""
     if not with_bindings:
         return None
     if (
@@ -202,11 +208,13 @@ def _build_option_payload(with_bindings: Optional[tuple[Any, ...]], offset: int)
 
 
 def _build_kind_all(all_token: Token, left_paren: Token, signatures: tuple[Any, ...], body: ast.Kind) -> ast.Kind:
-    """Curries ALL(A,B::K1 C::K2) K into ALL(A::K1) ALL(B::K1) ALL(C::K2) K (Cardelli's ALL(TypeSignature)Kind)."""
+    """Curries ALL(A,B::K1 C::K2) K into ALL(A::K1) ALL(B::K1) ALL(C::K2) K
+    (Cardelli's ALL(TypeSignature)Kind)."""
     kind = body
     for i in reversed(range(len(signatures))):
         sig = signatures[i]
-        # (A type formal's or type declaration's bound; any other item's parameter is a type)
+        # (A type formal's or type declaration's bound; any other item's
+        # parameter is a type)
         bounded = isinstance(sig, (ast.TypeFormal, ast.TypeBinding))
         kind = ast.KindAll(
             param_name=_signature_name(sig),
@@ -218,7 +226,8 @@ def _build_kind_all(all_token: Token, left_paren: Token, signatures: tuple[Any, 
 
 
 def _signature_name(sig: Any) -> Optional[str]:
-    """The name a signature item declares (None for an anonymous field), or "_" for a group of declarations."""
+    """The name a signature item declares (None for an anonymous field), or "_"
+    for a group of declarations."""
     match sig:
         case ast.TypeFormal(name=name) | ast.FieldSig(name=name) | ast.TypeBinding(name=name) | \
                 ast.DefKindBinding(name=name):
@@ -227,10 +236,11 @@ def _signature_name(sig: Any) -> Optional[str]:
 
 
 def _quantifier(sig: Any, default_offset: int) -> ast.Quantifier:
-    """The quantifier for one signature item of All(...) or of a curried parameter group.
+    """The quantifier for one signature item of All(...) or of a curried
+    parameter group.
 
-    A type parameter X <: B or X :: K keeps its kind; a value parameter x : T is bounded by
-    POWER(T).
+    A type parameter X <: B or X :: K keeps its kind; a value parameter x : T is
+    bounded by POWER(T).
     """
     match sig:
         case ast.TypeFormal():
@@ -251,7 +261,8 @@ def _quantifier(sig: Any, default_offset: int) -> ast.Quantifier:
 
 
 def _curried_type(param_groups: tuple[tuple[Any, ...], ...], result_type: ast.Type, offset: int) -> ast.Type:
-    """The type All(group1) ... All(groupN) result_type of a curried function signature."""
+    """The type All(group1) ... All(groupN) result_type of a curried function
+    signature."""
     current_type = result_type
     for group in reversed(param_groups):
         current_type = ast.TypeAll(
@@ -263,7 +274,8 @@ def _curried_type(param_groups: tuple[tuple[Any, ...], ...], result_type: ast.Ty
 
 
 def _split_params(group: tuple[Any, ...]) -> tuple[tuple[ast.TypeFormal, ...], tuple[ast.FormalParam, ...]]:
-    """Splits one parenthesized parameter group into its type and value parameters."""
+    """Splits one parenthesized parameter group into its type and value
+    parameters."""
     type_params = tuple(sig for sig in group if isinstance(sig, ast.TypeFormal))
     value_params = tuple(
         ast.FormalParam(name=sig.name, type_annot=sig.type_sig, mode=sig.mode, offset=sig.offset)
@@ -279,7 +291,8 @@ def _curried_fun(
     body: ast.Expr,
     offset: int,
 ) -> ast.Expr:
-    """Nests one ExprFun per parameter group; the return type annotates the innermost one."""
+    """Nests one ExprFun per parameter group; the return type annotates the
+    innermost one."""
     if not param_groups:
         return ast.ExprFun(params=(), return_type=return_type, body=body, type_params=(), offset=offset)
     current_body = body
@@ -363,10 +376,12 @@ def _build_type_decl(
 def _build_type_binding(
     keyword_token: Token, rec_token: Optional[Token], decls: tuple[ast.TypeBinding, ...], is_def: bool
 ) -> ast.TypeBinding | ast.TypeBindingGroup:
-    """A `Let [Rec] TypeDecl {and TypeDecl}` or `Def [Rec] TypeDecl {and TypeDecl}` phrase.
+    """A `Let [Rec] TypeDecl {and TypeDecl}` or `Def [Rec] TypeDecl {and
+    TypeDecl}` phrase.
 
-    One declaration is a TypeBinding positioned at its keyword; two or more are a TypeBindingGroup positioned at the
-    keyword, whose members share its Rec and Def and keep their own positions.
+    One declaration is a TypeBinding positioned at its keyword; two or more are
+    a TypeBindingGroup positioned at the keyword, whose members share its Rec
+    and Def and keep their own positions.
     """
     is_rec = bool(rec_token)
     if len(decls) == 1:
@@ -380,8 +395,9 @@ def _build_value_binding(
 ) -> ast.LetValueBinding | ast.LetValueBindingGroup:
     """A `let [rec] ValueDecl {and ValueDecl}` phrase.
 
-    One declaration is a LetValueBinding positioned at its keyword; two or more are a LetValueBindingGroup positioned
-    at the keyword, whose members share its rec and keep their own positions.
+    One declaration is a LetValueBinding positioned at its keyword; two or more
+    are a LetValueBindingGroup positioned at the keyword, whose members share
+    its rec and keep their own positions.
     """
     is_rec = bool(rec_token)
     if len(decls) == 1:
@@ -391,7 +407,8 @@ def _build_value_binding(
 
 
 # --- case / inspect / try branches ---
-# Each `when` clause matches as a tuple that is unpacked into one of these builders.
+# Each `when` clause matches as a tuple that is unpacked into one of these
+# builders.
 
 def _case_branch(when_token: Token, tags: tuple[str, ...], binder: Any, body: tuple[Any, ...]) -> ast.CaseBranch:
     binder_token, binder_type = binder or (None, None)
@@ -454,7 +471,8 @@ def build_quest_grammar() -> None:
     Rep = Repeated
 
     def P(kind: TokenKind, lexeme: str | None = None) -> MatchToken:
-        """A token that must match but is not passed to the rule's action (punctuation, etc.)."""
+        """A token that must match but is not passed to the rule's action
+        (punctuation, etc.)."""
         return MatchToken(kind, lexeme, silent=True)
 
     # ------------------------------------------------------------------------
@@ -636,7 +654,8 @@ def build_quest_grammar() -> None:
             offset=module_ident.offset,
         ),
     )
-    # ide (Named type: Int, Real, Bool, String, Char, Ok, Exception, or User Type)
+    # ide (Named type: Int, Real, Bool, String, Char, Ok, Exception, or User
+    # Type)
     PRIMARY_TYPE.add_rule(
         (T(TK.IDENT),),
         lambda ident_token: ast.TypePath(path=(ident_token.lexeme,), offset=ident_token.offset),
@@ -685,7 +704,8 @@ def build_quest_grammar() -> None:
             _build_type_binding(def_token, rec_token, type_declarations, is_def=True),
         ),
     )
-    # [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals; plain fields have no groups)
+    # [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals; plain fields
+    # have no groups)
     TYPE_SIGNATURE.add_rule(
         (
             Opt(T(TK.KW_VAR)),
@@ -706,12 +726,14 @@ def build_quest_grammar() -> None:
             for name in (identifiers or ("_",))
         ),
     )
-    # Operator parameters (Fun and Let X(...)) are type formals only: X::K or X <: T
+    # Operator parameters (Fun and Let X(...)) are type formals only:
+    # X::K or X <: T
     TYPE_FORMALS.add_rule(
         (Rep(TYPE_FORMAL),),
         lambda formal_groups: tuple(formal for group in formal_groups for formal in group),
     )
-    # HasMutType (Anonymous tuple/signature field :Int or :Var(Int) or :Out(Int))
+    # HasMutType (Anonymous tuple/signature field :Int or :Var(Int) or
+    # :Out(Int))
     TYPE_SIGNATURE.add_rule((HAS_MUT_TYPE,), lambda mut_field: (mut_field,))
 
     # [var] IdeList HasType (Record/Variant type signatures)
@@ -724,7 +746,8 @@ def build_quest_grammar() -> None:
         ),
     )
 
-    # IdeList [with Signature end] (the tags are matched as tokens for their offsets)
+    # IdeList [with Signature end] (the tags are matched as tokens for their
+    # offsets)
     OPTION_SIGNATURE.add_rule(
         (Rep(SepBy(IDE, P(TK.COMMA)), Opt(P(TK.KW_WITH), SIGNATURE, P(TK.KW_END))),),
         lambda options: tuple(
@@ -815,7 +838,8 @@ def build_quest_grammar() -> None:
         lambda ext_token, str_token: ast.ExprExternal(symbol=str_token.value, offset=ext_token.offset),
     )
 
-    # if Binding [then Binding] {elsif Binding [then Binding]} [else Binding] end
+    # if Binding [then Binding] {elsif Binding [then Binding]}
+    # [else Binding] end
     PRIMARY_VALUE.add_rule(
         (
             T(TK.KW_IF),
@@ -1065,7 +1089,8 @@ def build_quest_grammar() -> None:
     # { Value }
     PRIMARY_VALUE.add_rule((P(TK.LBRACE), VALUE, P(TK.RBRACE)), lambda inner_expr: inner_expr)
 
-    # Monadic Operators: not, extent, ordinal (Cardelli §4.2, §4.3, §4.5), applied or stand-alone
+    # Monadic Operators: not, extent, ordinal (Cardelli §4.2, §4.3, §4.5),
+    # applied or stand-alone
     for keyword in (TK.KW_NOT, TK.KW_EXTENT, TK.KW_ORDINAL):
         PRIMARY_VALUE.add_rule(
             (T(keyword), POSTFIX_VALUE),
@@ -1122,7 +1147,8 @@ def build_quest_grammar() -> None:
     )
 
     # ------------------------------------------------------------------------
-    # Case, Inspect, Try Branches: {when Pattern [with Binder] then Binding} [else Binding]
+    # Case, Inspect, Try Branches:
+    # {when Pattern [with Binder] then Binding} [else Binding]
     # Each yields (branches, else_body).
     # ------------------------------------------------------------------------
     for branches_target, pattern, binder, build_branch in (
@@ -1224,7 +1250,8 @@ def build_quest_grammar() -> None:
         (T(TK.KW_LET), Opt(T(TK.KW_REC)), SepBy(VALUE_DECL, P(TK.KW_AND))),
         _build_value_binding,
     )
-    # var ValueDecl (allows 'var x = 0' inside tuples, blocks, or module phrases)
+    # var ValueDecl (allows 'var x = 0' inside tuples, blocks, or module
+    # phrases)
     PHRASE.add_rule(
         (T(TK.KW_VAR), VALUE_DECL),
         lambda var_token, val_declaration: dataclasses.replace(
@@ -1321,7 +1348,8 @@ def build_quest_grammar() -> None:
 
     IMPORT.add_rule((Rep(IMPORT_ITEM),), lambda items: items)
 
-    # Semicolons appear only here, ending top-level phrases ({[Phrase] ";"} in the paper), and are optional
+    # Semicolons appear only here, ending top-level phrases
+    # ({[Phrase] ";"} in the paper), and are optional
     PROGRAM.add_rule(
         (Rep(P(TK.SEMICOLON)), Rep(PHRASE, Rep(P(TK.SEMICOLON)))),
         lambda phrases: ast.Program(phrases=phrases, offset=phrases[0].offset if phrases else 0),
@@ -1333,7 +1361,8 @@ build_quest_grammar()
 
 
 def resolve_syntax_target(target: SyntaxTarget | str | None) -> SyntaxTarget:
-    """Resolves a start symbol string or SyntaxTarget to a grammar SyntaxTarget."""
+    """Resolves a start symbol string or SyntaxTarget to a grammar
+    SyntaxTarget."""
     if target is None:
         return PROGRAM
     if isinstance(target, SyntaxTarget):
@@ -1361,7 +1390,8 @@ def parse_quest_program(
     source_map: SourceMap,
     target: SyntaxTarget | str | None = None,
 ) -> Any:
-    """Convenience helper to parse tokens using the standard Quest grammar starting at target."""
+    """Convenience helper to parse tokens using the standard Quest grammar
+    starting at target."""
     syntax_target = resolve_syntax_target(target)
     parser = Parser(tokens, source_map)
     return parser.parse(syntax_target)

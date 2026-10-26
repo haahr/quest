@@ -1,13 +1,17 @@
 """Lowering from the typed AST to Core IR (docs/ir.md §12, step 3).
 
-value(e) lowers an expression, emitting statements into the current body, and returns the atom holding its value;
-effect(e) lowers one for its effect alone. An expression producing a value on several paths (if, case, inspect, try)
-joins them through a join point, after which lowering continues in the join point's continuation. After a terminator
-(raise, exit), lowering continues in a discarded body, so that no statement follows a terminator.
+value(e) lowers an expression, emitting statements into the current body, and
+returns the atom holding its value; effect(e) lowers one for its effect alone.
+An expression producing a value on several paths (if, case, inspect, try) joins
+them through a join point, after which lowering continues in the join point's
+continuation. After a terminator (raise, exit), lowering continues in a
+discarded body, so that no statement follows a terminator.
 
-Every typed-AST symbol is mapped to one IR variable when its binder is lowered; uses look the variable up by symbol.
-A use of a variable whose binder is not in the unit (an imported module, a module's member) is a module reference or a
-module member, and a use of a built-in value is a constant or a built-in function.
+Every typed-AST symbol is mapped to one IR variable when its binder is lowered;
+uses look the variable up by symbol. A use of a variable whose binder is not in
+the unit (an imported module, a module's member) is a module reference or a
+module member, and a use of a built-in value is a constant or a built-in
+function.
 """
 
 from __future__ import annotations
@@ -104,8 +108,9 @@ from quest.types import (
 )
 
 def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QType]]:
-    """The parameter types of a function's variable's type (var_t), as written, for a function of count parameters
-    and type fun_t, in the function's own type parameters; None when they are not known."""
+    """The parameter types of a function's variable's type (var_t), as written,
+    for a function of count parameters and type fun_t, in the function's own
+    type parameters; None when they are not known."""
     fun_quants = fun_t.quantifiers if isinstance(fun_t, QAllType) else ()
     quants, inner = collect_fun_quantifiers(var_t)
     if len(quants) != len(fun_quants) or not isinstance(inner, QFunType) or len(inner.params) != count:
@@ -115,7 +120,8 @@ def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QT
 
 
 def _option_cases(t: QType) -> Optional[tuple[str, ...]]:
-    """The names of the cases of t as written, if it is an option type (or a type parameter bounded by one)."""
+    """The names of the cases of t as written, if it is an option type (or a
+    type parameter bounded by one)."""
     try:
         return option_case_names(t)
     except ValueError:
@@ -123,12 +129,14 @@ def _option_cases(t: QType) -> Optional[tuple[str, ...]]:
 
 
 _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent", "ordinal"}
-# The standard library's array operations, which are lowered to the IR's (array_op)
+# The standard library's array operations, which are lowered to the IR's
+# (array_op)
 _ARRAY_OPS = frozenset({"new", "size", "get", "set"})
 
 
 class LoweringError(Exception):
-    """A typed program the lowering does not handle (a gap in the lowering, not an error in the program)."""
+    """A typed program the lowering does not handle (a gap in the lowering, not
+    an error in the program)."""
 
 
 class _Lowerer:
@@ -140,18 +148,22 @@ class _Lowerer:
         self.env = env
         self.echo = echo
         self.print_result = print_result
-        # The source file's map, in which the offsets of the nodes that can raise are (docs/exceptions.md §3.1)
+        # The source file's map, in which the offsets of the nodes that can
+        # raise are (docs/exceptions.md §3.1)
         self.source_map = env.source_map
-        # The frame of the code being lowered, which names the functions it makes (docs/exceptions.md §2.3)
+        # The frame of the code being lowered, which names the functions it
+        # makes (docs/exceptions.md §2.3)
         self.frame = MAIN_FRAME
         self.body = ir.Body()
         self.loops: list[str] = []
         self.label_counts: dict[str, int] = {}
         self.imports: list[ir.Import] = []
-        # The modules the unit defines and imports, by the symbols their names bind
+        # The modules the unit defines and imports, by the symbols their names
+        # bind
         self.module_refs: dict[int, ir.ModuleRef] = {}
-        # Exceptions made inside an expression, whose names the enclosing scope sees: made before the binding
-        # containing them (make_scope_exceptions), and not yet reached where they are written
+        # Exceptions made inside an expression, whose names the enclosing scope
+        # sees: made before the binding containing them (make_scope_exceptions),
+        # and not yet reached where they are written
         self.made: set[int] = set()
 
     # Building
@@ -160,7 +172,8 @@ class _Lowerer:
         self.body.statements.append(statement)
 
     def terminate(self, terminator) -> None:
-        """Emits a terminator; what follows it is unreachable, and goes into a body that is discarded."""
+        """Emits a terminator; what follows it is unreachable, and goes into a
+        body that is discarded."""
         self.emit(terminator)
         self.body = ir.Body()
 
@@ -212,7 +225,8 @@ class _Lowerer:
     # Values
 
     def value(self, e: TypedExpr, into: Optional[ir.Var] = None) -> ir.Atom:
-        """Lowers e, returning the atom that holds its value (into, if given)."""
+        """Lowers e, returning the atom that holds its value (into, if
+        given)."""
         match e:
             case TypedInt(value=v):
                 return self.copy_into(self.const(v, INT_TYPE), into)
@@ -328,7 +342,8 @@ class _Lowerer:
         var = self.vars.get(sym_id)
         if var is not None:
             if var.mutable:
-                # A mutable variable not read through a dereference is passed by address (@x)
+                # A mutable variable not read through a dereference is passed by
+                # address (@x)
                 return self.let(ir.AddrVar(var), e.type_val, into)
             return self.copy_into(var, into)
         if sym_id in self.builtins:
@@ -343,7 +358,8 @@ class _Lowerer:
         raise LoweringError(f"variable '{e.name}' (#{sym_id}) has no binder in the unit")
 
     def module_ref(self, e: TypedExpr) -> Optional[ir.ModuleRef]:
-        """The module e refers to, if it is a reference to a module rather than a value."""
+        """The module e refers to, if it is a reference to a module rather than
+        a value."""
         if not isinstance(e, TypedVar) or e.symbol.symbol_id in self.vars:
             return None
         module = self.module_refs.get(e.symbol.symbol_id)
@@ -358,7 +374,8 @@ class _Lowerer:
         return module
 
     def callee(self, func: TypedExpr) -> tuple[Optional[ir.Var], Optional[ir.ModuleRef], Optional[str]]:
-        """What a call or type application applies: a variable, or a module's member."""
+        """What a call or type application applies: a variable, or a module's
+        member."""
         if isinstance(func, TypedSelect) and (module := self.module_ref(func.target)) is not None:
             return None, module, func.field
         atom = self.value(func)
@@ -389,8 +406,9 @@ class _Lowerer:
 
     def array_op(self, member: str, args: tuple[ir.Atom, ...], t: QType, into: Optional[ir.Var],
                  offset: Optional[int]) -> ir.Atom:
-        """A call of the standard library's arrayOp, as the array operation it is (arrays of records and variants,
-        stored wide, could not be passed to the generic functions without copying). Its errors are located at the
+        """A call of the standard library's arrayOp, as the array operation it
+        is (arrays of records and variants, stored wide, could not be passed to
+        the generic functions without copying). Its errors are located at the
         call (offset)."""
         match member:
             case "new":
@@ -405,8 +423,9 @@ class _Lowerer:
         raise LoweringError(f"arrayOp.{member}")
 
     def argument(self, a: TypedExpr) -> ir.Atom:
-        # A var or out argument is an address: a mutable variable (TypedVar) or a reference node, which value() lowers
-        # to addresses; a value argument is a value
+        # A var or out argument is an address: a mutable variable (TypedVar) or
+        # a reference node, which value() lowers to addresses; a value argument
+        # is a value
         return self.value(a)
 
     def tuple_index(self, tuple_type: QType, index: int, fld: Optional[str]) -> int:
@@ -442,7 +461,8 @@ class _Lowerer:
                 type_components.append((element.name, element.witness_type))
                 continue
             if i in rec_first:
-                # Recursive components: functions that see one another, through their labels
+                # Recursive components: functions that see one another, through
+                # their labels
                 group = rec_first[i]
                 functions = []
                 for k in group:
@@ -462,8 +482,9 @@ class _Lowerer:
             if label is None:
                 values[i] = self.value(element)
                 continue
-            # A label names its component's value for the later components. The members of a simultaneous group
-            # refer to the bindings their labels shadow by other symbols, so binding each label as its value is
+            # A label names its component's value for the later components. The
+            # members of a simultaneous group refer to the bindings their labels
+            # shadow by other symbols, so binding each label as its value is
             # computed is the same as binding them all after the group
             var = self.bind_symbol(label, element.type_val)
             values[i] = self.value(element, var)
@@ -475,7 +496,8 @@ class _Lowerer:
         return self.let(ir.MakeTuple(tuple(atoms), tuple(type_components)), e.type_val, into)
 
     def joined(self, e: TypedExpr, into: Optional[ir.Var]) -> ir.Atom:
-        """A value produced on several paths: each path jumps to a join point with its value."""
+        """A value produced on several paths: each path jumps to a join point
+        with its value."""
         result = into if into is not None else self.fresh("r", e.type_val)
         label = self.label("k")
         join = ir.Join(label, (result,), ir.Body(), ir.Body())
@@ -588,7 +610,8 @@ class _Lowerer:
         self.loops.pop()
 
     def branches(self, e: TypedExpr, lower_branch) -> None:
-        """Lowers the branches of an if, case, inspect, or try, each with lower_branch (into the branch's body)."""
+        """Lowers the branches of an if, case, inspect, or try, each with
+        lower_branch (into the branch's body)."""
         match e:
             case TypedIf(cond=cond, then_branch=then_e, else_branch=else_e):
                 c = self.value(cond)
@@ -632,8 +655,9 @@ class _Lowerer:
                 self.emit(ir.Inspect(v, tuple(cases), else_body, auto_type, e.offset))
             case TypedTry(body=body_e, branches=branches, else_branch=else_e):
                 exception = self.fresh("e", EXCEPTION_TYPE)
-                # What the handler catches, when that is known before the try (docs/exceptions.md §5.1): its
-                # patterns' values, computed before the try when computing them there gives the same values
+                # What the handler catches, when that is known before the try
+                # (docs/exceptions.md §5.1): its patterns' values, computed
+                # before the try when computing them there gives the same values
                 patterns: Optional[list[ir.Atom]] = None
                 catching = ir.CATCH_UNKNOWN
                 if else_e is not None:
@@ -651,8 +675,9 @@ class _Lowerer:
                 raise LoweringError(f"branches of {type(e).__name__}")
 
     def pure_pattern(self, e: TypedExpr) -> bool:
-        """Whether a try's pattern has the same value computed before the try as in its handler: an immutable
-        variable already bound, or a module's member."""
+        """Whether a try's pattern has the same value computed before the try as
+        in its handler: an immutable variable already bound, or a module's
+        member."""
         match e:
             case TypedVar(symbol=symbol):
                 var = self.vars.get(symbol.symbol_id)
@@ -663,8 +688,9 @@ class _Lowerer:
 
     def handler(self, exception: ir.Var, branches, else_e, lower_branch,
                 patterns: Optional[list[ir.Atom]] = None) -> None:
-        """A try's handler: the branches' patterns (or their values, computed before the try) tested in order against
-        the exception, else the else branch, or the exception raised again."""
+        """A try's handler: the branches' patterns (or their values, computed
+        before the try) tested in order against the exception, else the else
+        branch, or the exception raised again."""
         if not branches:
             if else_e is not None:
                 lower_branch(else_e)
@@ -686,10 +712,11 @@ class _Lowerer:
     # Functions
 
     def function(self, e: TypedFun, var: ir.Var, binder: Optional[str] = None) -> ir.Function:
-        """The function e, bound to binder if it is let-bound. A function checked against its variable's type may
-        annotate a value parameter with a supertype of the type's (contravariance): its parameter has the variable's
-        type's, which callers pass, and a let at its entry binds the annotation's (which the represent pass
-        converts)."""
+        """The function e, bound to binder if it is let-bound. A function
+        checked against its variable's type may annotate a value parameter with
+        a supertype of the type's (contravariance): its parameter has the
+        variable's type's, which callers pass, and a let at its entry binds the
+        annotation's (which the represent pass converts)."""
         trace_name = frame_name(self.frame, binder)
         t = e.type_val
         type_params: tuple[ir.TypeParam, ...] = ()
@@ -725,7 +752,8 @@ class _Lowerer:
             if isinstance(e.body, TypedExternal):
                 result = self.external_call(e.body, t, params, result_t)
             else:
-                # The body is a scope of its own: exceptions made inside it are visible throughout it
+                # The body is a scope of its own: exceptions made inside it are
+                # visible throughout it
                 self.make_scope_exceptions(e.body)
                 result = self.value(e.body)
             if not self.body.terminated:
@@ -735,7 +763,8 @@ class _Lowerer:
         return ir.Function(var, type_params, tuple(params), result_t, body, trace_name=trace_name)
 
     def external_call(self, ext: TypedExternal, t: QType, params, result_t: QType) -> ir.Atom:
-        """The body of a function defined as an external C function: a call of it."""
+        """The body of a function defined as an external C function: a call of
+        it."""
         quants = t.quantifiers if isinstance(t, QAllType) else ()
         type_args = tuple(QTypeVar(q.name, q.symbol_id, q.bound) for q in quants)
         args = []
@@ -750,8 +779,9 @@ class _Lowerer:
     # Bindings
 
     def make_scope_exceptions(self, b: TypedNode) -> None:
-        """Makes, before b, the named exceptions b makes for its scope (scope_exceptions), which the expressions
-        that make them then refer to."""
+        """Makes, before b, the named exceptions b makes for its scope
+        (scope_exceptions), which the expressions that make them then refer
+        to."""
         for exc in scope_exceptions(b):
             if exc.symbol.symbol_id in self.vars:
                 continue
@@ -778,7 +808,8 @@ class _Lowerer:
                 else:
                     if b.is_rec:
                         raise LoweringError("recursive values other than functions")
-                    # The value is lowered before the variable is bound, so that it refers to any binding it shadows
+                    # The value is lowered before the variable is bound, so that
+                    # it refers to any binding it shadows
                     var = ir.Var(symbol.name, symbol.type_val)
                     self.value(value, var)
                     if symbol.symbol_id in self.vars:
@@ -798,8 +829,9 @@ class _Lowerer:
                     for m in members:
                         self.emit(ir.EchoText(f"let {m.name}:{_display(m.symbol.type_val)} = <fun>"))
             case TypedLetValueGroup(members=members):
-                # Simultaneous: every member's value refers to the bindings the members shadow, which their symbols
-                # keep apart, so lowering them in order and binding each as it is computed is the same
+                # Simultaneous: every member's value refers to the bindings the
+                # members shadow, which their symbols keep apart, so lowering
+                # them in order and binding each as it is computed is the same
                 for m in members:
                     self.binding(m, show)
             case TypedExprStmt(expr=expr):
@@ -829,8 +861,9 @@ class _Lowerer:
                 raise LoweringError(f"lowering binding {type(b).__name__} is not implemented")
 
     def rec_values(self, members, show: bool) -> None:
-        """Recursive values (and functions) declared together: each member's value is computed into its variable in
-        a let rec, where closures may refer to all of them."""
+        """Recursive values (and functions) declared together: each member's
+        value is computed into its variable in a let rec, where closures may
+        refer to all of them."""
         vars_ = tuple(self.bind_symbol(m.symbol) for m in members)
         group = ir.LetRec(vars_, ir.Body())
         self.emit(group)
@@ -870,7 +903,8 @@ class _Lowerer:
     # Units
 
     def make_import(self, name: str, module_path: str, canonical_path: str, interface_path: str) -> ir.Import:
-        """An imported module, with the record type of the interface it is imported through."""
+        """An imported module, with the record type of the interface it is
+        imported through."""
         scope = (
             self.env.lookup_module(canonical_path)
             or self.env.lookup_module(module_path)
@@ -938,7 +972,8 @@ def _display(t: QType) -> str:
 
 
 def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
-    """Lowers a module file's typed module to a Core IR unit of the module alone, with its exports."""
+    """Lowers a module file's typed module to a Core IR unit of the module
+    alone, with its exports."""
     unit = _Lowerer(env, False, False).program(TypedProgram(phrases=(mod,)))
     module = unit.modules[0]
     exports: dict[str, ir.Var] = {}
@@ -958,7 +993,8 @@ def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
 
 
 def _add_module_record(module: ir.Module) -> None:
-    """Ends a module's initializer by making its record: of its members, or of its exports (docs/ir.md §3)."""
+    """Ends a module's initializer by making its record: of its members, or of
+    its exports (docs/ir.md §3)."""
     fields = module.members if module.exports is None else module.exports
     rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
     module.record = ir.Var(f"{module.name}_record", rec_t)

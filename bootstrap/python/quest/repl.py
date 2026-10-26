@@ -2,11 +2,15 @@
 
 Implements Phase 3.6 of the Quest bootstrap compiler:
 - Persistent CompilerContext (Environment and RuntimeEnvironment).
-- Semicolon-optional multi-line input buffering with unexpected-EOF continuation detection.
-- 4-column visual alignment: '>>  ' (main), '    ' (continuation), '==  ' (response).
-- Line editing and history in ~/.quest_history through io/readline's externals (interpreter/builtins), which a
-  dumb or emacs terminal turns off, as compiled code's do (docs/self-hosted-repl.md §1).
-- Clean rollback of environment state, units included, on typecheck error or runtime exception (QuestREPL.evaluate).
+- Semicolon-optional multi-line input buffering with unexpected-EOF continuation
+  detection.
+- 4-column visual alignment: '>>  ' (main), '    ' (continuation), '==  '
+  (response).
+- Line editing and history in ~/.quest_history through io/readline's externals
+  (interpreter/builtins), which a dumb or emacs terminal turns off, as compiled
+  code's do (docs/self-hosted-repl.md §1).
+- Clean rollback of environment state, units included, on typecheck error or
+  runtime exception (QuestREPL.evaluate).
 """
 
 from __future__ import annotations
@@ -44,7 +48,8 @@ HISTORY_LENGTH = 1000
 
 
 def read_input_line(prompt: str) -> str:
-    """A line of input, through io/readline: EOFError at the end of the input, and KeyboardInterrupt for Ctrl-C."""
+    """A line of input, through io/readline: EOFError at the end of the input,
+    and KeyboardInterrupt for Ctrl-C."""
     try:
         return readline_read_line(prompt)
     except QuestException as exc:
@@ -56,8 +61,9 @@ def read_input_line(prompt: str) -> str:
 
 
 def _setup_history(history_path: Path) -> bool:
-    """Reads the history file and arranges for it to be written at exit, if lines are being edited; returns whether
-    they are, and so whether to keep a history."""
+    """Reads the history file and arranges for it to be written at exit, if
+    lines are being edited; returns whether they are, and so whether to keep a
+    history."""
     if not readline_editing():
         return False
     try:
@@ -76,13 +82,17 @@ def _setup_history(history_path: Path) -> bool:
 
 
 def check_input_completeness(buffer: str) -> tuple[bool, Optional[str]]:
-    """Analyzes buffer to check whether more lines are needed to complete a phrase.
+    """Analyzes buffer to check whether more lines are needed to complete a
+    phrase.
 
     Returns:
         (is_incomplete, error_message):
-        - (True, None) if the input reached EOF while expecting more tokens or unclosed delimiters.
-        - (False, None) if the input is a syntactically valid complete phrase (or empty).
-        - (False, err_msg) if the input has a definite syntax error on a non-EOF token.
+        - (True, None) if the input reached EOF while expecting more tokens or
+          unclosed delimiters.
+        - (False, None) if the input is a syntactically valid complete phrase
+          (or empty).
+        - (False, err_msg) if the input has a definite syntax error on a non-EOF
+          token.
     """
     stripped = buffer.strip()
     if not stripped:
@@ -129,7 +139,8 @@ class QuestREPL:
         self.stderr_write = stderr_write or sys.stderr.write
 
     def format_phrase_output(self, phrase: TypedBinding | TypedExpr, val: QValue) -> Optional[str]:
-        """Formats an evaluated phrase with '==  ' prefix and 4-space aligned continuations."""
+        """Formats an evaluated phrase with '==  ' prefix and 4-space aligned
+        continuations."""
         raw = format_interactive_result(phrase, val)
         if not raw:
             return None
@@ -140,16 +151,19 @@ class QuestREPL:
         return "\n".join([first_line] + cont_lines)
 
     def evaluate(self, text: str) -> PipelineResult:
-        """Compiles and runs one input as a transaction: an input that fails leaves the session as it found it.
+        """Compiles and runs one input as a transaction: an input that fails
+        leaves the session as it found it.
 
-        Each input is a compilation session of its own on the context's unit graph (UnitGraph.new_session), so that
-        its imports find files created since the last input; units loaded by earlier inputs stay loaded. When the
-        input fails, in type checking or at run time, the type checker's environment is restored, units and all
-        (the units it loaded are forgotten, so that importing them again elaborates them again), and so is the
-        runtime environment: its bindings, the frame it continues in, and the values of the modules it has run (so
-        that they run again). The
-        runtime environment holds the type checker's unit graph itself, which restoring changes in place
-        (docs/repl.md §5).
+        Each input is a compilation session of its own on the context's unit
+        graph (UnitGraph.new_session), so that its imports find files created
+        since the last input; units loaded by earlier inputs stay loaded. When
+        the input fails, in type checking or at run time, the type checker's
+        environment is restored, units and all (the units it loaded are
+        forgotten, so that importing them again elaborates them again), and so
+        is the runtime environment: its bindings, the frame it continues in, and
+        the values of the modules it has run (so that they run again). The
+        runtime environment holds the type checker's unit graph itself, which
+        restoring changes in place (docs/repl.md §5).
         """
         ctx = self.context
         env_snap = ctx.env.snapshot()
@@ -161,14 +175,15 @@ class QuestREPL:
 
         if result.has_errors or not result.success:
             ctx.env.restore(env_snap)
-            # A phrase that rebinds a name continues in a new frame (eval_scoped_binding); go back to the frame the
-            # phrase started in
+            # A phrase that rebinds a name continues in a new frame
+            # (eval_scoped_binding); go back to the frame the phrase started in
             ctx.runtime_env = runtime_env
             runtime_env.restore(runtime_snap)
         return result
 
     def run(self) -> int:
-        """Executes the main interactive REPL loop until EOF (Ctrl-D) or exit."""
+        """Executes the main interactive REPL loop until EOF (Ctrl-D) or
+        exit."""
         keeps_history = self.input_fn is read_input_line and _setup_history(Path.home() / HISTORY_FILE_NAME)
 
         buffer_lines: list[str] = []

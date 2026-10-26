@@ -1,7 +1,8 @@
 """Quest Module and Interface File Loader.
 
-Implements file-based loading of interfaces and modules for the Quest compiler and the type checker (the interpreter
-evaluates the modules it loads, load_module_for_interpreter in quest.interpreter.treewalk):
+Implements file-based loading of interfaces and modules for the Quest compiler
+and the type checker (the interpreter evaluates the modules it loads,
+load_module_for_interpreter in quest.interpreter.treewalk):
 - Resolves interface files as <name.lower()>.int.quest or <name.lower()>.qi
 - Resolves module files as <name.lower()>.mod.quest
 - Search order: current file directory first, then include paths (-I)
@@ -52,9 +53,11 @@ if TYPE_CHECKING:
 
 
 def interface_artifact_root(name: str, env: Environment) -> Optional[Path]:
-    """The directory under which interface `name`, imported from env.current_dir, has its artifacts when env loads it
-    from its .qi (load_interface): the build directory, or in a standalone C compilation (no build directory), the
-    search root of its source. None when env elaborates interfaces from source."""
+    """The directory under which interface `name`, imported from
+    env.current_dir, has its artifacts when env loads it from its .qi
+    (load_interface): the build directory, or in a standalone C compilation (no
+    build directory), the search root of its source. None when env elaborates
+    interfaces from source."""
     return resolved_artifact_root(env, resolve_interface(name, env))
 
 
@@ -66,8 +69,9 @@ def resolved_artifact_root(env: Environment, resolved: Resolved) -> Optional[Pat
     if not is_c_compilation_mode(env):
         return None
     if resolved.source is not None:
-        # Standalone compilation: artifacts go next to the source, under the search root that gives
-        # it its canonical name (adding the source's own directory as a root would change that name).
+        # Standalone compilation: artifacts go next to the source, under the
+        # search root that gives it its canonical name (adding the source's own
+        # directory as a root would change that name).
         return resolved.source.parents[len(Path(resolved.canonical_name).parts) - 1].resolve()
     if resolved.prebuilt is not None and "/" in resolved.path:
         rel_parts = len(Path(resolved.path.lower()).parts)
@@ -76,12 +80,15 @@ def resolved_artifact_root(env: Environment, resolved: Resolved) -> Optional[Pat
 
 
 def load_interface(name: str, env: Environment) -> Scope:
-    """Loads, validates, and elaborates interface `name`, as imported from env.current_dir.
+    """Loads, validates, and elaborates interface `name`, as imported from
+    env.current_dir.
 
-    An interface with a file is the one in that file: interfaces loaded from files (or builtins with sources in lib/)
-    are shared by all importers, as units of env.units keyed by canonical name (docs/modules.md §2.3). Only an
-    interface without a file (a builtin, or one declared in the program) is found by the name registered for it. The
-    name is registered for the importer.
+    An interface with a file is the one in that file: interfaces loaded from
+    files (or builtins with sources in lib/) are shared by all importers, as
+    units of env.units keyed by canonical name (docs/modules.md §2.3). Only an
+    interface without a file (a builtin, or one declared in the program) is
+    found by the name registered for it. The name is registered for the
+    importer.
     """
     norm_name = name.lower()
     resolved = resolve_interface(name, env)
@@ -117,7 +124,8 @@ def load_interface(name: str, env: Environment) -> Scope:
         )
 
     def _load_qi(qi_file: Path) -> Scope:
-        # The .qi records the interface's imports as written in its source, so they are resolved from there.
+        # The .qi records the interface's imports as written in its source, so
+        # they are resolved from there.
         saved_dir = env.current_dir
         env.current_dir = int_src.parent if int_src is not None else qi_file.parent
         env._loading_interfaces.append(canon_name)
@@ -128,8 +136,9 @@ def load_interface(name: str, env: Environment) -> Scope:
             env._loading_interfaces.pop()
             env.current_dir = saved_dir
 
-    # With a build directory (every driver run) or in C compilation mode, the interface is loaded from its
-    # .qi, which is rebuilt first if stale (docs/build-process.md §5).
+    # With a build directory (every driver run) or in C compilation mode, the
+    # interface is loaded from its .qi, which is rebuilt first if stale
+    # (docs/build-process.md §5).
     out_root = resolved_artifact_root(env, resolved)
     if out_root is not None:
         qi_file = ensure_resolved_interface_artifacts(resolved, out_root, resolver=env.units.resolver).qi_file
@@ -139,7 +148,8 @@ def load_interface(name: str, env: Environment) -> Scope:
                 env.include_paths.insert(0, out_root)
             return _register(_load_qi(qi_file))
 
-    # A fresh .qi on the search path (from a standalone compilation), else the source
+    # A fresh .qi on the search path (from a standalone compilation), else the
+    # source
     file_path = fresh_interface_qi(resolved)
     if file_path is None:
         searched = [str(env.current_dir)] if env.current_dir else []
@@ -201,10 +211,12 @@ def load_interface(name: str, env: Environment) -> Scope:
 
 
 def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
-    """Loads, validates, and elaborates module `name`, as imported from env.current_dir.
+    """Loads, validates, and elaborates module `name`, as imported from
+    env.current_dir.
 
-    Loaded modules are shared by all importers as units of env.units, keyed by canonical name (docs/modules.md
-    §2.3); modules without a source file (builtins and prebuilt objects) by the name imported.
+    Loaded modules are shared by all importers as units of env.units, keyed by
+    canonical name (docs/modules.md §2.3); modules without a source file
+    (builtins and prebuilt objects) by the name imported.
     """
     resolved = resolve_module(name, env)
     file_path = resolved.source
@@ -225,8 +237,9 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         if target_interface_scope is None:
             target_interface_scope = load_interface(expected_interface, env)
 
-        # All importers share one export scope (docs/modules.md §2.3). Name opaque exported types after the
-        # module's declared name, as elaborating its source does.
+        # All importers share one export scope (docs/modules.md §2.3). Name
+        # opaque exported types after the module's declared name, as elaborating
+        # its source does.
         module_export_scope = unit.export_scope
         if module_export_scope is None:
             module_export_scope = create_module_export_scope(
@@ -248,18 +261,21 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         unit.typed_module = typed_mod
         return typed_mod
 
-    # A module with a source is known by its canonical name; prebuilt objects without one are known by name.
+    # A module with a source is known by its canonical name; prebuilt objects
+    # without one are known by name.
     if unit.precompiled:
         return _synthesize_precompiled_module()
 
-    # Separate compilation of hierarchical modules: importers are typed against the module's interface.
-    # Building its object is left to the BuildEngine (docs/build-process.md §7.3).
+    # Separate compilation of hierarchical modules: importers are typed against
+    # the module's interface. Building its object is left to the BuildEngine
+    # (docs/build-process.md §7.3).
     if is_c_compilation_mode(env) and ("/" in canon_name or "/" in name) and file_path is not None:
         unit.precompiled = True
         return _synthesize_precompiled_module()
 
-    # A typecheck-only run types a module with fresh artifacts through its interface alone, without
-    # elaborating its body (docs/build-process.md §5.2.4). Interpreting needs module bodies.
+    # A typecheck-only run types a module with fresh artifacts through its
+    # interface alone, without elaborating its body (docs/build-process.md
+    # §5.2.4). Interpreting needs module bodies.
     if (
         file_path is not None
         and is_typecheck_only(env)
@@ -328,8 +344,10 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
                 f"expected '{expected_interface}'"
             )
 
-        # The interface the importer expects, which the module's header names unless it cannot be resolved from the
-        # module's directory (a hierarchical path relative to the program's directory, which is not searched).
+        # The interface the importer expects, which the module's header names
+        # unless it cannot be resolved from the module's directory (a
+        # hierarchical path relative to the program's directory, which is not
+        # searched).
         importer_interface = env.lookup_interface(expected_interface)
 
         saved_dir = env.current_dir
@@ -337,7 +355,8 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         env.current_dir = file_path.parent
         env._loading_modules.append(canon_name)
         try:
-            # The module is elaborated with its own interface and module names, resolved from its directory.
+            # The module is elaborated with its own interface and module names,
+            # resolved from its directory.
             with env.unit_names():
                 if importer_interface is not None and resolve_interface(decl.interface_name, env).unit_file is None:
                     env.register_interface(decl.interface_name, importer_interface)
@@ -353,8 +372,9 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             env._loading_modules.pop()
             env.current_dir = saved_dir
 
-        # The module is named in C symbols by its canonical name, as importers refer to it. Mangling ignores case,
-        # and a name differing only in case (arrayOp) is kept, as builtin modules are known by it.
+        # The module is named in C symbols by its canonical name, as importers
+        # refer to it. Mangling ignores case, and a name differing only in case
+        # (arrayOp) is kept, as builtin modules are known by it.
         if typed_mod.name.lower() != canon_name.lower():
             from dataclasses import replace
             typed_mod = replace(typed_mod, name=canon_name)

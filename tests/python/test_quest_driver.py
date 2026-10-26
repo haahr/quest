@@ -150,7 +150,8 @@ class TestQuestDriverCLI(unittest.TestCase):
         build = ["--build-dir", str(self.build_dir)]
         repl_stdin = "import system: System; system.args;\n"
         cases = [
-            # Everything after the program file is the program's, options and dashes included
+            # Everything after the program file is the program's, options and
+            # dashes included
             ([*build, str(main_file), "a", "b"], "", f'"{main_file}" "a" "b"'),
             ([*build, str(main_file), "-o", "--echo"], "", f'"{main_file}" "-o" "--echo"'),
             ([*build, str(main_file), "--", "a"], "", f'"{main_file}" "--" "a"'),
@@ -167,7 +168,8 @@ class TestQuestDriverCLI(unittest.TestCase):
                 self.assertIn(f"array of {expected} end", proc.stdout)
 
     def _stderr_of(self, run: Callable[[list[str]], int], args: list[str]) -> str:
-        """Runs a driver entry point, expecting it to fail, and returns what it wrote to stderr."""
+        """Runs a driver entry point, expecting it to fail, and returns what it
+        wrote to stderr."""
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
             self.assertNotEqual(run(args), 0)
@@ -200,7 +202,8 @@ class TestQuestDriverCLI(unittest.TestCase):
                 self.assertIn(line, stderr)
 
     def _stdout_of(self, run: Callable[[list[str]], int], args: list[str]) -> str:
-        """Runs a driver entry point, expecting it to succeed, and returns what it wrote to stdout."""
+        """Runs a driver entry point, expecting it to succeed, and returns what
+        it wrote to stdout."""
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(run(args), 0)
@@ -214,7 +217,8 @@ class TestQuestDriverCLI(unittest.TestCase):
         return iface_file, mod_file
 
     def _unit_artifacts(self) -> list[Path]:
-        """The module's artifacts, next to its source or in the build directory."""
+        """The module's artifacts, next to its source or in the build
+        directory."""
         names = ("m.mod.c", "m.o", "m.qm")
         return [d / name for d in (self.root, self.build_dir) for name in names if (d / name).exists()]
 
@@ -231,7 +235,8 @@ class TestQuestDriverCLI(unittest.TestCase):
                 # The module is lowered as a unit, with its exports
                 self.assertIn("export f = f", self._stdout_of(run, [str(mod_file), "--stop-after", "ir_core", *build]))
                 c_source = self._stdout_of(run, [str(mod_file), "--stop-after", "codegen_c", *build])
-                # None of the module's own artifacts (typechecking it builds its interface's in the build directory)
+                # None of the module's own artifacts (typechecking it builds its
+                # interface's in the build directory)
                 self.assertEqual(self._unit_artifacts(), [])
         # The C is what compiling the module writes
         self.assertEqual(run_driver([str(mod_file), *build]), 0)

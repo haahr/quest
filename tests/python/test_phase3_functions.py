@@ -1,5 +1,6 @@
-"""Unit tests for function typing that source text cannot express: a lambda or recursive function whose parameters
-lack types, built as an AST, and an All type elaborated directly. Function typing expressed in source is the golden test
+"""Unit tests for function typing that source text cannot express: a lambda or
+recursive function whose parameters lack types, built as an AST, and an All type
+elaborated directly. Function typing expressed in source is the golden test
 tests/source/language/core_functions."""
 
 import unittest
@@ -39,8 +40,10 @@ class Phase3FunctionsTest(unittest.TestCase):
         self.assertEqual(typed.type_val, expected_type)
 
     def test_let_rec_missing_param_type_raises_type_error(self) -> None:
-        """let rec f(n) : Int = ... with unannotated parameter raises TypeError."""
-        # Grammar requires parameter annotations, but typechecker defends against AST without annotations.
+        """let rec f(n) : Int = ... with unannotated parameter raises
+        TypeError."""
+        # Grammar requires parameter annotations, but typechecker defends
+        # against AST without annotations.
         binding = ast.LetValueBinding(
             name="fib",
             params=(
@@ -63,7 +66,8 @@ class Phase3FunctionsTest(unittest.TestCase):
         )
 
     def test_all_type_as_function_type_elaboration(self) -> None:
-        """All(y: Int) Int in elaborate_type elaborates to QFunType(y: Int) -> Int."""
+        """All(y: Int) Int in elaborate_type elaborates to QFunType(y: Int) ->
+        Int."""
         elaborated = elaborate_test_type("All(y: Int) Int")
         self.assertIsInstance(elaborated, QFunType)
         self.assertEqual(len(elaborated.params), 1)

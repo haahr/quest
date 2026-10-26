@@ -1,4 +1,5 @@
-"""Unit tests for Quest builtins external symbol bridge, qchecked decorator, and registry."""
+"""Unit tests for Quest builtins external symbol bridge, qchecked decorator, and
+registry."""
 
 import os
 import shutil
@@ -128,7 +129,8 @@ class TestBuiltinWrappers(unittest.TestCase):
 
 
 class TestByteCharacters(unittest.TestCase):
-    """A character is a byte, as in Typeful Programming and C: the builtins pass bytes above 127 through unchanged."""
+    """A character is a byte, as in Typeful Programming and C: the builtins pass
+    bytes above 127 through unchanged."""
 
     def call(self, name: str, *args: QValue) -> QValue:
         return EXTERNAL_FUNCTIONS[name](*args)

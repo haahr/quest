@@ -160,7 +160,8 @@ class TestTypeElaboration(unittest.TestCase):
         )
 
     def test_elaborate_recursive_type(self):
-        # Rec(L::TYPE) Option nil cons with val: Record head: Int tail: L end end end
+        # Rec(L::TYPE) Option nil cons with val: Record head: Int tail: L
+        #     end end end
         t_rec = elaborate_test_type(
             "Rec(L::TYPE) Option nil cons with val: Record head: Int tail: L end end end",
             self.env,
@@ -195,8 +196,10 @@ class TestDeclarationElaboration(unittest.TestCase):
         self.assertIsInstance(pair_sym.definition, QTypeFun)
 
     def test_elaborate_mutual_recursive_type_group(self):
-        # Let Rec Tree = Option leaf with val: Int end node with val: NodeList end end
-        # Let Rec NodeList = Option empty cons with val: Record head: Tree tail: NodeList end end end
+        # Let Rec Tree = Option leaf with val: Int end
+        #     node with val: NodeList end end
+        # Let Rec NodeList = Option empty cons with val: Record head: Tree
+        #     tail: NodeList end end end
         tree_ast = parse_phrase(
             "Let Rec Tree = Option leaf with val: Int end node with val: NodeList end end;"
         )

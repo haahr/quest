@@ -55,7 +55,8 @@ from quest.types.subtyping import is_subkind, is_subtype
 # ============================================================================
 
 class KindError(QuestCompilerError):
-    """Raised when kind synthesis, kind checking, or well-kindedness verification fails."""
+    """Raised when kind synthesis, kind checking, or well-kindedness
+    verification fails."""
 
     def __init__(
         self,
@@ -85,7 +86,8 @@ class KindError(QuestCompilerError):
 
 
 def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
-    """Verifies that a kind is well-formed according to Quest kind formation rules."""
+    """Verifies that a kind is well-formed according to Quest kind formation
+    rules."""
     kind_lazy = kind.evaluate_lazily(env)
     match kind_lazy:
         case QTypeKind():
@@ -135,8 +137,9 @@ def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
 def check_kind(type_val: QType, expected_kind: QKind, env: Optional[Any] = None) -> None:
     """Checks that type_val has a kind that is a subkind of expected_kind.
 
-    Against POWER(B) the check is subtyping, type_val <: B, rather than a comparison of kinds: a type's synthesized
-    kind is TYPE (or its bound, for a type variable), not the POWER of each of its supertypes.
+    Against POWER(B) the check is subtyping, type_val <: B, rather than a
+    comparison of kinds: a type's synthesized kind is TYPE (or its bound, for a
+    type variable), not the POWER of each of its supertypes.
     """
     expected_lazy = expected_kind.evaluate_lazily(env)
     if isinstance(expected_lazy, QPowerKind):
@@ -153,19 +156,22 @@ def check_kind(type_val: QType, expected_kind: QKind, env: Optional[Any] = None)
         )
 
 
-# Kinds synthesized during the current top-level kind check, keyed by node identity. Elaborated types
-# are DAGs (aliases are shared), so without this every shared subterm is re-checked on every path to it.
+# Kinds synthesized during the current top-level kind check, keyed by node
+# identity. Elaborated types are DAGs (aliases are shared), so without this
+# every shared subterm is re-checked on every path to it.
 _kind_memo: Optional[dict[int, tuple[QType, QKind]]] = None
 _kind_memo_env: Optional[Any] = None
 
 
 def synth_kind(type_val: QType, env: Optional[Any] = None) -> QKind:
-    """Synthesizes the most specific minimal kind K for type_val in the given environment.
+    """Synthesizes the most specific minimal kind K for type_val in the given
+    environment.
 
-    Results are memoized for the duration of the outermost call. That is sound because a node's kind
-    depends only on the node and the binders in scope, which have unique symbol ids, so a shared node
-    has the same kind wherever it occurs. Metavariables are not memoized (their kind follows their
-    solution), and a nested call with a different environment bypasses the memo.
+    Results are memoized for the duration of the outermost call. That is sound
+    because a node's kind depends only on the node and the binders in scope,
+    which have unique symbol ids, so a shared node has the same kind wherever it
+    occurs. Metavariables are not memoized (their kind follows their solution),
+    and a nested call with a different environment bypasses the memo.
     """
     global _kind_memo, _kind_memo_env
     if isinstance(type_val, QTypeMeta):
@@ -189,19 +195,25 @@ def synth_kind(type_val: QType, env: Optional[Any] = None) -> QKind:
 
 
 def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
-    """Synthesizes the kind of type_val; recursive checks go through the memoizing synth_kind.
+    """Synthesizes the kind of type_val; recursive checks go through the
+    memoizing synth_kind.
 
-    Kinds classify types as types classify values. TYPE is the kind of the types of values. POWER(B) is the kind of
-    B's subtypes, which is how a bounded type parameter is expressed: A <: Record x: Int end declares A with kind
-    POWER(Record x: Int end). ALL(A::K) K' is the kind of a type operator, which applied to a type of kind K gives one
-    of kind K'. Subkinding follows: POWER(B) is included in TYPE, and in POWER(B') when B <: B'.
+    Kinds classify types as types classify values. TYPE is the kind of the types
+    of values. POWER(B) is the kind of B's subtypes, which is how a bounded type
+    parameter is expressed: A <: Record x: Int end declares A with kind
+    POWER(Record x: Int end). ALL(A::K) K' is the kind of a type operator, which
+    applied to a type of kind K gives one of kind K'. Subkinding follows:
+    POWER(B) is included in TYPE, and in POWER(B') when B <: B'.
 
-    The kind synthesized is the most specific one: TYPE for a type built by a constructor (a record type is a type of
-    values), a type variable's bound, ALL for a type operator, and for an application, the operator's result kind with
-    the arguments substituted. Synthesis also checks that the type's parts are well kinded: that a field's type is a
-    type of values, that each binder's bound is a well-formed kind, and that an operator's arguments have its parameter
-    kinds. A binder's variables are declared in a scope pushed on env while its body is checked; without an
-    environment, a variable is known by the bound it carries.
+    The kind synthesized is the most specific one: TYPE for a type built by a
+    constructor (a record type is a type of values), a type variable's bound,
+    ALL for a type operator, and for an application, the operator's result kind
+    with the arguments substituted. Synthesis also checks that the type's parts
+    are well kinded: that a field's type is a type of values, that each binder's
+    bound is a well-formed kind, and that an operator's arguments have its
+    parameter kinds. A binder's variables are declared in a scope pushed on env
+    while its body is checked; without an environment, a variable is known by
+    the bound it carries.
     """
     match type_val:
         case (QIntType() | QRealType() | QBoolType() | QCharType() | QStringType()
@@ -403,8 +415,9 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
 
 def unfold_head(t: QType) -> Optional[QType]:
-    """One step of exposing the structure of t: unfolds a recursive type or reduces an application of a type
-    operator, or returns None when t is an application of anything else (such as an abstract type operator)."""
+    """One step of exposing the structure of t: unfolds a recursive type or
+    reduces an application of a type operator, or returns None when t is an
+    application of anything else (such as an abstract type operator)."""
     if isinstance(t, (QRecType, QRecGroupType)):
         return t.unfold_lazily()
     if isinstance(t, QTypeApp):
@@ -418,8 +431,9 @@ _unfold_head = unfold_head
 
 
 def _resolve_bound(t: QType, env: Optional[Any], wanted: tuple[type, ...]) -> Optional[QType]:
-    """t, or the upper bound of a type variable or path type (through bounds that are themselves bounded type
-    variables), if it is a type of one of the wanted classes; unfolds recursive types."""
+    """t, or the upper bound of a type variable or path type (through bounds
+    that are themselves bounded type variables), if it is a type of one of the
+    wanted classes; unfolds recursive types."""
     curr = t
     visited = set()
     unfolded: list[QType] = []
@@ -450,28 +464,32 @@ def _resolve_bound(t: QType, env: Optional[Any], wanted: tuple[type, ...]) -> Op
 
 
 def resolve_record_bound(t: QType, env: Optional[Any] = None) -> Optional[QRecordType]:
-    """Resolves upper bound for a type variable or path type if bounded by a record type; unfolds recursive types."""
+    """Resolves upper bound for a type variable or path type if bounded by a
+    record type; unfolds recursive types."""
     return _resolve_bound(t, env, (QRecordType,))
 
 
 def resolve_variant_bound(t: QType, env: Optional[Any] = None) -> Optional[QVariantType]:
-    """Resolves upper bound for a type variable or path type if bounded by a variant type; unfolds recursive types."""
+    """Resolves upper bound for a type variable or path type if bounded by a
+    variant type; unfolds recursive types."""
     return _resolve_bound(t, env, (QVariantType,))
 
 
 def resolve_sum_bound(t: QType, env: Optional[Any] = None) -> Optional[Union[QVariantType, QOptionType]]:
-    """Resolves upper bound for a type variable or path type if bounded by a variant or option type; unfolds recursive
-    types."""
+    """Resolves upper bound for a type variable or path type if bounded by a
+    variant or option type; unfolds recursive types."""
     return _resolve_bound(t, env, (QVariantType, QOptionType))
 
 
 def resolve_tuple_bound(t: QType, env: Optional[Any] = None) -> Optional[QTupleType]:
-    """Resolves upper bound for a type variable or path type if bounded by a tuple type; unfolds recursive types."""
+    """Resolves upper bound for a type variable or path type if bounded by a
+    tuple type; unfolds recursive types."""
     return _resolve_bound(t, env, (QTupleType,))
 
 
 def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptionType]:
-    """Resolves an option type, unwrapping type applications, recursive types, or bounds."""
+    """Resolves an option type, unwrapping type applications, recursive types,
+    or bounds."""
     curr = t
     visited = set()
     while True:

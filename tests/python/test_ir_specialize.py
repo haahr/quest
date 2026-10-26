@@ -1,7 +1,8 @@
 """Specialization (quest/ir/specialize.py, docs/ir.md §8.1).
 
-Every golden test program is specialized, verified, and run (run_tests.py's run_ir_specialized phase); these tests
-check the pass's decisions on small programs."""
+Every golden test program is specialized, verified, and run (run_tests.py's
+run_ir_specialized phase); these tests check the pass's decisions on small
+programs."""
 
 from __future__ import annotations
 
@@ -26,7 +27,8 @@ PRELUDE = "Let P = Record a: Int end; "
 
 
 def specialize(source: str) -> tuple[str, str]:
-    """The specialized IR's text, and its output when run (which prints the last phrase's result)."""
+    """The specialized IR's text, and its output when run (which prints the last
+    phrase's result)."""
     options = CompilerOptions(stop_after="typecheck")
     ctx = CompilerContext.create(source_text=source, file_name="<test>", options=options)
     res = default_pipeline().execute(source, "<test>", options=options, ctx=ctx)
@@ -73,7 +75,8 @@ class TestSpecialization(unittest.TestCase):
         self.assertEqual(out, "3 : Int\n")
 
     def test_open_type_arguments_stay_generic(self) -> None:
-        # The call in g mentions g's own A, for which a clone would have no descriptor; g's clone specializes it
+        # The call in g mentions g's own A, for which a clone would have no
+        # descriptor; g's clone specializes it
         text, out = specialize(
             PRELUDE + "let id(A::TYPE x: A): A = x; let g(A::TYPE x: A): A = id(:A x); g(:P record a = 4 end).a"
         )

@@ -1,10 +1,12 @@
-"""Generates the golden tests of the self-hosted type elaboration (questlang/typechecker/elaboratetypes) from the
-bootstrap's.
+"""Generates the golden tests of the self-hosted type elaboration
+(questlang/typechecker/elaboratetypes) from the bootstrap's.
 
-Each input tests/elaborate/NAME.quest holds cases, separated by lines that are just "(* ---- *)": programs of type and
-kind declarations. It gives a golden test, tests/source/questlang/elaborate_NAME.quest, which parses and desugars each
-case with the self-hosted compiler and elaborates its declarations, in order, in a new environment, printing each
-symbol declared, or the first error; tests/golden/run/questlang/elaborate_NAME.out holds what the bootstrap's
+Each input tests/elaborate/NAME.quest holds cases, separated by lines that are
+just "(* ---- *)": programs of type and kind declarations. It gives a golden
+test, tests/source/questlang/elaborate_NAME.quest, which parses and desugars
+each case with the self-hosted compiler and elaborates its declarations, in
+order, in a new environment, printing each symbol declared, or the first error;
+tests/golden/run/questlang/elaborate_NAME.out holds what the bootstrap's
 elaborate_types gives for each case, which the test must print.
 
     python tests/elaborate/generate.py
@@ -41,7 +43,8 @@ GOLDEN_DIR = ROOT_DIR / "tests" / "golden" / "run" / "questlang"
 
 
 def expected(name: str, text: str) -> str:
-    """What the bootstrap gives for a case: the symbols its declarations declare, until an error."""
+    """What the bootstrap gives for a case: the symbols its declarations
+    declare, until an error."""
     tok = Tokenizer(text, name)
     program = desugar(parse_quest_program(tok.tokenize_all(), tok.source_map))
     env = Environment()

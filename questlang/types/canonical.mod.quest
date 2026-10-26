@@ -1,4 +1,5 @@
-(* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types Implementation *)
+(* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types
+ * Implementation *)
 
 module canonical : Canonical
 import
@@ -19,11 +20,12 @@ export
     Let Type = model.Type
     Let Kind = model.Kind
 
-    (* An internal error: a type that is not an option where one must be (the bootstrap's ValueError) *)
+    (* An internal error: a type that is not an option where one must be (the
+     * bootstrap's ValueError) *)
     let notAnOption: Exception(String) = exception notAnOption: String end
 
-    (* A canonical form not equal to its type, or not a fixed point, when QUEST_CHECK_CANONICAL=1 (the bootstrap's
-     * AssertionError) *)
+    (* A canonical form not equal to its type, or not a fixed point, when
+     * QUEST_CHECK_CANONICAL=1 (the bootstrap's AssertionError) *)
     let canonicalError: Exception(String) = exception canonicalError: String end
 
     let maxBetaSteps = 1000
@@ -87,7 +89,8 @@ export
             if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(:Type u) end
         end
 
-    (* The constructed types a value is represented like its recursive type's unfolding (_UNFOLDED_REPRESENTATION) *)
+    (* The constructed types a value is represented like its recursive type's
+     * unfolding (_UNFOLDED_REPRESENTATION) *)
     let isUnfoldedRepresentation(t: Type): Bool =
         case t.form
             when typeTuple then true
@@ -161,7 +164,8 @@ export
             end
         end
 
-    (* A variable's, abstract type's, or path type's bound, if it is a power kind *)
+    (* A variable's, abstract type's, or path type's bound, if it is a power
+     * kind *)
     let powerBoundOf(t: Type): maybe.T(Type) =
         begin
             let bound = case t.form
@@ -177,8 +181,9 @@ export
             end
         end
 
-    (* Whether two bounded types are one, as resolve_type_bound tells them apart: a variable or abstract type by its
-     * symbol, a path type by itself *)
+    (* Whether two bounded types are one, as resolve_type_bound tells them
+     * apart: a variable or abstract type by its symbol, a path type by
+     * itself *)
     let sameNode(a: Type b: Type): Bool =
         case a.form
             when typeVariable with x then case b.form when typeVariable with y then x.symbolId is y.symbolId else false end
@@ -189,7 +194,8 @@ export
     let resolveTypeBound(t: Type): Type =
         begin
             let var curr = model.stripAliases(model.pruned(t))
-            (* The nodes passed through: a variable or abstract type by its symbol, a path type by itself *)
+            (* The nodes passed through: a variable or abstract type by its
+             * symbol, a path type by itself *)
             let visited = vector.new(:Type)
             let var done = false
             while not(done) do
@@ -252,9 +258,9 @@ export
             tuple let quantifiers = vector.toArray(:model.Quantifier quants) let body = curr end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Reserved symbols of canonical forms and tags
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let reservedIndex(symbolId: Int use: model.ReservedSymbolUse): maybe.T(Int) =
         begin
@@ -285,9 +291,10 @@ export
     (* =========================================================================
      * Canonical forms of recursive types
      *
-     * As types/canonical.py describes them: the graph of a type's nodes, minimized by partition refinement, written
-     * back as a type whose recursion variables and binders' parameters have reserved ids.
-     * ========================================================================= *)
+     * As types/canonical.py describes them: the graph of a type's nodes,
+     * minimized by partition refinement, written back as a type whose recursion
+     * variables and binders' parameters have reserved ids.
+     * ====================================================================== *)
 
     let maxCanonicalNodes = 100000
 
@@ -322,7 +329,8 @@ export
             when nodeKind with x then ofKind(model.substituteInKind(x.k subst))
         end
 
-    (* The types the graph has nodes for, which recursive types are unfolded to (_GRAPH_NODES) *)
+    (* The types the graph has nodes for, which recursive types are unfolded to
+     * (_GRAPH_NODES) *)
     let isGraphNode(t: Type): Bool =
         case t.form
             when typeTuple then true
@@ -339,8 +347,9 @@ export
             else false
         end
 
-    (* t with aliases, solved metavariables, type operator applications, and recursive types whose unfoldings are
-     * graph nodes reduced down to its outer constructor *)
+    (* t with aliases, solved metavariables, type operator applications, and
+     * recursive types whose unfoldings are graph nodes reduced down to its
+     * outer constructor *)
     let canonicalStructure(t0: Type): Type =
         begin
             let var t = t0
@@ -487,7 +496,8 @@ export
             b.toString()
         end
 
-    (* Where an enclosing binder's parameter is bound: the binder's node and the parameter's position *)
+    (* Where an enclosing binder's parameter is bound: the binder's node and the
+     * parameter's position *)
     Let Place = Tuple binder: Int pos: Int end
     Let Places = hashMap.T(Int Place)
 
@@ -513,8 +523,8 @@ export
     let byName(A::TYPE items: Array(A) name: All(item: A) String): Array(A) =
         sort.sorted(:A items fun(a: A b: A): Int sort.stringCompare(name(a) name(b)))
 
-    (* The node for the structure s (a type or a kind), whose free variables in bound are parameters of enclosing
-     * binder nodes; none for a leaf *)
+    (* The node for the structure s (a type or a kind), whose free variables in
+     * bound are parameters of enclosing binder nodes; none for a leaf *)
     let canonicalNode(n: Node bound: Places): maybe.T(NodeInfo) =
         case n
             when nodeKind with nk then
@@ -613,8 +623,9 @@ export
                             parts[i] := ofType(fields[i].type)
                         end
                         info(option sRecord of Shape with let provenance = x.provenance let fields = labels end parts)
-                    (* Variants and options are compared by their cases' names, unordered, so their canonical forms
-                     * order cases by name, as records' fields are ordered *)
+                    (* Variants and options are compared by their cases' names,
+                     * unordered, so their canonical forms order cases by name,
+                     * as records' fields are ordered *)
                     when typeVariant with x then
                         let cases = byName(:model.VariantField x.variants fun(v: model.VariantField): String v.name)
                         let labels = array of(extent cases tuple let name = "" let isVar = false let has = false end)
@@ -685,7 +696,8 @@ export
                         end
                         binderInfo(option sOperator of Shape with let count = n end parts binds)
                     when typeApp with x then
-                        (* An application of an abstract type operator (one that does not reduce) *)
+                        (* An application of an abstract type operator (one that
+                         * does not reduce) *)
                         let n = extent x.arguments
                         let parts = array of({n + 1} ofType(x.constructor))
                         for i = 0 upto {n - 1} do parts[i + 1] := ofType(x.arguments[i]) end
@@ -694,8 +706,8 @@ export
                 end
         end
 
-    (* The type (or kind) with the given shape and parts, for a node that binds nothing and is not an occurrence of a
-     * parameter *)
+    (* The type (or kind) with the given shape and parts, for a node that binds
+     * nothing and is not an occurrence of a parameter *)
     let rebuildNode(s: Shape parts: Array(Node)): Node =
         case s
             when sTuple with x then
@@ -743,8 +755,8 @@ export
             when sVarType then ofType(model.varType(asType(parts[0])))
             when sOutType then ofType(model.outType(asType(parts[0])))
             when sFun with x then
-                (* Parameter names are not part of a function type's identity; canonical ones keep equal types
-                 * identical *)
+                (* Parameter names are not part of a function type's identity;
+                 * canonical ones keep equal types identical *)
                 let params = array of(extent x.modes
                     tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
                 for i = 0 upto {extent x.modes - 1} do
@@ -774,10 +786,11 @@ export
             else ofType(model.exceptionOf(asType(parts[0])))
         end
 
-    (* A free variable of a leaf that is a parameter of an enclosing binder: its symbol, and the binder node (or
-     * class) and position *)
+    (* A free variable of a leaf that is a parameter of an enclosing binder: its
+     * symbol, and the binder node (or class) and position *)
     Let Free = Tuple symbolId: Int binder: Int pos: Int end
-    (* A leaf of a canonical graph: a type compared by identity, with its free variables bound by enclosing binders *)
+    (* A leaf of a canonical graph: a type compared by identity, with its free
+     * variables bound by enclosing binders *)
     Let Leaf = Tuple node: Node bound: Array(Free) end
     (* A class of a canonical graph (or a node, before refinement) or a leaf *)
     Let Ref = Option
@@ -790,9 +803,10 @@ export
 
     let paramVar(p: Param): Type = model.typeVariable(p.name p.symbolId maybe.some(:Kind p.kind))
 
-    (* Where a part of a canonical form is written: the recursive type being written (its root class, component, and
-     * variables, by class), the parameters of the enclosing binders (by class, the nearest one of each), and the
-     * number of enclosing parameters *)
+    (* Where a part of a canonical form is written: the recursive type being
+     * written (its root class, component, and variables, by class), the
+     * parameters of the enclosing binders (by class, the nearest one of each),
+     * and the number of enclosing parameters *)
     Let Context = Tuple
         recRoot: Int
         recComp: Int
@@ -810,9 +824,11 @@ export
             let depth = 0
         end
 
-    (* The minimized graph of the nodes reachable from a type, from which canonical forms are written *)
+    (* The minimized graph of the nodes reachable from a type, from which
+     * canonical forms are written *)
     Let Graph = Tuple
-        (* The structure of each node, whether its free variables are all free in the root, and the root's node *)
+        (* The structure of each node, whether its free variables are all free
+         * in the root, and the root's node *)
         objects: Array(Node)
         closed: Array(Bool)
         root: maybe.T(Int)
@@ -845,7 +861,8 @@ export
             let closed = vector.new(:Bool)
             let shapes = vector.new(:Shape)
             let children = vector.new(:Array(Ref))
-            (* For an occurrence of a parameter, its binder node; otherwise -1 *)
+            (* For an occurrence of a parameter, its binder node; otherwise
+             * -1 *)
             let scope = vector.new(:Int)
             let pending = vector.new(:Pending)
             let ref = fun(n0: Node bound: Places): Ref
@@ -919,8 +936,8 @@ export
             end
             let n = vector.length(:Node objects)
 
-            (* Partition refinement to the coarsest bisimulation, starting from each node's shape, following scope
-             * edges *)
+            (* Partition refinement to the coarsest bisimulation, starting from
+             * each node's shape, following scope edges *)
             let shapeIds = hashMap.new(:String :Int stringOp.equal hash.string)
             let var cls = array of(n 0)
             for i = 0 upto {n - 1} do
@@ -1000,9 +1017,11 @@ export
                 qScope[k] := if s >= 0 then classes[s] else ~1 end
             end
 
-            (* The strongly connected components of the quotient graph (Tarjan's algorithm, iteratively, along
-             * structural edges only), whether each is cyclic, whether each reaches a cyclic one, and the binder
-             * classes each refers to (by occurrences of their parameters) and reaches *)
+            (* The strongly connected components of the quotient graph (Tarjan's
+             * algorithm, iteratively, along structural edges only), whether
+             * each is cyclic, whether each reaches a cyclic one, and the binder
+             * classes each refers to (by occurrences of their parameters) and
+             * reaches *)
             let classKids = array of(classCount array of :Int end)
             for k = 0 upto {classCount - 1} do
                 let found = vector.new(:Int)
@@ -1056,7 +1075,8 @@ export
                                 if low[k] < low[parent] then low[parent] := low[k] end
                             end
                             if low[k] is order[k] then
-                                (* k roots a component; the components it reaches were all completed before it *)
+                                (* k roots a component; the components it
+                                 * reaches were all completed before it *)
                                 let comp = vector.length(:Bool cyclic)
                                 let members = vector.new(:Int)
                                 let var popping = true
@@ -1117,8 +1137,9 @@ export
             end
         end
 
-    (* Recursion variables bind tuples, records, variants, and options where every cycle passes through one, and
-     * otherwise any node that a recursive type may unfold to *)
+    (* Recursion variables bind tuples, records, variants, and options where
+     * every cycle passes through one, and otherwise any node that a recursive
+     * type may unfold to *)
     let isAggregateShape(s: Shape): Bool =
         case s
             when sTuple then true
@@ -1141,8 +1162,9 @@ export
             else isAggregateShape(s)
         end
 
-    (* Whether every cycle of a cyclic component passes through a tuple, record, variant, or option: whether its
-     * other nodes have no cycle among themselves *)
+    (* Whether every cycle of a cyclic component passes through a tuple, record,
+     * variant, or option: whether its other nodes have no cycle among
+     * themselves *)
     let aggregateCycles(g: Graph comp: Int): Bool =
         begin
             let memo = hashMap.get(:Int :Bool g.aggregateMemo comp)
@@ -1194,7 +1216,8 @@ export
             end
         end
 
-    (* Whether a node of a cyclic component may be bound by a recursion variable *)
+    (* Whether a node of a cyclic component may be bound by a recursion
+     * variable *)
     let isRecShape(g: Graph k: Int comp: Int): Bool =
         if aggregateCycles(g comp) then isAggregateShape(g.shapes[k]) else isUnfoldableShape(g.shapes[k]) end
 
@@ -1266,8 +1289,9 @@ export
                     if maybe.isSome(:Node found) then
                         maybe.unwrap(:Node found)
                     else
-                        (* Inside the recursive type being written, not in a cycle, or a node that recursion
-                         * variables do not bind: the node is written with each of its parts *)
+                        (* Inside the recursive type being written, not in a
+                         * cycle, or a node that recursion variables do not
+                         * bind: the node is written with each of its parts *)
                         let result = if inRec orif not(g.cyclic[comp]) orif not(isRecShape(g k comp)) then
                             buildNode(g k ctx)
                         else
@@ -1286,7 +1310,8 @@ export
             case s
                 when sBound with x then
                     let params = hashMap.get(:Int :vector.T(Param) ctx.scope g.scope[k])
-                    (* The occurrence's binder does not enclose it as written back *)
+                    (* The occurrence's binder does not enclose it as written
+                     * back *)
                     if maybe.isNone(:vector.T(Param) params)
                         orif {x.pos >= vector.length(:Param maybe.unwrap(:vector.T(Param) params))} then
                         raise notCanonicalizable end
@@ -1314,8 +1339,9 @@ export
             end
         end
 
-    (* A binder: its parameters are numbered by the number of enclosing ones, so that no two enclosing each other
-     * share an id; each parameter's kind may refer to the parameters before it *)
+    (* A binder: its parameters are numbered by the number of enclosing ones, so
+     * that no two enclosing each other share an id; each parameter's kind may
+     * refer to the parameters before it *)
     and buildBinder(g: Graph k: Int ctx: Context count: Int): Node =
         begin
             let s = g.shapes[k]
@@ -1380,7 +1406,8 @@ export
                     for i = 0 upto {extent x.comps - 1} do
                         case x.comps[i]
                             when compFormal with f then
-                                (* A tuple's type components are selected by name, so formals keep their names *)
+                                (* A tuple's type components are selected by
+                                 * name, so formals keep their names *)
                                 let p = newParam(f.name)
                                 vector.append(:model.TupleComponent components
                                     option tupleTypeFormal of model.TupleComponent with
@@ -1407,9 +1434,11 @@ export
             end
         end
 
-    (* The canonical form of a class on a cycle: a recursive type whose variables stand for the targets of the back
-     * edges of a depth-first walk of its component from root, through the nodes that recursion variables may bind
-     * (other nodes are passed through, so that each recursive type unfolds to such a node) *)
+    (* The canonical form of a class on a cycle: a recursive type whose
+     * variables stand for the targets of the back edges of a depth-first walk
+     * of its component from root, through the nodes that recursion variables
+     * may bind (other nodes are passed through, so that each recursive type
+     * unfolds to such a node) *)
     and recursiveTerm(g: Graph root: Int ctx: Context): Type =
         begin
             let comp = g.component[root]
@@ -1458,7 +1487,8 @@ export
                     end
                 end
             end
-            (* The root's variable first, the rest in the order they were found *)
+            (* The root's variable first, the rest in the order they were
+             * found *)
             let binders = vector.new(:Int)
             for i = 0 upto {vector.length(:Int found) - 1} do
                 if vector.get(:Int found i) is root then vector.append(:Int binders root) end
@@ -1499,7 +1529,8 @@ export
             end
         end
 
-    (* The canonical form of class k, or none if no recursion is reachable from it *)
+    (* The canonical form of class k, or none if no recursion is reachable from
+     * it *)
     let term(g: Graph k: Int): maybe.T(Node) =
         begin
             let found = hashMap.get(:Int :maybe.T(Node) g.terms k)
@@ -1516,13 +1547,14 @@ export
             end
         end
 
-    (* The graph and class of each node of a canonical graph whose free variables are all free in the graph's
-     * root *)
+    (* The graph and class of each node of a canonical graph whose free
+     * variables are all free in the graph's root *)
     Let GraphClass = Tuple graph: Graph k: Int end
     let canonicalNodes = hashMap.new(:Int :GraphClass intEqual hash.int)
 
-    (* Builds the canonical graph of a structure and records the graph and class of each of its nodes whose free
-     * variables are all free in s; none if s has no graph (it is a leaf, or its graph is too large) *)
+    (* Builds the canonical graph of a structure and records the graph and class
+     * of each of its nodes whose free variables are all free in s; none if s
+     * has no graph (it is a leaf, or its graph is too large) *)
     let registerGraph(s: Type): maybe.T(Graph) =
         begin
             let built = try maybe.some(:Graph newGraph(s)) when notCanonicalizable then maybe.none(:Graph) end
@@ -1540,7 +1572,8 @@ export
             end
         end
 
-    (* Whether each type may contain recursion (a recursive type, or an application that may reduce to one) *)
+    (* Whether each type may contain recursion (a recursive type, or an
+     * application that may reduce to one) *)
     let mayRecurMemo = hashMap.new(:Int :Bool intEqual hash.int)
 
     let rec mayRecur(t: Type): Bool =
@@ -1626,8 +1659,10 @@ export
             if not(mayRecur(t)) then
                 maybe.none(:Type)
             elsif selfNamed then
-                (* A body of a recursive type being named, its variables replaced by placeholders: the recursive type
-                 * is in canonical form already (or is named as written), and so are the body's parts *)
+                (* A body of a recursive type being named, its variables
+                 * replaced by placeholders: the recursive type is in canonical
+                 * form already (or is named as written), and so are the body's
+                 * parts *)
                 maybe.none(:Type)
             else
                 let s = canonicalStructure(t)
@@ -1663,18 +1698,21 @@ export
                         maybe.none(:Type)
                     else
                         let c = maybe.unwrap(:Type canonical)
-                        (* Merging binders could in principle mix up scopes: a canonical form is used only if it is
-                         * equal to the type *)
+                        (* Merging binders could in principle mix up scopes: a
+                         * canonical form is used only if it is equal to the
+                         * type *)
                         if not(subtyping.isTypeEqual(c model.stripAliases(t) maybe.none(:model.Lookup))) then
                             let message = "canonical form of the type " <> dump.shortTypeName(t) <> " is not equal to it"
                             if checkCanonical() then raise canonicalError with message end end
-                            (* The type is named as written; the program is still compiled *)
+                            (* The type is named as written; the program is
+                             * still compiled *)
                             writer.putString(writer.err
                                 "quest: warning: internal: " <> message <> "; naming it as written (please report this)\n")
                             maybe.none(:Type)
                         else
-                            (* Tags and descriptors ask next for the parts of the canonical form and of its
-                             * unfoldings: its graph has them *)
+                            (* Tags and descriptors ask next for the parts of
+                             * the canonical form and of its unfoldings: its
+                             * graph has them *)
                             let cs = canonicalStructure(c)
                             if not(hashMap.contains(:Int :GraphClass canonicalNodes cs.id)) then
                                 begin registerGraph(cs) ok end

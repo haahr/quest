@@ -1,4 +1,5 @@
-"""Unit tests for auto types (Cardelli §4.6, §6.7): subtyping, payload types, and inspect matching."""
+"""Unit tests for auto types (Cardelli §4.6, §6.7): subtyping, payload types,
+and inspect matching."""
 
 import unittest
 
@@ -22,8 +23,8 @@ def auto(source: str) -> QAutoType:
 
 
 class TestAutoSubtyping(unittest.TestCase):
-    """§6.7: an auto type is a subtype of another if the respective components are in the subtype or
-    subkind relation."""
+    """§6.7: an auto type is a subtype of another if the respective components
+    are in the subtype or subkind relation."""
 
     def test_alpha_equivalent_autos_are_equal(self) -> None:
         self.assertTrue(is_type_equal(
@@ -77,7 +78,8 @@ class TestAutoPayloads(unittest.TestCase):
 
 
 class TestInspectMatching(unittest.TestCase):
-    """Inspect selects by subtyping only when that is sound for the signature."""
+    """Inspect selects by subtyping only when that is sound for the
+    signature."""
 
     def test_direct_components_match_by_subtype(self) -> None:
         self.assertTrue(auto_matches_subtypes(auto("Auto A::TYPE with fst,snd:A end")))

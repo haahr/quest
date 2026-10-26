@@ -1,5 +1,6 @@
-"""Runtime type descriptors' type-level forms, for every backend (docs/c-representation.md §6.4): the placeholders
-for bound type parameters and template holes, the canonical forms of function and auto types that descriptors
+"""Runtime type descriptors' type-level forms, for every backend
+(docs/c-representation.md §6.4): the placeholders for bound type parameters and
+template holes, the canonical forms of function and auto types that descriptors
 compare, and descriptor tags."""
 
 from __future__ import annotations
@@ -28,7 +29,8 @@ from quest.modules.abstract_types import abstract_type_by_symbol
 
 
 def module_abstract_type_name(t: QType) -> Optional[str]:
-    """The global name of a module's abstract type (docs/dynamic.md §2.3), or None for any other type."""
+    """The global name of a module's abstract type (docs/dynamic.md §2.3), or
+    None for any other type."""
     if not isinstance(t, QTypeVar):
         return None
     entry = abstract_type_by_symbol(t.symbol_id)
@@ -36,11 +38,13 @@ def module_abstract_type_name(t: QType) -> Optional[str]:
 
 
 def fun_descriptor_tag(t: QType) -> str:
-    """The tag of the runtime descriptor of a function type (QFunType or QAllType).
+    """The tag of the runtime descriptor of a function type (QFunType or
+    QAllType).
 
-    type_tag is QClosure for every function type, which suits struct naming (all closures are represented
-    alike) but not descriptors, which must tell function types apart. Equal types that differ only in the names
-    of their type and value parameters share a tag (see canonical_fun_type).
+    type_tag is QClosure for every function type, which suits struct naming (all
+    closures are represented alike) but not descriptors, which must tell
+    function types apart. Equal types that differ only in the names of their
+    type and value parameters share a tag (see canonical_fun_type).
     """
     return "fun_" + type_digest(canonical_fun_type(t))
 
@@ -49,27 +53,31 @@ def fun_descriptor_tag(t: QType) -> str:
 # Runtime type descriptors
 # ----------------------------------------------------------------------------
 
-# Bound type parameters of polymorphic function types are described by placeholders: type variables with reserved
-# symbol ids (ReservedSymbolUse.BOUND_VAR) that stand for de Bruijn indices (quest_type_bound_vars in the runtime).
+# Bound type parameters of polymorphic function types are described by
+# placeholders: type variables with reserved symbol ids
+# (ReservedSymbolUse.BOUND_VAR) that stand for de Bruijn indices
+# (quest_type_bound_vars in the runtime).
 
 
 def bound_var(index: int, bound: Optional[QKind]) -> QTypeVar:
-    """The placeholder for the type parameter with de Bruijn index `index`, keeping its bound (which determines
-    its C representation)."""
+    """The placeholder for the type parameter with de Bruijn index `index`,
+    keeping its bound (which determines its C representation)."""
     return QTypeVar(name=f"#{c_int(index)}", symbol_id=reserved_symbol_id(ReservedSymbolUse.BOUND_VAR, index),
                     bound=bound)
 
 
 def bound_var_index(t: QType) -> Optional[int]:
-    """The de Bruijn index of a bound type parameter placeholder, or None for any other type."""
+    """The de Bruijn index of a bound type parameter placeholder, or None for
+    any other type."""
     if isinstance(t, QTypeVar):
         return reserved_symbol_index(t.symbol_id, ReservedSymbolUse.BOUND_VAR)
     return None
 
 
 def hole_var(index: int, bound: Optional[QKind]) -> QTypeVar:
-    """The hole for the `index`-th type parameter of a descriptor template, keeping the parameter's bound (which
-    determines its C representation, and so the template's layout)."""
+    """The hole for the `index`-th type parameter of a descriptor template,
+    keeping the parameter's bound (which determines its C representation, and so
+    the template's layout)."""
     return QTypeVar(name=f"?{c_int(index)}", symbol_id=reserved_symbol_id(ReservedSymbolUse.HOLE, index), bound=bound)
 
 
@@ -103,7 +111,8 @@ def _bound_vars_in(t: Any) -> list[QTypeVar]:
 
 
 def _shift_bound_vars(t: Any, by: int) -> Any:
-    """t with each bound type parameter placeholder's index raised by `by` (moving t under `by` more binders)."""
+    """t with each bound type parameter placeholder's index raised by `by`
+    (moving t under `by` more binders)."""
     present = _bound_vars_in(t)
     if not present or by == 0:
         return t
@@ -112,10 +121,12 @@ def _shift_bound_vars(t: Any, by: int) -> Any:
 
 
 def canonical_fun_type(t: QType) -> QType:
-    """The canonical form of a function type, which equal types share: value parameters lose their names, and the
-    type parameters of a polymorphic function type are replaced by placeholders (de Bruijn indices, counting binders
-    outward from the reference; within one All, the last parameter is 0 in the body and the k-th parameter's bound
-    sees the earlier ones). Nested polymorphic function types are canonicalized when they are described."""
+    """The canonical form of a function type, which equal types share: value
+    parameters lose their names, and the type parameters of a polymorphic
+    function type are replaced by placeholders (de Bruijn indices, counting
+    binders outward from the reference; within one All, the last parameter is 0
+    in the body and the k-th parameter's bound sees the earlier ones). Nested
+    polymorphic function types are canonicalized when they are described."""
     t = shape(t).structure
     if isinstance(t, QFunType):
         return QFunType(
@@ -143,8 +154,9 @@ def canonical_fun_type(t: QType) -> QType:
 
 
 def canonical_auto_type(t: QAutoType) -> QAutoType:
-    """The canonical form of an auto type, which equal types share: its type parameter is the placeholder with de
-    Bruijn index 0 (see canonical_fun_type)."""
+    """The canonical form of an auto type, which equal types share: its type
+    parameter is the placeholder with de Bruijn index 0 (see
+    canonical_fun_type)."""
     kind_bound = _shift_bound_vars(t.kind_bound, 1) if t.kind_bound is not None else t.kind_bound
     placeholder = bound_var(0, kind_bound)
     signature = tuple(

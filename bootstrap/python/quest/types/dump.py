@@ -63,7 +63,8 @@ from quest.types.model import (
 # ============================================================================
 
 def qtype_dump(item: Union[QType, QKind], indent: int = 0) -> str:
-    """Formats a QType or QKind into a canonical 2-space indented S-expression string."""
+    """Formats a QType or QKind into a canonical 2-space indented S-expression
+    string."""
     pad = "  " * indent
     match item:
         case (QIntType() | QRealType() | QBoolType() | QCharType() | QStringType()
@@ -203,10 +204,12 @@ class _DisplayNameFull(Exception):
 
 
 def short_type_name(t: QType) -> str:
-    """A short name for a type: the type as printed, cut off at 80 characters. A recursive type prints as its variable.
+    """A short name for a type: the type as printed, cut off at 80 characters. A
+    recursive type prints as its variable.
 
-    It names runtime type descriptors in compiled code, which compare them structurally, so the name need not
-    identify the type (printing a large recursive type in full can take megabytes). Echoed auto values show their
+    It names runtime type descriptors in compiled code, which compare them
+    structurally, so the name need not identify the type (printing a large
+    recursive type in full can take megabytes). Echoed auto values show their
     type components by this name, as compiled code can.
     """
     parts: list[str] = []
@@ -300,7 +303,8 @@ def format_type_compact(
     visited_ids: Optional[set[int]] = None,
     depth: int = 0,
 ) -> str:
-    """Formats a QType or QKind into a compact, human-readable string with alias awareness and bounded recursion."""
+    """Formats a QType or QKind into a compact, human-readable string with alias
+    awareness and bounded recursion."""
     if t is None:
         return ""
     if visited_ids is None:

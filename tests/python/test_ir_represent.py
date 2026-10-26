@@ -1,8 +1,9 @@
 """Representation (quest/ir/represent.py, docs/ir.md §8.3).
 
-Every golden test program is represented, verified (each value used in the representation its use requires), and
-run (run_tests.py's run_ir_represented phase), and compiled to C (run_c_compiled); these tests check
-the pass's plans on small programs."""
+Every golden test program is represented, verified (each value used in the
+representation its use requires), and run (run_tests.py's run_ir_represented
+phase), and compiled to C (run_c_compiled); these tests check the pass's plans
+on small programs."""
 
 from __future__ import annotations
 
@@ -37,7 +38,8 @@ def represent(source: str) -> ir.Unit:
 
 
 def plans(unit: ir.Unit, slots: bool = False) -> list[str]:
-    """The kinds of the unit's conversions, in order (with slots, also its records' and variants' boxing at slots)."""
+    """The kinds of the unit's conversions, in order (with slots, also its
+    records' and variants' boxing at slots)."""
     found = []
     for body in [unit.main, *(f.body for f in unit.functions)]:
         for s in walk_statements(body, into_functions=False):
@@ -61,7 +63,8 @@ def operations(unit: ir.Unit, kind: type) -> list:
 
 class TestRepresent(unittest.TestCase):
     def test_type_parameters_hold_qval_words(self) -> None:
-        # The argument boxed for the generic parameter, the result unboxed (no clone: Int calls for none)
+        # The argument boxed for the generic parameter, the result unboxed (no
+        # clone: Int calls for none)
         self.assertEqual(plans(represent("let id(A::TYPE x: A): A = x; id(:Int 3) + 1")), ["box", "unbox"])
 
     def test_records_viewed_at_supertypes(self) -> None:
@@ -86,7 +89,8 @@ class TestRepresent(unittest.TestCase):
         self.assertIn("adapt", plans(unit))
 
     def test_a_generic_var_parameter_takes_a_shadow_cell(self) -> None:
-        # Called through a first-class value (a direct call would be specialized, for its var parameters)
+        # Called through a first-class value (a direct call would be
+        # specialized, for its var parameters)
         unit = represent(
             "let swap(A::TYPE var x: A var y: A): Ok = begin let t = x x := y y := t end; "
             "let s: All(A::TYPE var x: A var y: A) Ok = swap; let var a = 1; let var b = 2; s(:Int @a @b); a"
@@ -115,7 +119,8 @@ class TestRepresent(unittest.TestCase):
         self.assertNotIn("runtime", plans(unit))
 
     def test_layouts_that_disagree_convert_at_run_time(self) -> None:
-        # A closure returning a Bool, which a register holds differently from a QVal
+        # A closure returning a Bool, which a register holds differently from a
+        # QVal
         unit = represent(
             "let get(A::TYPE t: Tuple f: All(x: Int) A end): A = t.f(1); "
             "let g: All(A::TYPE t: Tuple f: All(x: Int) A end) A = get; g(:Bool tuple let f = fun(x: Int): Bool true end)"
@@ -123,7 +128,8 @@ class TestRepresent(unittest.TestCase):
         self.assertIn("runtime", plans(unit))
 
     def test_bounded_parameters_are_held_at_their_own_view(self) -> None:
-        # As the caller holds the type argument's values: nothing converts, mutable data included
+        # As the caller holds the type argument's values: nothing converts,
+        # mutable data included
         for source in (
             "Let P = Record a: Int end; Let Q = Record a: Int b: Int end; Let Box = Fun(A::TYPE) Tuple x: A end; "
             "let get(A <: P b: Box(A)): A = b.x; let f: All(A <: P b: Box(A)) A = get; "
@@ -143,7 +149,8 @@ class TestRepresent(unittest.TestCase):
             )
 
     def test_records_read_from_slots_keep_their_boxes(self) -> None:
-        # The record read from one tuple is stored into another in the box it was read from
+        # The record read from one tuple is stored into another in the box it
+        # was read from
         unit = represent(
             "Let P = Record a: Int end; let t = tuple let x = record a = 1 end end; "
             "let u = tuple let y = t.x end; u.y.a"
@@ -178,13 +185,15 @@ class TestRepresent(unittest.TestCase):
             "let t = tuple let x = record a = 1 b = 2 end let n = 3 end; get(t) + t.n"
         )
         access = {(f.index, f.access) for f in operations(unit, ir.TupleField)}
-        # Through a proxy for the record, from the original for the Int; the tuple made here, directly
+        # Through a proxy for the record, from the original for the Int; the
+        # tuple made here, directly
         self.assertIn((0, ir.PROXY), access)
         self.assertIn((1, ir.ORIGINAL), access)
         self.assertIn((1, ir.DIRECT), access)
 
     def test_auto_values_of_bounded_witnesses_are_stored_at_the_witness(self) -> None:
-        # Generic code holds the witness's values at their own view, at which the payload stores them: no copy
+        # Generic code holds the witness's values at their own view, at which
+        # the payload stores them: no copy
         unit = represent(
             "Let Big = Variant a: Int b: Bool end; Let AnyBig = Auto A<:Big with a: A end; "
             "let mk0(A <: Big x: A): AnyBig = auto :A with x end; let mk: All(A <: Big x: A) AnyBig = mk0; "
@@ -204,15 +213,18 @@ class TestRepresent(unittest.TestCase):
         )
         arms = [c.arm for i in operations(unit, ir.Inspect) for c in i.cases]
         exact = next(a for a in arms if len(a.converted) == 2)
-        # At the bounded parameter A, as at Big: the component converted by descriptor (A's own view, the witness's)
+        # At the bounded parameter A, as at Big: the component converted by
+        # descriptor (A's own view, the witness's)
         others = [a for a in arms if a is not exact]
         self.assertEqual([a.converted for a in others + [exact]], [("component",)] * 2 + [("component", None)])
         self.assertFalse(any(a.exact for a in others))
-        # Var components: inspected exactly, sharing the stored components, or a layout error
+        # Var components: inspected exactly, sharing the stored components, or a
+        # layout error
         self.assertTrue(exact.exact and exact.shared and exact.layout_error)
 
     def test_type_applications_record_their_thunks_plans(self) -> None:
-        # The instance converts its argument to the generic layout (a cast) and its Int result not at all
+        # The instance converts its argument to the generic layout (a cast) and
+        # its Int result not at all
         unit = represent(
             "Let Rec L(A::TYPE) = Option nil cons with head: A tail: L(A) end end; "
             "let rec length(A::TYPE l: L(A)): Int = if l?nil then 0 else 1 + length(:A l!cons.tail) end; "

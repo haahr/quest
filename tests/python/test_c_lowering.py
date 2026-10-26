@@ -1,4 +1,5 @@
-"""A type's C representation is computed once per shape (per canonical type) and never cached through a metavariable.
+"""A type's C representation is computed once per shape (per canonical type) and
+never cached through a metavariable.
 
 Type digests stand for the printed type without printing it.
 """
@@ -76,7 +77,8 @@ class TestCLowering(unittest.TestCase):
 
 
 def _doubled(leaf, depth):
-    """A type that prints as 2**depth copies of leaf but has only depth + 1 distinct nodes."""
+    """A type that prints as 2**depth copies of leaf but has only depth + 1
+    distinct nodes."""
     t = leaf
     for _ in range(depth):
         t = _pair(t, t)
@@ -128,15 +130,17 @@ class TestTypeDigests(unittest.TestCase):
         self.assertGreater(printed(a)[0], 2**60)
         self.assertNotEqual(type_digest(a), type_digest(b))
         self.assertEqual(type_digest(a), type_digest(_doubled(INT_TYPE, 60)))
-        # One level past the text limit, a type differing deep inside still digests differently
+        # One level past the text limit, a type differing deep inside still
+        # digests differently
         depth = next(d for d in range(20) if printed(_doubled(INT_TYPE, d))[0] > PRINTED_TEXT_LIMIT)
         deep_a = _pair(_doubled(INT_TYPE, depth - 1), _doubled(INT_TYPE, depth - 1))
         deep_b = _pair(_doubled(INT_TYPE, depth - 1), _pair(_doubled(INT_TYPE, depth - 2), _doubled(BOOL_TYPE, depth - 2)))
         self.assertNotEqual(type_digest(deep_a), type_digest(deep_b))
 
     def test_opaque_applications_are_named_by_operator_and_keep_their_arguments(self) -> None:
-        # An application of an abstract type operator is compared by the operator's name and its arguments (which
-        # templates may instantiate at run time), so its name stays short however long the arguments print
+        # An application of an abstract type operator is compared by the
+        # operator's name and its arguments (which templates may instantiate at
+        # run time), so its name stays short however long the arguments print
         operator = QAbstractType("list.T", 9010, QAllKind("E", 9011, TYPE_KIND, TYPE_KIND))
         short = QTypeApp(operator, (INT_TYPE,))
         self.assertEqual(descriptor_form(short).name, "list.T")
@@ -149,7 +153,8 @@ class TestTypeDigests(unittest.TestCase):
 
 
 class TestTemplateTypes(unittest.TestCase):
-    """Types that mention type parameters in scope are described by templates with holes (c-representation §6.4.5)."""
+    """Types that mention type parameters in scope are described by templates
+    with holes (c-representation §6.4.5)."""
 
     def test_nested_aggregate_tags_are_distinct(self) -> None:
         a = QTypeVar("A", 9101)
@@ -167,7 +172,8 @@ class TestTemplateTypes(unittest.TestCase):
         bounded = descriptor_form(hole_var(1, QPowerKind(record)))
         self.assertEqual(bounded.kind, "hole")
         self.assertNotEqual(bounded.tag, unbounded.tag)
-        # A bounded hole is represented as its bound, as the type parameter it stands for is
+        # A bounded hole is represented as its bound, as the type parameter it
+        # stands for is
         self.assertEqual(qtype_to_c_type(hole_var(1, QPowerKind(record))), qtype_to_c_type(record))
 
     def test_templates_are_laid_out_as_generic_code_lays_out_the_type(self) -> None:

@@ -43,7 +43,8 @@ export
 
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
 
-    (* Validates arity and elaborates call arguments against formal parameter modes *)
+    (* Validates arity and elaborates call arguments against formal parameter
+     * modes *)
     let rec checkCallArgs(
         c: checker.T args: Array(ast.Expr) params: Array(model.Param) e: env.T loopDepth: Int offset: Int
     ): Array(typedAst.Expr) =
@@ -65,7 +66,8 @@ export
             vector.toArray(:typedAst.Expr typed)
         end
 
-    (* Validates that arg is a mutable location for a var or out parameter: @target, or var(initial value) *)
+    (* Validates that arg is a mutable location for a var or out parameter:
+     * @target, or var(initial value) *)
     and checkLvalueArg(c: checker.T arg: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool): typedAst.Expr =
         case arg.form
             when exprDerefCell with x then checkLvalueTarget(c x.target paramType e loopDepth isOut arg.span.startOffset)
@@ -112,13 +114,15 @@ export
                         let var recType = evaluate(recTyped.type)
                         let isTuple = case recType.form when typeTuple then true else false end
                         if not(isTuple) andif maybe.isNone(:Type kinds.resolveRecordBound(recType some(e))) then
-                            (* A type parameter bounded by a tuple type: its components are its bound's *)
+                            (* A type parameter bounded by a tuple type: its
+                             * components are its bound's *)
                             recType := maybe.unwrapOr(:Type kinds.resolveTupleBound(recType some(e)) recType)
                         end
                         case recType.form
                             when typeTuple with t then
                                 begin
-                                    (* A mutable tuple component: @t.f or @t.1 *)
+                                    (* A mutable tuple component: @t.f or
+                                     * @t.1 *)
                                     let fields = model.tupleValueFields(t.fields)
                                     let var index = ~1
                                     for i = {extent fields - 1} downto 0 do
@@ -207,11 +211,14 @@ export
 
     let pruned(m: Type): Bool = not(model.same(model.prune(m) m))
 
-    (* Instantiates a polymorphic function using explicit type arguments or metavariable inference. Following
-     * Cardelli (The Quest Language and System section 4), omitted type arguments are inferred from the types of the
-     * arguments and, failing that, from the type required by the context (expected). A type argument that cannot be
-     * inferred is an error, except that a call whose expected type still depends on the enclosing call's unsolved type
-     * arguments defers its own to that call (e.g. nil() in cons(nil() tail)). *)
+    (* Instantiates a polymorphic function using explicit type arguments or
+     * metavariable inference. Following Cardelli (The Quest Language and System
+     * section 4), omitted type arguments are inferred from the types of the
+     * arguments and, failing that, from the type required by the context
+     * (expected). A type argument that cannot be inferred is an error, except
+     * that a call whose expected type still depends on the enclosing call's
+     * unsolved type arguments defers its own to that call (e.g. nil() in
+     * cons(nil() tail)). *)
     let rec synthPolymorphicApp(
         c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type e: env.T loopDepth: Int
         expected: maybe.T(Type)
@@ -219,7 +226,8 @@ export
         case allType.form
             when typeAll with all then
                 begin
-                    (* 1. Explicit type and kind arguments (f(:Int 42), id(:Int)) *)
+                    (* 1. Explicit type and kind arguments (f(:Int 42),
+                     *    id(:Int)) *)
                     let var numTargs = 0
                     while {numTargs < extent args} andif isTypeOrKindArg(args[numTargs]) do numTargs := numTargs + 1 end
                     if numTargs > 0 then
@@ -301,7 +309,8 @@ export
     ): typedAst.Expr =
         begin
             let fnBody = evaluate(body)
-            (* An empty application of a polymorphic constant instantiates it (Cardelli: nil()) *)
+            (* An empty application of a polymorphic constant instantiates it
+             * (Cardelli: nil()) *)
             let isInstantiation = case fnBody.form when typeFun then false else true end
             if isInstantiation andif {extent args > 0} then
                 diagnostics.fail(:Ok "Polymorphic body is '" <> model.show(fnBody) <> "', not a function type" offset)
@@ -316,7 +325,8 @@ export
                 when typeFun with f then if isInstantiation then instantiatedFn else f.result end
                 else instantiatedFn
             end
-            (* This call's type arguments, plus any that calls nested in its arguments defer to it *)
+            (* This call's type arguments, plus any that calls nested in its
+             * arguments defer to it *)
             let typeArgs = vector.new(:checker.PendingTypeArg)
             for i = 0 upto {extent quantifiers - 1} do
                 let q = quantifiers[i]
@@ -352,7 +362,8 @@ export
                     found
                 end
             if maybe.isSome(:Type expected) andif anyUnsolved() then
-                (* Inference from the type required by this instance (a failed match is reported by the caller) *)
+                (* Inference from the type required by this instance (a failed
+                 * match is reported by the caller) *)
                 subtyping.isSubtype(resultType maybe.unwrap(:Type expected) env.lookupOf(e))
                 ok
             end
@@ -398,8 +409,9 @@ export
             let resolvedTargs = vector.toArray(:Type resolved)
             let finalFn = model.resolveMetas(instantiatedFn)
             if maybe.isNone(:vector.T(checker.PendingTypeArg) c.pendingTypeArgs) then
-                (* Arguments elaborated in check mode and nested calls that deferred to this one still refer to the
-                 * now-solved metavariables *)
+                (* Arguments elaborated in check mode and nested calls that
+                 * deferred to this one still refer to the now-solved
+                 * metavariables *)
                 let resolvedArgs = vector.new(:typedAst.Expr)
                 for i = 0 upto {extent typedArgs - 1} do
                     vector.append(:typedAst.Expr resolvedArgs metas.resolveTypedMetas(typedArgs[i]))
@@ -437,7 +449,8 @@ export
                     let args = vector.toArray(:ast.Expr x.args)
                     let isOrdinal = case x.func.form when exprId with f then stringOp.equal(f.name "ordinal") else false end
                     if isOrdinal then
-                        (* The built-in monadic operator ordinal (Cardelli section 4.5) *)
+                        (* The built-in monadic operator ordinal (Cardelli
+                         * section 4.5) *)
                         if extent args isnot 1 then diagnostics.fail(:Ok "ordinal expects 1 argument" offset) end
                         let argTyped = checker.synthExpr(c args[0] e loopDepth)
                         let argLazy = evaluate(argTyped.type)

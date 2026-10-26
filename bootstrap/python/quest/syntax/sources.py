@@ -20,8 +20,9 @@ class SourceLocation:
         return f"{self.line}:{self.column}"
 
 
-# A character is a byte, as in C; only its ASCII range has a defined meaning. Latin-1 decodes each byte of a file to
-# the character with the byte's code, so the interpreter sees the same characters as compiled code.
+# A character is a byte, as in C; only its ASCII range has a defined meaning.
+# Latin-1 decodes each byte of a file to the character with the byte's code, so
+# the interpreter sees the same characters as compiled code.
 BYTE_ENCODING = "latin-1"
 
 
@@ -31,13 +32,15 @@ def read_source(path: str | Path) -> str:
 
 
 def os_text(text: str) -> str:
-    """A string Python decoded from the OS (an argument, say), a character per byte, as a Quest program sees it."""
+    """A string Python decoded from the OS (an argument, say), a character per
+    byte, as a Quest program sees it."""
     return os.fsencode(text).decode(BYTE_ENCODING)
 
 
 def display_file_name(path: Path) -> str:
-    """How diagnostics name a source file found by the compiler (an imported unit): relative to the current
-    directory if it is inside it, else its full path."""
+    """How diagnostics name a source file found by the compiler (an imported
+    unit): relative to the current directory if it is inside it, else its full
+    path."""
     try:
         return str(Path(path).resolve().relative_to(Path.cwd().resolve()))
     except ValueError:
@@ -45,7 +48,8 @@ def display_file_name(path: Path) -> str:
 
 
 class SourceMap:
-    """Maintains source text and computes line/column coordinates from offsets."""
+    """Maintains source text and computes line/column coordinates from
+    offsets."""
 
     def __init__(self, source_text: str, file_name: str = "<string>"):
         self.source_text = source_text
@@ -64,6 +68,7 @@ class SourceMap:
         return SourceLocation(self.file_name, offset, line, column)
 
     def offset_of(self, line: int, column: int) -> int:
-        """The 0-indexed character offset of a (1-indexed) line and column, the inverse of locate."""
+        """The 0-indexed character offset of a (1-indexed) line and column, the
+        inverse of locate."""
         line_index = max(0, min(line - 1, len(self.line_starts) - 1))
         return min(self.line_starts[line_index] + max(column - 1, 0), len(self.source_text))

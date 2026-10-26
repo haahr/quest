@@ -1,4 +1,5 @@
-"""Reserved symbol ids: each use has its own prefix, so ids of different uses (and metavariables) never coincide."""
+"""Reserved symbol ids: each use has its own prefix, so ids of different uses
+(and metavariables) never coincide."""
 
 from __future__ import annotations
 
@@ -51,7 +52,8 @@ class TestReservedSymbolIds(unittest.TestCase):
                     self.assertIsNone(reserved_symbol_index(reserved_symbol_id(use, 0), other))
 
     def test_other_ids_are_not_reserved(self) -> None:
-        # Environment ids are positive; metavariable ids count down from -1 and have prefix 0
+        # Environment ids are positive; metavariable ids count down from -1 and
+        # have prefix 0
         for symbol_id in (0, 1, 12345, -1, -2, -(RESERVED_INDEX_LIMIT - 1)):
             self.assertIsNone(reserved_symbol_use(symbol_id))
 
@@ -75,7 +77,8 @@ class TestReservedSymbolIds(unittest.TestCase):
     def test_each_placeholder_uses_its_own_prefix(self) -> None:
         dynamic_param = DYNAMIC_TYPE.signature[0].type_val
         self.assertEqual(reserved_symbol_use(dynamic_param.symbol_id), (ReservedSymbolUse.DYNAMIC_PARAM, 0))
-        # Dynamic's parameter once shared its id with the recursion placeholder at depth 0, and was tagged Self0
+        # Dynamic's parameter once shared its id with the recursion placeholder
+        # at depth 0, and was tagged Self0
         self.assertIsNone(rec_self_level(dynamic_param))
         self.assertEqual(type_tag(dynamic_param), "QVal")
 

@@ -1,5 +1,6 @@
-"""Printing values by their types, for the interpreters: a value as its static type shows it (Cardelli §5.3), as
-compiled code prints it from the type's descriptor, and a top-level phrase's result in interactive style.
+"""Printing values by their types, for the interpreters: a value as its static
+type shows it (Cardelli §5.3), as compiled code prints it from the type's
+descriptor, and a top-level phrase's result in interactive style.
 """
 
 from __future__ import annotations
@@ -62,8 +63,9 @@ from quest.values.model import (
 def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
     """Formats a runtime value with respect to its static type (Cardelli §5.3).
 
-    The type decides what is shown, all the way down, so that compiled code (quest_print_typed) can print the same
-    from the value's type descriptor: a record shows its type's fields, a function is <fun>, and a value of an
+    The type decides what is shown, all the way down, so that compiled code
+    (quest_print_typed) can print the same from the value's type descriptor: a
+    record shows its type's fields, a function is <fun>, and a value of an
     abstract type is <hidden>.
     """
     if typ is None:
@@ -72,7 +74,8 @@ def format_value_with_type(val: QValue, typ: Optional[QType] = None) -> str:
 
 
 def exposed_type(typ: QType) -> QType:
-    """typ with aliases removed, recursive types unfolded, and type operator applications reduced."""
+    """typ with aliases removed, recursive types unfolded, and type operator
+    applications reduced."""
     typ = unalias(typ)
     while (unfolded := unfold_head(typ)) is not None:
         typ = unalias(unfolded)
@@ -84,8 +87,9 @@ def _format_typed(val: QValue, typ: QType, visited: set[int]) -> str:
         val = val.deref()
     typ = exposed_type(typ)
 
-    # A value of an abstract type, such as a module's T, is hidden, so that the interpreter and compiled code (which
-    # cannot see a separately compiled module's representation) agree. Word.T is a library type with literals of
+    # A value of an abstract type, such as a module's T, is hidden, so that the
+    # interpreter and compiled code (which cannot see a separately compiled
+    # module's representation) agree. Word.T is a library type with literals of
     # its own.
     match typ:
         case QPathType() | QAbstractType() | QTypeApp():
@@ -103,7 +107,8 @@ def _format_typed(val: QValue, typ: QType, visited: set[int]) -> str:
         case QAutoVal(), QAutoType():
             components = _format_typed(val.value, auto_payload_type(typ, val.type_val), visited)
             components = components.removeprefix("tuple").removesuffix("end").strip()
-            # The type component is shown as compiled code shows it, by its runtime descriptor's name
+            # The type component is shown as compiled code shows it, by its
+            # runtime descriptor's name
             type_name = short_type_name(val.type_val)
             return f"auto :{type_name} with {components} end" if components else f"auto :{type_name} with end"
         case QTuple() | QRecord() | QArray(), _:
@@ -166,7 +171,8 @@ def format_interactive_result(
     phrase: Optional[TypedNode],
     val: Optional[QValue],
 ) -> str:
-    """Formats the result of evaluating a top-level phrase in Cardelli interactive style."""
+    """Formats the result of evaluating a top-level phrase in Cardelli
+    interactive style."""
     if phrase is None or val is None:
         return ""
 

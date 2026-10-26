@@ -42,7 +42,8 @@ from quest.types.env import (
 
 @dataclass(frozen=True)
 class TypedNode:
-    """Base class for all typed Quest AST nodes with unified S-expression formatting."""
+    """Base class for all typed Quest AST nodes with unified S-expression
+    formatting."""
     offset: int = field(default=0, kw_only=True)
 
     def dump_header(self, env: Optional[Any] = None) -> str:
@@ -50,7 +51,8 @@ class TypedNode:
         return ""
 
     def dump_children(self) -> list[tuple[str, Any]]:
-        """Returns structured children as [(':label', child_or_sequence), ...]."""
+        """Returns structured children as [(':label', child_or_sequence),
+        ...]."""
         return []
 
     def dump_type(self) -> Optional[QType]:
@@ -58,7 +60,8 @@ class TypedNode:
         return None
 
     def dump(self, indent: int = 0, env: Optional[Any] = None) -> str:
-        """Recursively formats this node into a canonical 2-space indented S-expression."""
+        """Recursively formats this node into a canonical 2-space indented
+        S-expression."""
         child_pad = "  " * (indent + 1)
 
         # 1. Construct header parts
@@ -228,8 +231,9 @@ class TypedFun(TypedExpr):
     params: tuple[TypedParam, ...]
     body: TypedExpr
     type_val: QFunType
-    # Symbol ids of the function's type parameters as its body refers to them (for a polymorphic function checked
-    # against an expected type, these differ from the expected type's quantifiers), bound at run time by type
+    # Symbol ids of the function's type parameters as its body refers to them
+    # (for a polymorphic function checked against an expected type, these differ
+    # from the expected type's quantifiers), bound at run time by type
     # applications
     type_param_ids: tuple[int, ...] = ()
 
@@ -333,16 +337,19 @@ class TypedTypeWitness(TypedExpr):
 class TypedTuple(TypedExpr):
     """Tuple value construction: tuple e1, e2 end.
 
-    Components declared together are listed as groups of indices into elements: mutually recursive ones (let rec,
-    alone or joined by and), whose closures may refer to one another, and simultaneous ones (let ... and ...), whose
-    values are all computed before any of their labels is bound. A labeled component's label is a variable of the
-    components after it (and, in a recursive group, of the group's members), bound by its symbol in labels.
+    Components declared together are listed as groups of indices into elements:
+    mutually recursive ones (let rec, alone or joined by and), whose closures
+    may refer to one another, and simultaneous ones (let ... and ...), whose
+    values are all computed before any of their labels is bound. A labeled
+    component's label is a variable of the components after it (and, in a
+    recursive group, of the group's members), bound by its symbol in labels.
     """
     elements: tuple[TypedExpr, ...]
     type_val: QTupleType
     rec_groups: tuple[tuple[int, ...], ...] = ()
     simultaneous_groups: tuple[tuple[int, ...], ...] = ()
-    # The symbol each element's label binds for the later elements (None for an unlabeled one, or a type component)
+    # The symbol each element's label binds for the later elements (None for an
+    # unlabeled one, or a type component)
     labels: tuple[Optional[ValueSymbol], ...] = ()
 
     def dump_header(self, env: Optional[Any] = None) -> str:
@@ -469,7 +476,8 @@ class TypedIndexRef(TypedExpr):
 
 @dataclass(frozen=True)
 class TypedTupleSelectRef(TypedExpr):
-    """Reference to a mutable tuple field/element (for var/out arguments): @t.f or @t.1."""
+    """Reference to a mutable tuple field/element (for var/out arguments): @t.f
+    or @t.1."""
     target: TypedExpr
     index: int
     field: Optional[str]
@@ -537,7 +545,8 @@ class TypedOption(TypedExpr):
 
 @dataclass(frozen=True)
 class TypedAuto(TypedExpr):
-    """Auto value: auto :W with Binding end, packaging the payload with its type component W."""
+    """Auto value: auto :W with Binding end, packaging the payload with its type
+    component W."""
     witness_type: QType
     auto_type: QAutoType
     payload: TypedExpr
@@ -612,7 +621,8 @@ class TypedCase(TypedExpr):
 class TypedInspectBranch(TypedNode):
     """A branch in a dynamic type inspection: when Type => body.
 
-    The branch is selected when the inspected type is a subtype of match_type, or, if exact, equal to it.
+    The branch is selected when the inspected type is a subtype of match_type,
+    or, if exact, equal to it.
     """
     match_type: QType
     binders: tuple[ValueSymbol, ...]
@@ -628,7 +638,8 @@ class TypedInspectBranch(TypedNode):
 
 @dataclass(frozen=True)
 class TypedInspect(TypedExpr):
-    """Type inspection (inspect target ...) of a Dynamic or, when auto_type is set, an auto value."""
+    """Type inspection (inspect target ...) of a Dynamic or, when auto_type is
+    set, an auto value."""
     target: TypedExpr
     branches: tuple[TypedInspectBranch, ...]
     type_val: QType
@@ -737,8 +748,8 @@ class TypedExit(TypedExpr):
 
 @dataclass(frozen=True)
 class TypedException(TypedExpr):
-    """Exception value constructor: exception name [: Type] end. It also binds the name (symbol) to the exception, in
-    the scope where it appears."""
+    """Exception value constructor: exception name [: Type] end. It also binds
+    the name (symbol) to the exception, in the scope where it appears."""
     name: str
     payload_type: Optional[QType] = None
     type_val: QType = EXCEPTION_TYPE
@@ -812,8 +823,8 @@ class TypedLetValue(TypedBinding):
 class TypedLetValueGroup(TypedBinding):
     """Simultaneous value declarations: let [rec] x = expr and y = expr ...
 
-    With rec (each member's is_rec), the members are mutually recursive; without it, every member's value is computed
-    before any member is bound.
+    With rec (each member's is_rec), the members are mutually recursive; without
+    it, every member's value is computed before any member is bound.
     """
     members: tuple[TypedLetValue, ...]
 
@@ -829,12 +840,14 @@ class TypedLetValueGroup(TypedBinding):
 
 
 def binding_members(binding: Any) -> tuple[Any, ...]:
-    """The bindings a binding declares: the members of a group of value declarations, or the binding itself."""
+    """The bindings a binding declares: the members of a group of value
+    declarations, or the binding itself."""
     return binding.members if isinstance(binding, TypedLetValueGroup) else (binding,)
 
 
 def declared_name(binding: Any) -> Optional[str]:
-    """The name a binding declares by itself, if it declares one (not a group's, a statement's, or an import's)."""
+    """The name a binding declares by itself, if it declares one (not a group's,
+    a statement's, or an import's)."""
     match binding:
         case TypedLetValue(name=name) | TypedLetType(name=name) | TypedDefKind(name=name) | TypedInterface(name=name) | \
                 TypedModule(name=name):
@@ -899,9 +912,10 @@ class TypedInterface(TypedBinding):
 
 @dataclass(frozen=True)
 class TypedModule(TypedBinding):
-    """Module implementation conforming to an interface. `symbol_id` identifies the value symbol its name binds, which
-    uses of the module refer to (an id rather than the symbol, whose record type the C backend's walkers of the typed
-    AST would otherwise visit)."""
+    """Module implementation conforming to an interface. `symbol_id` identifies
+    the value symbol its name binds, which uses of the module refer to (an id
+    rather than the symbol, whose record type the C backend's walkers of the
+    typed AST would otherwise visit)."""
     name: str
     interface_name: str
     bindings: tuple[TypedBinding, ...]
@@ -923,11 +937,12 @@ class TypedImportItem(TypedNode):
     interface_name: str
     module_paths: Optional[tuple[str, ...]] = None
     interface_path: Optional[str] = None
-    # The canonical names of the imported modules (docs/modules.md §2.3), which name them in C symbols; None
-    # where they are the module paths as written.
+    # The canonical names of the imported modules (docs/modules.md §2.3), which
+    # name them in C symbols; None where they are the module paths as written.
     canonical_module_paths: Optional[tuple[str, ...]] = None
-    # The ids of the value symbols the names bind to the modules, which uses of the modules refer to (None for a
-    # name that imports a type, value, or kind of the interface rather than a module). Not compared: the same import
+    # The ids of the value symbols the names bind to the modules, which uses of
+    # the modules refer to (None for a name that imports a type, value, or kind
+    # of the interface rather than a module). Not compared: the same import
     # elaborated twice is the same import
     symbol_ids: Optional[tuple[Optional[int], ...]] = field(default=None, compare=False)
 
@@ -975,8 +990,8 @@ class TypedProgram(TypedNode):
 # ============================================================================
 
 def named_exceptions_in(node: Any) -> list[TypedException]:
-    """The named exceptions made in node whose names bind in node's scope: not inside functions or blocks, which are
-    scopes of their own."""
+    """The named exceptions made in node whose names bind in node's scope: not
+    inside functions or blocks, which are scopes of their own."""
     found: list[TypedException] = []
 
     def scan(n: Any) -> None:
@@ -998,30 +1013,34 @@ def named_exceptions_in(node: Any) -> list[TypedException]:
 
 
 def scope_exceptions(node: Any) -> list[TypedException]:
-    """The named exceptions that a binding, a phrase, or a function's body makes for its scope before it runs, so that
-    each one exists throughout the scope whether or not the expression that makes it runs (docs/type-system.md
-    §6.14): those named_exceptions_in finds, except the exception node is itself or binds directly, which it makes as
-    it runs."""
+    """The named exceptions that a binding, a phrase, or a function's body makes
+    for its scope before it runs, so that each one exists throughout the scope
+    whether or not the expression that makes it runs (docs/type-system.md
+    §6.14): those named_exceptions_in finds, except the exception node is itself
+    or binds directly, which it makes as it runs."""
     direct = node.expr if isinstance(node, TypedExprStmt) else node.value if isinstance(node, TypedLetValue) else node
     return [exc for exc in named_exceptions_in(node) if exc is not direct and exc.symbol is not None]
 
 
 def typed_ast_dump(node: TypedNode, indent: int = 0, env: Optional[Any] = None) -> str:
-    """Formats a TypedNode into a canonical 2-space indented S-expression string."""
+    """Formats a TypedNode into a canonical 2-space indented S-expression
+    string."""
     return node.dump(indent, env=env)
 
 
 # The explicit traversal: a case for each class of typed node
 
 def typed_fields(node) -> Optional[tuple]:
-    """The values of a typed node's fields (but its offset), in order; None for a value that is not a typed node. The
-    typed AST's one traversal: every walker of nodes' fields reads them through it."""
+    """The values of a typed node's fields (but its offset), in order; None for
+    a value that is not a typed node. The typed AST's one traversal: every
+    walker of nodes' fields reads them through it."""
     accessor = _TYPED_FIELDS.get(type(node))
     return accessor(node) if accessor is not None else None
 
 
 def rebuild_typed(node, values: tuple):
-    """A typed node of node's class, at its offset, whose fields are values (as typed_fields gives them)."""
+    """A typed node of node's class, at its offset, whose fields are values (as
+    typed_fields gives them)."""
     return _REBUILD_TYPED[type(node)](node, values)
 
 

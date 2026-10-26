@@ -1,15 +1,21 @@
-"""Closure conversion (docs/ir.md §8.2): lifts every function to the unit's functions, making closures of them.
+"""Closure conversion (docs/ir.md §8.2): lifts every function to the unit's
+functions, making closures of them.
 
-Each funs statement becomes lets of `closure code {captures...}`: `code` is the lifted function, and its captures
-are the function's free variables other than globals (global_variables), in the order of their first use. The lifted
-function reads them from its environment at its start (`let x = env_field(env, i)`) and uses those variables in
-their place. Closures do not capture mutable variables (Core does not allow it), so captures are values, copied
-into the closure. A function nested in a polymorphic one takes the enclosing functions' type parameters as its
-leading type parameters, which its closure supplies (its types mention them).
+Each funs statement becomes lets of `closure code {captures...}`: `code` is the
+lifted function, and its captures are the function's free variables other than
+globals (global_variables), in the order of their first use. The lifted function
+reads them from its environment at its start (`let x = env_field(env, i)`) and
+uses those variables in their place. Closures do not capture mutable variables
+(Core does not allow it), so captures are values, copied into the closure. A
+function nested in a polymorphic one takes the enclosing functions' type
+parameters as its leading type parameters, which its closure supplies (its types
+mention them).
 
-Nested functions are converted first, so a function's free variables include what the closures it makes capture. A
-closure that captures another of its own recursive group (or itself) is made in a let rec, whose closures refer to
-the variables being bound, so that the C printer fills in such captures once all the group's closures exist.
+Nested functions are converted first, so a function's free variables include
+what the closures it makes capture. A closure that captures another of its own
+recursive group (or itself) is made in a let rec, whose closures refer to the
+variables being bound, so that the C printer fills in such captures once all the
+group's closures exist.
 """
 
 from __future__ import annotations
@@ -56,7 +62,8 @@ class _Converter:
         return lets
 
     def lift(self, f: ir.Function, type_params: tuple[ir.TypeParam, ...]) -> tuple[ir.Function, list[ir.Var]]:
-        """The lifted function, added to the unit's, and the variables its closures capture."""
+        """The lifted function, added to the unit's, and the variables its
+        closures capture."""
         self.body(f.body, type_params + f.type_params)
         bound = {id(v) for v, _ in f.params}
         used: dict[int, ir.Var] = {}
@@ -68,8 +75,9 @@ class _Converter:
         captures = [v for key, v in used.items() if key not in bound and key not in self.globals]
         env = None
         if captures or type_params:
-            # The environment (of the captured values, and of the descriptors of the enclosing functions' type
-            # parameters) is not a value of a Quest type; its type is a placeholder (it prints without one)
+            # The environment (of the captured values, and of the descriptors of
+            # the enclosing functions' type parameters) is not a value of a
+            # Quest type; its type is a placeholder (it prints without one)
             env = ir.Var("env", OK_TYPE)
             renamed: dict[int, ir.Var] = {}
             prologue = []
@@ -93,13 +101,15 @@ class _Converter:
 
 
 def _rename(body: ir.Body, renamed: dict[int, ir.Var]) -> None:
-    """Replaces, in place, the uses in body of the variables renamed maps (none of which body binds)."""
+    """Replaces, in place, the uses in body of the variables renamed maps (none
+    of which body binds)."""
     for s in walk_statements(body, into_functions=False):
         replace_vars(s, lambda v: renamed.get(id(v), v))
 
 
 def closure_convert_unit(unit: ir.Unit) -> ir.Unit:
-    """Converts the unit's functions to closures of lifted functions, in place, returning it."""
+    """Converts the unit's functions to closures of lifted functions, in place,
+    returning it."""
     _Converter(unit).run()
     unit.stage = "closed"
     return unit

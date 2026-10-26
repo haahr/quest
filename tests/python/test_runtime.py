@@ -1,4 +1,5 @@
-"""Unit tests for Quest Runtime Values and Memory Model (bootstrap/python/quest/values/model.py)."""
+"""Unit tests for Quest Runtime Values and Memory Model
+(bootstrap/python/quest/values/model.py)."""
 
 import unittest
 
@@ -236,7 +237,8 @@ class TestRuntimeDynamicAndException(unittest.TestCase):
 
 
 class TestIdentityAndStructuralEquality(unittest.TestCase):
-    """Tests for Cardelli 'is' (qvalue_is) and deep structural equality (qvalue_structural_eq)."""
+    """Tests for Cardelli 'is' (qvalue_is) and deep structural equality
+    (qvalue_structural_eq)."""
 
     def test_qvalue_is_primitives(self):
         # Ok, Bool, Int, Real, Char compare by value

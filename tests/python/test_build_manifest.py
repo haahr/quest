@@ -38,7 +38,8 @@ class TestBuildManifest(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_manifest_roundtrip(self) -> None:
-        """Tests serializing and deserializing a ModuleManifest to and from a .qm file."""
+        """Tests serializing and deserializing a ModuleManifest to and from a
+        .qm file."""
         qm_path = self.dir_path / "test.qm"
         manifest = ModuleManifest(
             name="util/path",
@@ -106,7 +107,8 @@ class TestBuildManifest(unittest.TestCase):
         self.assertTrue(is_manifest_stale(manifest, qm_path))
 
     def test_staleness_transitive_interface(self) -> None:
-        """Tests that a newer imported interface source invalidates the module."""
+        """Tests that a newer imported interface source invalidates the
+        module."""
         src_path = self.dir_path / "baz.mod.quest"
         src_path.write_text("module baz: Baz export end;\n", encoding="utf-8")
         obj_path = self.dir_path / "baz.o"
@@ -126,7 +128,8 @@ class TestBuildManifest(unittest.TestCase):
         )
         write_qm(manifest, qm_path)
 
-        # Baseline: everything at current timestamp or interface older -> not stale
+        # Baseline: everything at current timestamp or interface older -> not
+        # stale
         past = time.time() - 10.0
         os.utime(iface_src, (past, past))
         self.assertFalse(is_manifest_stale(manifest, qm_path))
@@ -137,7 +140,8 @@ class TestBuildManifest(unittest.TestCase):
         self.assertTrue(is_manifest_stale(manifest, qm_path))
 
     def test_precompiled_mode_not_stale(self) -> None:
-        """Tests that when source does not exist but .qm and .o exist, it is not stale."""
+        """Tests that when source does not exist but .qm and .o exist, it is not
+        stale."""
         obj_path = self.dir_path / "precompiled.o"
         obj_path.write_text("fake object\n", encoding="utf-8")
         qm_path = self.dir_path / "precompiled.qm"

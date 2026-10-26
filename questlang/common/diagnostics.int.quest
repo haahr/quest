@@ -22,9 +22,9 @@ export
 
     Diagnostic::TYPE
 
-    (* =========================================================================
+    (* ======================================================================
      * Constructors & Factories
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     make(sev: Severity msg: String sp: location.Span): Diagnostic
     fatal(msg: String sp: location.Span): Diagnostic
@@ -32,9 +32,9 @@ export
     warning(msg: String sp: location.Span): Diagnostic
     info(msg: String sp: location.Span): Diagnostic
 
-    (* =========================================================================
+    (* ======================================================================
      * Accessors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     severity(d: Diagnostic): Severity
     message(d: Diagnostic): String
@@ -44,25 +44,26 @@ export
     help(d: Diagnostic): maybe.T(String)
     code(d: Diagnostic): maybe.T(String)
 
-    (* =========================================================================
+    (* ======================================================================
      * Mutators / Builders
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     addLabel(d: Diagnostic sp: location.Span msg: String isPrimary: Bool): Ok
     addNote(d: Diagnostic note: String): Ok
     setHelp(d: Diagnostic h: String): Ok
     setCode(d: Diagnostic c: String): Ok
-    (* For an uncaught exception, the frames running where it was raised, most recent first, rendered after the source
-     * line and any notes (docs/exceptions.md section 2.1) *)
+    (* For an uncaught exception, the frames running where it was raised, most
+     * recent first, rendered after the source line and any notes
+     * (docs/exceptions.md section 2.1) *)
     setTrace(d: Diagnostic frames: Array(String)): Ok
 
-    (* =========================================================================
+    (* ======================================================================
      * Formatting & Rendering
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     severityString(sev: Severity): String
-    (* The source maps of the files diagnostics may be in, besides the one format is given (units the program
-     * imports), by file name *)
+    (* The source maps of the files diagnostics may be in, besides the one
+     * format is given (units the program imports), by file name *)
     registerSource(sm: location.SourceMap): Ok
     format(d: Diagnostic sm: location.SourceMap): String
     render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok
@@ -70,10 +71,12 @@ export
     (* =========================================================================
      * Errors raised where they are found
      *
-     * As the bootstrap's QuestCompilerError and its subclasses (KindError, QuestTypeError, ...), an error is raised
-     * where it is found, located by an offset in the unit being checked (0 where the raiser does not know where), and
-     * the code that reports it makes a diagnostic of it in that unit's file.
-     * ========================================================================= *)
+     * As the bootstrap's QuestCompilerError and its subclasses (KindError,
+     * QuestTypeError, ...), an error is raised where it is found, located by an
+     * offset in the unit being checked (0 where the raiser does not know
+     * where), and the code that reports it makes a diagnostic of it in that
+     * unit's file.
+     * ====================================================================== *)
 
     Def CompilerError = Tuple
         message: String
@@ -82,12 +85,15 @@ export
         isFatal: Bool
         help: maybe.T(String)
         notes: vector.T(String)
-        (* The file of the unit the error was raised in, once it propagates out of it (the bootstrap's in_unit) *)
+        (* The file of the unit the error was raised in, once it propagates out
+         * of it (the bootstrap's in_unit) *)
         file: maybe.T(String)
-        (* An error that is not reported: a use of a symbol a failed declaration poisoned, which fails the binding
-         * that uses it without another error (docs/milestone-2.md section 2) *)
+        (* An error that is not reported: a use of a symbol a failed declaration
+         * poisoned, which fails the binding that uses it without another error
+         * (docs/milestone-2.md section 2) *)
         silent: Bool
-        (* Secondary labels: the imports that loaded the unit the error was raised in *)
+        (* Secondary labels: the imports that loaded the unit the error was
+         * raised in *)
         labels: vector.T(Label)
     end
 
@@ -101,31 +107,35 @@ export
     raiseError(A::TYPE e: CompilerError): A
     (* Raises errorAt(message offset) *)
     fail(A::TYPE message: String offset: Int): A
-    (* An error located in file, unless it already is (the bootstrap's in_unit) *)
+    (* An error located in file, unless it already is (the bootstrap's
+     * in_unit) *)
     inFile(e: CompilerError file: String): CompilerError
-    (* An error propagating out of the import at offset in file (the bootstrap's at_import): one not yet located in a
-     * file is located at the import, and one in another file gets an "imported here" label *)
+    (* An error propagating out of the import at offset in file (the bootstrap's
+     * at_import): one not yet located in a file is located at the import, and
+     * one in another file gets an "imported here" label *)
     atImport(e: CompilerError offset: Int length: Int file: String): CompilerError
     (* The diagnostic of an error, in its file, or else in file *)
     errorDiagnostic(e: CompilerError file: String): Diagnostic
 
-    (* =========================================================================
+    (* ======================================================================
      * The frames of tracebacks (docs/exceptions.md section 2.3)
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* The program's phrases *)
     mainFrame: String
     (* A module's initializer *)
     initFrame(moduleName: String): String
-    (* The name of a function bound to binder (none if it is not let-bound) by code running in the frame enclosing:
-     * the binder, or <anon>, qualified by the module's name in a module's initializer, by the enclosing function's
+    (* The name of a function bound to binder (none if it is not let-bound) by
+     * code running in the frame enclosing: the binder, or <anon>, qualified by
+     * the module's name in a module's initializer, by the enclosing function's
      * name in a function, and not at all in the program's phrases *)
     frameName(enclosing: String binder: maybe.T(String)): String
 
-    (* =========================================================================
+    (* ======================================================================
      * Quoting
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* Python's repr of a string, which the bootstrap compiler's messages and AST dumps use to quote strings *)
+    (* Python's repr of a string, which the bootstrap compiler's messages and
+     * AST dumps use to quote strings *)
     pyRepr(s: String): String
 end

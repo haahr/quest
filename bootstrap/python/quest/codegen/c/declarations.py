@@ -1,5 +1,6 @@
-"""The declarations of the C the IR's printer writes (c/printer.py) and of interfaces' C headers (c/headers.py):
-aggregate structs, offset tables, coercion tables, type descriptors, function type adapters, and modules' exported
+"""The declarations of the C the IR's printer writes (c/printer.py) and of
+interfaces' C headers (c/headers.py): aggregate structs, offset tables, coercion
+tables, type descriptors, function type adapters, and modules' exported
 functions."""
 
 from __future__ import annotations
@@ -67,10 +68,12 @@ from quest.types import (
 def module_function_signature(
     clean_mod: str, name: str, type_val: QType, c_type: Callable[[QType], str]
 ) -> Optional[tuple[str, str, list[str]]]:
-    """The C function a module file exports for a member of its interface that is a function or a polymorphic value
-    (`qv_<module>_<member>`, taking its type parameters' descriptors and then its parameters, at the interface's
-    types): its result's C type, its name, and its parameters' declarations; None for other members. The type
-    parameters' and parameters' names are the interface's, as written."""
+    """The C function a module file exports for a member of its interface that
+    is a function or a polymorphic value (`qv_<module>_<member>`, taking its
+    type parameters' descriptors and then its parameters, at the interface's
+    types): its result's C type, its name, and its parameters' declarations;
+    None for other members. The type parameters' and parameters' names are the
+    interface's, as written."""
     quants, fun_t = quantified(type_val)
     if not isinstance(fun_t, QFunType) and not quants:
         return None
@@ -86,17 +89,20 @@ def module_function_signature(
 
 
 def module_function_arguments(type_val: QType) -> list[str]:
-    """The names of the parameters module_function_signature declares, in order."""
+    """The names of the parameters module_function_signature declares, in
+    order."""
     quants, _ = quantified(type_val)
     params, _ = fun_signature(type_val)
     return [f"descriptor_{q.name}" for q in quants] + [f"qv_p_{p.name}" for p in params]
 
 
 def fun_shape_signature(t: QType) -> tuple[tuple[Optional[QType], ...], tuple[QParam, ...], QType]:
-    """A (possibly polymorphic) function type's signature, from its shape: the POWER bounds of its type parameters
-    (None for a parameter without one), its parameters, and its result type (the types of its shape's parts). Their
-    type parameters are its canonical form's, which only descriptors (of the de Bruijn forms that name type parameters
-    by position, canonical_fun_type) and representations, which do not depend on them, read here."""
+    """A (possibly polymorphic) function type's signature, from its shape: the
+    POWER bounds of its type parameters (None for a parameter without one), its
+    parameters, and its result type (the types of its shape's parts). Their type
+    parameters are its canonical form's, which only descriptors (of the de
+    Bruijn forms that name type parameters by position, canonical_fun_type) and
+    representations, which do not depend on them, read here."""
     s = shape(t)
     bounds: list[Optional[QType]] = []
     while s.kind == "all":
@@ -117,9 +123,11 @@ def collect_aggregate_types(
     visited_type_ids: Optional[set[int]] = None,
     visited_node_ids: Optional[set[int]] = None,
 ) -> tuple[list[tuple[str, QType]], list[QVariantType], list[QType]]:
-    """Traverses an AST (or a list of types) to find all unique aggregate types (tuples, records, options, variants),
-    from their shapes: each as its shape's structure, the unfolding of its canonical form, which its struct and
-    descriptor declare, in the order first reached (which interfaces' C headers pin, tests/abi)."""
+    """Traverses an AST (or a list of types) to find all unique aggregate types
+    (tuples, records, options, variants), from their shapes: each as its shape's
+    structure, the unfolding of its canonical form, which its struct and
+    descriptor declare, in the order first reached (which interfaces' C headers
+    pin, tests/abi)."""
     if visited_names is None:
         visited_names = set()
     if visited_type_ids is None:
@@ -145,8 +153,9 @@ def collect_aggregate_types(
         visit_shape(s)
 
     def visit_shape(s: Optional[Shape]) -> None:
-        # Shapes, not types as written: equal types (however written, with whatever aliases) share one shape, whose
-        # structure (the unfolding of its canonical form) declares the struct, and records are named from it
+        # Shapes, not types as written: equal types (however written, with
+        # whatever aliases) share one shape, whose structure (the unfolding of
+        # its canonical form) declares the struct, and records are named from it
         if s is None or id(s) in visited_shape_ids:
             return
         visited_shape_ids.add(id(s))
@@ -162,7 +171,8 @@ def collect_aggregate_types(
                 visit_shape(c.shape)
             add(record_struct_name(t, ctx), t)
         elif held.kind == "option":
-            # An option, or a type parameter bounded by one, whose values are held in the bound's representation
+            # An option, or a type parameter bounded by one, whose values are
+            # held in the bound's representation
             for c in held.cases:
                 visit_shape(c.shape)
             add(shape_tag(held), held.structure)
@@ -200,7 +210,8 @@ def collect_aggregate_types(
                 visit_node(item)
             return
 
-        # A recursive type's bodies mention its variables free; visit_type has visited its unfolding
+        # A recursive type's bodies mention its variables free; visit_type has
+        # visited its unfolding
         if isinstance(n, (QRecType, QRecGroupType)):
             return
 
@@ -212,13 +223,15 @@ def collect_aggregate_types(
 
 
 class CDeclarationEmitter:
-    """Emits forward declarations, structs, typedefs, evidence dictionaries, and trampolines."""
+    """Emits forward declarations, structs, typedefs, evidence dictionaries, and
+    trampolines."""
 
     def __init__(self, record_ctx: RecordNamingContext, c_type_fn: Callable[[QType], str]):
         self.record_ctx = record_ctx
         self.c_type = c_type_fn
         self.emitted_descriptor_tags: list[str] = []
-        # Function types with descriptors, whose adapters (quest_adapt_<tag>) emit_fun_type_adapters defines
+        # Function types with descriptors, whose adapters (quest_adapt_<tag>)
+        # emit_fun_type_adapters defines
         self.emitted_fun_types: list[tuple[str, QFunType]] = []
 
     def emit_forward_typedefs(self, agg_types: list[tuple[str, QType]]) -> list[str]:
@@ -237,8 +250,9 @@ class CDeclarationEmitter:
         return lines
 
     def emit_precompiled_module_declarations(self, modules: list[tuple[str, Optional[QType]]]) -> list[str]:
-        """The extern declarations of the functions modules compiled on their own export, for each module by its
-        canonical name and the record type of its interface (ir.Import.record_type)."""
+        """The extern declarations of the functions modules compiled on their
+        own export, for each module by its canonical name and the record type of
+        its interface (ir.Import.record_type)."""
         lines: list[str] = []
         if modules:
             lines.append("/* External declarations for precompiled module functions */")
@@ -286,8 +300,9 @@ class CDeclarationEmitter:
                     if payload_branches:
                         lines.append("    union {")
                         for o in payload_branches:
-                            # A case's payload is a tuple, whose shape gives its components (in a canonical form,
-                            # it may be written as a recursive type)
+                            # A case's payload is a tuple, whose shape gives its
+                            # components (in a canonical form, it may be written
+                            # as a recursive type)
                             payload = shape(o.payload_type)
                             if payload.kind in ("tuple", "record"):
                                 lines.append(f"        struct {tag_name}_{o.name}_payload {{")
@@ -342,8 +357,9 @@ class CDeclarationEmitter:
                 inst_name = self.record_ctx.offset_dict_instance_name(tgt, src)
                 dict_t = self.record_ctx.offset_dict_struct_name(tgt)
                 src_sname = record_struct_name(src, self.record_ctx)
-                # Static tables only relate records whose shared fields have equal types, so no field is stored
-                # at a different type (stored_types is NULL)
+                # Static tables only relate records whose shared fields have
+                # equal types, so no field is stored at a different type
+                # (stored_types is NULL)
                 if not tgt.fields:
                     lines.append(f"static const {dict_t} {inst_name} = {{ 0, NULL }};")
                 else:
@@ -402,11 +418,14 @@ class CDeclarationEmitter:
         echo_types: Sequence[QType] = (),
         defined_structs: Sequence[str] = (),
     ) -> list[str]:
-        """Emits the static descriptors of types (see descriptor_form; templates among them) and those that echo uses
-        for echo_types (see echo_descriptor_form), each with the descriptors of its parts, for those that have one.
+        """Emits the static descriptors of types (see descriptor_form; templates
+        among them) and those that echo uses for echo_types (see
+        echo_descriptor_form), each with the descriptors of its parts, for those
+        that have one.
 
-        desc_fn gives the static descriptor expression of a part's type. A later call emits only descriptors (and
-        structs) that earlier calls did not; defined_structs are the structs already defined.
+        desc_fn gives the static descriptor expression of a part's type. A later
+        call emits only descriptors (and structs) that earlier calls did not;
+        defined_structs are the structs already defined.
         """
         lines: list[str] = []
         forms: dict[str, list[DescriptorForm]] = {}
@@ -463,7 +482,8 @@ class CDeclarationEmitter:
                 visit(result_t)
 
         def visit_echo(t: QType) -> None:
-            # An echo-only descriptor, and those of its parts (echo-only too where they write type components)
+            # An echo-only descriptor, and those of its parts (echo-only too
+            # where they write type components)
             visit(t)
             form = echo_descriptor_form(t, self.record_ctx)
             if form is None or form.tag in seen_tags or form.tag in emitted_before:
@@ -484,10 +504,12 @@ class CDeclarationEmitter:
             return lines
         emitted_before.update(seen_tags)
 
-        # Descriptors of unfolded recursive types may name tuple, record, and option structs that the program's own
-        # types do not (a recursive occurrence is named by its unfolding rather than as QVal, and a type reached only
-        # as the argument of an opaque type has no values in the program); their layouts are the same, but the
-        # structs must be defined for offsetof and sizeof
+        # Descriptors of unfolded recursive types may name tuple, record, and
+        # option structs that the program's own types do not (a recursive
+        # occurrence is named by its unfolding rather than as QVal, and a type
+        # reached only as the argument of an opaque type has no values in the
+        # program); their layouts are the same, but the structs must be defined
+        # for offsetof and sizeof
         defined: set[str] = self.__dict__.setdefault("_defined_struct_names", set())
         defined.update(defined_structs)
         missing: list[tuple[str, QType]] = []
@@ -517,8 +539,9 @@ class CDeclarationEmitter:
             lines.extend(self.emit_aggregate_structs(missing))
 
         def part_desc(form: DescriptorForm, key: str, t: Optional[QType]) -> str:
-            # The descriptor of a part of form's type (t, keyed as echo_children keys it): for an echo-only
-            # descriptor, the part's echo-only descriptor if it has one
+            # The descriptor of a part of form's type (t, keyed as echo_children
+            # keys it): for an echo-only descriptor, the part's echo-only
+            # descriptor if it has one
             if t is None:
                 return "NULL"
             if form.display is not None:
@@ -559,7 +582,8 @@ class CDeclarationEmitter:
         for form in forms.get("opaque", []):
             extra = "NULL"
             if isinstance(form.type, QTypeApp):
-                # An application of an abstract type operator: its arguments are part of its identity
+                # An application of an abstract type operator: its arguments are
+                # part of its identity
                 args = [desc_fn(a) for a in form.type.arguments]
                 lines.append(
                     f"static const QTypeDescriptor *const qopaque_args_{form.tag}[{c_int(max(1, len(args)))}] "
@@ -575,7 +599,8 @@ class CDeclarationEmitter:
             lines.append("")
 
         for form in forms.get("stored", []):
-            # A module's bounded abstract type: its opaque type, held as a value of its bound
+            # A module's bounded abstract type: its opaque type, held as a value
+            # of its bound
             lines.extend(type_descriptor(f"{form.tag}_abstract", "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", "NULL"))
             lines.append(
                 f"static const QStoredDescriptor qstored_desc_{form.tag} Q_UNUSED = "
@@ -720,7 +745,8 @@ class CDeclarationEmitter:
             struct_name = tuple_struct_name(qtype)
             val_fields = qtype.value_fields
             n = len(val_fields)
-            # Its type components, which only echo writes: with alias names in an echo-only descriptor
+            # Its type components, which only echo writes: with alias names in
+            # an echo-only descriptor
             components = tuple_type_components(form.display if form.display is not None else qtype)
             if components:
                 lines.append(
@@ -734,7 +760,8 @@ class CDeclarationEmitter:
             lines.append("    size_t component_count;")
             lines.append("    const QTupleTypeComponentDescriptor *components;")
             lines.append("    size_t element_count;")
-            # (C99 has no empty arrays: a tuple of type components alone has one unused element)
+            # (C99 has no empty arrays: a tuple of type components alone has one
+            # unused element)
             lines.append(f"    const QTupleElementDescriptor elements[{c_int(max(n, 1))}];")
             lines.append(f"}} qtup_desc_{tag} Q_UNUSED = {{")
             lines.append(f"    .component_count = {c_int(len(components))},")
@@ -788,22 +815,27 @@ class CDeclarationEmitter:
         return lines
 
     def emit_fun_type_adapters(self, fun_types: Sequence[tuple[str, QFunType]]) -> list[str]:
-        """Defines the adapter and the invoker of each function type that has a runtime descriptor (QFunAdapter,
-        quest_adapt_<tag>, and QFunInvoker, quest_invoke_<tag>).
+        """Defines the adapter and the invoker of each function type that has a
+        runtime descriptor (QFunAdapter, quest_adapt_<tag>, and QFunInvoker,
+        quest_invoke_<tag>).
 
-        Run-time conversions of a closure to a function type T, by dynamic.be, inspect, or the read of a record field
-        stored at a subtype, are known only to be from some subtype of T. The adapter for T wraps the closure in a
-        thunk with T's C signature, which converts arguments and result as described by the two descriptors. The
-        closure is called through T's signature when it has the same C signature (as types related by subtyping
-        do), and otherwise, when one of the two types is laid out generically (a template's instance), through the
-        invoker of the closure's own type, which takes and returns QVal forms.
+        Run-time conversions of a closure to a function type T, by dynamic.be,
+        inspect, or the read of a record field stored at a subtype, are known
+        only to be from some subtype of T. The adapter for T wraps the closure
+        in a thunk with T's C signature, which converts arguments and result as
+        described by the two descriptors. The closure is called through T's
+        signature when it has the same C signature (as types related by
+        subtyping do), and otherwise, when one of the two types is laid out
+        generically (a template's instance), through the invoker of the
+        closure's own type, which takes and returns QVal forms.
         """
         lines: list[str] = []
         if not fun_types:
             return lines
         lines.append("/* Adapters for function types: thunks converting arguments and results by descriptor */")
         for tag, fun_t in fun_types:
-            # A polymorphic function type takes its type parameters' descriptors first; they are passed through
+            # A polymorphic function type takes its type parameters' descriptors
+            # first; they are passed through
             quants, params, ret_t = fun_shape_signature(fun_t)
             ret_c = "void" if ret_t is OK_TYPE else self.c_type(ret_t)
             fn_ptr = closure_fn_ptr_type(fun_t, self.record_ctx)
@@ -879,7 +911,8 @@ class CDeclarationEmitter:
             lines.append("    adapted->env = e;")
             lines.append("    return adapted;")
             lines.append("}")
-            # The invoker: a call with QVal forms, for adapters whose closure has this type's C signature
+            # The invoker: a call with QVal forms, for adapters whose closure
+            # has this type's C signature
             inv_args = ["c->env"] + [f"(const QTypeDescriptor *)args[{c_int(k)}].p" for k in range(nq)]
             for i, p in enumerate(params):
                 arg = f"args[{c_int(nq + i)}]"

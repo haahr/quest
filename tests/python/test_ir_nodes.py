@@ -1,4 +1,5 @@
-"""The IR's nodes, textual form, and verifier, on hand-built units (quest/ir, docs/ir.md)."""
+"""The IR's nodes, textual form, and verifier, on hand-built units (quest/ir,
+docs/ir.md)."""
 
 from __future__ import annotations
 

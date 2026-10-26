@@ -1,6 +1,8 @@
-"""Reduced and canonical forms of types, which the backends use: type operator applications reduced (beta_reduce_head),
-recursive types unfolded (unfold_recursive), and the canonical form of a recursive type, its minimal graph
-(canonical_type), so that equal types have one representation however they are written."""
+"""Reduced and canonical forms of types, which the backends use: type operator
+applications reduced (beta_reduce_head), recursive types unfolded
+(unfold_recursive), and the canonical form of a recursive type, its minimal
+graph (canonical_type), so that equal types have one representation however they
+are written."""
 
 from __future__ import annotations
 
@@ -60,7 +62,8 @@ MAX_BETA_STEPS = 1000
 
 
 def beta_reduce_head(t: QType) -> QType:
-    """Beta-reduces type operator applications at the head of t, without unfolding recursive types."""
+    """Beta-reduces type operator applications at the head of t, without
+    unfolding recursive types."""
     for _ in range(MAX_BETA_STEPS):
         t = pruned(t)
         if not isinstance(t, QTypeApp):
@@ -74,10 +77,12 @@ def beta_reduce_head(t: QType) -> QType:
     return t
 
 
-# Values of a recursive type are represented like values of its unfolding (a tuple's values by a pointer to its
-# struct, a function's by a closure pointer), so that the two, being equal, share a representation. Its tag is that
-# of its unfolding too, except for unfoldings whose tags are built from their parts' tags: these would contain the
-# tag being defined, so such a recursive type is named by its body instead (_recursive_tag).
+# Values of a recursive type are represented like values of its unfolding (a
+# tuple's values by a pointer to its struct, a function's by a closure pointer),
+# so that the two, being equal, share a representation. Its tag is that of its
+# unfolding too, except for unfoldings whose tags are built from their parts'
+# tags: these would contain the tag being defined, so such a recursive type is
+# named by its body instead (_recursive_tag).
 _UNFOLDED_REPRESENTATION = (
     QTupleType, QRecordType, QVariantType, QOptionType, QArrayType, QVarType, QOutType, QAutoType,
     QFunType, QAllType, QExceptionType,
@@ -91,10 +96,11 @@ def unfold_recursive(
     t: QType,
     kinds: Optional[tuple[type, ...]] = _UNFOLDED_REPRESENTATION,
 ) -> Optional[QType]:
-    """Returns the unfolding of a recursive type (or an application reducing to one) if it is a constructed type
-    (one of kinds), or None otherwise. With kinds None, any unfolding that is neither recursive nor an application is
-    returned (a recursive type that does not use its variable, such as a member of a group that does not refer to
-    the group, is the type it unfolds to)."""
+    """Returns the unfolding of a recursive type (or an application reducing to
+    one) if it is a constructed type (one of kinds), or None otherwise. With
+    kinds None, any unfolding that is neither recursive nor an application is
+    returned (a recursive type that does not use its variable, such as a member
+    of a group that does not refer to the group, is the type it unfolds to)."""
     if isinstance(t, QTypeApp):
         t = beta_reduce_head(t)
     for _ in range(MAX_BETA_STEPS):
@@ -109,16 +115,19 @@ def unfold_recursive(
     return t if isinstance(t, kinds) else None
 
 
-# Reduced forms by the id of the type node, kept with the node so that its id is not reused
+# Reduced forms by the id of the type node, kept with the node so that its id is
+# not reused
 _NORMALIZED: dict[int, tuple[QType, QType]] = {}
 
 
 def normalize_type(t: QType) -> QType:
-    """t with its outermost constructor exposed, which shapes are built from (ir/shapes.py): aliases stripped, a
-    recursive type replaced by its unfolding, and an application of a type operator by its reduction. An application
-    that reduces to a recursive type is replaced by the unfolding when that is a constructed type, and otherwise by
-    the application's lazy evaluation when that is a tuple or record type; an application of an abstract type
-    operator stays as it is."""
+    """t with its outermost constructor exposed, which shapes are built from
+    (ir/shapes.py): aliases stripped, a recursive type replaced by its
+    unfolding, and an application of a type operator by its reduction. An
+    application that reduces to a recursive type is replaced by the unfolding
+    when that is a constructed type, and otherwise by the application's lazy
+    evaluation when that is a tuple or record type; an application of an
+    abstract type operator stays as it is."""
     t = pruned(t)
     if t._has_meta:
         return _normalize_uncached(t)
@@ -149,7 +158,8 @@ def _normalize_uncached(t: QType) -> QType:
 
 
 def resolve_type_bound(t: QType) -> QType:
-    """t, or for a type variable, abstract type, or path type bounded by POWER(T), the type its bounds resolve to."""
+    """t, or for a type variable, abstract type, or path type bounded by
+    POWER(T), the type its bounds resolve to."""
     curr = strip_aliases(pruned(t))
     visited = set()
     while isinstance(curr, (QTypeVar, QAbstractType, QPathType)) and isinstance(curr.bound, QPowerKind):
@@ -164,9 +174,10 @@ def resolve_type_bound(t: QType) -> QType:
 
 
 def option_case_names(t: QType) -> tuple[str, ...]:
-    """The names of the cases of an option type as written, in order (for a type parameter bounded by one, its
-    bound's): the order an option's ordinal counts in at t (docs/type-system.md §6.6), whatever the order of the
-    type its value was made at, or of t's shape (ir/shapes.py, which orders cases by name)."""
+    """The names of the cases of an option type as written, in order (for a type
+    parameter bounded by one, its bound's): the order an option's ordinal counts
+    in at t (docs/type-system.md §6.6), whatever the order of the type its value
+    was made at, or of t's shape (ir/shapes.py, which orders cases by name)."""
     curr = normalize_type(t)
     while not isinstance(curr, QOptionType):
         exposed = normalize_type(resolve_type_bound(curr))
@@ -177,9 +188,10 @@ def option_case_names(t: QType) -> tuple[str, ...]:
 
 
 def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], QType]:
-    """The universal quantifiers wrapping a function type (a recursive one, through its unfolding), and the type they
-    quantify, as written: their symbols are those the type's own parts refer to, where a shape's are those of its
-    canonical form (ir/shapes.py)."""
+    """The universal quantifiers wrapping a function type (a recursive one,
+    through its unfolding), and the type they quantify, as written: their
+    symbols are those the type's own parts refer to, where a shape's are those
+    of its canonical form (ir/shapes.py)."""
     quants: tuple[QQuantifier, ...] = ()
     curr = normalize_type(fun_type)
     while isinstance(curr, QAllType):
@@ -192,29 +204,38 @@ def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], Q
 # Canonical forms of recursive types
 # ============================================================================
 #
-# Recursive types are equi-recursive: a type stands for the regular tree of its unfoldings, and types with the
-# same tree are equal however they are written: as a recursive type, as an unfolding written out (to any depth),
-# or with a different period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled
-# twice inside its Rec). Equal types share one C representation, so tags and descriptors are computed from a
-# canonical form of each type that contains recursion: the graph of its nodes is minimized by partition refinement
-# (as dynamic_json does for its type table), and the minimal graph is written back as a type whose recursion
-# variables and type parameters have reserved ids (ReservedSymbolUse.CANONICAL_REC and CANONICAL_BINDER). Types
-# are hash-consed, so the canonical form of a type in canonical form is that type itself.
+# Recursive types are equi-recursive: a type stands for the regular tree of its
+# unfoldings, and types with the same tree are equal however they are written:
+# as a recursive type, as an unfolding written out (to any depth), or with a
+# different period (`Rec(L) Option nil cons with head: Int tail: L end end` and
+# the same type unrolled twice inside its Rec). Equal types share one C
+# representation, so tags and descriptors are computed from a canonical form of
+# each type that contains recursion: the graph of its nodes is minimized by
+# partition refinement (as dynamic_json does for its type table), and the
+# minimal graph is written back as a type whose recursion variables and type
+# parameters have reserved ids (ReservedSymbolUse.CANONICAL_REC and
+# CANONICAL_BINDER). Types are hash-consed, so the canonical form of a type in
+# canonical form is that type itself.
 #
-# Nodes of the graph are tuples (with or without type components), records, variants, options, arrays, var and out
-# types, function types (polymorphic or not), exception types, auto types, type operators and applications of
-# abstract ones, type variables and abstract and path types (with their kinds), and the kinds TYPE, <: T, and
-# ALL(X::K) K'. External types and kind variables, which contain no types, are leaves, compared by identity.
+# Nodes of the graph are tuples (with or without type components), records,
+# variants, options, arrays, var and out types, function types (polymorphic or
+# not), exception types, auto types, type operators and applications of abstract
+# ones, type variables and abstract and path types (with their kinds), and the
+# kinds TYPE, <: T, and ALL(X::K) K'. External types and kind variables, which
+# contain no types, are leaves, compared by identity.
 #
-# Binders are written by name, so they are compared up to renaming: a node that binds type parameters (a
-# polymorphic function type, an auto type, a tuple with type components, a type operator, an operator kind) is a
-# node like any other, and an
-# occurrence of one of its parameters is a node with a scope edge back to it. A type object means different things
-# under different binders, so a node is keyed by its object together with the binder nodes its free variables
-# refer to. Refinement follows scope edges, so two occurrences are equivalent when their binders are, and the
-# minimal graph is written back with each occurrence naming the nearest enclosing binder of its binder's class.
-# Merging binders could in principle mix up scopes, so canonical_type uses a canonical form only if it is equal to
-# the type it stands for (is_type_equal), and otherwise falls back to the type as written.
+# Binders are written by name, so they are compared up to renaming: a node that
+# binds type parameters (a polymorphic function type, an auto type, a tuple with
+# type components, a type operator, an operator kind) is a node like any other,
+# and an occurrence of one of its parameters is a node with a scope edge back to
+# it. A type object means different things under different binders, so a node is
+# keyed by its object together with the binder nodes its free variables refer
+# to. Refinement follows scope edges, so two occurrences are equivalent when
+# their binders are, and the minimal graph is written back with each occurrence
+# naming the nearest enclosing binder of its binder's class. Merging binders
+# could in principle mix up scopes, so canonical_type uses a canonical form only
+# if it is equal to the type it stands for (is_type_equal), and otherwise falls
+# back to the type as written.
 
 _MAX_CANONICAL_NODES = 100_000
 
@@ -226,14 +247,16 @@ _GRAPH_NODES = (
 
 
 def _check_canonical() -> bool:
-    """Whether a canonical form not equal to its type, or not a fixed point, is an error rather than a warning (as
-    in the tests: run_tests.py and the unit tests set QUEST_CHECK_CANONICAL=1)."""
+    """Whether a canonical form not equal to its type, or not a fixed point, is
+    an error rather than a warning (as in the tests: run_tests.py and the unit
+    tests set QUEST_CHECK_CANONICAL=1)."""
     return os.environ.get("QUEST_CHECK_CANONICAL") == "1"
 
 
 def _canonical_structure(t: QType) -> QType:
-    """t with aliases, solved metavariables, type operator applications, and recursive types whose unfoldings are
-    graph nodes reduced down to its outer constructor."""
+    """t with aliases, solved metavariables, type operator applications, and
+    recursive types whose unfoldings are graph nodes reduced down to its outer
+    constructor."""
     for _ in range(MAX_BETA_STEPS):
         t = strip_aliases(pruned(t))
         if not isinstance(t, (QRecType, QRecGroupType, QTypeApp)):
@@ -252,8 +275,9 @@ def _canonical_structure(t: QType) -> QType:
 _BINDER_NODES = ("all", "auto", "xtuple", "tfun", "kALL")
 
 
-# Recursion variables bind tuples, records, variants, and options where every cycle passes through one, and
-# otherwise any node that a recursive type may unfold to
+# Recursion variables bind tuples, records, variants, and options where every
+# cycle passes through one, and otherwise any node that a recursive type may
+# unfold to
 _AGGREGATE_SHAPES = ("tuple", "record", "variant", "option", "xtuple")
 
 
@@ -262,8 +286,9 @@ _UNFOLDABLE_SHAPES = _AGGREGATE_SHAPES + ("array", "var", "out", "fun", "all", "
 
 @dataclass
 class _NodeInfo:
-    """A node of a canonical graph before its parts are resolved: its shape (constructor and labels), its parts,
-    the type parameters it binds (in order), and for an occurrence of a parameter, that parameter's symbol id."""
+    """A node of a canonical graph before its parts are resolved: its shape
+    (constructor and labels), its parts, the type parameters it binds (in
+    order), and for an occurrence of a parameter, that parameter's symbol id."""
     shape: tuple[Any, ...]
     parts: list[QType]
     binds: tuple[int, ...] = ()
@@ -271,8 +296,8 @@ class _NodeInfo:
 
 
 def _canonical_node(s: Any, bound: Any) -> Optional[_NodeInfo]:
-    """The node for the structure s (a type or a kind), whose free variables in `bound` are parameters of enclosing
-    binder nodes; None for a leaf."""
+    """The node for the structure s (a type or a kind), whose free variables in
+    `bound` are parameters of enclosing binder nodes; None for a leaf."""
     match s:
         case QTypeKind():
             return _NodeInfo(("kTYPE",), [])
@@ -316,8 +341,9 @@ def _canonical_node(s: Any, bound: Any) -> Optional[_NodeInfo]:
             fields = sorted(s.fields, key=lambda f: f.name)
             return _NodeInfo(("record", s.provenance, tuple((f.name, f.is_var) for f in fields)),
                              [f.type_val for f in fields])
-        # Variants and options are compared by their cases' names, unordered, so their canonical forms order cases by
-        # name, as records' fields are ordered: equal types then have one layout and one numbering of tags
+        # Variants and options are compared by their cases' names, unordered, so
+        # their canonical forms order cases by name, as records' fields are
+        # ordered: equal types then have one layout and one numbering of tags
         case QVariantType():
             variants = sorted(s.variants, key=lambda v: v.name)
             labels = tuple((v.name, v.is_var, v.type_val is not None) for v in variants)
@@ -347,15 +373,16 @@ def _canonical_node(s: Any, bound: Any) -> Optional[_NodeInfo]:
             parts = [p.bound for p in s.params] + [s.body]
             return _NodeInfo(("tfun", len(s.params)), parts, tuple(p.symbol_id for p in s.params))
         case QTypeApp():
-            # An application of an abstract type operator (one that does not reduce)
+            # An application of an abstract type operator (one that does not
+            # reduce)
             return _NodeInfo(("app", len(s.arguments)), [s.constructor, *s.arguments])
         case _:
             return None
 
 
 def _rebuild_node(shape: tuple[Any, ...], parts: list[QType]) -> QType:
-    """The type (or kind) with the given shape (from _canonical_node) and parts, for a node that binds nothing and
-    is not an occurrence of a parameter."""
+    """The type (or kind) with the given shape (from _canonical_node) and parts,
+    for a node that binds nothing and is not an occurrence of a parameter."""
     kind = shape[0]
     if kind == "tuple":
         return QTupleType(tuple(QTupleField(name=n, type_val=p, is_var=v) for (n, v), p in zip(shape[1], parts)))
@@ -379,7 +406,8 @@ def _rebuild_node(shape: tuple[Any, ...], parts: list[QType]) -> QType:
     if kind == "out":
         return QOutType(element_type=parts[0])
     if kind == "fun":
-        # Parameter names are not part of a function type's identity; canonical ones keep equal types identical
+        # Parameter names are not part of a function type's identity; canonical
+        # ones keep equal types identical
         params = tuple(
             QParam(name=f"x{i + 1}", type_val=p, is_var=is_var, is_out=is_out)
             for i, ((is_var, is_out), p) in enumerate(zip(shape[1], parts))
@@ -403,15 +431,17 @@ def _rebuild_node(shape: tuple[Any, ...], parts: list[QType]) -> QType:
 
 @dataclass(frozen=True)
 class _Leaf:
-    """A leaf of a canonical graph: a type compared by identity, with the binder nodes (or classes) and positions
-    of its free variables that are parameters of enclosing binders, as (symbol id, binder, position)."""
+    """A leaf of a canonical graph: a type compared by identity, with the binder
+    nodes (or classes) and positions of its free variables that are parameters
+    of enclosing binders, as (symbol id, binder, position)."""
     type: QType
     bound: tuple[tuple[int, int, int], ...]
 
 
 @dataclass(frozen=True)
 class _Param:
-    """A type parameter of a binder as written back: its symbol id, name, and kind."""
+    """A type parameter of a binder as written back: its symbol id, name, and
+    kind."""
     symbol_id: int
     name: str
     kind: Optional[QKind]
@@ -422,9 +452,10 @@ class _Param:
 
 @dataclass(frozen=True)
 class _BuildContext:
-    """Where a part of a canonical form is written: the recursive type being written (its root class, component,
-    and variables, by class), the parameters of the enclosing binders (by class, the nearest one of each), and
-    the number of enclosing parameters (which numbers the next binder's)."""
+    """Where a part of a canonical form is written: the recursive type being
+    written (its root class, component, and variables, by class), the parameters
+    of the enclosing binders (by class, the nearest one of each), and the number
+    of enclosing parameters (which numbers the next binder's)."""
     rec_root: int = -1
     rec_comp: int = -1
     rec_vars: Any = None
@@ -436,14 +467,16 @@ _EMPTY_CONTEXT = _BuildContext(scope={})
 
 
 class _NotCanonicalizable(Exception):
-    """A type's graph is too large to canonicalize (its unfoldings do not repeat), or cannot be written back."""
+    """A type's graph is too large to canonicalize (its unfoldings do not
+    repeat), or cannot be written back."""
 
 
 _Ref = Any  # a class of a canonical graph (an int) or a _Leaf
 
 
 class _CanonicalGraph:
-    """The minimized graph of the nodes reachable from a type, from which canonical forms are written."""
+    """The minimized graph of the nodes reachable from a type, from which
+    canonical forms are written."""
 
     def __init__(self, root: QType) -> None:
         index: dict[Any, int] = {}
@@ -486,7 +519,8 @@ class _CanonicalGraph:
             children[done] = [ref(p, inner) for p in parts]
             done += 1
 
-        # Partition refinement to the coarsest bisimulation, starting from each node's shape, following scope edges
+        # Partition refinement to the coarsest bisimulation, starting from each
+        # node's shape, following scope edges
         shape_ids: dict[Any, int] = {}
         cls = [shape_ids.setdefault(shape, len(shape_ids)) for shape in shapes]
         count = len(shape_ids)
@@ -526,9 +560,11 @@ class _CanonicalGraph:
         self._aggregate_cycle_memo: dict[int, bool] = {}
 
     def _find_components(self) -> None:
-        """Finds the strongly connected components of the quotient graph (Tarjan's algorithm, iteratively, along
-        structural edges only), whether each is cyclic, whether each class reaches a cyclic one, and the binder
-        classes that each refers to (by occurrences of their parameters) and reaches."""
+        """Finds the strongly connected components of the quotient graph
+        (Tarjan's algorithm, iteratively, along structural edges only), whether
+        each is cyclic, whether each class reaches a cyclic one, and the binder
+        classes that each refers to (by occurrences of their parameters) and
+        reaches."""
         count = len(self.shapes)
         self.component = [-1] * count
         cyclic: list[bool] = []
@@ -568,7 +604,8 @@ class _CanonicalGraph:
                     low[parent] = min(low[parent], low[k])
                 if low[k] != order[k]:
                     continue
-                # k roots a component; the components it reaches were all completed before it
+                # k roots a component; the components it reaches were all
+                # completed before it
                 members = []
                 while True:
                     m = stack.pop()
@@ -599,18 +636,21 @@ class _CanonicalGraph:
         self.refers = refers
 
     def term(self, k: int) -> Optional[QType]:
-        """The canonical form of class k, or None if no recursion is reachable from it."""
+        """The canonical form of class k, or None if no recursion is reachable
+        from it."""
         if k not in self.terms:
             self.terms[k] = self.build(k, _EMPTY_CONTEXT) if self.reaches_cycle[self.component[k]] else None
         return self.terms[k]
 
     def _is_rec_shape(self, k: int, comp: int) -> bool:
-        """Whether a node of a cyclic component may be bound by a recursion variable (see _UNFOLDABLE_SHAPES)."""
+        """Whether a node of a cyclic component may be bound by a recursion
+        variable (see _UNFOLDABLE_SHAPES)."""
         return self.shapes[k][0] in (_AGGREGATE_SHAPES if self._aggregate_cycles(comp) else _UNFOLDABLE_SHAPES)
 
     def _aggregate_cycles(self, comp: int) -> bool:
-        """Whether every cycle of a cyclic component passes through a tuple, record, variant, or option: whether
-        its other nodes have no cycle among themselves."""
+        """Whether every cycle of a cyclic component passes through a tuple,
+        record, variant, or option: whether its other nodes have no cycle among
+        themselves."""
         if comp in self._aggregate_cycle_memo:
             return self._aggregate_cycle_memo[comp]
         others = [k for k in range(len(self.shapes))
@@ -671,9 +711,11 @@ class _CanonicalGraph:
         if built is not None:
             return built
         if in_rec or not self.cyclic[comp] or not self._is_rec_shape(c, comp):
-            # Inside the recursive type being written, not in a cycle, or a node that recursion variables do not
-            # bind (such as a function type on cycles that all pass through tuples, records, variants, or options,
-            # which are preferred as recursive types): the node is written with each of its parts
+            # Inside the recursive type being written, not in a cycle, or a node
+            # that recursion variables do not bind (such as a function type on
+            # cycles that all pass through tuples, records, variants, or
+            # options, which are preferred as recursive types): the node is
+            # written with each of its parts
             built = self._build_node(c, ctx)
         else:
             built = self._recursive_term(c, ctx)
@@ -696,8 +738,9 @@ class _CanonicalGraph:
         if kind not in _BINDER_NODES:
             return _rebuild_node(shape, [self.build(c, ctx) for c in kids])
 
-        # A binder: its parameters are numbered by the number of enclosing ones, so that no two enclosing each
-        # other share an id; each parameter's kind may refer to the parameters before it
+        # A binder: its parameters are numbered by the number of enclosing ones,
+        # so that no two enclosing each other share an id; each parameter's kind
+        # may refer to the parameters before it
         params: list[_Param] = []
         scope = dict(ctx.scope)
         scope[k] = params
@@ -740,7 +783,8 @@ class _CanonicalGraph:
         components: list[Any] = []
         for comp in shape[1]:
             if comp[0] == "formal":
-                # A tuple's type components are selected by name, so formals keep their names
+                # A tuple's type components are selected by name, so formals
+                # keep their names
                 param = new_param(comp[1])
                 components.append(QTupleTypeFormal(name=param.name, symbol_id=param.symbol_id, bound=param.kind))
             elif comp[0] == "binding":
@@ -752,9 +796,11 @@ class _CanonicalGraph:
         return QTupleType(tuple(components))
 
     def _recursive_term(self, root: int, ctx: _BuildContext) -> QType:
-        """The canonical form of a class on a cycle: a recursive type whose variables stand for the targets of the
-        back edges of a depth-first walk of its component from root, through the nodes that recursion variables may
-        bind (_is_rec_shape; other nodes are passed through, so that each recursive type unfolds to such a node)."""
+        """The canonical form of a class on a cycle: a recursive type whose
+        variables stand for the targets of the back edges of a depth-first walk
+        of its component from root, through the nodes that recursion variables
+        may bind (_is_rec_shape; other nodes are passed through, so that each
+        recursive type unfolds to such a node)."""
         comp = self.component[root]
         binders: list[int] = []
         state: dict[int, int] = {}  # 1 while on the walk's path, 2 when done
@@ -805,18 +851,22 @@ class _CanonicalGraph:
         return QRecGroupType(bindings=bindings, active_index=0)
 
 
-# The canonical form found for each type (None if it has none), kept with the type so that its id is not reused
+# The canonical form found for each type (None if it has none), kept with the
+# type so that its id is not reused
 _CANONICAL: dict[int, tuple[QType, Optional[QType]]] = {}
 
 
-# The graph and class of each node of a canonical graph whose free variables are all free in the graph's root
+# The graph and class of each node of a canonical graph whose free variables are
+# all free in the graph's root
 _CANONICAL_NODES: dict[int, tuple[QType, _CanonicalGraph, int]] = {}
 
 
 def canonical_type(t: QType) -> Optional[QType]:
-    """Returns the canonical form of t if t contains recursion and is not in canonical form, or None otherwise.
+    """Returns the canonical form of t if t contains recursion and is not in
+    canonical form, or None otherwise.
 
-    Equal types containing recursion have the same canonical form, which therefore has their tag and descriptor.
+    Equal types containing recursion have the same canonical form, which
+    therefore has their tag and descriptor.
     """
     t = pruned(t)
     if t._has_meta:
@@ -828,14 +878,14 @@ def canonical_type(t: QType) -> Optional[QType]:
     return entry[1]
 
 
-# Whether each type may contain recursion (a recursive type, or an application that may reduce to one), kept with
-# the type so that its id is not reused
+# Whether each type may contain recursion (a recursive type, or an application
+# that may reduce to one), kept with the type so that its id is not reused
 _MAY_RECUR: dict[int, tuple[Any, bool]] = {}
 
 
 def _may_recur(node: Any) -> bool:
-    """Whether a type (or a part of one, such as a field or a kind) may contain recursion: if not, its graph has no
-    cycle, and it has no canonical form."""
+    """Whether a type (or a part of one, such as a field or a kind) may contain
+    recursion: if not, its graph has no cycle, and it has no canonical form."""
     if isinstance(node, (QRecType, QRecGroupType, QTypeApp, QAliasType)):
         return True
     if isinstance(node, (tuple, list)):
@@ -855,8 +905,9 @@ def _canonical_type_uncached(t: QType) -> Optional[QType]:
     if not _may_recur(t):
         return None
     if any(is_rec_self_symbol(sym) for sym in t._fv):
-        # A body of a recursive type being named (_recursive_tag), its variables replaced by placeholders: the
-        # recursive type is in canonical form already (or is named as written), and so are the body's parts
+        # A body of a recursive type being named (_recursive_tag), its variables
+        # replaced by placeholders: the recursive type is in canonical form
+        # already (or is named as written), and so are the body's parts
         return None
     s = _canonical_structure(t)
     node = _CANONICAL_NODES.get(id(s))
@@ -873,15 +924,18 @@ def _canonical_type_uncached(t: QType) -> Optional[QType]:
         canonical = None
     if canonical is None or canonical is t:
         return None
-    # Merging binders could in principle mix up scopes: a canonical form is used only if it is equal to the type
+    # Merging binders could in principle mix up scopes: a canonical form is used
+    # only if it is equal to the type
     if not is_type_equal(canonical, strip_aliases(t)):
         message = f"canonical form of the type {short_type_name(t)} is not equal to it"
         if _check_canonical():
             raise AssertionError(message)
-        # The type is named as written, as before canonical forms compared binders; the program is still compiled
+        # The type is named as written, as before canonical forms compared
+        # binders; the program is still compiled
         sys.stderr.write(f"quest: warning: internal: {message}; naming it as written (please report this)\n")
         return None
-    # Tags and descriptors ask next for the parts of the canonical form and of its unfoldings: its graph has them
+    # Tags and descriptors ask next for the parts of the canonical form and of
+    # its unfoldings: its graph has them
     if id(canonical_structure := _canonical_structure(canonical)) not in _CANONICAL_NODES:
         _register_graph(canonical_structure)
     if _check_canonical() and canonical_type(canonical) is not None:
@@ -890,8 +944,9 @@ def _canonical_type_uncached(t: QType) -> Optional[QType]:
 
 
 def _register_graph(s: QType) -> Optional[_CanonicalGraph]:
-    """Builds the canonical graph of a structure and records the graph and class of each of its nodes whose free
-    variables are all free in s; returns None if s has no graph (it is a leaf, or its graph is too large)."""
+    """Builds the canonical graph of a structure and records the graph and class
+    of each of its nodes whose free variables are all free in s; returns None if
+    s has no graph (it is a leaf, or its graph is too large)."""
     try:
         graph = _CanonicalGraph(s)
     except _NotCanonicalizable:
@@ -904,9 +959,10 @@ def _register_graph(s: QType) -> Optional[_CanonicalGraph]:
     return graph
 
 
-# A recursive type's tag is built from its body with each recursive variable replaced by one of these
-# placeholders, numbered by nesting depth, so that the tag is finite and the same for alpha-equivalent types.
-# Their symbol ids are reserved (ReservedSymbolUse.REC_SELF), indexed by depth.
+# A recursive type's tag is built from its body with each recursive variable
+# replaced by one of these placeholders, numbered by nesting depth, so that the
+# tag is finite and the same for alpha-equivalent types. Their symbol ids are
+# reserved (ReservedSymbolUse.REC_SELF), indexed by depth.
 
 
 def is_rec_self_symbol(symbol_id: int) -> bool:

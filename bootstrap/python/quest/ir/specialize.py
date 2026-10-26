@@ -1,13 +1,18 @@
-"""Specialization (docs/ir.md §8.1): clones polymorphic functions for calls whose type arguments call for it.
+"""Specialization (docs/ir.md §8.1): clones polymorphic functions for calls
+whose type arguments call for it.
 
-A call of a function bound by a funs statement (top-level, local, or a member of one of the unit's modules), with
-type arguments for all of its type parameters, is specialized when the arguments are closed (they mention no type
-parameter of the functions enclosing the call, for which the clone would have no descriptor) and the selective
-trigger holds (`should_specialize`). The clone is the function with its type parameters substituted and fresh
-binders, bound by the same funs statement as the original (so that it is in scope wherever the original is, and sees
-the same free variables), and the call is redirected to it. A clone of a module's function is also a member of the
-module, so that calls from outside the module can name it. Clones are specialized in turn, and specializations are
-shared by function and type arguments (by symbol and type identity, never by name).
+A call of a function bound by a funs statement (top-level, local, or a member of
+one of the unit's modules), with type arguments for all of its type parameters,
+is specialized when the arguments are closed (they mention no type parameter of
+the functions enclosing the call, for which the clone would have no descriptor)
+and the selective trigger holds (`should_specialize`). The clone is the function
+with its type parameters substituted and fresh binders, bound by the same funs
+statement as the original (so that it is in scope wherever the original is, and
+sees the same free variables), and the call is redirected to it. A clone of a
+module's function is also a member of the module, so that calls from outside the
+module can name it. Clones are specialized in turn, and specializations are
+shared by function and type arguments (by symbol and type identity, never by
+name).
 """
 
 from __future__ import annotations
@@ -21,14 +26,16 @@ from quest.ir.walk import fields_of, rebuild, statement_bodies
 from quest.ir.written import is_type_operator, quantified
 from quest.types import QFunType, QParam, QType
 
-# The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion (a function of
-# A calling itself at List(A)) would otherwise specialize without end, each clone calling for the next
+# The depth of clones made for calls in clones, beyond which calls stay generic:
+# polymorphic recursion (a function of A calling itself at List(A)) would
+# otherwise specialize without end, each clone calling for the next
 MAX_DEPTH = 16
 
 
 def holds_record_or_variant(s: Shape, seen: Optional[set[int]] = None) -> bool:
-    """Whether values of shape s are, or hold (in tuples, options, arrays, and cells), records or variants: values
-    that generic code holds boxed, and generic layouts box (a type parameter bounded by a record is viewed as its
+    """Whether values of shape s are, or hold (in tuples, options, arrays, and
+    cells), records or variants: values that generic code holds boxed, and
+    generic layouts box (a type parameter bounded by a record is viewed as its
     bound, a record)."""
     seen = seen if seen is not None else set()
     if id(s) in seen:
@@ -49,12 +56,15 @@ def holds_record_or_variant(s: Shape, seen: Optional[set[int]] = None) -> bool:
 
 
 def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
-    """The selective trigger (docs/c-representation.md §6.4.3): a type argument that is or holds a record or
-    variant, which generic code would box; or a var or out parameter, or a tuple parameter or result (however its
-    type is written: through an alias or a type operator's application too), over the function's type parameters,
-    whose generic layout may differ from the caller's (a closure among its components whose C signature changes, a
+    """The selective trigger (docs/c-representation.md §6.4.3): a type argument
+    that is or holds a record or variant, which generic code would box; or a var
+    or out parameter, or a tuple parameter or result (however its type is
+    written: through an alias or a type operator's application too), over the
+    function's type parameters, whose generic layout may differ from the
+    caller's (a closure among its components whose C signature changes, a
     location of another representation), and so convert at every call."""
-    # A type operator (the argument of a higher-kinded type parameter) is not the type of values, and has no shape
+    # A type operator (the argument of a higher-kinded type parameter) is not
+    # the type of values, and has no shape
     if any(not is_type_operator(t) and holds_record_or_variant(shape(t)) for t in type_args):
         return True
     ids = {tp.symbol_id for tp in f.type_params}
@@ -71,8 +81,9 @@ def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
 
 
 class _Definition:
-    """A function bound by a funs statement, and where: its statement, the module whose member it is (if any), and
-    the type parameters of the functions enclosing it."""
+    """A function bound by a funs statement, and where: its statement, the
+    module whose member it is (if any), and the type parameters of the functions
+    enclosing it."""
 
     __slots__ = ("function", "funs", "module", "enclosing")
 
@@ -89,7 +100,8 @@ class _Specializer:
         self.definitions: dict[int, _Definition] = {}
         self.clones: dict[tuple[int, tuple[str, ...]], ir.Function] = {}
         self.counts: dict[int, int] = {}
-        # Clones whose bodies are still to be specialized, and their depths; the depth of the body being specialized
+        # Clones whose bodies are still to be specialized, and their depths; the
+        # depth of the body being specialized
         self.pending: list[tuple[ir.Function, frozenset[int], int]] = []
         self.depth = 0
 
@@ -163,7 +175,8 @@ class _Specializer:
             name = f"{_member_name(definition.module, f.var)}_spec{n + 1}"
             definition.module.members[name] = clone.var
         self.definitions[id(clone.var)] = _Definition(clone, definition.funs, definition.module, definition.enclosing)
-        # The clone's local functions are definitions too, whose calls (in the clone) may be specialized
+        # The clone's local functions are definitions too, whose calls (in the
+        # clone) may be specialized
         self.collect(clone.body, None, definition.enclosing)
         self.pending.append((clone, definition.enclosing, self.depth + 1))
         return clone
@@ -184,8 +197,9 @@ def _member_name(module: ir.Module, var: ir.Var) -> str:
 
 
 class _Cloner:
-    """Copies a function with types substituted: every variable it binds is a fresh one, and every other node is
-    copied, except module references (which keep their identity) and the free variables it uses."""
+    """Copies a function with types substituted: every variable it binds is a
+    fresh one, and every other node is copied, except module references (which
+    keep their identity) and the free variables it uses."""
 
     def __init__(self, subst: dict[int, QType]) -> None:
         self.subst = subst
@@ -200,12 +214,14 @@ class _Cloner:
         return new
 
     def function(self, f: ir.Function) -> ir.Function:
-        """The clone of a function the substitution instantiates (its type parameters are substituted away)."""
+        """The clone of a function the substitution instantiates (its type
+        parameters are substituted away)."""
         self.bind_all(f.body)
         params = tuple((self.fresh(v), mode) for v, mode in f.params)
         result_t = self.type(f.result_type)
-        # The clone's type is made from its parameters and result: the type of the variable naming the original may
-        # be elaborated with quantifiers of other symbols than the function's own type parameters
+        # The clone's type is made from its parameters and result: the type of
+        # the variable naming the original may be elaborated with quantifiers of
+        # other symbols than the function's own type parameters
         _, inner = quantified(f.var.type)
         names = [p.name for p in inner.params] if isinstance(inner, QFunType) else []
         if isinstance(inner, QFunType) or params:
@@ -223,7 +239,8 @@ class _Cloner:
         return ir.Function(var, (), params, result_t, self.copy(f.body), trace_name=f.trace_name)
 
     def bind_all(self, body: ir.Body) -> None:
-        """Makes fresh variables for every binder in body (and in the functions it binds)."""
+        """Makes fresh variables for every binder in body (and in the functions
+        it binds)."""
         for s in body.statements:
             match s:
                 case ir.Let(var=v) | ir.VarDecl(var=v):

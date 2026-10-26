@@ -1,5 +1,6 @@
-"""Unit files: an interface file (.int.quest) holds one interface declaration, and a module file (.mod.quest) one
-module declaration (docs/modules.md). `parse_unit` reads the source of a unit or program that is to be type checked
+"""Unit files: an interface file (.int.quest) holds one interface declaration,
+and a module file (.mod.quest) one module declaration (docs/modules.md).
+`parse_unit` reads the source of a unit or program that is to be type checked
 outside the pipeline."""
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ MODULE_SUFFIX = ".mod.quest"
 
 
 def unit_kind(path: Path) -> Optional[str]:
-    """'interface' or 'module' for a unit file, by its name, and None for a program."""
+    """'interface' or 'module' for a unit file, by its name, and None for a
+    program."""
     if path.name.endswith(INTERFACE_SUFFIX):
         return "interface"
     if path.name.endswith(MODULE_SUFFIX):
@@ -28,15 +30,17 @@ def unit_kind(path: Path) -> Optional[str]:
 
 
 def parse_unit(source_text: str, path: Path | str, source_map: SourceMap) -> ast.ASTNode:
-    """Tokenizes, parses, and desugars the source of a unit file or program (in path) for the type checker, as the
-    pipeline's tokenize, parse, and desugar phases do. Every path that parses source to check it outside the pipeline
+    """Tokenizes, parses, and desugars the source of a unit file or program (in
+    path) for the type checker, as the pipeline's tokenize, parse, and desugar
+    phases do. Every path that parses source to check it outside the pipeline
     goes through here, so that none skips desugaring (docs/syntax.md §5)."""
     tokens = Tokenizer(source_text, str(path)).tokenize_all()
     return desugar(parse_quest_program(tokens, source_map))
 
 
 def unit_declaration(prog: ast.ASTNode, path: Path) -> ast.InterfaceDecl | ast.ModuleDecl:
-    """The declaration a unit file's parsed program holds, which must be its only phrase, of the file's kind."""
+    """The declaration a unit file's parsed program holds, which must be its
+    only phrase, of the file's kind."""
     if unit_kind(path) == "interface":
         if not isinstance(prog, ast.Program) or len(prog.phrases) != 1:
             raise QuestTypeError(f"Interface file '{path.name}' must contain exactly one interface declaration")

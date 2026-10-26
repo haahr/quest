@@ -68,9 +68,13 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 
 ## 4. Code Conventions (Python Bootstrap)
 
-- **Match the surrounding code** in naming, structure, comment density, and idiom. Lines are at most 120 columns.
-  Modules start with a docstring and `from __future__ import annotations`; use type hints and frozen dataclasses as
-  the existing code does.
+- **Match the surrounding code** in naming, structure, comment density, and idiom. Lines of code are at most 120
+  columns. Modules start with a docstring and `from __future__ import annotations`; use type hints and frozen
+  dataclasses as the existing code does.
+- **Comments wrap at 80 columns,** narrower than code so that prose stays easy to read. This holds for docstrings and
+  every comment on lines of its own, in Python, Quest (`lib/`, `questlang/`, `examples/`), and C (`runtime/`): fill each
+  paragraph so that no line, indentation included, passes column 80, and keep examples, aligned text, and lists in their
+  own lines. A comment at the end of a line of code goes with the code and its 120 columns.
 - **Docstrings and comments explain what and why,** in full sentences: what a function returns or does, what
   invariant it relies on, why a non-obvious choice was made. Do not narrate the code or its history ("now",
   "previously", "fixed"); that belongs in commit messages.

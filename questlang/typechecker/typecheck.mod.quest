@@ -32,8 +32,9 @@ export
         begin
             let exp = maybe.some(:Type expected)
             case x0.form
-                (* Conditionals with an else branch: both branches are checked against the expected type (a
-                 * short-circuit operator is Bool, and is checked by subsumption) *)
+                (* Conditionals with an else branch: both branches are checked
+                 * against the expected type (a short-circuit operator is Bool,
+                 * and is checked by subsumption) *)
                 when exprIf with x then
                     if maybe.isSome(:ast.Expr x.elseBranch) andif not(x.shortCircuit) then
                         control.elaborateIf(c x0 exp e loopDepth)
@@ -54,12 +55,14 @@ export
                 (* An external C symbol's binding *)
                 when exprExternal with x then
                     expr(x0.span.startOffset expected option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
-                (* An application: the type required by the context can determine implicit type arguments (Cardelli,
-                 * The Quest Language and System section 4: cons(3 nil())) *)
+                (* An application: the type required by the context can
+                 * determine implicit type arguments (Cardelli, The Quest
+                 * Language and System section 4: cons(3 nil())) *)
                 when exprApp then
                     checks.requireSubtype(x0.span.startOffset application.elaborateApp(c x0 exp e loopDepth) expected e
                         maybe.none(:String))
-                (* Subsumption: the minimal type is synthesized and must be a subtype *)
+                (* Subsumption: the minimal type is synthesized and must be a
+                 * subtype *)
                 else checker.checkSubsumption(c x0 expected e loopDepth maybe.none(:String))
             end
         end
@@ -103,14 +106,16 @@ export
                             diagnostics.fail(:Ok "Undefined variable '" <> name <> "'" offset)
                         end
                         let sym = maybe.unwrap(:symbols.ValueSymbol found)
-                        (* Closures may not capture out or var parameters or mutable local variables *)
+                        (* Closures may not capture out or var parameters or
+                         * mutable local variables *)
                         checker.checkCapturable(c sym offset)
                         (* Out parameters are write-only *)
                         if sym.isOut then
                             diagnostics.fail(:Ok "Cannot read from write-only 'out' parameter '" <> sym.name <> "'" offset)
                         end
                         let varForm = option exprVar of typedAst.ExprForm with let name = sym.name let symbol = sym end
-                        (* A mutable variable in a value position is dereferenced *)
+                        (* A mutable variable in a value position is
+                         * dereferenced *)
                         if sym.isVar then
                             let varNode = expr(offset model.varType(sym.type) varForm)
                             expr(offset sym.type option exprDerefCell of typedAst.ExprForm with let target = varNode end)
@@ -225,7 +230,8 @@ export
             c
         end
 
-    (* Binds a name a failed import or module declaration would have bound to a poisoned value *)
+    (* Binds a name a failed import or module declaration would have bound to a
+     * poisoned value *)
     let poisonValue(c: checker.T name: String e: env.T): Ok =
         begin
             let sym = symbols.newValueSymbol(name model.okType false false false c.functionDepth 0)
@@ -255,7 +261,8 @@ export
             vector.toArray(:String names)
         end
 
-    (* A top-level phrase (an import, interface, module, binding, or expression), or none if it fails *)
+    (* A top-level phrase (an import, interface, module, binding, or
+     * expression), or none if it fails *)
     let elaboratePhrase(c: checker.T p: ast.Phrase e: env.T): maybe.T(typedAst.Binding) =
         case p.form
             when phraseDecl with x then bindings.elaborateRecovering(c x.decl e 0)
@@ -278,7 +285,8 @@ export
     let elaborateProgram(program: ast.Program e: env.T): Result =
         begin
             let c = newChecker(e 0)
-            (* The module system calls back to load units and to check modules' members *)
+            (* The module system calls back to load units and to check modules'
+             * members *)
             loader.install()
             elaboration.hooks.elaborateBinding := fun(b: ast.Decl en: env.T loopDepth: Int): maybe.T(typedAst.Binding)
                 bindings.elaborateRecovering(c b en loopDepth)

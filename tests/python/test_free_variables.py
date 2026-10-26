@@ -1,4 +1,5 @@
-"""Free-variable metadata follows each binder's substitution rules, and substitution preserves sharing."""
+"""Free-variable metadata follows each binder's substitution rules, and
+substitution preserves sharing."""
 
 from __future__ import annotations
 
@@ -58,7 +59,8 @@ class TestFreeVariables(unittest.TestCase):
         # All(A <: B) A: the bound sees B; the body's A is bound.
         t = QAllType((QQuantifier("A", 501, QPowerKind(B)),), A)
         self.assertEqual(fv(t), [502])
-        # All(A <: A) Int: a quantifier's own id in its bound is free (substitute does not remove it there).
+        # All(A <: A) Int: a quantifier's own id in its bound is free
+        # (substitute does not remove it there).
         self.assertEqual(fv(QAllType((QQuantifier("A", 501, QPowerKind(A)),), INT_TYPE)), [501])
 
     def test_tuple_formals_bind_later_components(self) -> None:

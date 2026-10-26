@@ -1,39 +1,50 @@
-"""The IR verifier (docs/ir.md §9): checks a unit's invariants for its stage, after every pass, in tests.
+"""The IR verifier (docs/ir.md §9): checks a unit's invariants for its stage,
+after every pass, in tests.
 
 Core invariants, checked here:
 
 - every operation's arguments are atoms (variables or constants);
-- every variable is bound by exactly one binder, and used only in its scope: after its let or declaration in the
-  same body (or a body within it), within its function, case, handler, or join point's continuation;
+- every variable is bound by exactly one binder, and used only in its scope:
+  after its let or declaration in the same body (or a body within it), within
+  its function, case, handler, or join point's continuation;
 - a module reference is to a module the unit defines or imports;
-- a function does not use a mutable variable of an enclosing function (closures do not capture mutable locals;
-  mutable variables of a unit's or module's top level are globals, which any function may use);
-- a jump names a join point whose body encloses it, and passes as many values as the join point has parameters; a
-  break or continue names an enclosing loop; neither crosses a function's boundary;
+- a function does not use a mutable variable of an enclosing function (closures
+  do not capture mutable locals; mutable variables of a unit's or module's top
+  level are globals, which any function may use);
+- a jump names a join point whose body encloses it, and passes as many values as
+  the join point has parameters; a break or continue names an enclosing loop;
+  neither crosses a function's boundary;
 - a return occurs only in a function's body;
 - a terminator is the last statement of its body;
-- an ordinal, and an option made by ordinal, record the cases of the option's static type as written, the same
-  cases as its shape's (in any order), and an option's payload records its case's ordinal.
+- an ordinal, and an option made by ordinal, record the cases of the option's
+  static type as written, the same cases as its shape's (in any order), and an
+  option's payload records its case's ordinal.
 
-After closure conversion (the closed stage), also: no funs statement remains; every closure is of one of the unit's
-functions; and those functions use only their parameters, their environment, and the unit's globals (the variables
-its top levels bind outside loops).
+After closure conversion (the closed stage), also: no funs statement remains;
+every closure is of one of the unit's functions; and those functions use only
+their parameters, their environment, and the unit's globals (the variables its
+top levels bind outside loops).
 
-After the represent pass (the represented stage), also: every value is used in the representation its use requires
-(a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C
-representations of what they bind, assign, return, or pass to), the conversions between being convert operations.
+After the represent pass (the represented stage), also: every value is used in
+the representation its use requires (a let's copy, an assignment, a return, a
+jump's argument, and a call's arguments and result have the C representations of
+what they bind, assign, return, or pass to), the conversions between being
+convert operations.
 
-After the describe pass (the described stage), also: every run-time use of a type has its descriptor operands (type
-arguments, auto values' witnesses, inspect cases and arms, `is` of QVal words, record literals, stored field reads,
-echo, and the plans that convert by descriptor), and a function its type parameters' descriptor variables; every
-descriptor variable an operand uses is bound where it is used (by the enclosing function, by the thunk of the adapt
-plan or type application it is in, which may use only its own, or by the inspect whose arm it is in) and of the
-descriptor type; no static descriptor or template mentions a type parameter whose descriptor is in scope (it must be
-described by its variable) or, in a thunk, one of the enclosing function's; and the static descriptors and tables
-operations refer to are the unit's static data.
+After the describe pass (the described stage), also: every run-time use of a
+type has its descriptor operands (type arguments, auto values' witnesses,
+inspect cases and arms, `is` of QVal words, record literals, stored field reads,
+echo, and the plans that convert by descriptor), and a function its type
+parameters' descriptor variables; every descriptor variable an operand uses is
+bound where it is used (by the enclosing function, by the thunk of the adapt
+plan or type application it is in, which may use only its own, or by the inspect
+whose arm it is in) and of the descriptor type; no static descriptor or template
+mentions a type parameter whose descriptor is in scope (it must be described by
+its variable) or, in a thunk, one of the enclosing function's; and the static
+descriptors and tables operations refer to are the unit's static data.
 
-verify_unit returns the problems found; check_unit raises if there are any. The verifier runs when
-QUEST_CHECK_IR=1, which the test runners set.
+verify_unit returns the problems found; check_unit raises if there are any. The
+verifier runs when QUEST_CHECK_IR=1, which the test runners set.
 """
 
 from __future__ import annotations
@@ -56,14 +67,17 @@ def ir_checks_enabled() -> bool:
 
 @dataclass(frozen=True)
 class _Scope:
-    """What is in scope at a point: variables, join points (label to arity), loops, and the enclosing function."""
+    """What is in scope at a point: variables, join points (label to arity),
+    loops, and the enclosing function."""
     vars: frozenset[int]
     joins: tuple[tuple[str, int], ...] = ()
     loops: tuple[str, ...] = ()
     in_function: bool = False
-    # Mutable variables of enclosing functions, which a nested function must not use
+    # Mutable variables of enclosing functions, which a nested function must not
+    # use
     outer_mutables: frozenset[int] = frozenset()
-    # Mutable variables of the current function (or top level), and whether this is a top level (unit or module)
+    # Mutable variables of the current function (or top level), and whether this
+    # is a top level (unit or module)
     local_mutables: frozenset[int] = frozenset()
     top_level: bool = True
 
@@ -77,9 +91,11 @@ class _Verifier:
     def __init__(self) -> None:
         self.problems: list[str] = []
         self.bound: set[int] = set()
-        # The modules the unit defines and imports, which module references must be
+        # The modules the unit defines and imports, which module references must
+        # be
         self.modules: set[int] = set()
-        # After closure conversion, the unit's functions, which closures must be of (None before)
+        # After closure conversion, the unit's functions, which closures must be
+        # of (None before)
         self.functions: Optional[set[int]] = None
         self.represented = False
 
@@ -135,7 +151,8 @@ class _Verifier:
                                 self.use(part, scope, where)
 
     def option_cases(self, o, var: ir.Var, where: str) -> None:
-        """Checks the cases an option operation counts ordinals in (ir.Ordinal, ir.MakeOption, ir.Payload)."""
+        """Checks the cases an option operation counts ordinals in (ir.Ordinal,
+        ir.MakeOption, ir.Payload)."""
         def option_shape(t):
             s = resolved_shape(shape(t)) if t is not None else None
             return s if s is not None and s.kind == "option" else None
@@ -156,8 +173,8 @@ class _Verifier:
 
     def function(self, f: ir.Function, scope: _Scope) -> None:
         where = f"function '{f.var.hint}'"
-        # A nested function may use the enclosing functions' values but not their mutable variables; the top level's
-        # mutable variables are globals
+        # A nested function may use the enclosing functions' values but not
+        # their mutable variables; the top level's mutable variables are globals
         outer_mutables = scope.outer_mutables | (frozenset() if scope.top_level else scope.local_mutables)
         inner = _Scope(scope.vars, (), (), True, outer_mutables, frozenset(), False)
         if f.env is not None:
@@ -214,8 +231,9 @@ class _Verifier:
                     self.function(f, inner)
                 return scope.with_vars(*(f.var for f in functions))
             case ir.LetRec(vars=vars_, body=body):
-                # The body computes the variables' values (binding them with lets), and closures it makes may refer
-                # to them; they are in scope after it
+                # The body computes the variables' values (binding them with
+                # lets), and closures it makes may refer to them; they are in
+                # scope after it
                 inner = scope.with_vars(*vars_)
                 self.body(body, inner, where)
                 return scope.with_vars(*vars_)
@@ -295,20 +313,23 @@ class _Verifier:
 
 
 def verify_unit(unit: ir.Unit) -> list[str]:
-    """The problems of a unit at its stage (empty when it satisfies every invariant)."""
+    """The problems of a unit at its stage (empty when it satisfies every
+    invariant)."""
     v = _Verifier()
     v.modules = {id(m) for m in unit.modules} | {id(i) for i in unit.imports}
     if unit.at_least("closed"):
         v.functions = {id(f) for f in unit.functions}
     v.represented = unit.at_least("represented")
     top = _Scope(frozenset())
-    # A module's members are visible to the code after its definition (by name, through the module), not as
-    # variables; each module's initializer is its own top level
+    # A module's members are visible to the code after its definition (by name,
+    # through the module), not as variables; each module's initializer is its
+    # own top level
     for m in unit.modules:
         v.body(m.init, top, f"module '{m.name}'")
     v.body(unit.main, top, "main")
     if unit.at_least("closed"):
-        # Lifted functions use their parameters, their environment, and the unit's globals
+        # Lifted functions use their parameters, their environment, and the
+        # unit's globals
         globals_scope = _Scope(frozenset(global_variables(unit)))
         for f in unit.functions:
             v.function(f, globals_scope)
@@ -320,10 +341,11 @@ def verify_unit(unit: ir.Unit) -> list[str]:
 
 
 def _representation_problems(unit: ir.Unit) -> list[str]:
-    """The uses of values in another representation than their use requires, after the represent pass: a value's
-    representation is its type's, or for a boxed value its slot representation (a boxed mutable variable reads its
-    value, and is assigned its box); and the slots of aggregates (components being made or stored, locations, cells)
-    take records and variants boxed."""
+    """The uses of values in another representation than their use requires,
+    after the represent pass: a value's representation is its type's, or for a
+    boxed value its slot representation (a boxed mutable variable reads its
+    value, and is assigned its box); and the slots of aggregates (components
+    being made or stored, locations, cells) take records and variants boxed."""
     problems: list[str] = []
 
     def rep(t) -> Optional[str]:
@@ -333,7 +355,8 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
         return a.type if isinstance(a, ir.Var) else a.shape.type
 
     def is_box(a) -> bool:
-        """Whether an atom is a box (a boxed value; a boxed mutable variable's use reads the value)."""
+        """Whether an atom is a box (a boxed value; a boxed mutable variable's
+        use reads the value)."""
         return isinstance(a, ir.Var) and a.boxed and not a.mutable
 
     def have(a) -> Optional[str]:
@@ -348,7 +371,8 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
             problems.append(f"{where}: a {had} used as a {want}")
 
     def slot(a, s, where: str, embedded: bool = False) -> None:
-        """a, stored into a slot of shape s (embedded: boxed in the aggregate's allocation)."""
+        """a, stored into a slot of shape s (embedded: boxed in the aggregate's
+        allocation)."""
         if s is None or s.kind == "ok":
             return
         if is_boxed_in_slots(s) and not embedded and not is_box(a):
@@ -430,8 +454,9 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
 
 @dataclass(frozen=True)
 class _DescriptorScope:
-    """The descriptor variables in scope, and the symbols of the type parameters a static descriptor must not mention
-    (those described by variables here, and in a thunk, the enclosing function's too)."""
+    """The descriptor variables in scope, and the symbols of the type parameters
+    a static descriptor must not mention (those described by variables here, and
+    in a thunk, the enclosing function's too)."""
     vars: frozenset[int]
     symbols: frozenset[int]
 
@@ -445,8 +470,9 @@ class _DescriptorScope:
 
 
 def _descriptor_problems(unit: ir.Unit) -> list[str]:
-    """The descriptor operands missing, unbound, or ill-formed after the describe pass, and the static descriptors and
-    tables operations refer to that are not the unit's static data."""
+    """The descriptor operands missing, unbound, or ill-formed after the
+    describe pass, and the static descriptors and tables operations refer to
+    that are not the unit's static data."""
     problems: list[str] = []
     data = unit.static_data
     if data is None:
@@ -592,7 +618,8 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
             problems.append(f"{where}: its descriptor parameters are not its type parameters'")
         bind(f.descriptor_params, where)
         body(f.body, top.with_params(f.descriptor_params), where)
-        # View maps: each of a type parameter of the function, at the bound, and every one used is the function's
+        # View maps: each of a type parameter of the function, at the bound, and
+        # every one used is the function's
         own_descriptors = {id(p.var) for p in f.descriptor_params}
         for m in f.view_maps:
             if m.var.type is not ir.VIEW_MAP_TYPE or id(m.descriptor) not in own_descriptors:

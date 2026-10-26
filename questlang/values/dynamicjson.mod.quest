@@ -24,7 +24,8 @@ export
     Let Value = model.Value
 
     let formatVersion = 1
-    (* Graphs larger than this come from types that are not regular (their unfoldings never repeat) *)
+    (* Graphs larger than this come from types that are not regular (their
+     * unfoldings never repeat) *)
     let maxTypeNodes = 100000
     let wordType = "uint64_t"
 
@@ -77,11 +78,12 @@ export
             found
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Types
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* True for Auto A::TYPE with a:A end, the type of dynamic values, whatever its parameter is named *)
+    (* True for Auto A::TYPE with a:A end, the type of dynamic values, whatever
+     * its parameter is named *)
     let isDynamicType(t: Type): Bool =
         case t.form
             when typeAuto with x then
@@ -95,7 +97,8 @@ export
             else false
         end
 
-    (* t with aliases, solved metavariables, applications, and recursion unfolded down to its outer constructor *)
+    (* t with aliases, solved metavariables, applications, and recursion
+     * unfolded down to its outer constructor *)
     let structure(t0: Type): Type =
         begin
             let var t = t0
@@ -115,7 +118,8 @@ export
             maybe.unwrap(:Type result)
         end
 
-    (* Whether an abstract type of this kind is encodable: TYPE or POWER(B), or an operator from types to TYPE *)
+    (* Whether an abstract type of this kind is encodable: TYPE or POWER(B), or
+     * an operator from types to TYPE *)
     let isUnbounded(k0: tm.Kind): Bool =
         if tm.isPower(k0) then
             true
@@ -141,7 +145,8 @@ export
 
     Let Abstract = Tuple entry: abstractTypes.ModuleAbstractType args: Array(Type) end
 
-    (* The module abstract type s is, or is an application of, with the application's arguments *)
+    (* The module abstract type s is, or is an application of, with the
+     * application's arguments *)
     let moduleAbstractType(s0: Type): maybe.T(Abstract) =
         begin
             let var s = s0
@@ -178,7 +183,8 @@ export
             equal
         end
 
-    (* The representation of a module abstract type, or of an application of an abstract type operator *)
+    (* The representation of a module abstract type, or of an application of an
+     * abstract type operator *)
     let representation(entry: abstractTypes.ModuleAbstractType args: Array(Type)): Type =
         if entry.linked then
             if maybe.isNone(:Type entry.rep) then fail(:Ok) end
@@ -197,15 +203,19 @@ export
     (* =========================================================================
      * 2. The graph of types
      *
-     * A node is a shape and children. The shape holds the constructor and its labels; children are type refs, in
-     * the order the node lists them: record fields sorted by name, tuple components and function parameters in
-     * order (then the function's result), variant and option cases by name (only those with a payload), an
-     * abstract type's arguments (then its representation), and an auto type's bound (if it has one, then its
-     * components). A param node refers to the type parameter of the auto type N auto types out from it.
-     * ========================================================================= *)
+     * A node is a shape and children. The shape holds the constructor and its
+     * labels; children are type refs, in the order the node lists them: record
+     * fields sorted by name, tuple components and function parameters in order
+     * (then the function's result), variant and option cases by name (only
+     * those with a payload), an abstract type's arguments (then its
+     * representation), and an auto type's bound (if it has one, then its
+     * components). A param node refers to the type parameter of the auto type N
+     * auto types out from it.
+     * ====================================================================== *)
 
-    (* kind; the labels of fields, cases, or parameter modes; flags (a case's payload, an auto type's bound); text
-     * (an external type's C type, an abstract type's global name); and count (an abstract type's arguments, a
+    (* kind; the labels of fields, cases, or parameter modes; flags (a case's
+     * payload, an auto type's bound); text (an external type's C type, an
+     * abstract type's global name); and count (an abstract type's arguments, a
      * param node's depth) *)
     Let Shape = Tuple kind: String labels: Array(String) flags: Array(Bool) text: String count: Int end
     Let Node = Tuple shape: Shape children: Array(Ref) end
@@ -227,7 +237,8 @@ export
     Let Graph = Tuple
         nodes: vector.T(Node)
         index: hashMap.T(String Int)
-        (* The type parameters of the auto types around the type being added, innermost last *)
+        (* The type parameters of the auto types around the type being added,
+         * innermost last *)
         binders: vector.T(Int)
     end
 
@@ -272,7 +283,8 @@ export
                 if depth >= 0 then
                     add(g "p" <> intKey(depth) s false depth)
                 else
-                    (* A type that mentions enclosing auto types' parameters is a node for each way it refers to them *)
+                    (* A type that mentions enclosing auto types' parameters is
+                     * a node for each way it refers to them *)
                     let key = stringBuilder.new()
                     key.char('s').int(s.id)
                     for i = 0 upto {n - 1} do
@@ -327,7 +339,8 @@ export
                     end
                     make(shape("tuple" labels noFlags "" 0) children)
                 when typeVariant with x then
-                    (* Cases are listed by name, as compiled code numbers them (docs/dynamic.md section 2.2) *)
+                    (* Cases are listed by name, as compiled code numbers them
+                     * (docs/dynamic.md section 2.2) *)
                     let cases = sort.sorted(:tm.VariantField x.variants
                         fun(a: tm.VariantField b: tm.VariantField): Int sort.stringCompare(a.name b.name))
                     let labels = array of(extent cases "")
@@ -391,7 +404,8 @@ export
                         make(shape("external" noLabels noFlags wordType 0) array of :Ref end)
                     else
                         let found = moduleAbstractType(s)
-                        (* Polymorphic types, other abstract and external types, and type operators: not encodable *)
+                        (* Polymorphic types, other abstract and external types,
+                         * and type operators: not encodable *)
                         if maybe.isNone(:Abstract found) then fail(:Ok) end
                         let a = maybe.unwrap(:Abstract found)
                         let children = refs({extent a.args + 1})
@@ -402,9 +416,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. The canonical table
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Table = Tuple types: json.Value index: hashMap.T(Int Int) end
 
@@ -449,7 +463,8 @@ export
                 end
             end
             let classes = cls
-            (* class -> table index, and a representative node of each class, in table order *)
+            (* class -> table index, and a representative node of each class, in
+             * table order *)
             let number = hashMap.new(:Int :Int intEqual hash.int)
             let order = vector.new(:Int)
             let rec visit(r: Ref): Ok =
@@ -534,9 +549,9 @@ export
             tuple let types = json.arrayValue(table) let index = index end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 4. Writing
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Pair = Tuple value: Value ref: Ref end
     Let Nested = Tuple target: json.Object witness: Ref end
@@ -558,13 +573,15 @@ export
         seen: hashMap.T(Value Bool)
         shared: hashMap.T(Value Bool)
         ids: hashMap.T(Value Int)
-        (* The witnesses of the auto values being written, innermost last, which param nodes refer to *)
+        (* The witnesses of the auto values being written, innermost last, which
+         * param nodes refer to *)
         witnesses: vector.T(Ref)
     end
 
     let rec derefValue(v: Value): Value = case v when vRef with r then derefValue(model.deref(r.r)) else v end
 
-    (* Whether a value may be shared: records, arrays, and nonempty tuples (compiled code has one empty tuple) *)
+    (* Whether a value may be shared: records, arrays, and nonempty tuples
+     * (compiled code has one empty tuple) *)
     let hasIdentity(v: Value): Bool =
         case v
             when vRecord then true
@@ -575,8 +592,9 @@ export
 
     let pair(v: Value r: Ref): Pair = tuple let value = v let ref = r end
 
-    (* The type a value of type r is written at: an abstract type's value at its representation, and a value of an
-     * auto type's parameter at the auto value's witness *)
+    (* The type a value of type r is written at: an abstract type's value at its
+     * representation, and a value of an auto type's parameter at the auto
+     * value's witness *)
     let concrete(w: Writer r0: Ref): Ref =
         begin
             let var r = r0
@@ -598,7 +616,8 @@ export
 
     Let AutoParts = Tuple witness: Ref components: vector.T(Pair) end
 
-    (* An auto value's witness, and its components with their types (which refer to the witness by param) *)
+    (* An auto value's witness, and its components with their types (which refer
+     * to the witness by param) *)
     let autoParts(w: Writer v: Value r: Ref): AutoParts =
         begin
             let node = nodeOf(w.graph r)
@@ -620,7 +639,8 @@ export
             else fail(:model.Tagged)
         end
 
-    (* The type ref of a variant or option value's payload, or none if it is written as its bare tag *)
+    (* The type ref of a variant or option value's payload, or none if it is
+     * written as its bare tag *)
     let casePayload(w: Writer v: Value node: Node): maybe.T(Ref) =
         begin
             let tag = tagged(v).tag
@@ -645,7 +665,8 @@ export
             result
         end
 
-    (* The component values of v with their type refs, in the order they are written *)
+    (* The component values of v with their type refs, in the order they are
+     * written *)
     let children(w: Writer v: Value r0: Ref): vector.T(Pair) =
         begin
             let r = concrete(w r0)
@@ -699,8 +720,9 @@ export
                         if stringOp.equal(kind "variant") then
                             vector.append(:Pair target pair(payload p))
                         else
-                            (* An option's components are stored in the option value itself (as in compiled code), so
-                             * they are written in place and never shared *)
+                            (* An option's components are stored in the option
+                             * value itself (as in compiled code), so they are
+                             * written in place and never shared *)
                             let components = nodeOf(w.graph p).children
                             case derefValue(payload)
                                 when vTuple with x then
@@ -779,7 +801,8 @@ export
                         else fail(:json.Value)
                     end
                 elsif stringOp.equal(kind "auto") then
-                    (* As a dynamic value is: its witness, then its components at their types, which refer to it *)
+                    (* As a dynamic value is: its witness, then its components
+                     * at their types, which refer to it *)
                     let parts = autoParts(w v r)
                     let target = json.newObject()
                     json.put(target "@type" json.null)
@@ -927,9 +950,9 @@ export
             json.dump(json.object(document))
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Reading
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let arity(k0: tm.Kind): Int =
         begin
@@ -941,7 +964,8 @@ export
             n
         end
 
-    (* TYPE, or the kind of an operator from n types to TYPE: that of an abstract type of an unlinked module *)
+    (* TYPE, or the kind of an operator from n types to TYPE: that of an
+     * abstract type of an unlinked module *)
     let operatorKind(n: Int): tm.Kind =
         begin
             let var k = tm.typeKind
@@ -983,8 +1007,9 @@ export
         binderIds: Array(Int)
         binderIdSet: hashMap.T(Int Bool)
         objects: hashMap.T(Int Value)
-        (* The type parameters of the auto types being built, innermost last, which param nodes refer to; and the
-         * witnesses of the auto values being read, which values of those parameters are read at *)
+        (* The type parameters of the auto types being built, innermost last,
+         * which param nodes refer to; and the witnesses of the auto values
+         * being read, which values of those parameters are read at *)
         autoParams: vector.T(Type)
         witnesses: vector.T(Ref)
     end
@@ -1192,8 +1217,10 @@ export
             found
         end
 
-    (* The module abstract type name (applied to args), whose recorded representation is rep: the linked module's
-     * type if rep is its representation, or the opaque type of an unlinked module (docs/dynamic.md section 2.3) *)
+    (* The module abstract type name (applied to args), whose recorded
+     * representation is rep: the linked module's type if rep is its
+     * representation, or the opaque type of an unlinked module (docs/dynamic.md
+     * section 2.3) *)
     let abstractType(rd: Reader name: String args: Array(Type) rep: Type): Type =
         begin
             let var closed = not(mentionsAny(rep rd.binderIdSet))
@@ -1228,7 +1255,8 @@ export
     let pairLabel(p: json.Value): String = text(vector.get(:json.Value items(p) 0))
     let pairRef(rd: Reader p: json.Value): Ref = checkRef(rd vector.get(:json.Value items(p) 1))
 
-    (* The type of a table entry; a node reached again while it is being built becomes a recursive type *)
+    (* The type of a table entry; a node reached again while it is being built
+     * becomes a recursive type *)
     let rec typeOf(rd: Reader r: Ref): Type =
         if isBuiltin(r) then
             builtinType(r.name)
@@ -1254,8 +1282,9 @@ export
                 else
                     t0
                 end
-                (* A type that mentions a recursive type's binder, or an enclosing auto type's parameter, is that type
-                 * only where it was reached *)
+                (* A type that mentions a recursive type's binder, or an
+                 * enclosing auto type's parameter, is that type only where it
+                 * was reached *)
                 let var local = mentionsAny(t rd.binderIdSet)
                 for i = 0 upto {vector.length(:Type rd.autoParams) - 1} do
                     case vector.get(:Type rd.autoParams i).form
@@ -1368,7 +1397,8 @@ export
             tm.exceptionOf(typeOf(rd checkRef(rd e.body)))
         end
 
-    (* Resolves {"@ref": n}; otherwise the object's @id (if any) and its contents *)
+    (* Resolves {"@ref": n}; otherwise the object's @id (if any) and its
+     * contents *)
     Let Shared = Tuple existing: maybe.T(Value) objId: maybe.T(Int) contents: json.Value end
 
     let sharedOf(rd: Reader data: json.Value kind: String): Shared =
@@ -1519,7 +1549,8 @@ export
                     let isVariant = stringOp.equal(e.kind "variant")
                     let b = members(e.body)
                     let labels = json.names(b)
-                    (* The case of a tag, and its payload's ref (none, or Ok, for a bare tag) *)
+                    (* The case of a tag, and its payload's ref (none, or Ok,
+                     * for a bare tag) *)
                     let caseRef(tag: String): maybe.T(json.Value) =
                         begin
                             let var found = maybe.none(:json.Value)

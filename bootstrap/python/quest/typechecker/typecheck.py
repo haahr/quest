@@ -1,11 +1,14 @@
 """Quest Term Elaboration and Bidirectional Typechecker (Phases 2, 3, 4 & 5).
 
-`TypeElaborator` checks (`check_expr`) and synthesizes (`synth_expr`) the types of expressions and elaborates
-bindings, phrases, and programs into the typed AST. This module holds the dispatch on expression forms (with the
-literals, variables, dereference, and while and loop inline), phrase and program elaboration, and the module-level
-entry points. The checker's state and shared helpers are `checker.Checker`'s; the constructs are elaborated by
-construct families, one module each, built on it: `bindings` (functions and bindings), `application`,
-`aggregates`, `control`, `exceptions`, and `auto_values` (auto values and inspect)."""
+`TypeElaborator` checks (`check_expr`) and synthesizes (`synth_expr`) the types
+of expressions and elaborates bindings, phrases, and programs into the typed
+AST. This module holds the dispatch on expression forms (with the literals,
+variables, dereference, and while and loop inline), phrase and program
+elaboration, and the module-level entry points. The checker's state and shared
+helpers are `checker.Checker`'s; the constructs are elaborated by construct
+families, one module each, built on it: `bindings` (functions and bindings),
+`application`, `aggregates`, `control`, `exceptions`, and `auto_values` (auto
+values and inspect)."""
 
 from __future__ import annotations
 
@@ -64,13 +67,16 @@ TypeError = QuestTypeError
 
 
 class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixin, ExceptionMixin, AutoValueMixin):
-    """The type checker, which elaborates a parsed syntax tree into a typed AST or reports the first type error.
+    """The type checker, which elaborates a parsed syntax tree into a typed AST
+    or reports the first type error.
 
-    Elaborating means more than checking: the checker builds a new tree in which what the source leaves implicit is
-    explicit. Every expression carries its type. Every variable carries its symbol, the record of the declaration it
-    refers to: names can be shadowed, so two variables with one name may be different variables, and lowering
-    identifies them by symbol. Reading a mutable variable becomes an explicit dereference, and a call of a polymorphic
-    function gets its type arguments, written or inferred. Given
+    Elaborating means more than checking: the checker builds a new tree in which
+    what the source leaves implicit is explicit. Every expression carries its
+    type. Every variable carries its symbol, the record of the declaration it
+    refers to: names can be shadowed, so two variables with one name may be
+    different variables, and lowering identifies them by symbol. Reading a
+    mutable variable becomes an explicit dereference, and a call of a
+    polymorphic function gets its type arguments, written or inferred. Given
 
         let var n = 1
         let id(A::TYPE x: A): A = x
@@ -82,40 +88,55 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
           :func (TypedTypeApp [Int] :type Fun(x: Int): Int
             :func (TypedVar 'id' :type All(A :: TYPE) Fun(x: A): A))
           :args ((TypedInfix '+' :type Int
-                   :left (TypedDerefCell :type Int :target (TypedVar 'n' :type Var(Int)))
+                   :left (TypedDerefCell :type Int
+                           :target (TypedVar 'n' :type Var(Int)))
                    :right (TypedInt 1 :type Int))))
 
-    The tree has two readers: the interpreter, which evaluates it, and lowering, which translates it into the
-    compiler's intermediate representation, from which C is printed. Neither looks at the syntax again or checks
-    types, so whatever they need to know about types, the checker must write into the tree. docs/walkthrough.md §6
-    follows one program through this phase.
+    The tree has two readers: the interpreter, which evaluates it, and lowering,
+    which translates it into the compiler's intermediate representation, from
+    which C is printed. Neither looks at the syntax again or checks types, so
+    whatever they need to know about types, the checker must write into the
+    tree. docs/walkthrough.md §6 follows one program through this phase.
 
-    Checking is bidirectional (docs/type-system.md §6.1). check_expr(e, T) requires e to have type T and pushes T down
-    into e, so that context can supply what e leaves unwritten, such as the type argument of list.nil() when it is
-    checked against list.T(Int). synth_expr(e) works out e's type from e alone, bottom up. Most forms are synthesized
-    even when checked, and then accepted by subsumption: a value of a subtype of T is accepted where T is expected
-    (_check_subsumption). The forms that an expected type can inform each have one method, _elaborate_X_expr, which
-    check_expr calls with the expected type and synth_expr with None. The methods are spread over mixins, one per family
-    of constructs, purely to divide the code into files (checker.py describes them); at run time a check is one
-    TypeElaborator object.
+    Checking is bidirectional (docs/type-system.md §6.1). check_expr(e, T)
+    requires e to have type T and pushes T down into e, so that context can
+    supply what e leaves unwritten, such as the type argument of list.nil() when
+    it is checked against list.T(Int). synth_expr(e) works out e's type from e
+    alone, bottom up. Most forms are synthesized even when checked, and then
+    accepted by subsumption: a value of a subtype of T is accepted where T is
+    expected (_check_subsumption). The forms that an expected type can inform
+    each have one method, _elaborate_X_expr, which check_expr calls with the
+    expected type and synth_expr with None. The methods are spread over mixins,
+    one per family of constructs, purely to divide the code into files
+    (checker.py describes them); at run time a check is one TypeElaborator
+    object.
 
-    The checker's state is env, a mutable Environment holding a stack of scopes, each holding the symbols declared in
-    it. Bindings are declared into the current scope as they are elaborated, so elaboration order is scoping order. The
-    elaborator itself is short-lived, but the Environment persists across a program's phrases (and, in the REPL,
-    across the phrases typed). Alongside it, two counters track how many loops and functions enclose the code being
-    checked, so that exit and closures that capture mutable variables can be checked.
+    The checker's state is env, a mutable Environment holding a stack of scopes,
+    each holding the symbols declared in it. Bindings are declared into the
+    current scope as they are elaborated, so elaboration order is scoping order.
+    The elaborator itself is short-lived, but the Environment persists across a
+    program's phrases (and, in the REPL, across the phrases typed). Alongside
+    it, two counters track how many loops and functions enclose the code being
+    checked, so that exit and closures that capture mutable variables can be
+    checked.
 
     Things to know when changing or debugging it:
 
-    - Types are immutable and shared (types/model.py), and == on a type raises. Compare types with is_subtype and
-      is_type_equal, not `is`: equal types may be distinct objects (an alias and its target, a recursive type and its
-      unfolding). A type may be an alias or a recursive type, so call t.evaluate_lazily(env) to expose its outermost
-      constructor before testing it with isinstance or match; that holds for readers of the typed AST too.
-    - Subsumption leaves no trace in the tree. An expression accepted where T is expected keeps its own type, so a
-      node's type may be more specific than its context requires; only a construct that propagated T into its parts
-      has type T. Changes of representation that subsumption implies are inserted much later, in the IR.
-    - Errors are QuestTypeError (TypeError in these modules), raised at the offending syntax's offset, and the first
-      one ends the check. A broken internal invariant raises QuestCompilerError with a message starting "internal:".
+    - Types are immutable and shared (types/model.py), and == on a type raises.
+      Compare types with is_subtype and is_type_equal, not `is`: equal types may
+      be distinct objects (an alias and its target, a recursive type and its
+      unfolding). A type may be an alias or a recursive type, so call
+      t.evaluate_lazily(env) to expose its outermost constructor before testing
+      it with isinstance or match; that holds for readers of the typed AST too.
+    - Subsumption leaves no trace in the tree. An expression accepted where T is
+      expected keeps its own type, so a node's type may be more specific than
+      its context requires; only a construct that propagated T into its parts
+      has type T. Changes of representation that subsumption implies are
+      inserted much later, in the IR.
+    - Errors are QuestTypeError (TypeError in these modules), raised at the
+      offending syntax's offset, and the first one ends the check. A broken
+      internal invariant raises QuestCompilerError with a message starting
+      "internal:".
     """
 
     def check(
@@ -125,7 +146,8 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         env: Optional[Environment] = None,
         loop_depth: Optional[int] = None,
     ) -> TypedExpr:
-        """Checks an AST expression against an expected QType (Gamma |- e <= T)."""
+        """Checks an AST expression against an expected QType (Gamma |- e <=
+        T)."""
         return self.check_expr(
             expr,
             expected_type,
@@ -139,7 +161,8 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         env: Optional[Environment] = None,
         loop_depth: Optional[int] = None,
     ) -> TypedExpr:
-        """Synthesizes the minimal QType and elaborated TypedExpr (Gamma |- e => T)."""
+        """Synthesizes the minimal QType and elaborated TypedExpr (Gamma |- e =>
+        T)."""
         return self.synth_expr(
             expr,
             env=env or self.env,
@@ -168,16 +191,18 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
     ) -> TypedExpr:
         """Checks an AST expression against an expected QType (Gamma |- e <= T).
 
-        The constructs the expected type propagates into have one elaboration method each, `_elaborate_X_expr`,
-        taking an optional expected type, which synth_expr calls with None; every other expression is synthesized
+        The constructs the expected type propagates into have one elaboration
+        method each, `_elaborate_X_expr`, taking an optional expected type,
+        which synth_expr calls with None; every other expression is synthesized
         and must be a subtype of the expected type.
         """
         if env is None:
             env = self.env
 
         match expr:
-            # 1. Conditionals with else branch: check both branches against expected_type (a short-circuit operator
-            #    is Bool, and is checked by subsumption)
+            # 1. Conditionals with else branch: check both branches against
+            #    expected_type (a short-circuit operator is Bool, and is checked
+            #    by subsumption)
             case ast.ExprIf(else_branch=else_br, short_circuit=False) if else_br is not None:
                 return self._elaborate_if_expr(expr, expected_type, env, loop_depth)
 
@@ -201,14 +226,16 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
             case ast.ExprCase():
                 return self._elaborate_case_expr(expr, expected_type, env, loop_depth)
 
-            # 7. Array expressions: check elements against expected array element type
+            # 7. Array expressions: check elements against expected array
+            #    element type
             case ast.ExprArray():
                 return self._elaborate_array_expr(expr, expected_type, env, loop_depth)
 
             case ast.ExprArrayRep():
                 return self._elaborate_array_rep_expr(expr, expected_type, env, loop_depth)
 
-            # 8. Phase 5: Raise expression (divergent control flow checks against any expected type)
+            # 8. Phase 5: Raise expression (divergent control flow checks
+            #    against any expected type)
             case ast.ExprRaise():
                 return self._elaborate_raise_expr(expr, expected_type, env, loop_depth)
 
@@ -228,13 +255,15 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
             case ast.ExprExternal(symbol=symbol, offset=off):
                 return TypedExternal(symbol=symbol, type_val=expected_type, offset=off)
 
-            # 13. Application: the type required by the context can determine implicit type arguments
-            #     (Cardelli, The Quest Language and System §4: cons(3 nil()))
+            # 13. Application: the type required by the context can determine
+            #     implicit type arguments (Cardelli, The Quest Language and
+            #     System §4: cons(3 nil()))
             case ast.ExprApp():
                 typed = self._elaborate_app_expr(expr, expected_type, env, loop_depth)
                 return require_subtype(expr, typed, expected_type, env)
 
-            # 14. Subsumption: synthesize minimal type and check subtyping (S <= T)
+            # 14. Subsumption: synthesize minimal type and check subtyping (S <=
+            #     T)
             case _:
                 return self._check_subsumption(expr, expected_type, env, loop_depth)
 
@@ -245,22 +274,29 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         loop_depth: int = 0,
         is_callee: bool = False,
     ) -> TypedExpr:
-        """Synthesizes the type of expr from expr alone, bottom up, and returns its elaborated node (Gamma |- e => T).
+        """Synthesizes the type of expr from expr alone, bottom up, and returns
+        its elaborated node (Gamma |- e => T).
 
-        The type synthesized is the most specific one the checker can determine, which subsumption may then widen. The
-        cases fall into two groups. A form that check_expr also handles delegates to its _elaborate_X_expr method with
-        no expected type, so that each construct has one elaboration whichever mode reaches it. Every other form is
-        synthesized only: the simplest inline here, the rest by _synth_X methods in the mixins. Variables show what
-        inline elaboration involves: the name is looked up in env to find its symbol, and a mutable variable, which in
-        a value position stands for its contents, is wrapped in an explicit dereference.
+        The type synthesized is the most specific one the checker can determine,
+        which subsumption may then widen. The cases fall into two groups. A form
+        that check_expr also handles delegates to its _elaborate_X_expr method
+        with no expected type, so that each construct has one elaboration
+        whichever mode reaches it. Every other form is synthesized only: the
+        simplest inline here, the rest by _synth_X methods in the mixins.
+        Variables show what inline elaboration involves: the name is looked up
+        in env to find its symbol, and a mutable variable, which in a value
+        position stands for its contents, is wrapped in an explicit dereference.
 
-        is_callee is true only for the function of a call. The monadic operators not, extent, and ordinal are names
-        that may be called but are not values, so anywhere else they are rejected.
+        is_callee is true only for the function of a call. The monadic operators
+        not, extent, and ordinal are names that may be called but are not
+        values, so anywhere else they are rejected.
 
-        A form with no case here falls to the last one, which reports it as unsupported. A new expression form needs a
-        case here, and one in check_expr too if an expected type should flow into it; a
-        typed node in typed_ast.py, with its dump; and its evaluation (interpreter/treewalk.py) and lowering
-        (ir/lower.py), since those read only the typed AST.
+        A form with no case here falls to the last one, which reports it as
+        unsupported. A new expression form needs a case here, and one in
+        check_expr too if an expected type should flow into it; a typed node in
+        typed_ast.py, with its dump; and its evaluation
+        (interpreter/treewalk.py) and lowering (ir/lower.py), since those read
+        only the typed AST.
         """
         if env is None:
             env = self.env
@@ -308,14 +344,16 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 if sym is None:
                     raise TypeError(f"Undefined variable '{name}'", offset=off)
 
-                # Disallow capturing out or var parameters / local mutable variables in nested closures
+                # Disallow capturing out or var parameters / local mutable
+                # variables in nested closures
                 self._check_capturable(sym, off)
 
                 # Strict write-only enforcement for out parameters
                 if sym.is_out:
                     raise TypeError(f"Cannot read from write-only 'out' parameter '{sym.name}'", offset=off)
 
-                # Implicit dereferencing: mutable variables in value positions yield element type
+                # Implicit dereferencing: mutable variables in value positions
+                # yield element type
                 if sym.is_var:
                     var_node = TypedVar(
                         name=sym.name,
@@ -466,7 +504,8 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         phrase: ast.ASTNode,
         env: Optional[Environment] = None,
     ) -> TypedBinding | TypedExpr:
-        """Elaborates a single top-level phrase (interface, module, import, binding, or expr)."""
+        """Elaborates a single top-level phrase (interface, module, import,
+        binding, or expr)."""
         if env is None:
             env = self.env
         match phrase:
@@ -491,11 +530,14 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         program: ast.Program,
         env: Optional[Environment] = None,
     ) -> TypedProgram:
-        """Elaborates a top-level Quest program unit (interfaces, modules, declarations, statements).
+        """Elaborates a top-level Quest program unit (interfaces, modules,
+        declarations, statements).
 
-        Each elaboration declares fresh symbols, so elaborating the same syntax twice gives trees whose references do
-        not resolve in each other. Under QUEST_CHECK_SCOPES=1, which the test runners set, the result is checked to be
-        well scoped (every variable refers to a binder in scope; see scoping.py), which catches such a mix.
+        Each elaboration declares fresh symbols, so elaborating the same syntax
+        twice gives trees whose references do not resolve in each other. Under
+        QUEST_CHECK_SCOPES=1, which the test runners set, the result is checked
+        to be well scoped (every variable refers to a binder in scope; see
+        scoping.py), which catches such a mix.
         """
         if env is None:
             env = self.env
@@ -535,7 +577,8 @@ def synth_expr(
     loop_depth: int = 0,
     is_callee: bool = False,
 ) -> TypedExpr:
-    """Synthesizes the minimal QType and elaborated TypedExpr (Gamma |- e => T)."""
+    """Synthesizes the minimal QType and elaborated TypedExpr (Gamma |- e =>
+    T)."""
     return TypeElaborator(env=env, loop_depth=loop_depth).synth_expr(
         expr, env=env, loop_depth=loop_depth, is_callee=is_callee
     )
@@ -545,7 +588,8 @@ def elaborate_phrase(
     phrase: ast.ASTNode,
     env: Optional[Environment] = None,
 ) -> TypedBinding | TypedExpr:
-    """Elaborates a single top-level phrase (interface, module, import, binding, or expr)."""
+    """Elaborates a single top-level phrase (interface, module, import, binding,
+    or expr)."""
     return TypeElaborator(env=env).elaborate_phrase(phrase, env=env)
 
 
@@ -553,7 +597,8 @@ def elaborate_program(
     program: ast.Program,
     env: Optional[Environment] = None,
 ) -> TypedProgram:
-    """Elaborates a top-level Quest program unit (interfaces, modules, declarations, statements)."""
+    """Elaborates a top-level Quest program unit (interfaces, modules,
+    declarations, statements)."""
     return TypeElaborator(env=env).elaborate_program(program, env=env)
 
 

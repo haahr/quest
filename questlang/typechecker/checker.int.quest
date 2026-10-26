@@ -1,13 +1,15 @@
 (* Quest Self-Hosted Compiler: The Checker's State and Shared Helpers Interface
  *
  * The state of one type check and the helpers its construct families share, as
- * bootstrap/python/quest/typechecker/checker.py's Checker. The families (bindings, application, aggregates, control,
- * exceptions, autovalues) reach the dispatch on expression forms (checkExpr, synthExpr), which typecheck defines,
- * through the function fields here, which typecheck fills when it makes a checker; a family calls the families below
- * it directly.
+ * bootstrap/python/quest/typechecker/checker.py's Checker. The families
+ * (bindings, application, aggregates, control, exceptions, autovalues) reach
+ * the dispatch on expression forms (checkExpr, synthExpr), which typecheck
+ * defines, through the function fields here, which typecheck fills when it
+ * makes a checker; a family calls the families below it directly.
  *
- * The checker also records the errors it finds (docs/milestone-2.md section 2): a binding that fails reports its
- * error and the check goes on with the next binding, until 20 errors. *)
+ * The checker also records the errors it finds (docs/milestone-2.md section 2):
+ * a binding that fails reports its error and the check goes on with the next
+ * binding, until 20 errors. *)
 
 interface Checker
 import
@@ -20,16 +22,16 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* An implicit type argument of a polymorphic call whose arguments are being checked: its metavariable,
-     * quantifier, and the call's offset *)
+    (* An implicit type argument of a polymorphic call whose arguments are being
+     * checked: its metavariable, quantifier, and the call's offset *)
     Def PendingTypeArg = Tuple meta: model.Type quantifier: model.Quantifier offset: Int end
 
     Def Rec T = Tuple
         env: env.T
         var loopDepth: Int
         var functionDepth: Int
-        (* The type arguments of the polymorphic call whose arguments are being checked, to which nested calls may
-         * defer theirs *)
+        (* The type arguments of the polymorphic call whose arguments are being
+         * checked, to which nested calls may defer theirs *)
         var pendingTypeArgs: maybe.T(vector.T(PendingTypeArg))
         (* The errors found, in order *)
         errors: vector.T(diagnostics.CompilerError)
@@ -45,11 +47,12 @@ export
     checkExpr(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr
     (* Synthesizes the type of expr (Gamma |- e => T) *)
     synthExpr(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr
-    (* Synthesizes the type of a callee: a monadic operator's name may stand alone there *)
+    (* Synthesizes the type of a callee: a monadic operator's name may stand
+     * alone there *)
     synthCallee(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr
 
-    (* body one loop deeper, and inside a function (loops inside cannot exit outer loops); the depths are restored if
-     * body raises an error *)
+    (* body one loop deeper, and inside a function (loops inside cannot exit
+     * outer loops); the depths are restored if body raises an error *)
     inLoop(A::TYPE c: T body: All() A): A
     inFunction(A::TYPE c: T body: All() A): A
 
@@ -58,16 +61,19 @@ export
     elaborateOptionalBranch(
         c: T expr: maybe.T(ast.Expr) expected: maybe.T(model.Type) e: env.T loopDepth: Int
     ): maybe.T(typedAst.Expr)
-    (* The types of branch bodies and an else branch, after initial if there is one *)
+    (* The types of branch bodies and an else branch, after initial if there is
+     * one *)
     branchTypes(initial: maybe.T(model.Type) bodies: Array(typedAst.Expr) elseBranch: maybe.T(typedAst.Expr)): Array(model.Type)
     (* Synthesizes expr and requires its type to be a subtype of expected *)
     checkSubsumption(
         c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int typeDesc: maybe.T(String)
     ): typedAst.Expr
-    (* Rejects a use, from a closure, of a var or out parameter or a mutable local variable of an enclosing function *)
+    (* Rejects a use, from a closure, of a var or out parameter or a mutable
+     * local variable of an enclosing function *)
     checkCapturable(c: T sym: symbols.ValueSymbol offset: Int): Ok
 
-    (* A value in scope; a symbol a failed declaration poisoned fails silently *)
+    (* A value in scope; a symbol a failed declaration poisoned fails
+     * silently *)
     lookupValue(c: T e: env.T name: String): maybe.T(symbols.ValueSymbol)
     (* Fails silently if sym was poisoned *)
     checkPoisoned(sym: symbols.ValueSymbol): Ok
@@ -75,8 +81,10 @@ export
     (* Records an error; the 20th stops the check, with a fatal error *)
     maxErrors: Int
     recordError(c: T err: diagnostics.CompilerError): Ok
-    (* Records an error caught where it was raised, located as if it had propagated out of the units being loaded *)
+    (* Records an error caught where it was raised, located as if it had
+     * propagated out of the units being loaded *)
     report(c: T err: diagnostics.CompilerError): Ok
-    (* body's result, or none if it raised an error, which is reported unless it is silent; a fatal error propagates *)
+    (* body's result, or none if it raised an error, which is reported unless it
+     * is silent; a fatal error propagates *)
     attempt(A::TYPE c: T body: All() A): maybe.T(A)
 end

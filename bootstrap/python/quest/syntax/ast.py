@@ -1,4 +1,5 @@
-"""Quest Abstract Syntax Tree (AST) definitions and S-Expression Pretty-Printer."""
+"""Quest Abstract Syntax Tree (AST) definitions and S-Expression
+Pretty-Printer."""
 
 from __future__ import annotations
 
@@ -325,8 +326,9 @@ class ExprBlock(Expr):
 class ExprIf(Expr):
     """if cond then e1 elsif cond2 then e2 else e3 end
 
-    short_circuit marks a conditional desugared from andif or orif (quest/syntax/desugar.py), whose operands are
-    checked against Bool, so that errors name the operand rather than the conditional's branches.
+    short_circuit marks a conditional desugared from andif or orif
+    (quest/syntax/desugar.py), whose operands are checked against Bool, so that
+    errors name the operand rather than the conditional's branches.
     """
     cond: Expr
     then_branch: Expr
@@ -398,14 +400,16 @@ class TupleBinding(ASTNode):
 
 @dataclass(frozen=True)
 class TupleBindingGroup(ASTNode):
-    """Simultaneous value components of a tuple: let x = ... and y = ... (without rec)."""
+    """Simultaneous value components of a tuple: let x = ... and y = ...
+    (without rec)."""
     bindings: tuple[TupleBinding, ...]
 
 
 @dataclass(frozen=True)
 class ExprTuple(Expr):
-    """A tuple constructor. Recursive value declarations (let rec ..., alone or joined by and) are components as
-    LetValueBinding and LetValueBindingGroup, which keep the annotations that type them."""
+    """A tuple constructor. Recursive value declarations (let rec ..., alone or
+    joined by and) are components as LetValueBinding and LetValueBindingGroup,
+    which keep the annotations that type them."""
     fields: tuple[
         Union[
             TupleBinding, TupleBindingGroup, LetValueBinding, LetValueBindingGroup, TypeBinding, TypeBindingGroup,
@@ -457,7 +461,8 @@ class ExprArrayRep(Expr):
 
 @dataclass(frozen=True)
 class ExprAuto(Expr):
-    """auto [let A [HasKind] =] :W with Binding end — an auto value with type component W."""
+    """auto [let A [HasKind] =] :W with Binding end — an auto value with type
+    component W."""
     witness_type: Type
     payload: Expr
     witness_name: Optional[str] = None
@@ -593,15 +598,16 @@ class LetValueBinding(BindingNode):
 class LetValueBindingGroup(BindingNode):
     """let [rec] x = ... and y = ...: two or more simultaneous value bindings.
 
-    The members share the keyword's rec (their is_rec); the group is positioned at the keyword and each member at
-    its name.
+    The members share the keyword's rec (their is_rec); the group is positioned
+    at the keyword and each member at its name.
     """
     bindings: tuple[LetValueBinding, ...]
 
 
 @dataclass(frozen=True)
 class TypeBinding(BindingNode):
-    """Let [Rec] T(X::K)::K' = Type, or Def [Rec] T = Type (is_def, e.g. in an interface signature)."""
+    """Let [Rec] T(X::K)::K' = Type, or Def [Rec] T = Type (is_def, e.g. in an
+    interface signature)."""
     name: str
     type_val: Type
     params: tuple[TypeFormal, ...] = ()
@@ -612,10 +618,11 @@ class TypeBinding(BindingNode):
 
 @dataclass(frozen=True)
 class TypeBindingGroup(BindingNode):
-    """Let [Rec] T = Type and U = Type ..., or the same with Def: two or more simultaneous type bindings.
+    """Let [Rec] T = Type and U = Type ..., or the same with Def: two or more
+    simultaneous type bindings.
 
-    The members share the keyword's Rec and Def (their is_rec and is_def); the group is positioned at the keyword
-    and each member at its name.
+    The members share the keyword's Rec and Def (their is_rec and is_def); the
+    group is positioned at the keyword and each member at its name.
     """
     bindings: tuple[TypeBinding, ...]
 
@@ -673,7 +680,8 @@ class ModuleDecl(ASTNode):
 
 @dataclass(frozen=True)
 class Program(ASTNode):
-    """A complete .quest compilation unit: top-level declarations, expressions, interfaces, modules."""
+    """A complete .quest compilation unit: top-level declarations, expressions,
+    interfaces, modules."""
     phrases: tuple[ASTNode, ...]
 
 
@@ -695,7 +703,8 @@ def _is_simple_leaf(value: Any) -> bool:
 
 
 def ast_dump(node: Any, indent: int = 0, show_offsets: bool = False) -> str:
-    """Recursively formats an AST node into a canonical 2-space indented S-expression string."""
+    """Recursively formats an AST node into a canonical 2-space indented
+    S-expression string."""
     padding = "  " * indent
     child_padding = "  " * (indent + 1)
 
@@ -788,14 +797,16 @@ def ast_dump(node: Any, indent: int = 0, show_offsets: bool = False) -> str:
 # The explicit traversal: a case for each class of syntax node
 
 def ast_fields(node) -> Optional[tuple]:
-    """The values of a syntax node's fields (but its offset), in order; None for a value that is not a syntax node. The
-    syntax tree's one traversal: walkers of nodes' fields read them through it."""
+    """The values of a syntax node's fields (but its offset), in order; None for
+    a value that is not a syntax node. The syntax tree's one traversal: walkers
+    of nodes' fields read them through it."""
     accessor = _AST_FIELDS.get(type(node))
     return accessor(node) if accessor is not None else None
 
 
 def rebuild_ast(node, values: tuple):
-    """A syntax node of node's class, at its offset, whose fields are values (as ast_fields gives them)."""
+    """A syntax node of node's class, at its offset, whose fields are values (as
+    ast_fields gives them)."""
     return _REBUILD_AST[type(node)](node, values)
 
 

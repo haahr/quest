@@ -1,10 +1,13 @@
-"""The C headers of interfaces (`.int.h`): for each interface, its aggregate structs, its types' C representations,
-and its members' signatures, which C that uses the interface includes.
+"""The C headers of interfaces (`.int.h`): for each interface, its aggregate
+structs, its types' C representations, and its members' signatures, which C that
+uses the interface includes.
 
-A header is written beside its interface's .qi, from the interface as compiled, by C compilation when it needs it:
-compiling an interface file (compile_interface_with_header), or a module, whose C translation includes its interface's
-header (ensure_imported_interface_header). A header is up to date when it is at least as new as its .qi, which is
-rebuilt whenever the interface's source or an interface it depends on changes (docs/build-process.md §5).
+A header is written beside its interface's .qi, from the interface as compiled,
+by C compilation when it needs it: compiling an interface file
+(compile_interface_with_header), or a module, whose C translation includes its
+interface's header (ensure_imported_interface_header). A header is up to date
+when it is at least as new as its .qi, which is rebuilt whenever the interface's
+source or an interface it depends on changes (docs/build-process.md §5).
 """
 
 from __future__ import annotations
@@ -47,8 +50,9 @@ C_KEYWORDS = {
 def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, canonical_name: str) -> str:
     """Generates the C header (.int.h) for an interface declaration.
 
-    The include guard and typedef names are derived from canonical_name, the interface's include-relative path
-    (e.g. 'util/Math'), so same-named interfaces in different directories can be included in one translation unit.
+    The include guard and typedef names are derived from canonical_name, the
+    interface's include-relative path (e.g. 'util/Math'), so same-named
+    interfaces in different directories can be included in one translation unit.
     """
     c_name = canonical_name.replace("/", "__")
     guard_name = f"QUEST_INTF_{c_name.upper()}_H"
@@ -106,7 +110,8 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
     for sig, _ in _type_signatures(decl):
         if isinstance(sig, ast.TypeFormal):
             has_types = True
-            # A bounded abstract type (POWER(B)) is held as a value of B, as the signatures below declare it
+            # A bounded abstract type (POWER(B)) is held as a value of B, as the
+            # signatures below declare it
             formal_sym = iface_scope.lookup_type_local(sig.name)
             kind = formal_sym.kind if formal_sym is not None else None
             c_rep = qtype_to_c_type(kind.bound) if isinstance(kind, QPowerKind) else "QVal"
@@ -183,13 +188,15 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
 
 
 def interface_header_file(qi_file: Path) -> Path:
-    """The C header beside an interface's .qi (`util/path.qi` and `util/path.int.h`)."""
+    """The C header beside an interface's .qi (`util/path.qi` and
+    `util/path.int.h`)."""
     return qi_file.with_name(f"{qi_file.name[:-len('.qi')]}.int.h")
 
 
 def header_is_current(qi_file: Path, h_file: Path) -> bool:
-    """Whether an interface's header is up to date: it was written from the interface its .qi describes, after the
-    .qi (which is rewritten whenever the interface changes, docs/build-process.md §5)."""
+    """Whether an interface's header is up to date: it was written from the
+    interface its .qi describes, after the .qi (which is rewritten whenever the
+    interface changes, docs/build-process.md §5)."""
     return h_file.is_file() and qi_file.is_file() and h_file.stat().st_mtime >= qi_file.stat().st_mtime
 
 
@@ -201,8 +208,9 @@ def write_interface_header(
 ) -> Path:
     """Writes a compiled interface's header beside its .qi, and returns it.
 
-    With a build directory, the headers of the interfaces it imports, which it #includes, are brought up to date
-    there first, including those of builtin interfaces that are never loaded from source. resolver resolves those
+    With a build directory, the headers of the interfaces it imports, which it
+    #includes, are brought up to date there first, including those of builtin
+    interfaces that are never loaded from source. resolver resolves those
     imports (a new one if None).
     """
     resolver = resolver or Resolver()
@@ -230,8 +238,9 @@ def compile_interface_with_header(
     build_dir: Optional[Path] = None,
     program_dir: Optional[Path] = None,
 ) -> tuple[Path, Path]:
-    """Compiles an interface file to its .qi and its C header, as `quest -c x.int.quest` does, writing the headers
-    of the interfaces compiled because it imports them too. Returns (header, qi)."""
+    """Compiles an interface file to its .qi and its C header, as `quest -c
+    x.int.quest` does, writing the headers of the interfaces compiled because it
+    imports them too. Returns (header, qi)."""
     resolver = Resolver()
 
     def write(compiled: CompiledInterface) -> None:
@@ -251,8 +260,9 @@ def ensure_interface_header(
     build_dir: Path,
     program_dir: Optional[Path] = None,
 ) -> tuple[Path, Path]:
-    """Brings interface `name`'s .qi and C header under build_dir up to date, resolving the import of `name` from
-    current_dir with include_paths (ensure_resolved_interface_header)."""
+    """Brings interface `name`'s .qi and C header under build_dir up to date,
+    resolving the import of `name` from current_dir with include_paths
+    (ensure_resolved_interface_header)."""
     resolver = Resolver()
     resolved = resolver.interface(name, current_dir, Roots.of(include_paths, program_dir))
     return ensure_resolved_interface_header(resolved, build_dir, resolver)
@@ -261,14 +271,17 @@ def ensure_interface_header(
 def ensure_resolved_interface_header(
     resolved: Resolved, build_dir: Path, resolver: Optional[Resolver] = None
 ) -> tuple[Path, Path]:
-    """Brings a resolved interface's .qi and C header under build_dir up to date, with the headers it includes, and
-    returns (qi, header). The files may not exist if the interface has neither a source nor prebuilt artifacts
-    (a builtin); without a source, the header is used as found (Rule 3).
+    """Brings a resolved interface's .qi and C header under build_dir up to
+    date, with the headers it includes, and returns (qi, header). The files may
+    not exist if the interface has neither a source nor prebuilt artifacts (a
+    builtin); without a source, the header is used as found (Rule 3).
 
-    An interface rebuilt for its .qi gets its header at the same time. A header that is missing or older than a
-    fresh .qi is written from the interface elaborated again, leaving the .qi (and so whatever depends on it)
-    untouched, unless the .qi was found outside the build directory (from a standalone compilation): then both are
-    rebuilt in the build directory rather than written into the source tree.
+    An interface rebuilt for its .qi gets its header at the same time. A header
+    that is missing or older than a fresh .qi is written from the interface
+    elaborated again, leaving the .qi (and so whatever depends on it) untouched,
+    unless the .qi was found outside the build directory (from a standalone
+    compilation): then both are rebuilt in the build directory rather than
+    written into the source tree.
     """
     resolver = resolver or Resolver()
     program_dir = resolved.roots.program_dir
@@ -290,9 +303,10 @@ def ensure_resolved_interface_header(
 
 
 def ensure_imported_interface_header(name: str, env: Environment) -> Optional[Path]:
-    """Brings the C header of interface `name`, as env imports it from env.current_dir, up to date where env loads
-    the interface's .qi from (the build directory, or beside the source in a standalone compilation), and returns
-    it; None when env elaborates interfaces from source."""
+    """Brings the C header of interface `name`, as env imports it from
+    env.current_dir, up to date where env loads the interface's .qi from (the
+    build directory, or beside the source in a standalone compilation), and
+    returns it; None when env elaborates interfaces from source."""
     resolved = resolve_interface(name, env)
     root = resolved_artifact_root(env, resolved)
     if root is None:

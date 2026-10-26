@@ -115,7 +115,8 @@ class TestHierarchicalModuleSyntax(unittest.TestCase):
 
 
 class TestHierarchicalModuleExecution(unittest.TestCase):
-    """Hierarchical units compiled separately: linking a precompiled object, and headers of same-named interfaces."""
+    """Hierarchical units compiled separately: linking a precompiled object, and
+    headers of same-named interfaces."""
 
     def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp(prefix="quest_hier_test_")
@@ -183,7 +184,8 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "42")
 
     def test_same_named_interfaces_in_different_directories_share_a_c_unit(self) -> None:
-        """util/Calc and a top-level Calc get distinct include guards and typedefs, so one C unit can include both."""
+        """util/Calc and a top-level Calc get distinct include guards and
+        typedefs, so one C unit can include both."""
         util_dir = self.root / "util"
         util_dir.mkdir(parents=True)
         util_intf = util_dir / "calc.int.quest"
@@ -249,10 +251,12 @@ COUNTER_UNITS = {
 
 
 class TestCanonicalNamesInCCompilation(unittest.TestCase):
-    """Units found by sibling search have one canonical name in C compilation (docs/modules.md §2.3).
+    """Units found by sibling search have one canonical name in C compilation
+    (docs/modules.md §2.3).
 
-    The importer, the unit's own module header, the .qm manifests, and the mangled C symbols must agree on it,
-    however the unit was found and whatever include paths are given.
+    The importer, the unit's own module header, the .qm manifests, and the
+    mangled C symbols must agree on it, however the unit was found and whatever
+    include paths are given.
     """
 
     def setUp(self) -> None:
@@ -286,7 +290,8 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
         self.assertEqual(self._run(program, "run_c_compiled", *args), expected)
 
     def test_hierarchical_import_outside_include_roots(self) -> None:
-        """A program under no include root names its units relative to its own directory."""
+        """A program under no include root names its units relative to its own
+        directory."""
         _write_units(self.root, ARITH_UNITS)
         self._assert_c_matches_interpreter(self.root / "main.quest", "105 : Int")
         manifest = read_qm(self.build_dir / "util" / "arith.qm")
@@ -297,7 +302,8 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
         self.assertEqual([m.interface for m in manifest.imported_modules], ["util/Helper"])
 
     def test_sibling_import_in_hierarchical_module_with_include_root(self) -> None:
-        """A sibling import inside util/ links against util/helper, not a flat helper."""
+        """A sibling import inside util/ links against util/helper, not a flat
+        helper."""
         _write_units(self.root, ARITH_UNITS)
         self._assert_c_matches_interpreter(self.root / "main.quest", "105 : Int", "-I", str(self.root))
         manifest = read_qm(self.build_dir / "util" / "helper.qm")
@@ -305,9 +311,11 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
         self.assertEqual(manifest.name, "util/helper")
 
     def test_sibling_import_under_project_directory(self) -> None:
-        """Units beside a program in the project directory are named relative to it, with or without -I."""
-        # Under build/ (ignored by git), with only letters and digits in its path as canonical names require.
-        # The directory is left behind (empty), since concurrent test runs may share it.
+        """Units beside a program in the project directory are named relative to
+        it, with or without -I."""
+        # Under build/ (ignored by git), with only letters and digits in its
+        # path as canonical names require. The directory is left behind (empty),
+        # since concurrent test runs may share it.
         program_dir = ROOT_DIR / "build" / f"canonical{uuid.uuid4().hex}"
         program_dir.mkdir(parents=True)
         try:
@@ -331,7 +339,8 @@ class TestCanonicalNamesInCCompilation(unittest.TestCase):
             shutil.rmtree(program_dir)
 
     def test_same_unit_name_in_two_directories_shares_build_directory(self) -> None:
-        """Programs in different directories under one include root keep their same-named units apart."""
+        """Programs in different directories under one include root keep their
+        same-named units apart."""
         for sub, scale in (("one", 2), ("two", 3)):
             _write_units(self.root / sub, {k: v.format(scale=scale) for k, v in COUNTER_UNITS.items()})
         include = ("-I", str(self.root))

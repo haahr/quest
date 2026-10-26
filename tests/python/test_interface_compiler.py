@@ -30,7 +30,8 @@ class TestInterfaceCompiler(unittest.TestCase):
     """Test suite for interface compilation (.int.quest -> .h and .qi)."""
 
     def test_tuple_type_components_in_qi_types(self) -> None:
-        """A tuple type's type components are written in .qi type syntax (formals and bindings)."""
+        """A tuple type's type components are written in .qi type syntax
+        (formals and bindings)."""
         a = QTupleTypeFormal("A", 70001, TYPE_KIND)
         x = QTupleField("x", QTypeVar("A", 70001, TYPE_KIND), False)
         t = QTupleType((a, x, QTupleTypeBinding("B", INT_TYPE, None)))
@@ -149,7 +150,8 @@ end;
             self.assertIs(wood.definition.bindings, tree.definition.bindings)
             self.assertEqual([b[1] for b in wood.definition.bindings], [wood.symbol_id, tree.symbol_id])
 
-            # The loaded types are the types elaborated from source, with the same C representation
+            # The loaded types are the types elaborated from source, with the
+            # same C representation
             source_env = Environment()
             source_wood, source_tree = elaborate_type_binding_group(parse_phrase(group_src + ";"), source_env)
             self.assertTrue(is_type_equal(wood.definition, source_wood.definition))

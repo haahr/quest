@@ -1,12 +1,15 @@
 """The IR's textual form (docs/ir.md §10), for dumps, goldens, and debugging.
 
-Variables print as their hints, made distinct within a unit by a numeric suffix (x, x.1, ...) in the order they are
-bound, and temporaries (no hint) as %1, %2, ...; types print as Quest types, with alias names.
+Variables print as their hints, made distinct within a unit by a numeric suffix
+(x, x.1, ...) in the order they are bound, and temporaries (no hint) as %1, %2,
+...; types print as Quest types, with alias names.
 
-After the describe pass, descriptor operands print as descriptor variables, `descriptor(T)` (`echo_descriptor(T)`
-for echo's), or `instantiate(T, d...)` (T a template, its holes ?0, ?1, ...), in place of type arguments and after
-the operations and plans that use them (`of d`); descriptor variables are declared where they are bound (a function's
-before its parameters, a thunk's after its plan, an inspect's witness after its value), and the unit's static data is
+After the describe pass, descriptor operands print as descriptor variables,
+`descriptor(T)` (`echo_descriptor(T)` for echo's), or `instantiate(T, d...)` (T
+a template, its holes ?0, ?1, ...), in place of type arguments and after the
+operations and plans that use them (`of d`); descriptor variables are declared
+where they are bound (a function's before its parameters, a thunk's after its
+plan, an inspect's witness after its value), and the unit's static data is
 listed first.
 """
 
@@ -43,7 +46,8 @@ class _Printer:
         return name
 
     def name(self, var: ir.Var) -> str:
-        # A variable used before (or without) its binder prints with a mark, which the verifier reports
+        # A variable used before (or without) its binder prints with a mark,
+        # which the verifier reports
         return self.names.get(id(var)) or f"{var.hint}?"
 
     def atom(self, a: ir.Atom) -> str:
@@ -84,7 +88,8 @@ class _Printer:
         return ", ".join(self.descriptor(d) for d in ds)
 
     def through(self, o) -> str:
-        """The view map an operation reads a value through its type's bound by, if it has one."""
+        """The view map an operation reads a value through its type's bound by,
+        if it has one."""
         view_map = view_map_of(o)
         return f" through {self.name(view_map)}" if view_map is not None else ""
 
@@ -96,24 +101,28 @@ class _Printer:
         return f"offsets({self.type(table.view)} <- {self.type(table.layout)})"
 
     def decl(self, var: ir.Var) -> str:
-        # A boxed variable (after the represent pass) holds its record or variant boxed
+        # A boxed variable (after the represent pass) holds its record or
+        # variant boxed
         t = self.type(var.type)
         return f"{self.bind(var)}: {f'box({t})' if var.boxed else t}"
 
     @staticmethod
     def access(access: str) -> str:
-        """How a component of a tuple or option is read, after the represent pass: nothing for DIRECT."""
+        """How a component of a tuple or option is read, after the represent
+        pass: nothing for DIRECT."""
         return "" if access == ir.DIRECT else f" via {access}"
 
     @staticmethod
     def accesses(accesses: tuple[str, ...]) -> str:
-        """How the components of a tuple or option are read, after the represent pass: nothing if all are DIRECT."""
+        """How the components of a tuple or option are read, after the represent
+        pass: nothing if all are DIRECT."""
         if all(a == ir.DIRECT for a in accesses):
             return ""
         return f" via ({', '.join(accesses)})"
 
     def boxed_atoms(self, atoms, embedded: tuple[int, ...]) -> str:
-        """Atoms, those the represent pass boxes in the aggregate's allocation marked `box`."""
+        """Atoms, those the represent pass boxes in the aggregate's allocation
+        marked `box`."""
         return ", ".join(f"box {self.atom(a)}" if i in embedded else self.atom(a) for i, a in enumerate(atoms))
 
     def plan(self, plan: Optional[ir.Plan]) -> str:
@@ -227,7 +236,8 @@ class _Printer:
                 raise TypeError(f"not an IR operation: {o!r}")
 
     def arm(self, arm: Optional[ir.InspectArm]) -> str:
-        """How an inspect case's components are obtained, after the represent pass (ir.InspectArm)."""
+        """How an inspect case's components are obtained, after the represent
+        pass (ir.InspectArm)."""
         if arm is None:
             return ""
         converted = []
@@ -257,13 +267,15 @@ class _Printer:
 
     def function(self, f: ir.Function, depth: int) -> None:
         tps = (" [" + " ".join(f"{tp.name}::{tp.kind}" for tp in f.type_params) + "]") if f.type_params else ""
-        # Its type parameters' descriptors (after the describe pass), then its parameters
+        # Its type parameters' descriptors (after the describe pass), then its
+        # parameters
         params = ", ".join([self.decl(p.var) for p in f.descriptor_params]
                            + [f"{'' if mode == 'value' else mode + ' '}{self.decl(v)}" for v, mode in f.params])
         # A lifted function's environment, which has no Quest type
         env = f" {{{self.bind(f.env)}}}" if f.env is not None else ""
         self.emit(depth, f"fun {self.name(f.var)}{env}{tps}({params}): {self.type(f.result_type)} {{")
-        # The view maps it reads its type parameters' values through their bounds by (after the describe pass)
+        # The view maps it reads its type parameters' values through their
+        # bounds by (after the describe pass)
         for m in f.view_maps:
             self.emit(depth + 1, f"view_map {self.bind(m.var)} = view_map({self.name(m.descriptor)}, "
                                  f"{self.descriptor(m.bound)})")
@@ -294,7 +306,8 @@ class _Printer:
             case ir.Do(value=value):
                 self.emit(depth, f"do {self.op(value)}{self.through(value)}")
             case ir.Funs(functions=functions, recursive=recursive):
-                # Members of a recursive group are named before their bodies, which refer to one another
+                # Members of a recursive group are named before their bodies,
+                # which refer to one another
                 if recursive:
                     for f in functions:
                         self.bind(f.var)
@@ -376,14 +389,16 @@ class _Printer:
 
 
 def _described(plan: Optional[ir.Plan]) -> bool:
-    """Whether a plan, or one in it, has descriptors (after the describe pass)."""
+    """Whether a plan, or one in it, has descriptors (after the describe
+    pass)."""
     if plan is None:
         return False
     return bool(plan.descriptors or plan.thunk_params) or any(_described(f) for f in plan.fields)
 
 
 def format_unit(unit: ir.Unit) -> str:
-    """The textual form of a unit: its static data (after the describe pass), its modules, then its main body."""
+    """The textual form of a unit: its static data (after the describe pass),
+    its modules, then its main body."""
     p = _Printer()
     for i in unit.imports:
         p.emit(0, f"import {i.name} = {json.dumps(i.module_path)} : {i.interface_path}")
@@ -395,8 +410,9 @@ def format_unit(unit: ir.Unit) -> str:
             p.emit(0, f"static {p.offsets(table)}{registered}")
         for table in unit.static_data.tag_maps:
             p.emit(0, f"static tag_map({p.type(table.target)} <- {p.type(table.source)})")
-    # The unit's functions, after closure conversion, are named before any is printed, as closures refer to them, and
-    # so are the globals they use (the variables the top levels bind outside loops), printed after them
+    # The unit's functions, after closure conversion, are named before any is
+    # printed, as closures refer to them, and so are the globals they use (the
+    # variables the top levels bind outside loops), printed after them
     for f in unit.functions:
         p.bind(f.var)
     if unit.functions:

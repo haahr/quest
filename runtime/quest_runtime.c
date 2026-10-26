@@ -192,9 +192,9 @@ int64_t quest_array_size(const QArray *a) {
     return a->length;
 }
 
-/* The ^^ operator and real.exp: a zero base with a negative exponent is a pole, like division by zero, and
-   raises real.error; so does a NaN result (a negative base with a non-integral exponent). Overflow is an
-   infinity. */
+/* The ^^ operator and real.exp: a zero base with a negative exponent is a pole,
+   like division by zero, and raises real.error; so does a NaN result (a
+   negative base with a non-integral exponent). Overflow is an infinity. */
 double quest_real_pow_at(double base, double exp, const char *loc) {
     if (base == 0.0 && exp < 0.0) {
         quest_raise_real_error_at(loc);
@@ -233,7 +233,8 @@ const QException *quest_alloc_exception(const char *name) {
 /* Tracebacks (docs/exceptions.md §5)                                        */
 /* ------------------------------------------------------------------------- */
 
-/* The registered function tables, and their entries sorted by start, made when frames are first named */
+/* The registered function tables, and their entries sorted by start, made when
+ * frames are first named */
 typedef struct QFuncTables {
     const QFuncEntry   *entries;
     size_t              count;
@@ -260,8 +261,9 @@ static int quest_func_entry_compare(const void *a, const void *b) {
     return x < y ? -1 : x > y;
 }
 
-/* The frame name of the function starting at start, or NULL for one with no frame (in the runtime, the C library,
-   or made by the compiler's passes): functions are matched by their exact starts, never by proximity */
+/* The frame name of the function starting at start, or NULL for one with no
+   frame (in the runtime, the C library, or made by the compiler's passes):
+   functions are matched by their exact starts, never by proximity */
 static const char *quest_frame_name(const void *start) {
     if (start == NULL) return NULL;
     if (quest_funcs_sorted == NULL) {
@@ -315,10 +317,12 @@ static void quest_frames_add(QFramePrinter *p, const void *start, int64_t count)
 #include <dlfcn.h>
 #endif
 
-/* The start of the function containing pc. Linux's unwind tables (.eh_frame) describe each function on its own,
-   so the unwinder's start is the function's. macOS's compact unwind tables describe a run of adjacent functions
-   whose prologues are alike as one, so the unwinder's start may be an earlier function's: the symbol table's start
-   (which has static functions, unless the binary is stripped) is the function's own, if it is no earlier. */
+/* The start of the function containing pc. Linux's unwind tables (.eh_frame)
+   describe each function on its own, so the unwinder's start is the function's.
+   macOS's compact unwind tables describe a run of adjacent functions whose
+   prologues are alike as one, so the unwinder's start may be an earlier
+   function's: the symbol table's start (which has static functions, unless the
+   binary is stripped) is the function's own, if it is no earlier. */
 static const void *quest_function_start(void *pc) {
     void *start = _Unwind_FindEnclosingFunction(pc);
 #ifdef __APPLE__
@@ -331,7 +335,8 @@ static const void *quest_function_start(void *pc) {
     return start;
 }
 
-/* The start of the function of each frame of the stack, from the platform's unwind tables, for a visitor */
+/* The start of the function of each frame of the stack, from the platform's
+ * unwind tables, for a visitor */
 typedef void (*QFrameVisitor)(const void *start, void *arg);
 
 typedef struct QStackWalk {
@@ -343,7 +348,8 @@ static _Unwind_Reason_Code quest_walk_frame(struct _Unwind_Context *context, voi
     QStackWalk *walk = (QStackWalk *)arg;
     uintptr_t ip = (uintptr_t)_Unwind_GetIP(context);
     if (ip == 0) return _URC_END_OF_STACK;
-    /* ip is the return address, which follows the call: a call to a noreturn helper may end its function */
+    /* ip is the return address, which follows the call: a call to a noreturn
+     * helper may end its function */
     walk->visit(quest_function_start((void *)(ip - 1)), walk->arg);
     return _URC_NO_REASON;
 }
@@ -372,7 +378,8 @@ static void quest_capture_frame(const void *start, void *arg) {
 }
 #endif
 
-/* Prints the frames of the live stack, where an uncaught error is being reported */
+/* Prints the frames of the live stack, where an uncaught error is being
+ * reported */
 static void quest_print_live_frames(void) {
 #ifdef Q_HAVE_UNWIND
     QFramePrinter printer = { NULL, 0 };
@@ -381,7 +388,8 @@ static void quest_print_live_frames(void) {
 #endif
 }
 
-/* The frames of the live stack, captured at a raise a handler might catch and raise again (§5.4) */
+/* The frames of the live stack, captured at a raise a handler might catch and
+ * raise again (§5.4) */
 static const QTrace *quest_capture_trace(void) {
 #ifdef Q_HAVE_UNWIND
     QTrace *trace = (QTrace *)quest_alloc_atomic(sizeof(QTrace));
@@ -401,8 +409,9 @@ static void quest_print_trace(const QTrace *trace) {
     if (trace->truncated) fprintf(stderr, "  ... (traceback truncated)\n");
 }
 
-/* Ends the program after an error's message has been printed, printing the site it was raised at, if known, which
-   the driver reads to locate the error in the source (docs/exceptions.md §2.2), and the frames running there: those
+/* Ends the program after an error's message has been printed, printing the site
+   it was raised at, if known, which the driver reads to locate the error in the
+   source (docs/exceptions.md §2.2), and the frames running there: those
    captured at the raise, if any, else the live stack's */
 static Q_NORETURN void quest_fail_with(const char *loc, const QTrace *trace) {
     if (loc != NULL) fprintf(stderr, "  at %s\n", loc);
@@ -418,8 +427,9 @@ static Q_NORETURN void quest_fail_at(const char *loc) {
     quest_fail_with(loc, NULL);
 }
 
-/* Whether a handler from h out will catch exc (docs/exceptions.md §5.1): 1 if one will, 0 if none will, -1 if one
-   might (its patterns are computed when it runs) */
+/* Whether a handler from h out will catch exc (docs/exceptions.md §5.1): 1 if
+   one will, 0 if none will, -1 if one might (its patterns are computed when it
+   runs) */
 static int quest_handlers_catch(const QExceptionHandler *h, const QException *exc) {
     for (; h != NULL; h = h->prev) {
         if (h->n_catches == Q_CATCH_ALL) return 1;
@@ -536,7 +546,8 @@ static double quest_decimal_value(const char *digits, int nd, int x) {
     return strtod(buf, NULL);
 }
 
-/* Adds delta (+1 or -1) to the last of nd digits; returns false when the result would gain or lose a digit. */
+/* Adds delta (+1 or -1) to the last of nd digits; returns false when the result
+ * would gain or lose a digit. */
 static int quest_digits_step(char *digits, int nd, int delta) {
     for (int i = nd - 1; i >= 0; i--) {
         int d = digits[i] - '0' + delta;
@@ -546,8 +557,9 @@ static int quest_digits_step(char *digits, int nd, int delta) {
     return 0;
 }
 
-/* The shortest decimal digits that read back as r (finite, > 0), choosing the one nearest r when several of that
-   length do, as Python's repr does. Sets *x so that r is about d1.d2d3... * 10^x; returns the digit count. */
+/* The shortest decimal digits that read back as r (finite, > 0), choosing the
+   one nearest r when several of that length do, as Python's repr does. Sets *x
+   so that r is about d1.d2d3... * 10^x; returns the digit count. */
 static int quest_shortest_digits(double r, char *digits, int *x) {
     for (int p = 1; p <= 17; p++) {
         char sci[40];
@@ -557,8 +569,9 @@ static int quest_shortest_digits(double r, char *digits, int *x) {
         for (char *c = sci; c < e; c++) if (*c != '.') digits[nd++] = *c;
         *x = atoi(e + 1);
         if (quest_decimal_value(digits, nd, *x) == r) return nd;
-        /* Beside a power of two the doubles' spacing differs on each side, so a p-digit neighbor of the nearest
-           decimal can read back as r when the nearest does not. */
+        /* Beside a power of two the doubles' spacing differs on each side, so a
+           p-digit neighbor of the nearest decimal can read back as r when the
+           nearest does not. */
         for (int delta = -1; delta <= 1; delta += 2) {
             char cand[20];
             memcpy(cand, digits, (size_t)nd);
@@ -571,9 +584,11 @@ static int quest_shortest_digits(double r, char *digits, int *x) {
     return 17;  /* not reached: 17 significant digits always read back */
 }
 
-/* Formats r without its sign, as the interpreter does (Python's repr): the shortest digits that read back as r, in
-   fixed notation for 1e-5 <= |r| < 1e16 (with ".0" when integral), otherwise d[.ddd]e+XX; an infinity is "inf".
-   The caller writes the sign, "~" for conv.real and "-" for displays. See docs/type-system.md §6.3.1. */
+/* Formats r without its sign, as the interpreter does (Python's repr): the
+   shortest digits that read back as r, in fixed notation for 1e-5 <= |r| < 1e16
+   (with ".0" when integral), otherwise d[.ddd]e+XX; an infinity is "inf". The
+   caller writes the sign, "~" for conv.real and "-" for displays. See
+   docs/type-system.md §6.3.1. */
 static void quest_format_real(double r, char *out, size_t n) {
     r = fabs(r);
     if (isinf(r)) { snprintf(out, n, "inf"); return; }
@@ -596,7 +611,8 @@ static void quest_format_real(double r, char *out, size_t n) {
     }
 }
 
-/* Writes a real as the interpreter does: conv.real's digits, with "-" rather than "~" for negatives */
+/* Writes a real as the interpreter does: conv.real's digits, with "-" rather
+ * than "~" for negatives */
 static void quest_put_real(double r) {
     char buf[48];
     quest_format_real(r, buf, sizeof(buf));
@@ -604,7 +620,8 @@ static void quest_put_real(double r) {
     fputs(buf, stdout);
 }
 
-/* Writes a character of a char or string literal, escaped as the interpreter does */
+/* Writes a character of a char or string literal, escaped as the interpreter
+ * does */
 static void quest_put_escaped_char(unsigned char c, char quote) {
     switch (c) {
         case '\n': fputs("\\n", stdout); return;
@@ -623,10 +640,11 @@ static void quest_put_escaped_char(unsigned char c, char quote) {
     }
 }
 
-/* Writes prefix, val, suffix, and a newline. kind says how to write the value, as the interpreter writes a value of
- * that type (format_value_with_type): a base type (Int, Real, Bool, Char, String, Ok, or Word), "fun" for a
- * function, "hidden" for a value of an abstract type, and anything else as <val> (compiled code writes values of
- * other types with quest_print_typed). */
+/* Writes prefix, val, suffix, and a newline. kind says how to write the value,
+ * as the interpreter writes a value of that type (format_value_with_type): a
+ * base type (Int, Real, Bool, Char, String, Ok, or Word), "fun" for a function,
+ * "hidden" for a value of an abstract type, and anything else as <val>
+ * (compiled code writes values of other types with quest_print_typed). */
 void quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix) {
     fputs(prefix, stdout);
     if (strcmp(kind, "Int") == 0) {
@@ -659,8 +677,8 @@ void quest_print_value(const char *prefix, QVal val, const char *kind, const cha
     putchar('\n');
 }
 
-/* Writes the result of an expression of type type_name, whose value is formatted by that name (see
- * quest_print_value); nothing for Ok */
+/* Writes the result of an expression of type type_name, whose value is
+ * formatted by that name (see quest_print_value); nothing for Ok */
 void quest_print_val(QVal val, const char *type_name) {
     if (type_name == NULL || strcmp(type_name, "Ok") == 0) return;
     bool is_word = strcmp(type_name, "Word") == 0 || strcmp(type_name, "word.T") == 0;
@@ -875,8 +893,9 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             break;
 
         case QTYPE_KIND_AUTO: {
-            /* Cardelli §6.7: a subkind for the type component, then, as for tuples, a prefix of the components with
-             * matching names, covariant immutable and invariant var components */
+            /* Cardelli §6.7: a subkind for the type component, then, as for
+             * tuples, a prefix of the components with matching names, covariant
+             * immutable and invariant var components */
             if (sub->kind != QTYPE_KIND_AUTO) { result = false; break; }
             const QAutoTypeDescriptor *s = (const QAutoTypeDescriptor *)sub->extra;
             const QAutoTypeDescriptor *t = (const QAutoTypeDescriptor *)super_type->extra;
@@ -917,7 +936,8 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             result = (sub == super_type) ||
                      (sub->kind == QTYPE_KIND_OPAQUE && sub->name != NULL && super_type->name != NULL &&
                       strcmp(sub->name, super_type->name) == 0);
-            /* An abstract type operator's applications are equal when their arguments are equal types */
+            /* An abstract type operator's applications are equal when their
+             * arguments are equal types */
             const QOpaqueTypeDescriptor *s = (const QOpaqueTypeDescriptor *)sub->extra;
             const QOpaqueTypeDescriptor *t = (const QOpaqueTypeDescriptor *)super_type->extra;
             size_t s_args = s != NULL ? s->arg_count : 0, t_args = t != NULL ? t->arg_count : 0;
@@ -1050,8 +1070,10 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
                 result = false;
                 break;
             }
-            /* Type parameters with equal bounds; contravariant value parameters, invariant var parameters, covariant
-             * out parameters and result (the parameter descriptors refer to type parameters by index) */
+            /* Type parameters with equal bounds; contravariant value
+             * parameters, invariant var parameters, covariant out parameters
+             * and result (the parameter descriptors refer to type parameters by
+             * index) */
             bool match = true;
             for (size_t i = 0; i < s->quantifier_count && match; ++i) {
                 const QTypeDescriptor *sb = s->quantifier_bounds != NULL ? s->quantifier_bounds[i] : NULL;
@@ -1096,11 +1118,14 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
 /* Record Offset Tables                                                      */
 /* ------------------------------------------------------------------------- */
 
-/* An offset table lets code that knows a record only by a record type, its view, find the fields of a payload laid
- * out as another record type, its layout: entry i is the byte offset in the payload of the view's i-th field in name
- * order (record descriptors list their fields in name order). All tables live in one map keyed by (view, layout),
- * pre-populated with the static tables of compiled code and completed on demand from the two descriptors. Keys are
- * descriptor pointers; two descriptors of one type merely give two equal tables. */
+/* An offset table lets code that knows a record only by a record type, its
+ * view, find the fields of a payload laid out as another record type, its
+ * layout: entry i is the byte offset in the payload of the view's i-th field in
+ * name order (record descriptors list their fields in name order). All tables
+ * live in one map keyed by (view, layout), pre-populated with the static tables
+ * of compiled code and completed on demand from the two descriptors. Keys are
+ * descriptor pointers; two descriptors of one type merely give two equal
+ * tables. */
 
 typedef struct QRecordDictEntry {
     const QTypeDescriptor *view;
@@ -1146,8 +1171,9 @@ static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDe
     }
 }
 
-/* True if a field stored at type `stored` must be converted to be read at type `viewed`: it is stored at a proper
- * subtype, or in a different layout (one of them stores a type parameter generically) */
+/* True if a field stored at type `stored` must be converted to be read at type
+ * `viewed`: it is stored at a proper subtype, or in a different layout (one of
+ * them stores a type parameter generically) */
 static bool quest_stored_type_differs(const QTypeDescriptor *stored, const QTypeDescriptor *viewed) {
     if (stored == viewed || stored == NULL || viewed == NULL) return false;
     switch (quest_stored_type(viewed)->kind) {
@@ -1186,7 +1212,8 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
         if (lf == NULL) return NULL;
         dict[j] = lf->offset;
         if (quest_stored_type_differs(lf->type, v_meta->fields[j].type)) {
-            /* A var field is updated through the view, so it must be stored as the view stores it */
+            /* A var field is updated through the view, so it must be stored as
+             * the view stores it */
             if (v_meta->fields[j].is_var) quest_layout_conversion_error(layout, view);
             if (stored_types == NULL) {
                 stored_types = (const QTypeDescriptor **)quest_alloc(sizeof(const QTypeDescriptor *) * n);
@@ -1208,7 +1235,8 @@ static const QTypeDescriptor *quest_concrete_representation(const QTypeDescripto
 
 static bool quest_proxies_agree(const QTypeDescriptor *from, const QTypeDescriptor *to);
 
-/* The tuple or option descriptor a descriptor stands for (looking through stored and abstract types) */
+/* The tuple or option descriptor a descriptor stands for (looking through
+ * stored and abstract types) */
 static const QTypeDescriptor *quest_proxied_type(const QTypeDescriptor *d) {
     return quest_concrete_representation(quest_stored_representation(d));
 }
@@ -1246,8 +1274,9 @@ void *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDe
     return (void *)((uintptr_t)proxy + QUEST_PROXY_TAG);
 }
 
-/* An immutable element of a proxy's original, converted, is kept in the proxy's cache (its slot never changes, and
- * conversions make immutable values): a record is viewed, a nested tuple proxied, a closure adapted once */
+/* An immutable element of a proxy's original, converted, is kept in the proxy's
+ * cache (its slot never changes, and conversions make immutable values): a
+ * record is viewed, a nested tuple proxied, a closure adapted once */
 static QVal quest_proxy_cached(const void *p, size_t i, size_t n, QVal v, const QTypeDescriptor *from,
                                const QTypeDescriptor *to) {
     if (from == to) return v;
@@ -1278,7 +1307,8 @@ void *quest_proxy_slot(const void *p, size_t i) {
     const QProxy *proxy = quest_proxy_of(p);
     const QTupleElementDescriptor *fe = &((const QTupleTypeDescriptor *)proxy->stored->extra)->elements[i];
     const QTupleElementDescriptor *te = &((const QTupleTypeDescriptor *)proxy->view->extra)->elements[i];
-    /* A var element has the same type in both, but may be laid out differently (a bounded type parameter's) */
+    /* A var element has the same type in both, but may be laid out differently
+     * (a bounded type parameter's) */
     if (!quest_slot_layout_equivalent(fe->type, te->type)) quest_layout_conversion_error(proxy->stored, proxy->view);
     return (char *)proxy->orig + fe->offset;
 }
@@ -1295,7 +1325,8 @@ int64_t quest_proxy_tag(const void *p) {
     return proxy->tags[*(const int64_t *)proxy->orig];
 }
 
-/* An option's case payload follows its tag; a payload that is not a tuple is one slot */
+/* An option's case payload follows its tag; a payload that is not a tuple is
+ * one slot */
 #define Q_OPTION_PAYLOAD_OFFSET sizeof(int64_t)
 
 static QVal quest_payload_element(const char *payload, const QTypeDescriptor *t, size_t i) {
@@ -1316,7 +1347,8 @@ QVal quest_proxy_option_element(const void *p, size_t i) {
     const QVariantCaseDescriptor *fc = &((const QVariantTypeDescriptor *)proxy->stored->extra)->cases[tag];
     const QVariantCaseDescriptor *tc = &((const QVariantTypeDescriptor *)proxy->view->extra)->cases[proxy->tags[tag]];
     QVal v = quest_payload_element((const char *)proxy->orig + Q_OPTION_PAYLOAD_OFFSET, fc->payload_type, i);
-    /* The original's case never changes: its payload's elements are cached as a tuple's are */
+    /* The original's case never changes: its payload's elements are cached as a
+     * tuple's are */
     size_t n = tc->payload_type != NULL && tc->payload_type->kind == QTYPE_KIND_TUPLE
         ? ((const QTupleTypeDescriptor *)tc->payload_type->extra)->element_count : 1;
     if (tc->payload_type != NULL && tc->payload_type->kind == QTYPE_KIND_TUPLE &&
@@ -1351,22 +1383,26 @@ void *quest_view_option_payload(const void *opt, const QViewMap *m) {
     return quest_option_payload_viewed(orig, stored, *(const int64_t *)orig, m->bound, quest_view_option_tag(opt, m));
 }
 
-/* Whether a value of type d (a tuple or option) may be a proxy, as the compiler decides it for the type
- * (may_be_proxied in codegen/layout.py), or less often: a tuple one of whose components may change view, an option
- * of two or more cases or one of whose payloads' components may. A component may change view when it is
- * view-sensitive or may hold a proxy (a tuple, or an option with a payload, whose subtypes' values may be proxies
- * where its own are not). A component is view-sensitive when values of its
- * subtypes may be represented differently at its type: a record, variant, or auto value, a value stored as a type
- * parameter, a function whose signature mentions a view-sensitive type, or a tuple or option that may be a proxy.
- * (Abstract types, which the compiler counts as view-sensitive, are not here: the runtime cannot tell a module's
- * abstract types from external C types, which are not.) Only values of such types are made proxies at run time;
- * others are copied. */
+/* Whether a value of type d (a tuple or option) may be a proxy, as the compiler
+ * decides it for the type (may_be_proxied in codegen/layout.py), or less often:
+ * a tuple one of whose components may change view, an option of two or more
+ * cases or one of whose payloads' components may. A component may change view
+ * when it is view-sensitive or may hold a proxy (a tuple, or an option with a
+ * payload, whose subtypes' values may be proxies where its own are not). A
+ * component is view-sensitive when values of its subtypes may be represented
+ * differently at its type: a record, variant, or auto value, a value stored as
+ * a type parameter, a function whose signature mentions a view-sensitive type,
+ * or a tuple or option that may be a proxy. (Abstract types, which the compiler
+ * counts as view-sensitive, are not here: the runtime cannot tell a module's
+ * abstract types from external C types, which are not.) Only values of such
+ * types are made proxies at run time; others are copied. */
 #define Q_PROXIED_TRAIL_MAX 64
 
 static bool quest_view_sensitive_rec(const QTypeDescriptor *d, const QTypeDescriptor **trail, size_t depth);
 
-/* Whether a component of type d may hold a proxy though values of d itself may not be: a tuple, or an option with a
- * payload (holds_proxies in codegen/layout.py) */
+/* Whether a component of type d may hold a proxy though values of d itself may
+ * not be: a tuple, or an option with a payload (holds_proxies in
+ * codegen/layout.py) */
 static bool quest_holds_proxies(const QTypeDescriptor *d) {
     if (d == NULL) return false;
     if (d->kind == QTYPE_KIND_TUPLE) return true;
@@ -1445,10 +1481,12 @@ static bool quest_may_be_proxied(const QTypeDescriptor *d) {
 
 static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor *d);
 
-/* Whether a tuple or option laid out as `from` can be used as `to` as it is, as far as proxies go: no component, at
- * any depth through tuples and options, of a type whose values may be proxies is used at a type whose values never
- * are (which code reads directly). The value itself may be used at such a type: its original serves, as no component
- * of the type changes view. Recursive descriptors are compared coinductively. */
+/* Whether a tuple or option laid out as `from` can be used as `to` as it is, as
+ * far as proxies go: no component, at any depth through tuples and options, of
+ * a type whose values may be proxies is used at a type whose values never are
+ * (which code reads directly). The value itself may be used at such a type: its
+ * original serves, as no component of the type changes view. Recursive
+ * descriptors are compared coinductively. */
 static bool quest_proxies_agree_rec(const QTypeDescriptor *from, const QTypeDescriptor *to, QSubtypePair *trail,
                                     size_t depth) {
     from = quest_stored_representation(from);
@@ -1490,8 +1528,10 @@ static bool quest_proxies_agree(const QTypeDescriptor *from, const QTypeDescript
     return quest_proxies_agree_rec(from, to, trail, 0);
 }
 
-/* A copy of v (a tuple or option of type `from`, a proxy or not) laid out as `to`, which values are never proxies of:
- * its components converted. A copy does not share updates of var components, so a tuple with any is a fatal error. */
+/* A copy of v (a tuple or option of type `from`, a proxy or not) laid out as
+ * `to`, which values are never proxies of: its components converted. A copy
+ * does not share updates of var components, so a tuple with any is a fatal
+ * error. */
 static QVal quest_copy_viewed(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
     char *dst = (char *)quest_alloc(to->size > 0 ? to->size : sizeof(void *));
     if (to->kind == QTYPE_KIND_TUPLE) {
@@ -1550,7 +1590,8 @@ QVal quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i) {
     return quest_payload_element((const char *)opt + Q_OPTION_PAYLOAD_OFFSET, c->payload_type, i);
 }
 
-/* Reads and writes an auto value's component in its payload (see QAutoComponentDescriptor) */
+/* Reads and writes an auto value's component in its payload (see
+ * QAutoComponentDescriptor) */
 static QVal quest_auto_component_read(const QAutoComponentDescriptor *c, const char *payload) {
     return quest_slot_read(payload + c->offset);
 }
@@ -1559,7 +1600,8 @@ static void quest_auto_component_write(const QAutoComponentDescriptor *c, char *
     quest_slot_write(payload + c->offset, v);
 }
 
-/* Re-stores an auto value's components in the layout of auto type `to` (keeping its type component) */
+/* Re-stores an auto value's components in the layout of auto type `to` (keeping
+ * its type component) */
 static QVal quest_convert_auto(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
     const QAuto *a = (const QAuto *)v.p;
     const QAutoTypeDescriptor *f_meta = (const QAutoTypeDescriptor *)from->extra;
@@ -1570,7 +1612,8 @@ static QVal quest_convert_auto(QVal v, const QTypeDescriptor *from, const QTypeD
         const QAutoComponentDescriptor *fc = &f_meta->components[i];
         const QAutoComponentDescriptor *tc = &t_meta->components[i];
         if (tc->is_var) quest_layout_conversion_error(from, to);
-        /* A component of the type component's type is a value of that type whatever its storage */
+        /* A component of the type component's type is a value of that type
+         * whatever its storage */
         QVal c = quest_auto_component_read(fc, (const char *)a->payload.p);
         if (fc->type->kind != QTYPE_KIND_BOUND_VAR) c = quest_convert(c, fc->type, tc->type);
         quest_auto_component_write(tc, payload, c);
@@ -1587,16 +1630,17 @@ void quest_layout_conversion_error(const QTypeDescriptor *from, const QTypeDescr
     quest_fail_at(NULL);
 }
 
-/* How a value stored as a type parameter is held: as a value of its own type (in its QVal form, or in the
- * representation of a bounded parameter's bound, at its own view), or for a module's abstract type, viewed at its
- * bound */
+/* How a value stored as a type parameter is held: as a value of its own type
+ * (in its QVal form, or in the representation of a bounded parameter's bound,
+ * at its own view), or for a module's abstract type, viewed at its bound */
 static const QTypeDescriptor *quest_stored_representation(const QTypeDescriptor *d) {
     if (d == NULL || d->kind != QTYPE_KIND_STORED) return d;
     const QStoredDescriptor *st = (const QStoredDescriptor *)d->extra;
     return st->storage != NULL && st->viewed ? st->storage : st->type;
 }
 
-/* A module's abstract type is held, as a QVal or as its bound, as its representation is (docs/dynamic.md §3.5) */
+/* A module's abstract type is held, as a QVal or as its bound, as its
+ * representation is (docs/dynamic.md §3.5) */
 static const QTypeDescriptor *quest_concrete_representation(const QTypeDescriptor *d) {
     if (d != NULL && d->kind == QTYPE_KIND_OPAQUE) {
         const QTypeDescriptor *rep = quest_abstract_type_rep(d);
@@ -1609,8 +1653,9 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
     if (from == NULL || to == NULL) return v;
     from = quest_concrete_representation(quest_stored_representation(from));
     to = quest_concrete_representation(quest_stored_representation(to));
-    /* A record is viewed at `to` from its own layout, whatever view it had: code that knows a value only as of a
-     * type parameter's bound may view it at the bound or at its own type */
+    /* A record is viewed at `to` from its own layout, whatever view it had:
+     * code that knows a value only as of a type parameter's bound may view it
+     * at the bound or at its own type */
     if (to->kind == QTYPE_KIND_RECORD && from->kind == QTYPE_KIND_RECORD && v.p != NULL) {
         QRecordVal viewed = quest_record_view(*(const QRecordVal *)v.p, to);
         if (viewed.dict == NULL) quest_raise_dynamic_error();
@@ -1624,8 +1669,9 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
             return (QVal){ .p = (void *)quest_variant_box(quest_variant_adapt(from, to, v)) };
         case QTYPE_KIND_OPTION:
         case QTYPE_KIND_TUPLE:
-            /* Viewed at `to` through a proxy, not copied (the original's identity and var components are kept),
-             * where values of `to` may be proxies */
+            /* Viewed at `to` through a proxy, not copied (the original's
+             * identity and var components are kept), where values of `to` may
+             * be proxies */
             if (v.p == NULL || to->extra == NULL) return v;
             if (!quest_is_proxy(v.p) && quest_layout_equivalent(from, to) && quest_proxies_agree(from, to)) return v;
             if (quest_may_be_proxied(to)) return (QVal){ .p = quest_make_proxy(v.p, from, to) };
@@ -1656,12 +1702,15 @@ QVal quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *t
 /* Layout Equivalence                                                        */
 /* ------------------------------------------------------------------------- */
 
-/* Descriptors of the same type describe the same layout unless one stores a type parameter generically (as a QVal,
- * QTYPE_KIND_STORED) where the other stores the type argument's own representation. Every slot is one word holding a
- * value's QVal form (records and variants boxed), so the two agree in memory; in registers (function parameters and
- * results) only integers and pointers agree. A value stored as a bounded type parameter is its type argument's own, in
- * the bound's representation, which is the type argument's too; a module's abstract type's is viewed at its bound,
- * which agrees only with the bound's own layout. Recursive descriptors are compared coinductively. */
+/* Descriptors of the same type describe the same layout unless one stores a
+ * type parameter generically (as a QVal, QTYPE_KIND_STORED) where the other
+ * stores the type argument's own representation. Every slot is one word holding
+ * a value's QVal form (records and variants boxed), so the two agree in memory;
+ * in registers (function parameters and results) only integers and pointers
+ * agree. A value stored as a bounded type parameter is its type argument's own,
+ * in the bound's representation, which is the type argument's too; a module's
+ * abstract type's is viewed at its bound, which agrees only with the bound's
+ * own layout. Recursive descriptors are compared coinductively. */
 
 #define Q_EQUIV_TRAIL_MAX 64
 static Q_THREAD_LOCAL QSubtypePair quest_equiv_trail[Q_EQUIV_TRAIL_MAX];
@@ -1669,14 +1718,16 @@ static Q_THREAD_LOCAL size_t quest_equiv_trail_len = 0;
 
 static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescriptor *b);
 
-/* Where a value is held: in an aggregate slot (a word holding its QVal form), in a register (a function's parameter or
- * result), or in the cell a var or out parameter points to (natively, a variable of the value's representation, but
+/* Where a value is held: in an aggregate slot (a word holding its QVal form),
+ * in a register (a function's parameter or result), or in the cell a var or out
+ * parameter points to (natively, a variable of the value's representation, but
  * a record or variant boxed, as in a slot) */
 typedef enum QPlace { QPLACE_SLOT, QPLACE_REGISTER, QPLACE_CELL } QPlace;
 
-/* Whether a place holding a value stored generically (`st`) holds it as `other` does. Stored in the representation of
- * a type parameter's bound, a value is held as its type argument's own (which has that representation too); a module's
- * abstract type's is viewed at its bound. */
+/* Whether a place holding a value stored generically (`st`) holds it as `other`
+ * does. Stored in the representation of a type parameter's bound, a value is
+ * held as its type argument's own (which has that representation too); a
+ * module's abstract type's is viewed at its bound. */
 static bool quest_stored_equivalent(const QStoredDescriptor *st, const QTypeDescriptor *other, QPlace place) {
     if (st->storage != NULL) return quest_layout_equiv_rec(st->viewed ? st->storage : st->type, other);
     switch (other->kind) {
@@ -1744,7 +1795,8 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
             break;
         }
         case QTYPE_KIND_RECORD: {
-            /* Record values carry their payload's layout; their offset tables depend on the view's field types */
+            /* Record values carry their payload's layout; their offset tables
+             * depend on the view's field types */
             const QRecordTypeDescriptor *ra = (const QRecordTypeDescriptor *)a->extra;
             const QRecordTypeDescriptor *rb = (const QRecordTypeDescriptor *)b->extra;
             size_t na = ra != NULL ? ra->field_count : 0, nb = rb != NULL ? rb->field_count : 0;
@@ -1761,7 +1813,8 @@ static bool quest_layout_equiv_rec(const QTypeDescriptor *a, const QTypeDescript
             const QVariantTypeDescriptor *va = (const QVariantTypeDescriptor *)a->extra;
             const QVariantTypeDescriptor *vb = (const QVariantTypeDescriptor *)b->extra;
             size_t na = va != NULL ? va->case_count : 0, nb = vb != NULL ? vb->case_count : 0;
-            /* An option whose cases are a prefix of another's may be used as it */
+            /* An option whose cases are a prefix of another's may be used as
+             * it */
             result = a->kind == QTYPE_KIND_OPTION ? na <= nb : na == nb;
             for (size_t i = 0; result && i < na; ++i) {
                 const QVariantCaseDescriptor *ca = &va->cases[i], *cb = &vb->cases[i];
@@ -1820,8 +1873,9 @@ bool quest_layout_equivalent(const QTypeDescriptor *a, const QTypeDescriptor *b)
     return quest_place_equivalent(a, b, QPLACE_SLOT);
 }
 
-/* How a parameter or result of type d is passed: integers and pointers alike, other scalars, records, and variants
- * each their own way (Ok parameters are passed as QVals, and Ok results not at all) */
+/* How a parameter or result of type d is passed: integers and pointers alike,
+ * other scalars, records, and variants each their own way (Ok parameters are
+ * passed as QVals, and Ok results not at all) */
 typedef enum QPassingClass { QPASS_WORD, QPASS_REAL, QPASS_BOOL, QPASS_CHAR, QPASS_RECORD, QPASS_VARIANT, QPASS_VOID } QPassingClass;
 
 static QPassingClass quest_passing_class(const QTypeDescriptor *d, bool is_result) {
@@ -1859,8 +1913,9 @@ bool quest_fun_signature_equivalent(const QTypeDescriptor *from, const QTypeDesc
 /* Descriptor Templates                                                      */
 /* ------------------------------------------------------------------------- */
 
-/* The nodes of a template reachable from its root, each with its instance (NULL until made) and whether it reaches
- * a hole (nodes that do not are their own instances) */
+/* The nodes of a template reachable from its root, each with its instance (NULL
+ * until made) and whether it reaches a hole (nodes that do not are their own
+ * instances) */
 typedef struct QInstNode {
     const QTypeDescriptor *tmpl;
     QTypeDescriptor       *inst;
@@ -1969,16 +2024,19 @@ typedef struct QInstContext {
     size_t                        arg_count;
 } QInstContext;
 
-/* Descriptors' names are cut off at this many characters, followed by "...", as short_type_name (types/dump.py)
-   cuts off static descriptors' names and the interpreter the types it prints */
+/* Descriptors' names are cut off at this many characters, followed by "...", as
+   short_type_name (types/dump.py) cuts off static descriptors' names and the
+   interpreter the types it prints */
 #define Q_DISPLAY_NAME_LIMIT 80
 
-/* The name of an instance of a template node named name: the name with each of the template's holes (?0, ?1, ...)
-   replaced by its argument's name, cut off as static names are, so that values print with their types (or name
-   itself, if it has no holes) */
+/* The name of an instance of a template node named name: the name with each of
+   the template's holes (?0, ?1, ...) replaced by its argument's name, cut off
+   as static names are, so that values print with their types (or name itself,
+   if it has no holes) */
 static const char *quest_inst_name(const QInstContext *cx, const char *name) {
     if (name == NULL || strchr(name, '?') == NULL) return name;
-    /* Each occurrence of a hole grows the name by at most the longest argument's name */
+    /* Each occurrence of a hole grows the name by at most the longest
+     * argument's name */
     size_t longest = 0, holes = 0, len = 0;
     for (size_t i = 0; i < cx->arg_count; ++i) {
         size_t n = cx->args[i] != NULL && cx->args[i]->name != NULL ? strlen(cx->args[i]->name) : 0;
@@ -2023,12 +2081,14 @@ static void *quest_copy_block(const void *src, size_t size) {
     return copy;
 }
 
-/* Fills the instance of template node n, whose descriptor was allocated already */
+/* Fills the instance of template node n, whose descriptor was allocated
+ * already */
 static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
     const QTypeDescriptor *d = n->tmpl;
     QTypeDescriptor *out = n->inst;
     *out = *d;
-    /* An opaque descriptor is compared by its name, an abstract type operator's (its arguments are filled below) */
+    /* An opaque descriptor is compared by its name, an abstract type operator's
+     * (its arguments are filled below) */
     if (d->kind != QTYPE_KIND_OPAQUE) out->name = quest_inst_name(cx, d->name);
     switch (d->kind) {
         case QTYPE_KIND_TUPLE: {
@@ -2154,8 +2214,9 @@ typedef struct QViewMapEntry {
 
 static QViewMapEntry *quest_view_maps[Q_VIEW_MAP_CACHE_SIZE];
 
-/* The type a part read through the bound is converted from: the actual's type for it, or NULL when it agrees with the
- * bound's (the same type, in the same layout) */
+/* The type a part read through the bound is converted from: the actual's type
+ * for it, or NULL when it agrees with the bound's (the same type, in the same
+ * layout) */
 static const QTypeDescriptor *quest_view_from(const QTypeDescriptor *actual, const QTypeDescriptor *bound) {
     if (actual == NULL || bound == NULL || actual == bound) return NULL;
     if (quest_is_subtype(bound, actual) && quest_layout_equivalent(actual, bound) &&
@@ -2199,7 +2260,8 @@ static void quest_fill_view_map(QViewMap *m) {
         return;
     }
     if (a->kind == QTYPE_KIND_TUPLE && b->kind == QTYPE_KIND_TUPLE) {
-        /* A tuple's components, by position: the actual's are a prefix-compatible extension of the bound's */
+        /* A tuple's components, by position: the actual's are a
+         * prefix-compatible extension of the bound's */
         const QTupleTypeDescriptor *ta = (const QTupleTypeDescriptor *)a->extra;
         const QTupleTypeDescriptor *tb = (const QTupleTypeDescriptor *)b->extra;
         size_t n = tb != NULL ? tb->element_count : 0;
@@ -2236,7 +2298,8 @@ static void quest_fill_view_map(QViewMap *m) {
             m->to = to;
             return;
         }
-        /* An option's cases' components, flattened (a payload that is not a tuple is one) */
+        /* An option's cases' components, flattened (a payload that is not a
+         * tuple is one) */
         size_t *start = (size_t *)quest_alloc(sizeof(size_t) * (nb + 1));
         size_t total = 0;
         for (size_t k = 0; k < nb; ++k) {
@@ -2312,7 +2375,8 @@ const QTypeDescriptor *quest_instantiate_descriptor(
 
     QInstWork w = { NULL, 0, 0 };
     quest_inst_collect(&w, template_desc);
-    /* Which nodes reach a hole: iterate to a fixed point, since templates may be cyclic */
+    /* Which nodes reach a hole: iterate to a fixed point, since templates may
+     * be cyclic */
     for (bool changed = true; changed;) {
         changed = false;
         for (size_t i = 0; i < w.count; ++i) {
@@ -2361,13 +2425,15 @@ static void quest_put_string(const QString *s) {
     putchar('"');
 }
 
-/* The tuples, records, and arrays being written, so that a cyclic value is cut off as the interpreter does */
+/* The tuples, records, and arrays being written, so that a cyclic value is cut
+ * off as the interpreter does */
 #define Q_PRINT_NESTING_MAX 256
 static const void *quest_print_nesting[Q_PRINT_NESTING_MAX];
 static int quest_print_depth = 0;
 
-/* Starts writing the aggregate at p, or returns false (writing opening and " ... end") if p is already being
- * written; a true result is matched by a call of quest_print_leave */
+/* Starts writing the aggregate at p, or returns false (writing opening and "
+ * ... end") if p is already being written; a true result is matched by a call
+ * of quest_print_leave */
 static bool quest_print_enter(const void *p, const char *opening) {
     for (int i = 0; p != NULL && i < quest_print_depth && i < Q_PRINT_NESTING_MAX; ++i) {
         if (quest_print_nesting[i] == p) {
@@ -2387,8 +2453,9 @@ static void quest_print_leave(void) {
 
 static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness);
 
-/* Writes the elements of a tuple of type t, or of the payload (of tuple type t) of an option of type opt_t, with its
- * type components among them (through a proxy, or not) */
+/* Writes the elements of a tuple of type t, or of the payload (of tuple type t)
+ * of an option of type opt_t, with its type components among them (through a
+ * proxy, or not) */
 static void quest_put_elements(const void *v, const QTypeDescriptor *t, const QTypeDescriptor *opt_t,
                                const QTypeDescriptor *witness) {
     const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)t->extra;
@@ -2416,8 +2483,10 @@ static void quest_put_tuple(const void *v, const QTypeDescriptor *t, const QType
     quest_print_leave();
 }
 
-/* Writes a value of the type t as the interpreter does (format_value_with_type). witness is the type component of
- * the auto value whose components are being written, which a component's type refers to as its type parameter. */
+/* Writes a value of the type t as the interpreter does
+ * (format_value_with_type). witness is the type component of the auto value
+ * whose components are being written, which a component's type refers to as its
+ * type parameter. */
 static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
     if (t == NULL) {
         fputs("<val>", stdout);
@@ -2475,8 +2544,9 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                 fputs("<val>", stdout);
                 return;
             }
-            /* A variant is a QVariantVal; an option points to its tag followed by its payload, laid out as the
-             * payload's tuple type; an option may be a proxy (quest_option_tag, quest_option_element) */
+            /* A variant is a QVariantVal; an option points to its tag followed
+             * by its payload, laid out as the payload's tuple type; an option
+             * may be a proxy (quest_option_tag, quest_option_element) */
             int64_t tag = t->kind == QTYPE_KIND_VARIANT ? ((const QVariantVal *)v.p)->tag : quest_option_tag(v.p);
             if (tag < 0 || (size_t)tag >= meta->case_count) {
                 fputs("<val>", stdout);
@@ -2541,7 +2611,8 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             return;
         }
         case QTYPE_KIND_BOUND_VAR:
-            /* An auto value's components refer to its type component as the innermost type parameter */
+            /* An auto value's components refer to its type component as the
+             * innermost type parameter */
             if (witness != NULL && t == &quest_type_bound_vars[0]) {
                 quest_put_value(v, witness, NULL);
             } else {
@@ -2549,7 +2620,8 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             }
             return;
         case QTYPE_KIND_STORED:
-            /* A value laid out as generic code stores its type argument: converted to that type's own layout */
+            /* A value laid out as generic code stores its type argument:
+             * converted to that type's own layout */
             quest_put_value(quest_convert(v, t, quest_stored_type(t)), quest_stored_type(t), witness);
             return;
         case QTYPE_KIND_HOLE:
@@ -2557,7 +2629,8 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             fputs("<hidden>", stdout);
             return;
         case QTYPE_KIND_OPAQUE:
-            /* Word.T is a library type with literals of its own; any other abstract type's values are hidden */
+            /* Word.T is a library type with literals of its own; any other
+             * abstract type's values are hidden */
             if (t->name != NULL && (strcmp(t->name, "Word.T") == 0 || strcmp(t->name, "word.T") == 0)) {
                 printf("16#%llx#", (unsigned long long)v.u);
             } else {
@@ -3328,7 +3401,8 @@ QString *quest_conv_int(int64_t n) {
 
 QString *quest_conv_real(double r) {
     char buf[48];
-    /* Quest writes negation as ~, including for negative zero and negative infinity. */
+    /* Quest writes negation as ~, including for negative zero and negative
+     * infinity. */
     buf[0] = '~';
     bool is_neg = signbit(r);
     quest_format_real(r, buf + (is_neg ? 1 : 0), sizeof(buf) - 1);
@@ -3361,7 +3435,8 @@ QString *quest_conv_string(const QString *s) {
 
 /* Strutil module primitives */
 double quest_strutil_to_real(const QString *s) {
-    /* strutil.tryToReal has checked the syntax; strtod rounds correctly, and overflows to an infinity */
+    /* strutil.tryToReal has checked the syntax; strtod rounds correctly, and
+     * overflows to an infinity */
     return s == NULL ? 0.0 : strtod(s->data, NULL);
 }
 
@@ -3432,7 +3507,8 @@ void quest_sb_append_int(QStringBuilder *b, int64_t n) {
 
 void quest_sb_append_real(QStringBuilder *b, double r) {
     char buf[48];
-    /* As conv.real: ~ for negatives, including negative zero and negative infinity */
+    /* As conv.real: ~ for negatives, including negative zero and negative
+     * infinity */
     buf[0] = '~';
     bool is_neg = signbit(r);
     quest_format_real(r, buf + (is_neg ? 1 : 0), sizeof(buf) - 1);
@@ -3523,7 +3599,8 @@ double quest_real_log(double r) {
     return log(r);
 }
 
-/* An integral real as an Int; an infinity or a value outside Int's range raises real.error. */
+/* An integral real as an Int; an infinity or a value outside Int's range raises
+ * real.error. */
 static int64_t quest_real_to_int(double r) {
     if (!(r >= -9223372036854775808.0 && r < 9223372036854775808.0)) {
         quest_raise_real_error();

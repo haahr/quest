@@ -1,14 +1,19 @@
 (* Quest Self-Hosted Compiler: Run-Time Values Interface
  *
- * The values of bootstrap/python/quest/values/model.py, which the interpreter (questlang/interpreter) computes: a
- * case of Value for each QValue class. A string, word, reader, writer, or string builder is the native Quest value,
- * which the standard library's externals act on directly (questlang/interpreter/builtins); a record, tuple, array,
- * variant, option, closure, reference, auto value, exception, or type value is a tuple (or array) whose identity is
- * the value's, so that `is` on two values is `is` on what they hold (Cardelli's identity, qvalue_is).
+ * The values of bootstrap/python/quest/values/model.py, which the interpreter
+ * (questlang/interpreter) computes: a case of Value for each QValue class. A
+ * string, word, reader, writer, or string builder is the native Quest value,
+ * which the standard library's externals act on directly
+ * (questlang/interpreter/builtins); a record, tuple, array, variant, option,
+ * closure, reference, auto value, exception, or type value is a tuple (or
+ * array) whose identity is the value's, so that `is` on two values is `is` on
+ * what they hold (Cardelli's identity, qvalue_is).
  *
- * The bootstrap's closures hold its RuntimeEnvironment, which is the tree-walking interpreter's; in Quest a closure's
- * type needs the environment's, so the frames (Frame) are declared here, and their operations are treewalk's.
- * The bootstrap's QList, which no external makes (lib/list is written in Quest), is not ported. *)
+ * The bootstrap's closures hold its RuntimeEnvironment, which is the
+ * tree-walking interpreter's; in Quest a closure's type needs the
+ * environment's, so the frames (Frame) are declared here, and their operations
+ * are treewalk's. The bootstrap's QList, which no external makes (lib/list is
+ * written in Quest), is not ported. *)
 
 interface Model
 import
@@ -61,14 +66,16 @@ export
         body: typedAst.Expr
         env: Frame
         name: maybe.T(String)
-        (* A polymorphic function's type parameters (symbol ids), and the types bound to them by type applications *)
+        (* A polymorphic function's type parameters (symbol ids), and the types
+         * bound to them by type applications *)
         typeParamIds: Array(Int)
         typeBindings: hashMap.T(Int tm.Type)
         (* The closure's frame in tracebacks (docs/exceptions.md section 2.3) *)
         traceName: String
     end
     and Builtin = Tuple name: String fn: All(args: Array(Value)) Value end
-    (* A mutable cell, or a reference to an array's element or a tuple's component *)
+    (* A mutable cell, or a reference to an array's element or a tuple's
+     * component *)
     and Ref = Tuple form: RefForm end
     and RefForm = Option
         cell with c: Cell end
@@ -76,21 +83,26 @@ export
         tupleElement with tup: TupleValue index: Int end
     end
     and Cell = Tuple var value: Value end
-    (* An auto value: its components (a tuple) packaged with the closed type that determines their shape *)
+    (* An auto value: its components (a tuple) packaged with the closed type
+     * that determines their shape *)
     and AutoValue = Tuple value: Value type: tm.Type end
     and ExceptionValue = Tuple name: String payload: maybe.T(Value) end
     and TypeValue = Tuple type: tm.Type bound: maybe.T(tm.Kind) name: maybe.T(String) end
 
-    (* A frame of the interpreter's lexically scoped environment (the bootstrap's RuntimeEnvironment) *)
+    (* A frame of the interpreter's lexically scoped environment (the
+     * bootstrap's RuntimeEnvironment) *)
     and Frame = Tuple
         parent: maybe.T(Frame)
         var bindings: hashMap.T(String Value)
-        (* The types bound to the type parameters (by symbol id) of the polymorphic functions being run *)
+        (* The types bound to the type parameters (by symbol id) of the
+         * polymorphic functions being run *)
         typeBindings: hashMap.T(Int tm.Type)
-        (* The named exceptions this frame made before the binding that makes them, by symbol id *)
+        (* The named exceptions this frame made before the binding that makes
+         * them, by symbol id *)
         madeExceptions: hashMap.T(Int ExceptionValue)
         var currentDir: maybe.T(String)
-        (* The source map of the file whose code runs in this frame, where its errors are located *)
+        (* The source map of the file whose code runs in this frame, where its
+         * errors are located *)
         var sourceMap: maybe.T(location.SourceMap)
         root: Root
     end
@@ -105,9 +117,9 @@ export
         callStack: vector.T(String)
     end
 
-    (* =========================================================================
+    (* ======================================================================
      * Constructors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     okValue: Value
     trueValue: Value
@@ -128,9 +140,9 @@ export
     (* A new map of record fields *)
     newFields(): hashMap.T(String Value)
 
-    (* =========================================================================
+    (* ======================================================================
      * Operations
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* The value a reference refers to *)
     deref(r: Ref): Value
@@ -142,10 +154,11 @@ export
     (* The human-readable type name of a value (QValue.type_name) *)
     typeName(v: Value): String
 
-    (* Cardelli's is: value equality for Ok, Bool, Int, Word, Real, and Char, type equality for type values, and
-     * identity for the rest *)
+    (* Cardelli's is: value equality for Ok, Bool, Int, Word, Real, and Char,
+     * type equality for type values, and identity for the rest *)
     same(v1: Value v2: Value): Bool
-    (* The canonical text of a value (qvalue_to_str), with cycles shown as ... *)
+    (* The canonical text of a value (qvalue_to_str), with cycles shown as
+     * ... *)
     toString(v: Value): String
     (* A real as Python's repr writes it *)
     realString(r: Real): String
@@ -153,11 +166,13 @@ export
     (* =========================================================================
      * Errors raised while running
      *
-     * The bootstrap raises a Quest exception as QuestException (values/model.py) and an error of the interpreter
-     * itself as QuestRuntimeError (interpreter/primitives.py), both QuestCompilerErrors, which code running a closure
-     * or a module locates in its file and gives the frames running, the first time they leave a frame. Here both are
+     * The bootstrap raises a Quest exception as QuestException
+     * (values/model.py) and an error of the interpreter itself as
+     * QuestRuntimeError (interpreter/primitives.py), both QuestCompilerErrors,
+     * which code running a closure or a module locates in its file and gives
+     * the frames running, the first time they leave a frame. Here both are
      * runError, whose cause tells them apart.
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Def Cause = Option
         raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
@@ -165,7 +180,8 @@ export
     end
     Def RunError = Tuple
         cause: Cause
-        (* Where it was raised, in the file of sourceMap; none for an error without a raise site *)
+        (* Where it was raised, in the file of sourceMap; none for an error
+         * without a raise site *)
         var offset: maybe.T(Int)
         var sourceMap: maybe.T(location.SourceMap)
         (* The frames running where it was raised, most recent first *)
@@ -176,8 +192,10 @@ export
     raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A
     (* Raises an error of the interpreter (QuestRuntimeError) *)
     internalError(A::TYPE message: String offset: maybe.T(Int)): A
-    (* An error's message: "Exception: name", with a payload other than ok and its type, or the internal message *)
+    (* An error's message: "Exception: name", with a payload other than ok and
+     * its type, or the internal message *)
     runErrorMessage(e: RunError): String
-    (* Raised by the dynamic format's reader and writer, as by the dynamic module *)
+    (* Raised by the dynamic format's reader and writer, as by the dynamic
+     * module *)
     dynamicError: ExceptionValue
 end

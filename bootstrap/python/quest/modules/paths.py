@@ -30,19 +30,23 @@ DEFAULT_LIB_DIR = (DEFAULT_PROJECT_DIR / "lib").resolve()
 
 UNIT_SUFFIXES = (".int.quest", ".mod.quest", ".qi", ".o")
 
-# Each directory and file name in a canonical name; anything else could not be mangled into C identifiers
-# unambiguously (docs/modules.md §2.3, docs/name-mangling.md §4.1).
+# Each directory and file name in a canonical name; anything else could not be
+# mangled into C identifiers unambiguously (docs/modules.md §2.3,
+# docs/name-mangling.md §4.1).
 _NAME_COMPONENT = re.compile(r"[A-Za-z0-9]+")
 
 
 @dataclass(frozen=True)
 class InterfaceDependency:
-    """An interface that an interface imports, directly or through the interfaces it imports.
+    """An interface that an interface imports, directly or through the
+    interfaces it imports.
 
-    path is the interface path as written in the importing interface, dir the importing interface's directory (the
-    path was resolved from it, by sibling search, before the include paths), and source the .int.quest it resolved
-    to, or "" if none (a builtin or prebuilt interface). A .qi records the dependencies of its interface, so that it
-    is stale when one of them changes or would resolve elsewhere (docs/build-process.md §5, Rule 1).
+    path is the interface path as written in the importing interface, dir the
+    importing interface's directory (the path was resolved from it, by sibling
+    search, before the include paths), and source the .int.quest it resolved to,
+    or "" if none (a builtin or prebuilt interface). A .qi records the
+    dependencies of its interface, so that it is stale when one of them changes
+    or would resolve elsewhere (docs/build-process.md §5, Rule 1).
     """
     path: str
     dir: str
@@ -50,14 +54,16 @@ class InterfaceDependency:
 
 
 def same_source(found: Optional[Path], recorded: str) -> bool:
-    """True if found, a resolved source or None, is the file recorded ("" for none)."""
+    """True if found, a resolved source or None, is the file recorded ("" for
+    none)."""
     if found is None or not recorded:
         return found is None and not recorded
     return found.resolve() == Path(recorded).resolve()
 
 
 def recorded_dependencies(qi_path: Path) -> Optional[list[InterfaceDependency]]:
-    """The interface dependencies a .qi records, or None if it cannot be read or records none."""
+    """The interface dependencies a .qi records, or None if it cannot be read or
+    records none."""
     try:
         data = json.loads(Path(qi_path).read_text(encoding="utf-8"))
         deps = data["value"]["deps"]
@@ -69,10 +75,12 @@ def recorded_dependencies(qi_path: Path) -> Optional[list[InterfaceDependency]]:
 def dependency_change(
     deps: list[InterfaceDependency], include_paths: list[Path], artifact_mtime: float, resolver: Any = None
 ) -> Optional[str]:
-    """Says how an interface's recorded dependencies changed since an artifact built from them, or returns None.
+    """Says how an interface's recorded dependencies changed since an artifact
+    built from them, or returns None.
 
-    A dependency changed if its path would now resolve to a different source (from the directory recorded with it,
-    then include_paths), or if its source is newer than the artifact. resolver (a quest.modules.graph.Resolver), if
+    A dependency changed if its path would now resolve to a different source
+    (from the directory recorded with it, then include_paths), or if its source
+    is newer than the artifact. resolver (a quest.modules.graph.Resolver), if
     given, resolves the paths, so that each is resolved once in a compilation.
     """
     for dep in deps:
@@ -89,13 +97,15 @@ def dependency_change(
 
 
 def _dependencies_unchanged(qi_path: Path, include_paths: list[Path]) -> bool:
-    """True if a .qi records its interface's dependencies and none has changed since it was built."""
+    """True if a .qi records its interface's dependencies and none has changed
+    since it was built."""
     deps = recorded_dependencies(qi_path)
     return deps is not None and dependency_change(deps, include_paths, qi_path.stat().st_mtime) is None
 
 
 def strip_unit_suffix(filename: str) -> str:
-    """Strips recognized unit suffixes (.int.quest, .mod.quest, .qi, .o) from a filename."""
+    """Strips recognized unit suffixes (.int.quest, .mod.quest, .qi, .o) from a
+    filename."""
     for ext in UNIT_SUFFIXES:
         if filename.endswith(ext):
             return filename[: -len(ext)]
@@ -103,7 +113,8 @@ def strip_unit_suffix(filename: str) -> str:
 
 
 def declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
-    """Returns the name declared by `module <name>` in file_path, else the last segment of canon_name."""
+    """Returns the name declared by `module <name>` in file_path, else the last
+    segment of canon_name."""
     fallback = canon_name.split("/")[-1]
     if file_path is None or not file_path.is_file():
         return fallback
@@ -118,7 +129,8 @@ def declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
 
 
 def is_c_compilation_mode(target: Optional[Union[CompilerOptions, Any]] = None) -> bool:
-    """Checks whether the compiler options or environment specify actively compiling C code."""
+    """Checks whether the compiler options or environment specify actively
+    compiling C code."""
     if target is None:
         return False
     if isinstance(target, CompilerOptions):
@@ -130,7 +142,8 @@ def is_c_compilation_mode(target: Optional[Union[CompilerOptions, Any]] = None) 
 
 
 def is_typecheck_only(target: Optional[Union[CompilerOptions, Any]] = None) -> bool:
-    """Checks whether compiler options specify stopping after typechecking in non-C mode."""
+    """Checks whether compiler options specify stopping after typechecking in
+    non-C mode."""
     if target is None:
         return False
     if isinstance(target, CompilerOptions):
@@ -146,11 +159,13 @@ def resolve_interface_file(
     current_dir: Optional[Path],
     include_paths: list[Path],
 ) -> Optional[Path]:
-    """Finds interface `name` on the search path: a fresh .qi if there is one, else its .int.quest.
+    """Finds interface `name` on the search path: a fresh .qi if there is one,
+    else its .int.quest.
 
-    A .qi is fresh when it records this compiler's ABI version and the source it was built from, and is at
-    least as new as that source (docs/build-process.md §5.2). Without a source, the first .qi found is returned
-    whatever its ABI version; loading it reports an incompatible one.
+    A .qi is fresh when it records this compiler's ABI version and the source it
+    was built from, and is at least as new as that source (docs/build-process.md
+    §5.2). Without a source, the first .qi found is returned whatever its ABI
+    version; loading it reports an incompatible one.
     """
     source_file = resolve_interface_source_file(name, current_dir, include_paths)
     source_mtime = source_file.stat().st_mtime if source_file is not None else None
@@ -191,7 +206,8 @@ def resolve_interface_source_file(
     current_dir: Optional[Path],
     include_paths: list[Path],
 ) -> Optional[Path]:
-    """Finds <name.lower()>.int.quest in current_dir, include_paths, or DEFAULT_LIB_DIR."""
+    """Finds <name.lower()>.int.quest in current_dir, include_paths, or
+    DEFAULT_LIB_DIR."""
     filename = f"{name.lower()}.int.quest"
     if current_dir is not None:
         candidate = current_dir / filename
@@ -227,7 +243,8 @@ def resolve_module_file(
     current_dir: Optional[Path],
     include_paths: list[Path],
 ) -> Optional[Path]:
-    """Finds <name.lower()>.mod.quest in current_dir, include_paths, or DEFAULT_LIB_DIR."""
+    """Finds <name.lower()>.mod.quest in current_dir, include_paths, or
+    DEFAULT_LIB_DIR."""
     filename = f"{name.lower()}.mod.quest"
     if current_dir is not None:
         candidate = current_dir / filename
@@ -263,7 +280,8 @@ def resolve_object_file(
     current_dir: Optional[Path],
     include_paths: list[Path],
 ) -> Optional[Path]:
-    """Finds <name.lower()>.o in current_dir, include_paths, or DEFAULT_LIB_DIR."""
+    """Finds <name.lower()>.o in current_dir, include_paths, or
+    DEFAULT_LIB_DIR."""
     filename = f"{name.lower()}.o"
     if current_dir is not None:
         candidate = current_dir / filename
@@ -295,10 +313,12 @@ def resolve_object_file(
 
 
 def canonical_roots(include_paths: list[Path], program_dir: Optional[Path] = None) -> list[Path]:
-    """Returns the directories canonical names are relative to, in the order canonicalize_module_path tries them.
+    """Returns the directories canonical names are relative to, in the order
+    canonicalize_module_path tries them.
 
-    The include roots (QUEST_LIB, include paths, lib/, the project directory) come first, deepest first, then the
-    program's directory, which names only the units under none of the include roots.
+    The include roots (QUEST_LIB, include paths, lib/, the project directory)
+    come first, deepest first, then the program's directory, which names only
+    the units under none of the include roots.
     """
     roots: list[Path] = []
     env_lib = os.environ.get("QUEST_LIB")
@@ -321,14 +341,18 @@ def canonicalize_module_path(
     include_paths: list[Path],
     program_dir: Optional[Path] = None,
 ) -> str:
-    """Computes the canonical hierarchical name of the unit in file_path (e.g. 'util/path').
+    """Computes the canonical hierarchical name of the unit in file_path (e.g.
+    'util/path').
 
-    The name is the file's path, without its suffix, relative to the first of canonical_roots that contains it
-    (docs/modules.md §2.3); a file under none of them is named by its base name. It depends only on the file and
-    the roots, not on the import that found it, so importers, the unit itself, manifests, and mangled C symbols
-    all agree on it as long as they pass the same include paths and program directory.
+    The name is the file's path, without its suffix, relative to the first of
+    canonical_roots that contains it (docs/modules.md §2.3); a file under none
+    of them is named by its base name. It depends only on the file and the
+    roots, not on the import that found it, so importers, the unit itself,
+    manifests, and mangled C symbols all agree on it as long as they pass the
+    same include paths and program directory.
 
-    Raises QuestTypeError if a directory or file name in it contains anything but ASCII letters and digits.
+    Raises QuestTypeError if a directory or file name in it contains anything
+    but ASCII letters and digits.
     """
     resolved = file_path.resolve()
     parts = [resolved.name]
@@ -354,7 +378,8 @@ def find_canonical_module_source(
     include_paths: list[Path],
     program_dir: Optional[Path] = None,
 ) -> Optional[Path]:
-    """Finds the module source whose canonical name is canon_name, the inverse of canonicalize_module_path."""
+    """Finds the module source whose canonical name is canon_name, the inverse
+    of canonicalize_module_path."""
     relative = f"{canon_name.lower()}.mod.quest"
     for root in canonical_roots(include_paths, program_dir):
         candidate = root / relative

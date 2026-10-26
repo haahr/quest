@@ -87,9 +87,9 @@ export
         callStack: vector.T(String)
     end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Constructors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let okValue: Value = option vOk of Value end
     let trueValue: Value = option vBool of Value with let b = true end
@@ -138,9 +138,9 @@ export
     let builtinValue(name: String fn: All(args: Array(Value)) Value): Value =
         option vBuiltin of Value with let b = tuple let name = name let fn = fn end end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. References and tuples
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let fieldMissing: Exception(String) = exception fieldMissing: String end
 
@@ -174,7 +174,8 @@ export
             n
         end
 
-    (* The bootstrap's QTuple.set_by_name: by label, or a numeric name (n or _n) by position *)
+    (* The bootstrap's QTuple.set_by_name: by label, or a numeric name (n or _n)
+     * by position *)
     let tupleSetByName(t: TupleValue name: String v: Value): Ok =
         if hashMap.contains(:String :Int t.nameToIndex name) then
             t.elements[tupleIndex(t name)] := v
@@ -209,9 +210,9 @@ export
                 end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Type names and identity
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec typeName(v: Value): String =
         case v
@@ -267,9 +268,9 @@ export
                 case v2 when vTypeValue with y then sameType(x.t.type y.t.type) else false end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 4. Canonical text
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
@@ -277,7 +278,8 @@ export
     let hexEscape(c: Char): String =
         "\\x" <> stringOp.new(1 hexDigit({ascii.val(c) / 16})) <> stringOp.new(1 hexDigit({ascii.val(c) % 16}))
 
-    (* A character of a literal, escaped as Python's QChar and QString do, quote being the literal's quote *)
+    (* A character of a literal, escaped as Python's QChar and QString do, quote
+     * being the literal's quote *)
     let escaped(c: Char quote: Char): String =
         if c is '\n' then "\\n"
         elsif c is '\t' then "\\t"
@@ -334,7 +336,8 @@ export
             b.toString()
         end
 
-    (* The values being printed, for cycles: the aggregates and references on the way down *)
+    (* The values being printed, for cycles: the aggregates and references on
+     * the way down *)
     Let Visited = vector.T(Value)
 
     let isVisited(visited: Visited v: Value): Bool =
@@ -439,9 +442,9 @@ export
 
     let toString(v: Value): String = show(v vector.new(:Value))
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Errors raised while running
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Cause = Option
         raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end

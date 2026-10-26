@@ -1,19 +1,24 @@
 """Shapes: the backend's view of Quest types (docs/ir.md §4.1).
 
-A shape says what a type is structurally, with everything that does not matter to a backend removed: aliases are
-stripped, applications of type operators reduced, and recursion made explicit. Code that lowers a program asks
-questions of shapes, never of types: a structural test on a type (isinstance(t, QTupleType)) silently misses the
-same type reached through an alias or an operator (Box(A)), where a shape cannot.
+A shape says what a type is structurally, with everything that does not matter
+to a backend removed: aliases are stripped, applications of type operators
+reduced, and recursion made explicit. Code that lowers a program asks questions
+of shapes, never of types: a structural test on a type (isinstance(t,
+QTupleType)) silently misses the same type reached through an alias or an
+operator (Box(A)), where a shape cannot.
 
-shape(t) is computed from the canonical form of t (types/canonical.py), in which equal recursive types, however
-written, are one type; shapes are cached per canonical type, so equal types have the same shape object. A recursive
-type's shape is a cycle: the shape of List(Int) is an option whose cons payload's tail is that same shape. Shapes are
-built once and not changed afterwards.
+shape(t) is computed from the canonical form of t (types/canonical.py), in which
+equal recursive types, however written, are one type; shapes are cached per
+canonical type, so equal types have the same shape object. A recursive type's
+shape is a cycle: the shape of List(Int) is an option whose cons payload's tail
+is that same shape. Shapes are built once and not changed afterwards.
 
-Each shape keeps the canonical type it describes (`type`), from which later stages take C names and descriptors, and
-the type whose outermost constructor it describes (`structure`: the unfolding of a recursive type, and otherwise
-`type` itself). Canonical forms name their binders afresh (types/canonical.py), so the type parameters of a shape's
-polymorphic function or auto type are not those of the type it was asked for, whose parts refer to its own.
+Each shape keeps the canonical type it describes (`type`), from which later
+stages take C names and descriptors, and the type whose outermost constructor it
+describes (`structure`: the unfolding of a recursive type, and otherwise `type`
+itself). Canonical forms name their binders afresh (types/canonical.py), so the
+type parameters of a shape's polymorphic function or auto type are not those of
+the type it was asked for, whose parts refer to its own.
 """
 
 from __future__ import annotations
@@ -69,7 +74,8 @@ KINDS = SCALAR_KINDS + (
 
 @dataclass(eq=False)
 class Component:
-    """A named component of a tuple, record, or auto value's signature, or a case of a variant or option."""
+    """A named component of a tuple, record, or auto value's signature, or a
+    case of a variant or option."""
     name: Optional[str]
     shape: Optional[Shape]  # None for a case without a payload
     is_var: bool = False
@@ -77,7 +83,8 @@ class Component:
 
 @dataclass(eq=False)
 class Param:
-    """A parameter of a function shape: its shape and mode ('value', 'var', or 'out')."""
+    """A parameter of a function shape: its shape and mode ('value', 'var', or
+    'out')."""
     name: str
     shape: Shape
     mode: str = "value"
@@ -85,8 +92,9 @@ class Param:
 
 @dataclass(eq=False)
 class TypeParam:
-    """A type parameter (of an `all` shape, or the type component of an `auto` shape): its symbol and bound. The
-    bound is the shape of T for a parameter bounded by POWER(T), and None otherwise (its kind is in `kind`)."""
+    """A type parameter (of an `all` shape, or the type component of an `auto`
+    shape): its symbol and bound. The bound is the shape of T for a parameter
+    bounded by POWER(T), and None otherwise (its kind is in `kind`)."""
     name: str
     symbol_id: int
     kind: QKind
@@ -94,20 +102,28 @@ class TypeParam:
 
 
 class Shape:
-    """The backend's view of a type. Which fields are set depends on `kind` (one of KINDS):
+    """The backend's view of a type. Which fields are set depends on `kind` (one
+    of KINDS):
 
-    - `components`: tuple (value components; type components are erased), record (fields), auto (signature);
-    - `cases`: variant (one payload shape each, or None) and option (a tuple shape each, or None);
+    - `components`: tuple (value components; type components are erased), record
+      (fields), auto (signature);
+    - `cases`: variant (one payload shape each, or None) and option (a tuple
+      shape each, or None);
     - `element`: array, cell (Var), out (Out), exception (payload);
-    - `params` and `result`: fun; `type_params` and `body`: all; `type_params` (one) and `components`: auto;
-    - `symbol_id`, `name`, and `bound`: typevar, a type variable: a type parameter in scope or an abstract type of a
-      module or interface (m.T, declared T::K in the interface), which have the same representation and are told
-      apart by symbol where it matters (a type parameter's descriptor is passed to its function); `bound` is the
-      shape of its POWER bound, if any;
-    - `name`: abstract (an abstract type of a module, an application of an abstract operator, or a path type, by its
-      short name) and external (an opaque C type).
+    - `params` and `result`: fun; `type_params` and `body`: all; `type_params`
+      (one) and `components`: auto;
+    - `symbol_id`, `name`, and `bound`: typevar, a type variable: a type
+      parameter in scope or an abstract type of a module or interface (m.T,
+      declared T::K in the interface), which have the same representation and
+      are told apart by symbol where it matters (a type parameter's descriptor
+      is passed to its function); `bound` is the shape of its POWER bound, if
+      any;
+    - `name`: abstract (an abstract type of a module, an application of an
+      abstract operator, or a path type, by its short name) and external (an
+      opaque C type).
 
-    An `operator` shape is a type operator's (Fun(X::K) T), passed for a higher-kinded type parameter: opaque.
+    An `operator` shape is a type operator's (Fun(X::K) T), passed for a
+    higher-kinded type parameter: opaque.
     """
 
     __slots__ = (
@@ -131,7 +147,8 @@ class Shape:
         self.name: Optional[str] = None
 
     def fill_from(self, other: Shape) -> None:
-        """Fills this shape in from another's fields, but its type (a recursive type's, from its unfolding's)."""
+        """Fills this shape in from another's fields, but its type (a recursive
+        type's, from its unfolding's)."""
         self.kind = other.kind
         self.structure = other.structure
         self.components = other.components
@@ -151,7 +168,8 @@ class Shape:
 
     @property
     def is_recursive(self) -> bool:
-        """Whether this is the shape of a recursive type (whose structure is its unfolding's)."""
+        """Whether this is the shape of a recursive type (whose structure is its
+        unfolding's)."""
         return isinstance(self.type, (QRecType, QRecGroupType))
 
     def component(self, name: str) -> Optional[Component]:
@@ -161,7 +179,8 @@ class Shape:
         return next((c for c in self.cases if c.name == name), None)
 
     def sorted_components(self) -> tuple[Component, ...]:
-        """A record's fields in name order (the order of its payload's layout)."""
+        """A record's fields in name order (the order of its payload's
+        layout)."""
         return tuple(sorted(self.components, key=lambda c: c.name or ""))
 
     def children(self) -> Iterator[Shape]:
@@ -186,8 +205,8 @@ _SCALARS = {
     id(INT_TYPE): "int", id(REAL_TYPE): "real", id(BOOL_TYPE): "bool", id(CHAR_TYPE): "char", id(STRING_TYPE): "string",
 }
 
-# Shapes by the id of the type node they were built from (canonical forms, their unfoldings and parts), kept with the
-# node so that its id is not reused
+# Shapes by the id of the type node they were built from (canonical forms, their
+# unfoldings and parts), kept with the node so that its id is not reused
 _SHAPES: dict[int, tuple[QType, Shape]] = {}
 
 # The shapes of the types asked for (shape), by the id of the type node
@@ -201,7 +220,8 @@ def shape(t: QType) -> Shape:
     if entry is not None and entry[0] is t:
         return entry[1]
     if t._has_meta:
-        # Solved metavariables stand for their solutions, which are cached; the type itself is not
+        # Solved metavariables stand for their solutions, which are cached; the
+        # type itself is not
         resolved = resolve_metas(t)
         if resolved._has_meta:
             raise ValueError(f"the type {t} has unsolved metavariables and no shape")
@@ -214,8 +234,8 @@ def shape(t: QType) -> Shape:
 
 
 def is_word_type(t: QType) -> bool:
-    """Whether t is the standard library's Word.T (or a type parameter bounded by it), whose values are held in a
-    uint64_t."""
+    """Whether t is the standard library's Word.T (or a type parameter bounded
+    by it), whose values are held in a uint64_t."""
     t = normalize_type(resolve_type_bound(t))
     match t:
         case QTypeVar() if t.name in ("Word.T", "word.T"):
@@ -234,9 +254,10 @@ def _cached(t: QType) -> Optional[Shape]:
 
 
 def _uses_recursion(t: QRecType | QRecGroupType) -> bool:
-    """Whether a recursive type refers to itself: its body mentions its variable, or for a group's member, its own
-    variable is reachable from its body through the members' bodies (a member that refers only to members that do not
-    refer back to it is not recursive)."""
+    """Whether a recursive type refers to itself: its body mentions its
+    variable, or for a group's member, its own variable is reachable from its
+    body through the members' bodies (a member that refers only to members that
+    do not refer back to it is not recursive)."""
     if isinstance(t, QRecType):
         return t.symbol_id in t.body._fv
     ids = [b[1] for b in t.bindings]
@@ -264,13 +285,16 @@ def _shape(t: QType) -> Shape:
         case QAliasType(target=target):
             s = _shape(target)
         case QRecType() | QRecGroupType() if not _uses_recursion(t):
-            # A recursive type that does not use its variables (a member of a group that does not refer to the
-            # group) is the type it unfolds to, and has its shape, so that its values are its unfolding's however
+            # A recursive type that does not use its variables (a member of a
+            # group that does not refer to the group) is the type it unfolds to,
+            # and has its shape, so that its values are its unfolding's however
             # its type is written
             s = _shape(t.unfold_lazily())
         case QRecType() | QRecGroupType():
-            # The recursive type's shape is its unfolding's, whose recursive occurrences are this node: enter the
-            # shape before building the unfolding's, so that they refer to it, and fill it in from the unfolding's
+            # The recursive type's shape is its unfolding's, whose recursive
+            # occurrences are this node: enter the shape before building the
+            # unfolding's, so that they refer to it, and fill it in from the
+            # unfolding's
             s = Shape("pending", t)
             _SHAPES[id(t)] = (t, s)
             s.fill_from(_shape(t.unfold_lazily()))
@@ -278,7 +302,8 @@ def _shape(t: QType) -> Shape:
         case QTypeApp() if (reduced := normalize_type(t)) is not t:
             s = _shape(reduced)
         case QVariantType() | QOptionType() if (ordered := cases_by_name(t)) is not t:
-            # Equal types whose cases are listed in different orders have one shape, its cases ordered by name
+            # Equal types whose cases are listed in different orders have one
+            # shape, its cases ordered by name
             s = _shape(ordered)
         case _:
             s = _build(t)
@@ -287,7 +312,8 @@ def _shape(t: QType) -> Shape:
 
 
 def cases_by_name(t: QType) -> QType:
-    """A variant or option type with its cases ordered by name: t itself if they are already."""
+    """A variant or option type with its cases ordered by name: t itself if they
+    are already."""
     if isinstance(t, QVariantType):
         variants = tuple(sorted(t.variants, key=lambda v: v.name))
         return t if all(a is b for a, b in zip(variants, t.variants)) else QVariantType(variants)
@@ -302,7 +328,8 @@ def _kind_bound(kind: QKind) -> Optional[Shape]:
 
 
 def _build(t: QType) -> Shape:
-    # Scalars are singletons, recognized by identity: value patterns would compare types with ==, which types refuse
+    # Scalars are singletons, recognized by identity: value patterns would
+    # compare types with ==, which types refuse
     if id(t) in _SCALARS:
         return Shape(_SCALARS[id(t)], t)
     if is_word_type(t):
@@ -354,12 +381,14 @@ def _build(t: QType) -> Shape:
             s.name = name
             s.bound = _kind_bound(bound) if bound is not None else None
         case QAbstractType(bound=bound) | QPathType(bound=bound):
-            # An abstract type elaborated as such, or a path type (x.T): opaque, with its bound
+            # An abstract type elaborated as such, or a path type (x.T): opaque,
+            # with its bound
             s = Shape("abstract", t)
             s.name = short_type_name(t)
             s.bound = _kind_bound(bound)
         case QTypeApp():
-            # An application of an abstract type operator (normalize_type reduced every other): opaque
+            # An application of an abstract type operator (normalize_type
+            # reduced every other): opaque
             s = Shape("abstract", t)
             s.name = short_type_name(t)
         case QExternalType(c_type=c_type):
@@ -373,7 +402,8 @@ def _build(t: QType) -> Shape:
 
 
 def shapes_reachable(s: Shape) -> list[Shape]:
-    """Every shape reachable from s, once each (shapes of recursive types are cycles)."""
+    """Every shape reachable from s, once each (shapes of recursive types are
+    cycles)."""
     seen: dict[int, Shape] = {}
     stack = [s]
     while stack:

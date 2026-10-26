@@ -33,13 +33,14 @@ export
     let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail(:A "internal: not " <> what x.span.startOffset)
     let newIntMap(V::TYPE): hashMap.T(Int V) = hashMap.new(:Int :V fun(a: Int b: Int): Bool a is b hash.int)
 
-    (* =========================================================================
+    (* ======================================================================
      * Variants and options
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let TagPayload = Tuple payload: maybe.T(Type) isOption: Bool end
 
-    (* The payload type and option flag of a tag of a Variant or Option target type *)
+    (* The payload type and option flag of a tag of a Variant or Option target
+     * type *)
     let resolveVariantOrOptionField(targetType: Type tag: String opDesc: String offset: Int e: env.T): TagPayload =
         begin
             let ofVariant(variants: Array(model.VariantField) what: String t: Type): TagPayload =
@@ -83,9 +84,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Records
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let elaborateRecord(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
@@ -105,7 +106,8 @@ export
                     if maybe.isSome(:typedAst.Expr early) then
                         maybe.unwrap(:typedAst.Expr early)
                     else
-                        (* The binding of each name: the last, as a dictionary has it *)
+                        (* The binding of each name: the last, as a dictionary
+                         * has it *)
                         let fieldMap = hashMap.new(:String :ast.RecordBinding stringOp.equal hash.string)
                         for i = 0 upto {vector.length(:ast.RecordBinding x.fields) - 1} do
                             let b = vector.get(:ast.RecordBinding x.fields i)
@@ -161,13 +163,15 @@ export
             else internal(:typedAst.Expr "a record" x0)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Tuples
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A component of a tuple, its declarations' members flattened: a type binding of a type declaration (its index
-     * in typeGroups), a member of a recursive value declaration (in recGroups), or a value component, perhaps of a
-     * simultaneous declaration (in simGroups); pos is its position among its declaration's members *)
+    (* A component of a tuple, its declarations' members flattened: a type
+     * binding of a type declaration (its index in typeGroups), a member of a
+     * recursive value declaration (in recGroups), or a value component, perhaps
+     * of a simultaneous declaration (in simGroups); pos is its position among
+     * its declaration's members *)
     Let Item = Option
         typeItem with b: ast.TypeBinding group: Int pos: Int end
         recItem with decl: ast.Decl group: Int pos: Int end
@@ -188,7 +192,8 @@ export
             else tuple let name = "" let offset = d.span.startOffset end
         end
 
-    (* The name a declaration that cannot be a tuple's component has in the error that says so *)
+    (* The name a declaration that cannot be a tuple's component has in the
+     * error that says so *)
     let declClassName(d: ast.Decl): String =
         case d.form
             when declExprStmt then "ExprStmt"
@@ -220,8 +225,9 @@ export
             (* The components of a synthesized tuple's type *)
             let qFields = vector.new(:model.TupleComponent)
             let witnesses = newIntMap(:Array(elaborateTypes.TupleTypeBinding))
-            (* The symbols of recursive value members, declared once the first member of their declaration is reached
-             * (checking), or their typed declarations, elaborated then (synthesizing), by group *)
+            (* The symbols of recursive value members, declared once the first
+             * member of their declaration is reached (checking), or their typed
+             * declarations, elaborated then (synthesizing), by group *)
             let recSymbols = newIntMap(:vector.T(symbols.ValueSymbol))
             let recTyped = newIntMap(:Array(typedAst.Binding))
             let recGroups = vector.new(:Array(Int))
@@ -244,8 +250,9 @@ export
                     end
                 end
 
-            (* A type binding's witness, with its declared bound if any; the members of a group are elaborated
-             * together, before any of them is declared *)
+            (* A type binding's witness, with its declared bound if any; the
+             * members of a group are elaborated together, before any of them is
+             * declared *)
             let witnessOf(group: Int pos: Int): elaborateTypes.TupleTypeBinding =
                 begin
                     if not(hashMap.contains(:Int :Array(elaborateTypes.TupleTypeBinding) witnesses group)) then
@@ -620,7 +627,8 @@ export
                             when declLetVal then addRec(d.val)
                             when declLetValGroup then addRec(d.val)
                             else
-                                (* Phrases a tuple cannot hold, rejected before the arity is checked *)
+                                (* Phrases a tuple cannot hold, rejected before
+                                 * the arity is checked *)
                                 diagnostics.fail(:Ok "Unsupported tuple component: " <> declClassName(d.val)
                                     d.val.span.startOffset)
                         end
@@ -636,11 +644,13 @@ export
                 tupleScope(c x0 items typeGroups recGroupsAst simGroups kindsBefore expectedTuple expectedTupleType e loopDepth))
         end
 
-    (* Each member of a group is a component of its own, and a manifest kind is not a component: it names a kind for
-     * the components after it. Components are elaborated in order, and each value component's label is declared for
-     * the ones after it; a simultaneous declaration's labels are declared after its last member, and a recursive
-     * declaration's members before any of their values. Against an expected tuple type, the components must match its
-     * fields one for one. *)
+    (* Each member of a group is a component of its own, and a manifest kind is
+     * not a component: it names a kind for the components after it. Components
+     * are elaborated in order, and each value component's label is declared for
+     * the ones after it; a simultaneous declaration's labels are declared after
+     * its last member, and a recursive declaration's members before any of
+     * their values. Against an expected tuple type, the components must match
+     * its fields one for one. *)
     let elaborateTuple(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprTuple with x then
@@ -668,12 +678,13 @@ export
             else internal(:typedAst.Expr "a tuple" x0)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Selection
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* The type t of a field selected from a value of a tuple type, as seen outside the tuple, where the names of the
-     * tuple's type definitions mean nothing: with the definitions in their place *)
+    (* The type t of a field selected from a value of a tuple type, as seen
+     * outside the tuple, where the names of the tuple's type definitions mean
+     * nothing: with the definitions in their place *)
     let outsideTuple(t: Type fields: Array(model.TupleComponent)): Type =
         begin
             Let Definition = Tuple name: String type: Type end
@@ -766,7 +777,8 @@ export
                             begin
                                 let moduleScope = env.lookupModule(e id.name)
                                 let modSym = checker.lookupValue(c e id.name)
-                                (* A value binding that shadows the module is selected from as any other value *)
+                                (* A value binding that shadows the module is
+                                 * selected from as any other value *)
                                 if maybe.isSome(:symbols.Scope moduleScope) andif {maybe.isNone(:symbols.ValueSymbol modSym) orif
                                         model.bindsModule(id.name maybe.unwrap(:symbols.ValueSymbol modSym).type)} then
                                     if maybe.isNone(:symbols.ValueSymbol modSym) then
@@ -795,7 +807,8 @@ export
                         let var targetType = evaluate(targetTyped.type)
                         let isRecordOrTuple = case targetType.form when typeRecord then true when typeTuple then true else false end
                         if not(isRecordOrTuple) andif maybe.isNone(:Type kinds.resolveRecordBound(targetType some(e))) then
-                            (* A type parameter bounded by a tuple type: selected from as from its bound *)
+                            (* A type parameter bounded by a tuple type:
+                             * selected from as from its bound *)
                             targetType := maybe.unwrapOr(:Type kinds.resolveTupleBound(targetType some(e)) targetType)
                         end
                         let recBound = case targetType.form
@@ -838,9 +851,9 @@ export
             else internal(:typedAst.Expr "a selection" x0)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Options and variants
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* Whether two option branch payload signatures are identical *)
     let optionSignaturesCompatible(p1: maybe.T(Type) p2: maybe.T(Type) e: env.T): Bool =
@@ -1073,9 +1086,9 @@ export
             else internal(:typedAst.Expr "a variant assertion" x0)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Arrays
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let elaborateArray(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form

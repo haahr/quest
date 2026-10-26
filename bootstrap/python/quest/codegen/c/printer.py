@@ -1,24 +1,35 @@
-"""The C printer (docs/ir.md §8.5): prints a described IR unit as C, the IR's backend.
+"""The C printer (docs/ir.md §8.5): prints a described IR unit as C, the IR's
+backend.
 
-It prints what the passes decided: each IR function is a C function taking its closure's environment first (and its
-own type parameters' descriptors, then its parameters), each closure a QClosure of one (a static one when it captures
-nothing), each variable a C variable of its type's representation (globals for the variables the top levels bind
-outside loops, declared at file scope), and each structured statement a C statement: join points and loop exits are
-labels, and try regions setjmp handlers, popped on every way out. Conversions are `convert` operations, printed as
-their plans say, and every other representation decision is the represent pass's, recorded in the IR (docs/ir.md
-§8.3, §8.5): aggregate slots hold records and variants boxed (slot_representation), as the locations var and out
-parameters point to do, and the IR's boxed variables, slot_box and slot_unbox conversions, and embedded components say
-where boxes are made, reused, and read; a tuple or option whose type may be proxied (docs/c-representation.md §5.8)
-may be a view of an object of a subtype, and each read of a component records whether it goes through a proxy check,
-the original, or neither; inspect cases record their arms, and type applications their thunks' plans. Descriptors are
-the describe pass's (ir/describe.py, docs/ir.md §8.4): every run-time use of a type carries its descriptor operand
-(a descriptor variable, which the printer names: a function's descriptor parameter, a thunk's, or an inspected auto
-value's type component; a static descriptor, which it declares; or a template instantiated at run time), and the
-unit's static data lists the static descriptors, offset tables, and tag maps the printer declares. The declarations
-of the types it uses (structs, descriptors, offset tables, function type adapters) are c/declarations.py's, and the
-representations codegen/layout.py's, spelled in C by c/types.py (docs/c-representation.md). A module file's unit
-exports its interface's members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a function
-for each function or polymorphic value (`qv_<module>_<member>`), the ABI other units link against.
+It prints what the passes decided: each IR function is a C function taking its
+closure's environment first (and its own type parameters' descriptors, then its
+parameters), each closure a QClosure of one (a static one when it captures
+nothing), each variable a C variable of its type's representation (globals for
+the variables the top levels bind outside loops, declared at file scope), and
+each structured statement a C statement: join points and loop exits are labels,
+and try regions setjmp handlers, popped on every way out. Conversions are
+`convert` operations, printed as their plans say, and every other representation
+decision is the represent pass's, recorded in the IR (docs/ir.md §8.3, §8.5):
+aggregate slots hold records and variants boxed (slot_representation), as the
+locations var and out parameters point to do, and the IR's boxed variables,
+slot_box and slot_unbox conversions, and embedded components say where boxes are
+made, reused, and read; a tuple or option whose type may be proxied
+(docs/c-representation.md §5.8) may be a view of an object of a subtype, and
+each read of a component records whether it goes through a proxy check, the
+original, or neither; inspect cases record their arms, and type applications
+their thunks' plans. Descriptors are the describe pass's (ir/describe.py,
+docs/ir.md §8.4): every run-time use of a type carries its descriptor operand (a
+descriptor variable, which the printer names: a function's descriptor parameter,
+a thunk's, or an inspected auto value's type component; a static descriptor,
+which it declares; or a template instantiated at run time), and the unit's
+static data lists the static descriptors, offset tables, and tag maps the
+printer declares. The declarations of the types it uses (structs, descriptors,
+offset tables, function type adapters) are c/declarations.py's, and the
+representations codegen/layout.py's, spelled in C by c/types.py
+(docs/c-representation.md). A module file's unit exports its interface's
+members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a
+function for each function or polymorphic value (`qv_<module>_<member>`), the
+ABI other units link against.
 """
 
 from __future__ import annotations
@@ -93,7 +104,8 @@ _REAL_RELATIONS = {"<<": "<", "<<=": "<=", ">>": ">", ">>=": ">="}
 
 
 def _type_parameter_count(t: QType) -> int:
-    """The number of type parameters a (possibly polymorphic) function type takes."""
+    """The number of type parameters a (possibly polymorphic) function type
+    takes."""
     s = shape(t)
     count = 0
     while s.kind == "all":
@@ -104,21 +116,24 @@ def _type_parameter_count(t: QType) -> int:
 
 @dataclasses.dataclass
 class _FreshBox:
-    """A record or variant (an unboxed value) to be stored into a slot of an aggregate being made, in a box sharing
-    the aggregate's allocation."""
+    """A record or variant (an unboxed value) to be stored into a slot of an
+    aggregate being made, in a box sharing the aggregate's allocation."""
     value: str
     shape: Shape
 
 
 class _FunctionState:
-    """What printing one C function needs: its locals and the labels and handlers in scope."""
+    """What printing one C function needs: its locals and the labels and
+    handlers in scope."""
 
     def __init__(self, function: Optional[ir.Function]) -> None:
         self.function = function
         self.locals: list[tuple[str, str]] = []
-        # Labels used by jumps, breaks, and continues (only used labels are printed)
+        # Labels used by jumps, breaks, and continues (only used labels are
+        # printed)
         self.used_labels: set[str] = set()
-        # The try handlers entered, innermost last, and for each label the number entered where it is defined
+        # The try handlers entered, innermost last, and for each label the
+        # number entered where it is defined
         self.handlers: list[str] = []
         self.label_depth: dict[str, int] = {}
         self.join_params: dict[str, tuple[ir.Var, ...]] = {}
@@ -138,18 +153,22 @@ class CPrinter:
         self.used_names: set[str] = set()
         self.name_counts: dict[str, int] = {}
         self.code_names: dict[int, str] = {}
-        # Closures bound by lets (by variable), whose calls call their functions directly
+        # Closures bound by lets (by variable), whose calls call their functions
+        # directly
         self.closures: dict[int, ir.MakeClosure] = {}
-        # External C functions bound by lets (by variable), which are called directly
+        # External C functions bound by lets (by variable), which are called
+        # directly
         self.externals: dict[int, ir.External] = {}
         self.handler_vars: set[int] = set()
-        # The pairs of tuple types converted by casts (whose layouts agree, which the C asserts)
+        # The pairs of tuple types converted by casts (whose layouts agree,
+        # which the C asserts)
         self.tuple_casts: dict[tuple[str, str], tuple[QType, QType]] = {}
         self.fs = _FunctionState(None)
         self.lines: list[str] = []
         self.indent = 1
         self.tmp = 0
-        # The thunks printed (adapters and type applications), by what they convert
+        # The thunks printed (adapters and type applications), by what they
+        # convert
         self.thunks: dict[tuple, Any] = {}
         self.thunk_decls: list[str] = []
         self.thunk_defs: list[str] = []
@@ -157,7 +176,8 @@ class CPrinter:
     # Names
 
     def fresh_name(self, base: str) -> str:
-        # The search for a base's next name starts where its last one stopped: every name before it is taken
+        # The search for a base's next name starts where its last one stopped:
+        # every name before it is taken
         n = self.name_counts.get(base, 1)
         name = base if n == 1 else f"{base}_{c_int(n)}"
         while name in self.used_names:
@@ -170,7 +190,8 @@ class CPrinter:
     def name(self, var: ir.Var) -> str:
         key = id(var)
         if key not in self.names and (var.type is ir.DESCRIPTOR_TYPE or var.type is ir.VIEW_MAP_TYPE):
-            # A descriptor variable (a function's descriptor parameter), or a view map
+            # A descriptor variable (a function's descriptor parameter), or a
+            # view map
             self.names[key] = self.fresh_name(var.hint)
         if key not in self.names:
             base = mangle_ident(var.hint or "t")
@@ -199,15 +220,18 @@ class CPrinter:
         return shape_representation(s)
 
     def slot_c_type(self, s: Shape) -> str:
-        """The C type of a slot holding values of shape s (slot_representation)."""
+        """The C type of a slot holding values of shape s
+        (slot_representation)."""
         return shape_slot_representation(s)
 
-    # Proxies (docs/c-representation.md §5.8): a value of a tuple or option type that may be proxied may be a view of
-    # an object of a subtype, whose components are read (and var components written) through the runtime, as the
-    # represent pass decided (ir.DIRECT, ir.ORIGINAL, ir.PROXY)
+    # Proxies (docs/c-representation.md §5.8): a value of a tuple or option type
+    # that may be proxied may be a view of an object of a subtype, whose
+    # components are read (and var components written) through the runtime, as
+    # the represent pass decided (ir.DIRECT, ir.ORIGINAL, ir.PROXY)
 
     def tuple_component(self, t: str, ts: Shape, i: int, access: str) -> str:
-        """The slot form of component i of the tuple t (an atom's C expression) of shape ts, read as access says."""
+        """The slot form of component i of the tuple t (an atom's C expression)
+        of shape ts, read as access says."""
         if access == ir.DIRECT:
             return f"({t})->_{c_int(i)}"
         if access == ir.ORIGINAL:
@@ -220,17 +244,19 @@ class CPrinter:
         return tmp
 
     def tag(self, v: str, ts: Shape, access: str, view_map: Optional[ir.Var]) -> str:
-        """The tag of the variant or option v, of shape ts, in its numbering: read as access says, or for a bounded type
-        parameter's value, at its own view, through the view map of its type argument at the bound ts."""
+        """The tag of the variant or option v, of shape ts, in its numbering:
+        read as access says, or for a bounded type parameter's value, at its own
+        view, through the view map of its type argument at the bound ts."""
         if view_map is not None:
             vm = self.name(view_map)
             return f"({vm}->index[{v}.tag])" if ts.kind == "variant" else f"quest_view_option_tag({v}, {vm})"
         return f"{v}.tag" if ts.kind == "variant" else self.option_tag(v, access)
 
     def view_payload(self, v: str, ts: Shape, tag: str, view_map: ir.Var, t: QType) -> str:
-        """The payload of case tag of a variant held at its own view, read through the view map and converted to the
-        bound's type for it, or a new tuple of an option's case components (after its ordinal, when t has one more
-        component than the case), read so, as a value of type t."""
+        """The payload of case tag of a variant held at its own view, read
+        through the view map and converted to the bound's type for it, or a new
+        tuple of an option's case components (after its ordinal, when t has one
+        more component than the case), read so, as a value of type t."""
         vm = self.name(view_map)
         b = self.tag_index(ts, tag)
         case = ts.case(tag)
@@ -257,14 +283,16 @@ class CPrinter:
 
     @staticmethod
     def option_tag(v: str, access: str) -> str:
-        """The tag of the option v, in its type's numbering, read as access says (through a proxy if it may be one)."""
+        """The tag of the option v, in its type's numbering, read as access says
+        (through a proxy if it may be one)."""
         if access == ir.DIRECT:
             return f"(({v})->tag)"
         return f"(quest_is_proxy({v}) ? quest_proxy_tag({v}) : ({v})->tag)"
 
     def option_component(self, v: str, os: Shape, tag: str, i: Optional[int], access: str) -> str:
-        """The slot form of component i (None: the payload, when it is not a tuple) of the payload of case tag of
-        the option v of shape os, read as access says."""
+        """The slot form of component i (None: the payload, when it is not a
+        tuple) of the payload of case tag of the option v of shape os, read as
+        access says."""
         raw = f"{v}->u.{tag}.val" if i is None else f"{v}->u.{tag}._{c_int(i)}"
         if access == ir.DIRECT:
             return raw
@@ -279,15 +307,19 @@ class CPrinter:
         return tmp
 
     def slot_fields(self, args, shapes: list[Shape], embedded: tuple[int, ...]) -> list:
-        """The fields of an aggregate being made: the atoms' C expressions (their slot forms), or for those the
-        represent pass embedded, _FreshBoxes, which the aggregate's allocation makes room for (embedded_boxes)."""
+        """The fields of an aggregate being made: the atoms' C expressions
+        (their slot forms), or for those the represent pass embedded,
+        _FreshBoxes, which the aggregate's allocation makes room for
+        (embedded_boxes)."""
         return [_FreshBox(self.atom(a), s) if i in embedded else self.atom(a)
                 for i, (a, s) in enumerate(zip(args, shapes))]
 
     def embedded_boxes(self, block: str, size: str, fields: list) -> tuple[str, list[str]]:
-        """The size of an aggregate's allocation with room after it (size, at block) for the boxes of its fields that
-        are _FreshBoxes, and the fields' slot forms, filling in those boxes: a field's box is immutable, so it may
-        share the aggregate's allocation (one allocation rather than one per box)."""
+        """The size of an aggregate's allocation with room after it (size, at
+        block) for the boxes of its fields that are _FreshBoxes, and the fields'
+        slot forms, filling in those boxes: a field's box is immutable, so it
+        may share the aggregate's allocation (one allocation rather than one per
+        box)."""
         fresh = [f for f in fields if isinstance(f, _FreshBox)]
         if not fresh:
             return size, fields
@@ -311,7 +343,8 @@ class CPrinter:
         return f"{size} + {c_int(len(fresh))} * sizeof(QRecordVal)", out
 
     def fill_embedded(self, fields: list) -> list[str]:
-        """Fills in the embedded boxes of fields (from embedded_boxes), returning the fields' slot forms."""
+        """Fills in the embedded boxes of fields (from embedded_boxes),
+        returning the fields' slot forms."""
         if self.pending_embedded is None:
             return fields
         boxes, block = self.pending_embedded
@@ -330,9 +363,10 @@ class CPrinter:
     pending_embedded: Optional[tuple[str, str]] = None
 
     def slot_address(self, ptr: str, s: Shape) -> str:
-        """The address of a slot holding values of shape s, as the address of a location of the value
-        (location_representation): a record's or variant's box, a Bool's or Char's word through its first byte (the
-        slot holds 0 or 1, or the character, in its low byte)."""
+        """The address of a slot holding values of shape s, as the address of a
+        location of the value (location_representation): a record's or variant's
+        box, a Bool's or Char's word through its first byte (the slot holds 0 or
+        1, or the character, in its low byte)."""
         slot_c, c = self.slot_c_type(s), shape_location_representation(s)
         return ptr if slot_c == c else f"(({c} *){ptr})"
 
@@ -353,14 +387,16 @@ class CPrinter:
         return shape(t).kind == "ok"
 
     def held(self, t: QType, kind: str) -> Shape:
-        """The shape of t's values as held (see held_shape), which the IR guarantees is of the kind."""
+        """The shape of t's values as held (see held_shape), which the IR
+        guarantees is of the kind."""
         s = held_shape(t, kind)
         if s is None:
             raise NotImplementedError(f"C printing of a {kind} operation on a value of type {t}")
         return s
 
     def tag_shape(self, t: QType) -> Shape:
-        """The variant or option shape of a value of type t that is switched on or tested."""
+        """The variant or option shape of a value of type t that is switched on
+        or tested."""
         s = held_shape(t, "variant") or held_shape(t, "option")
         if s is None:
             raise NotImplementedError(f"C printing of a tag test on a value of type {t}")
@@ -374,8 +410,9 @@ class CPrinter:
         return s.element
 
     def descriptor(self, d: ir.Descriptor) -> str:
-        """A descriptor operand (ir/describe.py): a descriptor variable, a static descriptor, or a template instantiated
-        at run time with its holes' descriptors."""
+        """A descriptor operand (ir/describe.py): a descriptor variable, a
+        static descriptor, or a template instantiated at run time with its
+        holes' descriptors."""
         match d:
             case ir.Var():
                 return self.name(d)
@@ -399,7 +436,8 @@ class CPrinter:
             raise NotImplementedError(f"C code generation: {e}") from None
 
     def static_descriptor(self, t: QType) -> str:
-        """The static descriptor of a closed type (a part of another's, as the declarations name it)."""
+        """The static descriptor of a closed type (a part of another's, as the
+        declarations name it)."""
         return self.static_form(t).c_expr
 
     # Output
@@ -420,7 +458,8 @@ class CPrinter:
         if a.mutable and self.is_pointer_param(a):
             return f"(*(*{name}))" if a.boxed else f"(*{name})"
         if a.boxed and a.mutable:
-            # A boxed mutable variable holds its location's box (a boxed value is the box itself)
+            # A boxed mutable variable holds its location's box (a boxed value
+            # is the box itself)
             return f"(*{name})"
         return name
 
@@ -429,7 +468,8 @@ class CPrinter:
         return f is not None and any(v is var and mode != "value" for v, mode in f.params)
 
     def location_c_type(self, t: QType) -> str:
-        """The C type of a location of a value of t (location_representation): a record or variant boxed."""
+        """The C type of a location of a value of t (location_representation): a
+        record or variant boxed."""
         return shape_location_representation(shape(t))
 
     def const(self, c: ir.Const) -> str:
@@ -456,7 +496,8 @@ class CPrinter:
             case ir.Prim(op=op, args=args, offset=offset, access=access):
                 return self.prim(op, args, offset, access, o.descriptor)
             case ir.Ordinal(value=v, cases=cases, access=access):
-                # The tag numbers the shape's cases, ordered by name; the ordinal counts in the static type's order
+                # The tag numbers the shape's cases, ordered by name; the
+                # ordinal counts in the static type's order
                 ts = self.tag_shape(self.atom_type(v))
                 tag = self.tag(self.atom(v), ts, access, o.view_map)
                 names = tuple(c.name for c in ts.cases)
@@ -529,7 +570,8 @@ class CPrinter:
                 shapes = [c.shape for c in shape(result.type).components]
                 return self.make_tuple(result.type, self.slot_fields(args, shapes, embedded))
             case ir.TupleField(tuple=t, index=index, view_map=vm) if vm is not None:
-                # A tuple-bounded type parameter's value: through the view map, converted to the bound's type
+                # A tuple-bounded type parameter's value: through the view map,
+                # converted to the bound's type
                 comp = resolved_shape(shape(self.atom_type(t))).components[index].shape
                 element = call("quest_view_tuple_element", [self.atom(t), self.name(vm), c_int(index)])
                 return shape_qval_unwrap(element, comp)
@@ -627,7 +669,8 @@ class CPrinter:
                     sc = source_s.components[i].shape
                     fc = self.tuple_component(src, source_s, i, plan.access[i])
                     if fp is not None and fp.kind == "view":
-                        # Converted by descriptor, from the slot's QVal form to the target slot's
+                        # Converted by descriptor, from the slot's QVal form to
+                        # the target slot's
                         source_d, target_d = (self.descriptor(d) for d in fp.descriptors)
                         converted = f"quest_convert({shape_slot_to_qval(fc, sc)}, {source_d}, {target_d})"
                         fields.append(shape_qval_to_slot(converted, tc.shape))
@@ -640,11 +683,12 @@ class CPrinter:
                 return self.make_tuple(plan.target, fields)
         raise NotImplementedError(f"conversion plan {plan.kind}")
 
-    # Thunks: closures adapted to other signatures, and polymorphic closures applied to types
+    # Thunks: closures adapted to other signatures, and polymorphic closures
+    # applied to types
 
     def auxiliary(self):
-        """Prints an auxiliary function (a thunk) while printing another: the printing state is saved, and restored
-        on leaving the with block."""
+        """Prints an auxiliary function (a thunk) while printing another: the
+        printing state is saved, and restored on leaving the with block."""
         printer = self
 
         class _Saved:
@@ -662,8 +706,10 @@ class CPrinter:
         return _Saved()
 
     def thunk_params(self, descriptor_params, params) -> tuple[list[str], list[str], list[str]]:
-        """A thunk's parameter declarations (after its environment), and the names of its descriptor parameters (its
-        descriptor variables, ir.DescriptorParam, or as many as there are if they are counted) and value parameters."""
+        """A thunk's parameter declarations (after its environment), and the
+        names of its descriptor parameters (its descriptor variables,
+        ir.DescriptorParam, or as many as there are if they are counted) and
+        value parameters."""
         decls, descs, names = [], [], []
         count = descriptor_params if isinstance(descriptor_params, int) else len(descriptor_params)
         for k in range(count):
@@ -681,7 +727,8 @@ class CPrinter:
         return decls, descs, names
 
     def thunk(self, name: str, ret: str, decls: list[str], prologue: list[str]) -> None:
-        """Adds a thunk's definition, from the lines printed (in auxiliary()) and its own declarations."""
+        """Adds a thunk's definition, from the lines printed (in auxiliary())
+        and its own declarations."""
         body = [f"    {line}" for line in prologue]
         body.extend(f"    {c_t} {n};" for c_t, n in self.fs.locals)
         body.extend(self.lines)
@@ -690,7 +737,8 @@ class CPrinter:
         self.thunk_defs.extend([sig + " {", *body, "}", ""])
 
     def adapter(self, plan: ir.Plan) -> str:
-        """The thunk adapting a closure of plan.source's type to plan.target's (an adapt plan)."""
+        """The thunk adapting a closure of plan.source's type to plan.target's
+        (an adapt plan)."""
         key = ("adapt", type_identity_key(plan.source), type_identity_key(plan.target), self.layout_key(plan.layout))
         if key in self.thunks:
             return self.thunks[key]
@@ -699,7 +747,8 @@ class CPrinter:
         _, _, s_result = fun_shape_signature(plan.source)
         _, t_params, t_result = fun_shape_signature(plan.target)
         with self.auxiliary():
-            # The thunk's descriptor parameters are its descriptor variables, which its plans' descriptors use
+            # The thunk's descriptor parameters are its descriptor variables,
+            # which its plans' descriptors use
             decls, descs, names = self.thunk_params(plan.thunk_params, t_params)
             args = []
             for p, n, fp in zip(t_params, names, plan.fields):
@@ -716,8 +765,8 @@ class CPrinter:
             self.emit("return;")
             return
         if self.is_ok(source_result):
-            # A closure returning Ok returns nothing in C; adapted to a generic result (Ok at a type parameter), it
-            # returns Ok's value
+            # A closure returning Ok returns nothing in C; adapted to a generic
+            # result (Ok at a type parameter), it returns Ok's value
             assert self.c_type(target_result) == "QVal", f"adapting an Ok result to {target_result}"
             self.emit(f"{called};")
             self.emit("return Q_OK_VAL;")
@@ -737,8 +786,9 @@ class CPrinter:
         return (to_generic, tuple(sorted((k, type_identity_key(t)) for k, t in instantiation.items())))
 
     def type_app(self, o: ir.TypeApp, result: ir.Var) -> str:
-        """A polymorphic value applied to types: a closure binding the type arguments' descriptors (converting its
-        arguments to the function's generic layouts and its result back), or, for a polymorphic value of no
+        """A polymorphic value applied to types: a closure binding the type
+        arguments' descriptors (converting its arguments to the function's
+        generic layouts and its result back), or, for a polymorphic value of no
         parameters, its value at the type arguments."""
         if o.callee is not None:
             orig_t, clos = o.callee.type, self.atom(o.callee)
@@ -769,9 +819,11 @@ class CPrinter:
         return c
 
     def type_app_thunk(self, orig_t: QType, target_t: QType, o: ir.TypeApp) -> tuple[str, str]:
-        """The thunk of a type application (and its environment's struct), converting its arguments and result by the
-        plans the represent pass made (ir.TypeApp.plans), with the descriptors the describe pass gave them (its own
-        descriptor variables, ir.TypeApp.thunk_params, and static ones)."""
+        """The thunk of a type application (and its environment's struct),
+        converting its arguments and result by the plans the represent pass made
+        (ir.TypeApp.plans), with the descriptors the describe pass gave them
+        (its own descriptor variables, ir.TypeApp.thunk_params, and static
+        ones)."""
         type_args, plans = o.type_args, o.plans
         key = ("type_app", type_identity_key(orig_t), type_identity_key(target_t),
                tuple(type_identity_key(t) for t in type_args))
@@ -806,7 +858,8 @@ class CPrinter:
         return next((i for i, case in enumerate(s.cases) if case.name == tag), 0)
 
     def make_tuple(self, t: QType, fields: list) -> str:
-        """A new tuple of type t of the fields (slot forms, or _FreshBoxes, which its allocation makes room for)."""
+        """A new tuple of type t of the fields (slot forms, or _FreshBoxes,
+        which its allocation makes room for)."""
         struct = shape_tag(shape(t))
         self.c_type(t)
         tmp = self.temp(f"{struct} *")
@@ -817,8 +870,8 @@ class CPrinter:
         return tmp
 
     def make_record(self, o: ir.MakeRecord, result: ir.Var) -> str:
-        """A new record, made in its box (the payload following it in one allocation): the box, for a boxed variable,
-        or the record."""
+        """A new record, made in its box (the payload following it in one
+        allocation): the box, for a boxed variable, or the record."""
         fields = o.fields
         concrete = QRecordType(tuple(
             QRecordField(name=n, type_val=self.atom_type(a), is_var=is_var) for n, a, is_var in fields
@@ -846,9 +899,10 @@ class CPrinter:
         return box if result.boxed else f"(*{box})"
 
     def record_slot(self, rec: str, rs: Shape, name: str, view_map: Optional[ir.Var] = None) -> tuple[str, Shape]:
-        """The address of the slot of a field of a record of shape rs, through its offset table (and for a bounded
-        type parameter's value, at its own view, the view map of its type argument at the bound rs), and the field's
-        shape."""
+        """The address of the slot of a field of a record of shape rs, through
+        its offset table (and for a bounded type parameter's value, at its own
+        view, the view map of its type argument at the bound rs), and the
+        field's shape."""
         fields = rs.sorted_components()
         field = next(f for f in fields if f.name == name).shape
         if view_map is not None:
@@ -859,14 +913,16 @@ class CPrinter:
         return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))", field
 
     def record_field(self, rec: str, rs: Shape, name: str, o: ir.RecordField) -> str:
-        """A field of a record of shape rs, through its offset table: its slot form, or when stored (a field the
-        payload may store at another type, as its stored types say) read as stored and converted to the field's
-        type, by its descriptor."""
+        """A field of a record of shape rs, through its offset table: its slot
+        form, or when stored (a field the payload may store at another type, as
+        its stored types say) read as stored and converted to the field's type,
+        by its descriptor."""
         ptr, field = self.record_slot(rec, rs, name, o.view_map)
         if not o.stored:
             return f"(*{ptr})"
         if o.view_map is not None:
-            # Through the view map: read as stored, converted to the bound's type for it
+            # Through the view map: read as stored, converted to the bound's
+            # type for it
             k = next(i for i, f in enumerate(rs.sorted_components()) if f.name == name)
             return shape_qval_unwrap(f"quest_view_record_field({rec}, {self.name(o.view_map)}, {c_int(k)})", field)
         fields = rs.sorted_components()
@@ -884,22 +940,25 @@ class CPrinter:
         return val
 
     def make_option(self, o: ir.MakeOption, t: QType) -> str:
-        """A new option: its tag, and its payload's components (a tuple's read as the represent pass decided, a
-        payload that is not a tuple in its slot form)."""
+        """A new option: its tag, and its payload's components (a tuple's read
+        as the represent pass decided, a payload that is not a tuple in its slot
+        form)."""
         tag, payload, ordinal, offset = o.tag, o.payload, o.ordinal, o.offset
         os = self.held(t, "option")
         struct = shape_tag(os)
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
         if ordinal is not None:
-            # The ordinal counts in the type's cases as written; the tag numbers the shape's, ordered by name
+            # The ordinal counts in the type's cases as written; the tag numbers
+            # the shape's, ordered by name
             checked = call("quest_check_option_ordinal_at",
                             [self.atom(ordinal), c_int_literal(len(os.cases)), self.site(offset)])
             tags = [self.tag_index(os, name) for name in o.cases]
             mapped = checked if tags == list(range(len(tags))) else f"{index_table(tags)}[{checked}]"
             self.emit(f"{tmp}->tag = {mapped};")
-            # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
-            # does, whose components the union overlays on the other cases' (docs/c-representation.md §5)
+            # The payload is stored as the case of a constant ordinal stores it,
+            # and otherwise as the first case does, whose components the union
+            # overlays on the other cases' (docs/c-representation.md §5)
             n = ordinal.value if isinstance(ordinal, ir.Const) else -1
             tag = o.cases[n] if 0 <= n < len(o.cases) else os.cases[0].name
         else:
@@ -917,7 +976,8 @@ class CPrinter:
         return tmp
 
     def option_field(self, src: str, stored_payload: Optional[Shape], index: int, wanted: Shape) -> str:
-        """A component of an option's case, read from the case's struct, in the C type of `wanted`."""
+        """A component of an option's case, read from the case's struct, in the
+        C type of `wanted`."""
         if stored_payload is None or stored_payload.kind != "tuple" or index >= len(stored_payload.components):
             return src
         stored_c = self.slot_c_type(stored_payload.components[index].shape)
@@ -930,8 +990,8 @@ class CPrinter:
 
     def option_case_tuple(self, opt: str, os: Shape, tag: str, tuple_t: QType, offset: int, tag_access: str,
                           access: tuple[str, ...], ordinal: int = 0) -> str:
-        """A new tuple of an option's case components (after `offset` components of tuple_t: the case's ordinal),
-        read as access says."""
+        """A new tuple of an option's case components (after `offset` components
+        of tuple_t: the case's ordinal), read as access says."""
         ts = shape(tuple_t)
         struct = shape_tag(ts)
         self.c_type(tuple_t)
@@ -991,7 +1051,8 @@ class CPrinter:
         return self.option_case_tuple(self.atom(v), ts, tag, t, 1, o.access, o.components, o.ordinal or 0)
 
     def array_element(self, a: ir.Atom, elem: Shape) -> str:
-        """An atom (in its slot form) as an array element of shape elem holds it: its QVal form."""
+        """An atom (in its slot form) as an array element of shape elem holds
+        it: its QVal form."""
         return shape_slot_to_qval(self.atom(a), elem)
 
     def array_slot(self, arr: str, idx: str, elem: Shape, offset: Optional[int]) -> str:
@@ -1016,8 +1077,9 @@ class CPrinter:
         return arr
 
     def site(self, offset: Optional[int]) -> str:
-        """The site of a raise at offset in the unit's file, as a C string ("file:line:col"), or NULL if it is not
-        known (docs/exceptions.md §3.3)."""
+        """The site of a raise at offset in the unit's file, as a C string
+        ("file:line:col"), or NULL if it is not known (docs/exceptions.md
+        §3.3)."""
         source_map = self.unit.source_map
         if offset is None or source_map is None:
             return "NULL"
@@ -1054,7 +1116,8 @@ class CPrinter:
                 # A proxy is the object it views
                 left, right = f"quest_unproxy({left})", f"quest_unproxy({right})"
             elif t2 is not None and self.c_type(t) != self.c_type(t2) and self.c_type(t).endswith("*"):
-                # Pointers to aggregates of different (subtype-related) types: compared as addresses
+                # Pointers to aggregates of different (subtype-related) types:
+                # compared as addresses
                 left, right = f"(const void *)({left})", f"(const void *)({right})"
             return f"(({left}) {'==' if op == 'is' else '!='} ({right}))"
         if op in _INT_OPS:
@@ -1097,7 +1160,8 @@ class CPrinter:
         return call(o.symbol, descs + args)
 
     def external_closure(self, o: ir.External, t: QType) -> str:
-        """An external C function as a value: a static closure over a thunk calling it."""
+        """An external C function as a value: a static closure over a thunk
+        calling it."""
         key = ("external", o.symbol, type_identity_key(t))
         if key in self.thunks:
             return f"(&{self.thunks[key]}_closure)"
@@ -1155,7 +1219,8 @@ class CPrinter:
             self.emit(f"{env}->d{c_int(i)} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
             if self.deferred is not None and isinstance(a, ir.Var) and id(a) in self.deferred[0]:
-                # A variable of the let rec being made, which holds its value once the let rec's body has run
+                # A variable of the let rec being made, which holds its value
+                # once the let rec's body has run
                 self.deferred[1].append((env, i, a))
                 continue
             self.emit(f"{env}->c{c_int(i)} = {self.atom(a)};")
@@ -1179,8 +1244,8 @@ class CPrinter:
         self.indent -= 1
 
     def assign(self, var: ir.Var, value: str) -> None:
-        """Assigns a variable (a boxed one, its box: a var or out parameter's location, or a boxed mutable variable's
-        own)."""
+        """Assigns a variable (a boxed one, its box: a var or out parameter's
+        location, or a boxed mutable variable's own)."""
         if self.is_ok(var.type):
             if value != "Q_OK_VAL":
                 self.emit(f"(void)({value});")
@@ -1270,7 +1335,8 @@ class CPrinter:
                 self.fs.used_labels.add(f"{label}_{which}")
                 self.emit(f"goto {label}_{which};")
             case ir.Join(label=label, params=params, continuation=continuation, body=body):
-                # Labels are unique within a function (a clone keeps its original's)
+                # Labels are unique within a function (a clone keeps its
+                # original's)
                 self.fs.join_params[label] = params
                 self.fs.label_depth[label] = len(self.fs.handlers)
                 self.emit("{")
@@ -1353,15 +1419,18 @@ class CPrinter:
                     struct = shape_tag(shape(c.binder.type))
                     self.assign(c.binder, f"(({struct} *)quest_view_option_payload({v}, {self.name(view_map)}))")
                 elif view_map is not None:
-                    # A bounded type parameter's value: its payload read through the view map, converted
+                    # A bounded type parameter's value: its payload read through
+                    # the view map, converted
                     self.assign(c.binder, self.view_payload(v, t, c.tags[0], view_map, c.binder.type))
                 elif is_variant:
-                    # In its slot form (a record or variant, for a boxed variable)
+                    # In its slot form (a record or variant, for a boxed
+                    # variable)
                     self.assign(c.binder, shape_qval_to_slot(f"{v}.payload", shape(c.binder.type)))
                 elif shape(c.binder.type).kind == "tuple":
                     self.assign(c.binder, self.option_case_payload(v, c.binder.type, access, c.components))
                 else:
-                    # In its slot form (a record or variant, for a boxed variable)
+                    # In its slot form (a record or variant, for a boxed
+                    # variable)
                     self.assign(c.binder, self.option_component(v, t, c.tags[0], None, c.components[0]))
             self.body(c.body)
             self.emit("break;")
@@ -1377,18 +1446,20 @@ class CPrinter:
         self.indent -= 1
         self.emit("}")
 
-    # Auto values (docs/c-representation.md §6.4.4): a type component's descriptor and the payload, stored in the
-    # witness-independent layout (docs/c-representation.md §8), as the represent pass converted it
+    # Auto values (docs/c-representation.md §6.4.4): a type component's
+    # descriptor and the payload, stored in the witness-independent layout
+    # (docs/c-representation.md §8), as the represent pass converted it
 
     def make_auto(self, witness: ir.Descriptor, auto_t: QAutoType, payload: ir.Atom) -> str:
         stored_t = auto_payload_type(auto_t)
         return f"quest_auto_new({self.descriptor(witness)}, {shape_slot_to_qval(self.atom(payload), shape(stored_t))})"
 
     def auto_arm_converted(self, arm_plan: ir.InspectArm, stored: str, stored_t, arm_t) -> str:
-        """The components S[T] of an auto value, converted by descriptor from the stored ones as the case's arm says
-        (the type component's own value to the case's type, or to the bound it is viewed at; a component mentioning
-        it from its stored type at the value's type component; the others copied), by the descriptors the describe
-        pass gave the arm."""
+        """The components S[T] of an auto value, converted by descriptor from
+        the stored ones as the case's arm says (the type component's own value
+        to the case's type, or to the bound it is viewed at; a component
+        mentioning it from its stored type at the value's type component; the
+        others copied), by the descriptors the describe pass gave the arm."""
         arm_struct = tuple_struct_name(arm_t)
         arm = self.temp(f"{arm_struct} *")
         self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
@@ -1410,7 +1481,8 @@ class CPrinter:
         tgt = self.temp("const QAuto *")
         self.emit(f"{tgt} = {self.atom(value)};")
         if witness is not None:
-            # The value's type component, the descriptor variable the arms' descriptors use
+            # The value's type component, the descriptor variable the arms'
+            # descriptors use
             self.names[id(witness.var)] = f"{tgt}->type_desc"
         stored = self.temp(f"{stored_struct} *")
         self.emit(f"{stored} = ({stored_struct} *){tgt}->payload.p;")
@@ -1429,7 +1501,8 @@ class CPrinter:
                     arm = self.temp(f"{arm_struct} *")
                     self.emit(f"if (quest_layout_equivalent({tgt}->type_desc, {match_desc})) {{")
                     if arm_plan.shared:
-                        # The binders share the stored components (and so see updates of var components)
+                        # The binders share the stored components (and so see
+                        # updates of var components)
                         self.emit(f"    {arm} = ({arm_struct} *){stored};")
                     else:
                         self.indent += 1
@@ -1465,9 +1538,11 @@ class CPrinter:
         return a.type if isinstance(a, ir.Var) else a.shape.type
 
     def echo(self, prefix: str, value: str, t: QType, descriptor: Optional[ir.Descriptor], suffix: str) -> None:
-        """Prints a top-level phrase's value as the interpreter does: by its type's kind, or by the descriptor the
-        describe pass gave it (an echo-only one for a closed type with type components, which writes them with their
-        alias names). The value is in its slot form (a record or variant boxed), its QVal word."""
+        """Prints a top-level phrase's value as the interpreter does: by its
+        type's kind, or by the descriptor the describe pass gave it (an
+        echo-only one for a closed type with type components, which writes them
+        with their alias names). The value is in its slot form (a record or
+        variant boxed), its QVal word."""
         wrapped = shape_slot_to_qval(value, shape(t))
         if kind := echo_value_kind(t):
             self.emit(f"{call('quest_print_value', [c_string(prefix), wrapped, c_string(kind), c_string(suffix)])};")
@@ -1478,14 +1553,16 @@ class CPrinter:
     # Functions
 
     def declare_locals(self, body: ir.Body, exclude: set[int]) -> list[tuple[str, str]]:
-        """The C declarations of the variables a function (or a top level) binds, but for exclude's."""
+        """The C declarations of the variables a function (or a top level)
+        binds, but for exclude's."""
         decls = []
         seen = set(exclude)
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Try):
                 self.handler_vars.add(id(s.exception))
             for v in statement_binders(s):
-                # A let rec's variable is bound by the let rec and by the let in it that computes its value
+                # A let rec's variable is bound by the let rec and by the let in
+                # it that computes its value
                 if id(v) in seen or self.is_ok(v.type):
                     continue
                 seen.add(id(v))
@@ -1496,8 +1573,8 @@ class CPrinter:
         return decls
 
     def volatile_vars(self, body: ir.Body) -> set[int]:
-        """The variables a try body assigns, which C must declare volatile for the handler to read them after
-        longjmp."""
+        """The variables a try body assigns, which C must declare volatile for
+        the handler to read them after longjmp."""
         found: set[int] = set()
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Try):
@@ -1539,7 +1616,8 @@ class CPrinter:
         else:
             prologue.append("(void)_raw_env;")
         for m in f.view_maps:
-            # The view maps of type parameters whose values the body reads through their bounds
+            # The view maps of type parameters whose values the body reads
+            # through their bounds
             prologue.append(f"const QViewMap *{self.name(m.var)} = quest_view_map({self.name(m.descriptor)}, "
                             f"{self.descriptor(m.bound)});")
         exclude = {id(v) for v, _ in f.params}
@@ -1571,7 +1649,8 @@ class CPrinter:
     # The unit
 
     def top_level(self, body: ir.Body) -> tuple[list[tuple[str, str]], list[str]]:
-        """A top level's local declarations (its variables bound in loops) and its statements."""
+        """A top level's local declarations (its variables bound in loops) and
+        its statements."""
         self.fs = _FunctionState(None)
         self.fs.volatile = self.volatile_vars(body)
         decls = self.declare_locals(body, self.globals)
@@ -1581,7 +1660,8 @@ class CPrinter:
         return decls + self.fs.locals, self.lines
 
     def print_unit(self) -> str:
-        # The closures of each function (for its environment's struct), and those bound by lets (direct calls)
+        # The closures of each function (for its environment's struct), and
+        # those bound by lets (direct calls)
         closures_of: dict[int, ir.MakeClosure] = {}
         for body in [self.unit.main, *(m.init for m in self.unit.modules), *(f.body for f in self.unit.functions)]:
             for s in walk_statements(body, into_functions=False):
@@ -1629,7 +1709,8 @@ class CPrinter:
         out.append("")
         out.extend(self.thunk_decls)
         out.append("")
-        # The unit's functions with frames in tracebacks (docs/exceptions.md §5.2)
+        # The unit's functions with frames in tracebacks (docs/exceptions.md
+        # §5.2)
         funcs = self.func_table_entries()
         if funcs:
             for m in self.unit.modules:
@@ -1641,8 +1722,8 @@ class CPrinter:
             out.extend(f"    {{ (const void *)&{c_name}, {c_string(name)} }}," for c_name, name in funcs)
             out.append("};")
             out.append("")
-        # The offset tables of the records the unit views at supertypes, registered for dynamic values, and its
-        # function table
+        # The offset tables of the records the unit views at supertypes,
+        # registered for dynamic values, and its function table
         out.append("static void qr_register_dicts(void) {")
         if funcs:
             out.append("    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
@@ -1687,8 +1768,9 @@ class CPrinter:
         return found
 
     def func_table_entries(self) -> list[tuple[str, str]]:
-        """The C functions of the unit that have frames in tracebacks, and their frame names: its functions with names
-        (not those the passes made), its modules' initializers, and a program's main."""
+        """The C functions of the unit that have frames in tracebacks, and their
+        frame names: its functions with names (not those the passes made), its
+        modules' initializers, and a program's main."""
         entries = [(self.code_name(f), f.trace_name) for f in self.unit.functions if f.trace_name is not None]
         entries.extend((f"qv_mod_{mangle_module_name(m.name)}_init", init_frame(m.name)) for m in self.unit.modules)
         if not any(m.exports is not None for m in self.unit.modules):
@@ -1696,7 +1778,8 @@ class CPrinter:
         return entries
 
     def emit_catches(self, handler: str, catching: str, catches: tuple[ir.Atom, ...]) -> None:
-        """Records in a try's handler what it catches (docs/exceptions.md §5.1)."""
+        """Records in a try's handler what it catches (docs/exceptions.md
+        §5.1)."""
         if catching == ir.CATCH_ALL:
             self.emit(f"{handler}.catches = NULL;")
             self.emit(f"{handler}.n_catches = Q_CATCH_ALL;")
@@ -1710,9 +1793,10 @@ class CPrinter:
             self.emit(f"{handler}.n_catches = {c_int(len(catches))};")
 
     def module_init(self, m: ir.Module) -> list[str]:
-        """A module's initializer, whose body makes its record (ir.Module.record), stored in the module's global. A
-        module file's is extern, as are its record and its exported functions, and initializes the modules it imports
-        first, as a program's main does."""
+        """A module's initializer, whose body makes its record
+        (ir.Module.record), stored in the module's global. A module file's is
+        extern, as are its record and its exported functions, and initializes
+        the modules it imports first, as a program's main does."""
         clean = mangle_module_name(m.name)
         decls, lines = self.top_level(m.init)
         linkage = "" if m.exports is not None else "static "
@@ -1734,8 +1818,9 @@ class CPrinter:
         return out
 
     def exported_functions(self, m: ir.Module) -> list[str]:
-        """A module file's exported functions (`qv_<module>_<member>`, c/declarations.py), one for each of its
-        interface's functions and polymorphic values, which call its export's closure."""
+        """A module file's exported functions (`qv_<module>_<member>`,
+        c/declarations.py), one for each of its interface's functions and
+        polymorphic values, which call its export's closure."""
         clean = mangle_module_name(m.name)
         out = []
         for name, export in m.exports.items():
@@ -1758,8 +1843,9 @@ class CPrinter:
         return out
 
     def abstract_type_registrations(self, m: ir.Module) -> list[str]:
-        """Registers a module's abstract types with their representations, for dynamic values (docs/dynamic.md
-        §2.3), as the describe pass listed them (an operator's representation as a template whose holes are its
+        """Registers a module's abstract types with their representations, for
+        dynamic values (docs/dynamic.md §2.3), as the describe pass listed them
+        (an operator's representation as a template whose holes are its
         parameters); a representation without a descriptor is not registered."""
         registrations: list[str] = []
         for global_name, arity, d in m.abstract_types:
@@ -1789,14 +1875,17 @@ class CPrinter:
         return lines
 
     def declarations(self) -> list[str]:
-        """The declarations of the types the unit uses: structs, offset tables, descriptors, and adapters."""
+        """The declarations of the types the unit uses: structs, offset tables,
+        descriptors, and adapters."""
         data = self.unit.static_data
         decl = CDeclarationEmitter(self.ctx, lambda t: qtype_to_c_type(t, self.ctx))
         self.decl_emitter = decl
-        # The aggregates of the types the describe pass listed (ir.StaticData.types)
+        # The aggregates of the types the describe pass listed
+        # (ir.StaticData.types)
         agg_types, _, _ = collect_aggregate_types(list(data.types), self.ctx)
 
-        # The static tables the unit's operations refer to (ir.StaticData), by their C names
+        # The static tables the unit's operations refer to (ir.StaticData), by
+        # their C names
         offset_tables = {
             (record_struct_name(t.view, self.ctx), record_struct_name(t.layout, self.ctx)): (t.view, t.layout)
             for t in data.offset_tables
@@ -1816,6 +1905,6 @@ class CPrinter:
 
 
 def print_c(unit: ir.Unit, env: Any, interface_header: Optional[str] = None) -> str:
-    """The C translation of a described unit: a program, or a module file (including its interface's C header,
-    if it has one)."""
+    """The C translation of a described unit: a program, or a module file
+    (including its interface's C header, if it has one)."""
     return CPrinter(unit, env, interface_header).print_unit()

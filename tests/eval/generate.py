@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Writes tests/golden/self-hosted/eval.out: the bootstrap driver's output for each program of tests/eval/cases.quest
-run with `quest -e`, which run_tests.py --self-hosted compares the self-hosted driver's with (docs/milestone-3.md
-§3.2). Run it after changing a program: python tests/eval/generate.py"""
+"""Writes tests/golden/self-hosted/eval.out: the bootstrap driver's output for
+each program of tests/eval/cases.quest run with `quest -e`, which run_tests.py
+--self-hosted compares the self-hosted driver's with (docs/milestone-3.md §3.2).
+Run it after changing a program: python tests/eval/generate.py"""
 
 from __future__ import annotations
 

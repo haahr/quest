@@ -1,8 +1,9 @@
 (* Quest Self-Hosted Compiler: Canonical AST Pretty-Printer Implementation
  *
- * An AST is printed in two steps: each node is converted to a generic S-expression (S) that has the shape of
- * the corresponding Python AST node, field for field, and a single renderer prints S-expressions with the
- * same layout rules as ast_dump in bootstrap/python/quest/ast.py. *)
+ * An AST is printed in two steps: each node is converted to a generic
+ * S-expression (S) that has the shape of the corresponding Python AST node,
+ * field for field, and a single renderer prints S-expressions with the same
+ * layout rules as ast_dump in bootstrap/python/quest/ast.py. *)
 
 module astprint : AstPrint
 import
@@ -14,12 +15,13 @@ import
     stringOp = string : StringOp
     conv : Conv
 export
-    (* =========================================================================
+    (* ======================================================================
      * 1. S-Expressions
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A value in ast_dump's output: Python's None; a bool; a leaf already rendered (an int, a real, an enum
-     * member, or a quoted string); a tuple of strings; a tuple of other values; or a node with named fields *)
+    (* A value in ast_dump's output: Python's None; a bool; a leaf already
+     * rendered (an int, a real, an enum member, or a quoted string); a tuple of
+     * strings; a tuple of other values; or a node with named fields *)
     Let Rec S = Option
         nil
         flag with value: Bool end
@@ -56,7 +58,8 @@ export
     Let Options = Tuple var offsets: Bool end
     let options: Options = tuple let var offsets = false end
 
-    (* A node with its offset first, if offsets are shown (once: a node another's description gives keeps its own) *)
+    (* A node with its offset first, if offsets are shown (once: a node
+     * another's description gives keeps its own) *)
     let at(offset: Int s: S): S =
         if options.offsets then
             case s
@@ -82,9 +85,9 @@ export
     let mode(m: ast.ParamMode): S =
         atom(case m when modeValue then "VALUE" when modeVar then "VAR" when modeOut then "OUT" end)
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Types and Kinds
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let rec ty(t: ast.TypeExpr): S = at(t.span.startOffset tyForm(t))
     and tyForm(t: ast.TypeExpr): S =
@@ -184,9 +187,9 @@ export
 
     let optTy(m: maybe.T(ast.TypeExpr)): S = optional(:ast.TypeExpr m ty)
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Expressions and Declarations
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let importItem(i: ast.ImportItem): S =
         at(i.offset node("ImportItem" array of
@@ -348,9 +351,9 @@ export
             f("body" ex(t.body))
         end))
 
-    (* =========================================================================
+    (* ======================================================================
      * 4. Phrases and Programs
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let phrase(p: ast.Phrase): S =
         at(p.span.startOffset case p.form
@@ -374,11 +377,12 @@ export
     let program(p: ast.Program): S =
         at(p.span.startOffset node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end))
 
-    (* =========================================================================
+    (* ======================================================================
      * 5. Rendering, with ast_dump's layout rules
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A simple value is printed on its owner's line: everything but nodes and nonempty tuples of non-strings *)
+    (* A simple value is printed on its owner's line: everything but nodes and
+     * nonempty tuples of non-strings *)
     let isSimple(v: S): Bool =
         case v
             when seq with x then extent x.items is 0
@@ -386,7 +390,8 @@ export
             else true
         end
 
-    (* A field that a multi-line node leaves out: None, False, or an empty tuple *)
+    (* A field that a multi-line node leaves out: None, False, or an empty
+     * tuple *)
     let isOmitted(v: S): Bool =
         case v
             when nil then true

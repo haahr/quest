@@ -1,8 +1,10 @@
 """Quest Module, Interface, and Import Elaboration (Phase 6).
 
 Implements Cardelli's module system for Quest:
-- Interface declarations with type formals, manifest types, and value signatures.
-- Module definitions with conformance checking (type equality, subkinding, subtyping).
+- Interface declarations with type formals, manifest types, and value
+  signatures.
+- Module definitions with conformance checking (type equality, subkinding,
+  subtyping).
 - Information hiding via opaque type variables for abstract interface types.
 - Top-level and module-level import resolution.
 """
@@ -56,8 +58,9 @@ from quest.types import (
 )
 
 
-# The loader and the checker are above this module: they load and check units by elaborating them here, and it calls
-# back to them to load the units that imports name and to check a module's bindings. Each registers its functions
+# The loader and the checker are above this module: they load and check units by
+# elaborating them here, and it calls back to them to load the units that
+# imports name and to check a module's bindings. Each registers its functions
 # when it is imported (register_unit_loader, register_binding_elaborator).
 class _Hooks:
     load_interface: Optional[Callable[[str, Environment], Scope]] = None
@@ -72,7 +75,8 @@ def register_unit_loader(
     load_interface_fn: Callable[[str, Environment], Scope],
     load_module_fn: Callable[[str, str, Environment], TypedModule],
 ) -> None:
-    """Registers the loader's functions (quest.modules.loader), which load_interface and load_module call."""
+    """Registers the loader's functions (quest.modules.loader), which
+    load_interface and load_module call."""
     _hooks.load_interface = load_interface_fn
     _hooks.load_module = load_module_fn
 
@@ -80,24 +84,28 @@ def register_unit_loader(
 def register_binding_elaborator(
     elaborate_binding_fn: Callable[[ast.BindingNode, Environment, int], TypedBinding],
 ) -> None:
-    """Registers the checker's elaboration of a binding (quest.typechecker.typecheck), which checks modules' bodies."""
+    """Registers the checker's elaboration of a binding
+    (quest.typechecker.typecheck), which checks modules' bodies."""
     _hooks.elaborate_binding = elaborate_binding_fn
 
 
 def load_interface(name: str, env: Environment) -> Scope:
-    """Loads interface `name`, as imported from env.current_dir, with the registered loader."""
+    """Loads interface `name`, as imported from env.current_dir, with the
+    registered loader."""
     assert _hooks.load_interface is not None, "no unit loader is registered (import quest.modules.loader)"
     return _hooks.load_interface(name, env)
 
 
 def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
-    """Loads module `name`, as imported from env.current_dir, with the registered loader."""
+    """Loads module `name`, as imported from env.current_dir, with the
+    registered loader."""
     assert _hooks.load_module is not None, "no unit loader is registered (import quest.modules.loader)"
     return _hooks.load_module(name, expected_interface, env)
 
 
 def build_record_type_from_scope(scope: Scope, provenance: Optional[str] = None) -> QRecordType:
-    """Constructs a QRecordType matching the values exposed by a module or interface scope."""
+    """Constructs a QRecordType matching the values exposed by a module or
+    interface scope."""
     fields = [
         QRecordField(name=name, type_val=sym.type_val, is_var=sym.is_var)
         for name, sym in scope.values.items()
@@ -106,10 +114,12 @@ def build_record_type_from_scope(scope: Scope, provenance: Optional[str] = None)
 
 
 def import_interface(iface_path: str, local_name: str, env: Environment) -> Scope:
-    """Returns the interface an import names by iface_path, binding it to local_name (and iface_path) in env.
+    """Returns the interface an import names by iface_path, binding it to
+    local_name (and iface_path) in env.
 
-    The path is resolved from env.current_dir, so an earlier import's binding of the same local name (`Counter`
-    for both `counter.int.quest` and `util/counter.int.quest`) does not stand in for it (docs/modules.md §2.3).
+    The path is resolved from env.current_dir, so an earlier import's binding of
+    the same local name (`Counter` for both `counter.int.quest` and
+    `util/counter.int.quest`) does not stand in for it (docs/modules.md §2.3).
     """
     scope = load_interface(iface_path, env)
     env.register_interface(local_name, scope)
@@ -119,12 +129,14 @@ def import_interface(iface_path: str, local_name: str, env: Environment) -> Scop
 
 
 def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInterface:
-    """Elaborates an interface declaration into a specification scope and TypedInterface."""
+    """Elaborates an interface declaration into a specification scope and
+    TypedInterface."""
     import_scope = Scope(name=f"interface_imports_{decl.name}", parent=env.current_scope)
     interface_scope = Scope(name=f"interface_{decl.name}", parent=import_scope)
     interface_scope.module_name = decl.name
 
-    # 1. Resolve imports into import_scope (available for signatures, not exported by interface)
+    # 1. Resolve imports into import_scope (available for signatures, not
+    #    exported by interface)
     for imp in decl.imports:
         with at_import(imp.offset, env.source_map):
             iface_path = imp.effective_interface_path
@@ -225,7 +237,8 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
 
 
 def extract_module_external_types(src: Optional[Path]) -> dict[str, QType]:
-    """Extracts external type declarations (Let T = external "...") from a module source file."""
+    """Extracts external type declarations (Let T = external "...") from a
+    module source file."""
     if src is None or not src.is_file():
         return {}
     try:
@@ -251,10 +264,12 @@ def extract_module_external_types(src: Optional[Path]) -> dict[str, QType]:
 
 
 def separately_compiled_module_scope(mod_path: str, interface_scope: Scope, env: Environment) -> Scope:
-    """Returns the export scope of a module known only through its interface (separate compilation).
+    """Returns the export scope of a module known only through its interface
+    (separate compilation).
 
-    Each module gets its own opaque copies of the interface's abstract types, exactly as elaborating
-    its source would, so that two modules implementing one interface never share an abstract type.
+    Each module gets its own opaque copies of the interface's abstract types,
+    exactly as elaborating its source would, so that two modules implementing
+    one interface never share an abstract type.
     """
     resolved = resolve_module(mod_path, env)
     src = resolved.source
@@ -280,8 +295,9 @@ def create_module_export_scope(
 ) -> Scope:
     """Creates the exported scope for a module conforming to an interface scope.
 
-    canon is the module's canonical name. Each abstract type's opaque type has the symbol id of its global name,
-    canon.T, in every environment (docs/dynamic.md §2.3).
+    canon is the module's canonical name. Each abstract type's opaque type has
+    the symbol id of its global name, canon.T, in every environment
+    (docs/dynamic.md §2.3).
     """
     from quest.modules.abstract_types import abstract_type_symbol_id, register_exported_abstract_type
 
@@ -339,7 +355,8 @@ def create_module_export_scope(
 
 
 def _register_abstract_types(canon: str, export_scope: Scope, internal_scope: Scope) -> None:
-    """Records the abstract types a module exports with their representations (docs/dynamic.md §2.3)."""
+    """Records the abstract types a module exports with their representations
+    (docs/dynamic.md §2.3)."""
     from quest.modules.abstract_types import register_abstract_type_representation
 
     for type_name, export_sym in export_scope.types.items():
@@ -356,29 +373,38 @@ def elaborate_module(
     env: Environment,
     binding_elaborator: Optional[Callable[[ast.BindingNode, Environment, int], TypedBinding]] = None,
 ) -> TypedModule:
-    """Elaborates a module declaration, module m: I import ... bindings end, checks it against its interface I, and
-    declares m.
+    """Elaborates a module declaration, module m: I import ... bindings end,
+    checks it against its interface I, and declares m.
 
-    A module is a set of bindings that the code outside sees only through the module's interface. Its elaboration has
-    four steps, numbered in the code:
+    A module is a set of bindings that the code outside sees only through the
+    module's interface. Its elaboration has four steps, numbered in the code:
 
-    1. A module sees only what it imports. Its scope's parent is env.base_scope, which holds the built-in types and
-       operators, rather than the scope it is declared in or the standard library's modules (Cardelli §11.3), and its
+    1. A module sees only what it imports. Its scope's parent is env.base_scope,
+       which holds the built-in types and operators, rather than the scope it is
+       declared in or the standard library's modules (Cardelli §11.3), and its
        imports are declared into that scope.
-    2. Its bindings are elaborated there, as any bindings are, by binding_elaborator (the type checker's, passed in or
-       registered, since this module is below the checker).
-    3. The module must conform to its interface. It must define every type the interface names: a type the interface
-       defines (T = ...) the same way, and a type the interface leaves abstract with a kind that fits its bound. It
-       must define every value, with a type that is a subtype of the interface's, in which the interface's abstract
-       types are replaced by the module's definitions, since inside the module they are known.
-    4. What the outside sees is built from the interface, not from the module. The export scope holds the interface's
-       values and types, with each abstract type replaced by a new opaque type, m.T, whose definition is withheld
-       (except for an external C type, which code generation needs). This is where information hiding happens: code
-       outside cannot tell m.T from any other type, so it can use m.T's values only through m's operations. The opaque
-       type's symbol is derived from m's canonical name (its name however an importer spells its path), so it is the
-       same type in every unit that imports m, and the export scope is kept with m's unit, so that they all share it.
+    2. Its bindings are elaborated there, as any bindings are, by
+       binding_elaborator (the type checker's, passed in or registered, since
+       this module is below the checker).
+    3. The module must conform to its interface. It must define every type the
+       interface names: a type the interface defines (T = ...) the same way, and
+       a type the interface leaves abstract with a kind that fits its bound. It
+       must define every value, with a type that is a subtype of the
+       interface's, in which the interface's abstract types are replaced by the
+       module's definitions, since inside the module they are known.
+    4. What the outside sees is built from the interface, not from the module.
+       The export scope holds the interface's values and types, with each
+       abstract type replaced by a new opaque type, m.T, whose definition is
+       withheld (except for an external C type, which code generation needs).
+       This is where information hiding happens: code outside cannot tell m.T
+       from any other type, so it can use m.T's values only through m's
+       operations. The opaque type's symbol is derived from m's canonical name
+       (its name however an importer spells its path), so it is the same type in
+       every unit that imports m, and the export scope is kept with m's unit, so
+       that they all share it.
 
-    Finally m is declared as a value, a record of its exported values, from which m.f selects.
+    Finally m is declared as a value, a record of its exported values, from
+    which m.f selects.
     """
     target_interface_scope = env.lookup_interface(decl.interface_name)
     if target_interface_scope is None:
@@ -487,8 +513,10 @@ def elaborate_module(
                         offset=decl.offset,
                     )
             if interface_type_symbol.kind is not None and mod_type_symbol.kind is not None:
-                # A defined type has the interface's kind if it is a member of it (for POWER(B), a subtype of B),
-                # whatever kind it was declared with; an undefined one must have been declared with a subkind
+                # A defined type has the interface's kind if it is a member of
+                # it (for POWER(B), a subtype of B), whatever kind it was
+                # declared with; an undefined one must have been declared with a
+                # subkind
                 if mod_type_symbol.definition is not None:
                     try:
                         check_kind(mod_type_symbol.definition, interface_type_symbol.kind, env)
@@ -529,7 +557,8 @@ def elaborate_module(
     finally:
         env.current_scope = saved_scope
 
-    # 4. Create exported module scope (strictly opaque for abstract interface types)
+    # 4. Create exported module scope (strictly opaque for abstract interface
+    #    types)
     canon = resolve_module(decl.name, env).canonical_name
     unit = env.units.unit(UnitKind.MODULE, canon)
     module_export_scope = unit.export_scope
@@ -570,7 +599,8 @@ def elaborate_module(
 
 
 def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
-    """Elaborates a top-level import statement, loading interfaces/modules from BuiltinModuleRegistry or files."""
+    """Elaborates a top-level import statement, loading interfaces/modules from
+    BuiltinModuleRegistry or files."""
     typed_items: list[TypedImportItem] = []
     for item in phrase.items:
         with at_import(item.offset, env.source_map):
@@ -580,7 +610,8 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
 
             if not item.names:
                 # import : Interface
-                # Direct interface import: bind interface types and kinds into current scope
+                # Direct interface import: bind interface types and kinds into
+                # current scope
                 for type_name, type_sym in iface_scope.types.items():
                     env.current_scope.declare_type(type_sym)
                 for kind_name, kind_sym in iface_scope.kinds.items():
@@ -598,7 +629,8 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                 symbols: list[ValueSymbol] = []
                 for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
                     if is_c_compilation_mode(env):
-                        # In separate compilation mode, type the module via its interface without loading source
+                        # In separate compilation mode, type the module via its
+                        # interface without loading source
                         mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)
                         mod_type = build_record_type_from_scope(
                             mod_scope, provenance=local_mod_name

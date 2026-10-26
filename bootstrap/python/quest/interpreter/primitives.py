@@ -1,7 +1,9 @@
-"""The interpreters' primitive operations and runtime errors, shared by the tree-walking interpreter
-(quest.interpreter.treewalk), the IR interpreter (quest.interpreter.ir_interp), and the standard library's Python
-implementations (quest.interpreter.builtins): integer and real arithmetic and comparisons with the semantics compiled
-code has (C-style truncating division, real.error for NaN results), and the standard library's error exceptions.
+"""The interpreters' primitive operations and runtime errors, shared by the
+tree-walking interpreter (quest.interpreter.treewalk), the IR interpreter
+(quest.interpreter.ir_interp), and the standard library's Python implementations
+(quest.interpreter.builtins): integer and real arithmetic and comparisons with
+the semantics compiled code has (C-style truncating division, real.error for NaN
+results), and the standard library's error exceptions.
 """
 
 from __future__ import annotations
@@ -45,13 +47,15 @@ VARIANT_ERROR_EXC = QExceptionVal("variant.tagMismatch")
 
 
 def truncating_div(a: int, b: int) -> int:
-    """a / b rounded toward zero, as in C; exact, unlike int(a / b), which divides as floats."""
+    """a / b rounded toward zero, as in C; exact, unlike int(a / b), which
+    divides as floats."""
     q = abs(a) // abs(b)
     return q if (a < 0) == (b < 0) else -q
 
 
 def int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) -> int:
-    """Evaluates integer arithmetic with C-style truncation and an int.error check."""
+    """Evaluates integer arithmetic with C-style truncation and an int.error
+    check."""
     match op:
         case "+":
             return a + b
@@ -88,7 +92,8 @@ def int_relational(op: str, a: int, b: int, offset: Optional[int] = None) -> boo
 
 
 def real_result(r: float, offset: Optional[int] = None) -> float:
-    """Keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
+    """Keeps NaN out of Quest: an operation whose IEEE result would be NaN
+    raises real.error.
 
     Infinities are ordinary Real values (docs/type-system.md §6.3.1)."""
     if math.isnan(r):
@@ -97,21 +102,24 @@ def real_result(r: float, offset: Optional[int] = None) -> float:
 
 
 def real_divide(a: float, b: float, offset: Optional[int] = None) -> float:
-    """Real division (// and real.div): a zero divisor or a NaN result raises real.error."""
+    """Real division (// and real.div): a zero divisor or a NaN result raises
+    real.error."""
     if b == 0.0:
         raise QuestException(REAL_ERROR_EXC, offset=offset)
     return real_result(a / b, offset)
 
 
 def real_pow(a: float, b: float, offset: Optional[int] = None) -> float:
-    """Real exponentiation (^^ and real.exp) with C pow semantics, except that a zero base with a negative
-    exponent (a pole, like division by zero) or a NaN result raises real.error. Overflow yields an infinity."""
+    """Real exponentiation (^^ and real.exp) with C pow semantics, except that a
+    zero base with a negative exponent (a pole, like division by zero) or a NaN
+    result raises real.error. Overflow yields an infinity."""
     if a == 0.0 and b < 0.0:
         raise QuestException(REAL_ERROR_EXC, offset=offset)
     try:
         return real_result(math.pow(a, b), offset)
     except ValueError:
-        # A negative finite base with a non-integral exponent: C's pow returns NaN.
+        # A negative finite base with a non-integral exponent: C's pow returns
+        # NaN.
         raise QuestException(REAL_ERROR_EXC, offset=offset)
     except OverflowError:
         negative = a < 0.0 and b.is_integer() and int(b) % 2 == 1

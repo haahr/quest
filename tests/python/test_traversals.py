@@ -1,6 +1,8 @@
-"""The node families' explicit traversals (docs/self-hosting-refactorings.md §3): each has an entry for every class of
-its family, and agrees with the dataclasses' own fields (which the compiler itself no longer reads by reflection) on
-every node of real programs: those of the syntax tree, the typed AST, the IR, and the types they mention."""
+"""The node families' explicit traversals (docs/self-hosting-refactorings.md
+§3): each has an entry for every class of its family, and agrees with the
+dataclasses' own fields (which the compiler itself no longer reads by
+reflection) on every node of real programs: those of the syntax tree, the typed
+AST, the IR, and the types they mention."""
 
 import ast as python_ast
 import dataclasses
@@ -23,13 +25,15 @@ from quest.pipeline import CompilerContext, default_pipeline
 import tests.python.helpers  # noqa: F401  (enables the invariant checks)
 
 _ROOT = Path(__file__).resolve().parents[2]
-# Programs whose nodes are compared: enough to meet every class that a program can make
+# Programs whose nodes are compared: enough to meet every class that a program
+# can make
 _PROGRAMS = sorted((_ROOT / "tests" / "source" / "language").glob("*.quest"))
 _DESCRIPTOR_FIELDS = ir.DESCRIPTOR_FIELDS | {"witness", "static_data"}
 
 
 def _classes(module) -> list[type]:
-    """The family's classes with instances (not the bases that only give subclasses an offset)."""
+    """The family's classes with instances (not the bases that only give
+    subclasses an offset)."""
     found = [c for c in vars(module).values()
              if isinstance(c, type) and dataclasses.is_dataclass(c) and c.__module__ == module.__name__]
     bases = {b for c in found for b in c.__mro__[1:] if b in found}
@@ -74,8 +78,9 @@ class TestEveryClassHasACase(unittest.TestCase):
 
 
 class TestTraversalsAgreeWithFields(unittest.TestCase):
-    """Every node of the programs: its fields as the traversal gives them are its dataclass fields, and rebuilding
-    it from them makes an equal node (the same one, for interned types)."""
+    """Every node of the programs: its fields as the traversal gives them are
+    its dataclass fields, and rebuilding it from them makes an equal node (the
+    same one, for interned types)."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -96,7 +101,8 @@ class TestTraversalsAgreeWithFields(unittest.TestCase):
                 cls.collect(unit)
                 cls.collect(describe_unit(represent_unit(closure_convert_unit(unit))))
             except Exception:
-                # (A program the IR does not lower yet, such as one importing a module file)
+                # (A program the IR does not lower yet, such as one importing a
+                # module file)
                 continue
 
     @classmethod

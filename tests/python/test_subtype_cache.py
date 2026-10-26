@@ -1,4 +1,5 @@
-"""The subtype cache commits a proof's results only when they cannot depend on refuted assumptions."""
+"""The subtype cache commits a proof's results only when they cannot depend on
+refuted assumptions."""
 
 from __future__ import annotations
 

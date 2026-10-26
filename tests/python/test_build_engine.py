@@ -64,7 +64,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertEqual(proc.stdout, "Hello from Quest!\n")
 
     def test_build_main_with_module_dependency(self) -> None:
-        """Tests that a main routine importing a module automatically builds and links it."""
+        """Tests that a main routine importing a module automatically builds and
+        links it."""
         intf_file = self.root / "calc.int.quest"
         intf_file.write_text("interface Calc export add(a: Int b: Int): Int end;\n", encoding="utf-8")
 
@@ -165,7 +166,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertEqual(res2.compiled_units, [])
 
     def test_incremental_build_touch_module(self) -> None:
-        """Tests that touching a module rebuilds only that module and relinks."""
+        """Tests that touching a module rebuilds only that module and
+        relinks."""
         intf_file = self.root / "foo.int.quest"
         intf_file.write_text("interface Foo export getVal(): Int end;\n", encoding="utf-8")
         mod_file = self.root / "foo.mod.quest"
@@ -197,7 +199,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertEqual(proc.stdout, "99")
 
     def test_transitive_interface_invalidation(self) -> None:
-        """Tests that updating an interface triggers recompilation of importing modules."""
+        """Tests that updating an interface triggers recompilation of importing
+        modules."""
         intf_file = self.root / "shared.int.quest"
         intf_file.write_text("interface Shared export value(): Int end;\n", encoding="utf-8")
         mod_file = self.root / "shared.mod.quest"
@@ -226,11 +229,13 @@ class TestBuildEngine(unittest.TestCase):
         os.utime(intf_file, (future, future))
 
         res2 = engine.build_main(main_file)
-        # Both show and shared import Shared, so both detect stale interface and rebuild
+        # Both show and shared import Shared, so both detect stale interface and
+        # rebuild
         self.assertIn("shared", res2.compiled_units)
 
     def test_main_routine_and_module_in_same_directory(self) -> None:
-        """Tests that m.quest and m.mod.quest can share a directory, since their artifacts have different names."""
+        """Tests that m.quest and m.mod.quest can share a directory, since their
+        artifacts have different names."""
         (self.root / "pair.int.quest").write_text("interface Pair export get(): Int end;\n", encoding="utf-8")
         (self.root / "pair.mod.quest").write_text(
             "module pair : Pair export let get(): Int = 8 end;\n", encoding="utf-8"
@@ -300,7 +305,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertIn("BUILD COMPLETE:", content)
 
     def test_module_interface_conformance_mismatch(self) -> None:
-        """Tests that importing a module with an incompatible interface raises BuildError."""
+        """Tests that importing a module with an incompatible interface raises
+        BuildError."""
         intf_expected = self.root / "expected.int.quest"
         intf_expected.write_text("interface Expected export get(): Int end;\n", encoding="utf-8")
         intf_actual = self.root / "actual.int.quest"
@@ -322,7 +328,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertIn("Actual", str(ctx.exception))
 
     def test_transitive_interface_mismatch_detected(self) -> None:
-        """Tests that a transitive module importing another with a mismatched interface is caught."""
+        """Tests that a transitive module importing another with a mismatched
+        interface is caught."""
         intf_a = self.root / "ifacea.int.quest"
         intf_a.write_text("interface IfaceA export valA(): Int end;\n", encoding="utf-8")
         intf_b = self.root / "ifaceb.int.quest"
@@ -355,7 +362,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertIn("IfaceC", str(ctx.exception))
 
     def test_canonical_interface_cross_namespace_mismatch(self) -> None:
-        """Tests that different namespaces with the same interface base name are not conflated."""
+        """Tests that different namespaces with the same interface base name are
+        not conflated."""
         gui_dir = self.root / "gui"
         os_dir = self.root / "os"
         gui_dir.mkdir(parents=True, exist_ok=True)
@@ -382,7 +390,8 @@ class TestBuildEngine(unittest.TestCase):
         self.assertIn("gui/Window", str(ctx.exception))
 
     def test_canonical_interface_matching_hierarchical(self) -> None:
-        """Tests that hierarchical modules and interfaces match on their canonical names."""
+        """Tests that hierarchical modules and interfaces match on their
+        canonical names."""
         util_dir = self.root / "util"
         util_dir.mkdir(parents=True, exist_ok=True)
 
@@ -414,8 +423,9 @@ class TestBuildEngine(unittest.TestCase):
 
 
 class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
-    """Artifacts are named by canonical unit name only, so same-named units in different directories that share a
-    build directory must not reuse each other's artifacts, even when those are newer than the sources."""
+    """Artifacts are named by canonical unit name only, so same-named units in
+    different directories that share a build directory must not reuse each
+    other's artifacts, even when those are newer than the sources."""
 
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -447,7 +457,8 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
         )
         (self.a / "main.quest").write_text(main_text.format(extra=""), encoding="utf-8")
         (self.b / "main.quest").write_text(main_text.format(extra=" + c.base()"), encoding="utf-8")
-        # Every source predates every artifact, so timestamps alone cannot tell the units apart.
+        # Every source predates every artifact, so timestamps alone cannot tell
+        # the units apart.
         past = time.time() - 60
         for src in list(self.a.iterdir()) + list(self.b.iterdir()):
             os.utime(src, (past, past))
@@ -488,14 +499,16 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
         self.assertTrue(built_from(qi_b, self.b / "counter.int.quest"))
         self.assertIn("base", qi_b.read_text(encoding="utf-8"))
 
-        # A .qi on the search path built from another source is passed over in favor of the source.
+        # A .qi on the search path built from another source is passed over in
+        # favor of the source.
         self.assertEqual(
             resolve_interface_file("Counter", self.a, [self.build_dir]), (self.a / "counter.int.quest").resolve()
         )
         self.assertEqual(resolve_interface_file("Counter", self.b, [self.build_dir]), qi_b.resolve())
 
     def test_main_routines_mirror_their_directories(self) -> None:
-        # Main routine artifacts mirror the source directory relative to the current directory.
+        # Main routine artifacts mirror the source directory relative to the
+        # current directory.
         self.addCleanup(os.chdir, os.getcwd())
         os.chdir(self.root)
         self.assertEqual(self._build_and_run(self.a)[1], "11")
@@ -504,12 +517,14 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
             for suffix in (".main.qm", ".main.c", ".main.o", ""):
                 self.assertTrue((self.build_dir / d / f"main{suffix}").is_file(), f"{d}/main{suffix}")
         self.assertFalse((self.build_dir / "main.main.qm").exists())
-        # a's main routine artifacts survived b's build; only the shared module counter is rebuilt.
+        # a's main routine artifacts survived b's build; only the shared module
+        # counter is rebuilt.
         units, out = self._build_and_run(self.a)
         self.assertEqual((units, out), (["counter"], "11"))
 
     def test_main_routine_outside_current_directory(self) -> None:
-        # The temporary directory is not under the current directory, so artifacts go to the top of the build dir.
+        # The temporary directory is not under the current directory, so
+        # artifacts go to the top of the build dir.
         self._build_and_run(self.a)
         self.assertTrue((self.build_dir / "main.main.qm").is_file())
         self.assertTrue((self.build_dir / "main").is_file())
@@ -546,11 +561,13 @@ class TestMainRoutineAndModuleWithSameName(unittest.TestCase):
 
 
 class TestImportsResolvedAgain(unittest.TestCase):
-    """A unit's artifacts are stale when its imports would now resolve to other files than it was compiled
-    against, for example after a change of include paths, even though no file it was compiled against changed.
+    """A unit's artifacts are stale when its imports would now resolve to other
+    files than it was compiled against, for example after a change of include
+    paths, even though no file it was compiled against changed.
 
-    The module user (in lib/) imports Helper, which -I h1, -I h2, or -I h3 supplies: get() returns Int in h1 and
-    h3 (with different values) but Real in h2, which user's call conv.int(helper.get()) does not accept.
+    The module user (in lib/) imports Helper, which -I h1, -I h2, or -I h3
+    supplies: get() returns Int in h1 and h3 (with different values) but Real in
+    h2, which user's call conv.int(helper.get()) does not accept.
     """
 
     def setUp(self) -> None:
@@ -575,7 +592,8 @@ class TestImportsResolvedAgain(unittest.TestCase):
             "import user: User;\nimport writer: Writer;\nwriter.putString(writer.output user.show());\n",
             encoding="utf-8",
         )
-        # Every source predates every artifact, so no timestamp says that anything changed.
+        # Every source predates every artifact, so no timestamp says that
+        # anything changed.
         past = time.time() - 60
         for src in self.root.rglob("*.quest"):
             os.utime(src, (past, past))
@@ -604,7 +622,8 @@ class TestImportsResolvedAgain(unittest.TestCase):
     def test_changed_include_path_rebuilds_against_new_files(self) -> None:
         self.assertEqual(self._build("h1")[1], "7")
         units, out = self._build("h3")
-        # user is rebuilt against h3's Helper, and its manifest then names h3's helper module, which is built too.
+        # user is rebuilt against h3's Helper, and its manifest then names h3's
+        # helper module, which is built too.
         self.assertEqual(out, "9")
         self.assertTrue({"user", "helper"}.issubset(units), units)
         self.assertEqual(self._build("h3")[0], [])
@@ -645,12 +664,15 @@ class TestImportsResolvedAgain(unittest.TestCase):
 
 
 class TestIndirectlyImportedInterfaces(unittest.TestCase):
-    """A unit depends on the interfaces its imported interfaces import, not just on those it imports itself.
+    """A unit depends on the interfaces its imported interfaces import, not just
+    on those it imports itself.
 
-    The module user (in lib/) imports only Helper, whose interface imports Base and uses Base's manifest type T in
-    its signatures. Changing T from Int to Real changes Helper's C signatures without touching user's or Helper's
-    sources; a user.o compiled against the old ones then calls helper.o with the wrong C types, a silent wrong
-    answer (on arm64 it prints 2.5: the value user keeps in an integer register is not the one helper returned).
+    The module user (in lib/) imports only Helper, whose interface imports Base
+    and uses Base's manifest type T in its signatures. Changing T from Int to
+    Real changes Helper's C signatures without touching user's or Helper's
+    sources; a user.o compiled against the old ones then calls helper.o with the
+    wrong C types, a silent wrong answer (on arm64 it prints 2.5: the value user
+    keeps in an integer register is not the one helper returned).
     """
 
     BASE = {

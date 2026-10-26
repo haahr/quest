@@ -1,4 +1,5 @@
-"""Unit tests for the C runtime's record offset table map (quest_record_dict) and record layout headers."""
+"""Unit tests for the C runtime's record offset table map (quest_record_dict)
+and record layout headers."""
 
 import os
 import sys

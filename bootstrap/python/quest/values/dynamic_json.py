@@ -1,14 +1,20 @@
-"""Serialization of Quest dynamic values (dynamic.extern and dynamic.intern), format version 1.
+"""Serialization of Quest dynamic values (dynamic.extern and dynamic.intern),
+format version 1.
 
-A serialized dynamic value is one JSON document holding a type table and a value (docs/dynamic.md §2):
+A serialized dynamic value is one JSON document holding a type table and a value
+(docs/dynamic.md §2):
 
-    {"quest": 1, "types": [<type node>, ...], "type": <type ref>, "value": <value>}
+    {"quest": 1, "types": [<type node>, ...], "type": <type ref>,
+     "value": <value>}
 
-A type ref is a built-in type name or an index into the table; recursive types are cycles in the table. The table
-is canonical, so that the interpreter and compiled code write the same text for the same value: the writer builds
-the graph of the types it meets, merges structurally equivalent nodes (the coarsest bisimulation), and numbers the
-remaining nodes in the order a depth-first walk from the roots first reaches them. Values are decoded by following
-their type, and objects reached more than once are written once, with @id, and then as {"@ref": n}.
+A type ref is a built-in type name or an index into the table; recursive types
+are cycles in the table. The table is canonical, so that the interpreter and
+compiled code write the same text for the same value: the writer builds the
+graph of the types it meets, merges structurally equivalent nodes (the coarsest
+bisimulation), and numbers the remaining nodes in the order a depth-first walk
+from the roots first reaches them. Values are decoded by following their type,
+and objects reached more than once are written once, with @id, and then as
+{"@ref": n}.
 """
 
 from __future__ import annotations
@@ -88,7 +94,8 @@ from quest.types import (
 
 FORMAT_VERSION = 1
 
-# Graphs larger than this come from types that are not regular (their unfoldings never repeat)
+# Graphs larger than this come from types that are not regular (their unfoldings
+# never repeat)
 _MAX_TYPE_NODES = 100_000
 
 TypeRef = Union[str, int]
@@ -99,7 +106,8 @@ def _fail() -> QuestException:
 
 
 def parse_type_string(type_str: str) -> QType:
-    """Parses and elaborates a Quest type expression (used for fixed schema types, such as that of .qi files)."""
+    """Parses and elaborates a Quest type expression (used for fixed schema
+    types, such as that of .qi files)."""
     base_types: dict[str, QType] = {
         "Int": INT_TYPE,
         "Real": REAL_TYPE,
@@ -135,14 +143,17 @@ def parse_type_string(type_str: str) -> QType:
 # Type nodes
 # ============================================================================
 #
-# A node is (shape, children). The shape holds the constructor and its labels; children are type refs, in the
-# order the node lists them: record fields sorted by name, tuple components and function parameters in order (then
-# the function's result), variant and option cases in declaration order (only those with a payload), an abstract
-# type's arguments (then its representation), and an auto type's bound (if it has one, then its components). A
-# param node refers to the type parameter of the auto type N auto types out from it (0 is the innermost), as
-# descriptors do (de Bruijn indices).
+# A node is (shape, children). The shape holds the constructor and its labels;
+# children are type refs, in the order the node lists them: record fields sorted
+# by name, tuple components and function parameters in order (then the
+# function's result), variant and option cases in declaration order (only those
+# with a payload), an abstract type's arguments (then its representation), and
+# an auto type's bound (if it has one, then its components). A param node refers
+# to the type parameter of the auto type N auto types out from it (0 is the
+# innermost), as descriptors do (de Bruijn indices).
 
-# The external types whose values can be externed, and how: word.T is external "uint64_t", written as an integer
+# The external types whose values can be externed, and how: word.T is external
+# "uint64_t", written as an integer
 _EXTERNAL_TYPES = ("uint64_t",)
 _WORD_LIMIT = 1 << 64
 
@@ -159,7 +170,8 @@ _BUILTIN_NAMES: dict[int, str] = {id(t): name for name, t in _BUILTIN_TYPES.item
 
 
 def _is_dynamic_type(t: QType) -> bool:
-    """True for Auto A::TYPE with a:A end, the type of dynamic values, whatever its parameter is named."""
+    """True for Auto A::TYPE with a:A end, the type of dynamic values, whatever
+    its parameter is named."""
     if not isinstance(t, QAutoType) or t.kind_bound is not TYPE_KIND or len(t.signature) != 1:
         return False
     f = t.signature[0]
@@ -167,7 +179,8 @@ def _is_dynamic_type(t: QType) -> bool:
 
 
 def _structure(t: QType) -> QType:
-    """t with aliases, solved metavariables, applications, and recursion unfolded down to its outer constructor."""
+    """t with aliases, solved metavariables, applications, and recursion
+    unfolded down to its outer constructor."""
     for _ in range(1000):
         t = pruned(t)
         t = unalias(t)
@@ -182,7 +195,8 @@ def _structure(t: QType) -> QType:
 
 
 def _is_unbounded(kind: QKind) -> bool:
-    """Whether an abstract type of this kind is encodable: TYPE or POWER(B), or an operator from types to TYPE."""
+    """Whether an abstract type of this kind is encodable: TYPE or POWER(B), or
+    an operator from types to TYPE."""
     if isinstance(kind, QPowerKind):
         return True
     while isinstance(kind, QAllKind):
@@ -193,7 +207,8 @@ def _is_unbounded(kind: QKind) -> bool:
 
 
 def _module_abstract_type(s: QType) -> Optional[tuple[ModuleAbstractType, tuple[QType, ...]]]:
-    """The module abstract type s is, or is an application of, with the application's arguments."""
+    """The module abstract type s is, or is an application of, with the
+    application's arguments."""
     args: tuple[QType, ...] = ()
     if isinstance(s, QTypeApp):
         args = s.arguments
@@ -207,7 +222,8 @@ def _module_abstract_type(s: QType) -> Optional[tuple[ModuleAbstractType, tuple[
 
 
 def _representation(entry: ModuleAbstractType, args: tuple[QType, ...]) -> QType:
-    """The representation of a module abstract type, or of an application of an abstract type operator."""
+    """The representation of a module abstract type, or of an application of an
+    abstract type operator."""
     if entry.linked:
         if entry.rep is None:  # a module known only through its interface
             raise _fail()
@@ -225,13 +241,15 @@ def _var_label(name: str, is_var: bool) -> str:
 
 
 class _TypeGraph:
-    """The graph of the types a value mentions, keyed by the identity of their (hash-consed) structures."""
+    """The graph of the types a value mentions, keyed by the identity of their
+    (hash-consed) structures."""
 
     def __init__(self) -> None:
         self.nodes: list[Optional[tuple[tuple[Any, ...], tuple[TypeRef, ...]]]] = []
         self._index: dict[Any, int] = {}
         self._keep: list[QType] = []
-        # The type parameters of the auto types around the type being added, innermost last
+        # The type parameters of the auto types around the type being added,
+        # innermost last
         self._binders: list[int] = []
 
     def ref(self, t: QType) -> TypeRef:
@@ -243,7 +261,8 @@ class _TypeGraph:
             return "Dynamic"
         if isinstance(s, QTypeVar) and s.symbol_id in self._binders:
             return self._add(("param", len(self._binders) - 1 - self._binders.index(s.symbol_id)), s, None)
-        # A type that mentions enclosing auto types' parameters is a node for each way it refers to them
+        # A type that mentions enclosing auto types' parameters is a node for
+        # each way it refers to them
         key = (id(s), tuple(
             (b, len(self._binders) - 1 - i) for i, b in enumerate(self._binders) if b in s._fv
         ))
@@ -275,7 +294,8 @@ class _TypeGraph:
                 labels = tuple(_var_label(f.name or "", f.is_var) for f in components)
                 return ("tuple", labels), tuple(self.ref(f.type_val) for f in components)
             case QVariantType() | QOptionType():
-                # Cases are listed by name, as compiled code numbers them (docs/dynamic.md §2.2)
+                # Cases are listed by name, as compiled code numbers them
+                # (docs/dynamic.md §2.2)
                 if isinstance(s, QVariantType):
                     cases = [
                         (_var_label(v.name, v.is_var), v.type_val) for v in sorted(s.variants, key=lambda v: v.name)
@@ -313,14 +333,16 @@ class _TypeGraph:
             entry, args = abstract
             children = tuple(self.ref(a) for a in args)
             return ("abstract", entry.global_name, len(args)), children + (self.ref(_representation(entry, args)),)
-        # Polymorphic types, other abstract and external types, and type operators: not encodable
+        # Polymorphic types, other abstract and external types, and type
+        # operators: not encodable
         raise _fail()
 
 
 def _canonical_table(
     nodes: list[Any], roots: list[TypeRef]
 ) -> tuple[list[dict[str, Any]], dict[int, int]]:
-    """Merges equivalent nodes and numbers the rest from the roots; returns the table and each node's index in it."""
+    """Merges equivalent nodes and numbers the rest from the roots; returns the
+    table and each node's index in it."""
     shape_ids: dict[Any, int] = {}
     cls = [shape_ids.setdefault(shape, len(shape_ids)) for shape, _ in nodes]
     count = len(shape_ids)
@@ -407,7 +429,8 @@ class _Writer:
         self.seen: set[int] = set()
         self.shared: set[int] = set()
         self.ids: dict[int, int] = {}
-        # The witnesses of the auto values being written, innermost last, which param nodes refer to
+        # The witnesses of the auto values being written, innermost last, which
+        # param nodes refer to
         self.witnesses: list[TypeRef] = []
 
     def _deref(self, val: QValue) -> QValue:
@@ -417,12 +440,14 @@ class _Writer:
 
     @staticmethod
     def _has_identity(val: QValue) -> bool:
-        """Whether val may be shared: records, arrays, and nonempty tuples (compiled code has one empty tuple)."""
+        """Whether val may be shared: records, arrays, and nonempty tuples
+        (compiled code has one empty tuple)."""
         return isinstance(val, (QRecord, QArray)) or (isinstance(val, QTuple) and len(val.elements) > 0)
 
     def _concrete(self, ref: TypeRef) -> TypeRef:
-        """The type a value of type ref is written at: an abstract type's value is written at its representation, and
-        a value of an auto type's parameter at the auto value's witness."""
+        """The type a value of type ref is written at: an abstract type's value
+        is written at its representation, and a value of an auto type's
+        parameter at the auto value's witness."""
         while not isinstance(ref, str):
             shape, children = self.graph.nodes[ref]
             if shape[0] == "abstract":
@@ -436,7 +461,8 @@ class _Writer:
         return ref
 
     def _auto(self, val: QValue, ref: int) -> tuple[TypeRef, list[tuple[QValue, TypeRef]]]:
-        """An auto value's witness, and its components with their types (which refer to the witness by param)."""
+        """An auto value's witness, and its components with their types (which
+        refer to the witness by param)."""
         shape, children = self.graph.nodes[ref]
         components = children[1:] if shape[2] else children
         if not isinstance(val, QAutoVal) or not isinstance(val.value, QTuple):
@@ -446,7 +472,8 @@ class _Writer:
         return self.graph.ref(val.type_val), list(zip(val.value.elements, components))
 
     def _children(self, val: QValue, ref: TypeRef) -> list[tuple[QValue, TypeRef]]:
-        """The component values of val with their type refs, in the order they are written."""
+        """The component values of val with their type refs, in the order they
+        are written."""
         ref = self._concrete(ref)
         if isinstance(ref, str):
             if ref == "Dynamic":
@@ -480,8 +507,8 @@ class _Writer:
                 return []
             if kind == "variant":
                 return [(val.payload, payload_ref)]
-            # An option's components are stored in the option value itself (as in compiled code), so they are
-            # written in place and never shared
+            # An option's components are stored in the option value itself (as
+            # in compiled code), so they are written in place and never shared
             payload = self._deref(val.payload)
             components = self.graph.nodes[payload_ref][1]
             if not isinstance(payload, QTuple) or len(payload.elements) < len(components):
@@ -494,7 +521,8 @@ class _Writer:
         raise _fail()  # functions and exceptions cannot be externed
 
     def _case_payload(self, val: QValue, shape: tuple[Any, ...], children: tuple[TypeRef, ...]) -> Optional[TypeRef]:
-        """The type ref of a variant or option value's payload, or None if it is written as its bare tag."""
+        """The type ref of a variant or option value's payload, or None if it is
+        written as its bare tag."""
         if not isinstance(val, (QVariant, QOption)):
             raise _fail()
         remaining = iter(children)
@@ -538,7 +566,8 @@ class _Writer:
                 raise _fail()
             return val.value
         if kind == "auto":
-            # As a dynamic value is: its witness, then its components at their types, which refer to the witness
+            # As a dynamic value is: its witness, then its components at their
+            # types, which refer to the witness
             witness, components = self._auto(val, ref)
             out_auto: dict[str, Any] = {"@type": witness, "@value": None}
             self.roots.append(witness)
@@ -638,7 +667,8 @@ def _arity(kind: QKind) -> int:
 
 
 def _operator_kind(arity: int) -> QKind:
-    """TYPE, or the kind of an operator from `arity` types to TYPE: that of an abstract type of an unlinked module."""
+    """TYPE, or the kind of an operator from `arity` types to TYPE: that of an
+    abstract type of an unlinked module."""
     kind: QKind = TYPE_KIND
     for i in reversed(range(arity)):
         kind = QAllKind(param_name=f"A{i + 1}", param_id=allocate_symbol_id(), param_kind=TYPE_KIND, result_kind=kind)
@@ -658,8 +688,9 @@ class _Reader:
         self.binder_ids = {i: allocate_symbol_id() for i in range(len(table))}
         self.binder_id_set = set(self.binder_ids.values())
         self.objects: dict[int, QValue] = {}
-        # The type parameters of the auto types being built, innermost last, which param nodes refer to; and the
-        # witnesses of the auto values being read, which values of those parameters are read at
+        # The type parameters of the auto types being built, innermost last,
+        # which param nodes refer to; and the witnesses of the auto values being
+        # read, which values of those parameters are read at
         self.auto_params: list[QTypeVar] = []
         self.witnesses: list[TypeRef] = []
 
@@ -743,8 +774,9 @@ class _Reader:
         return kind, body
 
     def concrete(self, ref: TypeRef) -> TypeRef:
-        """The type a value of type ref is written at: an abstract type's value is written at its representation, and
-        a value of an auto type's parameter at the auto value's witness."""
+        """The type a value of type ref is written at: an abstract type's value
+        is written at its representation, and a value of an auto type's
+        parameter at the auto value's witness."""
         for _ in range(len(self.table) + len(self.witnesses) + 1):
             if isinstance(ref, str):
                 return ref
@@ -760,8 +792,10 @@ class _Reader:
         raise _fail()
 
     def abstract_type(self, name: str, args: tuple[QType, ...], rep: QType) -> QType:
-        """The module abstract type `name` (applied to args), whose recorded representation is rep: the linked
-        module's type if rep is its representation, or the opaque type of an unlinked module (docs/dynamic.md §2.3)."""
+        """The module abstract type `name` (applied to args), whose recorded
+        representation is rep: the linked module's type if rep is its
+        representation, or the opaque type of an unlinked module
+        (docs/dynamic.md §2.3)."""
         entry = abstract_type_by_name(name)
         closed = not (rep._fv & self.binder_id_set) and not any(a._fv & self.binder_id_set for a in args)
         if entry is None:
@@ -786,7 +820,8 @@ class _Reader:
         return QTypeApp(constructor=entry.type_var, arguments=args) if args else entry.type_var
 
     def type_of(self, ref: TypeRef) -> QType:
-        """The QType of a table entry; a node reached again while it is being built becomes a recursive type."""
+        """The QType of a table entry; a node reached again while it is being
+        built becomes a recursive type."""
         if isinstance(ref, str):
             return _BUILTIN_TYPES[ref]
         done = self.types.get(ref)
@@ -860,8 +895,8 @@ class _Reader:
         self.active.discard(ref)
         if ref in self.recursive:
             t = QRecType(var_name=f"T{ref}", symbol_id=binder, bound=TYPE_KIND, body=t)
-        # A type that mentions a recursive type's binder, or an enclosing auto type's parameter, is that type only
-        # where it was reached
+        # A type that mentions a recursive type's binder, or an enclosing auto
+        # type's parameter, is that type only where it was reached
         if not (t._fv & self.binder_id_set) and not any(p.symbol_id in t._fv for p in self.auto_params):
             self.types[ref] = t
         return t
@@ -869,7 +904,8 @@ class _Reader:
     # --- values ---
 
     def _shared(self, data: Any, kind: str) -> tuple[Optional[QValue], Optional[int], Any]:
-        """Resolves {"@ref": n}; otherwise returns the object's @id (if any) and its contents."""
+        """Resolves {"@ref": n}; otherwise returns the object's @id (if any) and
+        its contents."""
         if isinstance(data, dict) and "@ref" in data:
             if len(data) != 1:
                 raise _fail()
@@ -1000,7 +1036,8 @@ class _Reader:
 
 
 def _reject_json_constant(name: str) -> Any:
-    """Rejects the non-JSON tokens NaN, Infinity, and -Infinity that Python's json module accepts."""
+    """Rejects the non-JSON tokens NaN, Infinity, and -Infinity that Python's
+    json module accepts."""
     raise _fail()
 
 

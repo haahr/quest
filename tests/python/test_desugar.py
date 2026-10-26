@@ -10,7 +10,8 @@ from tests.python.helpers import parse_expr, parse_phrase
 
 
 class TestDesugar(unittest.TestCase):
-    """Each sugared form becomes its core form, positioned at the syntax it replaces."""
+    """Each sugared form becomes its core form, positioned at the syntax it
+    replaces."""
 
     def test_unchanged_node_is_returned_as_is(self) -> None:
         expr = parse_expr("begin let x = 1 + 2 if x is 3 then x end end")

@@ -13,9 +13,9 @@ import
     util/strutil : util/Strutil
     stringOp = string : StringOp
 export
-    (* =========================================================================
+    (* ======================================================================
      * 1. Semantic Values
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Rec Val = Option
         absent
@@ -48,9 +48,9 @@ export
     let list(items: vector.T(Val)): Val = option list of Val with let items = vector.toArray(:Val items) end
     let elements(v: Val): Array(Val) = case v when list with l then l.items else raise error with "not a list" end end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Grammar Constructs
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Rec Construct = Option
         token with kind: tokens.TokenKind lexeme: maybe.T(String) silent: Bool end
@@ -132,11 +132,12 @@ export
     let sepBy(item: Construct separator: Construct): Construct =
         option sepBy of Construct with let item = item let separator = separator end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Parser
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* What a construct does at a position: fail, or match a value, ending before the token at next *)
+    (* What a construct does at a position: fail, or match a value, ending
+     * before the token at next *)
     Let Outcome = Option
         failed
         matched with val: Val next: Int end
@@ -145,8 +146,8 @@ export
     let failed: Outcome = option failed of Outcome end
     let matched(val: Val next: Int): Outcome = option matched of Outcome with let val = val let next = next end
 
-    (* A target's memo entry at a position: not yet tried, being tried (so a left-recursive attempt fails, as
-     * in the bootstrap), or its outcome *)
+    (* A target's memo entry at a position: not yet tried, being tried (so a
+     * left-recursive attempt fails, as in the bootstrap), or its outcome *)
     Let Memo = Option
         unknown
         inProgress
@@ -161,7 +162,8 @@ export
         targets: Int
         (* Each target's memo entry at each position, at pos * targets + id *)
         var memo: Array(Memo)
-        (* The farthest position at which a construct failed, and the names of what failed there *)
+        (* The farthest position at which a construct failed, and the names of
+         * what failed there *)
         var farthest: Int
         expected: vector.T(String)
     end
@@ -202,7 +204,8 @@ export
             vector.append(:String ps.expected expected)
         end
 
-    (* A failed token's name in the expected list: its kind, with its lexeme if it has one *)
+    (* A failed token's name in the expected list: its kind, with its lexeme if
+     * it has one *)
     let tokenName(kind: tokens.TokenKind lexeme: maybe.T(String)): String =
         if maybe.isSome(:String lexeme) then
             tokens.tokenKindName(kind) <> "('" <> maybe.unwrap(:String lexeme) <> "')"
@@ -236,7 +239,8 @@ export
                 loop
                     case evaluate(ps x.inner current)
                         when matched with m then
-                            (* Each repetition must make progress, so a construct that matches nothing ends it *)
+                            (* Each repetition must make progress, so a
+                             * construct that matches nothing ends it *)
                             if m.next <= current then exit end
                             vector.append(:Val results m.val)
                             current := m.next
@@ -303,7 +307,8 @@ export
             if matching then matched(list(results) current) else failed end
         end
 
-    (* The outcome of the first of a target's rules that matches at pos, memoized *)
+    (* The outcome of the first of a target's rules that matches at pos,
+     * memoized *)
     and parseTarget(ps: Parser target: Target pos: Int): Outcome =
         begin
             let key = {pos * ps.targets} + target.id
@@ -335,7 +340,8 @@ export
             end
         end
 
-    (* Reports a syntax error at the farthest failure, as the bootstrap's ParserError does (addStoppingError raises) *)
+    (* Reports a syntax error at the farthest failure, as the bootstrap's
+     * ParserError does (addStoppingError raises) *)
     let syntaxError(ps: Parser): Val =
         begin
             let tok = peek(ps ps.farthest)

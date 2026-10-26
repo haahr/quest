@@ -12,10 +12,12 @@ from tests.python.helpers import parse_core_expr, parse_expr, parse_phrase
 
 
 class TestTypeElaborator(unittest.TestCase):
-    """Test suite verifying TypeElaborator instance methods and RAII context managers."""
+    """Test suite verifying TypeElaborator instance methods and RAII context
+    managers."""
 
     def test_init_defaults(self) -> None:
-        """TypeElaborator creates its own Environment and sets loop_depth to 0 by default."""
+        """TypeElaborator creates its own Environment and sets loop_depth to 0
+        by default."""
         el = TypeElaborator()
         self.assertIsNotNone(el.env)
         self.assertEqual(el.loop_depth, 0)
@@ -52,7 +54,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(el.loop_depth, 0)
 
     def test_in_function_context_manager(self) -> None:
-        """with el.in_function(): resets loop_depth to 0 and restores outer depth on exit."""
+        """with el.in_function(): resets loop_depth to 0 and restores outer
+        depth on exit."""
         el = TypeElaborator(loop_depth=2)
         with el.in_function():
             self.assertEqual(el.loop_depth, 0)
@@ -74,7 +77,8 @@ class TestTypeElaborator(unittest.TestCase):
             el.check(expr_int, BOOL_TYPE)
 
     def test_stateful_phrases_across_single_elaborator(self) -> None:
-        """A single TypeElaborator instance preserves bindings across sequential phrases."""
+        """A single TypeElaborator instance preserves bindings across sequential
+        phrases."""
         el = TypeElaborator()
         prog = parse_phrase("let x = 10; x + 5", target="program")
         phrase1, phrase2 = prog.phrases
@@ -94,7 +98,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(len(typed_prog.phrases), 3)
 
     def test_if_check_and_synth(self) -> None:
-        """if expressions with elsif branches (nested by desugaring) elaborate correctly in synth and check modes."""
+        """if expressions with elsif branches (nested by desugaring) elaborate
+        correctly in synth and check modes."""
         el = TypeElaborator()
         expr = parse_core_expr("if true then 1 elsif false then 2 else 3 end")
         typed_synth = el.synth(expr)
@@ -104,7 +109,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(typed_check.type_val, INT_TYPE)
 
     def test_raise_check_and_synth(self) -> None:
-        """raise expressions elaborate in check (any expected type) and synth modes."""
+        """raise expressions elaborate in check (any expected type) and synth
+        modes."""
         el = TypeElaborator()
         el.elaborate_phrase(parse_phrase("exception Err : Int end"))
         expr = parse_expr("raise Err with 42 end")
@@ -126,7 +132,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(typed_check.type_val, INT_TYPE)
 
     def test_inspect_check_and_synth(self) -> None:
-        """inspect expressions elaborate properly in both synth and check modes."""
+        """inspect expressions elaborate properly in both synth and check
+        modes."""
         el = TypeElaborator()
         el.env.current_scope.declare_value(ValueSymbol(name="d", type_val=DYNAMIC_TYPE))
         expr = parse_expr("inspect d when Int with x then x.a + 1 else 0 end")
@@ -137,7 +144,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(typed_check.type_val, INT_TYPE)
 
     def test_array_index_assignment_delegation(self) -> None:
-        """arr[i] := val, which desugaring makes an ExprIndexAssign, elaborates as an index assignment."""
+        """arr[i] := val, which desugaring makes an ExprIndexAssign, elaborates
+        as an index assignment."""
         el = TypeElaborator()
         el.elaborate_phrase(parse_phrase("let arr = array of 10 20 30 end"))
         expr = parse_core_expr("arr[1] := 99")
@@ -145,7 +153,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertEqual(typed_assign.type_val, OK_TYPE)
 
     def test_env_scoped_context_manager(self) -> None:
-        """Environment.scoped pushes child scope and pops reliably even on exception."""
+        """Environment.scoped pushes child scope and pops reliably even on
+        exception."""
         env = Environment()
         root_scope = env.current_scope
         with env.scoped("inner") as inner:
@@ -162,7 +171,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertIs(env.current_scope, root_scope)
 
     def test_function_isolates_loop_depth_for_exit(self) -> None:
-        """Function bodies isolate loop depth so exit within a nested function fails."""
+        """Function bodies isolate loop depth so exit within a nested function
+        fails."""
         el = TypeElaborator()
         expr = parse_expr("loop begin let f = fun(): Ok exit f() end end")
         with self.assertRaises(QuestTypeError) as cm:
@@ -170,7 +180,8 @@ class TestTypeElaborator(unittest.TestCase):
         self.assertIn("Exit statement outside of any loop", str(cm.exception))
 
     def test_while_and_for_loop_depth_support_exit(self) -> None:
-        """while and for loops increment loop depth to allow exit, but top-level exit fails."""
+        """while and for loops increment loop depth to allow exit, but top-level
+        exit fails."""
         el = TypeElaborator()
         typed_while = el.synth(parse_expr("while true do exit end"))
         self.assertEqual(typed_while.type_val, OK_TYPE)

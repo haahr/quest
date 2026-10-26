@@ -1,6 +1,8 @@
-"""Elaboration of control flow: case, the built-in infix operators (including assignment), conditionals, for loops,
-and blocks. Desugaring (quest/syntax/desugar.py) has made conditionals of short-circuit operators and elsif chains,
-calls of other infix operators, and ExprIndexAssign of assignments to array elements."""
+"""Elaboration of control flow: case, the built-in infix operators (including
+assignment), conditionals, for loops, and blocks. Desugaring
+(quest/syntax/desugar.py) has made conditionals of short-circuit operators and
+elsif chains, calls of other infix operators, and ExprIndexAssign of assignments
+to array elements."""
 
 from __future__ import annotations
 
@@ -54,8 +56,9 @@ TypeError = QuestTypeError
 class ControlMixin(Checker):
     """Case, infix operators, assignment, conditionals, for loops, and blocks.
 
-    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
-    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    A construct family of the checker (`checker.Checker`): its methods use the
+    checker's state and helpers, reach the dispatch (`check_expr`, `synth_expr`)
+    through it, and call the families below this one (checker.py) through
     `self`.
     """
 
@@ -66,8 +69,9 @@ class ControlMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedCase:
-        """Elaborates a case expression over an option or variant target: its branches are checked against the
-        expected type if there is one; otherwise its type is the join of their synthesized types (Ok if it has
+        """Elaborates a case expression over an option or variant target: its
+        branches are checked against the expected type if there is one;
+        otherwise its type is the join of their synthesized types (Ok if it has
         none)."""
         target_typed = self.synth_expr(expr.target, env, loop_depth)
         target_type = target_typed.type_val.evaluate_lazily(env)
@@ -106,7 +110,8 @@ class ControlMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> list[TypedCaseBranch]:
-        """Validates tags, binders, exhaustiveness, and elaborates typed case branches."""
+        """Validates tags, binders, exhaustiveness, and elaborates typed case
+        branches."""
         if isinstance(target_type, QOptionType):
             available_tags = {opt.name: opt.payload_type for opt in target_type.options}
         elif isinstance(target_type, QVariantType):
@@ -193,8 +198,9 @@ class ControlMixin(Checker):
         return typed_branches
 
     def _synth_infix_expr(self, expr: ast.ExprInfix, env: Environment, loop_depth: int) -> TypedExpr:
-        """Synthesizes an infix expression with a built-in operator: assignment, arithmetic, comparison, eager logic,
-        and identity. Desugaring has made the short-circuit operators conditionals and the others calls."""
+        """Synthesizes an infix expression with a built-in operator: assignment,
+        arithmetic, comparison, eager logic, and identity. Desugaring has made
+        the short-circuit operators conditionals and the others calls."""
         # 1. Assignment (lhs := rhs)
         if expr.op == ":=":
             return self._synth_assignment(expr, env, loop_depth)
@@ -203,7 +209,8 @@ class ControlMixin(Checker):
         if expr.op in ("andif", "orif"):
             raise not_desugared(expr)
 
-        # 3. Non-overloaded operators (Arithmetic, Relational, String concatenation, Eager boolean)
+        # 3. Non-overloaded operators (Arithmetic, Relational, String
+        #    concatenation, Eager boolean)
         if expr.op in INFIX_OPERATORS:
             exp_l, exp_r, res_type = INFIX_OPERATORS[expr.op]
             left_typed = self.check_expr(expr.left, exp_l, env, loop_depth)
@@ -269,12 +276,14 @@ class ControlMixin(Checker):
                 rhs_typed = self.check_expr(expr.right, sym.type_val, env, loop_depth)
                 return TypedAssign(target=target_node, value=rhs_typed, offset=expr.offset)
 
-            # Target 2: Record or Tuple field selection (r.field := rhs, t.field := rhs)
+            # Target 2: Record or Tuple field selection (r.field := rhs, t.field
+            # := rhs)
             case ast.ExprSelect(target=target, field=field, offset=sel_off):
                 target_typed = self.synth_expr(target, env, loop_depth)
                 target_type = target_typed.type_val.evaluate_lazily(env)
                 if not isinstance(target_type, QTupleType) and resolve_record_bound(target_type, env) is None:
-                    # A type parameter bounded by a tuple type: assigned through as its bound
+                    # A type parameter bounded by a tuple type: assigned through
+                    # as its bound
                     target_type = resolve_tuple_bound(target_type, env) or target_type
                 if isinstance(target_type, QTupleType):
                     tup_f = None
@@ -331,7 +340,8 @@ class ControlMixin(Checker):
                 )
                 return TypedAssign(target=target_select, value=rhs_typed, offset=expr.offset)
 
-            # Desugaring has made an assignment to an array element (a[idx] := rhs) an ExprIndexAssign
+            # Desugaring has made an assignment to an array element (a[idx] :=
+            # rhs) an ExprIndexAssign
             case ast.ExprIndex():
                 raise not_desugared(expr)
 
@@ -345,13 +355,17 @@ class ControlMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedIf:
-        """Elaborates a conditional, whose elsif branches desugaring has nested in its else branch.
+        """Elaborates a conditional, whose elsif branches desugaring has nested
+        in its else branch.
 
-        Against an expected type, both branches are checked against it (check_expr does so only for a conditional
-        with an else branch, and checks the others by synthesis and subsumption). Synthesized, its type is the join
-        of its branches' types, except that a conditional without an else branch is a statement: its then branch is
-        evaluated for its effect, and its type is Ok. A short-circuit operator (andif, orif) has Bool branches: its
-        operands are checked against Bool, and its type is Bool (check_expr checks it by subsumption).
+        Against an expected type, both branches are checked against it
+        (check_expr does so only for a conditional with an else branch, and
+        checks the others by synthesis and subsumption). Synthesized, its type
+        is the join of its branches' types, except that a conditional without an
+        else branch is a statement: its then branch is evaluated for its effect,
+        and its type is Ok. A short-circuit operator (andif, orif) has Bool
+        branches: its operands are checked against Bool, and its type is Bool
+        (check_expr checks it by subsumption).
         """
         if expr.elsifs:
             raise not_desugared(expr)
@@ -397,7 +411,8 @@ class ControlMixin(Checker):
         )
 
     def _synth_for_expr(self, expr: ast.ExprFor, env: Environment, loop_depth: int) -> TypedFor:
-        """Synthesizes a for loop expression: for i = start upto/downto stop do body end."""
+        """Synthesizes a for loop expression: for i = start upto/downto stop do
+        body end."""
         start_typed = self.check_expr(expr.start, INT_TYPE, env, loop_depth)
         stop_typed = self.check_expr(expr.stop, INT_TYPE, env, loop_depth)
 
@@ -432,8 +447,9 @@ class ControlMixin(Checker):
     ) -> TypedBlock:
         """Elaborates a scoped block expression: begin bindings... result end.
 
-        A block ending with an expression statement has that expression's value, which is checked against the
-        expected type if there is one; otherwise the block's type is Ok, which must then be a subtype of the expected
+        A block ending with an expression statement has that expression's value,
+        which is checked against the expected type if there is one; otherwise
+        the block's type is Ok, which must then be a subtype of the expected
         type. A synthesized type may not mention the block's own bindings.
         """
         with env.scoped("block") as block_scope:
@@ -448,7 +464,8 @@ class ControlMixin(Checker):
                     result_expr = self._elaborate_subexpr(last_binding.expr, expected_type, env, loop_depth)
                 else:
                     typed_bindings.append(self._elaborate_binding(last_binding, env, loop_depth))
-                    # Synthesized, a block also has the value of an exception declaration it ends with
+                    # Synthesized, a block also has the value of an exception
+                    # declaration it ends with
                     if expected_type is None and isinstance(typed_bindings[-1], TypedExprStmt):
                         result_expr = typed_bindings.pop().expr
             if result_expr is None:

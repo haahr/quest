@@ -60,30 +60,37 @@ from quest.types.symbols import allocate_symbol_id, meaning_generation
 # Subtype cache
 # ----------------------------------------------------------------------------
 #
-# Results of subtyping proofs, keyed by the identities of hash-consed types and whether an environment
-# was given (without one, aliases are not expanded). Entries hold the types they key on, so an id is
-# never reused while its entry exists; pairs involving a metavariable are never cached, because
-# is_subtype solves metavariables as a side effect.
+# Results of subtyping proofs, keyed by the identities of hash-consed types and
+# whether an environment was given (without one, aliases are not expanded).
+# Entries hold the types they key on, so an id is never reused while its entry
+# exists; pairs involving a metavariable are never cached, because is_subtype
+# solves metavariables as a side effect.
 #
-# Why results are committed only when a top-level proof finishes: is_subtype proves goals about
-# recursive types coinductively. To prove A <: B it assumes A <: B while checking the unfolding, and a
-# recurrence of the pair counts as proved. A nested goal decided while such an assumption is still open
-# may be True only because of it: for A = Rec(X) Record f: X g: Int end and
-# B = Rec(Y) Record f: Y g: String end, field f gives A <: B (assumed) and field g gives
-# Int <: String false, so the conditional True for f is wrong. Nothing about a result can change after
-# a proof finishes (types are immutable, symbols resolve globally, metavariables are excluded); the only
-# hazard is caching a result that depended on an assumption which the proof later refutes. Hence:
+# Why results are committed only when a top-level proof finishes: is_subtype
+# proves goals about recursive types coinductively. To prove A <: B it assumes A
+# <: B while checking the unfolding, and a recurrence of the pair counts as
+# proved. A nested goal decided while such an assumption is still open may be
+# True only because of it: for A = Rec(X) Record f: X g: Int end and B = Rec(Y)
+# Record f: Y g: String end, field f gives A <: B (assumed) and field g gives
+# Int <: String false, so the conditional True for f is wrong. Nothing about a
+# result can change after a proof finishes (types are immutable, symbols resolve
+# globally, metavariables are excluded); the only hazard is caching a result
+# that depended on an assumption which the proof later refutes. Hence:
 #
-# - When a top-level proof returns True, every pair it decided or assumed is a true fact. In this
-#   implementation a proof succeeds only if every nested goal succeeds (all nested goals are combined
-#   with and; the type-variable bound check that may fail falls through only to False), so the pairs
-#   on the trail form a consistent set of facts (a simulation). All of them are cached as True.
-# - False results are always cached, even when decided mid-proof: extra coinductive assumptions can
-#   only make more goals provable, so a goal that fails with them also fails without them.
+# - When a top-level proof returns True, every pair it decided or assumed is a
+#   true fact. In this implementation a proof succeeds only if every nested goal
+#   succeeds (all nested goals are combined with and; the type-variable bound
+#   check that may fail falls through only to False), so the pairs on the trail
+#   form a consistent set of facts (a simulation). All of them are cached as
+#   True.
+# - False results are always cached, even when decided mid-proof: extra
+#   coinductive assumptions can only make more goals provable, so a goal that
+#   fails with them also fails without them.
 # - Conditional True results of a proof that returns False are discarded.
 #
-# Symbol meanings only become more defined (a definition may arrive once, later than a reference), so
-# the cache is dropped when an id that some lookup saw as undefined gains a meaning (types.symbols).
+# Symbol meanings only become more defined (a definition may arrive once, later
+# than a reference), so the cache is dropped when an id that some lookup saw as
+# undefined gains a meaning (types.symbols).
 
 SUBTYPE_CACHE: dict[tuple[int, int, bool], tuple[QType, QType, bool]] = {}
 SUBTYPE_CACHE_LIMIT = 250_000
@@ -126,7 +133,8 @@ def _subtype_cache_store(sub: QType, sup: QType, env: Optional[Any], result: boo
 
 
 def _commit_proof(trail: SubtypeTrail, result: bool, env: Optional[Any]) -> None:
-    """Enters a finished top-level proof's results in the cache (see the comment above)."""
+    """Enters a finished top-level proof's results in the cache (see the comment
+    above)."""
     if result:
         for sub, sup, r in trail.results:
             _subtype_cache_store(sub, sup, env, r)
@@ -141,8 +149,9 @@ def _commit_proof(trail: SubtypeTrail, result: bool, env: Optional[Any]) -> None
 def is_type_equal(t1: QType, t2: QType, env: Optional[Any] = None) -> bool:
     """Checks equi-recursive type equivalence (t1 <: t2 and t2 <: t1).
 
-    Both directions form one proof with one trail: once t1 <: t2 succeeds, every pair it assumed holds,
-    so the reverse direction may rely on those assumptions too.
+    Both directions form one proof with one trail: once t1 <: t2 succeeds, every
+    pair it assumed holds, so the reverse direction may rely on those
+    assumptions too.
     """
     if t1 is t2:
         return True
@@ -154,11 +163,13 @@ def is_type_equal(t1: QType, t2: QType, env: Optional[Any] = None) -> bool:
 
 
 class SubtypeTrail:
-    """Coinductive assumptions of one subtyping proof: pairs (sub, sup) currently assumed to hold.
+    """Coinductive assumptions of one subtyping proof: pairs (sub, sup)
+    currently assumed to hold.
 
-    Named type variables are keyed by symbol and everything else by object identity. The trail keeps
-    every keyed object alive for the duration of the proof, so that an id can never be reused by a
-    different (temporary) type and match an assumption it was not part of.
+    Named type variables are keyed by symbol and everything else by object
+    identity. The trail keeps every keyed object alive for the duration of the
+    proof, so that an id can never be reused by a different (temporary) type and
+    match an assumption it was not part of.
     """
 
     __slots__ = ("_assumed", "_keep_alive", "results")
@@ -166,7 +177,8 @@ class SubtypeTrail:
     def __init__(self) -> None:
         self._assumed: set[tuple[Any, Any]] = set()
         self._keep_alive: list[QType] = []
-        # (sub, sup, result) for every metavariable-free pair decided during the proof
+        # (sub, sup, result) for every metavariable-free pair decided during the
+        # proof
         self.results: list[tuple[QType, QType, bool]] = []
 
     @staticmethod
@@ -194,7 +206,8 @@ class SubtypeTrail:
         return zip(it, it)
 
 
-# The fuel a comparison of quantified types costs (see the QAllType case of _prove_subtype_step)
+# The fuel a comparison of quantified types costs (see the QAllType case of
+# _prove_subtype_step)
 _QUANTIFIER_FUEL = 500
 
 
@@ -205,10 +218,11 @@ def is_subtype(
     trail: Optional[SubtypeTrail] = None,
     fuel: int = MAX_SUBTYPE_FUEL,
 ) -> bool:
-    """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle detection and fuel limit.
+    """Checks if sub is a subtype of sup (sub <: sup) with coinductive cycle
+    detection and fuel limit.
 
-    A call without a trail is a top-level proof: its results are entered in the subtype cache when it
-    finishes (see _commit_proof).
+    A call without a trail is a top-level proof: its results are entered in the
+    subtype cache when it finishes (see _commit_proof).
     """
     if trail is not None:
         return _prove_subtype(sub, sup, env, trail, fuel)
@@ -221,7 +235,8 @@ def is_subtype(
 
 
 def _prove_subtype(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
-    """One subtyping goal within a proof: consults the cache, then records the result on the trail."""
+    """One subtyping goal within a proof: consults the cache, then records the
+    result on the trail."""
     if sub is sup:
         return True
     cacheable = not (sub._has_meta or sup._has_meta)
@@ -236,30 +251,40 @@ def _prove_subtype(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTra
 
 
 def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
-    """Decides one goal, sub <: sup, by the structure of the two types. Each nested goal goes back through
-    _prove_subtype, which consults the cache and records the result.
+    """Decides one goal, sub <: sup, by the structure of the two types. Each
+    nested goal goes back through _prove_subtype, which consults the cache and
+    records the result.
 
-    Recursive types are equi-recursive: a recursive type is equal to its unfolding, and so stands for an infinite tree,
-    which a structural comparison would never finish walking. So a pair of types being compared is assumed to hold while
-    their parts are compared, and meeting the same pair again counts as proved (a coinductive proof; the comment above
-    _commit_proof explains why this is sound, and what may be cached). The trail of assumptions is consulted twice: for
-    the types as written, and again after evaluate_lazily has exposed their outermost constructors, since a goal can
-    recur in either form.
+    Recursive types are equi-recursive: a recursive type is equal to its
+    unfolding, and so stands for an infinite tree, which a structural comparison
+    would never finish walking. So a pair of types being compared is assumed to
+    hold while their parts are compared, and meeting the same pair again counts
+    as proved (a coinductive proof; the comment above _commit_proof explains why
+    this is sound, and what may be cached). The trail of assumptions is
+    consulted twice: for the types as written, and again after evaluate_lazily
+    has exposed their outermost constructors, since a goal can recur in either
+    form.
 
-    Metavariables are solved here, greedily: a goal ?A <: T or T <: ?A with ?A unsolved makes T the solution of ?A and
-    succeeds, without checking ?A's bound. That is all the solving that type inference does (see
-    _synth_polymorphic_app), and it is why a solution can depend on the order in which goals are posed.
+    Metavariables are solved here, greedily: a goal ?A <: T or T <: ?A with ?A
+    unsolved makes T the solution of ?A and succeeds, without checking ?A's
+    bound. That is all the solving that type inference does (see
+    _synth_polymorphic_app), and it is why a solution can depend on the order in
+    which goals are posed.
 
-    A type variable, abstract type, or path type bounded by POWER(B), and so known to be a subtype of B, is a subtype of
-    whatever B is. Otherwise the outermost constructors must match, and their parts are compared by the rules given at
-    each case: immutable parts covariantly, mutable ones (var fields, Var, arrays) invariantly, and function parameters
-    contravariantly. Records and tuples have width subtyping: a record with more fields is a subtype of one with fewer,
-    and a tuple is a subtype of a tuple made of a prefix of its components. A type component that sup leaves abstract
-    (A::K) may be matched by one that sub defines (A = T), and the definition is substituted into sup's later
-    components.
+    A type variable, abstract type, or path type bounded by POWER(B), and so
+    known to be a subtype of B, is a subtype of whatever B is. Otherwise the
+    outermost constructors must match, and their parts are compared by the rules
+    given at each case: immutable parts covariantly, mutable ones (var fields,
+    Var, arrays) invariantly, and function parameters contravariantly. Records
+    and tuples have width subtyping: a record with more fields is a subtype of
+    one with fewer, and a tuple is a subtype of a tuple made of a prefix of its
+    components. A type component that sup leaves abstract (A::K) may be matched
+    by one that sub defines (A = T), and the definition is substituted into
+    sup's later components.
 
-    fuel bounds the steps of one proof. Subtyping of bounded polymorphic types is undecidable, and running out raises
-    TypeRecursionLimitExceeded rather than looping.
+    fuel bounds the steps of one proof. Subtyping of bounded polymorphic types
+    is undecidable, and running out raises TypeRecursionLimitExceeded rather
+    than looping.
     """
     if fuel <= 0:
         raise TypeRecursionLimitExceeded(
@@ -312,7 +337,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
         sup_lazy.instance = sub_lazy
         return True
 
-    # 4. Top types: in Quest, any proper type is a subtype of itself or upper bounds
+    # 4. Top types: in Quest, any proper type is a subtype of itself or upper
+    #    bounds
     # 5. Coinductive trail check
     pair = trail.pair(sub_lazy, sup_lazy)
     if pair in trail:
@@ -327,7 +353,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
 
     # 7. Pattern matching across type pairs
     match (sub_lazy, sup_lazy):
-        # Tuples: prefix match (Cardelli §7.1, §10.2), matching names, covariant elements / subkinds
+        # Tuples: prefix match (Cardelli §7.1, §10.2), matching names, covariant
+        # elements / subkinds
         case (QTupleType(fields=sub_fields), QTupleType(fields=sup_fields)):
             if len(sub_fields) < len(sup_fields):
                 return False
@@ -423,7 +450,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                     return False
             return True
 
-        # Functions: contravariant value params, invariant var params, covariant out params and result
+        # Functions: contravariant value params, invariant var params, covariant
+        # out params and result
         case (QFunType(), QFunType()):
             if len(sub_lazy.params) != len(sup_lazy.params):
                 return False
@@ -465,17 +493,21 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
             return (_prove_subtype(s_pay, t_pay, env, trail, fuel)
                     and _prove_subtype(t_pay, s_pay, env, trail, fuel))
 
-        # Universal Quantifiers ([TIncl Π], A Semantic Basis for Quest §2): bounds contravariant, body covariant,
-        # compared under the supertype's bounds. As in full F<: this is undecidable; fuel keeps it terminating
+        # Universal Quantifiers ([TIncl Π], A Semantic Basis for Quest §2):
+        # bounds contravariant, body covariant, compared under the supertype's
+        # bounds. As in full F<: this is undecidable; fuel keeps it terminating
         case (QAllType(), QAllType()):
             if len(sub_lazy.quantifiers) != len(sup_lazy.quantifiers):
                 return False
-            # Both sides' quantifiers become fresh variables, with sup's bounds: either type may contain the other's
-            # binders (a type compared with its own bound), which renaming one to the other's would capture
+            # Both sides' quantifiers become fresh variables, with sup's bounds:
+            # either type may contain the other's binders (a type compared with
+            # its own bound), which renaming one to the other's would capture
 
-            # The bounds are compared within this proof, so that they share its fuel, and each comparison of
-            # quantifiers costs much of it: a search that diverges through bounds (Pierce, Bounded quantification is
-            # undecidable) runs out after a few levels, well within Python's stack, and fails as not a subtype
+            # The bounds are compared within this proof, so that they share its
+            # fuel, and each comparison of quantifiers costs much of it: a
+            # search that diverges through bounds (Pierce, Bounded
+            # quantification is undecidable) runs out after a few levels, well
+            # within Python's stack, and fails as not a subtype
             if fuel <= _QUANTIFIER_FUEL:
                 return False
             fuel -= _QUANTIFIER_FUEL
@@ -495,8 +527,9 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                 sub_lazy.body.substitute(sub_subst), sup_lazy.body.substitute(sup_subst), env, trail, fuel
             )
 
-        # Auto types (Cardelli §6.7): subkind for the type component; for the signature, as for tuples, a
-        # prefix match with matching names, covariant immutable and invariant mutable components
+        # Auto types (Cardelli §6.7): subkind for the type component; for the
+        # signature, as for tuples, a prefix match with matching names,
+        # covariant immutable and invariant mutable components
         case (QAutoType(), QAutoType()):
             if len(sub_lazy.signature) < len(sup_lazy.signature):
                 return False
@@ -515,7 +548,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                     return False
             return True
 
-        # Type Functions (Type Operators): parameter kinds match, bodies subtype under substitution
+        # Type Functions (Type Operators): parameter kinds match, bodies subtype
+        # under substitution
         case (QTypeFun(), QTypeFun()):
             if len(sub_lazy.params) != len(sup_lazy.params):
                 return False
@@ -557,7 +591,8 @@ def is_kind_equal(k1: QKind, k2: QKind, env: Optional[Any] = None) -> bool:
 
 
 def is_subkind(sub: QKind, sup: QKind, env: Optional[Any] = None) -> bool:
-    """Checks if sub is a subkind of sup (sub <= sup) with Full Subkinding on Kinds."""
+    """Checks if sub is a subkind of sup (sub <= sup) with Full Subkinding on
+    Kinds."""
     sub_lazy = sub.evaluate_lazily(env)
     sup_lazy = sup.evaluate_lazily(env)
 
@@ -576,7 +611,7 @@ def is_subkind(sub: QKind, sup: QKind, env: Optional[Any] = None) -> bool:
             return is_subtype(s_bound, t_bound, env)
 
         # Higher-Order Operator Kinds (Full Subkinding on Kinds):
-        # ALL(X :: K1) K2 <= ALL(Y :: K1') K2' iff K1' <= K1 and K2 <= K2'[Y -> X]
+        # ALL(X::K1) K2 <= ALL(Y::K1') K2' iff K1' <= K1 and K2 <= K2'[Y -> X]
         case (QAllKind(), QAllKind()):
             if not is_subkind(sup_lazy.param_kind, sub_lazy.param_kind, env):
                 return False

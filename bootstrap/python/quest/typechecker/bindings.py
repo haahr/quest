@@ -1,7 +1,8 @@
-"""Elaboration of functions and of value bindings: function abstractions and their parameters, let declarations
-(external, recursive, and simultaneous), type and kind bindings, and the declarations of interfaces and modules met
-inside blocks. Desugaring (quest/syntax/desugar.py) has made function values of the parameters of let declarations
-that are neither recursive nor external."""
+"""Elaboration of functions and of value bindings: function abstractions and
+their parameters, let declarations (external, recursive, and simultaneous), type
+and kind bindings, and the declarations of interfaces and modules met inside
+blocks. Desugaring (quest/syntax/desugar.py) has made function values of the
+parameters of let declarations that are neither recursive nor external."""
 
 from __future__ import annotations
 
@@ -64,9 +65,11 @@ def _param_mode(is_var: bool, is_out: bool) -> str:
 
 
 def _require_param_type(param: ast.Param, written: QType, expected: QParam, env: Environment) -> None:
-    """Requires the type a parameter is written with to fit the expected parameter of the same mode, as subtyping of
-    function types does: a value parameter's written type must include the expected type (contravariance), a var
-    parameter's must equal it, and an out parameter's must be included in it."""
+    """Requires the type a parameter is written with to fit the expected
+    parameter of the same mode, as subtyping of function types does: a value
+    parameter's written type must include the expected type (contravariance), a
+    var parameter's must equal it, and an out parameter's must be included in
+    it."""
     assert param.type_annot is not None
     if expected.is_var:
         ok = is_type_equal(written, expected.type_val, env)
@@ -88,8 +91,9 @@ def _require_param_type(param: ast.Param, written: QType, expected: QParam, env:
 class BindingMixin(Checker):
     """Function abstractions and the bindings of blocks, modules, and tuples.
 
-    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
-    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    A construct family of the checker (`checker.Checker`): its methods use the
+    checker's state and helpers, reach the dispatch (`check_expr`, `synth_expr`)
+    through it, and call the families below this one (checker.py) through
     `self`.
     """
 
@@ -99,7 +103,8 @@ class BindingMixin(Checker):
         expected_params: Optional[Sequence[QParam]],
         env: Environment,
     ) -> tuple[tuple[TypedParam, ...], tuple[QParam, ...]]:
-        """Declares function parameters in local scope and returns typed params and signature formals."""
+        """Declares function parameters in local scope and returns typed params
+        and signature formals."""
         formal_params: list[TypedParam] = []
         q_params: list[QParam] = []
         for i, p in enumerate(params):
@@ -152,32 +157,44 @@ class BindingMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedExpr:
-        """Elaborates a function, fun[(type params)](params)[: R] body, into a TypedFun.
+        """Elaborates a function, fun[(type params)](params)[: R] body, into a
+        TypedFun.
 
-        The function opens a scope, declares its type parameters and parameters in it, and elaborates its body inside
-        in_function, so that an exit cannot leave the function and the body's uses of enclosing mutable variables count
-        as captures (see Checker). Its type is assembled from what it declares: Fun(params): R, under All(type params)
-        if it has any. TypedFun.type_param_ids records which type symbols are the function's own, and a type mentioning
-        one of them may occur only inside the function (scoping.py checks this). Likewise, the result type may not
-        mention a path type rooted at a parameter, the type of one of a parameter's hidden type components.
+        The function opens a scope, declares its type parameters and parameters
+        in it, and elaborates its body inside in_function, so that an exit
+        cannot leave the function and the body's uses of enclosing mutable
+        variables count as captures (see Checker). Its type is assembled from
+        what it declares: Fun(params): R, under All(type params) if it has any.
+        TypedFun.type_param_ids records which type symbols are the function's
+        own, and a type mentioning one of them may occur only inside the
+        function (scoping.py checks this). Likewise, the result type may not
+        mention a path type rooted at a parameter, the type of one of a
+        parameter's hidden type components.
 
-        Checked against an expected function type, the function lets the expected type supply what it leaves unwritten:
-        passed where the type All(x: Int) Int is expected, fun(x: Int) x + 1 needs no result annotation, because its
-        body is checked against Int, and the function has the expected result type. What the function does write is
-        held to what subsumption would require (docs/type-system.md §6.1): its parameters' modes must match, and its
-        annotations must fit the expected types (_require_param_type). A parameter without an annotation would take its
-        expected type, but the grammar requires one, so only an AST built directly (as by the unit tests) omits it.
-        Against an expected polymorphic type, see _check_polymorphic_fun_expr. A function with type parameters checked
-        against a plain function type, or any function checked against a type of another form, is synthesized and must
-        be a subtype. Synthesized, the body is checked against the result annotation if there is one.
+        Checked against an expected function type, the function lets the
+        expected type supply what it leaves unwritten: passed where the type
+        All(x: Int) Int is expected, fun(x: Int) x + 1 needs no result
+        annotation, because its body is checked against Int, and the function
+        has the expected result type. What the function does write is held to
+        what subsumption would require (docs/type-system.md §6.1): its
+        parameters' modes must match, and its annotations must fit the expected
+        types (_require_param_type). A parameter without an annotation would
+        take its expected type, but the grammar requires one, so only an AST
+        built directly (as by the unit tests) omits it. Against an expected
+        polymorphic type, see _check_polymorphic_fun_expr. A function with type
+        parameters checked against a plain function type, or any function
+        checked against a type of another form, is synthesized and must be a
+        subtype. Synthesized, the body is checked against the result annotation
+        if there is one.
         """
         expected_fun: Optional[QFunType] = None
         if expected_type is not None:
             expected_lazy = expected_type.evaluate_lazily(env)
             if isinstance(expected_lazy, QAllType):
                 return self._check_polymorphic_fun_expr(expr, expected_type, expected_lazy, env, loop_depth)
-            # A function with type parameters is polymorphic, so it is checked against a function type as it would
-            # be against any other type of another form
+            # A function with type parameters is polymorphic, so it is checked
+            # against a function type as it would be against any other type of
+            # another form
             if not isinstance(expected_lazy, QFunType) or expr.type_params:
                 return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Function")
             if len(expr.params) != len(expected_lazy.params):
@@ -203,7 +220,8 @@ class BindingMixin(Checker):
             )
 
             with self.in_function():
-                # The type the body is checked against: the result type annotation, or else the expected result type
+                # The type the body is checked against: the result type
+                # annotation, or else the expected result type
                 body_expected: Optional[QType]
                 if expr.return_type is not None:
                     body_expected = elaborate_type(expr.return_type, env)
@@ -227,7 +245,8 @@ class BindingMixin(Checker):
                 else:
                     ret_type = body_typed.type_val
 
-            # The result type may not mention the function's parameters (an expected one cannot, a written one can)
+            # The result type may not mention the function's parameters (an
+            # expected one cannot, a written one can)
             local_symbol_ids = {sym.symbol_id for sym in env.current_scope.values.values()}
             escape_type = body_expected if body_expected is not None else ret_type
             check_no_escaping_path_types(escape_type, local_symbol_ids, "function scope", expr.offset)
@@ -261,13 +280,17 @@ class BindingMixin(Checker):
     ) -> TypedFun:
         """Checks a function against an expected polymorphic type, All(B::K) T.
 
-        The function is made polymorphic in the expected type parameters, under its own names. Checking
-        fun(A::TYPE x: A): A x against All(B::TYPE x: B) B declares A, with a fresh symbol and B's bound, and checks the
-        rest of the function against Fun(x: A): A. A function that writes no type parameters, fun(x: B) x, takes the
-        expected ones, names and all. The symbols are fresh because the expected type's own may already be in scope. A
-        bound the function writes may be weaker than the expected one, as subtyping of polymorphic types allows
-        (Cardelli's [TIncl Pi]), and the body is checked under the expected, stronger bound. The function's type is the
-        renamed one, All(A::TYPE) Fun(x: A): A, so that its parameters and body refer to its own type parameters.
+        The function is made polymorphic in the expected type parameters, under
+        its own names. Checking fun(A::TYPE x: A): A x against All(B::TYPE x: B)
+        B declares A, with a fresh symbol and B's bound, and checks the rest of
+        the function against Fun(x: A): A. A function that writes no type
+        parameters, fun(x: B) x, takes the expected ones, names and all. The
+        symbols are fresh because the expected type's own may already be in
+        scope. A bound the function writes may be weaker than the expected one,
+        as subtyping of polymorphic types allows (Cardelli's [TIncl Pi]), and
+        the body is checked under the expected, stronger bound. The function's
+        type is the renamed one, All(A::TYPE) Fun(x: A): A, so that its
+        parameters and body refer to its own type parameters.
         """
         written = tuple(expr.type_params)
         if written and len(written) != len(expected_lazy.quantifiers):
@@ -310,8 +333,10 @@ class BindingMixin(Checker):
                 inner_expr = expr
             body_exp = inner_exp
             if written and not expr.params and expr.return_type is not None:
-                # Without value parameters, the body is checked against the result type annotation, which must be a
-                # subtype of the expected result type (the function's type keeps the expected one)
+                # Without value parameters, the body is checked against the
+                # result type annotation, which must be a subtype of the
+                # expected result type (the function's type keeps the expected
+                # one)
                 body_exp = elaborate_type(expr.return_type, env)
                 if not is_subtype(body_exp, inner_exp, env):
                     raise TypeError(
@@ -330,8 +355,9 @@ class BindingMixin(Checker):
             )
 
     def _declare_rec_value(self, binding: ast.LetValueBinding, env: Environment) -> ValueSymbol:
-        """Declares the symbol of a recursive value declaration (let rec), typed by its annotations, before its value
-        is checked, so that the value (and the other members of its group) can refer to it."""
+        """Declares the symbol of a recursive value declaration (let rec), typed
+        by its annotations, before its value is checked, so that the value (and
+        the other members of its group) can refer to it."""
         if binding.params:
             if binding.type_annot is None:
                 raise TypeError(
@@ -377,7 +403,8 @@ class BindingMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedLetValue:
-        """Checks the value of a recursive value declaration against the type its symbol was declared with."""
+        """Checks the value of a recursive value declaration against the type
+        its symbol was declared with."""
         if binding.params:
             fn_expr = ast.ExprFun(
                 params=binding.params,
@@ -402,10 +429,12 @@ class BindingMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedLetValueGroup:
-        """Elaborates simultaneous value declarations: let [rec] x = ... and y = ....
+        """Elaborates simultaneous value declarations: let [rec] x = ... and y =
+        ....
 
-        With rec, every member is declared before any value is checked, so the members are mutually recursive.
-        Without rec, each member is elaborated in a scope of its own, so it sees the enclosing scope and not the other
+        With rec, every member is declared before any value is checked, so the
+        members are mutually recursive. Without rec, each member is elaborated
+        in a scope of its own, so it sees the enclosing scope and not the other
         members, and all are declared once every member has been elaborated.
         """
         check_distinct_names(group.bindings)
@@ -428,24 +457,31 @@ class BindingMixin(Checker):
         )
 
     def _elaborate_binding(self, binding: ast.BindingNode, env: Environment, loop_depth: int) -> TypedBinding:
-        """Elaborates one binding, a declaration or a statement, in a block, module, or program, declaring what it binds
-        in env's current scope.
+        """Elaborates one binding, a declaration or a statement, in a block,
+        module, or program, declaring what it binds in env's current scope.
 
-        What tells the forms apart is when the name is declared relative to its value. An ordinary let elaborates its
-        value first and declares the name after, so the value cannot refer to the name: a use of it inside refers to
-        whatever earlier binding it shadows. The name's type is its annotation, if written, against which the value is
-        checked, so that let r: Record p: Int end = record p = 1 q = 2 end gives r only a field p; otherwise it is the
-        value's synthesized type. A let rec is declared first instead, so that its value can refer to it. Its type
-        cannot then come from the value and must be written in full, which is why a recursive function needs
-        annotations on all its parameters and its result (_declare_rec_value, then _check_rec_value). The members of a
-        simultaneous declaration (let x = ... and y = ...) are declared together, after all their values or, with rec,
-        before any (_elaborate_value_group). An external function, implemented in C, has no body to synthesize a type
-        from, so its annotations are its type.
+        What tells the forms apart is when the name is declared relative to its
+        value. An ordinary let elaborates its value first and declares the name
+        after, so the value cannot refer to the name: a use of it inside refers
+        to whatever earlier binding it shadows. The name's type is its
+        annotation, if written, against which the value is checked, so that let
+        r: Record p: Int end = record p = 1 q = 2 end gives r only a field p;
+        otherwise it is the value's synthesized type. A let rec is declared
+        first instead, so that its value can refer to it. Its type cannot then
+        come from the value and must be written in full, which is why a
+        recursive function needs annotations on all its parameters and its
+        result (_declare_rec_value, then _check_rec_value). The members of a
+        simultaneous declaration (let x = ... and y = ...) are declared
+        together, after all their values or, with rec, before any
+        (_elaborate_value_group). An external function, implemented in C, has no
+        body to synthesize a type from, so its annotations are its type.
 
-        Desugaring has rewritten let f(params) = e, when neither recursive nor external, as let f = fun(params) e, so
-        only those two forms arrive here with parameters. Type and kind declarations are elaborated by
-        elaborate_types.py, and interfaces and modules met inside a block by modules/elaboration.py. A statement, an
-        expression evaluated for its effect, declares nothing.
+        Desugaring has rewritten let f(params) = e, when neither recursive nor
+        external, as let f = fun(params) e, so only those two forms arrive here
+        with parameters. Type and kind declarations are elaborated by
+        elaborate_types.py, and interfaces and modules met inside a block by
+        modules/elaboration.py. A statement, an expression evaluated for its
+        effect, declares nothing.
         """
         match binding:
             case ast.InterfaceDecl():
@@ -466,7 +502,8 @@ class BindingMixin(Checker):
                 typed_e = self.synth_expr(expr, env, loop_depth)
                 return TypedExprStmt(expr=typed_e, offset=binding.offset)
 
-            # An external function: its parameters and result annotation declare its type
+            # An external function: its parameters and result annotation declare
+            # its type
             case ast.LetValueBinding(params=params, value=ast.ExprExternal()) if params:
                 if binding.type_annot is None:
                     raise TypeError(
@@ -515,8 +552,9 @@ class BindingMixin(Checker):
                     offset=binding.offset,
                 )
 
-            # A recursive declaration, with or without parameters (desugaring has made a function value of the
-            # parameters of one that is not recursive)
+            # A recursive declaration, with or without parameters (desugaring
+            # has made a function value of the parameters of one that is not
+            # recursive)
             case ast.LetValueBinding(is_rec=True):
                 rec_sym = self._declare_rec_value(binding, env)
                 return self._check_rec_value(binding, rec_sym, env, loop_depth)

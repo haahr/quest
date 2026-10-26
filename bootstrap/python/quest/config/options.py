@@ -32,15 +32,18 @@ class CompilerOptions:
     emit_deps: bool = False
     program_dir: Optional[Path] = None
     current_dir: Optional[Path] = None
-    # 'interface' or 'module' when the source is a unit file, whose phases compile it as one (quest/modules/units.py)
+    # 'interface' or 'module' when the source is a unit file, whose phases
+    # compile it as one (quest/modules/units.py)
     unit: Optional[str] = None
 
     @property
     def is_c_compilation_mode(self) -> bool:
-        """Checks whether compilation options specify actively compiling or generating C code."""
+        """Checks whether compilation options specify actively compiling or
+        generating C code."""
         if self.whole_program:
             return False
-        # The C backends' phases: the current emitter's, and the IR's (docs/ir.md §12, step 5)
+        # The C backends' phases: the current emitter's, and the IR's
+        # (docs/ir.md §12, step 5)
         c_phases = ("codegen_c", "run_c_compiled")
         if self.stop_after in c_phases:
             return True
@@ -50,5 +53,6 @@ class CompilerOptions:
 
     @property
     def is_typecheck_only(self) -> bool:
-        """Checks whether compilation options specify stopping after typechecking in non-C mode."""
+        """Checks whether compilation options specify stopping after
+        typechecking in non-C mode."""
         return self.stop_after == "typecheck" and not self.is_c_compilation_mode

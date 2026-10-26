@@ -1,5 +1,5 @@
-"""The C backend's text: its literals, and the rules that keep its formatting of C translatable to Quest line by line
-(docs/self-hosting-refactorings.md §2)."""
+"""The C backend's text: its literals, and the rules that keep its formatting of
+C translatable to Quest line by line (docs/self-hosting-refactorings.md §2)."""
 
 import ast
 import math
@@ -15,7 +15,8 @@ from quest.values.model import QReal
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CODEGEN = _ROOT / "bootstrap" / "python" / "quest" / "codegen"
-# The files that spell C (syntax.py, which defines the vocabulary, may join and format)
+# The files that spell C (syntax.py, which defines the vocabulary, may join and
+# format)
 _FILES = [
     _CODEGEN / "c" / "printer.py",
     _CODEGEN / "c" / "declarations.py",
@@ -30,7 +31,8 @@ _FILES = [
 class TestLiterals(unittest.TestCase):
     def test_strings_escape_by_letter_or_three_digit_octal(self):
         self.assertEqual(c_string("a\"b\\c\n\t\r"), '"a\\"b\\\\c\\n\\t\\r"')
-        # An escaped character followed by a hex or octal digit stays a character of its own
+        # An escaped character followed by a hex or octal digit stays a
+        # character of its own
         self.assertEqual(c_string("\x01a"), '"\\001a"')
         self.assertEqual(c_string("\x017"), '"\\0017"')
         self.assertEqual(c_string("\x7f\xff0"), '"\\177\\3770"')
@@ -60,9 +62,11 @@ class TestLiterals(unittest.TestCase):
         self.assertEqual(c_real(float("-inf")), "(-INFINITY)")
 
     def test_reals_are_conv_reals_with_a_c_sign(self):
-        """c_real's port formats the magnitude with conv.real (the runtime's quest_format_real, as the interpreter's
-        _conv_real mirrors it) and writes the sign as C does: so the two must agree on every real, here every real
-        constant of the test corpus and the library (but infinities), and the edge cases."""
+        """c_real's port formats the magnitude with conv.real (the runtime's
+        quest_format_real, as the interpreter's _conv_real mirrors it) and
+        writes the sign as C does: so the two must agree on every real, here
+        every real constant of the test corpus and the library (but infinities),
+        and the edge cases."""
         values = {0.0, -0.0, 1.0, 1e-5, 9.99e-6, 1e16, 9999999999999998.0, 1e100, -1e-300, 0.1, 2.0 / 3.0}
         for directory in (_ROOT / "tests" / "source", _ROOT / "lib"):
             for path in directory.rglob("*.quest"):
@@ -87,8 +91,9 @@ class TestLiterals(unittest.TestCase):
 
 
 class TestBackendFormatting(unittest.TestCase):
-    """Every value the backend interpolates into C text is a string, joined only by syntax.py: no f-string formats a
-    value with a format spec or a conversion, and nothing else joins."""
+    """Every value the backend interpolates into C text is a string, joined only
+    by syntax.py: no f-string formats a value with a format spec or a
+    conversion, and nothing else joins."""
 
     def test_no_format_specs_or_conversions(self):
         found = []

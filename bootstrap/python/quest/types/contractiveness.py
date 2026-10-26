@@ -39,7 +39,8 @@ from quest.types.model import (
 
 
 class ContractivenessError(QuestCompilerError):
-    """Raised when a recursive type definition is not contractive (bare recursion loop)."""
+    """Raised when a recursive type definition is not contractive (bare
+    recursion loop)."""
 
 # ============================================================================
 # 11. Recursive Type Contractiveness Verification (C \succ X)
@@ -52,15 +53,21 @@ def is_type_contractive(
     seen_aliases: Optional[set[int]] = None,
     depth: int = 0,
 ) -> bool:
-    """Verifies that `qtype` is contractive in all variable IDs in `recursive_var_ids` (C \\succ X).
+    """Verifies that `qtype` is contractive in all variable IDs in
+    `recursive_var_ids` (C \\succ X).
 
-    According to Cardelli & Longo (1991, Section 2.4/2.9) and MacQueen, Plotkin & Sethi (1986):
+    According to Cardelli & Longo (1991, Section 2.4/2.9) and MacQueen, Plotkin
+    & Sethi (1986):
     - Primitive types (Int, Bool, Top, etc.) are contractive in all X.
     - Type variable Y is contractive in X iff Y != X.
-    - Type constructors (Record, Tuple, Option, Variant, Fun, Array, Var, Out) are contractive in X.
-    - Universal quantifier All(X':K)B is contractive in X iff X not free in K and B \\succ X.
-    - Type application (λ(X':K)B)(A) is contractive in X iff the beta-reduced body \\succ X.
-    - Recursive type Rec(X')B is contractive in X iff B \\succ X' and B \\succ X.
+    - Type constructors (Record, Tuple, Option, Variant, Fun, Array, Var, Out)
+      are contractive in X.
+    - Universal quantifier All(X':K)B is contractive in X iff X not free in K
+      and B \\succ X.
+    - Type application (λ(X':K)B)(A) is contractive in X iff the beta-reduced
+      body \\succ X.
+    - Recursive type Rec(X')B is contractive in X iff B \\succ X' and B \\succ
+      X.
     """
     if depth > MAX_TYPE_EXPANSION_DEPTH:
         raise TypeRecursionLimitExceeded(
@@ -105,8 +112,9 @@ def is_type_contractive(
             return is_type_contractive(body, recursive_var_ids, env, seen, depth + 1)
 
         case QTypeApp(constructor=ctor):
-            # evaluate_lazily has already beta-reduced applications of type functions, so the
-            # constructor here is opaque; the application is contractive if the constructor is.
+            # evaluate_lazily has already beta-reduced applications of type
+            # functions, so the constructor here is opaque; the application is
+            # contractive if the constructor is.
             return is_type_contractive(ctor.evaluate_lazily(env), recursive_var_ids, env, seen, depth + 1)
 
         case (
@@ -145,7 +153,8 @@ def check_type_contractive(
     offset: int = 0,
     env: Optional[Any] = None,
 ) -> None:
-    """Validates that `qtype` is contractive in `recursive_var_ids`, raising KindError if not."""
+    """Validates that `qtype` is contractive in `recursive_var_ids`, raising
+    KindError if not."""
     if not is_type_contractive(qtype, recursive_var_ids, env):
         raise KindError(
             f"Recursive type '{var_name}' is not contractive; "

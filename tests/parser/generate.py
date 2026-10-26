@@ -1,10 +1,13 @@
-"""Generates the self-hosted parser's (questlang/syntax/parser's) golden tests from the bootstrap parser.
+"""Generates the self-hosted parser's (questlang/syntax/parser's) golden tests
+from the bootstrap parser.
 
-Each input tests/parser/NAME.quest holds cases, separated by lines that are just "(* ---- *)". It gives a golden test,
-tests/source/questlang/parser_NAME.quest, which parses each case with the self-hosted parser and prints its AST with
-astprint.dumpWithOffsets, or its syntax error; tests/golden/run/questlang/parser_NAME.out holds what the bootstrap's
-parser and ast_dump (with show_offsets, so that every node's and component's offset is checked) give for each case,
-which the test must print.
+Each input tests/parser/NAME.quest holds cases, separated by lines that are just
+"(* ---- *)". It gives a golden test, tests/source/questlang/parser_NAME.quest,
+which parses each case with the self-hosted parser and prints its AST with
+astprint.dumpWithOffsets, or its syntax error;
+tests/golden/run/questlang/parser_NAME.out holds what the bootstrap's parser and
+ast_dump (with show_offsets, so that every node's and component's offset is
+checked) give for each case, which the test must print.
 
     python tests/parser/generate.py
 

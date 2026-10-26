@@ -21,19 +21,21 @@ class Severity(Enum):
 
 @dataclass(frozen=True)
 class DiagnosticLabel:
-    """An annotated source position highlighting code context within a diagnostic."""
+    """An annotated source position highlighting code context within a
+    diagnostic."""
     offset: int
     length: int = 1
     message: Optional[str] = None
     is_primary: bool = True
-    # The source map of the file the offset is in, when it is not the diagnostic's (such as an import that loaded the
-    # file the error is in)
+    # The source map of the file the offset is in, when it is not the
+    # diagnostic's (such as an import that loaded the file the error is in)
     source_map: Optional[Any] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
 class CodeSuggestion:
-    """An actionable fix that can be automatically applied by an IDE/LSP or displayed as a diff."""
+    """An actionable fix that can be automatically applied by an IDE/LSP or
+    displayed as a diff."""
     offset: int
     length: int
     replacement: str
@@ -51,10 +53,11 @@ class Diagnostic:
     help_text: Optional[str] = None
     suggestions: list[CodeSuggestion] = field(default_factory=list)
     error_code: Optional[str] = None
-    # The source map of the file the labels' offsets are in, when it is not the file being compiled (an imported
-    # interface or module; see in_unit)
+    # The source map of the file the labels' offsets are in, when it is not the
+    # file being compiled (an imported interface or module; see in_unit)
     source_map: Optional[Any] = None
-    # For an uncaught exception, the frames active where it was raised, most recent first (docs/exceptions.md §2)
+    # For an uncaught exception, the frames active where it was raised, most
+    # recent first (docs/exceptions.md §2)
     trace: tuple[str, ...] = ()
 
     @classmethod
@@ -124,7 +127,8 @@ class Diagnostic:
         length: int = 1,
         notes: Optional[list[str]] = None,
     ) -> Diagnostic:
-        """Constructs an ERROR diagnostic from an Exception, capturing its full traceback."""
+        """Constructs an ERROR diagnostic from an Exception, capturing its full
+        traceback."""
         tb_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
         tb_formatted = "".join(tb_lines).strip()
         all_notes = list(notes or [])
@@ -146,14 +150,16 @@ class Diagnostic:
 class QuestCompilerError(Exception):
     """Base class for all Quest compilation and evaluation errors.
 
-    An error raised in an imported interface or module records that file's source map, and the imports through
-    which the file was loaded, innermost first, as it propagates (in_unit and at_import); diagnostic_of puts them on
+    An error raised in an imported interface or module records that file's
+    source map, and the imports through which the file was loaded, innermost
+    first, as it propagates (in_unit and at_import); diagnostic_of puts them on
     its diagnostic.
     """
 
     source_map: Optional[Any] = None
     import_labels: tuple[DiagnosticLabel, ...] = ()
-    # For an error raised while running a program, the frames active where it was raised, most recent first
+    # For an error raised while running a program, the frames active where it
+    # was raised, most recent first
     frames: Optional[tuple[str, ...]] = None
 
     def __init__(
@@ -182,12 +188,14 @@ class QuestCompilerError(Exception):
         )
 
     def format_with_source(self, source_map: Any, length: Optional[int] = None) -> str:
-        """Renders this error as a formatted diagnostic message with source context."""
+        """Renders this error as a formatted diagnostic message with source
+        context."""
         return DiagnosticRenderer.render_diagnostic(self.to_diagnostic(length), source_map)
 
 
 def diagnostic_of(error: QuestCompilerError) -> Diagnostic:
-    """The diagnostic for error, located in the file it was raised in, with the imports that loaded that file."""
+    """The diagnostic for error, located in the file it was raised in, with the
+    imports that loaded that file."""
     diag = error.to_diagnostic()
     if error.source_map is None and not error.import_labels and not error.frames:
         return diag
@@ -199,7 +207,8 @@ def diagnostic_of(error: QuestCompilerError) -> Diagnostic:
     )
 
 
-# The frames of tracebacks (docs/exceptions.md §2.3): the program's phrases, and a module's initializer
+# The frames of tracebacks (docs/exceptions.md §2.3): the program's phrases, and
+# a module's initializer
 MAIN_FRAME = "<main>"
 INIT_FRAME_SUFFIX = ".<init>"
 
@@ -210,8 +219,9 @@ def init_frame(module_name: str) -> str:
 
 
 def frame_name(enclosing: str, binder: Optional[str]) -> str:
-    """The name in tracebacks of a function bound to binder (None if it is not let-bound) by code running in the frame
-    enclosing: the binder, or <anon>, qualified by the module's name in a module's initializer, by the enclosing
+    """The name in tracebacks of a function bound to binder (None if it is not
+    let-bound) by code running in the frame enclosing: the binder, or <anon>,
+    qualified by the module's name in a module's initializer, by the enclosing
     function's name in a function, and not at all in the program's phrases."""
     local = binder or "<anon>"
     if enclosing == MAIN_FRAME:
@@ -222,7 +232,8 @@ def frame_name(enclosing: str, binder: Optional[str]) -> str:
 
 
 def trace_lines(frames: tuple[str, ...]) -> list[str]:
-    """The lines listing a traceback's frames, a run of the same frame shown once with its count."""
+    """The lines listing a traceback's frames, a run of the same frame shown
+    once with its count."""
     lines: list[str] = []
     i = 0
     while i < len(frames):
@@ -238,7 +249,8 @@ def trace_lines(frames: tuple[str, ...]) -> list[str]:
 
 @contextmanager
 def in_unit(source_map: Any) -> Iterator[None]:
-    """Attributes errors raised while elaborating an imported unit (an interface or module file) to that file."""
+    """Attributes errors raised while elaborating an imported unit (an interface
+    or module file) to that file."""
     try:
         yield
     except QuestCompilerError as error:
@@ -249,10 +261,12 @@ def in_unit(source_map: Any) -> Iterator[None]:
 
 @contextmanager
 def at_import(offset: int, source_map: Any, length: int = 1) -> Iterator[None]:
-    """Notes the import at offset in the file of source_map on errors raised while loading the unit it imports.
+    """Notes the import at offset in the file of source_map on errors raised
+    while loading the unit it imports.
 
-    An error located in the unit gets an "imported here" label. An error with no location yet was raised before the
-    unit was read (the unit could not be found, say), so it is located at the import itself.
+    An error located in the unit gets an "imported here" label. An error with no
+    location yet was raised before the unit was read (the unit could not be
+    found, say), so it is located at the import itself.
     """
     try:
         yield
@@ -268,7 +282,8 @@ def at_import(offset: int, source_map: Any, length: int = 1) -> Iterator[None]:
 
 
 class FatalDiagnosticError(QuestCompilerError):
-    """Raised immediately by DiagnosticSink when a FATAL diagnostic is emitted."""
+    """Raised immediately by DiagnosticSink when a FATAL diagnostic is
+    emitted."""
 
     def __init__(self, diagnostic: Diagnostic) -> None:
         super().__init__(
@@ -283,7 +298,8 @@ class FatalDiagnosticError(QuestCompilerError):
 
 
 class QuestTypeError(QuestCompilerError):
-    """Raised when a type error occurs during term elaboration and typechecking."""
+    """Raised when a type error occurs during term elaboration and
+    typechecking."""
 
     def __init__(
         self,
@@ -309,7 +325,8 @@ class QuestTypeError(QuestCompilerError):
 
 
 class TypeRecursionLimitExceeded(QuestTypeError):
-    """Raised when type analysis step/recursion limit is exceeded (deterministic loop safety)."""
+    """Raised when type analysis step/recursion limit is exceeded (deterministic
+    loop safety)."""
 
     def __init__(
         self,
@@ -335,7 +352,8 @@ class TypeRecursionLimitExceeded(QuestTypeError):
 
 
 class DiagnosticSink:
-    """Collects diagnostics during compiler phases, supporting error accumulation and fatal aborts."""
+    """Collects diagnostics during compiler phases, supporting error
+    accumulation and fatal aborts."""
 
     def __init__(self, fail_fast: bool = False, warnings_as_errors: bool = False) -> None:
         self.diagnostics: list[Diagnostic] = []
@@ -343,7 +361,8 @@ class DiagnosticSink:
         self.warnings_as_errors = warnings_as_errors
 
     def emit(self, diag: Diagnostic) -> None:
-        """Appends a diagnostic to the sink, aborting immediately if FATAL or fail_fast ERROR."""
+        """Appends a diagnostic to the sink, aborting immediately if FATAL or
+        fail_fast ERROR."""
         self.diagnostics.append(diag)
         if diag.severity == Severity.FATAL:
             raise FatalDiagnosticError(diag)
@@ -390,7 +409,8 @@ class DiagnosticSink:
 
     @property
     def has_errors(self) -> bool:
-        """Returns True if any FATAL or ERROR (or WARNING when warnings_as_errors is True) is present."""
+        """Returns True if any FATAL or ERROR (or WARNING when
+        warnings_as_errors is True) is present."""
         return any(
             d.severity in (Severity.FATAL, Severity.ERROR)
             or (self.warnings_as_errors and d.severity == Severity.WARNING)
@@ -411,14 +431,17 @@ class DiagnosticSink:
 
 
 class DiagnosticRenderer:
-    """Formats structured diagnostics into human-readable terminal output with source context."""
+    """Formats structured diagnostics into human-readable terminal output with
+    source context."""
 
     @staticmethod
     def render_diagnostic(diag: Diagnostic, source_map: Optional[Any] = None, use_color: bool = False) -> str:
-        """Renders a single Diagnostic with header, source line context, notes, and help."""
+        """Renders a single Diagnostic with header, source line context, notes,
+        and help."""
         code_str = f"[{diag.error_code}]" if diag.error_code else ""
         sev_str = f"{diag.severity.value}{code_str}"
-        # A diagnostic in an imported unit is rendered against that unit's source
+        # A diagnostic in an imported unit is rendered against that unit's
+        # source
         source_map = diag.source_map or source_map
 
         # If no source map or no primary label offset, emit plain message header
@@ -448,7 +471,8 @@ class DiagnosticRenderer:
             label_msg = f" {diag.primary_label.message}" if diag.primary_label.message else ""
             lines.append(f"    {caret_pad}{underline}{label_msg}")
 
-        # Secondary contextual labels, each in its own file (an import in the main file, say)
+        # Secondary contextual labels, each in its own file (an import in the
+        # main file, say)
         for sec in diag.secondary_labels:
             sec_map = sec.source_map or source_map
             sec_loc = sec_map.locate(sec.offset)

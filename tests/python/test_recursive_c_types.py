@@ -1,5 +1,5 @@
-"""C representations of recursive types are those of their unfoldings, and equal recursive types (however written)
-share one C representation."""
+"""C representations of recursive types are those of their unfoldings, and equal
+recursive types (however written) share one C representation."""
 
 from __future__ import annotations
 
@@ -56,7 +56,8 @@ def _tree(name: str, symbol_id: int) -> QRecType:
 
 
 def _p_q() -> QRecGroupType:
-    """Let Rec P = Tuple v: Int q: Array(Q) end and Q = Tuple w: Int p: Array(P) end"""
+    """Let Rec P = Tuple v: Int q: Array(Q) end and Q = Tuple w: Int p: Array(P)
+    end"""
     p = QTypeVar("P", 9201, TYPE_KIND)
     q = QTypeVar("Q", 9202, TYPE_KIND)
     p_body = QTupleType((QTupleField("v", INT_TYPE), QTupleField("q", QArrayType(q))))
@@ -70,7 +71,8 @@ class TestRecursiveCTypes(unittest.TestCase):
         unfolded = tree.unfold_lazily()
         self.assertIs(normalize_type(tree), unfolded)
         self.assertEqual(qtype_to_c_type(tree), f"{tuple_struct_name(unfolded)} *")
-        # The struct of the unfolding names the recursive occurrence by the recursive type's own tag
+        # The struct of the unfolding names the recursive occurrence by the
+        # recursive type's own tag
         self.assertIn(type_tag(tree), tuple_struct_name(unfolded))
 
     def test_recursive_tags_are_alpha_invariant_and_distinct(self) -> None:
@@ -80,7 +82,8 @@ class TestRecursiveCTypes(unittest.TestCase):
         self.assertNotEqual(type_tag(_tree("Tree", 9305)), type_tag(plain))
 
     def test_nested_recursive_variables_are_distinguished(self) -> None:
-        """Rec(X) Tuple Array(Rec(Y) Tuple Array(X) end) end differs from the same with Array(Y) inside."""
+        """Rec(X) Tuple Array(Rec(Y) Tuple Array(X) end) end differs from the
+        same with Array(Y) inside."""
 
         def nested(inner_refers_to_outer: bool) -> QRecType:
             x = QTypeVar("X", 9311, TYPE_KIND)
@@ -97,8 +100,8 @@ class TestRecursiveCTypes(unittest.TestCase):
         self.assertIs(normalize_type(p), p.unfold_lazily())
         self.assertEqual(qtype_to_c_type(p), f"{tuple_struct_name(p.unfold_lazily())} *")
         self.assertEqual(qtype_to_c_type(q), f"{tuple_struct_name(q.unfold_lazily())} *")
-        # P and Q differ only in their field names, so they share a struct (as non-recursive tuples do), but not
-        # a descriptor
+        # P and Q differ only in their field names, so they share a struct (as
+        # non-recursive tuples do), but not a descriptor
         self.assertEqual(type_tag(p), type_tag(q))
         self.assertNotEqual(descriptor_form(p).tag, descriptor_form(q).tag)
 
@@ -122,7 +125,8 @@ class TestRecursiveCTypes(unittest.TestCase):
 
 
 def _int_list(symbol_id: int, period: int) -> QRecType:
-    """Rec(L) Option nil cons with head: Int tail: ... end end, with the cons cell written out period times."""
+    """Rec(L) Option nil cons with head: Int tail: ... end end, with the cons
+    cell written out period times."""
     var = QTypeVar("L", symbol_id, TYPE_KIND)
     t = var
     for _ in range(period):
@@ -132,7 +136,8 @@ def _int_list(symbol_id: int, period: int) -> QRecType:
 
 
 class TestCanonicalRecursiveTypes(unittest.TestCase):
-    """Equal recursive types with different periods, and their unfoldings, share tags and descriptors."""
+    """Equal recursive types with different periods, and their unfoldings, share
+    tags and descriptors."""
 
     def assert_same_representation(self, a, b) -> None:
         self.assertEqual(type_tag(a), type_tag(b))
@@ -162,7 +167,8 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
         self.assert_same_representation(pair, unrolled)
 
     def test_cycles_through_function_types(self) -> None:
-        """Rec(L) Option nil cons with f: Fun(L) Int end end, unrolled or not; recursion variables bind options."""
+        """Rec(L) Option nil cons with f: Fun(L) Int end end, unrolled or not;
+        recursion variables bind options."""
 
         def through_fun(symbol_id: int, period: int) -> QRecType:
             t = QTypeVar("L", symbol_id, TYPE_KIND)
@@ -177,7 +183,8 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
         self.assertEqual(qtype_to_c_type(fun), "QClosure *")
 
     def test_two_cycle_entries_make_a_recursive_group(self) -> None:
-        """Rec(A) Tuple Int Array(Rec(B) Tuple Bool Array(B) Array(A) end) end: both A and B are re-entered."""
+        """Rec(A) Tuple Int Array(Rec(B) Tuple Bool Array(B) Array(A) end) end:
+        both A and B are re-entered."""
         a = QTypeVar("A", 9441, TYPE_KIND)
         b = QTypeVar("B", 9442, TYPE_KIND)
         inner = QRecType("B", 9442, TYPE_KIND, QTupleType((
@@ -192,11 +199,13 @@ class TestCanonicalRecursiveTypes(unittest.TestCase):
 
 
 class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
-    """Recursive types whose unfoldings are function or array types are represented like their unfoldings."""
+    """Recursive types whose unfoldings are function or array types are
+    represented like their unfoldings."""
 
     @staticmethod
     def _fun(symbol_id: int, period: int) -> QRecType:
-        """Rec(F) All(n: Int) F, with the function type written out period times."""
+        """Rec(F) All(n: Int) F, with the function type written out period
+        times."""
         t = QTypeVar("F", symbol_id, TYPE_KIND)
         for _ in range(period):
             t = QFunType((QParam("n", INT_TYPE),), t)
@@ -216,7 +225,8 @@ class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
         f = self._fun(9511, 1)
         self.assertEqual(type_tag(holder(f)), type_tag(holder(f.unfold_lazily())))
         self.assertEqual(type_tag(holder(f)), type_tag(holder(self._fun(9512, 2))))
-        # A cycle through function types alone has a recursive function type as its canonical form
+        # A cycle through function types alone has a recursive function type as
+        # its canonical form
         self.assertIsInstance(canonical_type(f.unfold_lazily()), QRecType)
 
     def test_recursive_array_type_is_named_by_its_body(self) -> None:
@@ -229,11 +239,13 @@ class TestRecursiveFunctionAndArrayTypes(unittest.TestCase):
 
 
 class TestCanonicalBinders(unittest.TestCase):
-    """Equal types that differ inside binders (polymorphic and auto types) share canonical forms and descriptors."""
+    """Equal types that differ inside binders (polymorphic and auto types) share
+    canonical forms and descriptors."""
 
     @staticmethod
     def _poly(a_id: int, period: int, bound_by_list: bool = False) -> QAllType:
-        """All(A::TYPE x: A l: IntList) A, with the list at the given period (or All(A <: IntList x: A) A)."""
+        """All(A::TYPE x: A l: IntList) A, with the list at the given period (or
+        All(A <: IntList x: A) A)."""
         lst = _int_list(a_id + 1, period)
         kind = QPowerKind(lst) if bound_by_list else TYPE_KIND
         a = QTypeVar("A", a_id, kind)
@@ -248,7 +260,8 @@ class TestCanonicalBinders(unittest.TestCase):
     def test_polymorphic_function_types(self) -> None:
         self.assert_shared(self._poly(9701, 1), self._poly(9711, 2))
         self.assert_shared(self._poly(9721, 1, True), self._poly(9731, 3, True))
-        # Different type parameters stay apart: All(A) Fun(x: A l: IntList) Int is not All(A) Fun(x: Int ...) A
+        # Different type parameters stay apart: All(A) Fun(x: A l: IntList) Int
+        # is not All(A) Fun(x: Int ...) A
         a = QTypeVar("A", 9741, TYPE_KIND)
         other = QAllType((QQuantifier("A", 9741, TYPE_KIND),),
                          QFunType((QParam("x", INT_TYPE), QParam("l", _int_list(9742, 1))), a))
@@ -296,12 +309,13 @@ class TestCanonicalBinders(unittest.TestCase):
 
 
 class TestCanonicalKindsAndVariables(unittest.TestCase):
-    """Equal types that differ inside kinds, type variables' bounds, path types, or type operators share canonical
-    forms and descriptors."""
+    """Equal types that differ inside kinds, type variables' bounds, path types,
+    or type operators share canonical forms and descriptors."""
 
     @staticmethod
     def _with_list(t) -> QTupleType:
-        """Tuple t IntList end: a type with recursion, so that it has a canonical form."""
+        """Tuple t IntList end: a type with recursion, so that it has a
+        canonical form."""
         return QTupleType((QTupleField(None, t), QTupleField(None, _int_list(9900, 1))))
 
     def assert_shared(self, a, b) -> None:

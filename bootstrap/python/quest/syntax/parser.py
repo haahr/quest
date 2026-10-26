@@ -17,8 +17,8 @@ from quest.diagnostics import QuestCompilerError
 class Construct:
     """Base class for all PEG grammar constructs.
 
-    A silent construct must still match, but its result is not passed to the enclosing
-    rule's action or included in the enclosing sequence's result.
+    A silent construct must still match, but its result is not passed to the
+    enclosing rule's action or included in the enclosing sequence's result.
     """
     can_match_empty: bool = False
     silent: bool = False
@@ -76,8 +76,9 @@ def _sequence_of(items: tuple[Construct, ...]) -> Construct:
 class Optional(Construct):
     """Matches inner construct(s) 0 or 1 times: [...] in EBNF.
 
-    Evaluates to the inner result, or None if the inner construct does not match. Since a
-    Sequence with one non-silent item yields that item, Optional(silent_keyword, X) is X or None.
+    Evaluates to the inner result, or None if the inner construct does not
+    match. Since a Sequence with one non-silent item yields that item,
+    Optional(silent_keyword, X) is X or None.
     """
     can_match_empty: bool = True
 
@@ -96,7 +97,8 @@ class Optional(Construct):
 
 
 class Repeated(Construct):
-    """Matches inner construct(s) 0 or more times: {...} in EBNF. Repeating a silent construct is silent."""
+    """Matches inner construct(s) 0 or more times: {...} in EBNF. Repeating a
+    silent construct is silent."""
     can_match_empty: bool = True
 
     def __init__(self, *items: Construct):
@@ -109,7 +111,8 @@ class Repeated(Construct):
         while True:
             result, new_pos = self.inner.evaluate(parser, current_pos)
             if result is None or new_pos <= current_pos:
-                # Enforce progress assertion to prevent zero-width infinite loops
+                # Enforce progress assertion to prevent zero-width infinite
+                # loops
                 break
             results.append(result)
             current_pos = new_pos
@@ -122,8 +125,9 @@ class Repeated(Construct):
 class Sequence(Construct):
     """Matches a sequence of constructs in order.
 
-    Evaluates to the results of its non-silent items: the result itself if there is exactly
-    one, otherwise a tuple of them. A sequence whose items are all silent is itself silent.
+    Evaluates to the results of its non-silent items: the result itself if there
+    is exactly one, otherwise a tuple of them. A sequence whose items are all
+    silent is itself silent.
     """
 
     def __init__(self, items: tuple[Construct, ...]):
@@ -132,7 +136,8 @@ class Sequence(Construct):
         self._single = sum(not item.silent for item in items) == 1
 
     def match(self, parser: Parser, pos: int) -> tuple[Opt[list[Any]], int]:
-        """Matches all items, returning the non-silent results (or None on failure)."""
+        """Matches all items, returning the non-silent results (or None on
+        failure)."""
         results: list[Any] = []
         current_pos = pos
         for item in self.items:
@@ -154,9 +159,11 @@ class Sequence(Construct):
 
 
 class SepBy(Construct):
-    """Matches one or more items separated by a (silent) separator: item {sep item}.
+    """Matches one or more items separated by a (silent) separator: item {sep
+    item}.
 
-    Evaluates to a tuple of the item results. A trailing separator is not consumed.
+    Evaluates to a tuple of the item results. A trailing separator is not
+    consumed.
     """
 
     def __init__(self, item: Construct, separator: Construct):
@@ -184,8 +191,8 @@ class SepBy(Construct):
 
 
 class Rule:
-    """An alternative production rule: a sequence and the semantic action applied to its
-    non-silent results."""
+    """An alternative production rule: a sequence and the semantic action
+    applied to its non-silent results."""
 
     def __init__(self, constructs: tuple[Construct, ...], action: Callable[..., Any]):
         self.sequence = Sequence(constructs)
@@ -219,27 +226,35 @@ _IN_PROGRESS = object()
 # ============================================================================
 
 class Parser:
-    """A packrat parser, which runs a parsing expression grammar (PEG; the grammar is grammar.py's) over a token list
-    and builds the syntax tree with the grammar's actions.
+    """A packrat parser, which runs a parsing expression grammar (PEG; the
+    grammar is grammar.py's) over a token list and builds the syntax tree with
+    the grammar's actions.
 
-    The grammar is data. Each nonterminal is a SyntaxTarget holding an ordered list of Rules, and each Rule is a
-    sequence of constructs (a token to match, a target, or an optional, repeated, or separated construct) with an action
-    that builds an AST node from what the sequence matched. Parsing a target tries its rules in order and commits to the
-    first that matches. A PEG's choice is ordered, so a grammar is never ambiguous, but the order of a target's rules is
-    part of its meaning: a rule that matches a prefix of what a later one would match hides it. A rule that fails
-    consumes nothing, and parsing backtracks to the target's start to try the next.
+    The grammar is data. Each nonterminal is a SyntaxTarget holding an ordered
+    list of Rules, and each Rule is a sequence of constructs (a token to match,
+    a target, or an optional, repeated, or separated construct) with an action
+    that builds an AST node from what the sequence matched. Parsing a target
+    tries its rules in order and commits to the first that matches. A PEG's
+    choice is ordered, so a grammar is never ambiguous, but the order of a
+    target's rules is part of its meaning: a rule that matches a prefix of what
+    a later one would match hides it. A rule that fails consumes nothing, and
+    parsing backtracks to the target's start to try the next.
 
-    Backtracking alone can take exponential time, so each target's result at each position is memoized (cache): a
-    target is parsed at most once per position, and parsing takes time linear in the number of tokens. The memo also
-    stops left recursion, which a PEG cannot express: a target reached again at the position where it is already being
-    parsed fails (_IN_PROGRESS) instead of recursing forever. Rules are therefore written without it, a chain of
-    operators as a repetition rather than as a rule that begins with itself. Since a match's result may be reused, and
-    may belong to an alternative that is later abandoned, actions build nodes and do nothing else; and since None
-    means failure, an action never returns it.
+    Backtracking alone can take exponential time, so each target's result at
+    each position is memoized (cache): a target is parsed at most once per
+    position, and parsing takes time linear in the number of tokens. The memo
+    also stops left recursion, which a PEG cannot express: a target reached
+    again at the position where it is already being parsed fails (_IN_PROGRESS)
+    instead of recursing forever. Rules are therefore written without it, a
+    chain of operators as a repetition rather than as a rule that begins with
+    itself. Since a match's result may be reused, and may belong to an
+    alternative that is later abandoned, actions build nodes and do nothing
+    else; and since None means failure, an action never returns it.
 
-    When a parse fails, the error is reported at the farthest token at which any construct failed, with everything
-    expected there. Every alternative backtracks, so the failure that got deepest into the input is the best guess at
-    where the program goes wrong.
+    When a parse fails, the error is reported at the farthest token at which any
+    construct failed, with everything expected there. Every alternative
+    backtracks, so the failure that got deepest into the input is the best guess
+    at where the program goes wrong.
     """
 
     def __init__(
@@ -301,7 +316,8 @@ class Parser:
         )
 
     def parse_target(self, target: SyntaxTarget, pos: int) -> tuple[Opt[Any], int]:
-        """Evaluates a target at the given token position with packrat memoization."""
+        """Evaluates a target at the given token position with packrat
+        memoization."""
         key = (target, pos)
         if key in self.cache:
             cached = self.cache[key]

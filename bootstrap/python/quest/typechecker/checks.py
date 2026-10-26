@@ -21,7 +21,8 @@ from quest.types import (
 
 
 def check_distinct_names(members: Any) -> None:
-    """Rejects a simultaneous declaration (members joined by and) that declares one name twice."""
+    """Rejects a simultaneous declaration (members joined by and) that declares
+    one name twice."""
     seen: set[str] = set()
     for member in members:
         if member.name in seen:
@@ -33,14 +34,16 @@ def check_distinct_names(members: Any) -> None:
 
 
 def describe_kind(k: QKind) -> str:
-    """Formats a kind as written in a HasKind clause: <: T for POWER(T), :: K otherwise."""
+    """Formats a kind as written in a HasKind clause: <: T for POWER(T), :: K
+    otherwise."""
     if isinstance(k, QPowerKind):
         return f"<: {k.bound}"
     return f":: {k}"
 
 
 def check_type_arg_kind(what: str, targ: QType, bound: QKind, env: Environment, offset: int) -> None:
-    """Checks that a type argument (explicit or inferred) has a kind within its quantifier's bound."""
+    """Checks that a type argument (explicit or inferred) has a kind within its
+    quantifier's bound."""
     bound_lazy = bound.evaluate_lazily(env)
     if isinstance(bound_lazy, QPowerKind):
         if not is_subtype(targ, bound_lazy.bound, env):
@@ -60,7 +63,8 @@ def join_types(
     offset: int,
     error_msg: Optional[str] = None,
 ) -> QType:
-    """Computes the least common supertype of a collection of types under subtyping."""
+    """Computes the least common supertype of a collection of types under
+    subtyping."""
     if not types:
         return OK_TYPE
     join_type = types[0]
@@ -84,7 +88,8 @@ def require_subtype(
     env: Environment,
     type_desc: Optional[str] = None,
 ) -> TypedExpr:
-    """Asserts that the type of an elaborated expression is a subtype of expected_type."""
+    """Asserts that the type of an elaborated expression is a subtype of
+    expected_type."""
     if not is_subtype(typed.type_val, expected_type, env):
         prefix = "Type mismatch: synthesized" if type_desc is None else f"{type_desc}"
         raise QuestTypeError(
@@ -95,8 +100,9 @@ def require_subtype(
 
 
 def not_desugared(node: ast.ASTNode) -> QuestCompilerError:
-    """The internal error for syntactic sugar that reached the type checker: every path that parses a unit and checks
-    it desugars it first (quest/syntax/desugar.py)."""
+    """The internal error for syntactic sugar that reached the type checker:
+    every path that parses a unit and checks it desugars it first
+    (quest/syntax/desugar.py)."""
     return QuestCompilerError(
         f"internal: {type(node).__name__} reached the type checker without desugaring", offset=node.offset
     )

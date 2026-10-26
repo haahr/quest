@@ -1,4 +1,5 @@
-(* Quest Self-Hosted Compiler: The Standard Library's Externals Implementation *)
+(* Quest Self-Hosted Compiler: The Standard Library's Externals
+ * Implementation *)
 
 module builtins : Builtins
 import
@@ -25,9 +26,9 @@ export
     Let Value = model.Value
     Let Args = Array(Value)
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Arguments and results
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let wrong(A::TYPE what: String v: Value): A =
         model.internalError(:A "Expected argument of type " <> what <> ", got " <> model.typeName(v) maybe.none(:Int))
@@ -81,19 +82,21 @@ export
             when readline.interrupted then model.raiseException(:Value primitives.readlineInterrupted maybe.none(:Int))
             end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. The table
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let table = model.newFields()
     let fn(symbol: String f: All(args: Args) Value): Ok =
         begin hashMap.insert(:String :Value table symbol model.builtinValue(symbol guarded(f))) ok end
     let value(symbol: String v: Value): Ok = begin hashMap.insert(:String :Value table symbol v) ok end
-    (* An exception, under its symbol and the symbol's name ((&quest_exc_x) and quest_exc_x) *)
+    (* An exception, under its symbol and the symbol's name ((&quest_exc_x) and
+     * quest_exc_x) *)
     let exc(name: String e: model.ExceptionValue): Ok =
         begin value("(&" <> name <> ")" vException(e)) value(name vException(e)) end
 
-    (* The identity hash of what `is` compares: a scalar's value, or the object a value holds *)
+    (* The identity hash of what `is` compares: a scalar's value, or the object
+     * a value holds *)
     let identityHash(v: Value): word.T =
         case v
             when vInt with x then hash.identityHash(:Int x.n)
@@ -147,9 +150,11 @@ export
             unit
         end
 
-    (* Reads one JSON value's text from r, as the bootstrap's _dynamic_intern does: an object, an array, or a string
-     * by its brackets and quotes, and anything else up to a delimiter (which is read too: a native reader cannot put
-     * a character back, and a document that is not an object fails anyway) *)
+    (* Reads one JSON value's text from r, as the bootstrap's _dynamic_intern
+     * does: an object, an array, or a string by its brackets and quotes, and
+     * anything else up to a delimiter (which is read too: a native reader
+     * cannot put a character back, and a document that is not an object fails
+     * anyway) *)
     let readDocument(r: reader.T): String =
         begin
             let b = stringBuilder.new()
@@ -282,10 +287,12 @@ export
             fn("quest_string_precedes" fun(a: Args): Value vBool(stringOp.precedes(str(a[0]) str(a[1]))))
             fn("quest_string_precedes_sub" fun(a: Args): Value
                 vBool(stringOp.precedesSub(str(a[0]) int(a[1]) int(a[2]) str(a[3]) int(a[4]) int(a[5]))))
-            (* strutil.tryToReal has checked the syntax, as nativeToReal's callers do *)
+            (* strutil.tryToReal has checked the syntax, as nativeToReal's
+             * callers do *)
             fn("quest_strutil_to_real" fun(a: Args): Value vReal(maybe.unwrap(:Real strutil.tryToReal(str(a[0])))))
 
-            (* StringBuilder: the native buffer is a native builder, whose methods the buffer's functions are *)
+            (* StringBuilder: the native buffer is a native builder, whose
+             * methods the buffer's functions are *)
             fn("quest_sb_new" fun(a: Args): Value option vStringBuilder of Value with let sb = stringBuilder.new() end)
             fn("quest_sb_append_string" fun(a: Args): Value begin sb(a[0]).str(str(a[1])) unit end)
             fn("quest_sb_append_char" fun(a: Args): Value begin sb(a[0]).char(chr(a[1])) unit end)

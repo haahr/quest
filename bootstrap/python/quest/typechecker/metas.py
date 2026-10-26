@@ -9,7 +9,8 @@ from quest.types import QType, resolve_metas
 
 
 def resolve_typed_metas(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
-    """Rebuilds a typed AST with solved metavariables in its types replaced by their solutions."""
+    """Rebuilds a typed AST with solved metavariables in its types replaced by
+    their solutions."""
     if memo is None:
         memo = {}
     key = id(node)

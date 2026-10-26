@@ -23,9 +23,9 @@ export
 
     let error: Exception = exception error end
 
-    (* =========================================================================
+    (* ======================================================================
      * 1. Constructors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let null: Value = option jNull of Value end
     let bool(b: Bool): Value = option jBool of Value with let b = b end
@@ -57,9 +57,9 @@ export
     let get(o: Object name: String): maybe.T(Value) = hashMap.get(:String :Value o.members name)
     let names(o: Object): Array(String) = vector.toArray(:String o.names)
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Parsing (json.loads)
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Scanner = Tuple text: String var pos: Int end
 
@@ -90,7 +90,8 @@ export
             s.pos - start
         end
 
-    (* An optional minus, 0 or digits not starting with 0, an optional fraction, and an optional exponent *)
+    (* An optional minus, 0 or digits not starting with 0, an optional fraction,
+     * and an optional exponent *)
     let parseNumber(s: Scanner): Value =
         begin
             let start = s.pos
@@ -150,7 +151,8 @@ export
                         let var code = 0
                         for i = 0 upto 3 do code := {code * 16} + hexValue(stringOp.getChar(s.text {s.pos + i})) end
                         s.pos := s.pos + 4
-                        (* A character is a byte, so an escape above ÿ gives none *)
+                        (* A character is a byte, so an escape above ÿ gives
+                         * none *)
                         if code > 255 then fail(:Ok) end
                         b.char(ascii.char(code))
                     else fail(:stringBuilder.T)
@@ -238,9 +240,9 @@ export
             v
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * 3. Printing (json.dumps)
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 

@@ -1,7 +1,8 @@
 """The IR interpreter (quest/interpreter/ir_interp.py, docs/ir.md §12 step 4).
 
-Every golden test program runs through it in run_tests.py's run_ir phases, compared with the source interpreter's
-output; these tests check particular decisions of the interpreter on small programs."""
+Every golden test program runs through it in run_tests.py's run_ir phases,
+compared with the source interpreter's output; these tests check particular
+decisions of the interpreter on small programs."""
 
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ import tests.python.helpers  # noqa: F401  (enables the invariant checks)
 
 
 def run(source: str) -> str:
-    """The output of running source's Core IR, which prints the last phrase's result."""
+    """The output of running source's Core IR, which prints the last phrase's
+    result."""
     options = CompilerOptions(stop_after="typecheck")
     ctx = CompilerContext.create(source_text=source, file_name="<test>", options=options)
     res = default_pipeline().execute(source, "<test>", options=options, ctx=ctx)
@@ -66,7 +68,8 @@ class TestInterpreter(unittest.TestCase):
         self.assertEqual(out, "1 : Int\n")
 
     def test_library_modules(self) -> None:
-        # The standard library's modules are loaded and run by the source interpreter
+        # The standard library's modules are loaded and run by the source
+        # interpreter
         out = run("import list: List; list.length(:Int list.cons(:Int 1 list.cons(:Int 2 list.nil(:Int))))")
         self.assertEqual(out, "2 : Int\n")
 

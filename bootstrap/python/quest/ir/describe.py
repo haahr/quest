@@ -1,34 +1,44 @@
-"""Descriptors (docs/ir.md §7, §8.4): the pass after represent that makes run-time types explicit, producing the
-described stage.
+"""Descriptors (docs/ir.md §7, §8.4): the pass after represent that makes
+run-time types explicit, producing the described stage.
 
-Every run-time use of a type gets a descriptor operand (ir.Descriptor), made as the uniform quantifier rule says
-(docs/c-representation.md §6.4):
+Every run-time use of a type gets a descriptor operand (ir.Descriptor), made as
+the uniform quantifier rule says (docs/c-representation.md §6.4):
 
-- a type parameter in scope is its descriptor variable: a function's type parameters' descriptors are its leading
-  parameters (ir.Function.descriptor_params; those its closure supplies are read from its environment), a thunk's
-  (an adapter's, or a type application's) its own, and inside an inspect's arms, the auto type's own type parameter
-  is the value's type component (ir.Inspect.witness);
-- a type that mentions no type parameter in scope is its static descriptor (ir.StaticDescriptor);
-- a type that mentions some is its template, a hole for each (codegen/descriptors.py, hole_var), instantiated with
-  their descriptors (ir.Instantiate); and the generic layout of a polymorphic callee's type (a `runtime` plan's) is its
-  template with a hole for each of the callee's type parameters too, instantiated with the type arguments'
-  descriptors.
+- a type parameter in scope is its descriptor variable: a function's type
+  parameters' descriptors are its leading parameters
+  (ir.Function.descriptor_params; those its closure supplies are read from its
+  environment), a thunk's (an adapter's, or a type application's) its own, and
+  inside an inspect's arms, the auto type's own type parameter is the value's
+  type component (ir.Inspect.witness);
+- a type that mentions no type parameter in scope is its static descriptor
+  (ir.StaticDescriptor);
+- a type that mentions some is its template, a hole for each
+  (codegen/descriptors.py, hole_var), instantiated with their descriptors
+  (ir.Instantiate); and the generic layout of a polymorphic callee's type (a
+  `runtime` plan's) is its template with a hole for each of the callee's type
+  parameters too, instantiated with the type arguments' descriptors.
 
-The uses: type arguments of calls, closures, type applications, and external calls; auto values' witnesses;
-inspect cases' types and arms; `is` of QVal words; record literals' types (and views, with runtime offsets); fields
-read through stored types; echo; and the plans that convert by descriptor (record_view, view, runtime, and copy's view
-fields), including those in the thunks of adapt plans and type applications, which bind descriptor variables of
-their own. A thunk is a function of its own, so its plans may use only its own descriptors and static ones: a type
-mentioning a type parameter of the enclosing function there is rejected (UnsupportedDescriptor).
+The uses: type arguments of calls, closures, type applications, and external
+calls; auto values' witnesses; inspect cases' types and arms; `is` of QVal
+words; record literals' types (and views, with runtime offsets); fields read
+through stored types; echo; and the plans that convert by descriptor
+(record_view, view, runtime, and copy's view fields), including those in the
+thunks of adapt plans and type applications, which bind descriptor variables of
+their own. A thunk is a function of its own, so its plans may use only its own
+descriptors and static ones: a type mentioning a type parameter of the enclosing
+function there is rejected (UnsupportedDescriptor).
 
-The pass also lists the unit's static data (ir.StaticData), which a backend emits: the static descriptors operations
-refer to, the static offset tables of record literals (ir.OffsetTable, registered with the runtime for dynamic values
-when both types are closed; modules' records among them), and the tag maps of variant_tags plans (ir.TagMap); and
-each module's abstract types' registrations (docs/dynamic.md §2.3). An echo of a package with a
-prefix, whose line is known statically (its components hidden), becomes an echo of its text.
+The pass also lists the unit's static data (ir.StaticData), which a backend
+emits: the static descriptors operations refer to, the static offset tables of
+record literals (ir.OffsetTable, registered with the runtime for dynamic values
+when both types are closed; modules' records among them), and the tag maps of
+variant_tags plans (ir.TagMap); and each module's abstract types' registrations
+(docs/dynamic.md §2.3). An echo of a package with a prefix, whose line is known
+statically (its components hidden), becomes an echo of its text.
 
-Descriptor operands are small pure expressions over descriptor variables, not values named by lets: where a backend
-evaluates them is its own business (the C printer evaluates each where it is used, as before this pass existed).
+Descriptor operands are small pure expressions over descriptor variables, not
+values named by lets: where a backend evaluates them is its own business (the C
+printer evaluates each where it is used, as before this pass existed).
 """
 
 from __future__ import annotations
@@ -61,16 +71,18 @@ from quest.modules.abstract_types import module_abstract_types
 
 
 class UnsupportedDescriptor(Exception):
-    """A descriptor the pass cannot make: in a thunk, of a type mentioning a type parameter of the enclosing
-    function, whose descriptor the thunk is not passed."""
+    """A descriptor the pass cannot make: in a thunk, of a type mentioning a
+    type parameter of the enclosing function, whose descriptor the thunk is not
+    passed."""
 
 
 _BASE_VALUE_KINDS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char", "string": "String", "ok": "Ok"}
 
 
 def echo_value_kind(t: QType) -> str:
-    """How echo writes a value of type t without a descriptor, as the interpreter does (format_value_with_type):
-    "Word", "fun", "hidden", or a base type's name; "" if it writes it by a descriptor of its type."""
+    """How echo writes a value of type t without a descriptor, as the
+    interpreter does (format_value_with_type): "Word", "fun", "hidden", or a
+    base type's name; "" if it writes it by a descriptor of its type."""
     s = shape(t)
     if s.kind == "word":
         return "Word"
@@ -82,8 +94,8 @@ def echo_value_kind(t: QType) -> str:
 
 
 def free_type_vars(t: QType, wanted) -> list:
-    """The type variables (and abstract types) occurring free in t for which wanted(symbol_id) holds, in order of
-    appearance."""
+    """The type variables (and abstract types) occurring free in t for which
+    wanted(symbol_id) holds, in order of appearance."""
     free = t._fv
     if not free or not any(wanted(sid) for sid in free):
         return []
@@ -111,8 +123,9 @@ _CONSTANT_KINDS = ("int", "real", "bool", "char", "string", "ok", "word")
 
 
 def _constant(template: QType) -> bool:
-    """Whether a template's descriptor is one of the runtime's own, whatever its holes (its shape does not mention
-    them): a scalar's, a word's, the empty tuple's, or a bound type parameter's placeholder."""
+    """Whether a template's descriptor is one of the runtime's own, whatever its
+    holes (its shape does not mention them): a scalar's, a word's, the empty
+    tuple's, or a bound type parameter's placeholder."""
     s = shape(template)
     if s.kind in _CONSTANT_KINDS or bound_var_index(s.structure) is not None:
         return True
@@ -137,11 +150,14 @@ class _Describer:
         self.static_keys: dict[tuple, ir.StaticDescriptor] = {}
         self.offset_keys: dict[tuple, ir.OffsetTable] = {}
         self.tag_keys: dict[tuple, ir.TagMap] = {}
-        # The descriptor variables in scope, by the symbols of the type parameters they describe, and the symbols of
-        # type parameters whose descriptors are not available here (an enclosing function's, in a thunk)
+        # The descriptor variables in scope, by the symbols of the type
+        # parameters they describe, and the symbols of type parameters whose
+        # descriptors are not available here (an enclosing function's, in a
+        # thunk)
         self.scope: dict[int, ir.Var] = {}
         self.unavailable: frozenset[int] = frozenset()
-        # The view maps of the function being described, by the symbols of their type parameters
+        # The view maps of the function being described, by the symbols of their
+        # type parameters
         self.view_maps: dict[int, ir.ViewMapParam] = {}
         # Handlers' exception variables, which `is` compares as exceptions
         self.handler_vars: set[int] = set()
@@ -149,7 +165,8 @@ class _Describer:
     # Descriptors
 
     def static(self, t: QType, echo: bool = False) -> ir.StaticDescriptor:
-        """The static descriptor of t (a closed type, or a template), listed in the unit's static data."""
+        """The static descriptor of t (a closed type, or a template), listed in
+        the unit's static data."""
         key = (True, id(t)) if echo else (False, id(shape(t)))
         if key not in self.static_keys:
             d = self.static_keys[key] = ir.StaticDescriptor(t, echo)
@@ -166,8 +183,10 @@ class _Describer:
             )
 
     def describe(self, t: QType) -> ir.Descriptor:
-        """The descriptor of t here: a type parameter's variable, a closed type's static descriptor, or the template of
-        a type mentioning type parameters in scope (a hole for each), instantiated with their descriptors."""
+        """The descriptor of t here: a type parameter's variable, a closed
+        type's static descriptor, or the template of a type mentioning type
+        parameters in scope (a hole for each), instantiated with their
+        descriptors."""
         var = shape(t).type
         if isinstance(var, (QTypeVar, QAbstractType)) and var.symbol_id in self.scope:
             return self.scope[var.symbol_id]
@@ -177,7 +196,8 @@ class _Describer:
         return self.template(t, params, [self.scope[v.symbol_id] for v in params])
 
     def template(self, t: QType, holes: list, args: list) -> ir.Descriptor:
-        """The descriptor of t with a hole for each of holes (type variables), instantiated with args."""
+        """The descriptor of t with a hole for each of holes (type variables),
+        instantiated with args."""
         if not holes:
             return self.static(t)
         template = t.substitute({v.symbol_id: hole_var(i, v.bound) for i, v in enumerate(holes)})
@@ -187,8 +207,9 @@ class _Describer:
         return ir.Instantiate(template, tuple(args))
 
     def layout_descriptor(self, t: QType, instantiation: dict[int, QType]) -> ir.Descriptor:
-        """The descriptor of a polymorphic callee's type t laid out as the callee lays it out at the call's type
-        arguments: its template, a hole for each of the callee's type parameters (and for each in scope),
+        """The descriptor of a polymorphic callee's type t laid out as the
+        callee lays it out at the call's type arguments: its template, a hole
+        for each of the callee's type parameters (and for each in scope),
         instantiated with the type arguments' descriptors (and theirs)."""
         if self.unavailable:
             self.check_available(t)
@@ -199,8 +220,9 @@ class _Describer:
         return self.template(t, params + in_scope, args)
 
     def thunk(self, symbols: tuple[tuple[int, ...], ...]):
-        """The descriptor parameters of a thunk taking type parameters named by symbols, and enters its scope (a
-        context manager, restoring the enclosing scope on exit)."""
+        """The descriptor parameters of a thunk taking type parameters named by
+        symbols, and enters its scope (a context manager, restoring the
+        enclosing scope on exit)."""
         params = tuple(ir.DescriptorParam(ir.Var(f"qd_{k}", ir.DESCRIPTOR_TYPE), syms) for k, syms in enumerate(symbols))
         describer = self
 
@@ -220,7 +242,8 @@ class _Describer:
     # Plans
 
     def plan(self, p: Optional[ir.Plan]) -> Optional[ir.Plan]:
-        """Gives a plan (and the plans in it) the descriptors it converts by, in place."""
+        """Gives a plan (and the plans in it) the descriptors it converts by, in
+        place."""
         if p is None:
             return None
         match p.kind:
@@ -292,8 +315,9 @@ class _Describer:
             case ir.Echo(value=value, type=t, prefix=prefix):
                 text = package_text(t) if prefix else None
                 if text is not None:
-                    # A package's components are hidden, so its line is known statically (as the interpreter prints
-                    # it), from its type as written
+                    # A package's components are hidden, so its line is known
+                    # statically (as the interpreter prints it), from its type
+                    # as written
                     return ir.EchoText(prefix + text)
                 if not echo_value_kind(t):
                     closed = not free_type_vars(t, lambda sid: sid in self.scope)
@@ -303,8 +327,10 @@ class _Describer:
         return s
 
     def view_map(self, a: ir.Atom) -> Optional[ir.Var]:
-        """The view map a value is read through its type's bound by, if its type is a type parameter in scope bounded by
-        a record, variant, option, or tuple type (held at its own view); made for the function on first use."""
+        """The view map a value is read through its type's bound by, if its type
+        is a type parameter in scope bounded by a record, variant, option, or
+        tuple type (held at its own view); made for the function on first
+        use."""
         s = shape(_type_of(a))
         held = resolved_shape(s)
         if not own_view(s) or held.kind not in ("record", "variant", "option", "tuple") or s.symbol_id not in self.scope:
@@ -341,7 +367,8 @@ class _Describer:
                 else:
                     orig_t = o.callee_type
                 if _is_function(orig_t):
-                    # The instance is a thunk, whose plans convert its arguments and result
+                    # The instance is a thunk, whose plans convert its arguments
+                    # and result
                     with self.thunk(o.thunk_symbols) as params:
                         o.thunk_params = params
                         for p in o.plans:
@@ -420,8 +447,9 @@ class _Describer:
         m.abstract_types = self.abstract_types(m.name)
 
     def abstract_types(self, canon: str) -> tuple[tuple[str, int, ir.StaticDescriptor], ...]:
-        """A module's abstract types, each registered with its representation (an operator's as a template whose
-        holes are its parameters), for dynamic values (docs/dynamic.md §2.3)."""
+        """A module's abstract types, each registered with its representation
+        (an operator's as a template whose holes are its parameters), for
+        dynamic values (docs/dynamic.md §2.3)."""
         found = []
         for entry in module_abstract_types(canon):
             rep = shape(entry.rep).type
@@ -449,10 +477,12 @@ class _Describer:
 
 
 def unit_types(unit: ir.Unit) -> list[QType]:
-    """The types a unit's C declares the aggregates of (ir.StaticData.types), in the order first met: those of its
-    variables and functions' results, of the operations' and plans' types (and those plans convert inside), of the
-    records its literals make (their own types, from their fields') and the payloads its inspect arms make, of its
-    imports' interfaces, and of its offset tables."""
+    """The types a unit's C declares the aggregates of (ir.StaticData.types), in
+    the order first met: those of its variables and functions' results, of the
+    operations' and plans' types (and those plans convert inside), of the
+    records its literals make (their own types, from their fields') and the
+    payloads its inspect arms make, of its imports' interfaces, and of its
+    offset tables."""
     found: list[QType] = []
     seen_types: set[int] = set()
     seen_nodes: set[int] = set()
@@ -475,8 +505,8 @@ def unit_types(unit: ir.Unit) -> list[QType]:
                 for item in node.values():
                     visit(item)
                 return
-        # An IR node's fields, or a kind's (a type parameter's), whose types are declared too; nothing else (a shape,
-        # a name) holds types
+        # An IR node's fields, or a kind's (a type parameter's), whose types are
+        # declared too; nothing else (a shape, a name) holds types
         parts = contents(node)
         if parts is None:
             parts = type_fields(node)
@@ -502,10 +532,12 @@ def unit_types(unit: ir.Unit) -> list[QType]:
     return found
 
 
-# The fields of IR nodes whose types C declares no aggregates for: descriptor operands (described by the static data's
-# descriptors, which declare what they need) and the static data itself
+# The fields of IR nodes whose types C declares no aggregates for: descriptor
+# operands (described by the static data's descriptors, which declare what they
+# need) and the static data itself
 def describe_unit(unit: ir.Unit) -> ir.Unit:
-    """Gives the unit's run-time uses of types their descriptors, in place, returning it."""
+    """Gives the unit's run-time uses of types their descriptors, in place,
+    returning it."""
     _Describer(unit).run()
     unit.stage = "described"
     return unit

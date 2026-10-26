@@ -20,11 +20,13 @@ from quest.syntax.tokenizer import Tokenizer
 
 @dataclass(frozen=True)
 class ExpectedDiagnostic:
-    """An expected diagnostic declared via an inline comment (* SEVERITY: REGEXP *)."""
+    """An expected diagnostic declared via an inline comment (* SEVERITY: REGEXP
+    *)."""
     line: int
     severity: str
     pattern: str
-    # The file the comment is in (the test, or a unit it imports); None matches a diagnostic in any file
+    # The file the comment is in (the test, or a unit it imports); None matches
+    # a diagnostic in any file
     file: Optional[Path] = None
 
 
@@ -39,7 +41,8 @@ class ActualDiagnostic:
     full_text: str
 
 
-# Matches (* ERROR: ... *), (* WARNING: ... *), (* INFO: ... *), (* FATAL: ... *)
+# Matches (* ERROR: ... *), (* WARNING: ... *), (* INFO: ... *), (* FATAL: ...
+# *)
 EXPECTATION_PATTERN = re.compile(
     r"\(\*\s*(ERROR|WARNING|INFO|FATAL)\s*:\s*(.*?)\s*\*\)",
     re.IGNORECASE,
@@ -54,7 +57,8 @@ DIAGNOSTIC_HEADER_PATTERN = re.compile(
 
 
 def extract_expected_diagnostics(source_text: str, file: Optional[Path] = None) -> list[ExpectedDiagnostic]:
-    """Scans Quest source text (of file, if given) for inline diagnostic expectations on each line."""
+    """Scans Quest source text (of file, if given) for inline diagnostic
+    expectations on each line."""
     expectations: list[ExpectedDiagnostic] = []
     for line_idx, line in enumerate(source_text.splitlines(), start=1):
         for match in EXPECTATION_PATTERN.finditer(line):
@@ -65,9 +69,11 @@ def extract_expected_diagnostics(source_text: str, file: Optional[Path] = None) 
 
 
 def _unit_imports(path: Path, resolver: Resolver) -> list[Path]:
-    """The interface and module files beside path (found from its directory, as compiling it resolves them, but
-    without search paths) that the unit or program in it imports, including a module's own interface; none if it
-    does not parse. Units found elsewhere (the standard library's) are not beside it."""
+    """The interface and module files beside path (found from its directory, as
+    compiling it resolves them, but without search paths) that the unit or
+    program in it imports, including a module's own interface; none if it does
+    not parse. Units found elsewhere (the standard library's) are not beside
+    it."""
     try:
         text = path.read_text(encoding=BYTE_ENCODING)
         prog = parse_quest_program(Tokenizer(text, str(path)).tokenize_all(), SourceMap(text, str(path)))
@@ -96,9 +102,11 @@ def _unit_imports(path: Path, resolver: Resolver) -> list[Path]:
 
 
 def imported_unit_files(source_file: Path) -> list[Path]:
-    """The interface and module files beside an error test that it imports, directly or through other such units.
+    """The interface and module files beside an error test that it imports,
+    directly or through other such units.
 
-    The imports are resolved by a resolver of the test's own (docs/build-process.md §2.1), each once."""
+    The imports are resolved by a resolver of the test's own
+    (docs/build-process.md §2.1), each once."""
     resolver = Resolver()
     found: list[Path] = []
     queue = [source_file]
@@ -112,8 +120,9 @@ def imported_unit_files(source_file: Path) -> list[Path]:
 
 
 def expected_diagnostics_of(source_file: Path) -> list[ExpectedDiagnostic]:
-    """The inline expectations of an error test: those in the test and in the units beside it that it imports
-    (docs/testing.md §3.3), each matched only by a diagnostic in its own file."""
+    """The inline expectations of an error test: those in the test and in the
+    units beside it that it imports (docs/testing.md §3.3), each matched only by
+    a diagnostic in its own file."""
     expectations: list[ExpectedDiagnostic] = []
     for file in [source_file.resolve(), *imported_unit_files(source_file)]:
         expectations.extend(extract_expected_diagnostics(file.read_text(encoding=BYTE_ENCODING), file))
@@ -121,8 +130,9 @@ def expected_diagnostics_of(source_file: Path) -> list[ExpectedDiagnostic]:
 
 
 def _in_file(actual: ActualDiagnostic, file: Optional[Path]) -> bool:
-    """Whether a diagnostic is located in file. The driver names the test by the absolute path it is given and
-    an imported unit by its path relative to the driver's directory, if it is inside it, else by its full path."""
+    """Whether a diagnostic is located in file. The driver names the test by the
+    absolute path it is given and an imported unit by its path relative to the
+    driver's directory, if it is inside it, else by its full path."""
     if file is None:
         return True
     actual_path = Path(actual.file_name)
@@ -143,7 +153,8 @@ def extract_expected_patterns(error_golden_text: str) -> list[str]:
 
 
 def match_error_patterns(stderr_text: str, patterns: list[str]) -> tuple[bool, list[str]]:
-    """Checks whether all expected pattern lines are present in stderr_text (literal or regex)."""
+    """Checks whether all expected pattern lines are present in stderr_text
+    (literal or regex)."""
     unmatched: list[str] = []
     stderr_lower = stderr_text.lower()
     for pat in patterns:
@@ -162,14 +173,16 @@ def match_error_patterns(stderr_text: str, patterns: list[str]) -> tuple[bool, l
 
 
 def relativize_root_paths(text: str, root_dir: Path) -> str:
-    """Rewrites absolute paths under root_dir in text as paths relative to it."""
+    """Rewrites absolute paths under root_dir in text as paths relative to
+    it."""
     for root in {str(root_dir), str(root_dir.resolve())}:
         text = text.replace(root.rstrip(os.sep) + os.sep, "")
     return text
 
 
 def format_canonical_error_golden(stderr_text: str) -> str:
-    """Generates canonical pattern lines from stderr_text for --update-golden."""
+    """Generates canonical pattern lines from stderr_text for
+    --update-golden."""
     diags = parse_actual_diagnostics(stderr_text)
     if diags:
         lines = [f"{d.severity.lower()}: {d.message}" for d in diags]
@@ -195,7 +208,8 @@ def parse_actual_diagnostics(stderr_text: str) -> list[ActualDiagnostic]:
             severity = match.group(4).lower()
             message = match.group(5).strip()
 
-            # Collect subsequent lines that belong to this diagnostic (carets, notes, help)
+            # Collect subsequent lines that belong to this diagnostic (carets,
+            # notes, help)
             block_lines = [line]
             idx += 1
             while idx < len(lines) and not DIAGNOSTIC_HEADER_PATTERN.match(lines[idx]):
@@ -232,8 +246,9 @@ def execute_phase(
     driver_args: Optional[list[str]] = None,
     driver_command: Optional[list[str]] = None,
 ) -> tuple[int, str, str]:
-    """Executes the compiler driver up to the specified phase with an optional timeout: the bootstrap's, or the one
-    driver_command runs (the self-hosted driver, which has no build directory)."""
+    """Executes the compiler driver up to the specified phase with an optional
+    timeout: the bootstrap's, or the one driver_command runs (the self-hosted
+    driver, which has no build directory)."""
     if driver_command is not None:
         command = [*driver_command, "--stop-after", phase_name]
     else:
@@ -246,7 +261,8 @@ def execute_phase(
         ]
         if driver_args:
             command.extend(driver_args)
-        # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
+        # Every phase builds and reuses artifacts in the build directory
+        # (docs/build-process.md §5.2.4).
         if build_dir is None:
             build_dir = root_dir / ".build"
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -257,16 +273,19 @@ def execute_phase(
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root_dir / "bootstrap" / "python")
-    # Checks that typed programs are well scoped (quest/typechecker/scoping.py), as golden tests do
+    # Checks that typed programs are well scoped (quest/typechecker/scoping.py),
+    # as golden tests do
     env["QUEST_CHECK_SCOPES"] = "1"
     env["QUEST_CHECK_IR"] = "1"
-    # The project directory, whose lib/ the self-hosted driver reads the standard library from (it runs elsewhere)
+    # The project directory, whose lib/ the self-hosted driver reads the
+    # standard library from (it runs elsewhere)
     env["QUEST_HOME"] = str(root_dir)
     if env_vars:
         env.update(env_vars)
 
     try:
-        # Each run starts in a fresh, empty directory of its own, where the program may create files
+        # Each run starts in a fresh, empty directory of its own, where the
+        # program may create files
         with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
             process = subprocess.run(
                 command,
@@ -292,7 +311,8 @@ def execute_phase(
 
 
 def _diagnostic_blocks(stderr: str) -> list[str]:
-    """stderr's diagnostics, each its header line and the lines after it up to the next header."""
+    """stderr's diagnostics, each its header line and the lines after it up to
+    the next header."""
     blocks: list[list[str]] = []
     for line in stderr.splitlines():
         if DIAGNOSTIC_HEADER_PATTERN.match(line) or not blocks:
@@ -305,8 +325,9 @@ def _diagnostic_blocks(stderr: str) -> list[str]:
 def _check_further_errors(
     stderr: str, root_dir: Path, further_errors_file: Optional[Path], update_golden: bool
 ) -> tuple[bool, str, str]:
-    """For the self-hosted driver: checks the diagnostics after its first against further_errors_file (or records
-    them there), and returns the first, which the test's expectations are matched against."""
+    """For the self-hosted driver: checks the diagnostics after its first
+    against further_errors_file (or records them there), and returns the first,
+    which the test's expectations are matched against."""
     blocks = _diagnostic_blocks(stderr)
     if len(blocks) <= 1:
         if further_errors_file is not None and further_errors_file.exists():
@@ -352,12 +373,16 @@ def run_error_test(
     further_errors_file: Optional[Path] = None,
     all_errors: bool = False,
 ) -> tuple[bool, str]:
-    """Runs an error test with precursor validation, timeout, and pattern-based or diagnostic matching.
+    """Runs an error test with precursor validation, timeout, and pattern-based
+    or diagnostic matching.
 
-    With driver_command, the test runs the self-hosted driver, which may report errors after the bootstrap's one
-    (docs/milestone-2.md §2): its first diagnostic must be the one expected, and when it reports more, its whole
-    output must be further_errors_file's, which --update-golden writes for review. With all_errors (a test of several
-    errors, tests/self-hosted/errors), its diagnostics must be the test's inline expectations, every one."""
+    With driver_command, the test runs the self-hosted driver, which may report
+    errors after the bootstrap's one (docs/milestone-2.md §2): its first
+    diagnostic must be the one expected, and when it reports more, its whole
+    output must be further_errors_file's, which --update-golden writes for
+    review. With all_errors (a test of several errors,
+    tests/self-hosted/errors), its diagnostics must be the test's inline
+    expectations, every one."""
     # Step 1: Precursor Phase Validation
     for pre_phase in precursor_phases:
         rc, _, stderr = execute_phase(
@@ -392,7 +417,8 @@ def run_error_test(
     if golden_error_file is not None:
         # Golden files must not depend on where the repository is checked out
         stderr = relativize_root_paths(stderr, root_dir)
-        # The bootstrap's goldens are the bootstrap's: the self-hosted driver only records its further errors
+        # The bootstrap's goldens are the bootstrap's: the self-hosted driver
+        # only records its further errors
         if update_golden and driver_command is None:
             golden_content = format_canonical_error_golden(stderr)
             golden_error_file.parent.mkdir(parents=True, exist_ok=True)
@@ -412,7 +438,8 @@ def run_error_test(
                 report_lines.append(f"    | {line}")
             return False, "\n".join(report_lines)
 
-    # Step 4: Fallback to inline (* ERROR: ... *) comments if golden file not present
+    # Step 4: Fallback to inline (* ERROR: ... *) comments if golden file not
+    # present
     expected = expected_diagnostics_of(source_file)
     if not expected:
         if golden_error_file is not None:

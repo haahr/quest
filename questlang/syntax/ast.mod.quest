@@ -6,9 +6,9 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* =========================================================================
+    (* ======================================================================
      * 1. Parameter Modes
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let ParamMode = Option
         modeValue
@@ -16,9 +16,9 @@ export
         modeOut
     end
 
-    (* =========================================================================
+    (* ======================================================================
      * 2. Parameterized Node Wrapper
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Node(Form::TYPE) = Tuple
         span: location.Span
@@ -28,10 +28,10 @@ export
     (* =========================================================================
      * 3. Level 1 & 2: Types and Kinds (TypeForm)
      *
-     * The components of type and kind forms are written once, as operators over the type of the subterms
-     * (T, a Node(TypeForm)), so that TypeForm can use them before it is defined; the named types below
-     * apply them to TypeExpr.
-     * ========================================================================= *)
+     * The components of type and kind forms are written once, as operators over
+     * the type of the subterms (T, a Node(TypeForm)), so that TypeForm can use
+     * them before it is defined; the named types below apply them to TypeExpr.
+     * ====================================================================== *)
 
     (* Components have the offset the bootstrap gives the corresponding node *)
     Let TypeFormalOf(T::TYPE) = Tuple offset: Int name: String bound: T end
@@ -48,9 +48,10 @@ export
         isRec: Bool
         isDef: Bool
     end
-    (* A component of a signature, which a tuple type or an interface is: a value's signature, an abstract
-     * type, a type binding (Let [Rec] or Def [Rec]), a group of type bindings joined by and, or a kind
-     * binding (DEF) *)
+    (* A component of a signature, which a tuple type or an interface is: a
+     * value's signature, an abstract type, a type binding (Let [Rec] or Def
+     * [Rec]), a group of type bindings joined by and, or a kind binding
+     * (DEF) *)
     Let SignatureOf(T::TYPE) = Option
         sigValue with val: FieldSigOf(T) end
         sigType with val: TypeFormalOf(T) end
@@ -58,7 +59,8 @@ export
         sigTypeBindingGroup with offset: Int val: vector.T(TypeBindingOf(T)) end
         sigKindBinding with val: Tuple offset: Int name: String kindVal: T end end
     end
-    (* An option's case: its tag and its payload's signature, which is a tuple type's *)
+    (* An option's case: its tag and its payload's signature, which is a tuple
+     * type's *)
     Let OptionFieldSigOf(T::TYPE) = Tuple offset: Int tag: String payloadSig: vector.T(SignatureOf(T)) end
 
     Let Rec TypeForm = Option
@@ -120,8 +122,9 @@ export
         typeAnnot: maybe.T(TypeExpr)
     end
 
-    (* An import, which a program holds at its top level, and which the bootstrap's parser also accepts as a
-     * declaration anywhere else (a block, a tuple, an argument, a module body), for its type checker to reject *)
+    (* An import, which a program holds at its top level, and which the
+     * bootstrap's parser also accepts as a declaration anywhere else (a block,
+     * a tuple, an argument, a module body), for its type checker to reject *)
     Let ImportItem = Tuple
         offset: Int
         names: vector.T(String)
@@ -137,9 +140,10 @@ export
     (* =========================================================================
      * 4. Level 0: Expressions and Declarations (ExprForm)
      *
-     * As for types, the components of expression forms are operators over the type of the subterms (E, a
-     * Node(ExprForm)), applied to Expr by the named types below.
-     * ========================================================================= *)
+     * As for types, the components of expression forms are operators over the
+     * type of the subterms (E, a Node(ExprForm)), applied to Expr by the named
+     * types below.
+     * ====================================================================== *)
 
     Let ElsifBranchOf(E::TYPE) = Tuple cond: E thenBranch: E end
     Let TupleFieldBindingOf(E::TYPE) = Tuple
@@ -149,8 +153,8 @@ export
         typeAnnot: maybe.T(TypeExpr)
         isVar: Bool
     end
-    (* A component of a tuple: a value, values joined by and (without rec), or a declaration (a type, a kind, or
-     * recursive values) *)
+    (* A component of a tuple: a value, values joined by and (without rec), or a
+     * declaration (a type, a kind, or recursive values) *)
     Let TupleFieldOf(E::TYPE) = Option
         fieldVal with val: TupleFieldBindingOf(E) end
         fieldGroup with offset: Int val: vector.T(TupleFieldBindingOf(E)) end
@@ -195,7 +199,8 @@ export
             thenBranch: Node(ExprForm)
             elsifs: vector.T(ElsifBranchOf(Node(ExprForm)))
             elseBranch: maybe.T(Node(ExprForm))
-            (* A conditional desugared from andif or orif (syntax/desugar), whose operands are checked against Bool *)
+            (* A conditional desugared from andif or orif (syntax/desugar),
+             * whose operands are checked against Bool *)
             shortCircuit: Bool
         end
         exprWhile with cond: Node(ExprForm) body: Node(ExprForm) end
@@ -231,7 +236,8 @@ export
             ordinalExpr: maybe.T(Node(ExprForm))
         end
         exprVariant with tag: String variantType: TypeExpr isVar: Bool payload: maybe.T(Node(ExprForm)) end
-        (* auto [let witnessName [witnessBound] =] :witnessType with payload end *)
+        (* auto [let witnessName [witnessBound] =] :witnessType with payload
+         * end *)
         exprAuto with
             witnessType: TypeExpr
             payload: Node(ExprForm)
@@ -295,9 +301,10 @@ export
         declImport with phrase: ImportPhrase end
     end
 
-    (* Expr and Decl share one representation. Body fields (thenBranch, elseBranch, loop and
-     * branch bodies) hold an expression, never a declExprStmt; a body that is a lone
-     * declaration is a one-phrase exprBlock. *)
+    (* Expr and Decl share one representation. Body fields (thenBranch,
+     * elseBranch, loop and branch bodies) hold an expression, never a
+     * declExprStmt; a body that is a lone declaration is a one-phrase
+     * exprBlock. *)
     Let Expr = Node(ExprForm)
     Let Decl = Node(ExprForm)
 
@@ -340,9 +347,9 @@ export
 
     Let Program = Node(ProgramForm)
 
-    (* =========================================================================
+    (* ======================================================================
      * Node Constructors
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let makeType(span: location.Span form: TypeForm): TypeExpr =
         tuple let span = span let form = form end
@@ -365,9 +372,9 @@ export
             let form = tuple let phrases = phrases end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Expression Helpers
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let exprInt(span: location.Span value: Int lexeme: String): Expr =
         makeExpr(span option exprInt of ExprForm with let value = value let lexeme = lexeme end)
@@ -399,9 +406,9 @@ export
     let exprSelect(span: location.Span target: Expr field: String): Expr =
         makeExpr(span option exprSelect of ExprForm with let target = target let field = field end)
 
-    (* =========================================================================
+    (* ======================================================================
      * Type Helpers
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let typePath(span: location.Span path: vector.T(String)): TypeExpr =
         makeType(span option typePath of TypeForm with let path = path end)
@@ -416,9 +423,9 @@ export
     let typeTuple(span: location.Span fields: vector.T(Signature)): TypeExpr =
         makeType(span option typeTuple of TypeForm with let fields = fields end)
 
-    (* =========================================================================
+    (* ======================================================================
      * Declaration Helpers
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let declLetVal(span: location.Span name: String value: Expr typeAnnot: maybe.T(TypeExpr)): Decl =
         makeDecl(span option declLetVal of ExprForm with
@@ -443,9 +450,9 @@ export
     let declExprStmt(span: location.Span expr: Expr): Decl =
         makeDecl(span option declExprStmt of ExprForm with let expr = expr end)
 
-    (* =========================================================================
+    (* ======================================================================
      * Auxiliary Helpers
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let formalParam(offset: Int name: String typeAnnot: maybe.T(TypeExpr) mode: ParamMode): FormalParam =
         tuple

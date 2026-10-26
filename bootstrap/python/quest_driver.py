@@ -2,7 +2,8 @@
 """Quest Compiler Unified CLI Driver.
 
 Executes compiler phases sequentially, supporting early exit (--stop-after),
-intermediate inspection (--dump-after), inline execution (-e), and include paths (-I).
+intermediate inspection (--dump-after), inline execution (-e), and include paths
+(-I).
 """
 
 from __future__ import annotations
@@ -40,8 +41,9 @@ from quest.syntax.sources import SourceMap, os_text, read_source
 
 
 def report_error(prog: str, error: Exception, source_file: Optional[Path] = None) -> None:
-    """Writes an error raised while building or compiling source_file to stderr. A compiler error is located in the
-    file it was raised in (an imported unit's, or else source_file) with its source line, as the pipeline reports
+    """Writes an error raised while building or compiling source_file to stderr.
+    A compiler error is located in the file it was raised in (an imported
+    unit's, or else source_file) with its source line, as the pipeline reports
     errors in programs; any other error is written as its message."""
     if isinstance(error, QuestCompilerError):
         diag = diagnostic_of(error)
@@ -58,10 +60,12 @@ def report_error(prog: str, error: Exception, source_file: Optional[Path] = None
 
 
 def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace) -> int:
-    """Runs the phases --stop-after and --dump-after name on a unit file, compiled as the unit compilers compile it,
-    and writes their output. Writes no artifacts of the unit itself. Returns the exit status.
+    """Runs the phases --stop-after and --dump-after name on a unit file,
+    compiled as the unit compilers compile it, and writes their output. Writes
+    no artifacts of the unit itself. Returns the exit status.
 
-    An interface file's phases end with typecheck, and a module file's with codegen_c: a unit does not run alone.
+    An interface file's phases end with typecheck, and a module file's with
+    codegen_c: a unit does not run alone.
     """
     kind = file_unit_kind(file_path).value
     phases = compile_pipeline().phase_names()
@@ -85,7 +89,8 @@ def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace)
         include_paths=[Path(p) for p in parsed_args.include_paths],
         show_offsets=getattr(parsed_args, "show_offsets", False),
         show_values=getattr(parsed_args, "show_values", False),
-        # Units imported while typechecking are built here, as for a program's phases (docs/build-process.md §5.2.4)
+        # Units imported while typechecking are built here, as for a program's
+        # phases (docs/build-process.md §5.2.4)
         build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
         unit=kind,
     )
@@ -102,8 +107,9 @@ def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace)
 
 
 def run_unit_file(prog: str, file_path: Path, parsed_args: argparse.Namespace) -> int:
-    """Runs the driver, in either mode, on a unit file (an interface or module file): dumps the phases --stop-after
-    and --dump-after name (run_unit_phases), then, without --stop-after, compiles the unit alone
+    """Runs the driver, in either mode, on a unit file (an interface or module
+    file): dumps the phases --stop-after and --dump-after name
+    (run_unit_phases), then, without --stop-after, compiles the unit alone
     (compile_unit_file), reporting any error. Returns the exit status."""
     if parsed_args.stop_after or parsed_args.dump_after:
         status = run_unit_phases(prog, file_path, parsed_args)
@@ -127,10 +133,12 @@ OBJECT_SUFFIXES = (".o", ".a", ".dylib", ".so")
 
 
 def split_program_args(arg_parser: argparse.ArgumentParser, args: list[str]) -> tuple[list[str], list[str]]:
-    """Splits the command line into the driver's arguments and the program's, as Python does a script's: everything
-    after the program file (or '-') is the program's, options included, so that `quest program.quest -x y` passes
-    the program -x and y. A unit file and an object file are not programs, and so options may follow them. A '--'
-    before the program file ends the driver's arguments too, giving the program's to -e code or the REPL."""
+    """Splits the command line into the driver's arguments and the program's, as
+    Python does a script's: everything after the program file (or '-') is the
+    program's, options included, so that `quest program.quest -x y` passes the
+    program -x and y. A unit file and an object file are not programs, and so
+    options may follow them. A '--' before the program file ends the driver's
+    arguments too, giving the program's to -e code or the REPL."""
     i = 0
     while i < len(args):
         arg = args[i]
@@ -138,7 +146,8 @@ def split_program_args(arg_parser: argparse.ArgumentParser, args: list[str]) -> 
             return args[:i], args[i + 1:]
         if arg.startswith("-") and arg != "-":
             action = arg_parser._option_string_actions.get(arg)
-            # An option that takes a value takes the next argument, unless it is written --option=value
+            # An option that takes a value takes the next argument, unless it is
+            # written --option=value
             i += 2 if action is not None and action.nargs != 0 else 1
             continue
         if arg == "-" or (Path(arg).suffix not in OBJECT_SUFFIXES and file_unit_kind(Path(arg)) == UnitKind.PROGRAM):
@@ -160,7 +169,8 @@ def run_driver(args: list[str]) -> int:
     arg_parser = argparse.ArgumentParser(
         prog="quest",
         description="Quest Compiler Driver — compile, check, interpret, and inspect Quest programs.",
-        # Abbreviated options would hide which arguments take values from split_program_args
+        # Abbreviated options would hide which arguments take values from
+        # split_program_args
         allow_abbrev=False,
     )
     arg_parser.add_argument(
@@ -367,7 +377,8 @@ def run_driver(args: list[str]) -> int:
     stop_after = parsed_args.stop_after
     if has_objects and not has_output and stop_after is None and not parsed_args.dump_after:
         stop_after = "run_c_compiled"
-    # Running compiled code, or IR, prints the last phrase's result as the interpreter does
+    # Running compiled code, or IR, prints the last phrase's result as the
+    # interpreter does
     print_result = (
         parsed_args.print_result or stop_after == "run_c_compiled" or stop_after in IR_RUN_PHASES
     )
@@ -383,7 +394,8 @@ def run_driver(args: list[str]) -> int:
         target_args=target_args,
         expected_exit=parsed_args.expected_exit,
         extra_objects=extra_objects,
-        # Every phase reuses (and builds) interface and module artifacts here (docs/build-process.md §5.2.4).
+        # Every phase reuses (and builds) interface and module artifacts here
+        # (docs/build-process.md §5.2.4).
         build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
         whole_program=parsed_args.whole_program,
         emit_deps=parsed_args.emit_deps,
@@ -410,7 +422,8 @@ def run_driver(args: list[str]) -> int:
             if out_str:
                 sys.stdout.write(out_str + "\n")
 
-    # Print the final phrase result (unless it's ok or already printed via dump/echo)
+    # Print the final phrase result (unless it's ok or already printed via
+    # dump/echo)
     if result.success and "interpret" not in result.dump_outputs and not parsed_args.echo:
         typed_prog = result.artifacts.get("typecheck")
         final_phrase = typed_prog.phrases[-1] if typed_prog and typed_prog.phrases else None
@@ -452,7 +465,8 @@ def run_driver(args: list[str]) -> int:
             sys.stderr.write(f"quest: error: {error}\n")
             return 1
 
-    # If -i / --interactive was requested with a file, enter REPL with populated context
+    # If -i / --interactive was requested with a file, enter REPL with populated
+    # context
     if parsed_args.interactive:
         return run_repl(ctx=ctx)
 
@@ -463,7 +477,8 @@ def run_driver(args: list[str]) -> int:
 
 
 def run_compile(args: list[str]) -> int:
-    """Executes the compile subcommand: translates Quest to C and invokes host compiler."""
+    """Executes the compile subcommand: translates Quest to C and invokes host
+    compiler."""
     pipeline = compile_pipeline()
     available_phases = pipeline.phase_names()
 
@@ -657,7 +672,8 @@ def run_compile(args: list[str]) -> int:
         nogc=parsed_args.nogc,
         print_result=parsed_args.print_result,
         extra_objects=extra_objects,
-        # Every phase reuses (and builds) interface and module artifacts here (docs/build-process.md §5.2.4).
+        # Every phase reuses (and builds) interface and module artifacts here
+        # (docs/build-process.md §5.2.4).
         build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
         whole_program=parsed_args.whole_program,
     )

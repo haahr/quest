@@ -1,17 +1,22 @@
 /*
  * quest_serialization.c
- * Serialization of dynamic values (dynamic.extern and dynamic.intern), format version 1.
+ * Serialization of dynamic values (dynamic.extern and dynamic.intern), format
+ * version 1.
  *
- * A serialized dynamic value is one JSON document holding a type table and a value (docs/dynamic.md §2):
+ * A serialized dynamic value is one JSON document holding a type table and a
+ * value (docs/dynamic.md §2):
  *
  *     {"quest":1,"types":[<type node>,...],"type":<type ref>,"value":<value>}
  *
- * A type ref is a built-in type name or an index into the table; recursive types are cycles in the table. The table
- * is canonical, so that compiled code and the interpreter (bootstrap/python/quest/dynamic_json.py) write the same
- * text for the same value: the writer builds the graph of the types it meets from their descriptors, merges
- * structurally equivalent nodes (the coarsest bisimulation), and numbers the remaining nodes in the order a
- * depth-first walk from the roots first reaches them. Values are written and read by following their type, and
- * records, tuples, and arrays reached more than once are written once, with "@id", and then as {"@ref":n}.
+ * A type ref is a built-in type name or an index into the table; recursive
+ * types are cycles in the table. The table is canonical, so that compiled code
+ * and the interpreter (bootstrap/python/quest/dynamic_json.py) write the same
+ * text for the same value: the writer builds the graph of the types it meets
+ * from their descriptors, merges structurally equivalent nodes (the coarsest
+ * bisimulation), and numbers the remaining nodes in the order a depth-first
+ * walk from the roots first reaches them. Values are written and read by
+ * following their type, and records, tuples, and arrays reached more than once
+ * are written once, with "@id", and then as {"@ref":n}.
  */
 
 #include "quest_serialization.h"
@@ -77,8 +82,9 @@ static QPtrNode *quest_ptr_insert_or_inc(QPtrTable *table, const void *ptr) {
 /* Dynamic Values                                                            */
 /* ------------------------------------------------------------------------- */
 
-/* Dynamic.T is Auto A::TYPE with a:A end, whose one component is stored as a QVal. This is its descriptor for
- * values read back; compiled code has its own, which is structurally equal. */
+/* Dynamic.T is Auto A::TYPE with a:A end, whose one component is stored as a
+ * QVal. This is its descriptor for values read back; compiled code has its own,
+ * which is structurally equal. */
 static const struct {
     const QTypeDescriptor         *bound;
     size_t                         payload_size;
@@ -114,9 +120,11 @@ static QVal quest_dynamic_component(const QAuto *a) {
     return *(const QVal *)a->payload.p;
 }
 
-/* The witnesses of the auto values being written or read, innermost last: an auto type's components refer to its
- * type parameter as quest_type_bound_vars[i], i counting auto types outward (docs/dynamic.md §2.2), so a value of
- * that type is written or read at the witness of the i-th auto value out. Reset by each extern and intern. */
+/* The witnesses of the auto values being written or read, innermost last: an
+ * auto type's components refer to its type parameter as
+ * quest_type_bound_vars[i], i counting auto types outward (docs/dynamic.md
+ * §2.2), so a value of that type is written or read at the witness of the i-th
+ * auto value out. Reset by each extern and intern. */
 static const QTypeDescriptor *quest_witnesses[Q_MAX_BOUND_VARS];
 static size_t quest_witness_count = 0;
 
@@ -125,7 +133,8 @@ static void quest_push_witness(const QTypeDescriptor *witness) {
     quest_witnesses[quest_witness_count++] = witness;
 }
 
-/* The witness a value of type parameter d (a bound variable descriptor) is written or read at */
+/* The witness a value of type parameter d (a bound variable descriptor) is
+ * written or read at */
 static const QTypeDescriptor *quest_witness_of(const QTypeDescriptor *d) {
     size_t i = (size_t)(d - quest_type_bound_vars);
     if (d < quest_type_bound_vars || i >= Q_MAX_BOUND_VARS || i >= quest_witness_count) quest_raise_dynamic_error();
@@ -156,7 +165,8 @@ static void quest_write_json_string(QWriter *wr, const char *s, size_t len) {
             case '\r': quest_write_raw(wr, "\\r"); break;
             case '\t': quest_write_raw(wr, "\\t"); break;
             default:
-                /* ASCII, with a \u escape for each byte above 127, as the interpreter writes it */
+                /* ASCII, with a \u escape for each byte above 127, as the
+                 * interpreter writes it */
                 if (c < 0x20 || c > 0x7F) {
                     char hex[8];
                     snprintf(hex, sizeof(hex), "\\u%04x", c);
@@ -176,8 +186,9 @@ static void quest_write_int(QWriter *wr, int64_t i) {
     quest_write_raw(wr, buf);
 }
 
-/* Writes a finite real as Python's repr does: the shortest digits that read back exactly, in positional notation
- * when the decimal exponent is in [-4, 16) (with ".0" for whole numbers), and otherwise as d.ddde+XX */
+/* Writes a finite real as Python's repr does: the shortest digits that read
+ * back exactly, in positional notation when the decimal exponent is in [-4, 16)
+ * (with ".0" for whole numbers), and otherwise as d.ddde+XX */
 static void quest_write_real(QWriter *wr, double r) {
     if (isnan(r)) quest_raise_dynamic_error(); /* not a Real value (docs/type-system.md §6.3.1) */
     if (isinf(r)) { quest_write_raw(wr, r > 0 ? "\"Infinity\"" : "\"-Infinity\""); return; }
@@ -260,16 +271,20 @@ typedef enum QTypeNodeKind {
     QTN_PARAM,
 } QTypeNodeKind;
 
-/* The nodes with one key, which names them (an abstract node has "abstract", "args", and "rep") */
+/* The nodes with one key, which names them (an abstract node has "abstract",
+ * "args", and "rep") */
 static const char *const quest_type_node_names[] = { "record", "tuple", "variant", "option", "array", "fun", "exception" };
 #define Q_TYPE_NODE_KIND_COUNT 7
 
-/* A type node: its constructor and labels (its shape), and the refs of its component types. Labels are field names
- * (with "var " for mutable fields), case tags, function parameter modes, an external type's C type, an abstract
- * type's global name, an auto type's component names (with "var "), or a param node's index. Children are in the
- * order the node lists them: record fields by name, tuple components and parameters in order (then a function's
- * result), the cases of a variant or option that have a payload, in declaration order, an abstract type's arguments
- * (then its representation), and an auto type's bound if it has one (then its components). */
+/* A type node: its constructor and labels (its shape), and the refs of its
+ * component types. Labels are field names (with "var " for mutable fields),
+ * case tags, function parameter modes, an external type's C type, an abstract
+ * type's global name, an auto type's component names (with "var "), or a param
+ * node's index. Children are in the order the node lists them: record fields by
+ * name, tuple components and parameters in order (then a function's result),
+ * the cases of a variant or option that have a payload, in declaration order,
+ * an abstract type's arguments (then its representation), and an auto type's
+ * bound if it has one (then its components). */
 typedef struct QTypeNode {
     QTypeNodeKind kind;
     size_t        label_count;
@@ -320,14 +335,16 @@ static int quest_tg_new_node(QTypeGraph *g, const QTypeDescriptor *d) {
     return index;
 }
 
-/* word.T: the external type uint64_t, the only external type that can be externed */
+/* word.T: the external type uint64_t, the only external type that can be
+ * externed */
 static bool quest_is_word_type(const QTypeDescriptor *d) {
     return d == &quest_type_Word || (d->kind == QTYPE_KIND_OPAQUE && d->extra == NULL && strcmp(d->name, "word.T") == 0);
 }
 
-/* The ref of a descriptor's type, adding nodes for it and the types it mentions. Raises dynamic.error for types the
- * format cannot express: polymorphic functions, and abstract types other than those of modules (docs/dynamic.md
- * §2.2). */
+/* The ref of a descriptor's type, adding nodes for it and the types it
+ * mentions. Raises dynamic.error for types the format cannot express:
+ * polymorphic functions, and abstract types other than those of modules
+ * (docs/dynamic.md §2.2). */
 static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
     if (d == NULL) quest_raise_dynamic_error();
     d = quest_stored_type(d);
@@ -458,7 +475,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
                 kind = QTN_EXTERNAL;
                 break;
             }
-            /* A module abstract type: its global name, its arguments, and its representation */
+            /* A module abstract type: its global name, its arguments, and its
+             * representation */
             const QOpaqueTypeDescriptor *meta = (const QOpaqueTypeDescriptor *)d->extra;
             size_t n = meta != NULL ? meta->arg_count : 0;
             labels[0] = d->name;
@@ -470,7 +488,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             break;
         }
         case QTYPE_KIND_AUTO: {
-            /* Its bound, if it has one, then its components, whose types refer to its parameter by param nodes */
+            /* Its bound, if it has one, then its components, whose types refer
+             * to its parameter by param nodes */
             const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)d->extra;
             if (meta == NULL) quest_raise_dynamic_error();
             size_t n = meta->component_count, b = meta->bound != NULL ? 1 : 0;
@@ -540,8 +559,9 @@ static void quest_tg_visit(QTypeGraph *g, int ref) {
     for (size_t i = 0; i < node->child_count; ++i) quest_tg_visit(g, node->children[i]);
 }
 
-/* Merges structurally equivalent nodes (partition refinement from shapes to the coarsest bisimulation) and numbers
- * the classes in the order a depth-first walk from the roots first reaches them */
+/* Merges structurally equivalent nodes (partition refinement from shapes to the
+ * coarsest bisimulation) and numbers the classes in the order a depth-first
+ * walk from the roots first reaches them */
 static void quest_tg_canonicalize(QTypeGraph *g) {
     size_t n = g->count;
     int *cls = (int *)quest_alloc(sizeof(int) * (n ? n : 1));
@@ -716,16 +736,18 @@ static void quest_write_type_table(QWriter *wr, const QTypeGraph *g) {
 /* Writing: Sharing Scan (Pass 1) and Emission (Pass 2)                      */
 /* ------------------------------------------------------------------------- */
 
-/* The component values of an array: each element is its QVal form (records and variants boxed) */
+/* The component values of an array: each element is its QVal form (records and
+ * variants boxed) */
 static QVal quest_array_element(const QArray *arr, const QTypeDescriptor *elem_desc, int64_t i) {
     (void)elem_desc;
     return arr->data[i];
 }
 
-/* The case of a variant or option value, and whether it is written as its bare tag. A variant value is a
- * QVariantVal; an option value is its tag followed by the components of its case, laid out as the case's payload
- * tuple type (docs/c-representation.md), so they have no identity of their own and are never shared. Either way
- * the tag comes first. */
+/* The case of a variant or option value, and whether it is written as its bare
+ * tag. A variant value is a QVariantVal; an option value is its tag followed by
+ * the components of its case, laid out as the case's payload tuple type
+ * (docs/c-representation.md), so they have no identity of their own and are
+ * never shared. Either way the tag comes first. */
 static const QVariantCaseDescriptor *quest_variant_case(const QTypeDescriptor *desc, const void *val, bool *bare) {
     const QVariantTypeDescriptor *meta = (const QVariantTypeDescriptor *)desc->extra;
     int64_t tag = val == NULL ? -1 : desc->kind == QTYPE_KIND_OPTION ? quest_option_tag(val) : *(const int64_t *)val;
@@ -741,10 +763,10 @@ static const QVariantCaseDescriptor *quest_variant_case(const QTypeDescriptor *d
     return c;
 }
 
-/* Finds the records, tuples, and arrays reached more than once, and adds the types of dynamic values to the type
- * graph, in the order they are written */
-/* A value stored as a type parameter (read from its slot in its QVal form, or as a value of the parameter's bound):
- * the value at its own type */
+/* Finds the records, tuples, and arrays reached more than once, and adds the
+ * types of dynamic values to the type graph, in the order they are written */
+/* A value stored as a type parameter (read from its slot in its QVal form, or
+ * as a value of the parameter's bound): the value at its own type */
 static const QTypeDescriptor *quest_unstore(const QTypeDescriptor *desc, QVal *val) {
     if (desc == NULL || desc->kind != QTYPE_KIND_STORED) return desc;
     const QStoredDescriptor *st = (const QStoredDescriptor *)desc->extra;
@@ -752,9 +774,10 @@ static const QTypeDescriptor *quest_unstore(const QTypeDescriptor *desc, QVal *v
     return st->type;
 }
 
-/* The type a value is written at: its own type (quest_unstore); for a value of a module abstract type, held as a
- * QVal as a value stored as a type parameter is, its representation; and for a value of an auto type's parameter,
- * the auto value's witness */
+/* The type a value is written at: its own type (quest_unstore); for a value of
+ * a module abstract type, held as a QVal as a value stored as a type parameter
+ * is, its representation; and for a value of an auto type's parameter, the auto
+ * value's witness */
 static const QTypeDescriptor *quest_concrete(const QTypeDescriptor *desc, QVal *val) {
     desc = quest_unstore(desc, val);
     for (;;) {
@@ -857,8 +880,8 @@ static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *t
     }
 }
 
-/* Writes the start of a record, tuple, or array: {"@ref":n} (returning true) if it was written before, or else
- * its "@id" when it is reached more than once */
+/* Writes the start of a record, tuple, or array: {"@ref":n} (returning true) if
+ * it was written before, or else its "@id" when it is reached more than once */
 static bool quest_emit_shared(const void *obj, QPtrTable *table, int *next_id, QWriter *wr, int *id) {
     *id = 0;
     QPtrNode *node = quest_ptr_find(table, obj);
@@ -1168,7 +1191,8 @@ static QJsonValue *quest_parse_json_string(QJsonReader *jr) {
                         else if (h >= 'A' && h <= 'F') hex = (hex << 4) | (h - 'A' + 10);
                         else quest_raise_dynamic_error();
                     }
-                    /* A character is a byte, so an escape above \u00ff gives none */
+                    /* A character is a byte, so an escape above \u00ff gives
+                     * none */
                     if (hex > 0xFF) quest_raise_dynamic_error();
                     ch = (int)hex;
                     break;
@@ -1435,7 +1459,8 @@ static void quest_fill_record_desc(const QTypeTable *t, QTypeDescriptor *desc, Q
         }
         fields[j] = f;
     }
-    /* Fields follow the record header, one slot (a word) each, as in compiled record structs */
+    /* Fields follow the record header, one slot (a word) each, as in compiled
+     * record structs */
     for (size_t i = 0; i < n; ++i) fields[i].offset = sizeof(QRecordHeader) + i * sizeof(QVal);
     meta->field_count = n;
     desc->size = sizeof(QRecordHeader) + n * sizeof(QVal);
@@ -1481,14 +1506,16 @@ static void quest_fill_variant_desc(const QTypeTable *t, QTypeDescriptor *desc, 
         cases[i].is_var = is_var;
         QJsonValue *ref = body->u.o.entries[i].val;
         cases[i].payload_type = ref->kind == QJSON_NULL ? NULL : quest_table_ref(t, ref);
-        /* An option case's components are a tuple type, stored in place in the option value */
+        /* An option case's components are a tuple type, stored in place in the
+         * option value */
         if (desc->kind == QTYPE_KIND_OPTION && cases[i].payload_type != NULL &&
             cases[i].payload_type->kind != QTYPE_KIND_TUPLE) {
             quest_raise_dynamic_error();
         }
     }
-    /* Compiled code numbers cases in the order of their names, whatever order a type lists them in, so the cases
-       are sorted (by insertion: there are few) and numbered as compiled code numbers them */
+    /* Compiled code numbers cases in the order of their names, whatever order a
+       type lists them in, so the cases are sorted (by insertion: there are few)
+       and numbered as compiled code numbers them */
     for (size_t i = 1; i < n; ++i) {
         QVariantCaseDescriptor c = cases[i];
         size_t j = i;
@@ -1532,8 +1559,9 @@ static void quest_fill_fun_desc(const QTypeTable *t, QTypeDescriptor *desc, QJso
     desc->extra = meta;
 }
 
-/* The descriptor of an abstract node, {"abstract": name, "args": [ref, ...], "rep": ref}: an opaque descriptor named
- * by the type's global name, whose representation is checked once the whole table is built */
+/* The descriptor of an abstract node, {"abstract": name, "args": [ref, ...],
+ * "rep": ref}: an opaque descriptor named by the type's global name, whose
+ * representation is checked once the whole table is built */
 static QTypeDescriptor *quest_new_abstract_desc(QJsonValue *node) {
     QJsonValue *name = quest_json_obj_get(node, "abstract");
     QJsonValue *args = quest_json_obj_get(node, "args");
@@ -1563,9 +1591,10 @@ static void quest_fill_abstract_desc(const QTypeTable *t, QTypeDescriptor *desc,
     meta->rep = quest_table_ref(t, quest_json_obj_get(node, "rep"));
 }
 
-/* Checks an abstract type's recorded representation (docs/dynamic.md §2.3): a linked module's type must have the
- * representation the module registers, and then has it (in the layout the program holds its values in); the type
- * of a module the program does not link keeps the recorded representation */
+/* Checks an abstract type's recorded representation (docs/dynamic.md §2.3): a
+ * linked module's type must have the representation the module registers, and
+ * then has it (in the layout the program holds its values in); the type of a
+ * module the program does not link keeps the recorded representation */
 static void quest_check_abstract_desc(QTypeDescriptor *desc) {
     QOpaqueTypeDescriptor *meta = (QOpaqueTypeDescriptor *)desc->extra;
     bool registered;
@@ -1577,11 +1606,12 @@ static void quest_check_abstract_desc(QTypeDescriptor *desc) {
     meta->rep = NULL;
 }
 
-/* Builds a descriptor for every node of a type table: first each node's kind (which determines how a component of
- * that type is stored), then the nodes' contents, which may refer to any node, and then checks the representations
- * of abstract types, which may refer to nodes after them */
-/* An auto type: {"bound": TypeRef | null, "components": [[label, TypeRef], ...]}, its components in slots in order,
- * as compiled code lays them out */
+/* Builds a descriptor for every node of a type table: first each node's kind
+ * (which determines how a component of that type is stored), then the nodes'
+ * contents, which may refer to any node, and then checks the representations of
+ * abstract types, which may refer to nodes after them */
+/* An auto type: {"bound": TypeRef | null, "components": [[label, TypeRef],
+ * ...]}, its components in slots in order, as compiled code lays them out */
 static void quest_fill_auto_desc(const QTypeTable *t, QTypeDescriptor *desc, QJsonValue *body) {
     if (body == NULL || body->kind != QJSON_OBJECT || body->u.o.count != 2) quest_raise_dynamic_error();
     QJsonValue *bound = quest_json_obj_get(body, "bound");
@@ -1626,7 +1656,8 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
         }
         QJsonKeyValue *entry = quest_type_node_entry(t->nodes[i]);
         if (strcmp(entry->key, "param") == 0) {
-            /* An auto type's parameter: the bound variable descriptor of its index */
+            /* An auto type's parameter: the bound variable descriptor of its
+             * index */
             if (entry->val->kind != QJSON_INT || entry->val->u.i < 0 || entry->val->u.i >= Q_MAX_BOUND_VARS) {
                 quest_raise_dynamic_error();
             }
@@ -1728,7 +1759,8 @@ static QIdEntry *quest_id_find(QReadContext *cx, int64_t id) {
     return NULL;
 }
 
-/* Records the object of an "@id" before its contents are read, so that references inside it can reach it */
+/* Records the object of an "@id" before its contents are read, so that
+ * references inside it can reach it */
 static void quest_id_insert(QReadContext *cx, const QJsonValue *id_val, void *ptr, const void *dict) {
     if (id_val->kind != QJSON_INT || quest_id_find(cx, id_val->u.i) != NULL) quest_raise_dynamic_error();
     QIdEntry *entry = (QIdEntry *)quest_alloc(sizeof(QIdEntry));
@@ -1769,7 +1801,8 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
 
     switch (desc->kind) {
         case QTYPE_KIND_STORED: {
-            /* A value stored as a type parameter, in a representation the module of an abstract type registers */
+            /* A value stored as a type parameter, in a representation the
+             * module of an abstract type registers */
             const QStoredDescriptor *st = (const QStoredDescriptor *)desc->extra;
             QVal val = quest_read_value(cx, node, st->type);
             return st->storage != NULL ? quest_convert(val, st->type, st->storage) : val;
@@ -1784,7 +1817,8 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                 if (errno == ERANGE || end == node->text || *end != '\0') quest_raise_dynamic_error();
                 return (QVal){ .u = (uint64_t)u };
             }
-            /* A module abstract type: its value, held as a QVal, at its representation */
+            /* A module abstract type: its value, held as a QVal, at its
+             * representation */
             const QTypeDescriptor *rep = quest_abstract_type_rep(desc);
             if (rep == NULL) quest_raise_dynamic_error();
             return quest_read_value(cx, node, rep);
@@ -1830,7 +1864,8 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             QJsonValue *v_node = quest_json_obj_get(node, "@value");
             if (t_node == NULL || v_node == NULL) quest_raise_dynamic_error();
             if (quest_is_dynamic_type(desc)) return (QVal){ .p = (void *)quest_read_dynamic(cx, t_node, v_node) };
-            /* Its witness, which must have the auto type's bound, then its components at their types */
+            /* Its witness, which must have the auto type's bound, then its
+             * components at their types */
             const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)desc->extra;
             const QTypeDescriptor *witness = quest_table_ref(cx->types, t_node);
             if (meta->bound != NULL && !quest_is_subtype(witness, meta->bound)) quest_raise_dynamic_error();
@@ -1929,7 +1964,8 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                     };
                     return (QVal){ .p = quest_variant_box(v) };
                 }
-                /* An option: its tag, then its case's components in place, in a block large enough for any case */
+                /* An option: its tag, then its case's components in place, in a
+                 * block large enough for any case */
                 size_t size = 0;
                 for (size_t j = 0; j < meta->case_count; ++j) {
                     const QTypeDescriptor *p = meta->cases[j].payload_type;

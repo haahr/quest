@@ -1,4 +1,5 @@
-"""The serialized form of dynamic values (docs/dynamic.md §2): canonical type tables and strict reading."""
+"""The serialized form of dynamic values (docs/dynamic.md §2): canonical type
+tables and strict reading."""
 
 from __future__ import annotations
 
@@ -104,8 +105,9 @@ class TestDynamicFormat(unittest.TestCase):
                 self.assertIs(cm.exception.exc_val, DYNAMIC_ERROR_EXC)
 
     def test_module_abstract_types(self) -> None:
-        """A linked module's abstract type is written by global name and representation, and read back only with
-        the representation the module has (docs/dynamic.md §2.3)."""
+        """A linked module's abstract type is written by global name and
+        representation, and read back only with the representation the module
+        has (docs/dynamic.md §2.3)."""
         from quest.modules.abstract_types import (
             abstract_type_symbol_id,
             register_abstract_type_representation,
@@ -141,7 +143,8 @@ class TestDynamicFormat(unittest.TestCase):
                 jsog_decode(json.dumps({**doc, "types": [changed], "value": 1}))
 
     def test_bounded_abstract_types(self) -> None:
-        """A bounded abstract type is written as any module abstract type is, with its whole representation."""
+        """A bounded abstract type is written as any module abstract type is,
+        with its whole representation."""
         from quest.modules.abstract_types import (
             abstract_type_symbol_id,
             register_abstract_type_representation,
@@ -176,15 +179,18 @@ class TestDynamicFormat(unittest.TestCase):
 
 
     def test_extern_and_intern_through_streams(self) -> None:
-        """dynamic.extern writes the JSON format of docs/dynamic.md §2 and dynamic.intern reads it."""
+        """dynamic.extern writes the JSON format of docs/dynamic.md §2 and
+        dynamic.intern reads it."""
         from quest.interpreter.builtins import resolve_external_symbol
 
-        # The runtime operations of lib/dynamic.mod.quest, by the C symbols it declares them with
+        # The runtime operations of lib/dynamic.mod.quest, by the C symbols it
+        # declares them with
         extern_fn = resolve_external_symbol("quest_dynamic_extern").fn
         intern_fn = resolve_external_symbol("quest_dynamic_intern").fn
 
         def new_dynamic(value, type_str):
-            """A dynamic value: an auto value whose one component a is the value."""
+            """A dynamic value: an auto value whose one component a is the
+            value."""
             return QAutoVal(QTuple((value,), labels=("a",)), parse_type_string(type_str))
 
         # 1. Primitive dynamic value

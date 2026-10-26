@@ -1,7 +1,8 @@
-"""Tracebacks of uncaught exceptions (docs/exceptions.md): the interpreters report the frames active where an
-exception was raised, most recent first, and the IR interpreter reports them exactly as the source interpreter does,
-at every stage of the IR. Compiled code reports the same exception and site, and some of the frames (the C compiler
-inlines functions), in the same order."""
+"""Tracebacks of uncaught exceptions (docs/exceptions.md): the interpreters
+report the frames active where an exception was raised, most recent first, and
+the IR interpreter reports them exactly as the source interpreter does, at every
+stage of the IR. Compiled code reports the same exception and site, and some of
+the frames (the C compiler inlines functions), in the same order."""
 
 from __future__ import annotations
 
@@ -166,7 +167,8 @@ class TestInterpreterTracebacks(unittest.TestCase):
             interpreted = self.stderr_of(program, "interpret")
             compiled = self.stderr_of(program, "run_c_compiled")
             with self.subTest(case=name):
-                # The same header (the exception, at the same site) and source line
+                # The same header (the exception, at the same site) and source
+                # line
                 self.assertEqual(compiled.splitlines()[:3], interpreted.splitlines()[:3])
                 compiled_frames = _expanded(_frames(compiled))
                 self.assertTrue(compiled_frames, compiled)

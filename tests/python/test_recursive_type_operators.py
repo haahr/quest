@@ -1,4 +1,5 @@
-"""Recursive type operators: Let Rec T(A::K) = ... T(A) ..., alone or as a group, means Fun(A::K) Rec(T) ...."""
+"""Recursive type operators: Let Rec T(A::K) = ... T(A) ..., alone or as a
+group, means Fun(A::K) Rec(T) ...."""
 
 from __future__ import annotations
 

@@ -1,4 +1,5 @@
-"""Comprehensive Unit Tests for Quest Semantic Types, Kinds, Scoping, and Environments."""
+"""Comprehensive Unit Tests for Quest Semantic Types, Kinds, Scoping, and
+Environments."""
 
 import os
 import sys
@@ -82,7 +83,8 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         self.assertEqual(str(CHAR_TYPE), "Char")
         self.assertEqual(str(STRING_TYPE), "String")
         self.assertEqual(str(OK_TYPE), "Ok")
-        # Dynamic is Cardelli's Dynamic_T, the auto type Auto A::TYPE with a:A end (Typeful Programming §9.1)
+        # Dynamic is Cardelli's Dynamic_T, the auto type Auto A::TYPE with a:A
+        # end (Typeful Programming §9.1)
         self.assertEqual(str(DYNAMIC_TYPE), "Auto A :: TYPE with a: A end")
         self.assertEqual(str(EXCEPTION_TYPE), "Exception")
         self.assertEqual(str(TYPE_KIND), "TYPE")
@@ -134,7 +136,8 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         self.assertFalse(is_subkind(k2, k1))
 
         # Parameter contravariance:
-        # Since POWER(Car) <= POWER(Vehicle), ALL(W :: POWER(Vehicle)) TYPE <= ALL(Z :: POWER(Car)) TYPE
+        # Since POWER(Car) <= POWER(Vehicle),
+        # ALL(W :: POWER(Vehicle)) TYPE <= ALL(Z :: POWER(Car)) TYPE
         k3 = QAllKind(param_name="Z", param_id=3, param_kind=QPowerKind(car), result_kind=TYPE_KIND)
         k4 = QAllKind(param_name="W", param_id=4, param_kind=QPowerKind(vehicle), result_kind=TYPE_KIND)
 
@@ -155,12 +158,14 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         with self.assertRaises(KindError):
             check_kind_well_formed(QPowerKind(pair_ctor), env)
 
-        # An application of an opaque type operator is contractive unless the operator is the recursive variable
+        # An application of an opaque type operator is contractive unless the
+        # operator is the recursive variable
         op = QTypeVar("F", 3, QAllKind(param_name="A", param_id=4, param_kind=TYPE_KIND, result_kind=TYPE_KIND))
         self.assertTrue(is_type_contractive(QTypeApp(op, (INT_TYPE,)), {99}))
         self.assertFalse(is_type_contractive(QTypeApp(op, (INT_TYPE,)), {3}))
 
-        # Operator kinds ALL(A::TYPE) TYPE are well-formed, with or without an environment
+        # Operator kinds ALL(A::TYPE) TYPE are well-formed, with or without an
+        # environment
         operator_kind = QAllKind(param_name="A", param_id=2, param_kind=TYPE_KIND, result_kind=TYPE_KIND)
         check_kind_well_formed(operator_kind, env)
         check_kind_well_formed(operator_kind)
@@ -303,7 +308,8 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         f_veh_to_car = QFunType(params=(QParam("v", vehicle),), result_type=car)
         f_car_to_veh = QFunType(params=(QParam("c", car),), result_type=vehicle)
 
-        # Vehicle -> Car <: Car -> Vehicle (Contravariant param, Covariant result)
+        # Vehicle -> Car <: Car -> Vehicle (Contravariant param, Covariant
+        # result)
         self.assertTrue(is_subtype(f_veh_to_car, f_car_to_veh))
         self.assertFalse(is_subtype(f_car_to_veh, f_veh_to_car))
 
@@ -341,7 +347,8 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
         self.assertEqual(str(evaluated), "Tuple :Int :String end")
 
     def test_single_recursive_type(self):
-        # List = Rec(L::TYPE) Option nil cons with Record head: Int tail: L end end
+        # List = Rec(L::TYPE) Option nil cons with Record head: Int tail: L
+        #     end end
         list_type = QRecType(
             var_name="L",
             symbol_id=10,
@@ -371,7 +378,8 @@ class TestSemanticTypesAndKinds(unittest.TestCase):
 
     def test_mutual_recursive_type_group(self):
         # Let Rec Tree = Option leaf node with NodeList end
-        # and NodeList = Option empty cons with Record head: Tree tail: NodeList end end
+        # and NodeList = Option empty cons with Record head: Tree tail: NodeList
+        #     end end
         tree_body = QOptionType((
             QOptionField("leaf", INT_TYPE),
             QOptionField("node", QTypeVar("NodeList", 20)),

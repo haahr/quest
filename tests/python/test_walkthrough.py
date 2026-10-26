@@ -1,13 +1,18 @@
-"""Checks that the excerpts docs/walkthrough.md shows are what the compiler prints.
+"""Checks that the excerpts docs/walkthrough.md shows are what the compiler
+prints.
 
-An excerpt is a fenced block preceded by a comment naming a file and what it shows:
+An excerpt is a fenced block preceded by a comment naming a file and what it
+shows:
 
     <!-- excerpt: examples/argmax/argmax.quest typecheck -->
 
-The second word is `source` for the file itself, or a phase given to `--stop-after`, and any further words are
-options for the driver (`--echo`). A line of the excerpt that is only `...` stands for any number of lines, and `...`
-within a line for any text; otherwise the excerpt's lines must appear as they are, consecutive and in order. Runs of
-spaces and tabs after a line's indentation compare as one space, so tokens' tab-separated columns can be aligned.
+The second word is `source` for the file itself, or a phase given to
+`--stop-after`, and any further words are options for the driver (`--echo`). A
+line of the excerpt that is only `...` stands for any number of lines, and `...`
+within a line for any text; otherwise the excerpt's lines must appear as they
+are, consecutive and in order. Runs of spaces and tabs after a line's
+indentation compare as one space, so tokens' tab-separated columns can be
+aligned.
 """
 
 import os

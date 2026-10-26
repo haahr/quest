@@ -1,12 +1,14 @@
 """Quest Bootstrap Compiler Test Runner.
 
-Each test is a driver run of its own (quest_driver.py, in a subprocess), and so a compilation session of its own,
-with its own unit graph and resolver (docs/build-process.md §2.1): a test's builds never see another's resolutions
-or typed units, only the artifacts in the worker's build directory, whose staleness rules decide whether they are
-reused (docs/testing.md §2.2).
+Each test is a driver run of its own (quest_driver.py, in a subprocess), and so
+a compilation session of its own, with its own unit graph and resolver
+(docs/build-process.md §2.1): a test's builds never see another's resolutions or
+typed units, only the artifacts in the worker's build directory, whose staleness
+rules decide whether they are reused (docs/testing.md §2.2).
 
-With --self-hosted, the tests of the phases the self-hosted compiler has run its driver instead (questlang/driver/main,
-compiled to C first), against the bootstrap's goldens and error expectations (docs/milestone-2.md §3).
+With --self-hosted, the tests of the phases the self-hosted compiler has run its
+driver instead (questlang/driver/main, compiled to C first), against the
+bootstrap's goldens and error expectations (docs/milestone-2.md §3).
 """
 
 import argparse
@@ -42,21 +44,24 @@ from quest.syntax.sources import BYTE_ENCODING
 from quest.testing.errors import relativize_root_paths, run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
-# The example programs the documentation walks through, run as golden tests too (docs/testing.md §2.1)
+# The example programs the documentation walks through, run as golden tests too
+# (docs/testing.md §2.1)
 EXAMPLES_DIR = ROOT_DIR / "examples"
 TESTS_GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TESTS_ERRORS_DIR = ROOT_DIR / "tests" / "errors"
 DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 
-# The self-hosted compiler's driver, the phases it has, the tests it is not yet expected to pass, and where the
-# errors it reports after the bootstrap's one are recorded (docs/milestone-2.md §3)
+# The self-hosted compiler's driver, the phases it has, the tests it is not yet
+# expected to pass, and where the errors it reports after the bootstrap's one
+# are recorded (docs/milestone-2.md §3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret")
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
-# Tests of several errors, which only the self-hosted driver reports: tests/self-hosted/errors/PHASE/NAME.quest
-# The programs the self-hosted driver's -e runs, and the bootstrap's transcript of them (docs/milestone-3.md §3.2),
-# which tests/eval/generate.py writes
+# Tests of several errors, which only the self-hosted driver reports:
+# tests/self-hosted/errors/PHASE/NAME.quest
+# The programs the self-hosted driver's -e runs, and the bootstrap's transcript
+# of them (docs/milestone-3.md §3.2), which tests/eval/generate.py writes
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
@@ -68,7 +73,8 @@ TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
 
 
 def record_telemetry(total_duration: float, tests_run: int, workers_used: int) -> None:
-    """Appends execution telemetry to /tmp/quest_run_tests_telemetry.log on successful test runs."""
+    """Appends execution telemetry to /tmp/quest_run_tests_telemetry.log on
+    successful test runs."""
     timestamp = datetime.now().astimezone().isoformat()
     log_line = (
         f"{timestamp} | duration={total_duration:.2f}s | tests={tests_run} | workers={workers_used}\n"
@@ -104,12 +110,14 @@ class TestDirectives:
 
 
 def _os_arg(text: str) -> str:
-    """Text from a test's source, a character per byte, as a string that subprocess gives the OS as those bytes."""
+    """Text from a test's source, a character per byte, as a string that
+    subprocess gives the OS as those bytes."""
     return os.fsdecode(text.encode(BYTE_ENCODING))
 
 
 def parse_test_directives(source_file: Path) -> TestDirectives:
-    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin, @echo) from comments."""
+    """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout,
+    @stdin, @echo) from comments."""
     text = source_file.read_text(encoding=BYTE_ENCODING)
 
     skipped: set[str] = set()
@@ -167,23 +175,26 @@ def parse_skipped_phases(source_file: Path) -> set[str]:
 
 
 def discover_tests(directory: Path) -> list[Path]:
-    """Returns the test programs under directory: every .quest file holding a program. Interfaces and modules beside
-    the tests are imported by them, not run as tests (docs/testing.md §2.6)."""
+    """Returns the test programs under directory: every .quest file holding a
+    program. Interfaces and modules beside the tests are imported by them, not
+    run as tests (docs/testing.md §2.6)."""
     return sorted(p for p in directory.rglob("*.quest") if file_unit_kind(p) == UnitKind.PROGRAM)
 
 
 def golden_test_id(source_file: Path) -> Path:
-    """The path of a golden test's program relative to its goldens' directories: its path within tests/source, or
-    within examples/ under examples/."""
+    """The path of a golden test's program relative to its goldens' directories:
+    its path within tests/source, or within examples/ under examples/."""
     try:
         return source_file.relative_to(TESTS_SOURCE_DIR)
     except ValueError:
         return Path("examples") / source_file.relative_to(EXAMPLES_DIR)
 
 
-# The IR's stages after Core are dumped (and compared with goldens) for a subset of the programs, chosen to exercise
-# each pass: those that have a golden in the stage's directory. (Every program runs through every stage, verified, in
-# the run_ir phases.) To add a program to a stage's subset, create its golden file empty and update goldens.
+# The IR's stages after Core are dumped (and compared with goldens) for a subset
+# of the programs, chosen to exercise each pass: those that have a golden in the
+# stage's directory. (Every program runs through every stage, verified, in the
+# run_ir phases.) To add a program to a stage's subset, create its golden file
+# empty and update goldens.
 SUBSET_PHASES = IR_DUMP_PHASES[1:]
 
 # The phases that run programs, whose output is compared with the run goldens
@@ -197,7 +208,8 @@ def golden_dir_for_phase(phase_name: str) -> Path:
 
 
 def error_dir_for_phase(phase_name: str) -> Path:
-    # Every phase that runs programs locates run-time errors at their raise sites (docs/exceptions.md §3)
+    # Every phase that runs programs locates run-time errors at their raise
+    # sites (docs/exceptions.md §3)
     if phase_name in RUN_PHASES:
         return TESTS_ERRORS_DIR / "run"
     return TESTS_ERRORS_DIR / phase_name
@@ -236,8 +248,9 @@ def run_single_golden_test(
     driver_args: Optional[list[str]] = None,
     driver_command: Optional[list[str]] = None,
 ) -> tuple[bool, str, str]:
-    """Runs a golden test with the bootstrap driver, or the one driver_command runs (the self-hosted driver, whose
-    output is compared with the bootstrap's goldens and never written to them)."""
+    """Runs a golden test with the bootstrap driver, or the one driver_command
+    runs (the self-hosted driver, whose output is compared with the bootstrap's
+    goldens and never written to them)."""
     golden_base = golden_dir_for_phase(phase_name)
     rel_source = golden_test_id(source_file)
     target_dir = golden_base / rel_source.parent
@@ -259,7 +272,8 @@ def run_single_golden_test(
         ]
         if driver_args:
             command.extend(driver_args)
-        # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
+        # Every phase builds and reuses artifacts in the build directory
+        # (docs/build-process.md §5.2.4).
         if build_dir is None:
             build_dir = ROOT_DIR / ".build"
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -277,21 +291,22 @@ def run_single_golden_test(
 
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
-    # Checks the C back end's canonical forms of types, which outside the tests only warn
-    # (docs/c-representation.md §5.7)
+    # Checks the C back end's canonical forms of types, which outside the tests
+    # only warn (docs/c-representation.md §5.7)
     environment["QUEST_CHECK_CANONICAL"] = "1"
     # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
     environment["QUEST_CHECK_SCOPES"] = "1"
     # Checks the IR's invariants after lowering (quest/ir/verify.py)
     environment["QUEST_CHECK_IR"] = "1"
-    # The project directory, whose lib/ the self-hosted driver reads the standard library from (it runs elsewhere)
+    # The project directory, whose lib/ the self-hosted driver reads the
+    # standard library from (it runs elsewhere)
     environment["QUEST_HOME"] = str(ROOT_DIR)
     if directives.env and phase_name in RUN_PHASES:
         environment.update(directives.env)
 
     try:
-        # Each run starts in a fresh, empty directory of its own, where the program may create files
-        # (docs/testing.md §2.2)
+        # Each run starts in a fresh, empty directory of its own, where the
+        # program may create files (docs/testing.md §2.2)
         with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
             process = subprocess.run(
                 command,
@@ -313,8 +328,9 @@ def run_single_golden_test(
                 msg += f"\n    {line}"
         return False, "[FAIL]", msg
 
-    # A golden test is a valid program: one that exits with any other code fails, even when updating goldens.
-    # Programs that should be rejected are error tests (docs/testing.md §3).
+    # A golden test is a valid program: one that exits with any other code
+    # fails, even when updating goldens. Programs that should be rejected are
+    # error tests (docs/testing.md §3).
     if process.returncode != expected_exit:
         msg = f"  (failed with returncode {process.returncode}, expected {expected_exit})"
         if process.stderr:
@@ -354,7 +370,8 @@ def run_phase_tasks(
     executor: concurrent.futures.ThreadPoolExecutor,
     jobs: int,
 ) -> tuple[int, int]:
-    """Executes a list of tasks for a given phase using the worker pool, printing results."""
+    """Executes a list of tasks for a given phase using the worker pool,
+    printing results."""
     if not tasks:
         return 0, 0
 
@@ -396,7 +413,8 @@ def run_phase_tasks(
 
 
 def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
-    """Compiles the self-hosted driver to an executable in build_dir, with the bootstrap."""
+    """Compiles the self-hosted driver to an executable in build_dir, with the
+    bootstrap."""
     binary = build_dir / "questlang-driver"
     command = [
         python_executable,
@@ -416,15 +434,17 @@ def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
 
 
 def eval_programs() -> list[str]:
-    """The programs of tests/eval/cases.quest, one per line, after its opening comment."""
+    """The programs of tests/eval/cases.quest, one per line, after its opening
+    comment."""
     lines = EVAL_CASES.read_text(encoding=BYTE_ENCODING).splitlines()
     end = next(i for i, line in enumerate(lines) if line.rstrip().endswith("*)"))
     return [line for line in lines[end + 1:] if line.strip()]
 
 
 def eval_transcript(driver_command: list[str], timeout: float = 30.0) -> str:
-    """What a driver writes for each program of eval_programs run with -e: its standard output and error, and its
-    exit status, each run in a fresh directory of its own."""
+    """What a driver writes for each program of eval_programs run with -e: its
+    standard output and error, and its exit status, each run in a fresh
+    directory of its own."""
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
     environment["QUEST_HOME"] = str(ROOT_DIR)
@@ -444,7 +464,8 @@ def eval_transcript(driver_command: list[str], timeout: float = 30.0) -> str:
 
 
 def run_eval_test(driver_command: list[str], timeout: float) -> tuple[bool, str, str]:
-    """The self-hosted driver's -e against the bootstrap's transcript (eval_transcript)."""
+    """The self-hosted driver's -e against the bootstrap's transcript
+    (eval_transcript)."""
     actual = eval_transcript(driver_command, timeout)
     expected = EVAL_GOLDEN.read_text(encoding=BYTE_ENCODING)
     if actual == expected:
@@ -533,8 +554,9 @@ def run_repl_test(
 
 
 def self_hosted_pending() -> set[str]:
-    """The tests the self-hosted driver is not yet expected to pass: PHASE:TEST for a golden test, and
-    errors/PHASE:TEST for an error test, one per line (# starts a comment)."""
+    """The tests the self-hosted driver is not yet expected to pass: PHASE:TEST
+    for a golden test, and errors/PHASE:TEST for an error test, one per line (#
+    starts a comment)."""
     if not SELF_HOSTED_PENDING.exists():
         return set()
     entries = (line.split("#", 1)[0].strip() for line in SELF_HOSTED_PENDING.read_text(encoding="utf-8").splitlines())
@@ -544,8 +566,9 @@ def self_hosted_pending() -> set[str]:
 def with_pending(
     key: str, pending: set[str], counts: dict[str, int], run_fn: Callable[[Path], tuple[bool, str, str]]
 ) -> Callable[[Path], tuple[bool, str, str]]:
-    """run_fn, for a test that may be pending: a pending test that fails is reported as pending, and one that passes
-    fails, so that it is taken off the list."""
+    """run_fn, for a test that may be pending: a pending test that fails is
+    reported as pending, and one that passes fails, so that it is taken off the
+    list."""
     if key not in pending:
         return run_fn
 
@@ -738,7 +761,8 @@ def run_all_tests(
                             print(f"  [SKIP] {phase}:{test_id}")
                             continue
                         if phase in SUBSET_PHASES and not (golden_dir / rel_source.with_suffix(".out")).exists():
-                            # Dumped for a subset of the programs only: those with goldens
+                            # Dumped for a subset of the programs only: those
+                            # with goldens
                             continue
 
                         def make_golden_runner(
@@ -760,7 +784,8 @@ def run_all_tests(
                         )
                         phase_tasks.append(PhaseTask(test_id=test_id, run_fn=run_fn))
 
-                    # The self-hosted driver's -e, against the bootstrap's transcript
+                    # The self-hosted driver's -e, against the bootstrap's
+                    # transcript
                     if phase == "interpret" and runs_eval:
                         eval_command = driver_command
                         phase_tasks.append(PhaseTask(
@@ -869,7 +894,8 @@ def run_all_tests(
                     )
                     error_tasks.append(PhaseTask(test_id=rel_id, run_fn=run_fn))
 
-                # The self-hosted driver's tests of several errors, whose diagnostics must all be expected
+                # The self-hosted driver's tests of several errors, whose
+                # diagnostics must all be expected
                 multi_dir = SELF_HOSTED_ERRORS_DIR / phase
                 if driver_command is not None and multi_dir.exists():
                     for multi_file in discover_tests(multi_dir):

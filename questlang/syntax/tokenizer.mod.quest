@@ -31,9 +31,9 @@ export
         delimiters: Table
     end
 
-    (* =========================================================================
+    (* ======================================================================
      * Tables
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let newTable(): Table = hashmap.new(:String :K stringOp.equal hash.string)
     let add(m: Table s: String k: K): Ok = begin hashmap.insert(:String :K m s k) ok end
@@ -123,9 +123,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Characters
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let isSymbolicChar(c: Char): Bool = strutil.contains("!#$%&*+-/:<=>?@\\^_`|~" stringOp.new(1 c))
 
@@ -140,8 +140,9 @@ export
             end
         end
 
-    (* The character at the cursor plus offset; NUL past the end of the input, which no character test below
-     * accepts, so a loop over such a test stops at the end without checking the cursor *)
+    (* The character at the cursor plus offset; NUL past the end of the input,
+     * which no character test below accepts, so a loop over such a test stops
+     * at the end without checking the cursor *)
     let peekChar(tok: T offset: Int): Char =
         if {tok.cursor + offset} < tok.textLen then stringOp.getChar(tok.text {tok.cursor + offset}) else ascii.char(0) end
 
@@ -161,7 +162,8 @@ export
 
     let atCommentStart(tok: T): Bool = {currentChar(tok) is '('} andif {peekChar(tok 1) is '*'}
 
-    (* Python's repr of a character, as the bootstrap tokenizer's messages show it *)
+    (* Python's repr of a character, as the bootstrap tokenizer's messages show
+     * it *)
     let charRepr(c: Char): String =
         begin
             let code = ascii.val(c)
@@ -175,9 +177,9 @@ export
             b.char('\'').toString()
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Tokens
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let error(tok: T start: Int message: String): Ok =
         diagbag.addError(tok.bag location.span(tok.file start tok.cursor) message)
@@ -218,7 +220,8 @@ export
             end
         end
 
-    (* The character an escape sequence denotes; the backslash is already consumed *)
+    (* The character an escape sequence denotes; the backslash is already
+     * consumed *)
     let lexEscapeSequence(tok: T): Char =
         begin
             let start = tok.cursor - 1
@@ -273,7 +276,8 @@ export
             let start = tok.cursor
             if currentChar(tok) is '~' then tok.cursor := tok.cursor + 1 end
             skipWhile(tok strutil.isDigit)
-            (* A real has a decimal point followed by a digit, and an optional exponent *)
+            (* A real has a decimal point followed by a digit, and an optional
+             * exponent *)
             let isReal = {currentChar(tok) is '.'} andif strutil.isDigit(peekChar(tok 1))
             if isReal then
                 tok.cursor := tok.cursor + 1
@@ -296,7 +300,8 @@ export
                 finish(tok option realLit of K end start tokens.valReal(maybe.unwrapOr(:Real r 0.0)))
             else
                 let n = strutil.tryToInt(norm)
-                (* The lexeme is digits, so it is not an Int only if it is out of range *)
+                (* The lexeme is digits, so it is not an Int only if it is out
+                 * of range *)
                 if maybe.isNone(:Int n) then error(tok start "Integer literal '" <> lexeme <> "' out of range") end
                 finish(tok option intLit of K end start tokens.valInt(maybe.unwrapOr(:Int n 0)))
             end
@@ -347,8 +352,8 @@ export
             finish(tok option stringLit of K end start tokens.valString(b.toString()))
         end
 
-    (* An identifier, keyword, symbolic operator, or reserved punctuation: the longest run of characters that pass
-     * test, looked up in table *)
+    (* An identifier, keyword, symbolic operator, or reserved punctuation: the
+     * longest run of characters that pass test, looked up in table *)
     let lexWord(tok: T test: All(c: Char) Bool table: Table otherwise: K): tokens.Token =
         begin
             let start = tok.cursor
@@ -357,7 +362,8 @@ export
             finish(tok maybe.unwrapOr(:K lookup(table lexeme) otherwise) start tokens.valNone())
         end
 
-    (* A symbolic operator stops before ~ followed by a digit, which starts a negative number *)
+    (* A symbolic operator stops before ~ followed by a digit, which starts a
+     * negative number *)
     let isOperatorChar(tok: T): All(c: Char) Bool =
         fun(c: Char): Bool isSymbolicChar(c) andif not({c is '~'} andif strutil.isDigit(peekChar(tok 1)))
 
@@ -391,9 +397,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * Streams
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     let nextToken(tok: T): tokens.Token =
         if maybe.isSome(:tokens.Token tok.peeked) then

@@ -22,8 +22,9 @@ from quest.typechecker.typecheck import check_expr, synth_expr
 from quest.typechecker.typed_ast import TypedBinding, TypedExpr, TypedProgram
 from quest.types import QKind, QType, is_type_equal
 
-# Patch unittest.TestCase.assertEqual so that comparisons between QType instances
-# use is_type_equal or reference identity ('is') rather than Python's recursive __eq__.
+# Patch unittest.TestCase.assertEqual so that comparisons between QType
+# instances use is_type_equal or reference identity ('is') rather than Python's
+# recursive __eq__.
 _original_assertEqual = unittest.TestCase.assertEqual
 
 
@@ -41,7 +42,8 @@ def _qtype_aware_assertEqual(self: unittest.TestCase, first: Any, second: Any, m
 
 unittest.TestCase.assertEqual = _qtype_aware_assertEqual
 
-# Checks the C back end's canonical forms of types, which outside the tests only warn (as run_tests.py does)
+# Checks the C back end's canonical forms of types, which outside the tests only
+# warn (as run_tests.py does)
 os.environ["QUEST_CHECK_CANONICAL"] = "1"
 # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
 os.environ["QUEST_CHECK_SCOPES"] = "1"
@@ -55,10 +57,11 @@ def parse_phrase(
     source: str,
     target: Optional[Union[str, SyntaxTarget]] = None,
 ) -> Any:
-    """Parse a source string through the compiler pipeline up to the parse phase.
+    """Parse a source string through the compiler pipeline up to the parse
+    phase.
 
-    If target is provided (e.g. 'type', 'kind', 'expr', 'phrase', 'program', 'signature',
-    or a SyntaxTarget), parses starting from that grammar target.
+    If target is provided (e.g. 'type', 'kind', 'expr', 'phrase', 'program',
+    'signature', or a SyntaxTarget), parses starting from that grammar target.
     Otherwise, parses as a standard program and returns the first phrase.
     """
     opts = CompilerOptions(stop_after="parse", target=target)
@@ -92,7 +95,8 @@ def parse_expr(expr_source: str) -> ast.Expr:
 
 
 def parse_core_expr(expr_source: str) -> ast.Expr:
-    """Parse and desugar a value expression, as the pipeline does before type checking it."""
+    """Parse and desugar a value expression, as the pipeline does before type
+    checking it."""
     return desugar(parse_expr(expr_source))
 
 
@@ -133,10 +137,11 @@ def eval_test_source(
     env: Optional[RuntimeEnvironment] = None,
     target: Optional[Union[str, SyntaxTarget]] = None,
 ) -> Any:
-    """Parse, typecheck, and evaluate Quest source code, returning the resulting QValue.
+    """Parse, typecheck, and evaluate Quest source code, returning the resulting
+    QValue.
 
-    Raises QuestException or QuestRuntimeError on evaluation failure, or RuntimeError
-    if compilation fails during tokenize, parse, or typecheck.
+    Raises QuestException or QuestRuntimeError on evaluation failure, or
+    RuntimeError if compilation fails during tokenize, parse, or typecheck.
     """
     pipeline = default_pipeline()
     opts = CompilerOptions(stop_after="typecheck", target=target)
@@ -206,7 +211,8 @@ def assert_pipeline_success(
     options: Optional[CompilerOptions] = None,
     ctx: Optional[CompilerContext] = None,
 ) -> CompilerContext:
-    """Execute source through the pipeline, asserting success and returning CompilerContext."""
+    """Execute source through the pipeline, asserting success and returning
+    CompilerContext."""
     result, context = run_pipeline(
         source,
         env=env,
@@ -230,7 +236,8 @@ def assert_pipeline_failure(
     options: Optional[CompilerOptions] = None,
     ctx: Optional[CompilerContext] = None,
 ) -> list[str]:
-    """Execute source through the pipeline, asserting failure and checking error messages."""
+    """Execute source through the pipeline, asserting failure and checking error
+    messages."""
     result, _ = run_pipeline(
         source,
         env=env,

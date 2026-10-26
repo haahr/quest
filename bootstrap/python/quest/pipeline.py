@@ -1,7 +1,7 @@
 """Quest Compiler Phase Pipeline Framework.
 
-Provides uniform lifecycle management, execution, and artifact inspection
-across compiler phases (tokenize, parse, desugar, typecheck, interpret, codegen).
+Provides uniform lifecycle management, execution, and artifact inspection across
+compiler phases (tokenize, parse, desugar, typecheck, interpret, codegen).
 """
 
 from __future__ import annotations
@@ -74,9 +74,11 @@ class CompilerContext:
     env: Environment = field(default_factory=Environment)
     options: CompilerOptions = field(default_factory=CompilerOptions)
     _runtime_env: Optional[RuntimeEnvironment] = field(default=None, repr=False)
-    # Modules the generated C unit links against; set by CodegenCPhase (see link_dependencies).
+    # Modules the generated C unit links against; set by CodegenCPhase (see
+    # link_dependencies).
     imported_modules: list[Any] = field(default_factory=list)
-    # The typed program, kept by IrCorePhase for the IR's C backend (its imports, for linking)
+    # The typed program, kept by IrCorePhase for the IR's C backend (its
+    # imports, for linking)
     typed_program: Optional[Any] = None
 
     @property
@@ -115,8 +117,9 @@ class CompilerContext:
         # Wire include_paths and current_dir
         environment.options = opts
         if opts.build_dir is None and opts.is_c_compilation_mode:
-            # Separate compilation always has a build directory, so that nested interface and module
-            # compilations agree on where artifacts live (docs/build-process.md §3.1).
+            # Separate compilation always has a build directory, so that nested
+            # interface and module compilations agree on where artifacts live
+            # (docs/build-process.md §3.1).
             opts.build_dir = Path(".build")
         environment.include_paths = list(opts.include_paths)
         if opts.build_dir and Path(opts.build_dir).resolve() not in [p.resolve() for p in environment.include_paths]:
@@ -133,8 +136,9 @@ class CompilerContext:
         elif environment.current_dir is None:
             cwd = Path.cwd()
             environment.current_dir = cwd
-        # A unit file compiled alone has no program, so units under no include root are named by their base names,
-        # as the module compiler names them (quest/modules/paths.py, canonicalize_module_path)
+        # A unit file compiled alone has no program, so units under no include
+        # root are named by their base names, as the module compiler names them
+        # (quest/modules/paths.py, canonicalize_module_path)
         if environment.program_dir is None and opts.unit is None:
             environment.program_dir = environment.current_dir
         opts.current_dir = environment.current_dir
@@ -186,12 +190,14 @@ class Phase(ABC):
 
     @abstractmethod
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[Any]:
-        """Executes the phase on input_data. Returns output artifact or None on failure."""
+        """Executes the phase on input_data. Returns output artifact or None on
+        failure."""
         pass
 
     @abstractmethod
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
-        """Renders the output artifact as canonical human-readable or golden-test text."""
+        """Renders the output artifact as canonical human-readable or
+        golden-test text."""
         pass
 
 
@@ -250,7 +256,8 @@ class ParsePhase(Phase):
 
 
 class DesugarPhase(Phase):
-    """Desugaring phase: rewrites the untyped AST's syntactic sugar into core forms (quest/syntax/desugar.py)."""
+    """Desugaring phase: rewrites the untyped AST's syntactic sugar into core
+    forms (quest/syntax/desugar.py)."""
     name = "desugar"
     description = "Rewrite syntactic sugar in the untyped AST into core forms"
     artifact_name = "core_ast"
@@ -312,9 +319,11 @@ class InterpretPhase(Phase):
         return self._last_phrase_results
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[QValue]:
-        # The program's code raises errors located in its file; a module's, in the module's (docs/exceptions.md §3.2)
+        # The program's code raises errors located in its file; a module's, in
+        # the module's (docs/exceptions.md §3.2)
         ctx.runtime_env.source_map = ctx.source_map
-        # The program's phrases run in the outermost frame (docs/exceptions.md §4)
+        # The program's phrases run in the outermost frame (docs/exceptions.md
+        # §4)
         ctx.runtime_env.call_stack.append(MAIN_FRAME)
         try:
             match input_data:
@@ -328,7 +337,8 @@ class InterpretPhase(Phase):
                         if out_str:
                             sys.stdout.write(out_str + "\n")
 
-                    # Later phrases (in the REPL) continue in the frame the program's last phrase was evaluated in
+                    # Later phrases (in the REPL) continue in the frame the
+                    # program's last phrase was evaluated in
                     self._last_phrase_results, ctx.runtime_env = eval_program_phrases(
                         input_data, ctx.runtime_env, on_result=echo if ctx.options.echo else None
                     )
@@ -381,10 +391,12 @@ class InterpretPhase(Phase):
 
 
 def link_dependencies(ctx: CompilerContext) -> list[Path]:
-    """Builds the modules a C unit produced by CodegenCPhase imports, returning the objects to link.
+    """Builds the modules a C unit produced by CodegenCPhase imports, returning
+    the objects to link.
 
-    Delegates to the BuildEngine, so that staleness checks, artifact placement, and object collection
-    are the same as for a full application build (docs/build-process.md §7.3).
+    Delegates to the BuildEngine, so that staleness checks, artifact placement,
+    and object collection are the same as for a full application build
+    (docs/build-process.md §7.3).
     """
     opts = ctx.options
     engine = BuildEngine(
@@ -399,19 +411,21 @@ def link_dependencies(ctx: CompilerContext) -> list[Path]:
 
 
 def unit_file_name(ctx: CompilerContext) -> str:
-    """The canonical name of the unit file being compiled, as the module compiler names it."""
+    """The canonical name of the unit file being compiled, as the module
+    compiler names it."""
     roots = Roots.of(ctx.env.include_paths, ctx.env.program_dir)
     return ctx.env.units.resolver.file(Path(ctx.file_name).resolve(), roots).canonical_name
 
 
 def unit_module(prog: TypedProgram, ctx: CompilerContext) -> TypedModule:
-    """A module file's typed module, under its canonical name, as the module compiler names it."""
+    """A module file's typed module, under its canonical name, as the module
+    compiler names it."""
     return replace(prog.phrases[0], name=unit_file_name(ctx))
 
 
 def unit_interface_header(ctx: CompilerContext) -> Optional[str]:
-    """The interface header a module file's C translation includes, brought up to date and found as the module
-    compiler does."""
+    """The interface header a module file's C translation includes, brought up
+    to date and found as the module compiler does."""
     module = ctx.typed_program.phrases[0]
     header = ensure_imported_interface_header(module.interface_name, ctx.env)
     if ctx.options.build_dir is None:
@@ -423,7 +437,8 @@ def unit_interface_header(ctx: CompilerContext) -> Optional[str]:
 
 
 class IrCorePhase(Phase):
-    """Lowering to the IR's Core stage (docs/ir.md), the first step of C compilation."""
+    """Lowering to the IR's Core stage (docs/ir.md), the first step of C
+    compilation."""
     name = "ir_core"
     description = "Lower the typed AST to Core IR"
     artifact_name = "ir_unit"
@@ -455,7 +470,8 @@ class IrCorePhase(Phase):
 
 
 class IrPassPhase(Phase):
-    """An IR pass, producing the IR at its stage (docs/ir.md §8, §9), verified when QUEST_CHECK_IR=1."""
+    """An IR pass, producing the IR at its stage (docs/ir.md §8, §9), verified
+    when QUEST_CHECK_IR=1."""
     artifact_name = "ir_unit"
 
     def __init__(self, stage: str, run_pass: Any) -> None:
@@ -484,8 +500,9 @@ class IrPassPhase(Phase):
 
 
 class RunIrPhase(Phase):
-    """Runs the IR in the IR interpreter (quest/interpreter/ir_interp.py), a test oracle for the lowering and the
-    passes: its output is compared with the source interpreter's. The IR prints the program's results itself."""
+    """Runs the IR in the IR interpreter (quest/interpreter/ir_interp.py), a
+    test oracle for the lowering and the passes: its output is compared with the
+    source interpreter's. The IR prints the program's results itself."""
     artifact_name = "ir_run"
 
     def __init__(self, stage: str) -> None:
@@ -509,7 +526,8 @@ class RunIrPhase(Phase):
 
 
 class CodegenCPhase(Phase):
-    """C code generation: prints the described IR as C99 source code (docs/ir.md §8.5)."""
+    """C code generation: prints the described IR as C99 source code (docs/ir.md
+    §8.5)."""
     name = "codegen_c"
     description = "Print the described IR as C99 source code"
     artifact_name = "c_source"
@@ -523,7 +541,8 @@ class CodegenCPhase(Phase):
         try:
             unit = input_data
             if ctx.options.unit == "module":
-                # A module file's C translation, which the module compiler writes and compiles alone
+                # A module file's C translation, which the module compiler
+                # writes and compiles alone
                 return print_c(unit, ctx.env, unit_interface_header(ctx))
             c_code = print_c(unit, ctx.env)
         except Exception as error:
@@ -541,14 +560,15 @@ class CodegenCPhase(Phase):
         return str(output_data) if output_data is not None else ""
 
 
-# The lines after an error's message in a compiled program's output: the site it was raised at, and the frames
-# running there (docs/exceptions.md §2.2)
+# The lines after an error's message in a compiled program's output: the site it
+# was raised at, and the frames running there (docs/exceptions.md §2.2)
 _RAISE_SITE = re.compile(r"^  at (.+):(\d+):(\d+)$")
 _FRAME_LINE = re.compile(r"^  (in |\.\.\. )")
 
 
 def _trace_of(lines: list[str]) -> tuple[str, ...]:
-    """The frames of a traceback's lines, a run of calls of the same function listed in full."""
+    """The frames of a traceback's lines, a run of calls of the same function
+    listed in full."""
     frames: list[str] = []
     for line in lines:
         if line.startswith("  in "):
@@ -559,10 +579,11 @@ def _trace_of(lines: list[str]) -> tuple[str, ...]:
 
 
 def binary_error_diagnostic(stderr: str, source_map: SourceMap) -> Diagnostic:
-    """The diagnostic for the error output of a compiled program (docs/exceptions.md §2.2): its message, located at
-    the site the program printed, in the program's file (source_map) or the file the site names, which is read for
-    its source line, with the frames it printed. Without a site, or when the file cannot be read, the diagnostic has
-    no location."""
+    """The diagnostic for the error output of a compiled program
+    (docs/exceptions.md §2.2): its message, located at the site the program
+    printed, in the program's file (source_map) or the file the site names,
+    which is read for its source line, with the frames it printed. Without a
+    site, or when the file cannot be read, the diagnostic has no location."""
     lines = stderr.rstrip("\n").splitlines()
     end = len(lines)
     while end > 0 and _FRAME_LINE.match(lines[end - 1]):
@@ -585,7 +606,8 @@ def binary_error_diagnostic(stderr: str, source_map: SourceMap) -> Diagnostic:
 
 
 class RunCCompiledPhase(Phase):
-    """Native binary execution phase: compiles C code and runs the resulting binary."""
+    """Native binary execution phase: compiles C code and runs the resulting
+    binary."""
     name = "run_c_compiled"
     description = "Compile C code to native binary and execute it"
     artifact_name = "stdout"
@@ -619,7 +641,8 @@ class RunCCompiledPhase(Phase):
                     ctx.sink.emit(Diagnostic(Severity.ERROR, f"Binary exited with code {proc.returncode}"))
             return proc.stdout
         except QuestCompilerError as error:
-            # Such as a type error in an imported module's body, found when the module is compiled
+            # Such as a type error in an imported module's body, found when the
+            # module is compiled
             ctx.sink.emit(diagnostic_of(error))
             return None
         except Exception as error:
@@ -736,7 +759,8 @@ class PhasePipeline:
         options: Optional[CompilerOptions] = None,
         ctx: Optional[CompilerContext] = None,
     ) -> PipelineResult:
-        """Executes the pipeline on an interactive REPL phrase, preserving context."""
+        """Executes the pipeline on an interactive REPL phrase, preserving
+        context."""
         context = ctx or CompilerContext.create(phrase_text, "<repl>", options=options)
         context.sink = DiagnosticSink()
         context.env.sink = context.sink
@@ -757,15 +781,16 @@ def default_pipeline() -> PhasePipeline:
     return pipeline
 
 
-# The IR's stages (docs/ir.md §9, quest.ir.nodes.STAGES), in order: Core, then those the passes produce
+# The IR's stages (docs/ir.md §9, quest.ir.nodes.STAGES), in order: Core, then
+# those the passes produce
 IR_STAGES = ("core", *(stage for stage, _ in IR_PASSES))
 IR_DUMP_PHASES = tuple(f"ir_{stage}" for stage in IR_STAGES)
 IR_RUN_PHASES = tuple(f"run_ir_{stage}" for stage in IR_STAGES)
 
 
 def ir_pipeline(stage: str = "core") -> PhasePipeline:
-    """Returns the pipeline lowering to IR and running its passes up to the given stage (Tokenize -> Parse ->
-    Desugar -> Typecheck -> IrCore -> ...)."""
+    """Returns the pipeline lowering to IR and running its passes up to the
+    given stage (Tokenize -> Parse -> Desugar -> Typecheck -> IrCore -> ...)."""
     if stage not in IR_STAGES:
         raise ValueError(f"no IR stage '{stage}'")
     pipeline = PhasePipeline()
@@ -780,16 +805,17 @@ def ir_pipeline(stage: str = "core") -> PhasePipeline:
 
 
 def ir_run_pipeline(stage: str) -> PhasePipeline:
-    """Returns the pipeline lowering to IR, running its passes up to the given stage, and running it in the IR
-    interpreter."""
+    """Returns the pipeline lowering to IR, running its passes up to the given
+    stage, and running it in the IR interpreter."""
     pipeline = ir_pipeline(stage)
     pipeline.register(RunIrPhase(stage))
     return pipeline
 
 
 def compile_pipeline() -> PhasePipeline:
-    """Returns the C compilation pipeline: through the IR's passes to C (Tokenize -> Parse -> Desugar -> Typecheck ->
-    IrCore -> the IR passes -> CodegenC)."""
+    """Returns the C compilation pipeline: through the IR's passes to C
+    (Tokenize -> Parse -> Desugar -> Typecheck -> IrCore -> the IR passes ->
+    CodegenC)."""
     pipeline = ir_pipeline(IR_STAGES[-1])
     pipeline.register(CodegenCPhase())
     return pipeline
