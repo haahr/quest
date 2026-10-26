@@ -28,6 +28,11 @@ import
     questlang/interpreter/builtins : questlang/interpreter/Builtins
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/lower : questlang/ir/Lower
+    questlang/ir/printer : questlang/ir/Printer
+    questlang/ir/verify : questlang/ir/Verify
+    questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
@@ -37,13 +42,13 @@ import
     system : System
 ;
 
-let phases = array of "tokenize" "parse" "desugar" "typecheck" "interpret" end;
+let phases = array of "tokenize" "parse" "desugar" "typecheck" "ir_core" "run_ir_core" "interpret" end;
 
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
         writer.putString(writer.err
-            "usage: main [--stop-after tokenize|parse|desugar|typecheck|interpret] [--show-offsets] [--echo] "
+            "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_core|run_ir_core|interpret] [--show-offsets] [--echo] "
             <> "[--expected-exit N] (FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
         system.sysexit(2)
     end;
@@ -145,8 +150,27 @@ let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagno
         d
     end;
 
-(* Runs a type-checked program, as the bootstrap's interpret phase does *)
-let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+(* A type-checked program lowered to the IR, verified when QUEST_CHECK_IR=1 *)
+let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool): nodes.Unit =
+    begin
+        let unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
+        if verify.irChecksEnabled() then verify.checkUnit(unit) end
+        unit
+    end;
+
+(* Dumps the IR at the stage asked for, as the bootstrap's ir_STAGE phases do *)
+let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
+        try
+            print(printer.formatUnit(lowered(program e sm false)))
+        when lower.loweringError with m then internal(m)
+        when verify.verifyError with m then internal(m)
+        end
+    end;
+
+(* The tree-walking interpreter's root frame for a program, with its arguments *)
+let runFrame(e: env.T sm: location.SourceMap): model.Frame =
     begin
         let f = treewalk.newRoot(e.units)
         f.root.includePaths := vector.toArray(:String e.includePaths)
@@ -156,6 +180,32 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
         let args = array of({extent options.programArgs + 1} options.file)
         for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
         builtins.setSystemArgs(args)
+        f
+    end;
+
+(* Runs a type-checked program's IR in the IR interpreter, as the bootstrap's run_ir_STAGE phases do: the IR prints
+ * the last phrase's result itself (or every phrase's, with --echo) *)
+let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
+        try
+            let unit = lowered(program e sm true)
+            let f = runFrame(e sm)
+            try
+                irInterp.runUnit(unit f)
+            when model.runError with err then
+                diagbag.add(bag runErrorDiagnostic(err options.file))
+            end
+        when lower.loweringError with m then internal(m)
+        when verify.verifyError with m then internal(m)
+        when irInterp.irInterpreterError with m then internal(m)
+        end
+    end;
+
+(* Runs a type-checked program, as the bootstrap's interpret phase does *)
+let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let f = runFrame(e sm)
         (* The program's phrases run in the outermost frame (docs/exceptions.md section 4) *)
         vector.append(:String f.root.callStack diagnostics.mainFrame)
         try
@@ -204,6 +254,10 @@ let run(): Ok =
                         let typed = maybe.unwrap(:typedAst.Program result.program)
                         if stringOp.equal(options.stopAfter "typecheck") then
                             print(typedAstPrint.dumpProgram(typed))
+                        elsif stringOp.equal(options.stopAfter "ir_core") then
+                            if not(diagbag.hasErrors(bag)) then dumpIr(typed e sm bag) end
+                        elsif stringOp.equal(options.stopAfter "run_ir_core") then
+                            if not(diagbag.hasErrors(bag)) then runIr(typed e sm bag) end
                         elsif not(diagbag.hasErrors(bag)) then
                             interpret(typed e sm bag)
                         end

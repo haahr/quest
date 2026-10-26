@@ -1,0 +1,1051 @@
+(* Quest Self-Hosted Compiler: The IR Interpreter Implementation
+ *
+ * Variables are looked up by identity in frames: a frame per function activation, its parent the frame its closure
+ * was made in, and a frame per loop iteration, so that a closure made in one iteration keeps that iteration's values.
+ * A mutable variable holds a cell, which addr x yields and a var or out parameter receives. Statements give no signal
+ * when they fall through, or the terminator's (return, jump, break, continue); a raise is model.runError, as in the
+ * tree-walking interpreter. A handler's exception variable holds the exception raised; its frame keeps the error, for
+ * its payload and for raising it again. *)
+
+module irInterp : IrInterp
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/values/model : questlang/values/Model
+    questlang/interpreter/primitives : questlang/interpreter/Primitives
+    questlang/interpreter/builtins : questlang/interpreter/Builtins
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
+    questlang/interpreter/treewalk : questlang/interpreter/Treewalk
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    conv : Conv
+    writer : Writer
+    word : Word
+export
+    Let Type = tm.Type
+    Let Value = model.Value
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+
+    let irInterpreterError: Exception(String) = exception irInterpreterError: String end
+
+    let fail(A::TYPE message: String): A = raise irInterpreterError with message end
+    let rethrow(A::TYPE e: model.RunError): A = raise model.runError with e end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let none = maybe.none(:Int)
+
+    let isOneOf(op: String ops: Array(String)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent ops - 1} do if eq(op ops[i]) then found := true end end
+            found
+        end
+
+    let intArithmeticOps = array of "+" "-" "*" "/" "mod" "%" end
+    let intRelationalOps = array of "<" "<=" ">" ">=" end
+    let realArithmeticOps = array of "++" "--" "**" "//" "^^" end
+    let realRelationalOps = array of "<<" "<<=" ">>" ">>=" end
+
+    (* =========================================================================
+     * Frames
+     * ========================================================================= *)
+
+    Let Rec Frame = Tuple
+        parent: maybe.T(Frame)
+        (* A variable's value by its id; none for a let rec's variable before its value is computed *)
+        values: hashMap.T(Int maybe.T(Value))
+        (* The type arguments of the type parameters (by symbol id) of the functions being run *)
+        types: hashMap.T(Int Type)
+        (* The errors raised that handlers' exception variables (by id) hold *)
+        raised: hashMap.T(Int model.RunError)
+        (* The frame of the top level this frame runs in (none: this one), the parent of lifted functions' frames *)
+        top: maybe.T(Frame)
+    end
+
+    let newFrame(parent: maybe.T(Frame) types: hashMap.T(Int Type)): Frame =
+        tuple
+            let parent = parent
+            let values = hashMap.new(:Int :maybe.T(Value) intEqual hash.int)
+            let types = types
+            let raised = hashMap.new(:Int :model.RunError intEqual hash.int)
+            let top = if maybe.isSome(:Frame parent) then
+                let p = maybe.unwrap(:Frame parent)
+                if maybe.isSome(:Frame p.top) then p.top else parent end
+            else
+                maybe.none(:Frame)
+            end
+        end
+
+    let newTypes(): hashMap.T(Int Type) = hashMap.new(:Int :Type intEqual hash.int)
+    let childFrame(parent: Frame): Frame = newFrame(maybe.some(:Frame parent) newTypes())
+    let topOf(f: Frame): Frame = maybe.unwrapOr(:Frame f.top f)
+
+    let setValue(f: Frame v: Variable value: Value): Ok =
+        begin hashMap.insert(:Int :maybe.T(Value) f.values v.id maybe.some(:Value value)) ok end
+
+    (* The slot of a variable, outward from f *)
+    let rec slot(f: Frame v: Variable): maybe.T(Value) =
+        begin
+            let found = hashMap.get(:Int :maybe.T(Value) f.values v.id)
+            if maybe.isSome(:maybe.T(Value) found) then
+                maybe.unwrap(:maybe.T(Value) found)
+            elsif maybe.isSome(:Frame f.parent) then
+                slot(maybe.unwrap(:Frame f.parent) v)
+            else
+                fail(:maybe.T(Value) "variable '" <> v.hint <> "' is not bound")
+            end
+        end
+
+    let isUnbound(f: Frame v: Variable): Bool = maybe.isNone(:Value slot(f v))
+
+    let lookup(f: Frame v: Variable): Value =
+        begin
+            let s = slot(f v)
+            if maybe.isNone(:Value s) then model.internalError(:Value "Undefined runtime symbol '" <> v.hint <> "'" none)
+            else maybe.unwrap(:Value s) end
+        end
+
+    (* Binds a declared variable in the frame that declared it *)
+    let rec bindDeclared(f: Frame v: Variable value: Value): Ok =
+        begin
+            let found = hashMap.get(:Int :maybe.T(Value) f.values v.id)
+            if maybe.isSome(:maybe.T(Value) found) andif maybe.isNone(:Value maybe.unwrap(:maybe.T(Value) found)) then
+                setValue(f v value)
+            elsif maybe.isSome(:Frame f.parent) then
+                bindDeclared(maybe.unwrap(:Frame f.parent) v value)
+            else
+                fail(:Ok "declared variable '" <> v.hint <> "' is bound outside its scope")
+            end
+        end
+
+    let rec raisedError(f: Frame v: Variable): maybe.T(model.RunError) =
+        begin
+            let found = hashMap.get(:Int :model.RunError f.raised v.id)
+            if maybe.isSome(:model.RunError found) orif maybe.isNone(:Frame f.parent) then found
+            else raisedError(maybe.unwrap(:Frame f.parent) v) end
+        end
+
+    let rec lookupType(f: Frame symbolId: Int): maybe.T(Type) =
+        begin
+            let found = hashMap.get(:Int :Type f.types symbolId)
+            if maybe.isSome(:Type found) orif maybe.isNone(:Frame f.parent) then found
+            else lookupType(maybe.unwrap(:Frame f.parent) symbolId) end
+        end
+
+    (* t with the type arguments of the type parameters it mentions substituted *)
+    let resolve(f: Frame t: Type): Type =
+        begin
+            let subst = tm.newSubst()
+            for i = 0 upto {extent t.fv - 1} do
+                let bound = lookupType(f t.fv[i])
+                if maybe.isSome(:Type bound) then hashMap.insert(:Int :Type subst t.fv[i] maybe.unwrap(:Type bound)) end
+            end
+            if hashMap.empty(:Int :Type subst) then t else tm.substitute(t subst) end
+        end
+
+    let resolveAll(f: Frame types: Array(Type)): Array(Type) =
+        begin
+            let result = array of(extent types tm.okType)
+            for i = 0 upto {extent types - 1} do result[i] := resolve(f types[i]) end
+            result
+        end
+
+    (* =========================================================================
+     * The interpreter
+     * ========================================================================= *)
+
+    (* An IR function value: its function, the frame it was made in, the types bound to its type parameters, and after
+     * closure conversion, the values it captured. It is a builtin to the tree-walking interpreter, so that library
+     * functions written in Quest can call it. *)
+    Let IrClosure = Tuple
+        function: nodes.Function
+        frame: Frame
+        typeBindings: hashMap.T(Int Type)
+        env: maybe.T(Array(Value))
+    end
+
+    Let Signal = Option
+        sigReturn with value: Value end
+        sigJump with label: String args: Array(Value) end
+        sigBreak with label: String end
+        sigContinue with label: String end
+    end
+    Let Signals = maybe.T(Signal)
+    let noSignal: Signals = maybe.none(:Signal)
+    let signal(s: Signal): Signals = maybe.some(:Signal s)
+
+    (* A capture of a closure made in a let rec of a variable it has yet to bind *)
+    Let Fixup = Tuple values: Array(Value) index: Int v: Variable frame: Frame end
+
+    let builtinEqual(a: model.Builtin b: model.Builtin): Bool = a is b
+    let builtinHash(b: model.Builtin): word.T = hash.identityHash(:model.Builtin b)
+
+    Let Interpreter = Tuple
+        (* The tree-walking interpreter's frame, whose root has the call stack and runs imported modules *)
+        renv: model.Frame
+        (* The builtins: true, false, ok, and the operators as functions *)
+        root: model.Frame
+        (* The unit's modules and those it imports (by id), as records of their members *)
+        modules: hashMap.T(Int Value)
+        declared: hashMap.T(Int Bool)
+        fixups: vector.T(vector.T(Fixup))
+        var sourceMap: maybe.T(location.SourceMap)
+        (* The symbols of the type parameters the unit's functions' descriptor variables describe (by variable) *)
+        descriptorSymbols: hashMap.T(Int Int)
+        (* The IR closures, by their builtin values *)
+        closures: hashMap.T(model.Builtin IrClosure)
+    end
+
+    let stack(it: Interpreter): vector.T(String) = it.renv.root.callStack
+
+    (* error, raised by an operation at offset in the unit, located there unless it already is *)
+    let located(it: Interpreter e: model.RunError offset: maybe.T(Int)): model.RunError =
+        begin
+            if maybe.isNone(:Int e.offset) andif maybe.isNone(:location.SourceMap e.sourceMap) andif maybe.isSome(:Int offset) then
+                e.offset := offset
+                e.sourceMap := it.sourceMap
+            end
+            e
+        end
+
+    (* Runs f, locating the errors it raises at offset *)
+    let at(A::TYPE it: Interpreter offset: maybe.T(Int) f: All() A): A =
+        try f() when model.runError with e then rethrow(:A located(it e offset)) end
+
+    let raising(A::TYPE it: Interpreter exc: model.ExceptionValue offset: maybe.T(Int)): A =
+        at(:A it offset fun(): A model.raiseException(:A exc maybe.none(:Int)))
+
+    let deref(v0: Value): Value =
+        begin
+            let var v = v0
+            let var more = true
+            while more do
+                case v
+                    when vRef with r then v := model.deref(r.r)
+                    else more := false
+                end
+            end
+            v
+        end
+
+    let moduleValue(it: Interpreter r: nodes.ModuleRef): Value =
+        begin
+            let id = case r when refModule with x then x.m.id when refImport with x then x.i.id end
+            let found = hashMap.get(:Int :Value it.modules id)
+            if maybe.isNone(:Value found) then fail(:Value "module '" <> nodes.moduleRefName(r) <> "' is not loaded") end
+            maybe.unwrap(:Value found)
+        end
+
+    let member(it: Interpreter r: nodes.ModuleRef name: String): Value =
+        case moduleValue(it r)
+            when vRecord with x then
+                let found = hashMap.get(:String :Value x.r.fields name)
+                if maybe.isNone(:Value found) then fail(:Value "module '" <> nodes.moduleRefName(r) <> "' has no member " <> name) end
+                case maybe.unwrap(:Value found)
+                    when vRef with c then model.deref(c.r)
+                    else maybe.unwrap(:Value found)
+                end
+            else fail(:Value "module '" <> nodes.moduleRefName(r) <> "' is a " <> model.typeName(moduleValue(it r)))
+        end
+
+    (* Atoms *)
+
+    let atom(it: Interpreter a: Atom f: Frame): Value =
+        case a
+            when atomVar with x then
+                let value = lookup(f x.v)
+                (* A mutable variable holds a cell; a use reads it *)
+                if x.v.isMutable then
+                    case value when vRef with r then model.deref(r.r) else value end
+                else
+                    value
+                end
+            when atomConst with x then
+                case x.c.value
+                    when constOk then model.okValue
+                    when constBool with y then model.boolValue(y.b)
+                    when constInt with y then model.intValue(y.n)
+                    when constReal with y then model.realValue(y.r)
+                    when constChar with y then model.charValue(y.c)
+                    when constString with y then model.stringValue(y.s)
+                end
+        end
+
+    let atoms(it: Interpreter items: Array(Atom) f: Frame): Array(Value) =
+        begin
+            let values = array of(extent items model.okValue)
+            for i = 0 upto {extent items - 1} do values[i] := atom(it items[i] f) end
+            values
+        end
+
+    (* The element of a tuple holding its index'th value component (its type components are elements too) *)
+    let elementIndex(t: model.TupleValue index: Int): Int =
+        begin
+            let var n = ~1
+            let var found = ~1
+            for i = 0 upto {extent t.elements - 1} do
+                if not(t.elements[i]?vTypeValue) then
+                    n := n + 1
+                    if {n is index} andif {found < 0} then found := i end
+                end
+            end
+            if found < 0 then fail(:Ok "tuple has no value component " <> conv.int(index)) end
+            found
+        end
+
+    let tupleOf(v: Value): model.TupleValue =
+        case deref(v)
+            when vTuple with x then x.t
+            else model.internalError(:model.TupleValue "not a tuple: " <> model.typeName(v) none)
+        end
+
+    let tagOf(v: Value): String =
+        case v
+            when vVariant with x then x.v.tag
+            when vOption with x then x.v.tag
+            else model.internalError(:String "not a variant or option: " <> model.typeName(v) none)
+        end
+
+    (* A variant's payload, or an option's components (its ordinal in its static type first) as a tuple *)
+    let payloadOf(v: Value tag: String ordinalIndex: maybe.T(Int)): Value =
+        begin
+            if not(eq(tagOf(v) tag)) then model.raiseException(:Ok primitives.variantError none) end
+            case v
+                when vOption with x then
+                    if maybe.isNone(:Int ordinalIndex) then fail(:Ok "the payload of option case " <> tag <> " without its ordinal") end
+                    let ordinalValue = model.intValue(maybe.unwrap(:Int ordinalIndex))
+                    if maybe.isNone(:Value x.v.payload) then
+                        model.tupleValue(array of ordinalValue end maybe.some(:Array(maybe.T(String)) array of maybe.none(:String) end))
+                    else
+                        let p = maybe.unwrap(:Value x.v.payload)
+                        case p
+                            when vTuple with t then
+                                let n = extent t.t.elements
+                                let elements = array of({n + 1} ordinalValue)
+                                let labels = array of({n + 1} maybe.none(:String))
+                                for i = 0 upto {n - 1} do
+                                    elements[i + 1] := t.t.elements[i]
+                                    if maybe.isSome(:Array(maybe.T(String)) t.t.labels) then
+                                        labels[i + 1] := maybe.unwrap(:Array(maybe.T(String)) t.t.labels)[i]
+                                    end
+                                end
+                                model.tupleValue(elements maybe.some(:Array(maybe.T(String)) labels))
+                            else
+                                model.tupleValue(array of ordinalValue p end
+                                    maybe.some(:Array(maybe.T(String)) array of maybe.none(:String) maybe.none(:String) end))
+                        end
+                    end
+                when vVariant with x then maybe.unwrapOr(:Value x.v.payload model.okValue)
+                else model.okValue
+            end
+        end
+
+    (* Whether a polymorphic function, applied to all its types, is a function *)
+    let isFunctionType(f: nodes.Function): Bool =
+        begin
+            let var t = formatting.exposedType(f.v.type)
+            let var more = true
+            while more do
+                case t.form
+                    when typeAll with x then t := formatting.exposedType(x.body)
+                    else more := false
+                end
+            end
+            t.form?typeFun
+        end
+
+    let instantiate(c: IrClosure typeArgs: Array(Type)): IrClosure =
+        begin
+            let bindings = newTypes()
+            hashMap.forEach(:Int :Type c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(:Int :Type bindings k t) ok end)
+            let var next = 0
+            for i = 0 upto {extent c.function.typeParams - 1} do
+                let id = c.function.typeParams[i].symbolId
+                if not(hashMap.contains(:Int :Type c.typeBindings id)) andif {next < extent typeArgs} then
+                    hashMap.insert(:Int :Type bindings id typeArgs[next])
+                    next := next + 1
+                end
+            end
+            tuple let function = c.function let frame = c.frame let typeBindings = bindings let env = c.env end
+        end
+
+    let holeUse = option hole of tm.ReservedSymbolUse end
+
+    let rec closureValue(it: Interpreter c: IrClosure): Value =
+        begin
+            let b: model.Builtin = tuple
+                let name = c.function.v.hint
+                let fn = fun(args: Array(Value)): Value applyClosure(it c args)
+            end
+            hashMap.insert(:model.Builtin :IrClosure it.closures b c)
+            option vBuiltin of Value with let b = b end
+        end
+
+    and irClosureOf(it: Interpreter v: Value): maybe.T(IrClosure) =
+        case v
+            when vBuiltin with x then hashMap.get(:model.Builtin :IrClosure it.closures x.b)
+            else maybe.none(:IrClosure)
+        end
+
+    and inFrame(it: Interpreter name: String b: Body f: Frame): Signals =
+        begin
+            vector.append(:String stack(it) name)
+            let result = try
+                runBody(it b f)
+            when model.runError with e then
+                treewalk.noteFrames(e it.renv)
+                vector.pop(:String stack(it))
+                rethrow(:Signals e)
+            end
+            vector.pop(:String stack(it))
+            result
+        end
+
+    and applyClosure(it: Interpreter c: IrClosure args: Array(Value)): Value =
+        begin
+            let types = newTypes()
+            hashMap.forEach(:Int :Type c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(:Int :Type types k t) ok end)
+            let f = newFrame(maybe.some(:Frame c.frame) types)
+            let fn = c.function
+            if maybe.isSome(:Variable fn.env) then
+                setValue(f maybe.unwrap(:Variable fn.env) option vArray of Value with let a = maybe.unwrapOr(:Array(Value) c.env array of :Value end) end)
+            end
+            for i = 0 upto {extent fn.params - 1} do if i < extent args then setValue(f fn.params[i].v args[i]) end end
+            let s = if maybe.isNone(:String fn.traceName) then runBody(it fn.body f)
+                else inFrame(it maybe.unwrap(:String fn.traceName) fn.body f) end
+            case maybe.unwrapOr(:Signal s option sigBreak of Signal with let label = "" end)
+                when sigReturn with x then x.value
+                else fail(:Value "function '" <> fn.v.hint <> "' ends without returning")
+            end
+        end
+
+    and apply(it: Interpreter callee: Value args: Array(Value)): Value =
+        case callee
+            when vBuiltin with x then x.b.fn(args)
+            when vClosure with x then treewalk.runClosure(x.c args)
+            else model.internalError(:Value "Cannot call non-function of type " <> model.typeName(callee) none)
+        end
+
+    (* A polymorphic value applied to types: its instance (the value, for a polymorphic function with no value
+     * parameters) *)
+    and typeApply(it: Interpreter callee: Value typeArgs: Array(Type)): Value =
+        begin
+            let irc = irClosureOf(it callee)
+            if maybe.isSome(:IrClosure irc) then
+                let c = maybe.unwrap(:IrClosure irc)
+                let inst = instantiate(c typeArgs)
+                let instValue = closureValue(it inst)
+                if {extent c.function.params is 0} andif {hashMap.size(:Int :Type inst.typeBindings) >= extent c.function.typeParams}
+                    andif not(isFunctionType(c.function)) then
+                    apply(it instValue array of :Value end)
+                else
+                    instValue
+                end
+            else
+                case callee
+                    when vClosure with x then
+                        let inst = if extent x.c.typeParamIds > 0 then treewalk.instantiate(x.c typeArgs) else x.c end
+                        if extent inst.params is 0 then treewalk.runClosure(inst array of :Value end)
+                        else option vClosure of Value with let c = inst end end
+                    else callee
+                end
+            end
+        end
+
+    and calleeValue(it: Interpreter v: maybe.T(Variable) r: maybe.T(nodes.ModuleRef) name: maybe.T(String) f: Frame): Value =
+        if maybe.isSome(:Variable v) then atom(it nodes.atomOfVar(maybe.unwrap(:Variable v)) f)
+        else member(it maybe.unwrap(:nodes.ModuleRef r) maybe.unwrapOr(:String name "")) end
+
+    (* The type a descriptor operand describes in the frame *)
+    and described(it: Interpreter d: nodes.Descriptor f: Frame): Type =
+        case d
+            when descVar with x then
+                let t = lookupType(f maybe.unwrapOr(:Int hashMap.get(:Int :Int it.descriptorSymbols x.v.id) ~1))
+                if maybe.isNone(:Type t) then fail(:Ok "descriptor variable '" <> x.v.hint <> "' describes no type here") end
+                maybe.unwrap(:Type t)
+            when descStatic with x then resolve(f x.d.type)
+            when descInstantiate with x then
+                let args = tm.newSubst()
+                for i = 0 upto {extent x.args - 1} do
+                    hashMap.insert(:Int :Type args tm.reservedSymbolId(holeUse i) described(it x.args[i] f))
+                end
+                tm.substitute(resolve(f x.template) args)
+        end
+
+    (* Checks that descriptor operands describe the types they stand for (after the describe pass) *)
+    and checkDescriptors(it: Interpreter ds: Array(nodes.Descriptor) types: Array(Type) f: Frame): Ok =
+        for i = 0 upto {extent ds - 1} do
+            if i < extent types then
+                let d = described(it ds[i] f)
+                let t = resolve(f types[i])
+                if not(subtyping.isTypeEqual(d t maybe.none(:tm.Lookup))) then
+                    fail(:Ok "a descriptor of " <> tm.show(d) <> " stands for " <> tm.show(t))
+                end
+            end
+        end
+
+    (* A closure of a lifted function, whose frames see only the globals of the top level that makes it *)
+    and makeClosure(it: Interpreter code: nodes.Function captures: Array(Atom) typeArgs: Array(Type) f: Frame): Value =
+        begin
+            let values = array of(extent captures model.okValue)
+            for i = 0 upto {extent captures - 1} do
+                let pending = case captures[i]
+                    when atomVar with x then isUnbound(f x.v) andif not(vector.empty(:vector.T(Fixup) it.fixups))
+                    else false
+                end
+                if pending then
+                    (* A variable of an enclosing let rec, bound once its body has run *)
+                    case captures[i]
+                        when atomVar with x then
+                            vector.append(:Fixup vector.last(:vector.T(Fixup) it.fixups)
+                                tuple let values = values let index = i let v = x.v let frame = f end)
+                        else ok
+                    end
+                else
+                    values[i] := atom(it captures[i] f)
+                end
+            end
+            let bindings = newTypes()
+            for i = 0 upto {extent code.typeParams - 1} do
+                if i < extent typeArgs then hashMap.insert(:Int :Type bindings code.typeParams[i].symbolId resolve(f typeArgs[i])) end
+            end
+            closureValue(it tuple let function = code let frame = topOf(f) let typeBindings = bindings let env = maybe.some(:Array(Value) values) end)
+        end
+
+    (* A tuple laid out as the tree-walking interpreter lays it out: its type components are elements too *)
+    and makeTuple(it: Interpreter values: Array(Value) typeComponents: Array(nodes.TypeComponent) result: maybe.T(Variable)
+            f: Frame): Value =
+        begin
+            let t = formatting.exposedType(maybe.unwrap(:Variable result).type)
+            case t.form
+                when typeTuple with x then
+                    if extent typeComponents is 0 then
+                        let labels = array of(extent x.fields maybe.none(:String))
+                        for i = 0 upto {extent x.fields - 1} do labels[i] := tm.componentName(x.fields[i]) end
+                        model.tupleValue(values if extent labels is extent values then maybe.some(:Array(maybe.T(String)) labels)
+                            else maybe.none(:Array(maybe.T(String))) end)
+                    else
+                        let elements = vector.new(:Value)
+                        let labels = array of(extent x.fields maybe.none(:String))
+                        let var nextWitness = 0
+                        let var nextValue = 0
+                        let witness = fun(index: Int bound: maybe.T(tm.Kind)): Value
+                            begin
+                                let w = typeComponents[index]
+                                option vTypeValue of Value with
+                                    let t = tuple let type = resolve(f w.type) let bound = bound let name = maybe.some(:String w.name) end
+                                end
+                            end
+                        for i = 0 upto {extent x.fields - 1} do
+                            labels[i] := tm.componentName(x.fields[i])
+                            case x.fields[i]
+                                when tupleTypeFormal with c then
+                                    vector.append(:Value elements witness(nextWitness maybe.some(:tm.Kind c.bound)))
+                                    nextWitness := nextWitness + 1
+                                when tupleTypeBinding with c then
+                                    vector.append(:Value elements witness(nextWitness c.bound))
+                                    nextWitness := nextWitness + 1
+                                when tupleField then
+                                    vector.append(:Value elements values[nextValue])
+                                    nextValue := nextValue + 1
+                            end
+                        end
+                        model.tupleValue(vector.toArray(:Value elements) maybe.some(:Array(maybe.T(String)) labels))
+                    end
+                else model.tupleValue(values maybe.none(:Array(maybe.T(String))))
+            end
+        end
+
+    and address(it: Interpreter o: Op f: Frame): Value =
+        case o
+            when opAddrVar with x then lookup(f x.v)
+            when opAddrCell with x then model.cellValue(atom(it x.init f))
+            when opAddrField with x then
+                case deref(atom(it x.base f))
+                    when vRecord with r then
+                        let cell = hashMap.get(:String :Value r.r.fields x.name)
+                        if maybe.isSome(:Value cell) andif maybe.unwrap(:Value cell)?vRef then maybe.unwrap(:Value cell)
+                        else model.internalError(:Value "Field '" <> x.name <> "' is not mutable" none) end
+                    else model.internalError(:Value "Field '" <> x.name <> "' is not mutable" none)
+                end
+            when opAddrComponent with x then
+                let base = tupleOf(atom(it x.base f))
+                let i = elementIndex(base x.index)
+                let element = base.elements[i]
+                if element?vRef then element
+                else option vRef of Value with let r = tuple let form = option tupleElement of model.RefForm with let tup = base let index = i end end end end
+            when opAddrElement with x then
+                case deref(atom(it x.base f))
+                    when vArray with a then
+                        let idx = case atom(it x.index f) when vInt with n then n.n else ~1 end
+                        if {idx < 0} orif {idx >= extent a.a} then raising(:Ok it primitives.arrayOpError x.offset) end
+                        option vRef of Value with let r = tuple let form = option arrayElement of model.RefForm with let arr = a.a let index = idx end end end
+                    else model.internalError(:Value "not an array" none)
+                end
+            else fail(:Value "not an address")
+        end
+
+    and prim(it: Interpreter op: String args: Array(Value)): Value =
+        if eq(op "is") orif eq(op "isnot") then
+            model.boolValue(model.same(args[0] args[1]) is eq(op "is"))
+        elsif eq(op "not") then
+            case args[0] when vBool with x then model.boolValue(not(x.b)) else model.trueValue end
+        elsif eq(op "extent") then
+            case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end
+        else
+            let intOf = fun(v: Value): Int case v when vInt with x then x.n else model.internalError(:Int "not an Int" none) end
+            let realOf = fun(v: Value): Real case v when vReal with x then x.r else model.internalError(:Real "not a Real" none) end
+            let boolOf = fun(v: Value): Bool case v when vBool with x then x.b else model.internalError(:Bool "not a Bool" none) end
+            let stringOf = fun(v: Value): String case v when vString with x then x.s else model.internalError(:String "not a String" none) end
+            if isOneOf(op intArithmeticOps) then
+                model.intValue(primitives.intArithmetic(op intOf(args[0]) intOf(args[1]) none))
+            elsif isOneOf(op intRelationalOps) then
+                model.boolValue(primitives.intRelational(op intOf(args[0]) intOf(args[1]) none))
+            elsif isOneOf(op realArithmeticOps) then
+                model.realValue(primitives.realArithmetic(op realOf(args[0]) realOf(args[1]) none))
+            elsif isOneOf(op realRelationalOps) then
+                model.boolValue(primitives.realRelational(op realOf(args[0]) realOf(args[1]) none))
+            elsif eq(op "<>") then
+                model.stringValue(stringOf(args[0]) <> stringOf(args[1]))
+            elsif eq(op "/\\") then
+                model.boolValue(boolOf(args[0]) andif boolOf(args[1]))
+            elsif eq(op "\\/") then
+                model.boolValue(boolOf(args[0]) orif boolOf(args[1]))
+            else
+                fail(:Value "primitive '" <> op <> "'")
+            end
+        end
+
+    and operation(it: Interpreter o: Op f: Frame result: maybe.T(Variable)): Value =
+        case o
+            when opAtom with x then atom(it x.atom f)
+            when opPrim with x then
+                let values = atoms(it x.args f)
+                at(:Value it x.offset fun(): Value prim(it x.op values))
+            when opCall with x then
+                checkDescriptors(it x.descriptors x.typeArgs f)
+                let var callee = calleeValue(it x.callee x.moduleRef x.member f)
+                if extent x.typeArgs > 0 then callee := typeApply(it callee resolveAll(f x.typeArgs)) end
+                apply(it callee atoms(it x.args f))
+            when opTypeApp with x then
+                checkDescriptors(it x.descriptors x.typeArgs f)
+                typeApply(it calleeValue(it x.callee x.moduleRef x.member f) resolveAll(f x.typeArgs))
+            when opModuleMember with x then
+                if maybe.isNone(:String x.member) then moduleValue(it x.moduleRef)
+                else member(it x.moduleRef maybe.unwrap(:String x.member)) end
+            when opBuiltin with x then treewalk.lookup(it.root x.name none)
+            when opMakeClosure with x then
+                checkDescriptors(it x.descriptors x.typeArgs f)
+                makeClosure(it x.code x.captures x.typeArgs f)
+            when opEnvField with x then
+                case atom(it x.env f)
+                    when vArray with a then a.a[x.index]
+                    else fail(:Value "env_field of a value other than an environment")
+                end
+            (* A change of representation, which values here do not have *)
+            when opConvert with x then atom(it x.value f)
+            when opExternal with x then builtins.resolveExternal(x.symbol)
+            when opCallExternal with x then
+                let ext = builtins.resolveExternal(x.symbol)
+                let values = atoms(it x.args f)
+                case ext when vBuiltin with b then b.b.fn(values) else ext end
+            when opMakeTuple with x then makeTuple(it atoms(it x.args f) x.typeComponents result f)
+            when opTupleField with x then
+                let t = tupleOf(atom(it x.tup f))
+                t.elements[elementIndex(t x.index)]
+            when opMakeRecord with x then
+                let fields = model.newFields()
+                for i = 0 upto {extent x.fields - 1} do
+                    let fa = x.fields[i]
+                    let v = atom(it fa.atom f)
+                    hashMap.insert(:String :Value fields fa.name if fa.isVar then model.cellValue(v) else v end)
+                end
+                model.recordValue(fields)
+            when opRecordField with x then
+                case deref(atom(it x.recordAtom f))
+                    when vTuple with t then model.tupleGet(t.t x.name)
+                    when vRecord with r then
+                        let found = hashMap.get(:String :Value r.r.fields x.name)
+                        if maybe.isNone(:Value found) then model.internalError(:Value "no field " <> x.name none) end
+                        deref(maybe.unwrap(:Value found))
+                    else model.internalError(:Value "not a record" none)
+                end
+            when opMakeVariant with x then
+                model.variantValue(x.tag if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f))
+                    else maybe.none(:Value) end)
+            when opMakeOption with x then
+                let p = if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f)) else maybe.none(:Value) end
+                if maybe.isSome(:Atom x.ordinalAtom) then
+                    let n = case atom(it maybe.unwrap(:Atom x.ordinalAtom) f) when vInt with y then y.n else ~1 end
+                    if {n < 0} orif {n >= extent x.cases} then
+                        at(:Ok it x.offset fun(): Ok model.internalError(:Ok "Option ordinal " <> model.toString(model.intValue(n))
+                            <> " out of bounds (0 <= ordinal < " <> conv.int(extent x.cases) <> ")" none))
+                    end
+                    model.optionValue(x.cases[n] p)
+                else
+                    model.optionValue(maybe.unwrapOr(:String x.tag "") p)
+                end
+            when opIsTag with x then model.boolValue(eq(tagOf(atom(it x.value f)) x.tag))
+            when opPayload with x then
+                let v = atom(it x.value f)
+                at(:Value it x.offset fun(): Value payloadOf(v x.tag x.ordinalIndex))
+            when opOrdinal with x then
+                case atom(it x.value f)
+                    when vOption with y then
+                        let var index = ~1
+                        for i = {extent x.cases - 1} downto 0 do if eq(x.cases[i] y.v.tag) then index := i end end
+                        if index < 0 then fail(:Ok "no case " <> y.v.tag) end
+                        model.intValue(index)
+                    else model.internalError(:Value "ordinal expects Option, got " <> model.typeName(atom(it x.value f)) none)
+                end
+            when opMakeArray with x then option vArray of Value with let a = atoms(it x.args f) end
+            when opArrayRep with x then
+                let n = case atom(it x.count f) when vInt with y then y.n else 0 end
+                if n < 0 then raising(:Ok it primitives.arrayOpError x.offset) end
+                let v = atom(it x.init f)
+                option vArray of Value with let a = array of(n v) end
+            when opIndex with x then
+                case atom(it x.arr f)
+                    when vArray with a then
+                        let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
+                        if {idx < 0} orif {idx >= extent a.a} then raising(:Ok it primitives.arrayOpError x.offset) end
+                        a.a[idx]
+                    else model.internalError(:Value "not an array" none)
+                end
+            when opMakeAuto with x then
+                if maybe.isSome(:nodes.Descriptor x.descriptor) then
+                    checkDescriptors(it array of maybe.unwrap(:nodes.Descriptor x.descriptor) end array of x.witness end f)
+                end
+                option vAuto of Value with let a = tuple let value = atom(it x.payload f) let type = resolve(f x.witness) end end
+            when opMakeException with x then option vException of Value with let e = model.exceptionValue(x.name) end
+            when opExceptionPayload with x then
+                let e = case x.exc
+                    when atomVar with y then raisedError(f y.v)
+                    else maybe.none(:model.RunError)
+                end
+                if maybe.isNone(:model.RunError e) then fail(:Ok "exception_payload of a value other than a handler's exception") end
+                case maybe.unwrap(:model.RunError e).cause
+                    when raised with y then maybe.unwrapOr(:Value y.payload model.okValue)
+                    else model.okValue
+                end
+            when opAddrVar then address(it o f)
+            when opAddrCell then address(it o f)
+            when opAddrField then address(it o f)
+            when opAddrComponent then address(it o f)
+            when opAddrElement then address(it o f)
+            when opLoad with x then deref(atom(it x.address f))
+        end
+
+    and store(it: Interpreter s: Stmt f: Frame): Ok =
+        case s
+            when sStoreAt with x then
+                let value = atom(it x.value f)
+                case atom(it x.address f)
+                    when vRef with r then model.assign(r.r value)
+                    else model.internalError(:Ok "a store through a value that is not an address" none)
+                end
+            when sStoreField with x then
+                let value = atom(it x.value f)
+                case deref(atom(it x.base f))
+                    when vRecord with r then
+                        let cell = hashMap.get(:String :Value r.r.fields x.name)
+                        let isCell = maybe.isSome(:Value cell) andif maybe.unwrap(:Value cell)?vRef
+                        if isCell then
+                            case maybe.unwrap(:Value cell) when vRef with c then model.assign(c.r value) else ok end
+                        else
+                            begin hashMap.insert(:String :Value r.r.fields x.name value) ok end
+                        end
+                    else model.internalError(:Ok "a field store into a value that is not a record" none)
+                end
+            when sStoreComponent with x then
+                let value = atom(it x.value f)
+                let base = tupleOf(atom(it x.base f))
+                let i = elementIndex(base x.index)
+                case base.elements[i]
+                    when vRef with c then model.assign(c.r value)
+                    else base.elements[i] := value
+                end
+            when sStoreElement with x then
+                let value = atom(it x.value f)
+                case deref(atom(it x.base f))
+                    when vArray with a then
+                        let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
+                        if {idx < 0} orif {idx >= extent a.a} then raising(:Ok it primitives.arrayOpError x.offset) end
+                        a.a[idx] := value
+                    else model.internalError(:Ok "not an array" none)
+                end
+            else ok
+        end
+
+    (* Statements *)
+
+    and runBody(it: Interpreter b: Body f: Frame): Signals =
+        begin
+            let var result = noSignal
+            let var i = 0
+            let n = vector.length(:Stmt b.statements)
+            while maybe.isNone(:Signal result) andif {i < n} do
+                result := statement(it vector.get(:Stmt b.statements i) f)
+                i := i + 1
+            end
+            result
+        end
+
+    and statement(it: Interpreter s: Stmt f: Frame): Signals =
+        case s
+            when sLet with x then
+                let v = operation(it x.value f maybe.some(:Variable x.v))
+                if hashMap.contains(:Int :Bool it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
+                noSignal
+            when sVarDecl with x then
+                setValue(f x.v model.cellValue(if maybe.isSome(:Atom x.init) then atom(it maybe.unwrap(:Atom x.init) f) else model.okValue end))
+                noSignal
+            when sAssign with x then
+                case lookup(f x.v)
+                    when vRef with r then model.assign(r.r atom(it x.value f))
+                    else fail(:Ok "an assignment to a variable that is not mutable")
+                end
+                noSignal
+            when sStoreAt then begin store(it s f) noSignal end
+            when sStoreField then begin store(it s f) noSignal end
+            when sStoreComponent then begin store(it s f) noSignal end
+            when sStoreElement then begin store(it s f) noSignal end
+            when sDo with x then begin operation(it x.value f maybe.none(:Variable)) noSignal end
+            when sFuns with x then
+                for i = 0 upto {extent x.functions - 1} do
+                    let fn = x.functions[i]
+                    setValue(f fn.v closureValue(it tuple let function = fn let frame = f let typeBindings = newTypes() let env = maybe.none(:Array(Value)) end))
+                end
+                noSignal
+            when sLetRec with x then
+                for i = 0 upto {extent x.vars - 1} do
+                    hashMap.insert(:Int :Bool it.declared x.vars[i].id true)
+                    hashMap.insert(:Int :maybe.T(Value) f.values x.vars[i].id maybe.none(:Value))
+                end
+                vector.append(:vector.T(Fixup) it.fixups vector.new(:Fixup))
+                let result = try
+                    runBody(it x.body f)
+                when model.runError with e then
+                    vector.pop(:vector.T(Fixup) it.fixups)
+                    rethrow(:Signals e)
+                end
+                let fixups = vector.pop(:vector.T(Fixup) it.fixups)
+                for i = 0 upto {vector.length(:Fixup fixups) - 1} do
+                    let fx = vector.get(:Fixup fixups i)
+                    if isUnbound(fx.frame fx.v) andif not(vector.empty(:vector.T(Fixup) it.fixups)) then
+                        (* A variable of an enclosing let rec *)
+                        vector.append(:Fixup vector.last(:vector.T(Fixup) it.fixups) fx)
+                    else
+                        fx.values[fx.index] := lookup(fx.frame fx.v)
+                    end
+                end
+                result
+            when sIf with x then
+                case atom(it x.cond f)
+                    when vBool with b then runBody(it if b.b then x.thenBody else x.elseBody end f)
+                    else model.internalError(:Signals "a condition that is not a Bool" none)
+                end
+            when sSwitch with x then
+                let v = atom(it x.value f)
+                let tag = tagOf(v)
+                let var chosen = maybe.none(:nodes.Case)
+                for i = 0 upto {extent x.cases - 1} do
+                    if maybe.isNone(:nodes.Case chosen) then
+                        let c = x.cases[i]
+                        for j = 0 upto {extent c.tags - 1} do if eq(c.tags[j] tag) then chosen := maybe.some(:nodes.Case c) end end
+                    end
+                end
+                if maybe.isSome(:nodes.Case chosen) then
+                    let c = maybe.unwrap(:nodes.Case chosen)
+                    if maybe.isSome(:Variable c.binder) then
+                        let payload = case v
+                            when vVariant with y then y.v.payload
+                            when vOption with y then y.v.payload
+                            else maybe.none(:Value)
+                        end
+                        setValue(f maybe.unwrap(:Variable c.binder) maybe.unwrapOr(:Value payload model.okValue))
+                    end
+                    runBody(it c.body f)
+                elsif maybe.isSome(:Body x.elseBody) then
+                    runBody(it maybe.unwrap(:Body x.elseBody) f)
+                else
+                    model.internalError(:Signals "Unhandled case tag '" <> tag <> "'" none)
+                end
+            when sInspect with x then
+                case atom(it x.value f)
+                    when vAuto with a then
+                        let var chosen = maybe.none(:nodes.InspectCase)
+                        for i = 0 upto {extent x.cases - 1} do
+                            if maybe.isNone(:nodes.InspectCase chosen) then
+                                let c = x.cases[i]
+                                if maybe.isSome(:nodes.Descriptor c.descriptor) then
+                                    checkDescriptors(it array of maybe.unwrap(:nodes.Descriptor c.descriptor) end array of c.matchType end f)
+                                end
+                                let matchType = resolve(f c.matchType)
+                                let matches = if c.exact then subtyping.isTypeEqual(a.a.type matchType maybe.none(:tm.Lookup))
+                                    else subtyping.isSubtype(a.a.type matchType maybe.none(:tm.Lookup)) end
+                                if matches then chosen := maybe.some(:nodes.InspectCase c) end
+                            end
+                        end
+                        if maybe.isSome(:nodes.InspectCase chosen) then
+                            let c = maybe.unwrap(:nodes.InspectCase chosen)
+                            for j = 0 upto {extent c.binders - 1} do setValue(f c.binders[j] a.a.value) end
+                            runBody(it c.body f)
+                        elsif maybe.isSome(:Body x.elseBody) then
+                            runBody(it maybe.unwrap(:Body x.elseBody) f)
+                        else
+                            raising(:Signals it model.dynamicError x.offset)
+                        end
+                    else model.internalError(:Signals "Inspect target must be an auto value, got " <> model.typeName(atom(it x.value f)) none)
+                end
+            when sLoop with x then
+                let var result = noSignal
+                let var running = true
+                while running do
+                    let s2 = runBody(it x.body childFrame(f))
+                    case maybe.unwrapOr(:Signal s2 option sigContinue of Signal with let label = x.label end)
+                        when sigContinue with y then
+                            if not(eq(y.label x.label)) then
+                                result := s2
+                                running := false
+                            end
+                        when sigBreak with y then
+                            if not(eq(y.label x.label)) then result := s2 end
+                            running := false
+                        else
+                            result := s2
+                            running := false
+                    end
+                end
+                result
+            when sTry with x then
+                try
+                    runBody(it x.body f)
+                when model.runError with e then
+                    case e.cause
+                        when raised with y then
+                            setValue(f x.exc option vException of Value with let e = y.exc end)
+                            hashMap.insert(:Int :model.RunError f.raised x.exc.id e)
+                            runBody(it x.handler f)
+                        else rethrow(:Signals e)
+                    end
+                end
+            when sJoin with x then
+                let s2 = runBody(it x.body f)
+                case maybe.unwrapOr(:Signal s2 option sigBreak of Signal with let label = "" end)
+                    when sigJump with y then
+                        if eq(y.label x.label) andif maybe.isSome(:Signal s2) then
+                            for i = 0 upto {extent x.params - 1} do setValue(f x.params[i] y.args[i]) end
+                            runBody(it x.continuation f)
+                        else
+                            s2
+                        end
+                    else s2
+                end
+            when sEcho with x then
+                let v = atom(it x.value f)
+                if stringOp.length(x.prefix) > 0 then
+                    writer.putString(writer.output x.prefix <> formatting.formatValueWithType(v x.type) <> "\n")
+                elsif not(v?vOk) then
+                    writer.putString(writer.output formatting.formatValueWithType(v x.type) <> " : " <> tm.show(x.type) <> "\n")
+                end
+                noSignal
+            when sEchoText with x then begin writer.putString(writer.output x.text <> "\n") noSignal end
+            when sReturn with x then signal(option sigReturn of Signal with let value = atom(it x.value f) end)
+            when sJump with x then signal(option sigJump of Signal with let label = x.label let args = atoms(it x.args f) end)
+            when sBreak with x then signal(option sigBreak of Signal with let label = x.label end)
+            when sContinue with x then signal(option sigContinue of Signal with let label = x.label end)
+            when sRaise with x then
+                let exc = atom(it x.exc f)
+                let payload = if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f)) else maybe.none(:Value) end
+                let payloadType = if maybe.isSome(:Atom x.payload) then
+                    case maybe.unwrap(:Atom x.payload) when atomVar with y then maybe.some(:Type y.v.type) else maybe.none(:Type) end
+                else
+                    maybe.none(:Type)
+                end
+                case exc
+                    when vException with y then
+                        rethrow(:Signals located(it tuple
+                            let cause = option raised of model.Cause with let exc = y.e let payload = payload let payloadType = payloadType end
+                            let var offset = maybe.none(:Int)
+                            let var sourceMap = maybe.none(:location.SourceMap)
+                            let var frames = maybe.none(:Array(String))
+                        end x.offset))
+                    else model.internalError(:Signals "Target of raise must be Exception, got " <> model.typeName(exc) none)
+                end
+            when sReraise with x then
+                let e = raisedError(f x.exc)
+                if maybe.isNone(:model.RunError e) then fail(:Ok "reraise of a value other than a handler's exception") end
+                rethrow(:Signals maybe.unwrap(:model.RunError e))
+            when sUnreachable then fail(:Signals "reached unreachable code")
+        end
+
+    (* Units *)
+
+    let runTopLevel(it: Interpreter b: Body f: Frame frameName: maybe.T(String)): Ok =
+        begin
+            let s = if maybe.isNone(:String frameName) then runBody(it b f) else inFrame(it maybe.unwrap(:String frameName) b f) end
+            if maybe.isSome(:Signal s) then fail(:Ok "a top level ends with a terminator") end
+        end
+
+    let runUnit(unit: nodes.Unit renv: model.Frame): Ok =
+        begin
+            let symbols = hashMap.new(:Int :Int intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                let fn = vector.get(:nodes.Function unit.functions i)
+                for j = 0 upto {extent fn.descriptorParams - 1} do
+                    let p = fn.descriptorParams[j]
+                    if extent p.symbols > 0 then hashMap.insert(:Int :Int symbols p.v.id p.symbols[0]) end
+                end
+            end
+            let it: Interpreter = tuple
+                let renv = renv
+                let root = treewalk.newRoot(renv.root.units)
+                let modules = hashMap.new(:Int :Value intEqual hash.int)
+                let declared = hashMap.new(:Int :Bool intEqual hash.int)
+                let fixups = vector.new(:vector.T(Fixup))
+                let var sourceMap = unit.sourceMap
+                let descriptorSymbols = symbols
+                let closures = hashMap.new(:model.Builtin :IrClosure builtinEqual builtinHash)
+            end
+            (* Everything runs in the program's frame, imported modules' initializers included *)
+            vector.append(:String stack(it) diagnostics.mainFrame)
+            try
+                for i = 0 upto {extent unit.imports - 1} do
+                    let imp = unit.imports[i]
+                    (* Run once per program, and kept in its unit *)
+                    let value = treewalk.loadModuleForInterpreter(imp.modulePath imp.interfacePath renv maybe.some(:String imp.canonicalPath))
+                    hashMap.insert(:Int :Value it.modules imp.id value)
+                end
+                for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                    let m = vector.get(:nodes.Module unit.modules i)
+                    let f = newFrame(maybe.none(:Frame) newTypes())
+                    runTopLevel(it m.init f maybe.some(:String diagnostics.initFrame(m.name)))
+                    let fields = model.newFields()
+                    for j = 0 upto {vector.length(:String m.members.names) - 1} do
+                        let n = vector.get(:String m.members.names j)
+                        hashMap.insert(:String :Value fields n lookup(f hashMap.find(:String :Variable m.members.vars n)))
+                    end
+                    hashMap.insert(:Int :Value it.modules m.id model.recordValue(fields))
+                end
+                runTopLevel(it unit.main newFrame(maybe.none(:Frame) newTypes()) maybe.none(:String))
+            when model.runError with e then
+                treewalk.noteFrames(e renv)
+                vector.pop(:String stack(it))
+                rethrow(:Ok e)
+            end
+            vector.pop(:String stack(it))
+            ok
+        end
+end

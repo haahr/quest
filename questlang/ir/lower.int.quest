@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: Lowering to Core IR Interface
+ *
+ * bootstrap/python/quest/ir/lower.py (docs/ir.md section 12, step 3): the typed AST lowered to a Core IR unit. An
+ * expression is lowered into the current body, giving the atom that holds its value; one producing a value on several
+ * paths joins them through a join point. Every typed-AST symbol is mapped to one IR variable when its binder is
+ * lowered. The bootstrap's lower_program takes the compiler's options for echo alone; this one takes echo and
+ * printResult. *)
+
+interface Lower
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
+export
+    (* A typed program the lowering does not handle (a gap in the lowering, not an error in the program) *)
+    loweringError: Exception(String)
+
+    (* A typed program lowered to a Core IR unit: echo prints every phrase's result, printResult the last one's *)
+    lowerProgram(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool):
+        nodes.Unit
+    (* A module file's typed module lowered to a unit of the module alone, with its exports *)
+    lowerModuleFile(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)): nodes.Unit
+end

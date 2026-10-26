@@ -1,0 +1,1012 @@
+(* Quest Self-Hosted Compiler: Layouts of Values Implementation *)
+
+module layout : Layout
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/canonical : questlang/types/Canonical
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/codegen/syntax : questlang/codegen/Syntax
+    questlang/codegen/sha256 : questlang/codegen/Sha256
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    ascii : Ascii
+export
+    Let Type = model.Type
+    Let Shape = shapes.Shape
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    let isOneOf(s: String items: Array(String)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent items - 1} do if stringOp.equal(s items[i]) then found := true end end
+            found
+        end
+
+    let startsWith(s: String prefix: String): Bool = strutil.startsWith(s prefix)
+    let endsWith(s: String suffix: String): Bool = strutil.endsWith(s suffix)
+
+    (* =========================================================================
+     * Layouts of shapes
+     *
+     * A type's layout (its tag and representation) depends only on its shape, and shapes are built once per
+     * canonical type, so each layout is computed once per shape.
+     * ========================================================================= *)
+
+    Let Layout = Tuple
+        shape: Shape
+        var tag: maybe.T(String)
+        var representation: maybe.T(String)
+        var slot: maybe.T(String)
+        var proxied: maybe.T(Bool)
+    end
+
+    let layouts = hashMap.new(:Int :Layout intEqual hash.int)
+
+    let layoutOf(s: Shape): Layout =
+        begin
+            let found = hashMap.get(:Int :Layout layouts s.id)
+            if maybe.isSome(:Layout found) then
+                maybe.unwrap(:Layout found)
+            else
+                let l = tuple
+                    let shape = s
+                    let var tag = maybe.none(:String)
+                    let var representation = maybe.none(:String)
+                    let var slot = maybe.none(:String)
+                    let var proxied = maybe.none(:Bool)
+                end
+                hashMap.insert(:Int :Layout layouts s.id l)
+                l
+            end
+        end
+
+    let resolvedShape(s0: Shape): Shape =
+        begin
+            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let var s = s0
+            while isOneOf(s.kind array of "typevar" "abstract" end) andif maybe.isSome(:Shape s.bound)
+                andif not(hashMap.contains(:Int :Bool seen s.id)) do
+                hashMap.insert(:Int :Bool seen s.id true)
+                s := maybe.unwrap(:Shape s.bound)
+            end
+            s
+        end
+
+    let heldAtBound(s: Shape): Bool =
+        if maybe.isNone(:Shape s.bound) orif not(isOneOf(s.kind array of "typevar" "abstract" end)) then
+            false
+        elsif eq(s.kind "abstract") then
+            true
+        else
+            abstractTypes.isAbstractTypeSymbol(s.symbolId)
+        end
+
+    let ownView(s: Shape): Bool = eq(s.kind "typevar") andif maybe.isSome(:Shape s.bound) andif not(heldAtBound(s))
+
+    let isWordType(t: Type): Bool = eq(shapes.shape(t).kind "word")
+
+    let slotOf(representation: String): String =
+        if eq(representation "QRecordVal") then "QRecordVal *"
+        elsif eq(representation "QVariantVal") then "QVariantVal *"
+        elsif eq(representation "QBool") then "QBoolSlot"
+        elsif eq(representation "QChar") then "QCharSlot"
+        else representation
+        end
+
+    let scalarTag(kind: String): maybe.T(String) =
+        if eq(kind "int") then maybe.some(:String "Int")
+        elsif eq(kind "real") then maybe.some(:String "Real")
+        elsif eq(kind "bool") then maybe.some(:String "Bool")
+        elsif eq(kind "char") then maybe.some(:String "Char")
+        elsif eq(kind "string") then maybe.some(:String "String")
+        elsif eq(kind "ok") then maybe.some(:String "Ok")
+        else maybe.none(:String)
+        end
+
+    let scalarRepresentation(kind: String): maybe.T(String) =
+        if eq(kind "int") then maybe.some(:String "QInt")
+        elsif eq(kind "real") then maybe.some(:String "QReal")
+        elsif eq(kind "bool") then maybe.some(:String "QBool")
+        elsif eq(kind "char") then maybe.some(:String "QChar")
+        elsif eq(kind "string") then maybe.some(:String "QString *")
+        elsif eq(kind "ok") then maybe.some(:String "void")
+        else maybe.none(:String)
+        end
+
+    let selfNamedKinds = array of "tuple" "record" "variant" "option" "array" "cell" "out" "auto" end
+    let aggregateTagPrefixes = array of "QTuple_" "QRecord_" "QVariant_" "QOption_" "Auto_" end
+
+    let withEmpty(prefix: String tags: vector.T(String)): String =
+        prefix <> if vector.empty(:String tags) then "empty" else syntax.joined("_" tags) end
+
+    let rec shapeTag(s: Shape): String =
+        begin
+            let l = layoutOf(s)
+            if maybe.isSome(:String l.tag) then
+                maybe.unwrap(:String l.tag)
+            else
+                let raw = rawTag(s)
+                let tag = if stringOp.length(raw) > 64 then
+                    stringOp.getSub(raw 0 24) <> "_" <> stringOp.getSub(sha256.hexDigest(raw) 0 16)
+                else
+                    raw
+                end
+                l.tag := maybe.some(:String tag)
+                tag
+            end
+        end
+
+    and typeTag(t: Type): String = shapeTag(shapes.shape(t))
+
+    (* The tag of a recursive type whose unfolding's tag is built from its parts' tags: its body, its variable
+     * replaced by a placeholder numbered by nesting depth, so that the tag is finite and the same for
+     * alpha-equivalent types *)
+    and recursiveTag(s: Shape): String =
+        begin
+            let t = s.type
+            let var level = 0
+            for i = 0 upto {extent t.fv - 1} do if canonical.isRecSelfSymbol(t.fv[i]) then level := level + 1 end end
+            case t.form
+                when typeRec with x then
+                    let body = model.substitute(x.body model.singleSubst(x.symbolId canonical.recSelfVar(level)))
+                    "Rec" <> syntax.cInt(level) <> "_" <> typeTag(body)
+                when typeRecGroup with x then
+                    let subst = model.newSubst()
+                    for i = 0 upto {extent x.bindings - 1} do
+                        hashMap.insert(:Int :Type subst x.bindings[i].symbolId canonical.recSelfVar(level + i))
+                    end
+                    let tags = vector.new(:String)
+                    for i = 0 upto {extent x.bindings - 1} do
+                        vector.append(:String tags typeTag(model.substitute(x.bindings[i].body subst)))
+                    end
+                    "RecGroup" <> syntax.cInt(level) <> "_" <> syntax.cInt(x.activeIndex) <> "_" <> syntax.joined("_" tags)
+                else rawTagOf(s)
+            end
+        end
+
+    (* The tag of a component's shape inside another type's tag: an aggregate's tag is closed with _end, so that
+     * tags of different nestings differ *)
+    and elementTag(s: Shape): String =
+        begin
+            (* A component is named as its type is: a type containing recursion by its own canonical form *)
+            let tag = shapeTag(shapes.shape(s.type))
+            let var aggregate = false
+            for i = 0 upto {extent aggregateTagPrefixes - 1} do
+                if startsWith(tag aggregateTagPrefixes[i]) then aggregate := true end
+            end
+            if aggregate andif not(endsWith(tag "_empty")) then tag <> "_end" else tag end
+        end
+
+    and rawTag(s0: Shape): String =
+        begin
+            let s = resolvedShape(s0)
+            let selfLevel = if eq(s.kind "typevar") then canonical.recSelfLevel(s.type) else maybe.none(:Int) end
+            let canonicalShape = shapes.shape(s.type)
+            if maybe.isSome(:Int selfLevel) then
+                "Self" <> syntax.cInt(maybe.unwrap(:Int selfLevel))
+            elsif not(shapes.same(canonicalShape s)) then
+                (* Equal types share a tag: a type containing recursion is named by its canonical form *)
+                shapeTag(canonicalShape)
+            elsif shapes.isRecursive(s) andif isOneOf(s.kind selfNamedKinds) then
+                recursiveTag(s)
+            else
+                rawTagOf(s)
+            end
+        end
+
+    and rawTagOf(s: Shape): String =
+        begin
+            let kind = s.kind
+            let scalar = scalarTag(kind)
+            if eq(kind "word") then
+                "Word"
+            elsif maybe.isSome(:String scalar) then
+                maybe.unwrap(:String scalar)
+            elsif eq(kind "external") then
+                case s.type.form
+                    when typeExternal with x then
+                        if stringOp.isEmpty(x.name) then
+                            strutil.strip(strutil.replace(x.cType "*" ""))
+                        else
+                            strutil.replace(x.name "." "_")
+                        end
+                    else "QVal"
+                end
+            elsif eq(kind "typevar") andif isOneOf(s.name array of "Writer.T" "writer.T" end) then
+                "QWriter"
+            elsif eq(kind "typevar") andif isOneOf(s.name array of "Reader.T" "reader.T" end) then
+                "QReader"
+            elsif eq(kind "tuple") then
+                let tags = vector.new(:String)
+                for i = 0 upto {extent s.components - 1} do
+                    vector.append(:String tags elementTag(shapes.componentShape(s.components[i])))
+                end
+                withEmpty("QTuple_" tags)
+            elsif eq(kind "record") then
+                let sorted = shapes.sortedComponents(s)
+                let tags = vector.new(:String)
+                for i = 0 upto {extent sorted - 1} do
+                    vector.append(:String tags maybe.unwrapOr(:String sorted[i].name "") <> "_"
+                        <> elementTag(shapes.componentShape(sorted[i])))
+                end
+                withEmpty("QRecord_" tags)
+            elsif isOneOf(kind array of "fun" "all" end) then
+                "QClosure"
+            elsif isOneOf(kind array of "cell" "out" end) then
+                "Ref_" <> elementTag(shapes.element(s))
+            elsif eq(kind "array") then
+                "QArray_" <> elementTag(shapes.element(s))
+            elsif isOneOf(kind array of "variant" "option" end) then
+                let tags = vector.new(:String)
+                for i = 0 upto {extent s.cases - 1} do
+                    let c = s.cases[i]
+                    let name = maybe.unwrapOr(:String c.name "")
+                    vector.append(:String tags
+                        if maybe.isSome(:Shape c.shape) then name <> "_" <> elementTag(maybe.unwrap(:Shape c.shape)) else name end)
+                end
+                withEmpty(if eq(kind "variant") then "QVariant_" else "QOption_" end tags)
+            elsif eq(kind "exception") then
+                "QException"
+            elsif eq(kind "auto") then
+                "Auto_" <> typeTag(model.autoPayloadType(s.structure maybe.none(:Type)))
+            else
+                "QVal"
+            end
+        end
+
+    let rec shapeRepresentation(s: Shape): String =
+        begin
+            let l = layoutOf(s)
+            if maybe.isSome(:String l.representation) then
+                maybe.unwrap(:String l.representation)
+            else
+                let rep = rawRepresentation(s)
+                l.representation := maybe.some(:String rep)
+                rep
+            end
+        end
+
+    and shapeLocationRepresentation(s: Shape): String =
+        if isBoxedInSlots(s) then shapeSlotRepresentation(s) else shapeRepresentation(s) end
+
+    and shapeSlotRepresentation(s: Shape): String =
+        begin
+            let l = layoutOf(s)
+            if maybe.isSome(:String l.slot) then
+                maybe.unwrap(:String l.slot)
+            else
+                let slot = slotOf(shapeRepresentation(s))
+                l.slot := maybe.some(:String slot)
+                slot
+            end
+        end
+
+    and isBoxedInSlots(s: Shape): Bool = isOneOf(shapeRepresentation(s) array of "QRecordVal" "QVariantVal" end)
+
+    and rawRepresentation(s0: Shape): String =
+        begin
+            let s = resolvedShape(s0)
+            let kind = s.kind
+            let scalar = scalarRepresentation(kind)
+            if eq(kind "word") then
+                "uint64_t"
+            elsif maybe.isSome(:String scalar) then
+                maybe.unwrap(:String scalar)
+            elsif eq(kind "auto") then
+                (* An auto value (including a dynamic value): its type component's descriptor and its payload *)
+                "QAuto *"
+            elsif eq(kind "external") then
+                s.name
+            elsif eq(kind "typevar") andif isOneOf(s.name array of "Writer.T" "writer.T" end) then
+                "QWriter *"
+            elsif eq(kind "typevar") andif isOneOf(s.name array of "Reader.T" "reader.T" end) then
+                "QReader *"
+            elsif isOneOf(kind array of "tuple" "option" end) then
+                shapeTag(s) <> " *"
+            elsif eq(kind "record") then
+                "QRecordVal"
+            elsif isOneOf(kind array of "fun" "all" end) then
+                "QClosure *"
+            elsif eq(kind "array") then
+                "QArray *"
+            elsif eq(kind "variant") then
+                "QVariantVal"
+            elsif eq(kind "exception") then
+                "const QException *"
+            elsif isOneOf(kind array of "cell" "out" end) then
+                shapeLocationRepresentation(shapes.element(s)) <> " *"
+            else
+                "QVal"
+            end
+        end
+
+    let representation(t: Type): String = shapeRepresentation(shapes.shape(t))
+    let slotRepresentation(t: Type): String = shapeSlotRepresentation(shapes.shape(t))
+    let locationRepresentation(t: Type): String = shapeLocationRepresentation(shapes.shape(t))
+    let tupleStructName(t: Type): String = typeTag(t)
+    let optionStructName(t: Type): String = typeTag(t)
+
+    (* =========================================================================
+     * Proxies
+     * ========================================================================= *)
+
+    Let Seen = hashMap.T(Int Bool)
+    let newSeen(): Seen = hashMap.new(:Int :Bool intEqual hash.int)
+
+    (* Whether a component of shape s may hold a proxy as a subtype's value, though a value of s itself may not be a
+     * proxy: a tuple, or an option with a payload *)
+    let holdsProxies(s: Shape): Bool =
+        if eq(s.kind "tuple") then
+            true
+        elsif eq(s.kind "option") then
+            begin
+                let var found = false
+                for i = 0 upto {extent s.cases - 1} do if maybe.isSome(:Shape s.cases[i].shape) then found := true end end
+                found
+            end
+        else
+            false
+        end
+
+    let rec componentChangesView(s: Shape seen: Seen): Bool = holdsProxies(s) orif viewSensitive(s seen)
+
+    (* Whether values of subtypes of s may be represented differently at s: records and variants, options of several
+     * cases, tuples and options that may be proxies, type variables, and functions whose signatures mention any of
+     * these *)
+    and viewSensitive(s: Shape seen: Seen): Bool =
+        begin
+            let kind = s.kind
+            if isOneOf(kind array of "record" "variant" "typevar" "abstract" "auto" "operator" end) then
+                true
+            elsif isOneOf(kind array of "tuple" "option" end) then
+                proxiedIn(s seen)
+            elsif isOneOf(kind array of "fun" "all" end) then
+                if hashMap.contains(:Int :Bool seen s.id) then
+                    false
+                else
+                    hashMap.insert(:Int :Bool seen s.id true)
+                    if eq(kind "all") then
+                        true
+                    else
+                        let var found = viewSensitive(shapes.result(s) seen)
+                        for i = 0 upto {extent s.params - 1} do
+                            if not(found) andif viewSensitive(s.params[i].shape seen) then found := true end
+                        end
+                        found
+                    end
+                end
+            else
+                false
+            end
+        end
+
+    and proxiedIn(s: Shape seen: Seen): Bool =
+        if hashMap.contains(:Int :Bool seen s.id) then
+            false
+        else
+            hashMap.insert(:Int :Bool seen s.id true)
+            if eq(s.kind "tuple") then
+                let var found = false
+                for i = 0 upto {extent s.components - 1} do
+                    if not(found) andif componentChangesView(shapes.componentShape(s.components[i]) seen) then
+                        found := true
+                    end
+                end
+                found
+            elsif eq(s.kind "option") then
+                if extent s.cases >= 2 then
+                    true
+                else
+                    let var found = false
+                    for i = 0 upto {extent s.cases - 1} do
+                        let c = s.cases[i]
+                        if maybe.isSome(:Shape c.shape) andif eq(maybe.unwrap(:Shape c.shape).kind "tuple") then
+                            let payload = maybe.unwrap(:Shape c.shape)
+                            for j = 0 upto {extent payload.components - 1} do
+                                if not(found) andif componentChangesView(shapes.componentShape(payload.components[j]) seen) then
+                                    found := true
+                                end
+                            end
+                        end
+                    end
+                    found
+                end
+            else
+                false
+            end
+        end
+
+    let mayBeProxied(s: Shape): Bool =
+        if not(isOneOf(s.kind array of "tuple" "option" end)) then
+            false
+        else
+            let l = layoutOf(s)
+            if maybe.isSome(:Bool l.proxied) then
+                maybe.unwrap(:Bool l.proxied)
+            else
+                let proxied = proxiedIn(s newSeen())
+                l.proxied := maybe.some(:Bool proxied)
+                proxied
+            end
+        end
+
+    let changesView(s: Shape): Bool = componentChangesView(s newSeen())
+
+    (* =========================================================================
+     * Digests of types
+     *
+     * Digests of types stand for their printed text, which is the same in every compilation. A type whose text is
+     * at most printedTextLimit long is digested from its text; a longer one from the text of its outermost node with
+     * the digests of its parts in place of theirs, computed once per hash-consed node.
+     * ========================================================================= *)
+
+    let printedTextLimit = 1024
+
+    (* What printed digests: a type, a type component, or a kind *)
+    Let Printable = Option
+        pType with t: Type end
+        pKind with k: model.Kind end
+        pTupleComponent with c: model.TupleComponent end
+        pRecordField with f: model.RecordField end
+        pVariantField with f: model.VariantField end
+        pOptionField with f: model.OptionField end
+        pParam with p: model.Param end
+        pQuantifier with q: model.Quantifier end
+        pTypeFormal with f: model.TypeFormal end
+    end
+    Let Piece = Option
+        pieceText with s: String end
+        piecePart with p: Printable end
+    end
+    Let Printed = Tuple length: Int digest: String end
+
+    let text(s: String): Piece = option pieceText of Piece with let s = s end
+    let part(p: Printable): Piece = option piecePart of Piece with let p = p end
+    let ofType(t: Type): Piece = part(option pType of Printable with let t = t end)
+    let ofKind(k: model.Kind): Piece = part(option pKind of Printable with let k = k end)
+
+    (* The pieces of items separated by spaces *)
+    let spaced(pieces: vector.T(Piece) items: Array(Piece)): Ok =
+        for i = 0 upto {extent items - 1} do
+            if i > 0 then vector.append(:Piece pieces text(" ")) end
+            vector.append(:Piece pieces items[i])
+        end
+
+    let framed(head: String items: Array(Piece)): vector.T(Piece) =
+        begin
+            let pieces = vector.new(:Piece)
+            if extent items > 0 then
+                vector.append(:Piece pieces text(head <> " "))
+                spaced(pieces items)
+                vector.append(:Piece pieces text(" end"))
+            else
+                vector.append(:Piece pieces text(head <> " end"))
+            end
+            pieces
+        end
+
+    let pieces(items: Array(Piece)): vector.T(Piece) = vector.fromArray(:Piece items)
+
+    (* The text of a node as a list of literal strings and the parts printed in between, mirroring the bootstrap's
+     * __str__ methods; a node not listed prints as one string *)
+    let printedParts(node: Printable): vector.T(Piece) =
+        case node
+            when pType with x then
+                let t = x.t
+                case t.form
+                    when typeException with y then
+                        if model.same(y.payload model.okType) then pieces(array of text("Exception") end)
+                        else pieces(array of text("Exception(") ofType(y.payload) text(")") end) end
+                    when typeTuple with y then
+                        let items = array of(extent y.fields text(""))
+                        for i = 0 upto {extent y.fields - 1} do
+                            items[i] := part(option pTupleComponent of Printable with let c = y.fields[i] end)
+                        end
+                        framed("Tuple" items)
+                    when typeRecord with y then
+                        if maybe.isSome(:String y.provenance) andif not(stringOp.isEmpty(maybe.unwrap(:String y.provenance))) then
+                            pieces(array of text("Module '" <> maybe.unwrap(:String y.provenance) <> "'") end)
+                        else
+                            let items = array of(extent y.fields text(""))
+                            for i = 0 upto {extent y.fields - 1} do
+                                items[i] := part(option pRecordField of Printable with let f = y.fields[i] end)
+                            end
+                            framed("Record" items)
+                        end
+                    when typeVariant with y then
+                        let items = array of(extent y.variants text(""))
+                        for i = 0 upto {extent y.variants - 1} do
+                            items[i] := part(option pVariantField of Printable with let f = y.variants[i] end)
+                        end
+                        framed("Variant" items)
+                    when typeOption with y then
+                        let items = array of(extent y.options text(""))
+                        for i = 0 upto {extent y.options - 1} do
+                            items[i] := part(option pOptionField of Printable with let f = y.options[i] end)
+                        end
+                        framed("Option" items)
+                    when typeFun with y then
+                        let result = pieces(array of text("Fun(") end)
+                        let items = array of(extent y.params text(""))
+                        for i = 0 upto {extent y.params - 1} do
+                            items[i] := part(option pParam of Printable with let p = y.params[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text("): "))
+                        vector.append(:Piece result ofType(y.result))
+                        result
+                    when typeVar with y then pieces(array of text("Var(") ofType(y.element) text(")") end)
+                    when typeArray with y then pieces(array of text("Array(") ofType(y.element) text(")") end)
+                    when typeOut with y then pieces(array of text("Out(") ofType(y.element) text(")") end)
+                    when typeAll with y then
+                        let result = pieces(array of text("All(") end)
+                        let items = array of(extent y.quantifiers text(""))
+                        for i = 0 upto {extent y.quantifiers - 1} do
+                            items[i] := part(option pQuantifier of Printable with let q = y.quantifiers[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text(") "))
+                        vector.append(:Piece result ofType(y.body))
+                        result
+                    when typeAuto with y then
+                        let result = if model.isPower(y.kindBound) then
+                            pieces(array of
+                                text("Auto " <> y.typeParam <> " <: ") ofType(model.powerBound(y.kindBound)) text(" with ")
+                            end)
+                        else
+                            pieces(array of text("Auto " <> y.typeParam <> " :: ") ofKind(y.kindBound) text(" with ") end)
+                        end
+                        let items = array of(extent y.signature text(""))
+                        for i = 0 upto {extent y.signature - 1} do
+                            items[i] := part(option pRecordField of Printable with let f = y.signature[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text(" end"))
+                        result
+                    when typeOperator with y then
+                        let result = pieces(array of text("Fun(") end)
+                        let items = array of(extent y.params text(""))
+                        for i = 0 upto {extent y.params - 1} do
+                            items[i] := part(option pTypeFormal of Printable with let f = y.params[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text(") "))
+                        vector.append(:Piece result ofType(y.body))
+                        result
+                    when typeApp with y then
+                        let result = pieces(array of ofType(y.constructor) text("(") end)
+                        let items = array of(extent y.arguments text(""))
+                        for i = 0 upto {extent y.arguments - 1} do items[i] := ofType(y.arguments[i]) end
+                        spaced(result items)
+                        vector.append(:Piece result text(")"))
+                        result
+                    when typeRec with y then
+                        pieces(array of text("Rec(" <> y.varName <> " :: ") ofKind(y.bound) text(") ") ofType(y.body) end)
+                    else pieces(array of text(model.show(t)) end)
+                end
+            when pKind with x then
+                case x.k.form
+                    when kindPower with y then pieces(array of text("<: ") ofType(y.bound) end)
+                    when kindAll with y then
+                        pieces(array of
+                            text("ALL(" <> y.paramName <> " :: ") ofKind(y.paramKind) text(") ") ofKind(y.resultKind)
+                        end)
+                    else pieces(array of text(model.showKind(x.k)) end)
+                end
+            when pTupleComponent with x then
+                case x.c
+                    when tupleField with f then
+                        let prefix = if f.isVar then "var " else "" end
+                        let head = if maybe.isSome(:String f.name) andif not(stringOp.isEmpty(maybe.unwrap(:String f.name))) then
+                            prefix <> maybe.unwrap(:String f.name) <> ": "
+                        else
+                            prefix <> ":"
+                        end
+                        pieces(array of text(head) ofType(f.type) end)
+                    when tupleTypeFormal with f then pieces(array of text(f.name <> "::") ofKind(f.bound) end)
+                    when tupleTypeBinding with f then
+                        let result = pieces(array of text("Let " <> f.name) end)
+                        if maybe.isSome(:model.Kind f.bound) then
+                            vector.append(:Piece result text("::"))
+                            vector.append(:Piece result ofKind(maybe.unwrap(:model.Kind f.bound)))
+                        end
+                        vector.append(:Piece result text(" = "))
+                        vector.append(:Piece result ofType(f.type))
+                        result
+                end
+            when pRecordField with x then
+                pieces(array of text(if x.f.isVar then "var " else "" end <> x.f.name <> ": ") ofType(x.f.type) end)
+            when pVariantField with x then
+                let prefix = if x.f.isVar then "var " else "" end
+                if maybe.isSome(:Type x.f.type) then
+                    pieces(array of text(prefix <> x.f.name <> ": ") ofType(maybe.unwrap(:Type x.f.type)) end)
+                else
+                    pieces(array of text(prefix <> x.f.name) end)
+                end
+            when pOptionField with x then
+                if maybe.isSome(:Type x.f.payload) then
+                    pieces(array of text(x.f.name <> " with ") ofType(maybe.unwrap(:Type x.f.payload)) end)
+                else
+                    pieces(array of text(x.f.name) end)
+                end
+            when pParam with x then
+                let prefix = if x.p.isVar then "var " elsif x.p.isOut then "out " else "" end
+                pieces(array of text(prefix <> x.p.name <> ": ") ofType(x.p.type) end)
+            when pQuantifier with x then
+                if model.isPower(x.q.bound) then
+                    pieces(array of text(x.q.name <> " <: ") ofType(model.powerBound(x.q.bound)) end)
+                else
+                    pieces(array of text(x.q.name <> " :: ") ofKind(x.q.bound) end)
+                end
+            when pTypeFormal with x then pieces(array of text(x.f.name <> " :: ") ofKind(x.f.bound) end)
+        end
+
+    (* The text of a node: its pieces' text *)
+    let rec textOf(node: Printable): String =
+        case node
+            when pType with x then model.show(x.t)
+            when pKind with x then model.showKind(x.k)
+            else
+                let b = stringBuilder.new()
+                let ps = printedParts(node)
+                for i = 0 upto {vector.length(:Piece ps) - 1} do
+                    case vector.get(:Piece ps i)
+                        when pieceText with y then b.str(y.s)
+                        when piecePart with y then b.str(textOf(y.p))
+                    end
+                end
+                b.toString()
+        end
+
+    let printedMemo = hashMap.new(:Int :Printed intEqual hash.int)
+
+    let rec printedUncached(node: Printable): Printed =
+        begin
+            let var length = 0
+            let joined = stringBuilder.new()
+            let ps = printedParts(node)
+            for i = 0 upto {vector.length(:Piece ps) - 1} do
+                case vector.get(:Piece ps i)
+                    when pieceText with y then
+                        length := length + stringOp.length(y.s)
+                        joined.str(y.s)
+                    when piecePart with y then
+                        let p = printed(y.p)
+                        length := length + p.length
+                        joined.char(ascii.char(0)).str(p.digest)
+                end
+            end
+            let digest = if length <= printedTextLimit then
+                sha256.hexDigest(textOf(node))
+            else
+                sha256.hexDigest(stringOp.new(1 ascii.char(1)) <> joined.toString())
+            end
+            tuple let length = length let digest = digest end
+        end
+
+    (* The length of a node's text and a digest of that text *)
+    and printed(node0: Printable): Printed =
+        begin
+            let node = case node0 when pType with x then option pType of Printable with let t = model.pruned(x.t) end else node0 end
+            let key = case node
+                when pType with x then if x.t.hasMeta then maybe.none(:Int) else maybe.some(:Int x.t.id) end
+                when pKind with x then if x.k.hasMeta then maybe.none(:Int) else maybe.some(:Int x.k.id) end
+                else maybe.none(:Int)
+            end
+            if maybe.isNone(:Int key) then
+                printedUncached(node)
+            else
+                let found = hashMap.get(:Int :Printed printedMemo maybe.unwrap(:Int key))
+                if maybe.isSome(:Printed found) then
+                    maybe.unwrap(:Printed found)
+                else
+                    let p = printedUncached(node)
+                    hashMap.insert(:Int :Printed printedMemo maybe.unwrap(:Int key) p)
+                    p
+                end
+            end
+        end
+
+    let typeDigest(t: Type): String =
+        stringOp.getSub(printed(option pType of Printable with let t = shapes.shape(t).structure end).digest 0 16)
+
+    let typeIdentityKey(t: Type): String = typeTag(t) <> "#" <> typeDigest(t)
+
+    let textDigest(text: String): String = stringOp.getSub(sha256.hexDigest(text) 0 16)
+
+    (* =========================================================================
+     * Generic layouts
+     * ========================================================================= *)
+
+    (* The C types of scalar values, which a slot holds in a word of its own *)
+    let wordScalars = array of "QInt" "QReal" "QBool" "QChar" "QVal" "void" end
+    let registerWords = array of "QInt" "QVal" end
+    (* The C types of native values that a QVal cell holds in the same eight bytes *)
+    let cellWords = array of "QInt" "QReal" "QVal" "uint64_t" end
+
+    (* Where a value is held: in an aggregate slot, in a register, or in a cell a var or out parameter points to *)
+    let slotPlace = "slot"
+    let registerPlace = "register"
+    let cellPlace = "cell"
+
+    (* Whether the type of shape s mentions one of the type parameters in subst *)
+    let mentions(s: Shape subst: model.Subst): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent s.type.fv - 1} do
+                if hashMap.contains(:Int :Type subst s.type.fv[i]) then found := true end
+            end
+            found
+        end
+
+    (* Whether a native value of arg agrees with a value of the type parameter of shape v as generic code holds it in
+     * the place *)
+    let storedValueAgrees(v: Shape arg: Type place: String): Bool =
+        begin
+            let argC = representation(arg)
+            if maybe.isSome(:Shape v.bound) andif ownView(v) then
+                (* Held as arg's own value, in the representation of the bound *)
+                let boundC = shapeRepresentation(maybe.unwrap(:Shape v.bound))
+                eq(argC boundC) orif {endsWith(argC "*") andif endsWith(boundC "*")}
+            elsif maybe.isSome(:Shape v.bound) then
+                (* Held as a value of the bound, viewed at it, which agrees with one of arg only when both are the same
+                 * scalar *)
+                eq(argC shapeRepresentation(maybe.unwrap(:Shape v.bound))) andif isOneOf(argC wordScalars)
+                    andif {not(eq(place registerPlace)) orif isOneOf(argC registerWords)}
+            elsif eq(place registerPlace) then
+                isOneOf(argC registerWords) orif endsWith(argC "*")
+            elsif eq(place cellPlace) then
+                (* A cell holds a record or variant boxed, as a QVal does *)
+                isOneOf(argC cellWords) orif endsWith(argC "*") orif isOneOf(argC array of "QRecordVal" "QVariantVal" end)
+            else
+                true
+            end
+        end
+
+    (* The symbol of the type variable s is the shape of, if it is one *)
+    let typeParameter(s: Shape): maybe.T(Int) =
+        case s.type.form
+            when typeVariable with x then maybe.some(:Int x.symbolId)
+            else maybe.none(:Int)
+        end
+
+    let rec agrees(s: Shape subst: model.Subst place: String seen: Seen): Bool =
+        begin
+            let symbol = typeParameter(s)
+            if not(mentions(s subst)) then
+                true
+            elsif maybe.isSome(:Int symbol) then
+                let arg = hashMap.get(:Int :Type subst maybe.unwrap(:Int symbol))
+                if maybe.isSome(:Type arg) then storedValueAgrees(s maybe.unwrap(:Type arg) place) else true end
+            elsif shapes.isRecursive(s) andif hashMap.contains(:Int :Bool seen s.id) then
+                true
+            else
+                if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
+                let slot = fun(component: Shape): Bool agrees(component subst slotPlace seen)
+                let kind = s.kind
+                if eq(kind "abstract") andif s.type.form?typeApp then
+                    (* An application of an abstract operator, whose values are opaque pointers *)
+                    true
+                elsif isOneOf(kind array of "tuple" "record" end) then
+                    let var all = true
+                    for i = 0 upto {extent s.components - 1} do
+                        if all andif not(slot(shapes.componentShape(s.components[i]))) then all := false end
+                    end
+                    all
+                elsif isOneOf(kind array of "variant" "option" end) then
+                    let var all = true
+                    for i = 0 upto {extent s.cases - 1} do
+                        let c = s.cases[i].shape
+                        if all andif maybe.isSome(:Shape c) andif not(slot(maybe.unwrap(:Shape c))) then all := false end
+                    end
+                    all
+                elsif eq(kind "array") then
+                    slot(shapes.element(s))
+                elsif isOneOf(kind array of "cell" "out" end) then
+                    agrees(shapes.element(s) subst cellPlace seen)
+                elsif eq(kind "fun") then
+                    let var all = true
+                    for i = 0 upto {extent s.params - 1} do
+                        let p = s.params[i]
+                        if all andif not(agrees(p.shape subst if eq(p.mode "value") then registerPlace else cellPlace end seen)) then
+                            all := false
+                        end
+                    end
+                    all andif agrees(shapes.result(s) subst registerPlace seen)
+                elsif eq(kind "all") then
+                    agrees(shapes.body(s) subst place seen)
+                else
+                    (* Anything else that mentions a type parameter (auto types, exception types, path types) may
+                     * differ *)
+                    false
+                end
+            end
+        end
+
+    let genericLayoutAgrees(t: Type subst: model.Subst): Bool =
+        hashMap.empty(:Int :Type subst) orif agrees(shapes.shape(t) subst slotPlace newSeen())
+
+    let genericLayoutCopiesMutableData(t: Type subst: model.Subst): Bool =
+        begin
+            let seen = newSeen()
+            let disagrees = fun(component: Shape place: String): Bool not(agrees(component subst place newSeen()))
+            let rec visit(s: Shape): Bool =
+                if not(mentions(s subst)) then
+                    false
+                elsif shapes.isRecursive(s) andif hashMap.contains(:Int :Bool seen s.id) then
+                    false
+                else
+                    if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
+                    let kind = s.kind
+                    if eq(kind "array") then
+                        disagrees(shapes.element(s) slotPlace) orif visit(shapes.element(s))
+                    elsif isOneOf(kind array of "cell" "out" end) then
+                        disagrees(shapes.element(s) cellPlace) orif visit(shapes.element(s))
+                    elsif eq(kind "tuple") then
+                        (* A tuple is converted through a proxy, which reads and writes its original's components *)
+                        let var any = false
+                        for i = 0 upto {extent s.components - 1} do
+                            if not(any) andif visit(shapes.componentShape(s.components[i])) then any := true end
+                        end
+                        any
+                    elsif eq(kind "record") then
+                        let var any = false
+                        for i = 0 upto {extent s.components - 1} do
+                            let c = s.components[i]
+                            let cs = shapes.componentShape(c)
+                            if not(any) andif {{c.isVar andif disagrees(cs slotPlace)} orif visit(cs)} then any := true end
+                        end
+                        any
+                    elsif eq(kind "variant") then
+                        let var any = false
+                        for i = 0 upto {extent s.cases - 1} do
+                            let c = s.cases[i]
+                            if not(any) andif maybe.isSome(:Shape c.shape) then
+                                let cs = maybe.unwrap(:Shape c.shape)
+                                if {c.isVar andif disagrees(cs slotPlace)} orif visit(cs) then any := true end
+                            end
+                        end
+                        any
+                    elsif eq(kind "option") then
+                        let var any = false
+                        for i = 0 upto {extent s.cases - 1} do
+                            let c = s.cases[i]
+                            if not(any) andif maybe.isSome(:Shape c.shape) andif visit(maybe.unwrap(:Shape c.shape)) then
+                                any := true
+                            end
+                        end
+                        any
+                    else
+                        (* Closures are adapted rather than copied *)
+                        false
+                    end
+                end
+            visit(shapes.shape(t))
+        end
+
+    let signatureRepresentation(t: Type): String =
+        begin
+            let var s = shapes.shape(t)
+            let var count = 0
+            while eq(s.kind "all") do
+                count := count + extent s.typeParams
+                s := shapes.body(s)
+            end
+            let params = if eq(s.kind "fun") then s.params else array of :shapes.Param end end
+            let result = if eq(s.kind "fun") then shapes.result(s) else s end
+            let key = stringBuilder.new()
+            key.str(shapeRepresentation(result)).char('|').str(syntax.cInt(count))
+            for i = 0 upto {extent params - 1} do
+                let p = params[i]
+                key.char('|')
+                if not(eq(p.mode "value")) then
+                    key.str(shapeLocationRepresentation(p.shape) <> " *")
+                elsif eq(p.shape.kind "ok") then
+                    key.str("QVal")
+                else
+                    key.str(shapeRepresentation(p.shape))
+                end
+            end
+            key.toString()
+        end
+
+    let qtypeToNameStr(t0: Type): String =
+        begin
+            let t = model.pruned(t0)
+            case t.form
+                when typeAlias with x then x.name
+                when typeExternal with x then
+                    if isWordType(t) then "word.T" elsif stringOp.isEmpty(x.name) then x.cType else x.name end
+                else
+                    if isWordType(t) then "word.T"
+                    elsif model.same(t model.intType) then "Int"
+                    elsif model.same(t model.realType) then "Real"
+                    elsif model.same(t model.boolType) then "Bool"
+                    elsif model.same(t model.charType) then "Char"
+                    elsif model.same(t model.stringType) then "String"
+                    elsif model.same(t model.okType) then "Ok"
+                    else model.show(t)
+                    end
+            end
+        end
+
+    let typeEqual(a: Type b: Type): Bool = model.same(a b) orif subtyping.isTypeEqual(a b maybe.none(:model.Lookup))
+
+    let isRecordSubtype(s: Type t: Type): Bool =
+        case s.form
+            when typeRecord with x then
+                case t.form
+                    when typeRecord with y then
+                        let var all = true
+                        for i = 0 upto {extent y.fields - 1} do
+                            let f = model.recordGetField(x.fields y.fields[i].name)
+                            if maybe.isNone(:model.RecordField f) then
+                                all := false
+                            elsif not(typeEqual(maybe.unwrap(:model.RecordField f).type y.fields[i].type)) then
+                                all := false
+                            end
+                        end
+                        all
+                    else false
+                end
+            else false
+        end
+
+    let isTupleSubtype(s: Type t: Type): Bool =
+        case s.form
+            when typeTuple with x then
+                case t.form
+                    when typeTuple with y then
+                        let sv = model.tupleValueFields(x.fields)
+                        let tv = model.tupleValueFields(y.fields)
+                        if extent sv < extent tv then
+                            false
+                        else
+                            let var all = true
+                            for i = 0 upto {extent tv - 1} do
+                                if not(eq(representation(sv[i].type) representation(tv[i].type))) then all := false end
+                            end
+                            all
+                        end
+                    else false
+                end
+            else false
+        end
+
+    let isVariantSubtype(s: Type t: Type): Bool =
+        case s.form
+            when typeVariant with x then
+                case t.form
+                    when typeVariant with y then
+                        let var all = true
+                        for i = 0 upto {extent x.variants - 1} do
+                            let v = x.variants[i]
+                            let w = model.variantGetField(y.variants v.name)
+                            if maybe.isNone(:model.VariantField w) then
+                                all := false
+                            else
+                                let wt = maybe.unwrap(:model.VariantField w).type
+                                let same = if maybe.isNone(:Type v.type) orif maybe.isNone(:Type wt) then
+                                    maybe.isNone(:Type v.type) andif maybe.isNone(:Type wt)
+                                else
+                                    typeEqual(maybe.unwrap(:Type v.type) maybe.unwrap(:Type wt))
+                                end
+                                if not(same) then all := false end
+                            end
+                        end
+                        all
+                    else false
+                end
+            else false
+        end
+end

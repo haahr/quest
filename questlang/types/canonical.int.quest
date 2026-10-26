@@ -1,8 +1,8 @@
-(* Quest Self-Hosted Compiler: Reduced Forms of Types Interface
+(* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types Interface
  *
- * The part of bootstrap/python/quest/types/canonical.py that the interpreter uses: type operator applications
- * reduced, recursive types unfolded, and an option type's cases in order. Canonical forms, which the backends use,
- * are Milestone 4's. *)
+ * bootstrap/python/quest/types/canonical.py: type operator applications reduced, recursive types unfolded, an
+ * option type's cases in order, and the canonical form of a type containing recursion, its minimal graph, so that
+ * equal types have one representation however they are written (which the IR's shapes are built from). *)
 
 interface Canonical
 import
@@ -20,6 +20,24 @@ export
     normalizeType(t: model.Type): model.Type
     (* t, or for a variable, abstract type, or path type bounded by POWER(T), the type its bounds resolve to *)
     resolveTypeBound(t: model.Type): model.Type
-    (* The names of an option type's cases as written, in order (for a parameter bounded by one, its bound's) *)
+    (* The names of an option type's cases as written, in order (for a parameter bounded by one, its bound's);
+     * notAnOption if t is not one *)
     optionCaseNames(t: model.Type): Array(String)
+    notAnOption: Exception(String)
+
+    (* The universal quantifiers wrapping a function type (a recursive one, through its unfolding), and the type they
+     * quantify, as written *)
+    Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: model.Type end
+    collectFunQuantifiers(funType: model.Type): FunQuantifiers
+
+    (* The canonical form of t if t contains recursion and is not in canonical form. Equal types containing
+     * recursion have the same canonical form. With QUEST_CHECK_CANONICAL=1, a canonical form that is not equal to its
+     * type, or not a fixed point, raises canonicalError; otherwise the former is a warning. *)
+    canonicalType(t: model.Type): maybe.T(model.Type)
+    canonicalError: Exception(String)
+
+    (* The placeholders a recursive type's variables are replaced by in its tag, numbered by nesting depth *)
+    isRecSelfSymbol(symbolId: Int): Bool
+    recSelfVar(level: Int): model.Type
+    recSelfLevel(t: model.Type): maybe.T(Int)
 end

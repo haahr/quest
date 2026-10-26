@@ -1,0 +1,24 @@
+(* Quest Self-Hosted Compiler: The IR Verifier Interface
+ *
+ * bootstrap/python/quest/ir/verify.py (docs/ir.md section 9): checks a unit's invariants for its stage, after every
+ * pass, in tests. Core invariants: operations' arguments are atoms; every variable is bound once and used only in its
+ * scope; module references are to the unit's modules and imports; a function uses no mutable variable of an
+ * enclosing function; jumps, breaks, and continues name enclosing join points and loops; returns occur only in
+ * functions; terminators end their bodies; ordinals record their options' cases. After closure conversion, no funs
+ * statement remains and closures are of the unit's functions; after the represent pass, values are used in the
+ * representations their uses require; after the describe pass, every run-time use of a type has its descriptor
+ * operands. It runs when QUEST_CHECK_IR=1, which the test runners set. *)
+
+interface Verify
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+export
+    (* The bootstrap's AssertionError: the IR is not well formed *)
+    verifyError: Exception(String)
+
+    irChecksEnabled(): Bool
+    (* The problems of a unit at its stage (none when it satisfies every invariant) *)
+    verifyUnit(unit: nodes.Unit): Array(String)
+    (* Raises verifyError if the unit violates an invariant *)
+    checkUnit(unit: nodes.Unit): Ok
+end

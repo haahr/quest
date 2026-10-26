@@ -1,0 +1,80 @@
+(* Quest Self-Hosted Compiler: Shapes Interface
+ *
+ * bootstrap/python/quest/ir/shapes.py: the backend's view of Quest types (docs/ir.md section 4.1). A shape says what
+ * a type is structurally, with aliases stripped, applications of type operators reduced, and recursion made explicit.
+ * shape(t) is computed from the canonical form of t, and shapes are cached per canonical type, so equal types have
+ * the same shape; a recursive type's shape is a cycle. Shapes are built once and not changed afterwards.
+ *
+ * A shape is a record with identity (its id), whose fields are set as its kind says (see Shape). Its element, result,
+ * and body, which the bootstrap leaves None for the other kinds, are unwrapped by the functions of those names. *)
+
+interface Shapes
+import
+    questlang/types/model : questlang/types/Model
+    util/maybe : util/Maybe
+export
+    (* The kinds of shapes: the scalars, and the rest *)
+    scalarKinds: Array(String)
+
+    (* The backend's view of a type, whose fields are set as its kind is:
+     * - components: tuple (value components), record (fields), auto (signature);
+     * - cases: variant (a payload shape each, or none) and option (a tuple shape each, or none);
+     * - element: array, cell (Var), out (Out), exception (payload);
+     * - params and result: fun; typeParams and body: all; typeParams (one) and components: auto;
+     * - symbolId, name, and bound: typevar, a type parameter or an abstract type of a module or interface; bound is
+     *   the shape of its POWER bound, if any;
+     * - name: abstract (by its short name) and external (its C type).
+     * An operator shape is a type operator's, passed for a higher-kinded type parameter: opaque. type is the
+     * canonical type the shape describes, and structure the type whose outermost constructor it describes (the
+     * unfolding of a recursive type). *)
+    Def Rec Shape = Tuple
+        id: Int
+        var kind: String
+        type: model.Type
+        var structure: model.Type
+        var components: Array(Component)
+        var cases: Array(Component)
+        var elementShape: maybe.T(Shape)
+        var params: Array(Param)
+        var resultShape: maybe.T(Shape)
+        var typeParams: Array(TypeParam)
+        var bodyShape: maybe.T(Shape)
+        var symbolId: Int
+        var bound: maybe.T(Shape)
+        var name: String
+    end
+    (* A named component of a tuple, record, or auto value's signature, or a case of a variant or option *)
+    and Component = Tuple name: maybe.T(String) shape: maybe.T(Shape) isVar: Bool end
+    (* A parameter of a function shape: its shape and mode ("value", "var", or "out") *)
+    and Param = Tuple name: String shape: Shape mode: String end
+    (* A type parameter of an all shape, or the type component of an auto shape; bound is the shape of T for a
+     * parameter bounded by POWER(T) *)
+    and TypeParam = Tuple name: String symbolId: Int kind: model.Kind bound: maybe.T(Shape) end
+
+    (* The shape of a type (which must not contain unsolved metavariables) *)
+    shape(t: model.Type): Shape
+
+    element(s: Shape): Shape
+    result(s: Shape): Shape
+    body(s: Shape): Shape
+    (* A component's shape, which a case without a payload has none of *)
+    componentShape(c: Component): Shape
+
+    same(a: Shape b: Shape): Bool
+    isScalar(s: Shape): Bool
+    (* Whether s is the shape of a recursive type (whose structure is its unfolding's) *)
+    isRecursive(s: Shape): Bool
+    component(s: Shape name: String): maybe.T(Component)
+    caseOf(s: Shape name: String): maybe.T(Component)
+    (* A record's fields in name order (the order of its payload's layout) *)
+    sortedComponents(s: Shape): Array(Component)
+    (* The shapes s refers to directly *)
+    children(s: Shape): Array(Shape)
+    (* Every shape reachable from s, once each *)
+    shapesReachable(s: Shape): Array(Shape)
+
+    (* Whether t is the standard library's Word.T (or a type parameter bounded by it), held in a uint64_t *)
+    isWordType(t: model.Type): Bool
+    (* A variant or option type with its cases ordered by name: t itself if they are already *)
+    casesByName(t: model.Type): model.Type
+end

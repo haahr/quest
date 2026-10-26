@@ -8,7 +8,7 @@
 interface Treewalk
 import
     questlang/common/location : questlang/common/Location
-    questlang/types/model : questlang/types/Model
+    tm = questlang/types/model : questlang/types/Model
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/graph : questlang/modules/Graph
     questlang/values/model : questlang/values/Model
@@ -39,4 +39,13 @@ export
     evalProgramPhrases(p: typedAst.Program f: model.Frame on: All(r: PhraseResult) Ok): Array(PhraseResult)
     (* Records on an error the frames running where it was raised, the first time it leaves a frame *)
     noteFrames(e: model.RunError f: model.Frame): Ok
+
+    (* For the IR interpreter (questlang/interpreter/irinterp), which runs imported modules and closures here: *)
+    (* Loads and runs module name, imported through expectedInterface, once per program (load_module_for_interpreter) *)
+    loadModuleForInterpreter(name: String expectedInterface: String f: model.Frame canonicalName: maybe.T(String)):
+        model.Value
+    (* A closure applied to arguments (run_closure) *)
+    runClosure(c: model.Closure args: Array(model.Value)): model.Value
+    (* A closure with its next unbound type parameters bound to typeArgs *)
+    instantiate(c: model.Closure typeArgs: Array(tm.Type)): model.Closure
 end

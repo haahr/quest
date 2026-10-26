@@ -1,18 +1,34 @@
-(* Quest Self-Hosted Compiler: Reduced Forms of Types Implementation *)
+(* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types Implementation *)
 
 module canonical : Canonical
 import
     questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/dump : questlang/types/Dump
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/hash : util/Hash
     util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    conv : Conv
+    system : System
+    writer : Writer
 export
     Let Type = model.Type
+    Let Kind = model.Kind
 
     (* An internal error: a type that is not an option where one must be (the bootstrap's ValueError) *)
     let notAnOption: Exception(String) = exception notAnOption: String end
 
+    (* A canonical form not equal to its type, or not a fixed point, when QUEST_CHECK_CANONICAL=1 (the bootstrap's
+     * AssertionError) *)
+    let canonicalError: Exception(String) = exception canonicalError: String end
+
     let maxBetaSteps = 1000
+
+    let intEqual(a: Int b: Int): Bool = a is b
 
     let isApp(t: Type): Bool = t.form?typeApp
     let isRecursive(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
@@ -94,9 +110,12 @@ export
             if isUnfoldedRepresentation(u) then maybe.some(:Type u) else maybe.none(:Type) end
         end
 
-    let normalizeType(t0: Type): Type =
+    (* Reduced forms by the id of the type node *)
+    let normalized = hashMap.new(:Int :Type intEqual hash.int)
+
+    let normalizeUncached(t0: Type): Type =
         begin
-            let t = model.stripAliases(model.pruned(t0))
+            let t = model.stripAliases(t0)
             let var result = t
             let var found = false
             if isRecursive(t) then
@@ -123,6 +142,23 @@ export
                 end
             end
             result
+        end
+
+    let normalizeType(t0: Type): Type =
+        begin
+            let t = model.pruned(t0)
+            if t.hasMeta then
+                normalizeUncached(t)
+            else
+                let found = hashMap.get(:Int :Type normalized t.id)
+                if maybe.isSome(:Type found) then
+                    maybe.unwrap(:Type found)
+                else
+                    let result = normalizeUncached(t)
+                    hashMap.insert(:Int :Type normalized t.id result)
+                    result
+                end
+            end
         end
 
     (* A variable's, abstract type's, or path type's bound, if it is a power kind *)
@@ -193,6 +229,1482 @@ export
                     for i = 0 upto {extent x.options - 1} do names[i] := x.options[i].name end
                     names
                 else array of :String end
+            end
+        end
+
+    Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: Type end
+
+    let collectFunQuantifiers(funType: Type): FunQuantifiers =
+        begin
+            let quants = vector.new(:model.Quantifier)
+            let var curr = normalizeType(funType)
+            let var done = false
+            while not(done) do
+                case curr.form
+                    when typeAll with x then
+                        for i = 0 upto {extent x.quantifiers - 1} do
+                            vector.append(:model.Quantifier quants x.quantifiers[i])
+                        end
+                        curr := normalizeType(x.body)
+                    else done := true
+                end
+            end
+            tuple let quantifiers = vector.toArray(:model.Quantifier quants) let body = curr end
+        end
+
+    (* =========================================================================
+     * Reserved symbols of canonical forms and tags
+     * ========================================================================= *)
+
+    let reservedIndex(symbolId: Int use: model.ReservedSymbolUse): maybe.T(Int) =
+        begin
+            let decoded = model.reservedSymbolUse(symbolId)
+            if maybe.isSome(:model.Decoded decoded)
+                andif {ordinal(maybe.unwrap(:model.Decoded decoded).use) is ordinal(use)} then
+                maybe.some(:Int maybe.unwrap(:model.Decoded decoded).index)
+            else
+                maybe.none(:Int)
+            end
+        end
+
+    let recSelfUse = option recSelf of model.ReservedSymbolUse end
+    let canonicalRecUse = option canonicalRec of model.ReservedSymbolUse end
+    let canonicalBinderUse = option canonicalBinder of model.ReservedSymbolUse end
+
+    let isRecSelfSymbol(symbolId: Int): Bool = maybe.isSome(:Int reservedIndex(symbolId recSelfUse))
+
+    let recSelfVar(level: Int): Type =
+        model.typeVariable("Rec.Self" <> conv.int(level) model.reservedSymbolId(recSelfUse level) maybe.none(:Kind))
+
+    let recSelfLevel(t: Type): maybe.T(Int) =
+        case t.form
+            when typeVariable with x then reservedIndex(x.symbolId recSelfUse)
+            else maybe.none(:Int)
+        end
+
+    (* =========================================================================
+     * Canonical forms of recursive types
+     *
+     * As types/canonical.py describes them: the graph of a type's nodes, minimized by partition refinement, written
+     * back as a type whose recursion variables and binders' parameters have reserved ids.
+     * ========================================================================= *)
+
+    let maxCanonicalNodes = 100000
+
+    (* A type's graph is too large to canonicalize, or cannot be written back *)
+    let notCanonicalizable: Exception = exception notCanonicalizable end
+
+    let checkCanonical(): Bool = stringOp.equal(system.getEnv("QUEST_CHECK_CANONICAL") "1")
+
+    (* A part of a type: a type or a kind *)
+    Let Node = Option
+        nodeType with t: Type end
+        nodeKind with k: Kind end
+    end
+
+    let ofType(t: Type): Node = option nodeType of Node with let t = t end
+    let ofKind(k: Kind): Node = option nodeKind of Node with let k = k end
+    let nodeId(n: Node): Int = case n when nodeType with x then x.t.id when nodeKind with x then x.k.id end
+    let nodeFv(n: Node): Array(Int) = case n when nodeType with x then x.t.fv when nodeKind with x then x.k.fv end
+    let asType(n: Node): Type =
+        case n
+            when nodeType with x then x.t
+            else raise notCanonicalizable end
+        end
+    let asKind(n: Node): Kind =
+        case n
+            when nodeKind with x then x.k
+            else raise notCanonicalizable end
+        end
+    let substituteNode(n: Node subst: model.Subst): Node =
+        case n
+            when nodeType with x then ofType(model.substitute(x.t subst))
+            when nodeKind with x then ofKind(model.substituteInKind(x.k subst))
+        end
+
+    (* The types the graph has nodes for, which recursive types are unfolded to (_GRAPH_NODES) *)
+    let isGraphNode(t: Type): Bool =
+        case t.form
+            when typeTuple then true
+            when typeRecord then true
+            when typeVariant then true
+            when typeOption then true
+            when typeArray then true
+            when typeVar then true
+            when typeOut then true
+            when typeFun then true
+            when typeAll then true
+            when typeException then true
+            when typeAuto then true
+            else false
+        end
+
+    (* t with aliases, solved metavariables, type operator applications, and recursive types whose unfoldings are
+     * graph nodes reduced down to its outer constructor *)
+    let canonicalStructure(t0: Type): Type =
+        begin
+            let var t = t0
+            let var result = maybe.none(:Type)
+            let var steps = 0
+            while maybe.isNone(:Type result) andif {steps < maxBetaSteps} do
+                steps := steps + 1
+                t := model.stripAliases(model.pruned(t))
+                if not(isRecursive(t) orif isApp(t)) then
+                    result := maybe.some(:Type t)
+                else
+                    let unfolded = unfolding(t)
+                    if isGraphNode(unfolded) then
+                        result := maybe.some(:Type unfolded)
+                    elsif isApp(t) then
+                        let reduced = betaReduceHead(t)
+                        if isApp(reduced) orif isRecursive(reduced) then result := maybe.some(:Type t) else t := reduced end
+                    else
+                        result := maybe.some(:Type t)
+                    end
+                end
+            end
+            maybe.unwrapOr(:Type result t)
+        end
+
+    (* A node's shape: its constructor and labels *)
+    Let Label = Tuple name: String isVar: Bool has: Bool end
+    Let TupleLabel = Tuple name: maybe.T(String) isVar: Bool end
+    Let Mode = Tuple isVar: Bool isOut: Bool end
+    Let Comp = Option
+        compFormal with name: String end
+        compBinding with name: String hasBound: Bool end
+        compField with name: maybe.T(String) isVar: Bool end
+    end
+    Let Shape = Option
+        sKindType
+        sKindPower
+        sKindAll
+        sBound with isAbstract: Bool pos: Int hasKind: Bool end
+        sFree with isAbstract: Bool symbolId: Int name: String hasKind: Bool end
+        sPath with rootName: String rootSymbolId: Int fieldName: String end
+        sTuple with fields: Array(TupleLabel) end
+        sXTuple with comps: Array(Comp) end
+        sRecord with provenance: maybe.T(String) fields: Array(Label) end
+        sVariant with cases: Array(Label) end
+        sOption with cases: Array(Label) end
+        sArray
+        sVarType
+        sOutType
+        sFun with modes: Array(Mode) end
+        sException
+        sAll with count: Int end
+        sAuto with fields: Array(Label) end
+        sOperator with count: Int end
+        sApp with count: Int end
+    end
+
+    (* The bootstrap's name of a shape's kind *)
+    let shapeKind(s: Shape): String =
+        case s
+            when sKindType then "kTYPE"
+            when sKindPower then "kPOWER"
+            when sKindAll then "kALL"
+            when sBound then "bound"
+            when sFree then "free"
+            when sPath then "path"
+            when sTuple then "tuple"
+            when sXTuple then "xtuple"
+            when sRecord then "record"
+            when sVariant then "variant"
+            when sOption then "option"
+            when sArray then "array"
+            when sVarType then "var"
+            when sOutType then "out"
+            when sFun then "fun"
+            when sException then "exception"
+            when sAll then "all"
+            when sAuto then "auto"
+            when sOperator then "tfun"
+            when sApp then "app"
+        end
+
+    let keyStr(b: stringBuilder.T s: String): Ok = begin b.int(stringOp.length(s)).char(':').str(s) ok end
+    let keyOptStr(b: stringBuilder.T s: maybe.T(String)): Ok =
+        if maybe.isSome(:String s) then keyStr(b maybe.unwrap(:String s)) else begin b.char('-') ok end end
+    let keyBool(b: stringBuilder.T v: Bool): Ok = begin b.char(if v then 't' else 'f' end) ok end
+    let keyInt(b: stringBuilder.T n: Int): Ok = begin b.int(n).char(';') ok end
+    let keyLabels(b: stringBuilder.T labels: Array(Label)): Ok =
+        begin
+            keyInt(b extent labels)
+            for i = 0 upto {extent labels - 1} do
+                keyStr(b labels[i].name)
+                keyBool(b labels[i].isVar)
+                keyBool(b labels[i].has)
+            end
+        end
+
+    (* A string that two shapes have when they are equal *)
+    let shapeKey(s: Shape): String =
+        begin
+            let b = stringBuilder.new()
+            b.str(shapeKind(s)).char('|')
+            case s
+                when sBound with x then begin keyBool(b x.isAbstract) keyInt(b x.pos) keyBool(b x.hasKind) end
+                when sFree with x then
+                    begin keyBool(b x.isAbstract) keyInt(b x.symbolId) keyStr(b x.name) keyBool(b x.hasKind) end
+                when sPath with x then begin keyStr(b x.rootName) keyInt(b x.rootSymbolId) keyStr(b x.fieldName) end
+                when sTuple with x then
+                    begin
+                        keyInt(b extent x.fields)
+                        for i = 0 upto {extent x.fields - 1} do
+                            keyOptStr(b x.fields[i].name)
+                            keyBool(b x.fields[i].isVar)
+                        end
+                    end
+                when sXTuple with x then
+                    begin
+                        keyInt(b extent x.comps)
+                        for i = 0 upto {extent x.comps - 1} do
+                            case x.comps[i]
+                                when compFormal with c then begin b.char('F') keyStr(b c.name) end
+                                when compBinding with c then begin b.char('B') keyStr(b c.name) keyBool(b c.hasBound) end
+                                when compField with c then begin b.char('V') keyOptStr(b c.name) keyBool(b c.isVar) end
+                            end
+                        end
+                    end
+                when sRecord with x then begin keyOptStr(b x.provenance) keyLabels(b x.fields) end
+                when sVariant with x then keyLabels(b x.cases)
+                when sOption with x then keyLabels(b x.cases)
+                when sFun with x then
+                    begin
+                        keyInt(b extent x.modes)
+                        for i = 0 upto {extent x.modes - 1} do
+                            keyBool(b x.modes[i].isVar)
+                            keyBool(b x.modes[i].isOut)
+                        end
+                    end
+                when sAll with x then keyInt(b x.count)
+                when sAuto with x then keyLabels(b x.fields)
+                when sOperator with x then keyInt(b x.count)
+                when sApp with x then keyInt(b x.count)
+                else ok
+            end
+            b.toString()
+        end
+
+    (* Where an enclosing binder's parameter is bound: the binder's node and the parameter's position *)
+    Let Place = Tuple binder: Int pos: Int end
+    Let Places = hashMap.T(Int Place)
+
+    (* A node of a canonical graph before its parts are resolved *)
+    Let NodeInfo = Tuple shape: Shape parts: Array(Node) binds: Array(Int) occurrenceOf: maybe.T(Int) end
+
+    let info(s: Shape parts: Array(Node)): maybe.T(NodeInfo) =
+        maybe.some(:NodeInfo tuple
+            let shape = s
+            let parts = parts
+            let binds = array of :Int end
+            let occurrenceOf = maybe.none(:Int)
+        end)
+
+    let binderInfo(s: Shape parts: Array(Node) binds: Array(Int)): maybe.T(NodeInfo) =
+        maybe.some(:NodeInfo tuple
+            let shape = s
+            let parts = parts
+            let binds = binds
+            let occurrenceOf = maybe.none(:Int)
+        end)
+
+    let byName(A::TYPE items: Array(A) name: All(item: A) String): Array(A) =
+        sort.sorted(:A items fun(a: A b: A): Int sort.stringCompare(name(a) name(b)))
+
+    (* The node for the structure s (a type or a kind), whose free variables in bound are parameters of enclosing
+     * binder nodes; none for a leaf *)
+    let canonicalNode(n: Node bound: Places): maybe.T(NodeInfo) =
+        case n
+            when nodeKind with nk then
+                case nk.k.form
+                    when kindType then info(option sKindType of Shape end array of :Node end)
+                    when kindPower with x then info(option sKindPower of Shape end array of ofType(x.bound) end)
+                    when kindAll with x then
+                        binderInfo(option sKindAll of Shape end array of ofKind(x.paramKind) ofKind(x.resultKind) end
+                            array of x.paramId end)
+                    else maybe.none(:NodeInfo)
+                end
+            when nodeType with nt then
+                let s = nt.t
+                let variable = fun(isAbstract: Bool symbolId: Int name: String kind: maybe.T(Kind)): maybe.T(NodeInfo)
+                    begin
+                        let hasKind = maybe.isSome(:Kind kind)
+                        let kinds = if hasKind then array of ofKind(maybe.unwrap(:Kind kind)) end else array of :Node end end
+                        let place = hashMap.get(:Int :Place bound symbolId)
+                        if maybe.isSome(:Place place) then
+                            maybe.some(:NodeInfo tuple
+                                let shape = option sBound of Shape with
+                                    let isAbstract = isAbstract
+                                    let pos = maybe.unwrap(:Place place).pos
+                                    let hasKind = hasKind
+                                end
+                                let parts = kinds
+                                let binds = array of :Int end
+                                let occurrenceOf = maybe.some(:Int symbolId)
+                            end)
+                        else
+                            info(option sFree of Shape with
+                                let isAbstract = isAbstract
+                                let symbolId = symbolId
+                                let name = name
+                                let hasKind = hasKind
+                            end kinds)
+                        end
+                    end
+                case s.form
+                    when typeVariable with x then variable(false x.symbolId x.name x.bound)
+                    when typeAbstract with x then variable(true x.symbolId x.name maybe.some(:Kind x.bound))
+                    when typePath with x then
+                        info(option sPath of Shape with
+                            let rootName = x.rootName
+                            let rootSymbolId = x.rootSymbolId
+                            let fieldName = x.fieldName
+                        end array of ofKind(x.bound) end)
+                    when typeTuple with x then
+                        let values = model.tupleValueFields(x.fields)
+                        if extent values is extent x.fields then
+                            let labels = vector.new(:TupleLabel)
+                            let parts = vector.new(:Node)
+                            for i = 0 upto {extent values - 1} do
+                                vector.append(:TupleLabel labels
+                                    tuple let name = values[i].name let isVar = values[i].isVar end)
+                                vector.append(:Node parts ofType(values[i].type))
+                            end
+                            info(option sTuple of Shape with let fields = vector.toArray(:TupleLabel labels) end
+                                vector.toArray(:Node parts))
+                        else
+                            let comps = vector.new(:Comp)
+                            let parts = vector.new(:Node)
+                            let binds = vector.new(:Int)
+                            for i = 0 upto {extent x.fields - 1} do
+                                case x.fields[i]
+                                    when tupleTypeFormal with f then
+                                        vector.append(:Comp comps option compFormal of Comp with let name = f.name end)
+                                        vector.append(:Node parts ofKind(f.bound))
+                                        vector.append(:Int binds f.symbolId)
+                                    when tupleTypeBinding with f then
+                                        vector.append(:Comp comps option compBinding of Comp with
+                                            let name = f.name
+                                            let hasBound = maybe.isSome(:Kind f.bound)
+                                        end)
+                                        vector.append(:Node parts ofType(f.type))
+                                        if maybe.isSome(:Kind f.bound) then
+                                            vector.append(:Node parts ofKind(maybe.unwrap(:Kind f.bound)))
+                                        end
+                                    when tupleField with f then
+                                        vector.append(:Comp comps option compField of Comp with
+                                            let name = f.name
+                                            let isVar = f.isVar
+                                        end)
+                                        vector.append(:Node parts ofType(f.type))
+                                end
+                            end
+                            binderInfo(option sXTuple of Shape with let comps = vector.toArray(:Comp comps) end
+                                vector.toArray(:Node parts) vector.toArray(:Int binds))
+                        end
+                    when typeRecord with x then
+                        let fields = byName(:model.RecordField x.fields fun(f: model.RecordField): String f.name)
+                        let labels = array of(extent fields tuple let name = "" let isVar = false let has = true end)
+                        let parts = array of(extent fields ofType(model.okType))
+                        for i = 0 upto {extent fields - 1} do
+                            labels[i] := tuple let name = fields[i].name let isVar = fields[i].isVar let has = true end
+                            parts[i] := ofType(fields[i].type)
+                        end
+                        info(option sRecord of Shape with let provenance = x.provenance let fields = labels end parts)
+                    (* Variants and options are compared by their cases' names, unordered, so their canonical forms
+                     * order cases by name, as records' fields are ordered *)
+                    when typeVariant with x then
+                        let cases = byName(:model.VariantField x.variants fun(v: model.VariantField): String v.name)
+                        let labels = array of(extent cases tuple let name = "" let isVar = false let has = false end)
+                        let parts = vector.new(:Node)
+                        for i = 0 upto {extent cases - 1} do
+                            labels[i] := tuple
+                                let name = cases[i].name
+                                let isVar = cases[i].isVar
+                                let has = maybe.isSome(:Type cases[i].type)
+                            end
+                            if maybe.isSome(:Type cases[i].type) then
+                                vector.append(:Node parts ofType(maybe.unwrap(:Type cases[i].type)))
+                            end
+                        end
+                        info(option sVariant of Shape with let cases = labels end vector.toArray(:Node parts))
+                    when typeOption with x then
+                        let cases = byName(:model.OptionField x.options fun(o: model.OptionField): String o.name)
+                        let labels = array of(extent cases tuple let name = "" let isVar = false let has = false end)
+                        let parts = vector.new(:Node)
+                        for i = 0 upto {extent cases - 1} do
+                            labels[i] := tuple
+                                let name = cases[i].name
+                                let isVar = false
+                                let has = maybe.isSome(:Type cases[i].payload)
+                            end
+                            if maybe.isSome(:Type cases[i].payload) then
+                                vector.append(:Node parts ofType(maybe.unwrap(:Type cases[i].payload)))
+                            end
+                        end
+                        info(option sOption of Shape with let cases = labels end vector.toArray(:Node parts))
+                    when typeArray with x then info(option sArray of Shape end array of ofType(x.element) end)
+                    when typeVar with x then info(option sVarType of Shape end array of ofType(x.element) end)
+                    when typeOut with x then info(option sOutType of Shape end array of ofType(x.element) end)
+                    when typeFun with x then
+                        let modes = array of(extent x.params tuple let isVar = false let isOut = false end)
+                        let parts = array of({extent x.params + 1} ofType(x.result))
+                        for i = 0 upto {extent x.params - 1} do
+                            modes[i] := tuple let isVar = x.params[i].isVar let isOut = x.params[i].isOut end
+                            parts[i] := ofType(x.params[i].type)
+                        end
+                        info(option sFun of Shape with let modes = modes end parts)
+                    when typeException with x then info(option sException of Shape end array of ofType(x.payload) end)
+                    when typeAll with x then
+                        let n = extent x.quantifiers
+                        let parts = array of({n + 1} ofType(x.body))
+                        let binds = array of(n 0)
+                        for i = 0 upto {n - 1} do
+                            parts[i] := ofKind(x.quantifiers[i].bound)
+                            binds[i] := x.quantifiers[i].symbolId
+                        end
+                        binderInfo(option sAll of Shape with let count = n end parts binds)
+                    when typeAuto with x then
+                        let n = extent x.signature
+                        let labels = array of(n tuple let name = "" let isVar = false let has = true end)
+                        let parts = array of({n + 1} ofKind(x.kindBound))
+                        for i = 0 upto {n - 1} do
+                            labels[i] := tuple let name = x.signature[i].name let isVar = x.signature[i].isVar let has = true end
+                            parts[i + 1] := ofType(x.signature[i].type)
+                        end
+                        binderInfo(option sAuto of Shape with let fields = labels end parts array of x.symbolId end)
+                    when typeOperator with x then
+                        let n = extent x.params
+                        let parts = array of({n + 1} ofType(x.body))
+                        let binds = array of(n 0)
+                        for i = 0 upto {n - 1} do
+                            parts[i] := ofKind(x.params[i].bound)
+                            binds[i] := x.params[i].symbolId
+                        end
+                        binderInfo(option sOperator of Shape with let count = n end parts binds)
+                    when typeApp with x then
+                        (* An application of an abstract type operator (one that does not reduce) *)
+                        let n = extent x.arguments
+                        let parts = array of({n + 1} ofType(x.constructor))
+                        for i = 0 upto {n - 1} do parts[i + 1] := ofType(x.arguments[i]) end
+                        info(option sApp of Shape with let count = n end parts)
+                    else maybe.none(:NodeInfo)
+                end
+        end
+
+    (* The type (or kind) with the given shape and parts, for a node that binds nothing and is not an occurrence of a
+     * parameter *)
+    let rebuildNode(s: Shape parts: Array(Node)): Node =
+        case s
+            when sTuple with x then
+                let fields = array of(extent x.fields model.tupleField(maybe.none(:String) model.okType false))
+                for i = 0 upto {extent x.fields - 1} do
+                    fields[i] := model.tupleField(x.fields[i].name asType(parts[i]) x.fields[i].isVar)
+                end
+                ofType(model.tupleType(fields))
+            when sRecord with x then
+                let fields = array of(extent x.fields tuple let name = "" let type = model.okType let isVar = false end)
+                for i = 0 upto {extent x.fields - 1} do
+                    fields[i] := tuple let name = x.fields[i].name let type = asType(parts[i]) let isVar = x.fields[i].isVar end
+                end
+                ofType(model.recordType(fields x.provenance))
+            when sVariant with x then
+                let next = tuple let var i = 0 end
+                let cases = array of(extent x.cases
+                    tuple let name = "" let type = maybe.none(:Type) let isVar = false end)
+                for i = 0 upto {extent x.cases - 1} do
+                    let payload = if x.cases[i].has then
+                        let p = asType(parts[next.i])
+                        next.i := next.i + 1
+                        maybe.some(:Type p)
+                    else
+                        maybe.none(:Type)
+                    end
+                    cases[i] := tuple let name = x.cases[i].name let type = payload let isVar = x.cases[i].isVar end
+                end
+                ofType(model.variantType(cases))
+            when sOption with x then
+                let next = tuple let var i = 0 end
+                let cases = array of(extent x.cases tuple let name = "" let payload = maybe.none(:Type) end)
+                for i = 0 upto {extent x.cases - 1} do
+                    let payload = if x.cases[i].has then
+                        let p = asType(parts[next.i])
+                        next.i := next.i + 1
+                        maybe.some(:Type p)
+                    else
+                        maybe.none(:Type)
+                    end
+                    cases[i] := tuple let name = x.cases[i].name let payload = payload end
+                end
+                ofType(model.optionType(cases))
+            when sArray then ofType(model.arrayType(asType(parts[0])))
+            when sVarType then ofType(model.varType(asType(parts[0])))
+            when sOutType then ofType(model.outType(asType(parts[0])))
+            when sFun with x then
+                (* Parameter names are not part of a function type's identity; canonical ones keep equal types
+                 * identical *)
+                let params = array of(extent x.modes
+                    tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
+                for i = 0 upto {extent x.modes - 1} do
+                    params[i] := tuple
+                        let name = "x" <> conv.int(i + 1)
+                        let type = asType(parts[i])
+                        let isVar = x.modes[i].isVar
+                        let isOut = x.modes[i].isOut
+                    end
+                end
+                ofType(model.funType(params asType(parts[extent parts - 1])))
+            when sApp with x then
+                let args = array of(x.count model.okType)
+                for i = 0 upto {x.count - 1} do args[i] := asType(parts[i + 1]) end
+                ofType(model.typeApp(asType(parts[0]) args))
+            when sFree with x then
+                if x.isAbstract then
+                    ofType(model.abstractType(x.name x.symbolId asKind(parts[0])))
+                elsif x.hasKind then
+                    ofType(model.typeVariable(x.name x.symbolId maybe.some(:Kind asKind(parts[0]))))
+                else
+                    ofType(model.typeVariable(x.name x.symbolId maybe.none(:Kind)))
+                end
+            when sPath with x then ofType(model.pathType(x.rootName x.rootSymbolId x.fieldName asKind(parts[0])))
+            when sKindType then ofKind(model.typeKind)
+            when sKindPower then ofKind(model.powerKind(asType(parts[0])))
+            else ofType(model.exceptionOf(asType(parts[0])))
+        end
+
+    (* A free variable of a leaf that is a parameter of an enclosing binder: its symbol, and the binder node (or
+     * class) and position *)
+    Let Free = Tuple symbolId: Int binder: Int pos: Int end
+    (* A leaf of a canonical graph: a type compared by identity, with its free variables bound by enclosing binders *)
+    Let Leaf = Tuple node: Node bound: Array(Free) end
+    (* A class of a canonical graph (or a node, before refinement) or a leaf *)
+    Let Ref = Option
+        refClass with k: Int end
+        refLeaf with leaf: Leaf end
+    end
+
+    (* A type parameter of a binder as written back *)
+    Let Param = Tuple symbolId: Int name: String kind: Kind end
+
+    let paramVar(p: Param): Type = model.typeVariable(p.name p.symbolId maybe.some(:Kind p.kind))
+
+    (* Where a part of a canonical form is written: the recursive type being written (its root class, component, and
+     * variables, by class), the parameters of the enclosing binders (by class, the nearest one of each), and the
+     * number of enclosing parameters *)
+    Let Context = Tuple
+        recRoot: Int
+        recComp: Int
+        recVars: hashMap.T(Int Type)
+        scope: hashMap.T(Int vector.T(Param))
+        depth: Int
+    end
+
+    let emptyContext(): Context =
+        tuple
+            let recRoot = ~1
+            let recComp = ~1
+            let recVars = hashMap.new(:Int :Type intEqual hash.int)
+            let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+            let depth = 0
+        end
+
+    (* The minimized graph of the nodes reachable from a type, from which canonical forms are written *)
+    Let Graph = Tuple
+        (* The structure of each node, whether its free variables are all free in the root, and the root's node *)
+        objects: Array(Node)
+        closed: Array(Bool)
+        root: maybe.T(Int)
+        (* Each node's class *)
+        cls: Array(Int)
+        (* The quotient graph, one node per class *)
+        shapes: Array(Shape)
+        children: Array(Array(Ref))
+        scope: Array(Int)
+        (* The strongly connected components *)
+        component: Array(Int)
+        cyclic: Array(Bool)
+        reachesCycle: Array(Bool)
+        refers: Array(hashMap.T(Int Bool))
+        terms: hashMap.T(Int maybe.T(Node))
+        built: hashMap.T(String Node)
+        aggregateMemo: hashMap.T(Int Bool)
+    end
+
+    Let Pending = Tuple parts: Array(Node) inner: Places end
+    Let Work = Tuple k: Int var pos: Int end
+    Let Step = Tuple k: Int succ: Array(Int) var pos: Int end
+
+    let newPlaces(): Places = hashMap.new(:Int :Place intEqual hash.int)
+
+    let newGraph(root: Type): Graph =
+        begin
+            let index = hashMap.new(:String :Int stringOp.equal hash.string)
+            let objects = vector.new(:Node)
+            let closed = vector.new(:Bool)
+            let shapes = vector.new(:Shape)
+            let children = vector.new(:Array(Ref))
+            (* For an occurrence of a parameter, its binder node; otherwise -1 *)
+            let scope = vector.new(:Int)
+            let pending = vector.new(:Pending)
+            let ref = fun(n0: Node bound: Places): Ref
+                begin
+                    let n = case n0 when nodeType with x then ofType(canonicalStructure(x.t)) else n0 end
+                    let fv = nodeFv(n)
+                    let free = vector.new(:Free)
+                    for i = 0 upto {extent fv - 1} do
+                        let place = hashMap.get(:Int :Place bound fv[i])
+                        if maybe.isSome(:Place place) then
+                            vector.append(:Free free tuple
+                                let symbolId = fv[i]
+                                let binder = maybe.unwrap(:Place place).binder
+                                let pos = maybe.unwrap(:Place place).pos
+                            end)
+                        end
+                    end
+                    let found = canonicalNode(n bound)
+                    if maybe.isNone(:NodeInfo found) then
+                        option refLeaf of Ref with let leaf = tuple let node = n let bound = vector.toArray(:Free free) end end
+                    else
+                        let nodeInfo = maybe.unwrap(:NodeInfo found)
+                        let key = stringBuilder.new()
+                        key.int(nodeId(n))
+                        for i = 0 upto {vector.length(:Free free) - 1} do
+                            let f = vector.get(:Free free i)
+                            key.char(';').int(f.symbolId).char(',').int(f.binder).char(',').int(f.pos)
+                        end
+                        let keyText = key.toString()
+                        let existing = hashMap.get(:String :Int index keyText)
+                        if maybe.isSome(:Int existing) then
+                            option refClass of Ref with let k = maybe.unwrap(:Int existing) end
+                        else
+                            if vector.length(:Node objects) >= maxCanonicalNodes then raise notCanonicalizable end end
+                            let i = vector.length(:Node objects)
+                            hashMap.insert(:String :Int index keyText i)
+                            vector.append(:Node objects n)
+                            vector.append(:Bool closed vector.empty(:Free free))
+                            vector.append(:Shape shapes nodeInfo.shape)
+                            vector.append(:Array(Ref) children array of :Ref end)
+                            vector.append(:Int scope
+                                if maybe.isSome(:Int nodeInfo.occurrenceOf) then
+                                    hashMap.find(:Int :Place bound maybe.unwrap(:Int nodeInfo.occurrenceOf)).binder
+                                else
+                                    ~1
+                                end)
+                            let var inner = bound
+                            if extent nodeInfo.binds > 0 then
+                                let copied = newPlaces()
+                                hashMap.forEach(:Int :Place bound fun(k: Int v: Place): Ok
+                                    begin hashMap.insert(:Int :Place copied k v) ok end)
+                                for pos = 0 upto {extent nodeInfo.binds - 1} do
+                                    hashMap.insert(:Int :Place copied nodeInfo.binds[pos]
+                                        tuple let binder = i let pos = pos end)
+                                end
+                                inner := copied
+                            end
+                            vector.append(:Pending pending tuple let parts = nodeInfo.parts let inner = inner end)
+                            option refClass of Ref with let k = i end
+                        end
+                    end
+                end
+            let rootRef = ref(ofType(root) newPlaces())
+            let var done = 0
+            while done < vector.length(:Node objects) do
+                let p = vector.get(:Pending pending done)
+                let kids = array of(extent p.parts option refClass of Ref with let k = 0 end)
+                for j = 0 upto {extent p.parts - 1} do kids[j] := ref(p.parts[j] p.inner) end
+                vector.set(:Array(Ref) children done kids)
+                done := done + 1
+            end
+            let n = vector.length(:Node objects)
+
+            (* Partition refinement to the coarsest bisimulation, starting from each node's shape, following scope
+             * edges *)
+            let shapeIds = hashMap.new(:String :Int stringOp.equal hash.string)
+            let var cls = array of(n 0)
+            for i = 0 upto {n - 1} do
+                let key = shapeKey(vector.get(:Shape shapes i))
+                if not(hashMap.contains(:String :Int shapeIds key)) then
+                    hashMap.insert(:String :Int shapeIds key hashMap.size(:String :Int shapeIds))
+                end
+                cls[i] := hashMap.find(:String :Int shapeIds key)
+            end
+            let var count = hashMap.size(:String :Int shapeIds)
+            let var stable = false
+            while not(stable) do
+                let sigs = hashMap.new(:String :Int stringOp.equal hash.string)
+                let refined = array of(n 0)
+                for i = 0 upto {n - 1} do
+                    let key = stringBuilder.new()
+                    key.int(cls[i]).char('|')
+                    let kids = vector.get(:Array(Ref) children i)
+                    for j = 0 upto {extent kids - 1} do
+                        case kids[j]
+                            when refClass with x then key.char('c').int(cls[x.k])
+                            when refLeaf with x then
+                                begin
+                                    key.char('L').int(nodeId(x.leaf.node))
+                                    for f = 0 upto {extent x.leaf.bound - 1} do
+                                        key.char(',').int(cls[x.leaf.bound[f].binder]).char('@').int(x.leaf.bound[f].pos)
+                                    end
+                                    key
+                                end
+                        end
+                        key.char(';')
+                    end
+                    let s = vector.get(:Int scope i)
+                    key.char('|').int(if s >= 0 then cls[s] else ~1 end)
+                    let k = key.toString()
+                    if not(hashMap.contains(:String :Int sigs k)) then
+                        hashMap.insert(:String :Int sigs k hashMap.size(:String :Int sigs))
+                    end
+                    refined[i] := hashMap.find(:String :Int sigs k)
+                end
+                if hashMap.size(:String :Int sigs) is count then
+                    stable := true
+                else
+                    cls := refined
+                    count := hashMap.size(:String :Int sigs)
+                end
+            end
+            let classes = cls
+            let classCount = count
+
+            (* The quotient graph, one node per class *)
+            let qShapes = array of(classCount option sKindType of Shape end)
+            let qChildren = array of(classCount array of :Ref end)
+            let qScope = array of(classCount ~1)
+            for i = 0 upto {n - 1} do
+                let k = classes[i]
+                qShapes[k] := vector.get(:Shape shapes i)
+                let kids = vector.get(:Array(Ref) children i)
+                let mapped = array of(extent kids option refClass of Ref with let k = 0 end)
+                for j = 0 upto {extent kids - 1} do
+                    mapped[j] := case kids[j]
+                        when refClass with x then option refClass of Ref with let k = classes[x.k] end
+                        when refLeaf with x then
+                            let bound = array of(extent x.leaf.bound tuple let symbolId = 0 let binder = 0 let pos = 0 end)
+                            for f = 0 upto {extent bound - 1} do
+                                bound[f] := tuple
+                                    let symbolId = x.leaf.bound[f].symbolId
+                                    let binder = classes[x.leaf.bound[f].binder]
+                                    let pos = x.leaf.bound[f].pos
+                                end
+                            end
+                            option refLeaf of Ref with let leaf = tuple let node = x.leaf.node let bound = bound end end
+                    end
+                end
+                qChildren[k] := mapped
+                let s = vector.get(:Int scope i)
+                qScope[k] := if s >= 0 then classes[s] else ~1 end
+            end
+
+            (* The strongly connected components of the quotient graph (Tarjan's algorithm, iteratively, along
+             * structural edges only), whether each is cyclic, whether each reaches a cyclic one, and the binder
+             * classes each refers to (by occurrences of their parameters) and reaches *)
+            let classKids = array of(classCount array of :Int end)
+            for k = 0 upto {classCount - 1} do
+                let found = vector.new(:Int)
+                for j = 0 upto {extent qChildren[k] - 1} do
+                    case qChildren[k][j]
+                        when refClass with x then vector.append(:Int found x.k)
+                        else ok
+                    end
+                end
+                classKids[k] := vector.toArray(:Int found)
+            end
+            let component = array of(classCount ~1)
+            let cyclic = vector.new(:Bool)
+            let reachesCycle = vector.new(:Bool)
+            let refers = vector.new(:hashMap.T(Int Bool))
+            let order = array of(classCount ~1)
+            let low = array of(classCount 0)
+            let stack = vector.new(:Int)
+            let onStack = array of(classCount false)
+            let var counter = 0
+            for start = 0 upto {classCount - 1} do
+                if order[start] < 0 then
+                    let work = vector.new(:Work)
+                    vector.append(:Work work tuple let k = start let var pos = 0 end)
+                    order[start] := counter
+                    low[start] := counter
+                    counter := counter + 1
+                    vector.append(:Int stack start)
+                    onStack[start] := true
+                    while not(vector.empty(:Work work)) do
+                        let top = vector.last(:Work work)
+                        let k = top.k
+                        let kids = classKids[k]
+                        if top.pos < extent kids then
+                            let c = kids[top.pos]
+                            top.pos := top.pos + 1
+                            if order[c] < 0 then
+                                order[c] := counter
+                                low[c] := counter
+                                counter := counter + 1
+                                vector.append(:Int stack c)
+                                onStack[c] := true
+                                vector.append(:Work work tuple let k = c let var pos = 0 end)
+                            elsif onStack[c] then
+                                if order[c] < low[k] then low[k] := order[c] end
+                            end
+                        else
+                            vector.pop(:Work work)
+                            if not(vector.empty(:Work work)) then
+                                let parent = vector.last(:Work work).k
+                                if low[k] < low[parent] then low[parent] := low[k] end
+                            end
+                            if low[k] is order[k] then
+                                (* k roots a component; the components it reaches were all completed before it *)
+                                let comp = vector.length(:Bool cyclic)
+                                let members = vector.new(:Int)
+                                let var popping = true
+                                while popping do
+                                    let m = vector.pop(:Int stack)
+                                    onStack[m] := false
+                                    component[m] := comp
+                                    vector.append(:Int members m)
+                                    if m is k then popping := false end
+                                end
+                                let var selfLoop = false
+                                for j = 0 upto {extent kids - 1} do if kids[j] is k then selfLoop := true end end
+                                let isCyclic = {vector.length(:Int members) > 1} orif selfLoop
+                                let var reaches = isCyclic
+                                let referred = hashMap.new(:Int :Bool intEqual hash.int)
+                                for mi = 0 upto {vector.length(:Int members) - 1} do
+                                    let m = vector.get(:Int members mi)
+                                    if qScope[m] >= 0 then hashMap.insert(:Int :Bool referred qScope[m] true) end
+                                    for j = 0 upto {extent qChildren[m] - 1} do
+                                        case qChildren[m][j]
+                                            when refClass with x then
+                                                if component[x.k] isnot comp then
+                                                    if vector.get(:Bool reachesCycle component[x.k]) then reaches := true end
+                                                    hashMap.forEach(:Int :Bool
+                                                        vector.get(:hashMap.T(Int Bool) refers component[x.k])
+                                                        fun(b: Int v: Bool): Ok begin hashMap.insert(:Int :Bool referred b true) ok end)
+                                                end
+                                            when refLeaf with x then
+                                                for f = 0 upto {extent x.leaf.bound - 1} do
+                                                    hashMap.insert(:Int :Bool referred x.leaf.bound[f].binder true)
+                                                end
+                                        end
+                                    end
+                                end
+                                vector.append(:Bool cyclic isCyclic)
+                                vector.append(:Bool reachesCycle reaches)
+                                vector.append(:hashMap.T(Int Bool) refers referred)
+                            end
+                        end
+                    end
+                end
+            end
+            tuple
+                let objects = vector.toArray(:Node objects)
+                let closed = vector.toArray(:Bool closed)
+                let root = case rootRef when refClass with x then maybe.some(:Int x.k) else maybe.none(:Int) end
+                let cls = classes
+                let shapes = qShapes
+                let children = qChildren
+                let scope = qScope
+                let component = component
+                let cyclic = vector.toArray(:Bool cyclic)
+                let reachesCycle = vector.toArray(:Bool reachesCycle)
+                let refers = vector.toArray(:hashMap.T(Int Bool) refers)
+                let terms = hashMap.new(:Int :maybe.T(Node) intEqual hash.int)
+                let built = hashMap.new(:String :Node stringOp.equal hash.string)
+                let aggregateMemo = hashMap.new(:Int :Bool intEqual hash.int)
+            end
+        end
+
+    (* Recursion variables bind tuples, records, variants, and options where every cycle passes through one, and
+     * otherwise any node that a recursive type may unfold to *)
+    let isAggregateShape(s: Shape): Bool =
+        case s
+            when sTuple then true
+            when sRecord then true
+            when sVariant then true
+            when sOption then true
+            when sXTuple then true
+            else false
+        end
+
+    let isUnfoldableShape(s: Shape): Bool =
+        case s
+            when sArray then true
+            when sVarType then true
+            when sOutType then true
+            when sFun then true
+            when sAll then true
+            when sException then true
+            when sAuto then true
+            else isAggregateShape(s)
+        end
+
+    (* Whether every cycle of a cyclic component passes through a tuple, record, variant, or option: whether its
+     * other nodes have no cycle among themselves *)
+    let aggregateCycles(g: Graph comp: Int): Bool =
+        begin
+            let memo = hashMap.get(:Int :Bool g.aggregateMemo comp)
+            if maybe.isSome(:Bool memo) then
+                maybe.unwrap(:Bool memo)
+            else
+                let other = fun(c: Int): Bool {g.component[c] is comp} andif not(isAggregateShape(g.shapes[c]))
+                let otherKids = fun(k: Int): Array(Int)
+                    begin
+                        let found = vector.new(:Int)
+                        for j = 0 upto {extent g.children[k] - 1} do
+                            case g.children[k][j]
+                                when refClass with x then if other(x.k) then vector.append(:Int found x.k) end
+                                else ok
+                            end
+                        end
+                        vector.toArray(:Int found)
+                    end
+                (* 1 while on the walk's path, 2 when done *)
+                let state = hashMap.new(:Int :Int intEqual hash.int)
+                let var acyclic = true
+                for start = 0 upto {extent g.shapes - 1} do
+                    if acyclic andif other(start) andif not(hashMap.contains(:Int :Int state start)) then
+                        hashMap.insert(:Int :Int state start 1)
+                        let work = vector.new(:Work)
+                        vector.append(:Work work tuple let k = start let var pos = 0 end)
+                        while acyclic andif not(vector.empty(:Work work)) do
+                            let top = vector.last(:Work work)
+                            let kids = otherKids(top.k)
+                            if top.pos is extent kids then
+                                hashMap.insert(:Int :Int state top.k 2)
+                                vector.delete(:Work work {vector.length(:Work work) - 1})
+                            else
+                                let c = kids[top.pos]
+                                top.pos := top.pos + 1
+                                let s = hashMap.get(:Int :Int state c)
+                                if maybe.isNone(:Int s) then
+                                    hashMap.insert(:Int :Int state c 1)
+                                    vector.append(:Work work tuple let k = c let var pos = 0 end)
+                                elsif maybe.unwrap(:Int s) is 1 then
+                                    acyclic := false
+                                end
+                            end
+                        end
+                    end
+                end
+                hashMap.insert(:Int :Bool g.aggregateMemo comp acyclic)
+                acyclic
+            end
+        end
+
+    (* Whether a node of a cyclic component may be bound by a recursion variable *)
+    let isRecShape(g: Graph k: Int comp: Int): Bool =
+        if aggregateCycles(g comp) then isAggregateShape(g.shapes[k]) else isUnfoldableShape(g.shapes[k]) end
+
+    let contextWith(ctx: Context scope: hashMap.T(Int vector.T(Param)) depth: Int): Context =
+        tuple
+            let recRoot = ctx.recRoot
+            let recComp = ctx.recComp
+            let recVars = ctx.recVars
+            let scope = scope
+            let depth = depth
+        end
+
+    (* Writes back class (or leaf) c in context ctx *)
+    let rec build(g: Graph c: Ref ctx0: Context): Node =
+        case c
+            when refLeaf with x then
+                if extent x.leaf.bound is 0 then
+                    x.leaf.node
+                else
+                    let subst = model.newSubst()
+                    for i = 0 upto {extent x.leaf.bound - 1} do
+                        let f = x.leaf.bound[i]
+                        let params = hashMap.get(:Int :vector.T(Param) ctx0.scope f.binder)
+                        if maybe.isNone(:vector.T(Param) params)
+                            orif {f.pos >= vector.length(:Param maybe.unwrap(:vector.T(Param) params))} then
+                            raise notCanonicalizable end
+                        end
+                        hashMap.insert(:Int :Type subst f.symbolId
+                            paramVar(vector.get(:Param maybe.unwrap(:vector.T(Param) params) f.pos)))
+                    end
+                    substituteNode(x.leaf.node subst)
+                end
+            when refClass with x then
+                let k = x.k
+                let comp = g.component[k]
+                let inRec = ctx0.recComp is comp
+                if inRec andif hashMap.contains(:Int :Type ctx0.recVars k) then
+                    ofType(hashMap.find(:Int :Type ctx0.recVars k))
+                else
+                    let refers = g.refers[comp]
+                    let ctx = if inRec then
+                        ctx0
+                    else
+                        let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+                        hashMap.forEach(:Int :vector.T(Param) ctx0.scope fun(b: Int p: vector.T(Param)): Ok
+                            if hashMap.contains(:Int :Bool refers b) then
+                                begin hashMap.insert(:Int :vector.T(Param) scope b p) ok end
+                            end)
+                        let e = emptyContext()
+                        contextWith(e scope if hashMap.empty(:Int :Bool refers) then 0 else ctx0.depth end)
+                    end
+                    let binders = vector.new(:Int)
+                    hashMap.forEach(:Int :vector.T(Param) ctx.scope fun(b: Int p: vector.T(Param)): Ok
+                        if hashMap.contains(:Int :Bool refers b) then vector.append(:Int binders b) end)
+                    sort.sortVector(:Int binders sort.intCompare)
+                    let key = stringBuilder.new()
+                    key.int(k).char('|').int(ctx.recRoot).char('|').int(ctx.depth).char('|')
+                    for i = 0 upto {vector.length(:Int binders) - 1} do
+                        let b = vector.get(:Int binders i)
+                        key.int(b).char(':')
+                        let params = hashMap.find(:Int :vector.T(Param) ctx.scope b)
+                        for j = 0 upto {vector.length(:Param params) - 1} do
+                            key.int(vector.get(:Param params j).symbolId).char(',')
+                        end
+                        key.char(';')
+                    end
+                    let keyText = key.toString()
+                    let found = hashMap.get(:String :Node g.built keyText)
+                    if maybe.isSome(:Node found) then
+                        maybe.unwrap(:Node found)
+                    else
+                        (* Inside the recursive type being written, not in a cycle, or a node that recursion
+                         * variables do not bind: the node is written with each of its parts *)
+                        let result = if inRec orif not(g.cyclic[comp]) orif not(isRecShape(g k comp)) then
+                            buildNode(g k ctx)
+                        else
+                            ofType(recursiveTerm(g k ctx))
+                        end
+                        hashMap.insert(:String :Node g.built keyText result)
+                        result
+                    end
+                end
+        end
+
+    and buildNode(g: Graph k: Int ctx: Context): Node =
+        begin
+            let s = g.shapes[k]
+            let kids = g.children[k]
+            case s
+                when sBound with x then
+                    let params = hashMap.get(:Int :vector.T(Param) ctx.scope g.scope[k])
+                    (* The occurrence's binder does not enclose it as written back *)
+                    if maybe.isNone(:vector.T(Param) params)
+                        orif {x.pos >= vector.length(:Param maybe.unwrap(:vector.T(Param) params))} then
+                        raise notCanonicalizable end
+                    end
+                    let param = vector.get(:Param maybe.unwrap(:vector.T(Param) params) x.pos)
+                    if x.isAbstract then
+                        ofType(model.abstractType(param.name param.symbolId asKind(build(g kids[0] ctx))))
+                    elsif x.hasKind then
+                        ofType(model.typeVariable(param.name param.symbolId maybe.some(:Kind asKind(build(g kids[0] ctx)))))
+                    else
+                        ofType(model.typeVariable(param.name param.symbolId maybe.none(:Kind)))
+                    end
+                when sAll with x then buildBinder(g k ctx x.count)
+                when sOperator with x then buildBinder(g k ctx x.count)
+                when sAuto then buildBinder(g k ctx 1)
+                when sKindAll then buildBinder(g k ctx 1)
+                when sXTuple with x then
+                    let var formals = 0
+                    for i = 0 upto {extent x.comps - 1} do if x.comps[i]?compFormal then formals := formals + 1 end end
+                    buildBinder(g k ctx formals)
+                else
+                    let parts = array of(extent kids ofType(model.okType))
+                    for i = 0 upto {extent kids - 1} do parts[i] := build(g kids[i] ctx) end
+                    rebuildNode(s parts)
+            end
+        end
+
+    (* A binder: its parameters are numbered by the number of enclosing ones, so that no two enclosing each other
+     * share an id; each parameter's kind may refer to the parameters before it *)
+    and buildBinder(g: Graph k: Int ctx: Context count: Int): Node =
+        begin
+            let s = g.shapes[k]
+            let kids = g.children[k]
+            let params = vector.new(:Param)
+            let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+            hashMap.forEach(:Int :vector.T(Param) ctx.scope fun(b: Int p: vector.T(Param)): Ok
+                begin hashMap.insert(:Int :vector.T(Param) scope b p) ok end)
+            hashMap.insert(:Int :vector.T(Param) scope k params)
+            let inner = contextWith(ctx scope ctx.depth + count)
+            let next = tuple let var i = 0 end
+            let nextPart = fun(): Node
+                begin
+                    let part = build(g kids[next.i] inner)
+                    next.i := next.i + 1
+                    part
+                end
+            let newParam = fun(name: String): Param
+                begin
+                    let index = ctx.depth + vector.length(:Param params)
+                    let param = tuple
+                        let symbolId = model.reservedSymbolId(canonicalBinderUse index)
+                        let name = if stringOp.isEmpty(name) then "T" <> conv.int(index) else name end
+                        let kind = asKind(nextPart())
+                    end
+                    vector.append(:Param params param)
+                    param
+                end
+            case s
+                when sAll with x then
+                    let quantifiers = vector.new(:model.Quantifier)
+                    for i = 1 upto x.count do
+                        let p = newParam("")
+                        vector.append(:model.Quantifier quantifiers
+                            tuple let name = p.name let symbolId = p.symbolId let bound = p.kind end)
+                    end
+                    ofType(model.allType(vector.toArray(:model.Quantifier quantifiers) asType(nextPart())))
+                when sOperator with x then
+                    let formals = vector.new(:model.TypeFormal)
+                    for i = 1 upto x.count do
+                        let p = newParam("")
+                        vector.append(:model.TypeFormal formals
+                            tuple let name = p.name let symbolId = p.symbolId let bound = p.kind end)
+                    end
+                    ofType(model.typeOperator(vector.toArray(:model.TypeFormal formals) asType(nextPart())))
+                when sKindAll then
+                    let p = newParam("")
+                    ofKind(model.allKind(p.name p.symbolId p.kind asKind(nextPart())))
+                when sAuto with x then
+                    let p = newParam("")
+                    let signature = vector.new(:model.RecordField)
+                    for i = 0 upto {extent x.fields - 1} do
+                        vector.append(:model.RecordField signature tuple
+                            let name = x.fields[i].name
+                            let type = asType(nextPart())
+                            let isVar = x.fields[i].isVar
+                        end)
+                    end
+                    ofType(model.autoType(p.name p.symbolId p.kind vector.toArray(:model.RecordField signature)))
+                when sXTuple with x then
+                    let components = vector.new(:model.TupleComponent)
+                    for i = 0 upto {extent x.comps - 1} do
+                        case x.comps[i]
+                            when compFormal with f then
+                                (* A tuple's type components are selected by name, so formals keep their names *)
+                                let p = newParam(f.name)
+                                vector.append(:model.TupleComponent components
+                                    option tupleTypeFormal of model.TupleComponent with
+                                        let name = p.name
+                                        let symbolId = p.symbolId
+                                        let bound = p.kind
+                                    end)
+                            when compBinding with f then
+                                let type = asType(nextPart())
+                                let bound = if f.hasBound then maybe.some(:Kind asKind(nextPart())) else maybe.none(:Kind) end
+                                vector.append(:model.TupleComponent components
+                                    option tupleTypeBinding of model.TupleComponent with
+                                        let name = f.name
+                                        let type = type
+                                        let bound = bound
+                                    end)
+                            when compField with f then
+                                vector.append(:model.TupleComponent components
+                                    model.tupleField(f.name asType(nextPart()) f.isVar))
+                        end
+                    end
+                    ofType(model.tupleType(vector.toArray(:model.TupleComponent components)))
+                else raise notCanonicalizable end
+            end
+        end
+
+    (* The canonical form of a class on a cycle: a recursive type whose variables stand for the targets of the back
+     * edges of a depth-first walk of its component from root, through the nodes that recursion variables may bind
+     * (other nodes are passed through, so that each recursive type unfolds to such a node) *)
+    and recursiveTerm(g: Graph root: Int ctx: Context): Type =
+        begin
+            let comp = g.component[root]
+            let found = vector.new(:Int)
+            let successors = fun(k: Int): Array(Int)
+                begin
+                    let targets = vector.new(:Int)
+                    let rec through(c: Ref): Ok =
+                        case c
+                            when refClass with x then
+                                if g.component[x.k] is comp then
+                                    if isRecShape(g x.k comp) then
+                                        vector.append(:Int targets x.k)
+                                    else
+                                        for j = 0 upto {extent g.children[x.k] - 1} do through(g.children[x.k][j]) end
+                                    end
+                                end
+                            else ok
+                        end
+                    for j = 0 upto {extent g.children[k] - 1} do through(g.children[k][j]) end
+                    vector.toArray(:Int targets)
+                end
+            (* 1 while on the walk's path, 2 when done *)
+            let state = hashMap.new(:Int :Int intEqual hash.int)
+            let work = vector.new(:Step)
+            vector.append(:Step work tuple let k = root let succ = successors(root) let var pos = 0 end)
+            hashMap.insert(:Int :Int state root 1)
+            while not(vector.empty(:Step work)) do
+                let top = vector.last(:Step work)
+                if top.pos is extent top.succ then
+                    hashMap.insert(:Int :Int state top.k 2)
+                    vector.delete(:Step work {vector.length(:Step work) - 1})
+                else
+                    let c = top.succ[top.pos]
+                    top.pos := top.pos + 1
+                    let s = hashMap.get(:Int :Int state c)
+                    if maybe.isNone(:Int s) then
+                        hashMap.insert(:Int :Int state c 1)
+                        vector.append(:Step work tuple let k = c let succ = successors(c) let var pos = 0 end)
+                    elsif maybe.unwrap(:Int s) is 1 then
+                        let var listed = false
+                        for i = 0 upto {vector.length(:Int found) - 1} do
+                            if vector.get(:Int found i) is c then listed := true end
+                        end
+                        if not(listed) then vector.append(:Int found c) end
+                    end
+                end
+            end
+            (* The root's variable first, the rest in the order they were found *)
+            let binders = vector.new(:Int)
+            for i = 0 upto {vector.length(:Int found) - 1} do
+                if vector.get(:Int found i) is root then vector.append(:Int binders root) end
+            end
+            for i = 0 upto {vector.length(:Int found) - 1} do
+                if vector.get(:Int found i) isnot root then vector.append(:Int binders vector.get(:Int found i)) end
+            end
+            let variables = hashMap.new(:Int :Type intEqual hash.int)
+            let vars = array of(vector.length(:Int binders) model.okType)
+            for i = 0 upto {vector.length(:Int binders) - 1} do
+                vars[i] := model.typeVariable("Rec." <> conv.int(i) model.reservedSymbolId(canonicalRecUse i)
+                    maybe.some(:Kind model.typeKind))
+                hashMap.insert(:Int :Type variables vector.get(:Int binders i) vars[i])
+            end
+            let inner = tuple
+                let recRoot = root
+                let recComp = comp
+                let recVars = variables
+                let scope = ctx.scope
+                let depth = ctx.depth
+            end
+            let varId = fun(v: Type): Int case v.form when typeVariable with x then x.symbolId else 0 end
+            let varName = fun(v: Type): String case v.form when typeVariable with x then x.name else "" end
+            if extent vars is 1 then
+                model.recType(varName(vars[0]) varId(vars[0]) model.typeKind asType(buildNode(g root inner)))
+            else
+                let bindings = array of(extent vars
+                    tuple let name = "" let symbolId = 0 let bound = model.typeKind let body = model.okType end)
+                for i = 0 upto {extent vars - 1} do
+                    bindings[i] := tuple
+                        let name = varName(vars[i])
+                        let symbolId = varId(vars[i])
+                        let bound = model.typeKind
+                        let body = asType(buildNode(g vector.get(:Int binders i) inner))
+                    end
+                end
+                model.recGroupType(bindings 0)
+            end
+        end
+
+    (* The canonical form of class k, or none if no recursion is reachable from it *)
+    let term(g: Graph k: Int): maybe.T(Node) =
+        begin
+            let found = hashMap.get(:Int :maybe.T(Node) g.terms k)
+            if maybe.isSome(:maybe.T(Node) found) then
+                maybe.unwrap(:maybe.T(Node) found)
+            else
+                let result = if g.reachesCycle[g.component[k]] then
+                    maybe.some(:Node build(g option refClass of Ref with let k = k end emptyContext()))
+                else
+                    maybe.none(:Node)
+                end
+                hashMap.insert(:Int :maybe.T(Node) g.terms k result)
+                result
+            end
+        end
+
+    (* The graph and class of each node of a canonical graph whose free variables are all free in the graph's
+     * root *)
+    Let GraphClass = Tuple graph: Graph k: Int end
+    let canonicalNodes = hashMap.new(:Int :GraphClass intEqual hash.int)
+
+    (* Builds the canonical graph of a structure and records the graph and class of each of its nodes whose free
+     * variables are all free in s; none if s has no graph (it is a leaf, or its graph is too large) *)
+    let registerGraph(s: Type): maybe.T(Graph) =
+        begin
+            let built = try maybe.some(:Graph newGraph(s)) when notCanonicalizable then maybe.none(:Graph) end
+            if maybe.isNone(:Graph built) orif maybe.isNone(:Int maybe.unwrap(:Graph built).root) then
+                maybe.none(:Graph)
+            else
+                let g = maybe.unwrap(:Graph built)
+                for i = 0 upto {extent g.objects - 1} do
+                    let id = nodeId(g.objects[i])
+                    if g.closed[i] andif not(hashMap.contains(:Int :GraphClass canonicalNodes id)) then
+                        hashMap.insert(:Int :GraphClass canonicalNodes id tuple let graph = g let k = g.cls[i] end)
+                    end
+                end
+                built
+            end
+        end
+
+    (* Whether each type may contain recursion (a recursive type, or an application that may reduce to one) *)
+    let mayRecurMemo = hashMap.new(:Int :Bool intEqual hash.int)
+
+    let rec mayRecur(t: Type): Bool =
+        case t.form
+            when typeRec then true
+            when typeRecGroup then true
+            when typeApp then true
+            when typeAlias then true
+            else
+                let memo = hashMap.get(:Int :Bool mayRecurMemo t.id)
+                if maybe.isSome(:Bool memo) then
+                    maybe.unwrap(:Bool memo)
+                else
+                    let result = mayRecurParts(t)
+                    hashMap.insert(:Int :Bool mayRecurMemo t.id result)
+                    result
+                end
+        end
+
+    and mayRecurOpt(t: maybe.T(Type)): Bool = maybe.isSome(:Type t) andif mayRecur(maybe.unwrap(:Type t))
+
+    and mayRecurKind(k: Kind): Bool =
+        case k.form
+            when kindPower with x then mayRecur(x.bound)
+            when kindAll with x then mayRecurKind(x.paramKind) orif mayRecurKind(x.resultKind)
+            else false
+        end
+
+    and mayRecurOptKind(k: maybe.T(Kind)): Bool = maybe.isSome(:Kind k) andif mayRecurKind(maybe.unwrap(:Kind k))
+
+    and mayRecurParts(t: Type): Bool =
+        begin
+            let var found = false
+            case t.form
+                when typeException with x then found := mayRecur(x.payload)
+                when typeTuple with x then
+                    for i = 0 upto {extent x.fields - 1} do
+                        case x.fields[i]
+                            when tupleField with f then if mayRecur(f.type) then found := true end
+                            when tupleTypeFormal with f then if mayRecurKind(f.bound) then found := true end
+                            when tupleTypeBinding with f then
+                                if mayRecur(f.type) orif mayRecurOptKind(f.bound) then found := true end
+                        end
+                    end
+                when typeRecord with x then
+                    for i = 0 upto {extent x.fields - 1} do if mayRecur(x.fields[i].type) then found := true end end
+                when typeVariant with x then
+                    for i = 0 upto {extent x.variants - 1} do if mayRecurOpt(x.variants[i].type) then found := true end end
+                when typeOption with x then
+                    for i = 0 upto {extent x.options - 1} do if mayRecurOpt(x.options[i].payload) then found := true end end
+                when typeFun with x then
+                    found := mayRecur(x.result)
+                    for i = 0 upto {extent x.params - 1} do if mayRecur(x.params[i].type) then found := true end end
+                when typeVar with x then found := mayRecur(x.element)
+                when typeArray with x then found := mayRecur(x.element)
+                when typeOut with x then found := mayRecur(x.element)
+                when typeAll with x then
+                    found := mayRecur(x.body)
+                    for i = 0 upto {extent x.quantifiers - 1} do
+                        if mayRecurKind(x.quantifiers[i].bound) then found := true end
+                    end
+                when typeAuto with x then
+                    found := mayRecurKind(x.kindBound)
+                    for i = 0 upto {extent x.signature - 1} do if mayRecur(x.signature[i].type) then found := true end end
+                when typeOperator with x then
+                    found := mayRecur(x.body)
+                    for i = 0 upto {extent x.params - 1} do if mayRecurKind(x.params[i].bound) then found := true end end
+                when typeVariable with x then found := mayRecurOptKind(x.bound)
+                when typeAbstract with x then found := mayRecurKind(x.bound)
+                when typePath with x then found := mayRecurKind(x.bound)
+                else ok
+            end
+            found
+        end
+
+    (* The canonical form found for each type (none if it has none) *)
+    let canonicalCache = hashMap.new(:Int :maybe.T(Type) intEqual hash.int)
+
+    let rec canonicalUncached(t: Type): maybe.T(Type) =
+        begin
+            let var selfNamed = false
+            for i = 0 upto {extent t.fv - 1} do if isRecSelfSymbol(t.fv[i]) then selfNamed := true end end
+            if not(mayRecur(t)) then
+                maybe.none(:Type)
+            elsif selfNamed then
+                (* A body of a recursive type being named, its variables replaced by placeholders: the recursive type
+                 * is in canonical form already (or is named as written), and so are the body's parts *)
+                maybe.none(:Type)
+            else
+                let s = canonicalStructure(t)
+                let entry = hashMap.get(:Int :GraphClass canonicalNodes s.id)
+                let place = if maybe.isSome(:GraphClass entry) then
+                    entry
+                else
+                    let g = registerGraph(s)
+                    if maybe.isNone(:Graph g) then
+                        maybe.none(:GraphClass)
+                    else
+                        let graph = maybe.unwrap(:Graph g)
+                        maybe.some(:GraphClass tuple
+                            let graph = graph
+                            let k = graph.cls[maybe.unwrap(:Int graph.root)]
+                        end)
+                    end
+                end
+                if maybe.isNone(:GraphClass place) then
+                    maybe.none(:Type)
+                else
+                    let gc = maybe.unwrap(:GraphClass place)
+                    let found = try term(gc.graph gc.k) when notCanonicalizable then maybe.none(:Node) end
+                    let canonical = if maybe.isSome(:Node found) then
+                        case maybe.unwrap(:Node found)
+                            when nodeType with x then maybe.some(:Type x.t)
+                            else maybe.none(:Type)
+                        end
+                    else
+                        maybe.none(:Type)
+                    end
+                    if maybe.isNone(:Type canonical) orif model.same(maybe.unwrap(:Type canonical) t) then
+                        maybe.none(:Type)
+                    else
+                        let c = maybe.unwrap(:Type canonical)
+                        (* Merging binders could in principle mix up scopes: a canonical form is used only if it is
+                         * equal to the type *)
+                        if not(subtyping.isTypeEqual(c model.stripAliases(t) maybe.none(:model.Lookup))) then
+                            let message = "canonical form of the type " <> dump.shortTypeName(t) <> " is not equal to it"
+                            if checkCanonical() then raise canonicalError with message end end
+                            (* The type is named as written; the program is still compiled *)
+                            writer.putString(writer.err
+                                "quest: warning: internal: " <> message <> "; naming it as written (please report this)\n")
+                            maybe.none(:Type)
+                        else
+                            (* Tags and descriptors ask next for the parts of the canonical form and of its
+                             * unfoldings: its graph has them *)
+                            let cs = canonicalStructure(c)
+                            if not(hashMap.contains(:Int :GraphClass canonicalNodes cs.id)) then
+                                begin registerGraph(cs) ok end
+                            end
+                            if checkCanonical() andif maybe.isSome(:Type canonicalType(c)) then
+                                raise canonicalError with
+                                    "canonical form of " <> dump.shortTypeName(t) <> " is not a fixed point"
+                                end
+                            end
+                            canonical
+                        end
+                    end
+                end
+            end
+        end
+
+    and canonicalType(t0: Type): maybe.T(Type) =
+        begin
+            let t = model.pruned(t0)
+            if t.hasMeta then
+                maybe.none(:Type)
+            else
+                let found = hashMap.get(:Int :maybe.T(Type) canonicalCache t.id)
+                if maybe.isSome(:maybe.T(Type) found) then
+                    maybe.unwrap(:maybe.T(Type) found)
+                else
+                    let result = canonicalUncached(t)
+                    hashMap.insert(:Int :maybe.T(Type) canonicalCache t.id result)
+                    result
+                end
             end
         end
 end

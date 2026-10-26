@@ -1,0 +1,191 @@
+(* Quest Self-Hosted Compiler: Type Descriptors' Type-Level Forms Implementation *)
+
+module descriptors : Descriptors
+import
+    questlang/types/model : questlang/types/Model
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/codegen/syntax : questlang/codegen/Syntax
+    questlang/codegen/layout : questlang/codegen/Layout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+export
+    Let Type = model.Type
+    Let Kind = model.Kind
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    let moduleAbstractTypeName(t: Type): maybe.T(String) =
+        case t.form
+            when typeVariable with x then
+                let entry = abstractTypes.abstractTypeBySymbol(x.symbolId)
+                if maybe.isSome(:abstractTypes.ModuleAbstractType entry)
+                    andif maybe.unwrap(:abstractTypes.ModuleAbstractType entry).linked then
+                    maybe.some(:String maybe.unwrap(:abstractTypes.ModuleAbstractType entry).globalName)
+                else
+                    maybe.none(:String)
+                end
+            else maybe.none(:String)
+        end
+
+    let boundVarUse = option boundVar of model.ReservedSymbolUse end
+    let holeUse = option hole of model.ReservedSymbolUse end
+    let canonicalQuantifierUse = option canonicalQuantifier of model.ReservedSymbolUse end
+
+    let reservedIndex(symbolId: Int use: model.ReservedSymbolUse): maybe.T(Int) =
+        begin
+            let decoded = model.reservedSymbolUse(symbolId)
+            if maybe.isSome(:model.Decoded decoded)
+                andif {ordinal(maybe.unwrap(:model.Decoded decoded).use) is ordinal(use)} then
+                maybe.some(:Int maybe.unwrap(:model.Decoded decoded).index)
+            else
+                maybe.none(:Int)
+            end
+        end
+
+    (* Bound type parameters of polymorphic function types are described by placeholders: type variables with
+     * reserved symbol ids that stand for de Bruijn indices *)
+    let boundVar(index: Int bound: maybe.T(Kind)): Type =
+        model.typeVariable("#" <> syntax.cInt(index) model.reservedSymbolId(boundVarUse index) bound)
+
+    let boundVarIndex(t: Type): maybe.T(Int) =
+        case t.form
+            when typeVariable with x then reservedIndex(x.symbolId boundVarUse)
+            else maybe.none(:Int)
+        end
+
+    let holeVar(index: Int bound: maybe.T(Kind)): Type =
+        model.typeVariable("?" <> syntax.cInt(index) model.reservedSymbolId(holeUse index) bound)
+
+    let holeIndex(t: Type): maybe.T(Int) =
+        case t.form
+            when typeVariable with x then reservedIndex(x.symbolId holeUse)
+            else maybe.none(:Int)
+        end
+
+    (* The bound type parameter placeholders occurring in a type or a kind *)
+    let boundVarsIn(start: model.Part): vector.T(Type) =
+        begin
+            let found = vector.new(:Type)
+            let foundIds = hashMap.new(:Int :Bool intEqual hash.int)
+            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let rec visit(p: model.Part): Ok =
+                case p
+                    when partType with x then
+                        if not(hashMap.contains(:Int :Bool seen x.t.id)) then
+                            hashMap.insert(:Int :Bool seen x.t.id true)
+                            case x.t.form
+                                when typeVariable with v then
+                                    if maybe.isSome(:Int boundVarIndex(x.t)) andif not(hashMap.contains(:Int :Bool foundIds v.symbolId)) then
+                                        hashMap.insert(:Int :Bool foundIds v.symbolId true)
+                                        vector.append(:Type found x.t)
+                                    end
+                                else ok
+                            end
+                            vector.forEach(:model.Part model.typeParts(x.t) visit)
+                        end
+                    when partKind with x then
+                        if not(hashMap.contains(:Int :Bool seen x.k.id)) then
+                            hashMap.insert(:Int :Bool seen x.k.id true)
+                            vector.forEach(:model.Part model.kindParts(x.k) visit)
+                        end
+                end
+            visit(start)
+            found
+        end
+
+    let shiftSubst(present: vector.T(Type) by: Int): model.Subst =
+        begin
+            let subst = model.newSubst()
+            for i = 0 upto {vector.length(:Type present) - 1} do
+                case vector.get(:Type present i).form
+                    when typeVariable with x then
+                        begin
+                            hashMap.insert(:Int :Type subst x.symbolId
+                                boundVar(maybe.unwrap(:Int boundVarIndex(vector.get(:Type present i))) + by x.bound))
+                            ok
+                        end
+                    else ok
+                end
+            end
+            subst
+        end
+
+    (* t with each bound type parameter placeholder's index raised by by (moving t under by more binders) *)
+    let shiftType(t: Type by: Int): Type =
+        begin
+            let present = boundVarsIn(option partType of model.Part with let t = t end)
+            if vector.empty(:Type present) orif {by is 0} then t else model.substitute(t shiftSubst(present by)) end
+        end
+
+    let shiftKind(k: Kind by: Int): Kind =
+        begin
+            let present = boundVarsIn(option partKind of model.Part with let k = k end)
+            if vector.empty(:Type present) orif {by is 0} then k else model.substituteInKind(k shiftSubst(present by)) end
+        end
+
+    let rec canonicalFunType(t0: Type): Type =
+        begin
+            let t = shapes.shape(t0).structure
+            case t.form
+                when typeFun with x then
+                    let params = array of(extent x.params
+                        tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
+                    for i = 0 upto {extent x.params - 1} do
+                        let p = x.params[i]
+                        params[i] := tuple let name = "" let type = p.type let isVar = p.isVar let isOut = p.isOut end
+                    end
+                    model.funType(params x.result)
+                when typeAll with x then
+                    let quants = x.quantifiers
+                    let n = extent quants
+                    let newQuants = array of(n tuple let name = "" let symbolId = 0 let bound = model.typeKind end)
+                    for k = 0 upto {n - 1} do
+                        let shifted = shiftKind(quants[k].bound k)
+                        let subst = model.newSubst()
+                        for j = 0 upto {k - 1} do
+                            hashMap.insert(:Int :Type subst quants[j].symbolId
+                                boundVar({k - 1} - j maybe.some(:Kind newQuants[j].bound)))
+                        end
+                        newQuants[k] := tuple
+                            let name = "$" <> syntax.cInt(k)
+                            let symbolId = model.reservedSymbolId(canonicalQuantifierUse k)
+                            let bound = model.substituteInKind(shifted subst)
+                        end
+                    end
+                    let placeholders = model.newSubst()
+                    for k = 0 upto {n - 1} do
+                        hashMap.insert(:Int :Type placeholders quants[k].symbolId
+                            boundVar({n - 1} - k maybe.some(:Kind newQuants[k].bound)))
+                    end
+                    let body0 = model.substitute(shiftType(x.body n) placeholders)
+                    let body = if body0.form?typeFun then canonicalFunType(body0) else body0 end
+                    model.allType(newQuants body)
+                else t
+            end
+        end
+
+    let funDescriptorTag(t: Type): String = "fun_" <> layout.typeDigest(canonicalFunType(t))
+
+    let canonicalAutoType(t: Type): Type =
+        case t.form
+            when typeAuto with x then
+                let kindBound = shiftKind(x.kindBound 1)
+                let placeholder = boundVar(0 maybe.some(:Kind kindBound))
+                let placeholderId = model.reservedSymbolId(boundVarUse 0)
+                let subst = model.singleSubst(x.symbolId placeholder)
+                let signature = array of(extent x.signature tuple let name = "" let type = model.okType let isVar = false end)
+                for i = 0 upto {extent x.signature - 1} do
+                    let f = x.signature[i]
+                    signature[i] := tuple
+                        let name = f.name
+                        let type = model.substitute(shiftType(f.type 1) subst)
+                        let isVar = f.isVar
+                    end
+                end
+                model.autoType("$0" placeholderId kindBound signature)
+            else t
+        end
+end

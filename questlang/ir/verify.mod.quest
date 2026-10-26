@@ -1,0 +1,515 @@
+(* Quest Self-Hosted Compiler: The IR Verifier Implementation *)
+
+module verify : Verify
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/codegen/layout : questlang/codegen/Layout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    system : System
+export
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+
+    let verifyError: Exception(String) = exception verifyError: String end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    let irChecksEnabled(): Bool = eq(system.getEnv("QUEST_CHECK_IR") "1")
+
+    (* =========================================================================
+     * Scopes
+     *
+     * What is in scope at a point: variables, join points (label and arity), loops, and the enclosing function. The
+     * bootstrap's scopes are values, extended for the rest of a body and the bodies within it; here they are one
+     * mutable scope whose additions in a body (or around one) are undone when it ends.
+     * ========================================================================= *)
+
+    Let JoinPoint = Tuple label: String arity: Int end
+    Let Ids = hashMap.T(Int Bool)
+    let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
+
+    Let Scope = Tuple
+        vars: Ids
+        var joins: vector.T(JoinPoint)
+        var loops: vector.T(String)
+        var inFunction: Bool
+        (* Mutable variables of enclosing functions, which a nested function must not use *)
+        var outerMutables: Ids
+        (* Mutable variables of the current function (or top level), and whether this is a top level *)
+        var localMutables: Ids
+        var topLevel: Bool
+        (* The variables added in each body being checked, removed when it ends *)
+        logs: vector.T(vector.T(Variable))
+    end
+
+    let newScope(vars: Ids): Scope =
+        tuple
+            let vars = vars
+            let var joins = vector.new(:JoinPoint)
+            let var loops = vector.new(:String)
+            let var inFunction = false
+            let var outerMutables = newIds()
+            let var localMutables = newIds()
+            let var topLevel = true
+            let logs = vector.new(:vector.T(Variable))
+        end
+
+    (* Adds a variable to the scope (one already in it stays, as it was) *)
+    let withVar(scope: Scope v: Variable): Ok =
+        if not(hashMap.contains(:Int :Bool scope.vars v.id)) then
+            hashMap.insert(:Int :Bool scope.vars v.id true)
+            if v.isMutable then hashMap.insert(:Int :Bool scope.localMutables v.id true) end
+            if not(vector.empty(:vector.T(Variable) scope.logs)) then
+                vector.append(:Variable vector.last(:vector.T(Variable) scope.logs) v)
+            end
+        end
+
+    let withVars(scope: Scope vs: Array(Variable)): Ok = for i = 0 upto {extent vs - 1} do withVar(scope vs[i]) end
+
+    (* Runs f with the variables it adds to the scope removed afterwards *)
+    let nested(scope: Scope f: All() Ok): Ok =
+        begin
+            vector.append(:vector.T(Variable) scope.logs vector.new(:Variable))
+            f()
+            let log = vector.pop(:vector.T(Variable) scope.logs)
+            for i = 0 upto {vector.length(:Variable log) - 1} do
+                let v = vector.get(:Variable log i)
+                hashMap.delete(:Int :Bool scope.vars v.id)
+                hashMap.delete(:Int :Bool scope.localMutables v.id)
+            end
+        end
+
+    let copyIds(ids: Ids): Ids =
+        begin
+            let copy = newIds()
+            hashMap.forEach(:Int :Bool ids fun(k: Int v: Bool): Ok begin hashMap.insert(:Int :Bool copy k v) ok end)
+            copy
+        end
+
+    (* =========================================================================
+     * The core invariants
+     * ========================================================================= *)
+
+    Let Verifier = Tuple
+        problems: vector.T(String)
+        bound: Ids
+        (* The modules the unit defines and imports, which module references must be *)
+        modules: Ids
+        (* After closure conversion, the unit's functions, which closures must be of *)
+        var functions: maybe.T(Ids)
+        var represented: Bool
+    end
+
+    let problem(v: Verifier text: String): Ok = vector.append(:String v.problems text)
+
+    let bind(v: Verifier x: Variable where: String): Ok =
+        begin
+            if hashMap.contains(:Int :Bool v.bound x.id) then
+                problem(v where <> ": variable '" <> x.hint <> "' is bound more than once")
+            end
+            hashMap.insert(:Int :Bool v.bound x.id true)
+            (* Every variable has a shape (computing it raises if not) *)
+            shapes.shape(x.type)
+            ok
+        end
+
+    let use(v: Verifier a: Atom scope: Scope where: String): Ok =
+        case a
+            when atomVar with x then
+                if not(hashMap.contains(:Int :Bool scope.vars x.v.id)) then
+                    problem(v where <> ": variable '" <> x.v.hint <> "' is used outside its scope")
+                elsif hashMap.contains(:Int :Bool scope.outerMutables x.v.id) then
+                    problem(v where <> ": function uses mutable variable '" <> x.v.hint <> "' of an enclosing function")
+                end
+            else ok
+        end
+
+    let useVar(v: Verifier x: Variable scope: Scope where: String): Ok = use(v nodes.atomOfVar(x) scope where)
+
+    let moduleRef(v: Verifier r: maybe.T(nodes.ModuleRef) where: String): Ok =
+        if maybe.isSome(:nodes.ModuleRef r) then
+            let id = case maybe.unwrap(:nodes.ModuleRef r)
+                when refModule with x then x.m.id
+                when refImport with x then x.i.id
+            end
+            if not(hashMap.contains(:Int :Bool v.modules id)) then
+                problem(v where <> ": reference to a module that is not the unit's or imported by it")
+            end
+        end
+
+    let operation(v: Verifier o: Op scope: Scope where: String): Ok =
+        begin
+            case o
+                when opConvert then
+                    if not(v.represented) then problem(v where <> ": convert before the represent pass") end
+                when opMakeClosure with x then
+                    if maybe.isNone(:Ids v.functions) then
+                        problem(v where <> ": MakeClosure before closure conversion")
+                    elsif not(hashMap.contains(:Int :Bool maybe.unwrap(:Ids v.functions) x.code.id)) then
+                        problem(v where <> ": a closure of a function that is not the unit's")
+                    end
+                when opEnvField then
+                    if maybe.isNone(:Ids v.functions) then problem(v where <> ": EnvField before closure conversion") end
+                when opCall with x then moduleRef(v x.moduleRef where)
+                when opTypeApp with x then moduleRef(v x.moduleRef where)
+                when opModuleMember with x then moduleRef(v maybe.some(:nodes.ModuleRef x.moduleRef) where)
+                else ok
+            end
+            let uses = walk.opUses(o)
+            for i = 0 upto {extent uses - 1} do use(v uses[i] scope where) end
+        end
+
+    let sameNames(a: Array(String) b: Array(String)): Bool =
+        begin
+            let sa = sort.sorted(:String a sort.stringCompare)
+            let sb = sort.sorted(:String b sort.stringCompare)
+            let var same = extent sa is extent sb
+            if same then for i = 0 upto {extent sa - 1} do if not(eq(sa[i] sb[i])) then same := false end end end
+            same
+        end
+
+    (* Checks the cases an option operation counts ordinals in *)
+    let optionCases(v: Verifier o: Op x: Variable where: String): Ok =
+        begin
+            let optionShape = fun(t: model.Type): maybe.T(shapes.Shape)
+                begin
+                    let s = layout.resolvedShape(shapes.shape(t))
+                    if eq(s.kind "option") then maybe.some(:shapes.Shape s) else maybe.none(:shapes.Shape) end
+                end
+            let check = fun(cases: Array(String) t: model.Type): Ok
+                begin
+                    let s = optionShape(t)
+                    if maybe.isSome(:shapes.Shape s) then
+                        let caseNames = vector.new(:String)
+                        let sc = maybe.unwrap(:shapes.Shape s).cases
+                        for i = 0 upto {extent sc - 1} do vector.append(:String caseNames maybe.unwrapOr(:String sc[i].name "")) end
+                        if not(sameNames(cases vector.toArray(:String caseNames))) then
+                            problem(v where <> ": an ordinal counts in cases (" <> strutil.joinArray(" " cases)
+                                <> ") of an option of type " <> model.show(t))
+                        end
+                    end
+                end
+            case o
+                when opOrdinal with y then
+                    case y.value when atomVar with z then check(y.cases z.v.type) else ok end
+                when opMakeOption with y then if maybe.isSome(:Atom y.ordinalAtom) then check(y.cases x.type) end
+                when opPayload with y then
+                    case y.value
+                        when atomVar with z then
+                            if maybe.isSome(:shapes.Shape optionShape(z.v.type)) andif maybe.isNone(:Int y.ordinalIndex) then
+                                problem(v where <> ": the payload of option case " <> y.tag <> " without its ordinal")
+                            end
+                        else ok
+                    end
+                else ok
+            end
+        end
+
+    let statementName(s: Stmt): String =
+        case s
+            when sReturn then "return"
+            when sJump then "jump"
+            when sBreak then "break"
+            when sContinue then "continue"
+            when sRaise then "raise"
+            when sReraise then "reraise"
+            when sUnreachable then "unreachable"
+            else "statement"
+        end
+
+    let rec function(v: Verifier f: nodes.Function scope: Scope): Ok =
+        begin
+            let where = "function '" <> f.v.hint <> "'"
+            (* A nested function may use the enclosing functions' values but not their mutable variables; the top
+             * level's mutable variables are globals *)
+            let savedJoins = scope.joins
+            let savedLoops = scope.loops
+            let savedInFunction = scope.inFunction
+            let savedOuter = scope.outerMutables
+            let savedLocal = scope.localMutables
+            let savedTop = scope.topLevel
+            let outer = copyIds(scope.outerMutables)
+            if not(scope.topLevel) then
+                hashMap.forEach(:Int :Bool scope.localMutables fun(k: Int b: Bool): Ok begin hashMap.insert(:Int :Bool outer k b) ok end)
+            end
+            scope.joins := vector.new(:JoinPoint)
+            scope.loops := vector.new(:String)
+            scope.inFunction := true
+            scope.outerMutables := outer
+            scope.localMutables := newIds()
+            scope.topLevel := false
+            nested(scope fun(): Ok
+                begin
+                    if maybe.isSome(:Variable f.env) then
+                        bind(v maybe.unwrap(:Variable f.env) where)
+                        withVar(scope maybe.unwrap(:Variable f.env))
+                    end
+                    for i = 0 upto {extent f.params - 1} do
+                        let p = f.params[i]
+                        bind(v p.v where)
+                        if not(eq(p.mode "value") orif eq(p.mode "var") orif eq(p.mode "out")) then
+                            problem(v where <> ": parameter '" <> p.v.hint <> "' has mode '" <> p.mode <> "'")
+                        end
+                        if not(eq(p.mode "value")) isnot p.v.isMutable then
+                            problem(v where <> ": parameter '" <> p.v.hint <> "' is " <> p.mode <> " but "
+                                <> if p.v.isMutable then "" else "not " end <> "mutable")
+                        end
+                    end
+                    for i = 0 upto {extent f.params - 1} do withVar(scope f.params[i].v) end
+                    body(v f.body scope where)
+                end)
+            scope.joins := savedJoins
+            scope.loops := savedLoops
+            scope.inFunction := savedInFunction
+            scope.outerMutables := savedOuter
+            scope.localMutables := savedLocal
+            scope.topLevel := savedTop
+            ok
+        end
+
+    and body(v: Verifier b: Body scope: Scope where: String): Ok =
+        nested(scope fun(): Ok
+            begin
+                let n = vector.length(:Stmt b.statements)
+                for i = 0 upto {n - 1} do
+                    let s = vector.get(:Stmt b.statements i)
+                    if nodes.isTerminator(s) andif {i isnot {n - 1}} then
+                        problem(v where <> ": a " <> statementName(s) <> " is followed by other statements")
+                    end
+                    statement(v s scope where)
+                end
+            end)
+
+    and statement(v: Verifier s: Stmt scope: Scope where: String): Ok =
+        case s
+            when sLet with x then
+                begin
+                    operation(v x.value scope where)
+                    optionCases(v x.value x.v where)
+                    bind(v x.v where)
+                    if x.v.isMutable then problem(v where <> ": let binds mutable variable '" <> x.v.hint <> "'") end
+                    withVar(scope x.v)
+                end
+            when sVarDecl with x then
+                begin
+                    if maybe.isSome(:Atom x.init) then use(v maybe.unwrap(:Atom x.init) scope where) end
+                    bind(v x.v where)
+                    if not(x.v.isMutable) then problem(v where <> ": var declares immutable variable '" <> x.v.hint <> "'") end
+                    withVar(scope x.v)
+                end
+            when sAssign with x then
+                begin
+                    useVar(v x.v scope where)
+                    use(v x.value scope where)
+                    if not(x.v.isMutable) then problem(v where <> ": assignment to immutable variable '" <> x.v.hint <> "'") end
+                end
+            when sStoreAt then useAll(v walk.statementUses(s) scope where)
+            when sStoreField then useAll(v walk.statementUses(s) scope where)
+            when sStoreComponent then useAll(v walk.statementUses(s) scope where)
+            when sStoreElement then useAll(v walk.statementUses(s) scope where)
+            when sDo with x then operation(v x.value scope where)
+            when sFuns with x then
+                begin
+                    if maybe.isSome(:Ids v.functions) then problem(v where <> ": a funs statement after closure conversion") end
+                    for i = 0 upto {extent x.functions - 1} do bind(v x.functions[i].v where) end
+                    if x.recursive then
+                        for i = 0 upto {extent x.functions - 1} do withVar(scope x.functions[i].v) end
+                        for i = 0 upto {extent x.functions - 1} do function(v x.functions[i] scope) end
+                    else
+                        for i = 0 upto {extent x.functions - 1} do function(v x.functions[i] scope) end
+                        for i = 0 upto {extent x.functions - 1} do withVar(scope x.functions[i].v) end
+                    end
+                end
+            when sLetRec with x then
+                begin
+                    (* The body computes the variables' values, and closures it makes may refer to them; they are in
+                     * scope after it *)
+                    withVars(scope x.vars)
+                    body(v x.body scope where)
+                end
+            when sIf with x then
+                begin
+                    use(v x.cond scope where)
+                    body(v x.thenBody scope where)
+                    body(v x.elseBody scope where)
+                end
+            when sSwitch with x then
+                begin
+                    use(v x.value scope where)
+                    for i = 0 upto {extent x.cases - 1} do
+                        let c = x.cases[i]
+                        nested(scope fun(): Ok
+                            begin
+                                if maybe.isSome(:Variable c.binder) then
+                                    bind(v maybe.unwrap(:Variable c.binder) where)
+                                    withVar(scope maybe.unwrap(:Variable c.binder))
+                                end
+                                body(v c.body scope where)
+                            end)
+                    end
+                    if maybe.isSome(:Body x.elseBody) then body(v maybe.unwrap(:Body x.elseBody) scope where) end
+                end
+            when sInspect with x then
+                begin
+                    use(v x.value scope where)
+                    for i = 0 upto {extent x.cases - 1} do
+                        let c = x.cases[i]
+                        for j = 0 upto {extent c.binders - 1} do bind(v c.binders[j] where) end
+                        nested(scope fun(): Ok
+                            begin
+                                withVars(scope c.binders)
+                                body(v c.body scope where)
+                            end)
+                    end
+                    if maybe.isSome(:Body x.elseBody) then body(v maybe.unwrap(:Body x.elseBody) scope where) end
+                end
+            when sLoop with x then
+                begin
+                    let var inUse = false
+                    for i = 0 upto {vector.length(:String scope.loops) - 1} do
+                        if eq(vector.get(:String scope.loops i) x.label) then inUse := true end
+                    end
+                    if inUse then problem(v where <> ": loop label '" <> x.label <> "' is already in use") end
+                    vector.append(:String scope.loops x.label)
+                    body(v x.body scope where)
+                    vector.pop(:String scope.loops)
+                    ok
+                end
+            when sTry with x then
+                begin
+                    useAll(v x.catches scope where)
+                    body(v x.body scope where)
+                    bind(v x.exc where)
+                    nested(scope fun(): Ok
+                        begin
+                            withVar(scope x.exc)
+                            body(v x.handler scope where)
+                        end)
+                end
+            when sJoin with x then
+                begin
+                    let var inUse = false
+                    for i = 0 upto {vector.length(:JoinPoint scope.joins) - 1} do
+                        if eq(vector.get(:JoinPoint scope.joins i).label x.label) then inUse := true end
+                    end
+                    if inUse then problem(v where <> ": join label '" <> x.label <> "' is already in use") end
+                    for i = 0 upto {extent x.params - 1} do bind(v x.params[i] where) end
+                    nested(scope fun(): Ok
+                        begin
+                            withVars(scope x.params)
+                            body(v x.continuation scope where)
+                        end)
+                    vector.append(:JoinPoint scope.joins tuple let label = x.label let arity = extent x.params end)
+                    body(v x.body scope where)
+                    vector.pop(:JoinPoint scope.joins)
+                    ok
+                end
+            when sEcho with x then use(v x.value scope where)
+            when sEchoText then ok
+            when sReturn with x then
+                begin
+                    use(v x.value scope where)
+                    if not(scope.inFunction) then problem(v where <> ": return outside a function") end
+                end
+            when sJump with x then
+                begin
+                    useAll(v x.args scope where)
+                    let var arity = ~1
+                    for i = 0 upto {vector.length(:JoinPoint scope.joins) - 1} do
+                        let j = vector.get(:JoinPoint scope.joins i)
+                        if {arity < 0} andif eq(j.label x.label) then arity := j.arity end
+                    end
+                    if arity < 0 then
+                        problem(v where <> ": jump to '" <> x.label <> "', which is not an enclosing join point")
+                    elsif arity isnot extent x.args then
+                        problem(v where <> ": jump to '" <> x.label <> "' passes " <> conv.int(extent x.args) <> " values for "
+                            <> conv.int(arity) <> " parameters")
+                    end
+                end
+            when sBreak with x then loopLabel(v "break" x.label scope where)
+            when sContinue with x then loopLabel(v "continue" x.label scope where)
+            when sRaise with x then
+                begin
+                    use(v x.exc scope where)
+                    if maybe.isSome(:Atom x.payload) then use(v maybe.unwrap(:Atom x.payload) scope where) end
+                end
+            when sReraise with x then useVar(v x.exc scope where)
+            when sUnreachable then ok
+        end
+
+    and useAll(v: Verifier atoms: Array(Atom) scope: Scope where: String): Ok =
+        for i = 0 upto {extent atoms - 1} do use(v atoms[i] scope where) end
+
+    and loopLabel(v: Verifier kind: String label: String scope: Scope where: String): Ok =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:String scope.loops) - 1} do
+                if eq(vector.get(:String scope.loops i) label) then found := true end
+            end
+            if not(found) then problem(v where <> ": " <> kind <> " of '" <> label <> "', which is not an enclosing loop") end
+        end
+
+    let verifyUnit(unit: nodes.Unit): Array(String) =
+        begin
+            let modules = newIds()
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                hashMap.insert(:Int :Bool modules vector.get(:nodes.Module unit.modules i).id true)
+            end
+            for i = 0 upto {extent unit.imports - 1} do hashMap.insert(:Int :Bool modules unit.imports[i].id true) end
+            let functions = if nodes.atLeast(unit "closed") then
+                let ids = newIds()
+                for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                    hashMap.insert(:Int :Bool ids vector.get(:nodes.Function unit.functions i).id true)
+                end
+                maybe.some(:Ids ids)
+            else
+                maybe.none(:Ids)
+            end
+            let v = tuple
+                let problems = vector.new(:String)
+                let bound = newIds()
+                let modules = modules
+                let var functions = functions
+                let var represented = nodes.atLeast(unit "represented")
+            end
+            (* A module's members are visible to the code after its definition (by name, through the module), not as
+             * variables; each module's initializer is its own top level *)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                body(v m.init newScope(newIds()) "module '" <> m.name <> "'")
+            end
+            body(v unit.main newScope(newIds()) "main")
+            if nodes.atLeast(unit "closed") then
+                (* Lifted functions use their parameters, their environment, and the unit's globals *)
+                let globals = walk.globalVariables(unit)
+                for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                    function(v vector.get(:nodes.Function unit.functions i) newScope(copyIds(globals)))
+                end
+            end
+            vector.toArray(:String v.problems)
+        end
+
+    let checkUnit(unit: nodes.Unit): Ok =
+        begin
+            let problems = verifyUnit(unit)
+            if extent problems > 0 then
+                let shown = vector.new(:String)
+                for i = 0 upto {extent problems - 1} do if i < 20 then vector.append(:String shown problems[i]) end end
+                raise verifyError with "internal: the IR is not well formed:\n  " <> strutil.join("\n  " shown) end
+            end
+        end
+end

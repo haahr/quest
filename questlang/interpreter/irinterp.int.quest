@@ -1,0 +1,20 @@
+(* Quest Self-Hosted Compiler: The IR Interpreter Interface
+ *
+ * bootstrap/python/quest/interpreter/ir_interp.py (docs/ir.md section 12, step 4): an interpreter for the IR, a test
+ * oracle for the lowering and the passes, whose output the runner compares with the tree-walking interpreter's. Values
+ * are the tree-walking interpreter's (questlang/values/model), and the modules a unit imports are loaded and run by
+ * it; functions of either kind may call the other's: an IR function's value is a builtin to the tree-walker. From
+ * the described stage on, the descriptors operations carry are evaluated to the types they describe and checked
+ * against the types they stand for. *)
+
+interface IrInterp
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/values/model : questlang/values/Model
+export
+    (* IR the interpreter cannot run (a malformed unit, not an error in the program) *)
+    irInterpreterError: Exception(String)
+
+    (* Runs a unit, in the tree-walker's frame f: its imports, its modules' initializers, then its main body *)
+    runUnit(unit: nodes.Unit f: model.Frame): Ok
+end

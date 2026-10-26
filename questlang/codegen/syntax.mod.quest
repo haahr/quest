@@ -1,0 +1,82 @@
+(* Quest Self-Hosted Compiler: C Syntax Implementation *)
+
+module syntax : Syntax
+import
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    ascii : Ascii
+export
+    (* An internal error: a negative number where a nonnegative one belongs (the bootstrap's assertion) *)
+    let negative: Exception(Int) = exception negative: Int end
+
+    let cInt(n: Int): String = if n < 0 then raise negative with n end else conv.int(n) end
+
+    let cIntLiteral(n: Int): String = if n >= 0 then cInt(n) <> "LL" else "(-" <> cInt(~1 * n) <> "LL)" end
+
+    let cReal(r: Real): String =
+        begin
+            let text = conv.real(r)
+            if stringOp.equal(text "inf") then
+                "INFINITY"
+            elsif stringOp.equal(text "~inf") then
+                "(-INFINITY)"
+            else
+                let s = if {stringOp.length(text) > 0} andif {stringOp.getChar(text 0) is '~'} then
+                    "-" <> stringOp.getSub(text 1 {stringOp.length(text) - 1})
+                else
+                    text
+                end
+                if strutil.contains(s "e") orif strutil.contains(s ".") then s else s <> ".0" end
+            end
+        end
+
+    (* A character as it appears inside a C literal delimited by quote: printable ASCII as itself (the quote and the
+     * backslash escaped), the common control characters by their letter escapes, and any other character as a
+     * three-digit octal escape, which ends where it should whatever character follows *)
+    let charText(c: Char quote: Char): String =
+        begin
+            let code = ascii.val(c)
+            if {c is quote} orif {c is '\\'} then
+                "\\" <> stringOp.new(1 c)
+            elsif c is '\n' then
+                "\\n"
+            elsif c is '\t' then
+                "\\t"
+            elsif c is '\r' then
+                "\\r"
+            elsif {code >= 32} andif {code < 127} then
+                stringOp.new(1 c)
+            else
+                "\\" <> cInt(code / 64) <> cInt({code / 8} % 8) <> cInt(code % 8)
+            end
+        end
+
+    let cString(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            b.char('"')
+            for i = 0 upto {stringOp.length(s) - 1} do b.str(charText(stringOp.getChar(s i) '"')) end
+            b.char('"')
+            b.toString()
+        end
+
+    let cChar(c: Char): String = "'" <> charText(c '\'') <> "'"
+
+    let joined(separator: String items: vector.T(String)): String = strutil.join(separator items)
+
+    let comma(items: vector.T(String)): String = joined(", " items)
+
+    let call(f: String args: vector.T(String)): String = f <> "(" <> comma(args) <> ")"
+
+    let linesText(items: vector.T(String)): String = joined("\n" items)
+
+    let indexTable(entries: Array(Int)): String =
+        begin
+            let items = vector.new(:String)
+            for i = 0 upto {extent entries - 1} do vector.append(:String items cIntLiteral(entries[i])) end
+            "((const int64_t[]){ " <> comma(items) <> " })"
+        end
+end

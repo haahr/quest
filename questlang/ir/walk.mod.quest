@@ -1,0 +1,426 @@
+(* Quest Self-Hosted Compiler: IR Traversals Implementation *)
+
+module walk : Walk
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+export
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    let statementBodies(s: Stmt): Array(Body) =
+        case s
+            when sIf with x then array of x.thenBody x.elseBody end
+            when sSwitch with x then
+                let bodies = vector.new(:Body)
+                for i = 0 upto {extent x.cases - 1} do vector.append(:Body bodies x.cases[i].body) end
+                if maybe.isSome(:Body x.elseBody) then vector.append(:Body bodies maybe.unwrap(:Body x.elseBody)) end
+                vector.toArray(:Body bodies)
+            when sInspect with x then
+                let bodies = vector.new(:Body)
+                for i = 0 upto {extent x.cases - 1} do vector.append(:Body bodies x.cases[i].body) end
+                if maybe.isSome(:Body x.elseBody) then vector.append(:Body bodies maybe.unwrap(:Body x.elseBody)) end
+                vector.toArray(:Body bodies)
+            when sLoop with x then array of x.body end
+            when sLetRec with x then array of x.body end
+            when sTry with x then array of x.body x.handler end
+            when sJoin with x then array of x.continuation x.body end
+            else array of :Body end
+        end
+
+    let statementBinders(s: Stmt): Array(Variable) =
+        case s
+            when sLet with x then array of x.v end
+            when sVarDecl with x then array of x.v end
+            when sFuns with x then
+                let vars = vector.new(:Variable)
+                for i = 0 upto {extent x.functions - 1} do vector.append(:Variable vars x.functions[i].v) end
+                vector.toArray(:Variable vars)
+            when sLetRec with x then x.vars
+            when sSwitch with x then
+                let vars = vector.new(:Variable)
+                for i = 0 upto {extent x.cases - 1} do
+                    if maybe.isSome(:Variable x.cases[i].binder) then
+                        vector.append(:Variable vars maybe.unwrap(:Variable x.cases[i].binder))
+                    end
+                end
+                vector.toArray(:Variable vars)
+            when sInspect with x then
+                let vars = vector.new(:Variable)
+                for i = 0 upto {extent x.cases - 1} do
+                    for j = 0 upto {extent x.cases[i].binders - 1} do vector.append(:Variable vars x.cases[i].binders[j]) end
+                end
+                vector.toArray(:Variable vars)
+            when sTry with x then array of x.exc end
+            when sJoin with x then x.params
+            else array of :Variable end
+        end
+
+    Let Uses = vector.T(Atom)
+
+    let use(u: Uses a: Atom): Ok = vector.append(:Atom u a)
+    let useVar(u: Uses v: Variable): Ok = use(u nodes.atomOfVar(v))
+    let useOpt(u: Uses a: maybe.T(Atom)): Ok = if maybe.isSome(:Atom a) then use(u maybe.unwrap(:Atom a)) end
+    let useAll(u: Uses atoms: Array(Atom)): Ok = for i = 0 upto {extent atoms - 1} do use(u atoms[i]) end
+
+    let opUses(o: Op): Array(Atom) =
+        begin
+            let u = vector.new(:Atom)
+            case o
+                when opAtom with x then use(u x.atom)
+                when opPrim with x then useAll(u x.args)
+                when opCall with x then
+                    begin
+                        if maybe.isSome(:Variable x.callee) then useVar(u maybe.unwrap(:Variable x.callee)) end
+                        useAll(u x.args)
+                    end
+                when opTypeApp with x then
+                    if maybe.isSome(:Variable x.callee) then useVar(u maybe.unwrap(:Variable x.callee)) end
+                when opCallExternal with x then useAll(u x.args)
+                when opMakeClosure with x then useAll(u x.captures)
+                when opEnvField with x then use(u x.env)
+                when opConvert with x then use(u x.value)
+                when opMakeTuple with x then useAll(u x.args)
+                when opTupleField with x then use(u x.tup)
+                when opMakeRecord with x then for i = 0 upto {extent x.fields - 1} do use(u x.fields[i].atom) end
+                when opRecordField with x then use(u x.recordAtom)
+                when opMakeVariant with x then useOpt(u x.payload)
+                when opMakeOption with x then begin useOpt(u x.payload) useOpt(u x.ordinalAtom) end
+                when opIsTag with x then use(u x.value)
+                when opPayload with x then use(u x.value)
+                when opOrdinal with x then use(u x.value)
+                when opMakeArray with x then useAll(u x.args)
+                when opArrayRep with x then begin use(u x.count) use(u x.init) end
+                when opIndex with x then begin use(u x.arr) use(u x.index) end
+                when opMakeAuto with x then use(u x.payload)
+                when opExceptionPayload with x then use(u x.exc)
+                when opAddrVar with x then useVar(u x.v)
+                when opAddrCell with x then use(u x.init)
+                when opAddrField with x then use(u x.base)
+                when opAddrComponent with x then use(u x.base)
+                when opAddrElement with x then begin use(u x.base) use(u x.index) end
+                when opLoad with x then use(u x.address)
+                else ok
+            end
+            vector.toArray(:Atom u)
+        end
+
+    let statementUses(s: Stmt): Array(Atom) =
+        case s
+            when sLet with x then opUses(x.value)
+            when sDo with x then opUses(x.value)
+            when sVarDecl with x then if maybe.isSome(:Atom x.init) then array of maybe.unwrap(:Atom x.init) end else array of :Atom end end
+            when sAssign with x then array of nodes.atomOfVar(x.v) x.value end
+            when sStoreAt with x then array of x.value x.address end
+            when sStoreField with x then array of x.value x.base end
+            when sStoreComponent with x then array of x.value x.base end
+            when sStoreElement with x then array of x.value x.base x.index end
+            when sIf with x then array of x.cond end
+            when sSwitch with x then array of x.value end
+            when sInspect with x then array of x.value end
+            when sEcho with x then array of x.value end
+            when sReturn with x then array of x.value end
+            when sJump with x then x.args
+            when sRaise with x then
+                if maybe.isSome(:Atom x.payload) then array of x.exc maybe.unwrap(:Atom x.payload) end else array of x.exc end end
+            when sReraise with x then array of nodes.atomOfVar(x.exc) end
+            when sTry with x then x.catches
+            else array of :Atom end
+        end
+
+    let walkStatements(body: Body intoFunctions: Bool): vector.T(Stmt) =
+        begin
+            let found = vector.new(:Stmt)
+            let rec visit(b: Body): Ok =
+                for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                    let s = vector.get(:Stmt b.statements i)
+                    vector.append(:Stmt found s)
+                    if intoFunctions then
+                        case s
+                            when sFuns with x then for j = 0 upto {extent x.functions - 1} do visit(x.functions[j].body) end
+                            else ok
+                        end
+                    end
+                    let bodies = statementBodies(s)
+                    for j = 0 upto {extent bodies - 1} do visit(bodies[j]) end
+                end
+            visit(body)
+            found
+        end
+
+    let globalVariables(unit: nodes.Unit): hashMap.T(Int Bool) =
+        begin
+            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let rec visit(b: Body): Ok =
+                for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                    let s = vector.get(:Stmt b.statements i)
+                    let binders = statementBinders(s)
+                    for j = 0 upto {extent binders - 1} do hashMap.insert(:Int :Bool found binders[j].id true) end
+                    if not(s?sLoop) then
+                        let bodies = statementBodies(s)
+                        for j = 0 upto {extent bodies - 1} do visit(bodies[j]) end
+                    end
+                end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do visit(vector.get(:nodes.Module unit.modules i).init) end
+            visit(unit.main)
+            found
+        end
+
+    Let Rename = All(v: Variable) Variable
+
+    let atom(a: Atom f: Rename): Atom =
+        case a
+            when atomVar with x then
+                let v = f(x.v)
+                if nodes.same(v x.v) then a else nodes.atomOfVar(v) end
+            else a
+        end
+
+    let atoms(items: Array(Atom) f: Rename): Array(Atom) =
+        begin
+            let mapped = vector.new(:Atom)
+            for i = 0 upto {extent items - 1} do vector.append(:Atom mapped atom(items[i] f)) end
+            vector.toArray(:Atom mapped)
+        end
+
+    let optAtom(a: maybe.T(Atom) f: Rename): maybe.T(Atom) =
+        if maybe.isSome(:Atom a) then maybe.some(:Atom atom(maybe.unwrap(:Atom a) f)) else a end
+
+    let optVar(v: maybe.T(Variable) f: Rename): maybe.T(Variable) =
+        if maybe.isSome(:Variable v) then maybe.some(:Variable f(maybe.unwrap(:Variable v))) else v end
+
+    let descriptor(d: nodes.Descriptor f: Rename): nodes.Descriptor =
+        case d
+            when descVar with x then option descVar of nodes.Descriptor with let v = f(x.v) end
+            else d
+        end
+
+    let optDescriptor(d: maybe.T(nodes.Descriptor) f: Rename): maybe.T(nodes.Descriptor) =
+        if maybe.isSome(:nodes.Descriptor d) then maybe.some(:nodes.Descriptor descriptor(maybe.unwrap(:nodes.Descriptor d) f)) else d end
+
+    let descriptors(items: Array(nodes.Descriptor) f: Rename): Array(nodes.Descriptor) =
+        begin
+            let mapped = vector.new(:nodes.Descriptor)
+            for i = 0 upto {extent items - 1} do vector.append(:nodes.Descriptor mapped descriptor(items[i] f)) end
+            vector.toArray(:nodes.Descriptor mapped)
+        end
+
+    let vars(items: Array(Variable) f: Rename): Array(Variable) =
+        begin
+            let mapped = vector.new(:Variable)
+            for i = 0 upto {extent items - 1} do vector.append(:Variable mapped f(items[i])) end
+            vector.toArray(:Variable mapped)
+        end
+
+    let replaceVarsInOp(o: Op f: Rename): Ok =
+        case o
+            when opAtom with x then x.atom := atom(x.atom f)
+            when opPrim with x then
+                begin
+                    x.args := atoms(x.args f)
+                    x.descriptor := optDescriptor(x.descriptor f)
+                end
+            when opCall with x then
+                begin
+                    x.callee := optVar(x.callee f)
+                    x.args := atoms(x.args f)
+                    x.descriptors := descriptors(x.descriptors f)
+                end
+            when opTypeApp with x then
+                begin
+                    x.callee := optVar(x.callee f)
+                    x.descriptors := descriptors(x.descriptors f)
+                end
+            when opCallExternal with x then
+                begin
+                    x.args := atoms(x.args f)
+                    x.descriptors := descriptors(x.descriptors f)
+                end
+            when opMakeClosure with x then
+                begin
+                    x.captures := atoms(x.captures f)
+                    x.descriptors := descriptors(x.descriptors f)
+                end
+            when opEnvField with x then x.env := atom(x.env f)
+            when opConvert with x then x.value := atom(x.value f)
+            when opMakeTuple with x then x.args := atoms(x.args f)
+            when opTupleField with x then
+                begin
+                    x.tup := atom(x.tup f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opMakeRecord with x then
+                begin
+                    let fields = vector.new(:nodes.FieldAtom)
+                    for i = 0 upto {extent x.fields - 1} do
+                        let fa = x.fields[i]
+                        vector.append(:nodes.FieldAtom fields tuple let name = fa.name let atom = atom(fa.atom f) let isVar = fa.isVar end)
+                    end
+                    x.fields := vector.toArray(:nodes.FieldAtom fields)
+                    x.descriptor := optDescriptor(x.descriptor f)
+                    x.viewDescriptor := optDescriptor(x.viewDescriptor f)
+                end
+            when opRecordField with x then
+                begin
+                    x.recordAtom := atom(x.recordAtom f)
+                    x.descriptor := optDescriptor(x.descriptor f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opMakeVariant with x then x.payload := optAtom(x.payload f)
+            when opMakeOption with x then
+                begin
+                    x.payload := optAtom(x.payload f)
+                    x.ordinalAtom := optAtom(x.ordinalAtom f)
+                end
+            when opIsTag with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opPayload with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opOrdinal with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opMakeArray with x then x.args := atoms(x.args f)
+            when opArrayRep with x then
+                begin
+                    x.count := atom(x.count f)
+                    x.init := atom(x.init f)
+                end
+            when opIndex with x then
+                begin
+                    x.arr := atom(x.arr f)
+                    x.index := atom(x.index f)
+                end
+            when opMakeAuto with x then
+                begin
+                    x.payload := atom(x.payload f)
+                    x.descriptor := optDescriptor(x.descriptor f)
+                end
+            when opExceptionPayload with x then x.exc := atom(x.exc f)
+            when opAddrVar with x then x.v := f(x.v)
+            when opAddrCell with x then x.init := atom(x.init f)
+            when opAddrField with x then
+                begin
+                    x.base := atom(x.base f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opAddrComponent with x then
+                begin
+                    x.base := atom(x.base f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when opAddrElement with x then
+                begin
+                    x.base := atom(x.base f)
+                    x.index := atom(x.index f)
+                end
+            when opLoad with x then x.address := atom(x.address f)
+            else ok
+        end
+
+    let replaceVarsInStmt(s: Stmt f: Rename): Ok =
+        case s
+            when sLet with x then
+                begin
+                    x.v := f(x.v)
+                    replaceVarsInOp(x.value f)
+                end
+            when sVarDecl with x then
+                begin
+                    x.v := f(x.v)
+                    x.init := optAtom(x.init f)
+                end
+            when sAssign with x then
+                begin
+                    x.v := f(x.v)
+                    x.value := atom(x.value f)
+                end
+            when sStoreAt with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.address := atom(x.address f)
+                end
+            when sStoreField with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.base := atom(x.base f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when sStoreComponent with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.base := atom(x.base f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when sStoreElement with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.base := atom(x.base f)
+                    x.index := atom(x.index f)
+                end
+            when sDo with x then replaceVarsInOp(x.value f)
+            when sLetRec with x then x.vars := vars(x.vars f)
+            when sIf with x then x.cond := atom(x.cond f)
+            when sSwitch with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.viewMap := optVar(x.viewMap f)
+                end
+            when sInspect with x then x.value := atom(x.value f)
+            when sTry with x then
+                begin
+                    x.exc := f(x.exc)
+                    x.catches := atoms(x.catches f)
+                end
+            when sJoin with x then x.params := vars(x.params f)
+            when sEcho with x then
+                begin
+                    x.value := atom(x.value f)
+                    x.descriptor := optDescriptor(x.descriptor f)
+                end
+            when sReturn with x then x.value := atom(x.value f)
+            when sJump with x then x.args := atoms(x.args f)
+            when sRaise with x then
+                begin
+                    x.exc := atom(x.exc f)
+                    x.payload := optAtom(x.payload f)
+                end
+            when sReraise with x then x.exc := f(x.exc)
+            else ok
+        end
+
+    let opViewMap(o: Op): maybe.T(Variable) =
+        case o
+            when opTupleField with x then x.viewMap
+            when opRecordField with x then x.viewMap
+            when opIsTag with x then x.viewMap
+            when opPayload with x then x.viewMap
+            when opOrdinal with x then x.viewMap
+            when opAddrField with x then x.viewMap
+            when opAddrComponent with x then x.viewMap
+            else maybe.none(:Variable)
+        end
+
+    let stmtViewMap(s: Stmt): maybe.T(Variable) =
+        case s
+            when sStoreField with x then x.viewMap
+            when sStoreComponent with x then x.viewMap
+            when sSwitch with x then x.viewMap
+            else maybe.none(:Variable)
+        end
+end

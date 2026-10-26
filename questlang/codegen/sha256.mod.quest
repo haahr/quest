@@ -1,0 +1,122 @@
+(* Quest Self-Hosted Compiler: SHA-256 Implementation (FIPS 180-4) *)
+
+module sha256 : Sha256
+import
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    word : Word
+export
+    let mask = 4294967295
+
+    let roundConstants = array of
+        1116352408 1899447441 3049323471 3921009573 961987163 1508970993 2453635748 2870763221
+        3624381080 310598401 607225278 1426881987 1925078388 2162078206 2614888103 3248222580
+        3835390401 4022224774 264347078 604807628 770255983 1249150122 1555081692 1996064986
+        2554220882 2821834349 2952996808 3210313671 3336571891 3584528711 113926993 338241895
+        666307205 773529912 1294757372 1396182291 1695183700 1986661051 2177026350 2456956037
+        2730485921 2820302411 3259730800 3345764771 3516065817 3600352804 4094571909 275423344
+        430227734 506948616 659060556 883997877 958139571 1322822218 1537002063 1747873779
+        1955562222 2024104815 2227730452 2361852424 2428436474 2756734187 3204031479 3329325298
+    end
+
+    let initialHash = array of
+        1779033703 3144134277 1013904242 2773480762 1359893119 2600822924 528734635 1541459225
+    end
+
+    let w(n: Int): word.T = word.fromInt(n)
+    let n(x: word.T): Int = word.toInt(x)
+
+    let andBits(a: Int b: Int): Int = n(word.andBits(w(a) w(b)))
+    let xorBits(a: Int b: Int): Int = n(word.xorBits(w(a) w(b)))
+    let notBits(a: Int): Int = n(word.andBits(word.notBits(w(a)) w(mask)))
+    let shiftRight(a: Int count: Int): Int = n(word.shift(w(a) {~1 * count}))
+    let rotateRight(a: Int count: Int): Int =
+        n(word.andBits(word.orBits(word.shift(w(a) {~1 * count}) word.shift(w(a) {32 - count})) w(mask)))
+    let add(a: Int b: Int): Int = {a + b} % 4294967296
+
+    (* The text's bytes as UTF-8 encodes its characters *)
+    let encoded(text: String): vector.T(Int) =
+        begin
+            let bytes = vector.new(:Int)
+            for i = 0 upto {stringOp.length(text) - 1} do
+                let c = ascii.val(stringOp.getChar(text i))
+                if c < 128 then
+                    vector.append(:Int bytes c)
+                else
+                    vector.append(:Int bytes {192 + {c / 64}})
+                    vector.append(:Int bytes {128 + {c % 64}})
+                end
+            end
+            bytes
+        end
+
+    let hexDigits = "0123456789abcdef"
+
+    let hexDigest(text: String): String =
+        begin
+            let message = encoded(text)
+            let bitLength = vector.length(:Int message) * 8
+            vector.append(:Int message 128)
+            while {vector.length(:Int message) % 64} isnot 56 do vector.append(:Int message 0) end
+            for i = 7 downto 0 do
+                vector.append(:Int message n(word.andBits(word.shift(w(bitLength) {~8 * i}) w(255))))
+            end
+            let h = array of(8 0)
+            for i = 0 upto 7 do h[i] := initialHash[i] end
+            let schedule = array of(64 0)
+            for chunk = 0 upto {{vector.length(:Int message) / 64} - 1} do
+                for t = 0 upto 15 do
+                    let at = fun(k: Int): Int vector.get(:Int message {{chunk * 64} + {{t * 4} + k}})
+                    schedule[t] := {{at(0) * 16777216} + {at(1) * 65536}} + {{at(2) * 256} + at(3)}
+                end
+                for t = 16 upto 63 do
+                    let x = schedule[t - 15]
+                    let y = schedule[t - 2]
+                    let s0 = xorBits(xorBits(rotateRight(x 7) rotateRight(x 18)) shiftRight(x 3))
+                    let s1 = xorBits(xorBits(rotateRight(y 17) rotateRight(y 19)) shiftRight(y 10))
+                    schedule[t] := add(add(schedule[t - 16] s0) add(schedule[t - 7] s1))
+                end
+                let var a = h[0]
+                let var b = h[1]
+                let var c = h[2]
+                let var d = h[3]
+                let var e = h[4]
+                let var f = h[5]
+                let var g = h[6]
+                let var hh = h[7]
+                for t = 0 upto 63 do
+                    let sum1 = xorBits(xorBits(rotateRight(e 6) rotateRight(e 11)) rotateRight(e 25))
+                    let choice = xorBits(andBits(e f) andBits(notBits(e) g))
+                    let temp1 = add(add(add(hh sum1) add(choice roundConstants[t])) schedule[t])
+                    let sum0 = xorBits(xorBits(rotateRight(a 2) rotateRight(a 13)) rotateRight(a 22))
+                    let majority = xorBits(xorBits(andBits(a b) andBits(a c)) andBits(b c))
+                    let temp2 = add(sum0 majority)
+                    hh := g
+                    g := f
+                    f := e
+                    e := add(d temp1)
+                    d := c
+                    c := b
+                    b := a
+                    a := add(temp1 temp2)
+                end
+                h[0] := add(h[0] a)
+                h[1] := add(h[1] b)
+                h[2] := add(h[2] c)
+                h[3] := add(h[3] d)
+                h[4] := add(h[4] e)
+                h[5] := add(h[5] f)
+                h[6] := add(h[6] g)
+                h[7] := add(h[7] hh)
+            end
+            let digest = stringBuilder.new()
+            for i = 0 upto 7 do
+                for k = 7 downto 0 do
+                    digest.char(stringOp.getChar(hexDigits {shiftRight(h[i] {4 * k}) % 16}))
+                end
+            end
+            digest.toString()
+        end
+end

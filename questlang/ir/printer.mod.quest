@@ -1,0 +1,608 @@
+(* Quest Self-Hosted Compiler: The IR Printer Implementation *)
+
+module printer : Printer
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/dump : questlang/types/Dump
+    questlang/values/json : questlang/values/Json
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Op = nodes.Op
+    Let Stmt = nodes.Stmt
+    Let Descriptor = nodes.Descriptor
+    Let Plan = nodes.Plan
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    Let Printer = Tuple
+        names: hashMap.T(Int String)
+        used: hashMap.T(String Int)
+        lines: vector.T(String)
+    end
+
+    let newPrinter(): Printer =
+        tuple
+            let names = hashMap.new(:Int :String intEqual hash.int)
+            let used = hashMap.new(:String :Int stringOp.equal hash.string)
+            let lines = vector.new(:String)
+        end
+
+    (* A number as Python writes it, with - for conv's ~ *)
+    let signed(s: String): String =
+        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
+            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
+        else
+            s
+        end
+
+    let quoted(s: String): String = json.dump(json.string(s))
+
+    let joinWith(separator: String items: vector.T(String)): String = strutil.join(separator items)
+
+    (* Names *)
+
+    let bind(p: Printer v: Variable): String =
+        begin
+            let found = hashMap.get(:Int :String p.names v.id)
+            if maybe.isSome(:String found) then
+                maybe.unwrap(:String found)
+            else
+                let n = maybe.unwrapOr(:Int hashMap.get(:String :Int p.used v.hint) 0)
+                hashMap.insert(:String :Int p.used v.hint n + 1)
+                (* A temporary: numbered, apart from the program's own names *)
+                let name = if stringOp.isEmpty(v.hint) then
+                    "%" <> conv.int(n + 1)
+                elsif n is 0 then
+                    v.hint
+                else
+                    v.hint <> "." <> conv.int(n)
+                end
+                hashMap.insert(:Int :String p.names v.id name)
+                name
+            end
+        end
+
+    (* A variable used before (or without) its binder prints with a mark, which the verifier reports *)
+    let name(p: Printer v: Variable): String =
+        maybe.unwrapOr(:String hashMap.get(:Int :String p.names v.id) v.hint <> "?")
+
+    let atom(p: Printer a: Atom): String =
+        case a
+            when atomVar with x then name(p x.v)
+            when atomConst with x then
+                case x.c.value
+                    when constOk then "ok"
+                    when constBool with y then if y.b then "true" else "false" end
+                    when constInt with y then signed(conv.int(y.n))
+                    when constReal with y then signed(conv.real(y.r))
+                    when constChar with y then diagnostics.pyRepr(stringOp.new(1 y.c))
+                    when constString with y then
+                        if eq(x.c.shape.kind "char") then diagnostics.pyRepr(y.s) else quoted(y.s) end
+                end
+        end
+
+    let atoms(p: Printer items: Array(Atom)): String =
+        begin
+            let texts = vector.new(:String)
+            for i = 0 upto {extent items - 1} do vector.append(:String texts atom(p items[i])) end
+            joinWith(", " texts)
+        end
+
+    let typeText(t: model.Type): String = dump.formatCompact(t)
+
+    let rec descriptor(p: Printer d: Descriptor): String =
+        case d
+            when descVar with x then name(p x.v)
+            when descStatic with x then
+                if x.d.echo then "echo_descriptor(" <> typeText(x.d.type) <> ")"
+                else "descriptor(" <> typeText(x.d.type) <> ")" end
+            when descInstantiate with x then
+                begin
+                    let texts = vector.new(:String)
+                    for i = 0 upto {extent x.args - 1} do vector.append(:String texts ", " <> descriptor(p x.args[i])) end
+                    "instantiate(" <> typeText(x.template) <> joinWith("" texts) <> ")"
+                end
+        end
+
+    let descriptors(p: Printer ds: Array(Descriptor)): String =
+        begin
+            let texts = vector.new(:String)
+            for i = 0 upto {extent ds - 1} do vector.append(:String texts descriptor(p ds[i])) end
+            joinWith(", " texts)
+        end
+
+    (* Type arguments, or after the describe pass, their descriptors *)
+    let typeArgs(p: Printer types: Array(model.Type) ds: Array(Descriptor)): String =
+        if extent ds > 0 then
+            " [" <> descriptors(p ds) <> "]"
+        elsif extent types > 0 then
+            begin
+                let texts = vector.new(:String)
+                for i = 0 upto {extent types - 1} do vector.append(:String texts typeText(types[i])) end
+                " [" <> joinWith(" " texts) <> "]"
+            end
+        else
+            ""
+        end
+
+    (* The view map an operation reads a value through its type's bound by, if it has one *)
+    let through(p: Printer viewMap: maybe.T(Variable)): String =
+        if maybe.isSome(:Variable viewMap) then " through " <> name(p maybe.unwrap(:Variable viewMap)) else "" end
+
+    (* The descriptor an operation uses, if it has one *)
+    let ofDescriptor(p: Printer d: maybe.T(Descriptor)): String =
+        if maybe.isSome(:Descriptor d) then " of " <> descriptor(p maybe.unwrap(:Descriptor d)) else "" end
+
+    let offsets(table: nodes.OffsetTable): String =
+        "offsets(" <> typeText(table.view) <> " <- " <> typeText(table.layout) <> ")"
+
+    (* A boxed variable (after the represent pass) holds its record or variant boxed *)
+    let decl(p: Printer v: Variable): String =
+        begin
+            let t = typeText(v.type)
+            bind(p v) <> ": " <> if v.boxed then "box(" <> t <> ")" else t end
+        end
+
+    (* How a component of a tuple or option is read, after the represent pass: nothing for direct *)
+    let access(a: String): String = if eq(a nodes.direct) then "" else " via " <> a end
+
+    (* How the components of a tuple or option are read: nothing if all are direct *)
+    let accesses(items: Array(String)): String =
+        begin
+            let var allDirect = true
+            for i = 0 upto {extent items - 1} do if not(eq(items[i] nodes.direct)) then allDirect := false end end
+            if allDirect then "" else " via (" <> strutil.joinArray(", " items) <> ")" end
+        end
+
+    let isEmbedded(embedded: Array(Int) i: Int): Bool =
+        begin
+            let var found = false
+            for j = 0 upto {extent embedded - 1} do if embedded[j] is i then found := true end end
+            found
+        end
+
+    (* Atoms, those the represent pass boxes in the aggregate's allocation marked box *)
+    let boxedAtoms(p: Printer items: Array(Atom) embedded: Array(Int)): String =
+        begin
+            let texts = vector.new(:String)
+            for i = 0 upto {extent items - 1} do
+                vector.append(:String texts if isEmbedded(embedded i) then "box " <> atom(p items[i]) else atom(p items[i]) end)
+            end
+            joinWith(", " texts)
+        end
+
+    (* Whether a plan, or one in it, has descriptors (after the describe pass) *)
+    let rec described(plan: maybe.T(Plan)): Bool =
+        if maybe.isNone(:Plan plan) then
+            false
+        else
+            let x = maybe.unwrap(:Plan plan)
+            let var found = {extent x.descriptors > 0} orif {extent x.thunkParams > 0}
+            for i = 0 upto {extent x.fields - 1} do if described(x.fields[i]) then found := true end end
+            found
+        end
+
+    let thunkDecls(p: Printer params: Array(nodes.DescriptorParam)): String =
+        begin
+            let texts = vector.new(:String)
+            for i = 0 upto {extent params - 1} do vector.append(:String texts decl(p params[i].v)) end
+            " [" <> joinWith(", " texts) <> "]"
+        end
+
+    let rec plan(p: Printer pl: maybe.T(Plan)): String =
+        if maybe.isNone(:Plan pl) then
+            "none"
+        else
+            let x = maybe.unwrap(:Plan pl)
+            let var text = x.kind <> accesses(x.access)
+            if extent x.descriptors > 0 then text := text <> "(" <> descriptors(p x.descriptors) <> ")" end
+            if extent x.thunkParams > 0 then text := text <> thunkDecls(p x.thunkParams) end
+            if {eq(x.kind "copy") orif eq(x.kind "adapt")} andif described(pl) then
+                let texts = vector.new(:String)
+                for i = 0 upto {extent x.fields - 1} do vector.append(:String texts plan(p x.fields[i])) end
+                text := text <> " {" <> joinWith(", " texts) <> "}"
+            end
+            text
+        end
+
+    (* Operations *)
+
+    let callee(p: Printer v: maybe.T(Variable) moduleRef: maybe.T(nodes.ModuleRef) member: maybe.T(String)): String =
+        if maybe.isNone(:Variable v) then
+            nodes.moduleRefName(maybe.unwrap(:nodes.ModuleRef moduleRef)) <> "." <> maybe.unwrapOr(:String member "")
+        else
+            name(p maybe.unwrap(:Variable v))
+        end
+
+    let op(p: Printer o: Op): String =
+        case o
+            when opAtom with x then atom(p x.atom)
+            when opPrim with x then "prim " <> x.op <> "(" <> atoms(p x.args) <> ")" <> access(x.access) <> ofDescriptor(p x.descriptor)
+            when opCall with x then
+                "call " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> "("
+                    <> atoms(p x.args) <> ")"
+            when opTypeApp with x then
+                let thunk = if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams)
+                    andif {extent maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams) > 0} then
+                    thunkDecls(p maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams))
+                else
+                    ""
+                end
+                let var anyPlan = false
+                for i = 0 upto {extent x.plans - 1} do if maybe.isSome(:Plan x.plans[i]) then anyPlan := true end end
+                let converting = if anyPlan then
+                    let texts = vector.new(:String)
+                    for i = 0 upto {extent x.plans - 1} do vector.append(:String texts plan(p x.plans[i])) end
+                    thunk <> " converting (" <> joinWith(", " texts) <> ")"
+                else
+                    ""
+                end
+                "type_app " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> converting
+            when opModuleMember with x then
+                if maybe.isSome(:String x.member) then
+                    "member " <> nodes.moduleRefName(x.moduleRef) <> "." <> maybe.unwrap(:String x.member)
+                else
+                    "module " <> nodes.moduleRefName(x.moduleRef)
+                end
+            when opBuiltin with x then "builtin " <> x.name
+            when opExternal with x then "external " <> quoted(x.symbol)
+            when opCallExternal with x then
+                "call external " <> quoted(x.symbol) <> typeArgs(p x.typeArgs x.descriptors) <> "(" <> atoms(p x.args) <> ")"
+            when opMakeClosure with x then
+                "closure " <> name(p x.code.v) <> " {" <> atoms(p x.captures) <> "}" <> typeArgs(p x.typeArgs x.descriptors)
+            when opEnvField with x then "env_field(" <> atom(p x.env) <> ", " <> conv.int(x.index) <> ")"
+            when opConvert with x then "convert(" <> atom(p x.value) <> ", " <> plan(p maybe.some(:Plan x.plan)) <> ")"
+            when opMakeTuple with x then
+                let types = vector.new(:String)
+                for i = 0 upto {extent x.typeComponents - 1} do
+                    let c = x.typeComponents[i]
+                    vector.append(:String types "Let " <> c.name <> " = " <> typeText(c.type) <> " ")
+                end
+                "tuple(" <> joinWith("" types) <> boxedAtoms(p x.args x.embedded) <> ")"
+            when opTupleField with x then
+                "tuple_field(" <> atom(p x.tup) <> ", " <> conv.int(x.index) <> ")" <> access(x.access)
+            when opMakeRecord with x then
+                let fields = vector.new(:String)
+                for i = 0 upto {extent x.fields - 1} do
+                    let f = x.fields[i]
+                    vector.append(:String fields if f.isVar then "var " else "" end <> f.name <> " = "
+                        <> if isEmbedded(x.embedded i) then "box " else "" end <> atom(p f.atom))
+                end
+                let var text = "record(" <> joinWith(", " fields) <> ")"
+                if x.runtimeOffsets then
+                    text := text <> " with runtime offsets"
+                    if maybe.isSome(:Descriptor x.viewDescriptor) then
+                        text := text <> "(" <> descriptor(p maybe.unwrap(:Descriptor x.viewDescriptor)) <> ")"
+                    end
+                end
+                if maybe.isSome(:nodes.OffsetTable x.offsets) then
+                    text := text <> " with " <> offsets(maybe.unwrap(:nodes.OffsetTable x.offsets))
+                end
+                text <> ofDescriptor(p x.descriptor)
+            when opRecordField with x then
+                let stored = if x.stored then " via stored types" <> ofDescriptor(p x.descriptor) else "" end
+                "record_field(" <> atom(p x.recordAtom) <> ", " <> x.name <> ")" <> stored
+            when opMakeVariant with x then
+                "variant(" <> x.tag <> if maybe.isSome(:Atom x.payload) then ", " <> atom(p maybe.unwrap(:Atom x.payload)) else "" end <> ")"
+            when opMakeOption with x then
+                let head = if maybe.isNone(:Atom x.ordinalAtom) then
+                    maybe.unwrapOr(:String x.tag "")
+                else
+                    "#" <> atom(p maybe.unwrap(:Atom x.ordinalAtom)) <> " in (" <> strutil.joinArray(" " x.cases) <> ")"
+                end
+                let payloadText = if maybe.isSome(:Atom x.payload) then
+                    ", " <> atom(p maybe.unwrap(:Atom x.payload)) <> accesses(x.access)
+                else
+                    ""
+                end
+                "option(" <> head <> payloadText <> ")"
+            when opIsTag with x then "is_tag(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> access(x.access)
+            when opPayload with x then
+                let ordinalText = if maybe.isSome(:Int x.ordinalIndex) then " #" <> conv.int(maybe.unwrap(:Int x.ordinalIndex)) else "" end
+                "payload(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> ordinalText <> access(x.access) <> accesses(x.components)
+            when opOrdinal with x then
+                "ordinal(" <> atom(p x.value) <> ") in (" <> strutil.joinArray(" " x.cases) <> ")" <> access(x.access)
+            when opMakeArray with x then "array(" <> atoms(p x.args) <> ")"
+            when opArrayRep with x then "array_rep(" <> atom(p x.count) <> ", " <> atom(p x.init) <> ")"
+            when opIndex with x then "index(" <> atom(p x.arr) <> ", " <> atom(p x.index) <> ")"
+            when opMakeAuto with x then "auto[" <> typeText(x.witness) <> "](" <> atom(p x.payload) <> ")" <> ofDescriptor(p x.descriptor)
+            when opMakeException with x then
+                let shown = maybe.isSome(:model.Type x.payloadType)
+                    andif not(eq(typeText(maybe.unwrap(:model.Type x.payloadType)) "Ok"))
+                "exception " <> x.name <> if shown then ": " <> typeText(maybe.unwrap(:model.Type x.payloadType)) else "" end
+            when opExceptionPayload with x then "exception_payload(" <> atom(p x.exc) <> ")"
+            when opAddrVar with x then "addr " <> name(p x.v)
+            when opAddrCell with x then "cell(" <> atom(p x.init) <> ")"
+            when opAddrField with x then "addr " <> atom(p x.base) <> "." <> x.name
+            when opAddrComponent with x then "addr " <> atom(p x.base) <> ".#" <> conv.int(x.index) <> access(x.access)
+            when opAddrElement with x then "addr " <> atom(p x.base) <> "[" <> atom(p x.index) <> "]"
+            when opLoad with x then "load " <> atom(p x.address)
+        end
+
+    (* How an inspect case's components are obtained, after the represent pass *)
+    let arm(p: Printer a: maybe.T(nodes.InspectArm)): String =
+        if maybe.isNone(:nodes.InspectArm a) then
+            ""
+        else
+            let x = maybe.unwrap(:nodes.InspectArm a)
+            let converted = vector.new(:String)
+            for i = 0 upto {extent x.converted - 1} do
+                let pair = if i < extent x.descriptors then x.descriptors[i] else maybe.none(:nodes.DescriptorPair) end
+                let c = maybe.unwrapOr(:String x.converted[i] "")
+                if maybe.isSome(:nodes.DescriptorPair pair) then
+                    let dp = maybe.unwrap(:nodes.DescriptorPair pair)
+                    vector.append(:String converted c <> "(" <> descriptor(p dp.source) <> ", " <> descriptor(p dp.target) <> ")")
+                else
+                    vector.append(:String converted if maybe.isSome(:String x.converted[i]) then c else "none" end)
+                end
+            end
+            let parts = vector.new(:String)
+            vector.append(:String parts "converting (" <> joinWith(", " converted) <> ")")
+            if x.exact then
+                vector.append(:String parts
+                    if x.shared then "if equivalent shared" else "if equivalent " <> plan(p x.plan) end)
+            end
+            if x.layoutError then vector.append(:String parts "or layout error") end
+            " " <> joinWith(" " parts)
+        end
+
+    (* Statements *)
+
+    let emit(p: Printer depth: Int text: String): Ok =
+        begin
+            let b = stringOp.new({2 * depth} ' ')
+            vector.append(:String p.lines b <> text)
+        end
+
+    let rec body(p: Printer b: nodes.Body depth: Int): Ok =
+        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do statement(p vector.get(:Stmt b.statements i) depth) end
+
+    and block(p: Printer head: String b: nodes.Body depth: Int): Ok =
+        begin
+            emit(p depth head <> " {")
+            body(p b depth + 1)
+            emit(p depth "}")
+        end
+
+    and function(p: Printer f: nodes.Function depth: Int): Ok =
+        begin
+            let tps = if extent f.typeParams > 0 then
+                let texts = vector.new(:String)
+                for i = 0 upto {extent f.typeParams - 1} do
+                    vector.append(:String texts f.typeParams[i].name <> "::" <> model.showKind(f.typeParams[i].kind))
+                end
+                " [" <> joinWith(" " texts) <> "]"
+            else
+                ""
+            end
+            (* Its type parameters' descriptors (after the describe pass), then its parameters *)
+            let params = vector.new(:String)
+            for i = 0 upto {extent f.descriptorParams - 1} do vector.append(:String params decl(p f.descriptorParams[i].v)) end
+            for i = 0 upto {extent f.params - 1} do
+                let entry = f.params[i]
+                vector.append(:String params if eq(entry.mode "value") then "" else entry.mode <> " " end <> decl(p entry.v))
+            end
+            (* A lifted function's environment, which has no Quest type *)
+            let env = if maybe.isSome(:Variable f.env) then " {" <> bind(p maybe.unwrap(:Variable f.env)) <> "}" else "" end
+            emit(p depth "fun " <> name(p f.v) <> env <> tps <> "(" <> joinWith(", " params) <> "): " <> typeText(f.resultType) <> " {")
+            (* The view maps it reads its type parameters' values through their bounds by (after the describe pass) *)
+            for i = 0 upto {extent f.viewMaps - 1} do
+                let m = f.viewMaps[i]
+                emit(p depth + 1 "view_map " <> bind(p m.v) <> " = view_map(" <> name(p m.descriptor) <> ", "
+                    <> descriptor(p m.bound) <> ")")
+            end
+            body(p f.body depth + 1)
+            emit(p depth "}")
+        end
+
+    and statement(p: Printer s: Stmt depth: Int): Ok =
+        case s
+            when sLet with x then emit(p depth "let " <> decl(p x.v) <> " = " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
+            when sVarDecl with x then
+                if maybe.isNone(:Atom x.init) then
+                    emit(p depth "var " <> decl(p x.v))
+                else
+                    emit(p depth "var " <> decl(p x.v) <> " = " <> atom(p maybe.unwrap(:Atom x.init)))
+                end
+            when sAssign with x then emit(p depth name(p x.v) <> " := " <> atom(p x.value))
+            when sStoreAt with x then emit(p depth "store *" <> atom(p x.address) <> " := " <> atom(p x.value))
+            when sStoreField with x then
+                emit(p depth "store " <> atom(p x.base) <> "." <> x.name <> " := " <> atom(p x.value) <> through(p x.viewMap))
+            when sStoreComponent with x then
+                emit(p depth "store " <> atom(p x.base) <> ".#" <> conv.int(x.index) <> " := " <> atom(p x.value)
+                    <> access(x.access) <> through(p x.viewMap))
+            when sStoreElement with x then
+                emit(p depth "store " <> atom(p x.base) <> "[" <> atom(p x.index) <> "] := " <> atom(p x.value))
+            when sDo with x then emit(p depth "do " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
+            when sFuns with x then
+                begin
+                    (* Members of a recursive group are named before their bodies, which refer to one another *)
+                    if x.recursive then
+                        for i = 0 upto {extent x.functions - 1} do bind(p x.functions[i].v) end
+                    end
+                    emit(p depth if x.recursive then "funs rec {" else "funs {" end)
+                    for i = 0 upto {extent x.functions - 1} do
+                        if not(x.recursive) then bind(p x.functions[i].v) end
+                        function(p x.functions[i] depth + 1)
+                    end
+                    emit(p depth "}")
+                end
+            when sLetRec with x then
+                begin
+                    let decls = vector.new(:String)
+                    for i = 0 upto {extent x.vars - 1} do vector.append(:String decls decl(p x.vars[i])) end
+                    block(p "let rec (" <> joinWith(", " decls) <> ")" x.body depth)
+                end
+            when sIf with x then
+                begin
+                    emit(p depth "if " <> atom(p x.cond) <> " {")
+                    body(p x.thenBody depth + 1)
+                    if not(vector.empty(:Stmt x.elseBody.statements)) then
+                        emit(p depth "} else {")
+                        body(p x.elseBody depth + 1)
+                    end
+                    emit(p depth "}")
+                end
+            when sSwitch with x then
+                begin
+                    emit(p depth "switch tag(" <> atom(p x.value) <> ")" <> access(x.access) <> through(p x.viewMap) <> " {")
+                    for i = 0 upto {extent x.cases - 1} do
+                        let c = x.cases[i]
+                        let binder = if maybe.isSome(:Variable c.binder) then
+                            " (" <> decl(p maybe.unwrap(:Variable c.binder)) <> ")" <> accesses(c.components)
+                        else
+                            ""
+                        end
+                        block(p "case " <> strutil.joinArray(", " c.tags) <> binder <> ":" c.body depth + 1)
+                    end
+                    if maybe.isSome(:nodes.Body x.elseBody) then block(p "else:" maybe.unwrap(:nodes.Body x.elseBody) depth + 1) end
+                    emit(p depth "}")
+                end
+            when sInspect with x then
+                begin
+                    let binding = if maybe.isSome(:nodes.DescriptorParam x.witness) then
+                        " (" <> decl(p maybe.unwrap(:nodes.DescriptorParam x.witness).v) <> ")"
+                    else
+                        ""
+                    end
+                    emit(p depth "inspect " <> atom(p x.value) <> binding <> " {")
+                    for i = 0 upto {extent x.cases - 1} do
+                        let c = x.cases[i]
+                        let binders = vector.new(:String)
+                        for j = 0 upto {extent c.binders - 1} do vector.append(:String binders decl(p c.binders[j])) end
+                        let exact = if c.exact then " exact" else "" end
+                        let head = "case " <> typeText(c.matchType) <> ofDescriptor(p c.descriptor) <> exact <> " ("
+                            <> joinWith(", " binders) <> ")" <> arm(p c.arm) <> ":"
+                        block(p head c.body depth + 1)
+                    end
+                    if maybe.isSome(:nodes.Body x.elseBody) then block(p "else:" maybe.unwrap(:nodes.Body x.elseBody) depth + 1) end
+                    emit(p depth "}")
+                end
+            when sLoop with x then block(p "loop " <> x.label x.body depth)
+            when sTry with x then
+                begin
+                    if eq(x.catching nodes.catchUnknown) then
+                        emit(p depth "try {")
+                    elsif eq(x.catching nodes.catchAll) then
+                        emit(p depth "try catching all {")
+                    else
+                        emit(p depth "try catching (" <> atoms(p x.catches) <> ") {")
+                    end
+                    body(p x.body depth + 1)
+                    emit(p depth "} handle (" <> decl(p x.exc) <> ") {")
+                    body(p x.handler depth + 1)
+                    emit(p depth "}")
+                end
+            when sJoin with x then
+                begin
+                    let decls = vector.new(:String)
+                    for i = 0 upto {extent x.params - 1} do vector.append(:String decls decl(p x.params[i])) end
+                    emit(p depth "join " <> x.label <> "(" <> joinWith(", " decls) <> ") {")
+                    body(p x.continuation depth + 1)
+                    emit(p depth "} in {")
+                    body(p x.body depth + 1)
+                    emit(p depth "}")
+                end
+            when sEcho with x then
+                emit(p depth "echo " <> quoted(x.prefix) <> " " <> atom(p x.value) <> " : " <> typeText(x.type) <> ofDescriptor(p x.descriptor))
+            when sEchoText with x then emit(p depth "echo " <> quoted(x.text))
+            when sReturn with x then emit(p depth "return " <> atom(p x.value))
+            when sJump with x then emit(p depth "jump " <> x.label <> "(" <> atoms(p x.args) <> ")")
+            when sBreak with x then emit(p depth "break " <> x.label)
+            when sContinue with x then emit(p depth "continue " <> x.label)
+            when sRaise with x then
+                emit(p depth "raise " <> atom(p x.exc)
+                    <> if maybe.isSome(:Atom x.payload) then " with " <> atom(p maybe.unwrap(:Atom x.payload)) else "" end)
+            when sReraise with x then emit(p depth "reraise " <> name(p x.exc))
+            when sUnreachable then emit(p depth "unreachable")
+        end
+
+    let text(p: Printer): String = joinWith("\n" p.lines) <> "\n"
+
+    let formatUnit(unit: nodes.Unit): String =
+        begin
+            let p = newPrinter()
+            for i = 0 upto {extent unit.imports - 1} do
+                let imp = unit.imports[i]
+                emit(p 0 "import " <> imp.name <> " = " <> quoted(imp.modulePath) <> " : " <> imp.interfacePath)
+            end
+            if maybe.isSome(:nodes.StaticData unit.staticData) then
+                let data = maybe.unwrap(:nodes.StaticData unit.staticData)
+                for i = 0 upto {vector.length(:nodes.StaticDescriptor data.descriptors) - 1} do
+                    emit(p 0 "static " <> descriptor(p option descStatic of Descriptor with
+                        let d = vector.get(:nodes.StaticDescriptor data.descriptors i)
+                    end))
+                end
+                for i = 0 upto {vector.length(:nodes.OffsetTable data.offsetTables) - 1} do
+                    let table = vector.get(:nodes.OffsetTable data.offsetTables i)
+                    let registered = if maybe.isSome(:nodes.Registered table.registered) then " registered" else "" end
+                    emit(p 0 "static " <> offsets(table) <> registered)
+                end
+                for i = 0 upto {vector.length(:nodes.TagMap data.tagMaps) - 1} do
+                    let table = vector.get(:nodes.TagMap data.tagMaps i)
+                    emit(p 0 "static tag_map(" <> typeText(table.target) <> " <- " <> typeText(table.source) <> ")")
+                end
+            end
+            (* The unit's functions, after closure conversion, are named before any is printed, as closures refer to
+             * them, and so are the globals they use (the variables the top levels bind outside loops) *)
+            let functionCount = vector.length(:nodes.Function unit.functions)
+            for i = 0 upto {functionCount - 1} do bind(p vector.get(:nodes.Function unit.functions i).v) end
+            if functionCount > 0 then
+                let globals = walk.globalVariables(unit)
+                let tops = vector.new(:nodes.Body)
+                for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                    vector.append(:nodes.Body tops vector.get(:nodes.Module unit.modules i).init)
+                end
+                vector.append(:nodes.Body tops unit.main)
+                for i = 0 upto {vector.length(:nodes.Body tops) - 1} do
+                    let stmts = walk.walkStatements(vector.get(:nodes.Body tops i) false)
+                    for j = 0 upto {vector.length(:Stmt stmts) - 1} do
+                        let binders = walk.statementBinders(vector.get(:Stmt stmts j))
+                        for k = 0 upto {extent binders - 1} do
+                            if hashMap.contains(:Int :Bool globals binders[k].id) then bind(p binders[k]) end
+                        end
+                    end
+                end
+            end
+            for i = 0 upto {functionCount - 1} do function(p vector.get(:nodes.Function unit.functions i) 0) end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                emit(p 0 "module " <> m.name <> " : " <> m.interfaceName <> " {")
+                body(p m.init 1)
+                let exports = vector.new(:String)
+                for j = 0 upto {vector.length(:String m.members.names) - 1} do
+                    let n = vector.get(:String m.members.names j)
+                    vector.append(:String exports n <> " = " <> name(p hashMap.find(:String :Variable m.members.vars n)))
+                end
+                emit(p 1 "export " <> joinWith(", " exports))
+                if maybe.isSome(:Variable m.recordVar) then emit(p 1 "record " <> name(p maybe.unwrap(:Variable m.recordVar))) end
+                for j = 0 upto {extent m.abstractTypes - 1} do
+                    let a = m.abstractTypes[j]
+                    emit(p 1 "abstract " <> quoted(a.name) <> "/" <> conv.int(a.arity) <> " = "
+                        <> descriptor(p option descStatic of Descriptor with let d = a.descriptor end))
+                end
+                emit(p 0 "}")
+            end
+            block(p "main" unit.main 0)
+            text(p)
+        end
+
+    let formatBody(b: nodes.Body): String =
+        begin
+            let p = newPrinter()
+            body(p b 0)
+            text(p)
+        end
+end
