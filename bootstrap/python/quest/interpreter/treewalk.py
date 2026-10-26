@@ -1060,11 +1060,19 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
             raise QuestRuntimeError(f"Unhandled binding node: {binding.__class__.__name__}")
 
 
+# The scope_exceptions of each node evaluated so far, by identity, with the node, which keeps its id from being reused:
+# a binding in a loop or a function's body runs many times, and finding them walks its whole tree
+_scope_exceptions: dict[int, tuple[TypedNode, list[TypedException]]] = {}
+
+
 def make_scope_exceptions(node: TypedNode, env: RuntimeEnvironment) -> RuntimeEnvironment:
     """Makes, before node runs, the named exceptions it makes for its scope (scope_exceptions), defining their names,
     and returns the frame it runs in: a frame of its own if a name rebinds one of env's frame, as eval_scoped_binding
     gives a binding that rebinds one."""
-    exceptions = scope_exceptions(node)
+    cached = _scope_exceptions.get(id(node))
+    if cached is None:
+        cached = _scope_exceptions[id(node)] = (node, scope_exceptions(node))
+    exceptions = cached[1]
     if any(exc.name in env.bindings for exc in exceptions):
         env = env.push_scope()
     for exc in exceptions:
