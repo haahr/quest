@@ -4,8 +4,8 @@
  * runs the bootstrap's: `main --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar, or
  * typecheck) in the bootstrap's format on standard output, and the diagnostics on standard error, exiting with 1 if
  * there are errors. The interpret phase, the default, runs the program in the tree-walking interpreter and prints its
- * last phrase's result (or, with --echo, every phrase's); `-e PROGRAM` runs a program given as a string, and the
- * arguments after `--` are the program's. run_tests.py --self-hosted compiles it and checks it against the
+ * last phrase's result (or, with --echo, every phrase's); `-e PROGRAM` runs a program given as a string. The
+ * arguments after FILE are the program's, as are those after a `--` (which is how `-e` gets any). run_tests.py --self-hosted compiles it and checks it against the
  * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section 3). *)
 
 import
@@ -44,7 +44,7 @@ let usage(message: String): Ok =
         writer.putString(writer.err "main: " <> message <> "\n")
         writer.putString(writer.err
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|interpret] [--show-offsets] [--echo] "
-            <> "[--expected-exit N] (FILE | -e PROGRAM) [-- ARG...]\n")
+            <> "[--expected-exit N] (FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
         system.sysexit(2)
     end;
 
@@ -75,15 +75,11 @@ let options =
             elsif stringOp.equal(arg "--echo") then
                 echo := true
                 i := i + 1
-            elsif stringOp.equal(arg "--") then
+            else
+                (* The arguments after a -- or the file are the program's *)
+                if not(stringOp.equal(arg "--")) then file := arg end
                 for j = {i + 1} upto {extent system.args - 1} do vector.append(:String programArgs system.args[j]) end
                 i := extent system.args
-            elsif stringOp.equal(file "") then
-                file := arg
-                i := i + 1
-            else
-                usage("more than one file: " <> arg)
-                i := i + 1
             end
         end
         let var known = false

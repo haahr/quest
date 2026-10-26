@@ -57,8 +57,11 @@ Use the unified compiler driver script `./quest`:
 # Evaluate an inline Quest expression via the interpreter
 ./quest -e "let x: Int = 40 + 2; x"
 
-# Execute a Quest file via the tree-walking interpreter
-./quest program.quest
+# Execute a Quest file via the tree-walking interpreter; the arguments after it are the program's (system.args)
+./quest program.quest arg1 arg2
+
+# Give arguments to an inline program, or the REPL, after --
+./quest -e "import system: System; system.args" -- arg1 arg2
 
 # Compile Quest source to a native binary (using host clang/gcc)
 ./quest compile program.quest
@@ -86,6 +89,10 @@ Use the unified compiler driver script `./quest`:
 # Add include search paths for imported interfaces/modules:
 ./quest -I ./lib -I ./interfaces main.quest
 ```
+
+As with `python script.py`, the driver's options come before the program file: everything after it, options
+included, is the program's. (`quest compile`, which does not run the program, takes options anywhere, as does the
+driver for an interface or module file.)
 
 ### Running Tests
 The project includes comprehensive unit tests, golden-file integration tests, and inline diagnostic error tests:

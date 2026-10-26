@@ -127,7 +127,7 @@ class TestObjectLinking(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "15")
 
     def test_run_driver_cli_invocation_with_object(self) -> None:
-        """Unified CLI driver 'quest main.quest counter.o -o main' compiles and links native binary."""
+        """Unified CLI driver 'quest counter.o -o main main.quest' compiles and links native binary."""
         main_file = self.dir_path / "main_driver.quest"
         main_file.write_text(
             "import counter : Counter;\n"
@@ -143,11 +143,11 @@ class TestObjectLinking(unittest.TestCase):
         out_bin = self.dir_path / "main_driver"
 
         ret = run_driver([
-            str(main_file),
             str(self.o_file),
             "-o", str(out_bin),
             "-I", str(self.dir_path),
             "--build-dir", str(self.dir_path / ".build"),
+            str(main_file),
         ])
         self.assertEqual(ret, 0)
         self.assertTrue(out_bin.exists())

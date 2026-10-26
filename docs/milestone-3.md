@@ -79,7 +79,7 @@ implementation unwraps its arguments, calls the library function the symbol name
   through the same table, so the program's `try` catches it. Arithmetic and real operations use `primitives`, as in
   the bootstrap, with Quest's own `Int` and `Real`.
 - **Ported, not called:** `dynamic.copy`, `extern`, and `intern` (§4 Step 5), `quest_identity_hash` (the identity
-  hash of what `is` compares), `list` (a native `list.T(Value)`), and `system.args` (the arguments after `--`).
+  hash of what `is` compares), `list` (a native `list.T(Value)`), and `system.args` (the program's name and the arguments after it).
 
 ---
 

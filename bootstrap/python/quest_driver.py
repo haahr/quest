@@ -123,6 +123,30 @@ def run_unit_file(prog: str, file_path: Path, parsed_args: argparse.Namespace) -
         return 1
 
 
+OBJECT_SUFFIXES = (".o", ".a", ".dylib", ".so")
+
+
+def split_program_args(arg_parser: argparse.ArgumentParser, args: list[str]) -> tuple[list[str], list[str]]:
+    """Splits the command line into the driver's arguments and the program's, as Python does a script's: everything
+    after the program file (or '-') is the program's, options included, so that `quest program.quest -x y` passes
+    the program -x and y. A unit file and an object file are not programs, and so options may follow them. A '--'
+    before the program file ends the driver's arguments too, giving the program's to -e code or the REPL."""
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            return args[:i], args[i + 1:]
+        if arg.startswith("-") and arg != "-":
+            action = arg_parser._option_string_actions.get(arg)
+            # An option that takes a value takes the next argument, unless it is written --option=value
+            i += 2 if action is not None and action.nargs != 0 else 1
+            continue
+        if arg == "-" or (Path(arg).suffix not in OBJECT_SUFFIXES and file_unit_kind(Path(arg)) == UnitKind.PROGRAM):
+            return args[:i + 1], args[i + 1:]
+        i += 1
+    return args, []
+
+
 def run_driver(args: list[str]) -> int:
     """Executes the compiler driver with given CLI argument list."""
     if args and args[0] == "compile":
@@ -133,17 +157,11 @@ def run_driver(args: list[str]) -> int:
         "run_c_compiled",
     ]
 
-    if "--" in args:
-        dash_idx = args.index("--")
-        driver_args = args[:dash_idx]
-        target_args = args[dash_idx + 1:]
-    else:
-        driver_args = args
-        target_args = []
-
     arg_parser = argparse.ArgumentParser(
         prog="quest",
         description="Quest Compiler Driver — compile, check, interpret, and inspect Quest programs.",
+        # Abbreviated options would hide which arguments take values from split_program_args
+        allow_abbrev=False,
     )
     arg_parser.add_argument(
         "files",
@@ -251,7 +269,8 @@ def run_driver(args: list[str]) -> int:
         help="Deprecated: module dependencies are recorded in .qm manifests.",
     )
 
-    parsed_args = arg_parser.parse_args(driver_args)
+    driver_args, target_args = split_program_args(arg_parser, args)
+    parsed_args = arg_parser.parse_intermixed_args(driver_args)
 
     # Determine input source and extra objects
     is_inline_code = parsed_args.code is not None
@@ -259,7 +278,7 @@ def run_driver(args: list[str]) -> int:
     extra_objects: list[Path] = []
     for f_str in parsed_args.files:
         p = Path(f_str)
-        if p.suffix in (".o", ".a", ".dylib", ".so"):
+        if p.suffix in OBJECT_SUFFIXES:
             extra_objects.append(p.resolve() if p.exists() else p)
         elif source_file is None:
             source_file = f_str
@@ -553,7 +572,7 @@ def run_compile(args: list[str]) -> int:
     extra_objects: list[Path] = []
     for f_str in parsed_args.files:
         p = Path(f_str)
-        if p.suffix in (".o", ".a", ".dylib", ".so"):
+        if p.suffix in OBJECT_SUFFIXES:
             extra_objects.append(p.resolve() if p.exists() else p)
         elif source_file is None:
             source_file = f_str

@@ -144,7 +144,7 @@ class TestInterpreterTracebacks(unittest.TestCase):
     def stderr_of(self, program: Path, phase: str) -> str:
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
-            self.assertNotEqual(run_driver([str(program), "--stop-after", phase, "--build-dir", str(self.build_dir)]),
+            self.assertNotEqual(run_driver(["--stop-after", phase, "--build-dir", str(self.build_dir), str(program)]),
                                 0)
         return err.getvalue()
 

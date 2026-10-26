@@ -326,9 +326,9 @@ class TestModuleCompiler(unittest.TestCase):
         )
         res = quest_driver.run_driver([
             "--stop-after", "run_c_compiled",
-            str(main_file),
             "-I", str(self.dir_path),
             "--build-dir", str(self.dir_path / ".build"),
+            str(main_file),
         ])
         self.assertEqual(res, 0)
 

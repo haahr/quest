@@ -266,8 +266,8 @@ def run_single_golden_test(
 
     command.append(str(source_file.resolve()))
 
+    # The arguments after the program file are the program's
     if directives.args and phase_name in RUN_PHASES:
-        command.append("--")
         command.extend(directives.args)
 
     environment = os.environ.copy()

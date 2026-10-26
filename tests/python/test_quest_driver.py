@@ -134,27 +134,33 @@ class TestQuestDriverCLI(unittest.TestCase):
         )
         bin_path = self.build_dir / "hello_bin"
         exit_code = run_driver([
-            str(main_file),
             "-o",
             str(bin_path),
             "--build-dir",
             str(self.build_dir),
+            str(main_file),
         ])
         self.assertEqual(exit_code, 0)
         self.assertTrue(bin_path.is_file())
 
-    def test_system_args_hold_the_program_name_and_arguments_after_dashes(self) -> None:
+    def test_system_args_hold_the_program_name_and_the_arguments_after_it(self) -> None:
         driver = Path(__file__).resolve().parents[2] / "bootstrap" / "python" / "quest_driver.py"
         main_file = self.root / "args.quest"
         main_file.write_text("import system: System;\nsystem.args;\n", encoding="utf-8")
+        build = ["--build-dir", str(self.build_dir)]
+        repl_stdin = "import system: System; system.args;\n"
         cases = [
-            ([str(main_file), "--print-result"], "", f'"{main_file}" "a" "b"'),
-            (["-i"], "import system: System; system.args;\n", '"<repl>" "a" "b"'),
+            # Everything after the program file is the program's, options and dashes included
+            ([*build, str(main_file), "a", "b"], "", f'"{main_file}" "a" "b"'),
+            ([*build, str(main_file), "-o", "--echo"], "", f'"{main_file}" "-o" "--echo"'),
+            ([*build, str(main_file), "--", "a"], "", f'"{main_file}" "--" "a"'),
+            # Without a program file, a -- ends the driver's arguments
+            (["-i", *build, "--", "a", "b"], repl_stdin, '"<repl>" "a" "b"'),
         ]
         for args, stdin, expected in cases:
             with self.subTest(args=args):
                 proc = subprocess.run(
-                    [sys.executable, str(driver), *args, "--build-dir", str(self.build_dir), "--", "a", "b"],
+                    [sys.executable, str(driver), *args],
                     input=stdin, capture_output=True, text=True, timeout=120,
                 )
                 self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -260,7 +266,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         main_file = self.root / "raises.quest"
         main_file.write_text("exception E end;\nlet f(): Int = raise E end;\nf();\n", encoding="utf-8")
         bin_path = self.root / "raises"
-        self.assertEqual(run_driver([str(main_file), "-o", str(bin_path), "--build-dir", str(self.build_dir)]), 0)
+        self.assertEqual(run_driver(["-o", str(bin_path), "--build-dir", str(self.build_dir), str(main_file)]), 0)
         proc = subprocess.run([str(bin_path)], capture_output=True, text=True, timeout=60)
         self.assertEqual(proc.returncode, 1)
         self.assertRegex(proc.stderr, r"\AException: E\n  at .*raises\.quest:2:16\n(  in .*\n)*  in <main>\n\Z")
