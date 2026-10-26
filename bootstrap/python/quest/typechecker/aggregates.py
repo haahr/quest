@@ -298,8 +298,8 @@ class AggregateMixin(Checker):
             )
 
         # 2. Elaborate the components in order, in a scope of their own, so that each type component and each label (a
-        #    value component's name) is in scope for the components after it. Each one is one of four cases, chosen by
-        #    what the expected type says of it (checking) or what it is (synthesizing).
+        #    value component's name) is in scope for the components after it. Each component falls into one of four
+        #    cases, chosen by what the expected type says of it (checking) or what it is (synthesizing).
         with env.scoped("tuple_check" if checking else "tuple_synth"):
             witness_subst: dict[int, QType] = {}
             elem_typeds: list[TypedExpr] = []

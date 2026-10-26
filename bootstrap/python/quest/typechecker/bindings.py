@@ -161,13 +161,12 @@ class BindingMixin(Checker):
         one of them may occur only inside the function (scoping.py checks this). Likewise, the result type may not
         mention a path type rooted at a parameter, the type of one of a parameter's hidden type components.
 
-        Checked against an expected function type, the function lets the expected type supply what it leaves unwritten,
-        and holds what it writes to what subsumption would require (docs/type-system.md §6.1). Passed where All(x: Int)
-        Int is expected, fun(x: Int) x + 1 needs no result annotation: its body is checked against Int, and the function
-        has the expected result type. Each parameter must have its expected parameter's mode, a parameter's annotation
-        must fit its expected type (_require_param_type), and a result annotation must be a subtype of the expected
-        result type, the body then being checked against the annotation. A parameter without an annotation would take
-        its expected type, but the grammar requires one, so only an AST built directly (as by the unit tests) omits it.
+        Checked against an expected function type, the function lets the expected type supply what it leaves unwritten:
+        passed where the type All(x: Int) Int is expected, fun(x: Int) x + 1 needs no result annotation, because its
+        body is checked against Int, and the function has the expected result type. What the function does write is
+        held to what subsumption would require (docs/type-system.md §6.1): its parameters' modes must match, and its
+        annotations must fit the expected types (_require_param_type). A parameter without an annotation would take its
+        expected type, but the grammar requires one, so only an AST built directly (as by the unit tests) omits it.
         Against an expected polymorphic type, see _check_polymorphic_fun_expr. A function with type parameters checked
         against a plain function type, or any function checked against a type of another form, is synthesized and must
         be a subtype. Synthesized, the body is checked against the result annotation if there is one.

@@ -182,21 +182,21 @@ class ApplicationMixin(Checker):
     ) -> TypedExpr:
         """Elaborates the target of an argument @target passed to a var or out parameter, as a reference to it.
 
-        A var or out parameter receives a location rather than a value: one the callee may read and assign (var) or
-        only assign (out). The caller passes @x, @r.f, @t.f, or @a[i], or var(e) for a fresh location
-        (_check_lvalue_arg); @y forwards a var or out parameter y, passing on the location it already holds. This
-        method finds the location and returns a node of type Var(T) for it (TypedVar for a variable, TypedSelectRef,
-        TypedTupleSelectRef, or TypedIndexRef), so that later phases pass its address rather than its contents. T is
-        the location's own type, which for out may differ from the parameter's.
+        A var or out parameter receives a location rather than a value: one the callee may read and assign (var) or only
+        assign (out). The caller passes @x, @r.f, @t.f, or @a[i], or var(e) for a fresh location (_check_lvalue_arg); @y
+        forwards a var or out parameter y, passing on the location it already holds. This method finds the location and
+        returns a node of type Var(T) for it (TypedVar for a variable, TypedSelectRef, TypedTupleSelectRef, or
+        TypedIndexRef), so that later phases pass its address rather than its contents. T is the location's own type,
+        which for out may differ from the parameter's.
 
-        The location must be mutable: a variable or field declared var, or an array element (arrays are always
-        mutable). Mutability shows in two ways, which the tests below check together: a declaration marks its symbol
-        or field is_var, while a cell made by var(e) and bound by an ordinary let is mutable through its type, Var(T).
-        Its type must then fit the parameter's mode (check_lvalue_mode_type). For var it must be exactly the
-        parameter's type: passing @x, where x is a Record p: Int q: Int end, to var r: Record p: Int end would let the
-        callee store a record without q into x. For out, which the callee only assigns, any supertype of the
-        parameter's type will do. As with any use of a mutable local, passing one from a closure that would capture it
-        is rejected (_check_capturable).
+        The location must be mutable: a variable or field declared var, or an array element (arrays are always mutable).
+        Mutability shows in two ways, and the conditions below test both: a declaration marks its symbol or field
+        is_var, while a cell made by var(e) and bound by an ordinary let is mutable through its type, Var(T). Its type
+        must then fit the parameter's mode (check_lvalue_mode_type). For var it must be exactly the parameter's type:
+        passing @x, where x is a Record p: Int q: Int end, to var r: Record p: Int end would let the callee store a
+        record without q into x. For out, which the callee only assigns, any supertype of the parameter's type will do.
+        As with any use of a mutable local, passing one from a closure that would capture it is rejected
+        (_check_capturable).
         """
         mode_name = "out" if is_out else "var"
         match target:

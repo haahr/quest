@@ -254,8 +254,9 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
     whatever B is. Otherwise the outermost constructors must match, and their parts are compared by the rules given at
     each case: immutable parts covariantly, mutable ones (var fields, Var, arrays) invariantly, and function parameters
     contravariantly. Records and tuples have width subtyping: a record with more fields is a subtype of one with fewer,
-    and a tuple of a tuple with a prefix of its components. A type component that sup leaves abstract (A::K) may be
-    matched by one that sub defines (A = T), and the definition is substituted into sup's later components.
+    and a tuple is a subtype of a tuple made of a prefix of its components. A type component that sup leaves abstract
+    (A::K) may be matched by one that sub defines (A = T), and the definition is substituted into sup's later
+    components.
 
     fuel bounds the steps of one proof. Subtyping of bounded polymorphic types is undecidable, and running out raises
     TypeRecursionLimitExceeded rather than looping.
