@@ -271,82 +271,84 @@ class _NodeInfo:
 def _canonical_node(s: Any, bound: Any) -> Optional[_NodeInfo]:
     """The node for the structure s (a type or a kind), whose free variables in `bound` are parameters of enclosing
     binder nodes; None for a leaf."""
-    if isinstance(s, QKind):
-        if isinstance(s, QTypeKind):
+    match s:
+        case QTypeKind():
             return _NodeInfo(("kTYPE",), [])
-        if isinstance(s, QPowerKind):
+        case QPowerKind():
             return _NodeInfo(("kPOWER",), [s.bound])
-        if isinstance(s, QAllKind):
+        case QAllKind():
             return _NodeInfo(("kALL",), [s.param_kind, s.result_kind], (s.param_id,))
-        return None
-    if isinstance(s, (QTypeVar, QAbstractType)):
-        cls_name = "var" if isinstance(s, QTypeVar) else "abstract"
-        kinds = [s.bound] if s.bound is not None else []
-        if s.symbol_id in bound:
-            return _NodeInfo(("bound", cls_name, bound[s.symbol_id][1], bool(kinds)), kinds,
-                             occurrence_of=s.symbol_id)
-        return _NodeInfo(("free", cls_name, s.symbol_id, s.name, bool(kinds)), kinds)
-    if isinstance(s, QPathType):
-        return _NodeInfo(("path", s.root_name, s.root_symbol_id, s.field_name), [s.bound])
-    if isinstance(s, QTupleType):
-        if len(s.value_fields) == len(s.fields):
-            fields = s.value_fields
-            return _NodeInfo(("tuple", tuple((f.name, f.is_var) for f in fields)), [f.type_val for f in fields])
-        comps: list[tuple[Any, ...]] = []
-        parts: list[Any] = []
-        for f in s.fields:
-            match f:
-                case QTupleTypeFormal(name=f_name, bound=bound):
-                    comps.append(("formal", f_name))
-                    parts.append(bound)
-                case QTupleTypeBinding(name=f_name, type_val=type_val, bound=bound):
-                    comps.append(("binding", f_name, bound is not None))
-                    parts.append(type_val)
-                    if bound is not None:
-                        parts.append(bound)
-                case QTupleField(name=f_name, is_var=is_var, type_val=type_val):
-                    comps.append(("field", f_name, is_var))
-                    parts.append(type_val)
-        binds = tuple(f.symbol_id for f in s.fields if isinstance(f, QTupleTypeFormal))
-        return _NodeInfo(("xtuple", tuple(comps)), parts, binds)
-    if isinstance(s, QRecordType):
-        fields = sorted(s.fields, key=lambda f: f.name)
-        return _NodeInfo(("record", s.provenance, tuple((f.name, f.is_var) for f in fields)),
-                         [f.type_val for f in fields])
-    # Variants and options are compared by their cases' names, unordered, so their canonical forms order cases by
-    # name, as records' fields are ordered: equal types then have one layout and one numbering of tags
-    if isinstance(s, QVariantType):
-        variants = sorted(s.variants, key=lambda v: v.name)
-        labels = tuple((v.name, v.is_var, v.type_val is not None) for v in variants)
-        return _NodeInfo(("variant", labels), [v.type_val for v in variants if v.type_val is not None])
-    if isinstance(s, QOptionType):
-        options = sorted(s.options, key=lambda o: o.name)
-        labels = tuple((o.name, o.payload_type is not None) for o in options)
-        return _NodeInfo(("option", labels), [o.payload_type for o in options if o.payload_type is not None])
-    if isinstance(s, QArrayType):
-        return _NodeInfo(("array",), [s.element_type])
-    if isinstance(s, QVarType):
-        return _NodeInfo(("var",), [s.element_type])
-    if isinstance(s, QOutType):
-        return _NodeInfo(("out",), [s.element_type])
-    if isinstance(s, QFunType):
-        modes = tuple((p.is_var, p.is_out) for p in s.params)
-        return _NodeInfo(("fun", modes), [p.type_val for p in s.params] + [s.result_type])
-    if isinstance(s, QExceptionType):
-        return _NodeInfo(("exception",), [s.payload_type])
-    if isinstance(s, QAllType):
-        parts = [q.bound for q in s.quantifiers] + [s.body]
-        return _NodeInfo(("all", len(s.quantifiers)), parts, tuple(q.symbol_id for q in s.quantifiers))
-    if isinstance(s, QAutoType):
-        labels = tuple((f.name, f.is_var) for f in s.signature)
-        return _NodeInfo(("auto", labels), [s.kind_bound] + [f.type_val for f in s.signature], (s.symbol_id,))
-    if isinstance(s, QTypeFun):
-        parts = [p.bound for p in s.params] + [s.body]
-        return _NodeInfo(("tfun", len(s.params)), parts, tuple(p.symbol_id for p in s.params))
-    if isinstance(s, QTypeApp):
-        # An application of an abstract type operator (one that does not reduce)
-        return _NodeInfo(("app", len(s.arguments)), [s.constructor, *s.arguments])
-    return None
+        case QKind():
+            return None
+        case QTypeVar() | QAbstractType():
+            cls_name = "var" if isinstance(s, QTypeVar) else "abstract"
+            kinds = [s.bound] if s.bound is not None else []
+            if s.symbol_id in bound:
+                return _NodeInfo(("bound", cls_name, bound[s.symbol_id][1], bool(kinds)), kinds,
+                                 occurrence_of=s.symbol_id)
+            return _NodeInfo(("free", cls_name, s.symbol_id, s.name, bool(kinds)), kinds)
+        case QPathType():
+            return _NodeInfo(("path", s.root_name, s.root_symbol_id, s.field_name), [s.bound])
+        case QTupleType():
+            if len(s.value_fields) == len(s.fields):
+                fields = s.value_fields
+                return _NodeInfo(("tuple", tuple((f.name, f.is_var) for f in fields)), [f.type_val for f in fields])
+            comps: list[tuple[Any, ...]] = []
+            parts: list[Any] = []
+            for f in s.fields:
+                match f:
+                    case QTupleTypeFormal(name=f_name, bound=f_bound):
+                        comps.append(("formal", f_name))
+                        parts.append(f_bound)
+                    case QTupleTypeBinding(name=f_name, type_val=type_val, bound=f_bound):
+                        comps.append(("binding", f_name, f_bound is not None))
+                        parts.append(type_val)
+                        if f_bound is not None:
+                            parts.append(f_bound)
+                    case QTupleField(name=f_name, is_var=is_var, type_val=type_val):
+                        comps.append(("field", f_name, is_var))
+                        parts.append(type_val)
+            binds = tuple(f.symbol_id for f in s.fields if isinstance(f, QTupleTypeFormal))
+            return _NodeInfo(("xtuple", tuple(comps)), parts, binds)
+        case QRecordType():
+            fields = sorted(s.fields, key=lambda f: f.name)
+            return _NodeInfo(("record", s.provenance, tuple((f.name, f.is_var) for f in fields)),
+                             [f.type_val for f in fields])
+        # Variants and options are compared by their cases' names, unordered, so their canonical forms order cases by
+        # name, as records' fields are ordered: equal types then have one layout and one numbering of tags
+        case QVariantType():
+            variants = sorted(s.variants, key=lambda v: v.name)
+            labels = tuple((v.name, v.is_var, v.type_val is not None) for v in variants)
+            return _NodeInfo(("variant", labels), [v.type_val for v in variants if v.type_val is not None])
+        case QOptionType():
+            options = sorted(s.options, key=lambda o: o.name)
+            labels = tuple((o.name, o.payload_type is not None) for o in options)
+            return _NodeInfo(("option", labels), [o.payload_type for o in options if o.payload_type is not None])
+        case QArrayType():
+            return _NodeInfo(("array",), [s.element_type])
+        case QVarType():
+            return _NodeInfo(("var",), [s.element_type])
+        case QOutType():
+            return _NodeInfo(("out",), [s.element_type])
+        case QFunType():
+            modes = tuple((p.is_var, p.is_out) for p in s.params)
+            return _NodeInfo(("fun", modes), [p.type_val for p in s.params] + [s.result_type])
+        case QExceptionType():
+            return _NodeInfo(("exception",), [s.payload_type])
+        case QAllType():
+            parts = [q.bound for q in s.quantifiers] + [s.body]
+            return _NodeInfo(("all", len(s.quantifiers)), parts, tuple(q.symbol_id for q in s.quantifiers))
+        case QAutoType():
+            labels = tuple((f.name, f.is_var) for f in s.signature)
+            return _NodeInfo(("auto", labels), [s.kind_bound] + [f.type_val for f in s.signature], (s.symbol_id,))
+        case QTypeFun():
+            parts = [p.bound for p in s.params] + [s.body]
+            return _NodeInfo(("tfun", len(s.params)), parts, tuple(p.symbol_id for p in s.params))
+        case QTypeApp():
+            # An application of an abstract type operator (one that does not reduce)
+            return _NodeInfo(("app", len(s.arguments)), [s.constructor, *s.arguments])
+        case _:
+            return None
 
 
 def _rebuild_node(shape: tuple[Any, ...], parts: list[QType]) -> QType:

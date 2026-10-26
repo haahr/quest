@@ -151,40 +151,42 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
             type=opt_t,
             struct=option_struct_name(opt_t),
         )
-    if isinstance(t, QTypeApp):
-        # An application of an abstract type operator (list.T(Int)): opaque, compared by the operator's name and the
-        # arguments
-        name = _opaque_name(t.constructor)
-        return DescriptorForm("opaque", tag=f"opaque_{type_digest(t)}", name=name, type=t)
-    if isinstance(t, QArrayType):
-        return DescriptorForm("array", tag=f"array_{type_digest(t)}", type=t)
-    if isinstance(t, QExceptionType):
-        return DescriptorForm("exception", tag=f"exception_{type_digest(t)}", type=t)
-    if isinstance(t, (QFunType, QAllType)):
-        canonical = canonical_fun_type(t)
-        return DescriptorForm("fun", tag=f"fun_{type_digest(canonical)}", type=canonical)
-    if isinstance(t, QExternalType):
-        name = t.name or t.c_type
-        return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(name)}", name=name)
-    if (global_name := module_abstract_type_name(t)) is not None:
-        return DescriptorForm("opaque", tag=f"opaque_{text_digest(global_name)}", name=global_name)
-    if isinstance(t, (QTypeVar, QAbstractType)):
-        return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(t.name)}", name=t.name)
-    if isinstance(t, QPathType):
-        # An abstract type of a package value (t.A): opaque, and distinct for each binding of t
-        name = f"{t.root_name}.{t.field_name}#{t.root_symbol_id}"
-        return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
-    if isinstance(t, QAutoType):
-        canonical = canonical_auto_type(t)
-        return DescriptorForm("auto", tag=f"auto_{type_digest(canonical)}", type=canonical)
-    if isinstance(t, (QVarType, QOutType)):
-        # The type of a var or out parameter: described by its element type
-        return descriptor_form(t.element_type, ctx)
-    if isinstance(t, QTypeFun):
-        # A type operator, passed for a higher-kinded type parameter: opaque, compared by name
-        name = _opaque_name(t)
-        return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
-    raise MissingDescriptorError(f"no runtime type descriptor for type '{t}'")
+    match t:
+        case QTypeApp():
+            # An application of an abstract type operator (list.T(Int)): opaque, compared by the operator's name and the
+            # arguments
+            name = _opaque_name(t.constructor)
+            return DescriptorForm("opaque", tag=f"opaque_{type_digest(t)}", name=name, type=t)
+        case QArrayType():
+            return DescriptorForm("array", tag=f"array_{type_digest(t)}", type=t)
+        case QExceptionType():
+            return DescriptorForm("exception", tag=f"exception_{type_digest(t)}", type=t)
+        case QFunType() | QAllType():
+            canonical = canonical_fun_type(t)
+            return DescriptorForm("fun", tag=f"fun_{type_digest(canonical)}", type=canonical)
+        case QExternalType():
+            name = t.name or t.c_type
+            return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(name)}", name=name)
+        case _ if (global_name := module_abstract_type_name(t)) is not None:
+            return DescriptorForm("opaque", tag=f"opaque_{text_digest(global_name)}", name=global_name)
+        case QTypeVar() | QAbstractType():
+            return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(t.name)}", name=t.name)
+        case QPathType():
+            # An abstract type of a package value (t.A): opaque, and distinct for each binding of t
+            name = f"{t.root_name}.{t.field_name}#{t.root_symbol_id}"
+            return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
+        case QAutoType():
+            canonical = canonical_auto_type(t)
+            return DescriptorForm("auto", tag=f"auto_{type_digest(canonical)}", type=canonical)
+        case QVarType() | QOutType():
+            # The type of a var or out parameter: described by its element type
+            return descriptor_form(t.element_type, ctx)
+        case QTypeFun():
+            # A type operator, passed for a higher-kinded type parameter: opaque, compared by name
+            name = _opaque_name(t)
+            return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
+        case _:
+            raise MissingDescriptorError(f"no runtime type descriptor for type '{t}'")
 
 
 def record_struct_name(t: QRecordType, ctx: Optional[RecordNamingContext] = None) -> str:

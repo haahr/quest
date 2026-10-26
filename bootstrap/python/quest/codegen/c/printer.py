@@ -369,18 +369,21 @@ class CPrinter:
     def descriptor(self, d: ir.Descriptor) -> str:
         """A descriptor operand (ir/describe.py): a descriptor variable, a static descriptor, or a template instantiated
         at run time with its holes' descriptors."""
-        if isinstance(d, ir.Var):
-            return self.name(d)
-        if isinstance(d, ir.StaticDescriptor):
-            form = echo_descriptor_form(d.type, self.ctx) if d.echo else None
-            return (form or self.static_form(d.type)).c_expr
-        if isinstance(d, ir.Instantiate):
-            form = self.static_form(d.template)
-            if form.kind in ("base", "bound_var"):
-                return form.c_expr
-            args = ", ".join(self.descriptor(a) for a in d.args)
-            return f"quest_instantiate_descriptor({form.c_expr}, {len(d.args)}, (const QTypeDescriptor *const[]){{ {args} }})"
-        raise NotImplementedError("C code generation: a run-time use of a type without its descriptor")
+        match d:
+            case ir.Var():
+                return self.name(d)
+            case ir.StaticDescriptor():
+                form = echo_descriptor_form(d.type, self.ctx) if d.echo else None
+                return (form or self.static_form(d.type)).c_expr
+            case ir.Instantiate():
+                form = self.static_form(d.template)
+                if form.kind in ("base", "bound_var"):
+                    return form.c_expr
+                args = ", ".join(self.descriptor(a) for a in d.args)
+                return (f"quest_instantiate_descriptor({form.c_expr}, {len(d.args)}, "
+                        f"(const QTypeDescriptor *const[]){{ {args} }})")
+            case _:
+                raise NotImplementedError("C code generation: a run-time use of a type without its descriptor")
 
     def static_form(self, t: QType):
         try:

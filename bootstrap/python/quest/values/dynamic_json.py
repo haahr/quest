@@ -262,48 +262,51 @@ class _TypeGraph:
         return index
 
     def _node(self, s: QType) -> tuple[tuple[Any, ...], tuple[TypeRef, ...]]:
-        if isinstance(s, QRecordType):
-            fields = sorted(s.fields, key=lambda f: f.name)
-            labels = tuple(_var_label(f.name, f.is_var) for f in fields)
-            return ("record", labels), tuple(self.ref(f.type_val) for f in fields)
-        if isinstance(s, QTupleType):
-            components = s.value_fields
-            if len(components) != len(s.fields):
-                raise _fail()  # type components (an abstract tuple): not encodable yet
-            labels = tuple(_var_label(f.name or "", f.is_var) for f in components)
-            return ("tuple", labels), tuple(self.ref(f.type_val) for f in components)
-        if isinstance(s, (QVariantType, QOptionType)):
-            # Cases are listed by name, as compiled code numbers them (docs/dynamic.md §2.2)
-            if isinstance(s, QVariantType):
-                cases = [(_var_label(v.name, v.is_var), v.type_val) for v in sorted(s.variants, key=lambda v: v.name)]
-            else:
-                cases = [(o.name, o.payload_type) for o in sorted(s.options, key=lambda o: o.name)]
-            shape = ("variant" if isinstance(s, QVariantType) else "option",
-                     tuple(label for label, _ in cases), tuple(p is not None for _, p in cases))
-            return shape, tuple(self.ref(p) for _, p in cases if p is not None)
-        if isinstance(s, QArrayType):
-            return ("array",), (self.ref(s.element_type),)
-        if isinstance(s, QFunType):
-            modes = tuple("var" if p.is_var else "out" if p.is_out else "" for p in s.params)
-            return ("fun", modes), tuple(self.ref(p.type_val) for p in s.params) + (self.ref(s.result_type),)
-        if isinstance(s, QExceptionType):
-            return ("exception",), (self.ref(s.payload_type),)
-        if isinstance(s, QExternalType) and s.c_type in _EXTERNAL_TYPES:
-            return ("external", s.c_type), ()
-        if isinstance(s, QAutoType):
-            if isinstance(s.kind_bound, QPowerKind):
-                bound: tuple[TypeRef, ...] = (self.ref(s.kind_bound.bound),)
-            elif s.kind_bound is TYPE_KIND or isinstance(s.kind_bound, QTypeKind):
-                bound = ()
-            else:
-                raise _fail()
-            labels = tuple(_var_label(f.name, f.is_var) for f in s.signature)
-            self._binders.append(s.symbol_id)
-            try:
-                components = tuple(self.ref(f.type_val) for f in s.signature)
-            finally:
-                self._binders.pop()
-            return ("auto", labels, bool(bound)), bound + components
+        match s:
+            case QRecordType():
+                fields = sorted(s.fields, key=lambda f: f.name)
+                labels = tuple(_var_label(f.name, f.is_var) for f in fields)
+                return ("record", labels), tuple(self.ref(f.type_val) for f in fields)
+            case QTupleType():
+                components = s.value_fields
+                if len(components) != len(s.fields):
+                    raise _fail()  # type components (an abstract tuple): not encodable yet
+                labels = tuple(_var_label(f.name or "", f.is_var) for f in components)
+                return ("tuple", labels), tuple(self.ref(f.type_val) for f in components)
+            case QVariantType() | QOptionType():
+                # Cases are listed by name, as compiled code numbers them (docs/dynamic.md §2.2)
+                if isinstance(s, QVariantType):
+                    cases = [
+                        (_var_label(v.name, v.is_var), v.type_val) for v in sorted(s.variants, key=lambda v: v.name)
+                    ]
+                else:
+                    cases = [(o.name, o.payload_type) for o in sorted(s.options, key=lambda o: o.name)]
+                shape = ("variant" if isinstance(s, QVariantType) else "option",
+                         tuple(label for label, _ in cases), tuple(p is not None for _, p in cases))
+                return shape, tuple(self.ref(p) for _, p in cases if p is not None)
+            case QArrayType():
+                return ("array",), (self.ref(s.element_type),)
+            case QFunType():
+                modes = tuple("var" if p.is_var else "out" if p.is_out else "" for p in s.params)
+                return ("fun", modes), tuple(self.ref(p.type_val) for p in s.params) + (self.ref(s.result_type),)
+            case QExceptionType():
+                return ("exception",), (self.ref(s.payload_type),)
+            case QExternalType() if s.c_type in _EXTERNAL_TYPES:
+                return ("external", s.c_type), ()
+            case QAutoType():
+                if isinstance(s.kind_bound, QPowerKind):
+                    bound: tuple[TypeRef, ...] = (self.ref(s.kind_bound.bound),)
+                elif s.kind_bound is TYPE_KIND or isinstance(s.kind_bound, QTypeKind):
+                    bound = ()
+                else:
+                    raise _fail()
+                labels = tuple(_var_label(f.name, f.is_var) for f in s.signature)
+                self._binders.append(s.symbol_id)
+                try:
+                    components = tuple(self.ref(f.type_val) for f in s.signature)
+                finally:
+                    self._binders.pop()
+                return ("auto", labels, bool(bound)), bound + components
         abstract = _module_abstract_type(s)
         if abstract is not None:
             entry, args = abstract

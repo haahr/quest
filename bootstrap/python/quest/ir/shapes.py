@@ -201,13 +201,15 @@ def is_word_type(t: QType) -> bool:
     """Whether t is the standard library's Word.T (or a type parameter bounded by it), whose values are held in a
     uint64_t."""
     t = normalize_type(resolve_type_bound(t))
-    if isinstance(t, QTypeVar) and t.name in ("Word.T", "word.T"):
-        return True
-    if isinstance(t, QPathType) and t.field_name == "T" and t.root_name in ("Word", "word"):
-        return True
-    if isinstance(t, QExternalType) and (t.name in ("Word.T", "word.T") or t.c_type == "uint64_t"):
-        return True
-    return False
+    match t:
+        case QTypeVar() if t.name in ("Word.T", "word.T"):
+            return True
+        case QPathType() if t.field_name == "T" and t.root_name in ("Word", "word"):
+            return True
+        case QExternalType() if t.name in ("Word.T", "word.T") or t.c_type == "uint64_t":
+            return True
+        case _:
+            return False
 
 
 def _cached(t: QType) -> Optional[Shape]:

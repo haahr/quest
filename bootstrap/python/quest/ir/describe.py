@@ -465,17 +465,18 @@ def unit_types(unit: ir.Unit) -> list[QType]:
             found.append(t)
 
     def visit(node) -> None:
-        if isinstance(node, QType):
-            add(node)
-            return
-        if isinstance(node, (list, tuple)):
-            for item in node:
-                visit(item)
-            return
-        if isinstance(node, dict):
-            for item in node.values():
-                visit(item)
-            return
+        match node:
+            case QType():
+                add(node)
+                return
+            case list() | tuple():
+                for item in node:
+                    visit(item)
+                return
+            case dict():
+                for item in node.values():
+                    visit(item)
+                return
         if not dataclasses.is_dataclass(node) or isinstance(node, (type, ir.Shape)) or id(node) in seen_nodes:
             return
         seen_nodes.add(id(node))

@@ -485,22 +485,23 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
             problems.append(f"{where}: the static descriptor of {t} mentions {names}, whose descriptor is a variable")
 
     def descriptor(d, scope: _DescriptorScope, where: str) -> None:
-        if isinstance(d, ir.Var):
-            if id(d) not in scope.vars:
-                problems.append(f"{where}: descriptor variable '{d.hint}' is used outside its scope")
-        elif isinstance(d, ir.StaticDescriptor):
-            key = (True, id(d.type)) if d.echo else (False, id(shape(d.type)))
-            if key not in static_keys:
-                problems.append(f"{where}: the static descriptor of {d.type} is not in the unit's static data")
-            closed(d.type, scope, where)
-        elif isinstance(d, ir.Instantiate):
-            if (False, id(shape(d.template))) not in static_keys:
-                problems.append(f"{where}: the template {d.template} is not in the unit's static data")
-            closed(d.template, scope, where)
-            for a in d.args:
-                descriptor(a, scope, where)
-        else:
-            problems.append(f"{where}: a descriptor operand is missing")
+        match d:
+            case ir.Var():
+                if id(d) not in scope.vars:
+                    problems.append(f"{where}: descriptor variable '{d.hint}' is used outside its scope")
+            case ir.StaticDescriptor():
+                key = (True, id(d.type)) if d.echo else (False, id(shape(d.type)))
+                if key not in static_keys:
+                    problems.append(f"{where}: the static descriptor of {d.type} is not in the unit's static data")
+                closed(d.type, scope, where)
+            case ir.Instantiate():
+                if (False, id(shape(d.template))) not in static_keys:
+                    problems.append(f"{where}: the template {d.template} is not in the unit's static data")
+                closed(d.template, scope, where)
+                for a in d.args:
+                    descriptor(a, scope, where)
+            case _:
+                problems.append(f"{where}: a descriptor operand is missing")
 
     def descriptors(ds, n: int, scope: _DescriptorScope, where: str) -> None:
         if len(ds) != n:
