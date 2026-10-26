@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import os
 import shutil
 import subprocess
@@ -27,11 +28,7 @@ def traceback_flags(compiler: str) -> tuple[str, ...]:
     """Flags that keep tracebacks' frames (docs/exceptions.md §5.3): GCC moves the cold paths of functions, which
     hold the calls that raise, into separate sections that tracebacks cannot attribute to the functions. (Clang does
     not, and gcc on macOS is clang.)"""
-    try:
-        version = subprocess.run([compiler, "--version"], capture_output=True, text=True, timeout=30).stdout
-    except (OSError, subprocess.SubprocessError):
-        return ()
-    if "Free Software Foundation" in version:
+    if "Free Software Foundation" in _compiler_version(compiler):
         return ("-fno-reorder-blocks-and-partition",)
     return ()
 
@@ -108,9 +105,82 @@ def _sdk_has(header: str) -> bool:
     return any((root / header).exists() for root in roots)
 
 
-def runtime_sources(runtime_dir: Path) -> list[str]:
-    """The runtime's C files, which every program is compiled with."""
-    return [str(runtime_dir / name) for name in ("quest_runtime.c", "quest_serialization.c", "quest_readline.c")]
+# The runtime's C files, which every program is linked with
+RUNTIME_SOURCES = ("quest_runtime.c", "quest_serialization.c", "quest_readline.c")
+
+
+def base_c_flags(compiler: str) -> list[str]:
+    """The flags every C file is compiled with."""
+    return [
+        "-std=c99",
+        "-pedantic-errors",
+        "-Wno-overlength-strings",
+        "-Wall",
+        "-Wextra",
+        "-O2",
+        *traceback_flags(compiler),
+    ]
+
+
+def compile_flags_of(flags: list[str] | tuple[str, ...]) -> list[str]:
+    """flags without the linker's (-L and -l), which compiling alone does not use."""
+    return [flag for flag in flags if not flag.startswith(("-L", "-l"))]
+
+
+@functools.lru_cache(maxsize=None)
+def _compiler_version(compiler: str) -> str:
+    try:
+        return subprocess.run([compiler, "--version"], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def runtime_cache_dir() -> Path:
+    """Where the runtime's objects are kept: QUEST_RUNTIME_CACHE, or the checkout's .build/runtime."""
+    configured = os.environ.get("QUEST_RUNTIME_CACHE")
+    if configured:
+        return Path(configured)
+    return get_runtime_dir().parent / ".build" / "runtime"
+
+
+def runtime_objects(
+    compiler: str, nogc: bool = False, extra_flags: Optional[list[str]] = None
+) -> list[str]:
+    """The runtime's object files, compiled once and kept for every link (docs/testing.md §5.2). They are kept under a
+    key of what they are compiled from: the runtime's sources and headers, the compiler and its version, and the
+    flags, so that changing any of them compiles them again. Each object is written to a temporary file and renamed,
+    so that processes linking at once never see half of one."""
+    runtime_dir = get_runtime_dir()
+    flags = [
+        *base_c_flags(compiler),
+        f"-I{runtime_dir}",
+        *compile_flags_of([*detect_gc_flags(nogc=nogc), *detect_readline_flags(), *(extra_flags or [])]),
+    ]
+    key = hashlib.sha256()
+    for part in (compiler, _compiler_version(compiler), *flags):
+        key.update(part.encode("utf-8") + b"\0")
+    for source in sorted([*runtime_dir.glob("*.c"), *runtime_dir.glob("*.h")]):
+        key.update(source.name.encode("utf-8") + b"\0" + source.read_bytes() + b"\0")
+    cache = runtime_cache_dir() / key.hexdigest()[:24]
+    objects = []
+    for name in RUNTIME_SOURCES:
+        obj = cache / (Path(name).stem + ".o")
+        if not obj.exists():
+            cache.mkdir(parents=True, exist_ok=True)
+            fd, temp = tempfile.mkstemp(suffix=".o", dir=cache)
+            os.close(fd)
+            cmd = [compiler, *flags, "-c", str(runtime_dir / name), "-o", temp]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if proc.returncode != 0:
+                Path(temp).unlink(missing_ok=True)
+                raise RuntimeError(
+                    f"C runtime compilation failed with exit code {proc.returncode}:\n"
+                    f"Command: {' '.join(cmd)}\n"
+                    f"{proc.stderr}"
+                )
+            os.replace(temp, obj)
+        objects.append(str(obj))
+    return objects
 
 
 def compile_c_source(
@@ -138,16 +208,10 @@ def compile_c_source(
     try:
         cmd = [
             compiler,
-            "-std=c99",
-            "-pedantic-errors",
-            "-Wno-overlength-strings",
-            "-Wall",
-            "-Wextra",
-            "-O2",
-            *traceback_flags(compiler),
+            *base_c_flags(compiler),
             f"-I{runtime_dir}",
-            *runtime_sources(runtime_dir),
             str(temp_c_path),
+            *runtime_objects(compiler, nogc=nogc, extra_flags=extra_flags),
         ]
         if extra_objects:
             cmd.extend(str(obj) for obj in extra_objects)
@@ -208,13 +272,7 @@ def compile_c_to_object(
 
     cmd = [
         compiler,
-        "-std=c99",
-        "-pedantic-errors",
-        "-Wno-overlength-strings",
-        "-Wall",
-        "-Wextra",
-        "-O2",
-        *traceback_flags(compiler),
+        *base_c_flags(compiler),
         f"-I{runtime_dir}",
     ]
     if include_paths:
@@ -250,31 +308,19 @@ def link_objects(
     compiler_path: Optional[str] = None,
     extra_flags: Optional[list[str]] = None,
 ) -> Path:
-    """Links object files and runtime C sources into an executable binary."""
+    """Links object files and the runtime's (runtime_objects) into an executable binary."""
     target_bin = Path(output_binary)
     target_bin.parent.mkdir(parents=True, exist_ok=True)
     compiler = compiler_path or find_c_compiler()
-    runtime_dir = get_runtime_dir()
 
-    cmd = [
-        compiler,
-        "-std=c99",
-        "-pedantic-errors",
-        "-Wno-overlength-strings",
-        "-Wall",
-        "-Wextra",
-        "-O2",
-        *traceback_flags(compiler),
-        f"-I{runtime_dir}",
-        *runtime_sources(runtime_dir),
-    ]
+    cmd = [compiler, *runtime_objects(compiler, nogc=nogc, extra_flags=extra_flags)]
     cmd.extend(str(obj) for obj in objects)
     cmd.extend([
         "-o",
         str(target_bin),
     ])
-    cmd.extend(detect_gc_flags(nogc=nogc))
-    cmd.extend(detect_readline_flags())
+    # The libraries' linker flags; the runtime's objects were compiled with the rest
+    cmd.extend(flag for flag in (*detect_gc_flags(nogc=nogc), *detect_readline_flags()) if flag.startswith(("-L", "-l")))
     if extra_flags:
         cmd.extend(extra_flags)
 

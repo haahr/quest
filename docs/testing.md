@@ -473,7 +473,7 @@ fresh build directory):
 
 | Part | Time | Notes |
 | :--- | ---: | :--- |
-| `run_c_compiled` (58 tests) | 77 s | Every link recompiles the C runtime (~0.4 s); includes the cold `ast`/`astprint` module build |
+| `run_c_compiled` (58 tests) | 77 s | Every link recompiled the C runtime then (~0.4 s; see §5.2); includes the cold `ast`/`astprint` module build |
 | Error suite (85 tests) | 42 s | Each test starts the compiler 2-5 times (precursor phases plus the target phase) |
 | `typecheck` / `interpret` | 14 s / 14 s | |
 | `tokenize` / `parse` | 7 s / 7 s | Almost entirely process startup |
@@ -485,9 +485,9 @@ Starting one compiler process costs about 0.12 s (mostly importing the `quest` p
 1. **Run tests in parallel.** `run_tests.py` runs one test at a time. Six to eight workers could plausibly bring the
    suite under a minute. The shared build directory then needs care: either build the library modules once before
    starting the workers, or give each worker its own build directory.
-2. **Build the C runtime once per run.** Every link recompiles `runtime/quest_runtime.c` and
-   `runtime/quest_serialization.c` from source at `-O2` (about 0.39 s), costing roughly 25-30 s across the C tests and
-   C error tests. Compiling them once into the build directory and linking the object files would recover most of it.
+2. **Build the C runtime once (done).** Every link recompiled the runtime's C files from source at `-O2` (about 1.1 s
+   by 2026-10-26, three files). They are now compiled once into objects kept under a key of their sources, compiler,
+   and flags (`compiler_runner.runtime_objects`, [codegen-c.md](codegen-c.md) §11.3), and reused by every link.
 3. **Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own
    process to confirm that it passes (section 3.4), although the target-phase run already executes those phases in the
    same process. If the target run's diagnostics recorded which phase failed, one process per test would suffice,

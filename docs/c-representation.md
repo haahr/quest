@@ -1275,7 +1275,8 @@ runtime/
 ├── quest_runtime.h         /* Core ABI, QVal, QProxy, QTypeDescriptor, inline helpers */
 ├── quest_runtime.c         /* Strings, I/O streams, subtyping, proxies, exceptions, stack unwinding */
 ├── quest_serialization.h   /* Dynamic serialization & deserialization API */
-└── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
+├── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
+└── quest_readline.c        /* io/readline: line editing and history (docs/self-hosted-repl.md §1.1) */
 ```
 
 ### 10.1. Implemented Runtime Functions (`runtime/quest_runtime.c`)

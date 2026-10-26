@@ -602,18 +602,27 @@ The compiler runner manages external C compiler toolchain discovery, Boehm GC fl
 - If found: passes `-I<prefix>/include -L<prefix>/lib -lgc`.
 - If not found or when `--nogc` flag is specified: passes `-DQUEST_NOGC`, using standard libc `calloc`/`malloc`.
 
+`detect_readline_flags()` locates the line editor `runtime/quest_readline.c` uses (GNU readline, then libedit, else
+`-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [self-hosted-repl.md](self-hosted-repl.md) §1.1 describes.
+
 ### 11.3. Compilation Invocation
+The runtime's C files (`quest_runtime.c`, `quest_serialization.c`, `quest_readline.c`) are compiled once into objects
+(`runtime_objects`), kept in `.build/runtime/KEY/` under the checkout (or `$QUEST_RUNTIME_CACHE/KEY/`), where KEY
+hashes the runtime's sources and headers, the compiler and its `--version`, and the compile flags: a change to any of
+them compiles the runtime again, and objects are reused across builds and test runs otherwise. Each object is written
+to a temporary file and renamed into place, so builds running at once never see half of one.
+
 `compile_c_source(c_source, output_path, nogc)`:
 1. Writes emitted C source to a temporary file (`.c`).
 2. Constructs compilation command:
    ```bash
-   clang -std=c99 -Wall -Wextra -O2 \
-     -I <repo_root>/runtime <repo_root>/runtime/quest_runtime.c \
-     <repo_root>/runtime/quest_serialization.c \
-     <temp.c> -o <out_bin> [GC_FLAGS]
+   clang -std=c99 -pedantic-errors -Wall -Wextra -O2 -I <repo_root>/runtime \
+     <temp.c> <runtime objects> -o <out_bin> [GC_FLAGS] [READLINE_FLAGS]
    ```
 3. Executes command via `subprocess.run()`. On failure, captures `stderr` and raises `RuntimeError`.
 4. Cleans up temporary C source file.
+
+`link_objects` links a program's objects with the runtime's the same way, passing only the libraries' linker flags.
 
 ---
 
