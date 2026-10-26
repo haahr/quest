@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -238,6 +239,39 @@ def bootstrap_c(source_file: Path, echo: bool, python_executable: str, build_dir
     return process.stdout
 
 
+# The tests of the self-hosted compiler's modules run compiled only: under the
+# bootstrap's interpreters, each would interpret the compiler's code for minutes.
+# Their modules are compiled once per run, into a build directory the tests
+# share (build_questlang_tests).
+QUESTLANG_TESTS_DIR = TESTS_SOURCE_DIR / "questlang"
+QUESTLANG_INTERPRETED_PHASES = ("interpret", *IR_RUN_PHASES)
+QUESTLANG_BUILD_SUBDIR = "questlang-tests"
+
+
+def is_questlang_test(source_file: Path) -> bool:
+    return source_file.is_relative_to(QUESTLANG_TESTS_DIR)
+
+
+def build_questlang_tests(python_executable: str, source_files: list[Path], build_dir: Path) -> None:
+    """Compiles and links the questlang tests in build_dir, one at a time, so
+    that the modules they import are compiled once. The tests then run in
+    parallel in build_dir, reading the fresh artifacts and writing only their
+    own programs'. A test that fails to build here fails when it runs, and
+    reports why."""
+    build_dir.mkdir(parents=True, exist_ok=True)
+    for source_file in source_files:
+        command = [
+            python_executable,
+            str(DRIVER_SCRIPT),
+            "--build-dir",
+            str(build_dir),
+            "-o",
+            str(build_dir / source_file.stem),
+            str(source_file.resolve()),
+        ]
+        subprocess.run(command, capture_output=True, env=golden_environment(), cwd=ROOT_DIR)
+
+
 def golden_dir_for_phase(phase_name: str) -> Path:
     if phase_name in RUN_PHASES:
         return TESTS_GOLDEN_DIR / "run"
@@ -273,6 +307,23 @@ def pipeline_for_phase(phase_name: str) -> PhasePipeline:
     if phase_name in IR_DUMP_PHASES:
         return ir_pipeline(phase_name.removeprefix("ir_"))
     return default_pipeline()
+
+
+def golden_environment() -> dict[str, str]:
+    """The environment golden tests' drivers run in."""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+    # Checks the C back end's canonical forms of types, which outside the tests
+    # only warn (docs/c-representation.md §5.7)
+    environment["QUEST_CHECK_CANONICAL"] = "1"
+    # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
+    environment["QUEST_CHECK_SCOPES"] = "1"
+    # Checks the IR's invariants after lowering (quest/ir/verify.py)
+    environment["QUEST_CHECK_IR"] = "1"
+    # The project directory, whose lib/ the self-hosted driver reads the
+    # standard library from (it runs elsewhere)
+    environment["QUEST_HOME"] = str(ROOT_DIR)
+    return environment
 
 
 def run_single_golden_test(
@@ -328,18 +379,7 @@ def run_single_golden_test(
     if directives.args and phase_name in RUN_PHASES:
         command.extend(directives.args)
 
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
-    # Checks the C back end's canonical forms of types, which outside the tests
-    # only warn (docs/c-representation.md §5.7)
-    environment["QUEST_CHECK_CANONICAL"] = "1"
-    # Checks that typed programs are well scoped (quest/typechecker/scoping.py)
-    environment["QUEST_CHECK_SCOPES"] = "1"
-    # Checks the IR's invariants after lowering (quest/ir/verify.py)
-    environment["QUEST_CHECK_IR"] = "1"
-    # The project directory, whose lib/ the self-hosted driver reads the
-    # standard library from (it runs elsewhere)
-    environment["QUEST_HOME"] = str(ROOT_DIR)
+    environment = golden_environment()
     if directives.env and phase_name in RUN_PHASES:
         environment.update(directives.env)
 
@@ -800,6 +840,20 @@ def run_all_tests(
 
             runs_eval = driver_command is not None and (not args.test or args.test in "self-hosted/eval")
             repl_files = [f for f in discover_repl_tests() if not args.test or args.test in f"repl/{f.stem}"]
+            # The questlang tests' modules are compiled while the other phases
+            # run, and the tests run compiled in the build directory this
+            # leaves
+            questlang_files = [
+                sf for sf in source_files
+                if is_questlang_test(sf) and "run_c_compiled" not in parse_skipped_phases(sf)
+            ]
+            questlang_build_dir = build_dir / QUESTLANG_BUILD_SUBDIR
+            questlang_build: Optional[threading.Thread] = None
+            if driver_command is None and "run_c_compiled" in phases_to_run and questlang_files:
+                questlang_build = threading.Thread(
+                    target=build_questlang_tests, args=(python_executable, questlang_files, questlang_build_dir)
+                )
+                questlang_build.start()
             if source_files or runs_eval or repl_files:
                 print("=== Golden Tests ===")
                 for phase in phases_to_run:
@@ -821,10 +875,14 @@ def run_all_tests(
                             run_fn=with_pending(f"{phase}:{test_id}", pending, pending_counts,
                                                 make_repl_runner(source_file)),
                         ))
+                    if phase == "run_c_compiled" and questlang_build is not None:
+                        questlang_build.join()
                     for source_file in source_files if phase != "repl" else []:
                         skipped_phases = parse_skipped_phases(source_file)
                         rel_source = golden_test_id(source_file)
                         test_id = str(rel_source.with_suffix(""))
+                        if driver_command is None and is_questlang_test(source_file):
+                            skipped_phases = skipped_phases | set(QUESTLANG_INTERPRETED_PHASES)
                         if phase.lower() in skipped_phases:
                             skipped_golden += 1
                             print(f"  [SKIP] {phase}:{test_id}")
@@ -843,13 +901,14 @@ def run_all_tests(
                         def make_golden_runner(
                             sf: Path, p: str
                         ) -> Callable[[Path], tuple[bool, str, str]]:
+                            shared = questlang_build_dir if questlang_build is not None and sf in questlang_files else None
                             return lambda w_dir: run_single_golden_test(
                                 sf,
                                 p,
                                 update_golden=args.update_golden,
                                 python_executable=python_executable,
                                 timeout=args.timeout,
-                                build_dir=w_dir,
+                                build_dir=shared or w_dir,
                                 driver_args=driver_args,
                                 driver_command=driver_command,
                             )

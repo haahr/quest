@@ -172,6 +172,10 @@ a build directory inside their own temporary directory, so no test writes into t
 **One session per test:** each test is a driver run of its own, and so a compilation session of its own, with its own
 unit graph and resolver (`docs/build-process.md` §2.1). Tests share only the artifacts in their worker's build
 directory, which the staleness rules decide whether to reuse; no test sees another's resolutions or typed units. The
+questlang tests (`tests/source/questlang/`) share one build directory instead, `questlang-tests/` in the run's: while
+the other phases run, the runner compiles and links each of them there in turn (`build_questlang_tests`), so the
+self-hosted compiler's modules are compiled once per run rather than once per worker, and the tests then run in
+parallel against those fresh artifacts, each writing only its own program's. The
 runner itself classifies files (§2.6) and follows error tests' imports (§3.3) through the same graph: `file_unit_kind`
 and a `Resolver` of each error test's own.
 
@@ -206,9 +210,12 @@ one per line, and `python tests/eval/generate.py` writes the bootstrap driver's 
 compares the driver's with (`interpret:self-hosted/eval`).
 
 **Which runs:** a change to the self-hosted compiler alone (`questlang/`) runs the self-hosted suite and the questlang
-tests compiled, `python3 run_tests.py --phase run_c_compiled -k questlang/`; interpreting the self-hosted compiler is
-slow. A change to the bootstrap, `lib/`, or `runtime/` also runs the bootstrap's suites (`run_tests.py` and the unit
-tests), which run the questlang tests in every phase.
+tests, `python3 run_tests.py -k questlang/`. A change to the bootstrap, `lib/`, or `runtime/` also runs the
+bootstrap's suites (`run_tests.py` and the unit tests).
+
+**The questlang tests run compiled only:** the bootstrap's suites skip them in `interpret` and the `run_ir_*` phases,
+as if every one said so with `@skip-phase` (§2.4), since each would interpret the self-hosted compiler's code for half
+a minute or more per phase. The self-hosted suite, whose driver is compiled, still interprets them.
 
 **Self-hosted parser:** `tests/parser/generate.py` writes a test for each input in `tests/parser`, whose cases are
 separated by lines that are just `(* ---- *)`: `tests/source/questlang/parser_NAME.quest` parses each case with the
@@ -461,7 +468,7 @@ bidirectional matching:
 | **Update Goldens** | Refresh golden output files | `python3 run_tests.py --update-golden` |
 | **REPL** | REPL transcripts (section 2.7) | `python3 run_tests.py --phase repl` |
 | **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
-| **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py --phase run_c_compiled -k questlang/` |
+| **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py -k questlang/` |
 
 ---
 
