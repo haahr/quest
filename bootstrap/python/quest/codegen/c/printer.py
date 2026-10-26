@@ -24,7 +24,6 @@ for each function or polymorphic value (`qv_<module>_<member>`), the ABI other u
 from __future__ import annotations
 
 import dataclasses
-import math
 from typing import Any, Optional
 
 from quest.codegen.c.declarations import (
@@ -34,9 +33,18 @@ from quest.codegen.c.declarations import (
     module_function_arguments,
     module_function_signature,
 )
+from quest.codegen.syntax import (
+    c_char,
+    c_int,
+    c_int_literal,
+    c_real,
+    c_string,
+    call,
+    comma,
+    index_table,
+    lines_text,
+)
 from quest.codegen.c.types import (
-    c_char_literal,
-    c_string_literal,
     closure_fn_ptr_type,
     descriptor_form,
     echo_descriptor_form,
@@ -92,11 +100,6 @@ def _type_parameter_count(t: QType) -> int:
         count += len(s.type_params)
         s = s.body
     return count
-
-
-def _index_table(entries: list[int]) -> str:
-    """A C array of indices, to be indexed by a tag or an ordinal."""
-    return f"((const int64_t[]){{ {', '.join(f'{e}LL' for e in entries)} }})"
 
 
 @dataclasses.dataclass
@@ -157,7 +160,7 @@ class CPrinter:
         n = 1
         while name in self.used_names:
             n += 1
-            name = f"{base}_{n}"
+            name = f"{base}_{c_int(n)}"
         self.used_names.add(name)
         return name
 
@@ -180,7 +183,7 @@ class CPrinter:
 
     def temp(self, c_type: str) -> str:
         self.tmp += 1
-        name = f"_t{self.tmp}"
+        name = f"_t{c_int(self.tmp)}"
         self.fs.locals.append((c_type, name))
         return name
 
@@ -203,14 +206,14 @@ class CPrinter:
     def tuple_component(self, t: str, ts: Shape, i: int, access: str) -> str:
         """The slot form of component i of the tuple t (an atom's C expression) of shape ts, read as access says."""
         if access == ir.DIRECT:
-            return f"({t})->_{i}"
+            return f"({t})->_{c_int(i)}"
         if access == ir.ORIGINAL:
             # Read from the original as it is (its slot at the same offset)
-            return f"(({self.c_type(ts.type)})quest_unproxy({t}))->_{i}"
+            return f"(({self.c_type(ts.type)})quest_unproxy({t}))->_{c_int(i)}"
         comp = ts.components[i].shape
         tmp = self.temp(self.slot_c_type(comp))
-        through = shape_qval_to_slot(f"quest_proxy_element({t}, {i})", comp)
-        self.emit(f"{tmp} = quest_is_proxy({t}) ? {through} : ({t})->_{i};")
+        through = shape_qval_to_slot(f"quest_proxy_element({t}, {c_int(i)})", comp)
+        self.emit(f"{tmp} = quest_is_proxy({t}) ? {through} : ({t})->_{c_int(i)};")
         return tmp
 
     def tag(self, v: str, ts: Shape, access: str, view_map: Optional[ir.Var]) -> str:
@@ -230,7 +233,7 @@ class CPrinter:
         case = ts.case(tag)
         if ts.kind == "variant":
             case_s = case.shape if case is not None and case.shape is not None else shape(t)
-            return shape_qval_unwrap(f"quest_view_part({vm}, {b}, {v}.payload)", case_s)
+            return shape_qval_unwrap(f"quest_view_part({vm}, {c_int(b)}, {v}.payload)", case_s)
         tuple_s = shape(t)
         if tuple_s.kind != "tuple":
             # A payload that is not a tuple: its one component
@@ -244,8 +247,9 @@ class CPrinter:
         if offset:
             self.emit(f"{tmp}->_0 = 0LL;")
         for j, comp in enumerate(comps):
-            word = f"quest_view_option_component({v}, {vm}, {b}, {j})"
-            self.emit(f"{tmp}->_{j + offset} = {shape_qval_to_slot(word, tuple_s.components[j + offset].shape)};")
+            word = f"quest_view_option_component({v}, {vm}, {c_int(b)}, {c_int(j)})"
+            slot = shape_qval_to_slot(word, tuple_s.components[j + offset].shape)
+            self.emit(f"{tmp}->_{c_int(j + offset)} = {slot};")
         return tmp
 
     @staticmethod
@@ -258,16 +262,16 @@ class CPrinter:
     def option_component(self, v: str, os: Shape, tag: str, i: Optional[int], access: str) -> str:
         """The slot form of component i (None: the payload, when it is not a tuple) of the payload of case tag of
         the option v of shape os, read as access says."""
-        raw = f"{v}->u.{tag}.val" if i is None else f"{v}->u.{tag}._{i}"
+        raw = f"{v}->u.{tag}.val" if i is None else f"{v}->u.{tag}._{c_int(i)}"
         if access == ir.DIRECT:
             return raw
         if access == ir.ORIGINAL:
             unproxied = f"(({shape_representation(os)})quest_unproxy({v}))"
-            return f"{unproxied}->u.{tag}.val" if i is None else f"{unproxied}->u.{tag}._{i}"
+            return f"{unproxied}->u.{tag}.val" if i is None else f"{unproxied}->u.{tag}._{c_int(i)}"
         case = os.case(tag)
         comp = case.shape if i is None else case.shape.components[i].shape
         tmp = self.temp(self.slot_c_type(comp))
-        through = shape_qval_to_slot(f"quest_proxy_option_element({v}, {i or 0})", comp)
+        through = shape_qval_to_slot(f"quest_proxy_option_element({v}, {c_int(i or 0)})", comp)
         self.emit(f"{tmp} = quest_is_proxy({v}) ? {through} : {raw};")
         return tmp
 
@@ -298,10 +302,10 @@ class CPrinter:
             if isinstance(v, tuple):
                 k, f = v
                 box_c = self.slot_c_type(f.shape)
-                out.append((k, f"(({box_c})&{boxes}[{k}])", f))
+                out.append((k, f"(({box_c})&{boxes}[{c_int(k)}])", f))
             else:
                 out.append(v)
-        return f"{size} + {len(fresh)} * sizeof(QRecordVal)", out
+        return f"{size} + {c_int(len(fresh))} * sizeof(QRecordVal)", out
 
     def fill_embedded(self, fields: list) -> list[str]:
         """Fills in the embedded boxes of fields (from embedded_boxes), returning the fields' slot forms."""
@@ -379,8 +383,8 @@ class CPrinter:
                 form = self.static_form(d.template)
                 if form.kind in ("base", "bound_var"):
                     return form.c_expr
-                args = ", ".join(self.descriptor(a) for a in d.args)
-                return (f"quest_instantiate_descriptor({form.c_expr}, {len(d.args)}, "
+                args = comma(self.descriptor(a) for a in d.args)
+                return (f"quest_instantiate_descriptor({form.c_expr}, {c_int(len(d.args))}, "
                         f"(const QTypeDescriptor *const[]){{ {args} }})")
             case _:
                 raise NotImplementedError("C code generation: a run-time use of a type without its descriptor")
@@ -433,17 +437,14 @@ class CPrinter:
             return "true" if v else "false"
         match c.shape.kind:
             case "int":
-                return f"{v}LL" if v >= 0 else f"({v}LL)"
+                return c_int_literal(v)
             case "real":
-                if math.isinf(v):
-                    return "INFINITY" if v > 0 else "(-INFINITY)"
-                s = repr(v)
-                return s if "e" in s or "." in s else s + ".0"
+                return c_real(v)
             case "char":
-                return c_char_literal(v)
+                return c_char(v)
             case "string":
-                return f"quest_string_new({c_string_literal(v)}, {len(v)}LL)"
-        raise NotImplementedError(f"constant {v!r} of shape {c.shape.kind}")
+                return call("quest_string_new", [c_string(v), c_int_literal(len(v))])
+        raise NotImplementedError(f"constant {repr(v)} of shape {c.shape.kind}")
 
     def operation(self, o, result: Optional[ir.Var]) -> str:
         match o:
@@ -456,7 +457,7 @@ class CPrinter:
                 ts = self.tag_shape(self.atom_type(v))
                 tag = self.tag(self.atom(v), ts, access, o.view_map)
                 names = tuple(c.name for c in ts.cases)
-                return tag if names == cases else f"{_index_table([cases.index(n) for n in names])}[{tag}]"
+                return tag if names == cases else f"{index_table([cases.index(n) for n in names])}[{tag}]"
             case ir.Call():
                 return self.call(o)
             case ir.ModuleMember(module=module, member=member):
@@ -473,7 +474,7 @@ class CPrinter:
             case ir.MakeClosure():
                 return self.make_closure(o, result)
             case ir.EnvField(env=env, index=index):
-                return f"{self.name(env)}->c{index}"
+                return f"{self.name(env)}->c{c_int(index)}"
             case ir.Convert(value=v, plan=plan):
                 if plan.kind == "unbox" and result is not None and result.boxed:
                     # A QVal word holds a record or variant as its box
@@ -483,7 +484,7 @@ class CPrinter:
                     return shape_slot_to_qval(self.atom(v), shape(plan.source))
                 return self.convert(self.atom(v), plan)
             case ir.MakeException(name=name):
-                return f"quest_alloc_exception({c_string_literal(name)})"
+                return call("quest_alloc_exception", [c_string(name)])
             case ir.ExceptionPayload(exception=e):
                 # In its slot form (a record or variant, for a boxed variable)
                 return shape_qval_to_slot(f"{self.name(e)}.payload", shape(result.type))
@@ -505,18 +506,19 @@ class CPrinter:
                 return self.slot_address(ptr, field)
             case ir.Addr(base=base, index=index, view_map=vm) if isinstance(index, int) and vm is not None:
                 component = resolved_shape(shape(self.atom_type(base))).components[index].shape
-                slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(vm)}, {index})"
+                slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(vm)}, {c_int(index)})"
                 return self.slot_address(f"(({self.slot_c_type(component)} *){slot})", component)
             case ir.Addr(base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
                 b = self.atom(base)
-                address = self.slot_address(f"(&({b}->_{index}))", component)
+                address = self.slot_address(f"(&({b}->_{c_int(index)}))", component)
                 if access == ir.DIRECT:
                     return address
                 if access == ir.ORIGINAL:
-                    return self.slot_address(f"(&((({self.c_type(ts.type)})quest_unproxy({b}))->_{index}))", component)
-                through = f"(({shape_location_representation(component)} *)quest_proxy_slot({b}, {index}))"
+                    unproxied = f"(({self.c_type(ts.type)})quest_unproxy({b}))"
+                    return self.slot_address(f"(&({unproxied}->_{c_int(index)}))", component)
+                through = f"(({shape_location_representation(component)} *)quest_proxy_slot({b}, {c_int(index)}))"
                 return f"(quest_is_proxy({b}) ? {through} : {address})"
             case ir.Addr(base=base, index=index, offset=offset):
                 return self.array_slot(self.atom(base), self.atom(index), self.element_shape(base), offset)
@@ -526,7 +528,8 @@ class CPrinter:
             case ir.TupleField(tuple=t, index=index, view_map=vm) if vm is not None:
                 # A tuple-bounded type parameter's value: through the view map, converted to the bound's type
                 comp = resolved_shape(shape(self.atom_type(t))).components[index].shape
-                return shape_qval_unwrap(f"quest_view_tuple_element({self.atom(t)}, {self.name(vm)}, {index})", comp)
+                element = call("quest_view_tuple_element", [self.atom(t), self.name(vm), c_int(index)])
+                return shape_qval_unwrap(element, comp)
             case ir.TupleField(tuple=t, index=index, access=access):
                 return self.tuple_component(self.atom(t), shape(self.atom_type(t)), index, access)
             case ir.MakeRecord():
@@ -537,17 +540,17 @@ class CPrinter:
                 vs = self.held(result.type, "variant")
                 index = self.tag_index(vs, tag)
                 if payload is None:
-                    return f"((QVariantVal){{ .tag = {index}LL, .payload = Q_OK_VAL }})"
+                    return f"((QVariantVal){{ .tag = {c_int_literal(index)}, .payload = Q_OK_VAL }})"
                 case = vs.case(tag)
                 case_s = case.shape if case is not None and case.shape is not None else shape(self.atom_type(payload))
                 word = shape_slot_to_qval(self.atom(payload), case_s)
-                return f"((QVariantVal){{ .tag = {index}LL, .payload = {word} }})"
+                return f"((QVariantVal){{ .tag = {c_int_literal(index)}, .payload = {word} }})"
             case ir.MakeOption():
                 return self.make_option(o, result.type)
             case ir.IsTag(value=v, tag=tag, access=access):
                 ts = self.tag_shape(self.atom_type(v))
                 tag_c = self.tag(self.atom(v), ts, access, o.view_map)
-                return f"({tag_c} == {self.tag_index(ts, tag)}LL)"
+                return f"({tag_c} == {c_int_literal(self.tag_index(ts, tag))})"
             case ir.Payload():
                 return self.payload(o, result.type)
             case ir.MakeArray(args=args):
@@ -661,17 +664,17 @@ class CPrinter:
         decls, descs, names = [], [], []
         count = descriptor_params if isinstance(descriptor_params, int) else len(descriptor_params)
         for k in range(count):
-            descs.append(f"qd_{k}")
-            decls.append(f"const QTypeDescriptor *qd_{k}")
+            descs.append(f"qd_{c_int(k)}")
+            decls.append(f"const QTypeDescriptor *qd_{c_int(k)}")
             if not isinstance(descriptor_params, int):
-                self.names[id(descriptor_params[k].var)] = f"qd_{k}"
+                self.names[id(descriptor_params[k].var)] = f"qd_{c_int(k)}"
         for i, p in enumerate(params):
-            names.append(f"qa_{i}")
+            names.append(f"qa_{c_int(i)}")
             if p.is_var or p.is_out:
-                decls.append(f"{self.location_c_type(p.type_val)} *qa_{i}")
+                decls.append(f"{self.location_c_type(p.type_val)} *qa_{c_int(i)}")
             else:
                 c_t = "QVal" if self.is_ok(p.type_val) else self.c_type(p.type_val)
-                decls.append(f"{c_t} qa_{i}")
+                decls.append(f"{c_t} qa_{c_int(i)}")
         return decls, descs, names
 
     def thunk(self, name: str, ret: str, decls: list[str], prologue: list[str]) -> None:
@@ -679,7 +682,7 @@ class CPrinter:
         body = [f"    {line}" for line in prologue]
         body.extend(f"    {c_t} {n};" for c_t, n in self.fs.locals)
         body.extend(self.lines)
-        sig = f"static Q_UNUSED {ret} {name}({', '.join(['void *_raw_env'] + decls)})"
+        sig = f"static Q_UNUSED {ret} {call(name, ['void *_raw_env'] + decls)}"
         self.thunk_decls.append(sig + ";")
         self.thunk_defs.extend([sig + " {", *body, "}", ""])
 
@@ -698,22 +701,22 @@ class CPrinter:
             args = []
             for p, n, fp in zip(t_params, names, plan.fields):
                 args.append(n if fp is None else self.convert(n, fp))
-            call = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))({', '.join(['orig->env'] + descs + args)})"
-            self.finish_thunk_call(call, s_result, t_result, plan.fields[-1])
+            fn = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))"
+            self.finish_thunk_call(call(fn, ['orig->env'] + descs + args), s_result, t_result, plan.fields[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
             self.thunk(name, ret, decls, ["QClosure *orig = (QClosure *)_raw_env;"] + [f"(void){d};" for d in descs])
         return name
 
-    def finish_thunk_call(self, call: str, source_result: QType, target_result: QType, result_plan) -> None:
+    def finish_thunk_call(self, called: str, source_result: QType, target_result: QType, result_plan) -> None:
         if self.is_ok(target_result):
-            self.emit(f"{call};")
+            self.emit(f"{called};")
             self.emit("return;")
             return
         if result_plan is None:
-            self.emit(f"return {call};")
+            self.emit(f"return {called};")
             return
         r = self.temp(self.c_type(source_result))
-        self.emit(f"{r} = {call};")
+        self.emit(f"{r} = {called};")
         self.emit(f"return {self.convert(r, result_plan)};")
 
     @staticmethod
@@ -737,18 +740,18 @@ class CPrinter:
         descs = [self.descriptor(d) for d in o.descriptors]
         if o.thunk_params is None:
             if o.callee is None and isinstance(o.module, ir.Import):
-                call = f"{mangle_module_ident(mangle_module_name(o.module.canonical_path), o.member)}({', '.join(descs)})"
+                called = call(mangle_module_ident(mangle_module_name(o.module.canonical_path), o.member), descs)
             else:
                 fn_ptr = closure_fn_ptr_type(orig_t, self.ctx)
-                call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + descs)})"
+                called = call(f"(({fn_ptr})({clos}->fn))", [f"{clos}->env"] + descs)
             p = o.plans[0]
-            return call if p is None else self.convert(call, p)
+            return called if p is None else self.convert(called, p)
         thunk, env_struct = self.type_app_thunk(orig_t, result.type, o)
         env = self.temp(f"{env_struct} *")
         self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}));")
         self.emit(f"{env}->orig = {clos};")
         for i, d in enumerate(descs):
-            self.emit(f"{env}->desc[{i}] = {d};")
+            self.emit(f"{env}->desc[{c_int(i)}] = {d};")
         c = self.temp("QClosure *")
         self.emit(f"{c} = (QClosure *)quest_alloc(sizeof(QClosure));")
         self.emit(f"{c}->fn = (void *){thunk};")
@@ -769,17 +772,17 @@ class CPrinter:
         self.thunks[key] = (name, env_struct)
         n = len(type_args)
         self.thunk_decls.append(
-            f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{max(n, 1)}]; }} {env_struct};"
+            f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{c_int(max(n, 1))}]; }} {env_struct};"
         )
         _, _, o_result = fun_shape_signature(orig_t)
         _, t_params, t_result = fun_shape_signature(target_t)
         with self.auxiliary():
             decls, descs, names = self.thunk_params(o.thunk_params, t_params)
             args = [a if p is None else self.convert(a, p) for a, p in zip(names, plans[:-1])]
-            env_descs = [f"_env->desc[{i}]" for i in range(n)]
+            env_descs = [f"_env->desc[{c_int(i)}]" for i in range(n)]
             call_args = ["_env->orig->env"] + env_descs + descs + args
-            call = f"(({closure_fn_ptr_type(orig_t, self.ctx)})(_env->orig->fn))({', '.join(call_args)})"
-            self.finish_thunk_call(call, o_result, t_result, plans[-1])
+            fn = f"(({closure_fn_ptr_type(orig_t, self.ctx)})(_env->orig->fn))"
+            self.finish_thunk_call(call(fn, call_args), o_result, t_result, plans[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
             self.thunk(name, ret, decls, [f"{env_struct} *_env = ({env_struct} *)_raw_env;"]
                        + [f"(void){d};" for d in descs])
@@ -800,7 +803,7 @@ class CPrinter:
         size, fields = self.embedded_boxes(tmp, f"sizeof({struct})", fields)
         self.emit(f"{tmp} = ({struct} *)quest_alloc({size});")
         for i, c in enumerate(self.fill_embedded(fields)):
-            self.emit(f"{tmp}->_{i} = {c};")
+            self.emit(f"{tmp}->_{c_int(i)} = {c};")
         return tmp
 
     def make_record(self, o: ir.MakeRecord, result: ir.Var) -> str:
@@ -840,7 +843,8 @@ class CPrinter:
         field = next(f for f in fields if f.name == name).shape
         if view_map is not None:
             k = next(i for i, f in enumerate(fields) if f.name == name)
-            return f"(({self.slot_c_type(field)} *)quest_view_record_slot({rec}, {self.name(view_map)}, {k}))", field
+            slot = call("quest_view_record_slot", [rec, self.name(view_map), c_int(k)])
+            return f"(({self.slot_c_type(field)} *){slot})", field
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
         return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))", field
 
@@ -854,7 +858,7 @@ class CPrinter:
         if o.view_map is not None:
             # Through the view map: read as stored, converted to the bound's type for it
             k = next(i for i, f in enumerate(rs.sorted_components()) if f.name == name)
-            return shape_qval_unwrap(f"quest_view_record_field({rec}, {self.name(o.view_map)}, {k})", field)
+            return shape_qval_unwrap(f"quest_view_record_field({rec}, {self.name(o.view_map)}, {c_int(k)})", field)
         fields = rs.sorted_components()
         index = next(i for i, f in enumerate(fields) if f.name == name)
         c_fld = self.shape_c_type(field)
@@ -862,10 +866,10 @@ class CPrinter:
         val = self.temp(c_fld)
         stored = f"((const {dict_t} *){rec}.dict)->stored_types"
         converted = shape_qval_unwrap(
-            f"quest_convert(quest_slot_read({ptr}), {stored}[{index}], {self.descriptor(o.descriptor)})",
+            f"quest_convert(quest_slot_read({ptr}), {stored}[{c_int(index)}], {self.descriptor(o.descriptor)})",
             field,
         )
-        self.emit(f"if ({stored} != NULL && {stored}[{index}] != NULL) {val} = {converted};")
+        self.emit(f"if ({stored} != NULL && {stored}[{c_int(index)}] != NULL) {val} = {converted};")
         self.emit(f"else {val} = {shape_slot_load(f'*{ptr}', field)};")
         return val
 
@@ -879,16 +883,17 @@ class CPrinter:
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
         if ordinal is not None:
             # The ordinal counts in the type's cases as written; the tag numbers the shape's, ordered by name
-            checked = f"quest_check_option_ordinal_at({self.atom(ordinal)}, {len(os.cases)}LL, {self.site(offset)})"
+            checked = call("quest_check_option_ordinal_at",
+                            [self.atom(ordinal), c_int_literal(len(os.cases)), self.site(offset)])
             tags = [self.tag_index(os, name) for name in o.cases]
-            mapped = checked if tags == list(range(len(tags))) else f"{_index_table(tags)}[{checked}]"
+            mapped = checked if tags == list(range(len(tags))) else f"{index_table(tags)}[{checked}]"
             self.emit(f"{tmp}->tag = {mapped};")
             # The payload is stored as the case of a constant ordinal stores it, and otherwise as the first case
             # does, whose components the union overlays on the other cases' (docs/c-representation.md §5)
             n = ordinal.value if isinstance(ordinal, ir.Const) else -1
             tag = o.cases[n] if 0 <= n < len(o.cases) else os.cases[0].name
         else:
-            self.emit(f"{tmp}->tag = {self.tag_index(os, tag)}LL;")
+            self.emit(f"{tmp}->tag = {c_int_literal(self.tag_index(os, tag))};")
         if payload is not None and tag is not None:
             case = os.case(tag)
             pt = case.shape if case is not None else None
@@ -896,7 +901,7 @@ class CPrinter:
             if pt is not None and pt.kind == "tuple":
                 ps = shape(self.atom_type(payload))
                 for i, _ in enumerate(pt.components):
-                    self.emit(f"{tmp}->u.{tag}._{i} = {self.tuple_component(p, ps, i, o.access[i])};")
+                    self.emit(f"{tmp}->u.{tag}._{c_int(i)} = {self.tuple_component(p, ps, i, o.access[i])};")
             else:
                 self.emit(f"{tmp}->u.{tag}.val = {p};")
         return tmp
@@ -925,15 +930,15 @@ class CPrinter:
         case = os.case(tag)
         pt = case.shape if case is not None else None
         if offset:
-            self.emit(f"{tmp}->_0 = {ordinal}LL;")
+            self.emit(f"{tmp}->_0 = {c_int_literal(ordinal)};")
         if pt is not None and pt.kind == "tuple":
             for i, _ in enumerate(pt.components):
                 if i + offset < len(ts.components):
                     src = self.option_field(self.option_component(opt, os, tag, i, access[i]), pt, i,
                                             ts.components[i + offset].shape)
-                    self.emit(f"{tmp}->_{i + offset} = {src};")
+                    self.emit(f"{tmp}->_{c_int(i + offset)} = {src};")
         elif pt is not None:
-            self.emit(f"{tmp}->_{offset} = {self.option_component(opt, os, tag, None, access[0])};")
+            self.emit(f"{tmp}->_{c_int(offset)} = {self.option_component(opt, os, tag, None, access[0])};")
         return tmp
 
     def payload(self, o: ir.Payload, t: QType) -> str:
@@ -942,19 +947,20 @@ class CPrinter:
         site = self.site(offset)
         if o.view_map is not None:
             tag_c = self.tag(self.atom(v), ts, o.access, o.view_map)
-            self.emit(f"if ({tag_c} != {self.tag_index(ts, tag)}LL) quest_raise_variant_error_at({site});")
+            self.emit(f"if ({tag_c} != {c_int_literal(self.tag_index(ts, tag))}) quest_raise_variant_error_at({site});")
             result = self.view_payload(self.atom(v), ts, tag, o.view_map, t)
             if ts.kind == "option":
-                self.emit(f"{result}->_0 = {o.ordinal or 0}LL;")
+                self.emit(f"{result}->_0 = {c_int_literal(o.ordinal or 0)};")
             return result
         index = self.tag_index(ts, tag)
         if ts.kind == "variant":
-            self.emit(f"if ({self.atom(v)}.tag != {index}LL) quest_raise_variant_error_at({site});")
+            self.emit(f"if ({self.atom(v)}.tag != {c_int_literal(index)}) quest_raise_variant_error_at({site});")
             case = ts.case(tag)
             case_s = case.shape if case is not None and case.shape is not None else shape(t)
             # In its slot form (a record or variant, for a boxed variable)
             return shape_qval_to_slot(f"{self.atom(v)}.payload", case_s)
-        self.emit(f"if ({self.option_tag(self.atom(v), o.access)} != {index}LL) quest_raise_variant_error_at({site});")
+        tag_c = self.option_tag(self.atom(v), o.access)
+        self.emit(f"if ({tag_c} != {c_int_literal(index)}) quest_raise_variant_error_at({site});")
         return self.option_case_tuple(self.atom(v), ts, tag, t, 1, o.access, o.components, o.ordinal or 0)
 
     def array_element(self, a: ir.Atom, elem: Shape) -> str:
@@ -976,10 +982,10 @@ class CPrinter:
     def make_array(self, elements: list[str], t: QType) -> str:
         n = len(elements)
         arr = self.temp(self.c_type(t))
-        self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({n}LL) * sizeof(QVal));")
-        self.emit(f"{arr}->length = {n}LL;")
+        self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({c_int_literal(n)}) * sizeof(QVal));")
+        self.emit(f"{arr}->length = {c_int_literal(n)};")
         for i, c in enumerate(elements):
-            self.emit(f"{arr}->data[{i}LL] = {c};")
+            self.emit(f"{arr}->data[{c_int_literal(i)}] = {c};")
         return arr
 
     def site(self, offset: Optional[int]) -> str:
@@ -989,7 +995,7 @@ class CPrinter:
         if offset is None or source_map is None:
             return "NULL"
         loc = source_map.locate(offset)
-        return c_string_literal(f"{loc.file_name}:{loc.line}:{loc.column}")
+        return c_string(f"{loc.file_name}:{c_int(loc.line)}:{c_int(loc.column)}")
 
     def prim(self, op: str, args: tuple[ir.Atom, ...], offset: Optional[int] = None, access: str = ir.DIRECT,
              descriptor: Optional[ir.Descriptor] = None) -> str:
@@ -1040,17 +1046,16 @@ class CPrinter:
             out.append(self.atom(a))
         return out
 
-    def call(self, call: ir.Call) -> str:
-        descs = [self.descriptor(d) for d in call.descriptors]
-        if call.callee is None:
-            module = call.module
+    def call(self, o: ir.Call) -> str:
+        descs = [self.descriptor(d) for d in o.descriptors]
+        if o.callee is None:
+            module = o.module
             if isinstance(module, ir.Module):
-                member = module.members[call.member]
-                return self.call_closure(member, descs, call.args)
+                member = module.members[o.member]
+                return self.call_closure(member, descs, o.args)
             clean = mangle_module_name(module.canonical_path)
-            args = descs + self.args((), call.args)
-            return f"{mangle_module_ident(clean, call.member)}({', '.join(args)})"
-        return self.call_closure(call.callee, descs, call.args)
+            return call(mangle_module_ident(clean, o.member), descs + self.args((), o.args))
+        return self.call_closure(o.callee, descs, o.args)
 
     @staticmethod
     def is_function(t: QType) -> bool:
@@ -1062,7 +1067,7 @@ class CPrinter:
     @staticmethod
     def external_call(o, descs: list[str], args: list[str]) -> str:
         """A call of an external C function."""
-        return f"{o.symbol}({', '.join(descs + args)})"
+        return call(o.symbol, descs + args)
 
     def external_closure(self, o: ir.External, t: QType) -> str:
         """An external C function as a value: a static closure over a thunk calling it."""
@@ -1074,9 +1079,9 @@ class CPrinter:
         quants, params, result_t = fun_shape_signature(t)
         with self.auxiliary():
             decls, descs, names = self.thunk_params(len(quants), params)
-            call = self.external_call(o, [], names)
+            called = self.external_call(o, [], names)
             ret = "void" if self.is_ok(result_t) else self.c_type(result_t)
-            self.emit(f"{call};" if ret == "void" else f"return {call};")
+            self.emit(f"{called};" if ret == "void" else f"return {called};")
             self.thunk(name, ret, decls, ["(void)_raw_env;"] + [f"(void){d};" for d in descs])
         self.thunk_decls.append(f"static Q_UNUSED QClosure {name}_closure = {{ (void *){name}, NULL }};")
         return f"(&{name}_closure)"
@@ -1089,10 +1094,10 @@ class CPrinter:
         known = self.closures.get(id(callee))
         if known is not None and not known.type_args:
             env = "NULL" if not known.captures else f"{self.name(callee)}->env"
-            return f"{self.code_name(known.code)}({', '.join([env] + c_args)})"
+            return call(self.code_name(known.code), [env] + c_args)
         fn_ptr = closure_fn_ptr_type(callee.type, self.ctx)
         clos = self.atom(callee)
-        return f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + c_args)})"
+        return call(f"(({fn_ptr})({clos}->fn))", [f"{clos}->env"] + c_args)
 
     def module_member(self, module: ir.ModuleRef, member: Optional[str]) -> str:
         if isinstance(module, ir.Module):
@@ -1120,13 +1125,13 @@ class CPrinter:
         env = self.temp(f"struct QEnv_{code} *")
         self.emit(f"{env} = (struct QEnv_{code} *)quest_alloc(sizeof(struct QEnv_{code}));")
         for i, d in enumerate(o.descriptors):
-            self.emit(f"{env}->d{i} = {self.descriptor(d)};")
+            self.emit(f"{env}->d{c_int(i)} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
             if self.deferred is not None and isinstance(a, ir.Var) and id(a) in self.deferred[0]:
                 # A variable of the let rec being made, which holds its value once the let rec's body has run
                 self.deferred[1].append((env, i, a))
                 continue
-            self.emit(f"{env}->c{i} = {self.atom(a)};")
+            self.emit(f"{env}->c{c_int(i)} = {self.atom(a)};")
         clos = self.temp("QClosure *")
         self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure));")
         self.emit(f"{clos}->fn = (void *){code};")
@@ -1184,7 +1189,7 @@ class CPrinter:
                 self.emit(f"*{ptr} = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index) if isinstance(index, int) and s.view_map is not None:
                 component = resolved_shape(shape(self.atom_type(base))).components[index].shape
-                slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(s.view_map)}, {index})"
+                slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(s.view_map)}, {c_int(index)})"
                 self.emit(f"*(({self.slot_c_type(component)} *){slot}) = {self.atom(value)};")
             case ir.Store(value=value, base=base, index=index, access=access) if isinstance(index, int):
                 ts = shape(self.atom_type(base))
@@ -1192,14 +1197,14 @@ class CPrinter:
                 b, v = self.atom(base), self.atom(value)
                 if access == ir.ORIGINAL:
                     # Stored into the original as it is
-                    self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{index} = {v};")
+                    self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{c_int(index)} = {v};")
                 elif access == ir.PROXY:
                     # A var component of a proxy is the original's
-                    self.emit(f"if (quest_is_proxy({b})) quest_proxy_store({b}, {index}, "
+                    self.emit(f"if (quest_is_proxy({b})) quest_proxy_store({b}, {c_int(index)}, "
                               f"{shape_slot_to_qval(v, component)});")
-                    self.emit(f"else {b}->_{index} = {v};")
+                    self.emit(f"else {b}->_{c_int(index)} = {v};")
                 else:
-                    self.emit(f"{b}->_{index} = {v};")
+                    self.emit(f"{b}->_{c_int(index)} = {v};")
             case ir.Store(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
                 elem = self.element_shape(base)
@@ -1214,7 +1219,7 @@ class CPrinter:
                 self.deferred = ({id(v) for v in vars_}, [])
                 self.body(body)
                 for env, i, var in self.deferred[1]:
-                    self.emit(f"{env}->c{i} = {self.atom(var)};")
+                    self.emit(f"{env}->c{c_int(i)} = {self.atom(var)};")
                 self.deferred = saved
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
                 self.emit(f"if ({self.atom(cond)}) {{")
@@ -1297,7 +1302,7 @@ class CPrinter:
             case ir.Echo(value=value, type=t, prefix=prefix, descriptor=d):
                 self.echo(prefix, self.atom(value), t, d, "" if prefix else f" : {qtype_to_name_str(t)}")
             case ir.EchoText(text=text):
-                self.emit(f"puts({c_string_literal(text)});")
+                self.emit(f"{call('puts', [c_string(text)])};")
             case _:
                 raise NotImplementedError(f"C printing of {type(s).__name__}")
 
@@ -1310,7 +1315,7 @@ class CPrinter:
         self.indent += 1
         for c in cases:
             for tag in c.tags:
-                self.emit(f"case {self.tag_index(t, tag)}LL:")
+                self.emit(f"case {c_int_literal(self.tag_index(t, tag))}:")
             self.emit("{")
             self.indent += 1
             if c.binder is not None and not self.is_ok(c.binder.type):
@@ -1357,13 +1362,13 @@ class CPrinter:
         self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
         for i, (pair, stored_f, arm_f) in enumerate(zip(arm_plan.descriptors, stored_t.value_fields,
                                                         arm_t.value_fields)):
-            src = f"{stored}->_{i}"
+            src = f"{stored}->_{c_int(i)}"
             if pair is None:
-                self.emit(f"{arm}->_{i} = {src};")
+                self.emit(f"{arm}->_{c_int(i)} = {src};")
                 continue
             from_desc, to_desc = (self.descriptor(d) for d in pair)
             viewed = f"quest_convert({shape_slot_to_qval(src, shape(stored_f.type_val))}, {from_desc}, {to_desc})"
-            self.emit(f"{arm}->_{i} = {shape_qval_to_slot(viewed, shape(arm_f.type_val))};")
+            self.emit(f"{arm}->_{c_int(i)} = {shape_qval_to_slot(viewed, shape(arm_f.type_val))};")
         return arm
 
     def inspect(self, value: ir.Atom, cases, else_body: Optional[ir.Body], auto_t: QAutoType,
@@ -1433,11 +1438,10 @@ class CPrinter:
         alias names). The value is in its slot form (a record or variant boxed), its QVal word."""
         wrapped = shape_slot_to_qval(value, shape(t))
         if kind := echo_value_kind(t):
-            self.emit(f"quest_print_value({c_string_literal(prefix)}, {wrapped}, {c_string_literal(kind)}, "
-                      f"{c_string_literal(suffix)});")
+            self.emit(f"{call('quest_print_value', [c_string(prefix), wrapped, c_string(kind), c_string(suffix)])};")
         else:
-            self.emit(f"quest_print_typed({c_string_literal(prefix)}, {wrapped}, {self.descriptor(descriptor)}, "
-                      f"{c_string_literal(suffix)});")
+            args = [c_string(prefix), wrapped, self.descriptor(descriptor), c_string(suffix)]
+            self.emit(f"{call('quest_print_typed', args)};")
 
     # Functions
 
@@ -1482,7 +1486,7 @@ class CPrinter:
             else:
                 params.append(f"{'QVal' if self.is_ok(v.type) else self.c_type(v.type)} {self.name(v)}")
         ret = "void" if self.is_ok(f.result_type) else self.c_type(f.result_type)
-        return f"static Q_UNUSED {ret} {self.code_name(f)}({', '.join(params)})"
+        return f"static Q_UNUSED {ret} {call(self.code_name(f), params)}"
 
     def function(self, f: ir.Function) -> list[str]:
         self.fs = _FunctionState(f)
@@ -1498,7 +1502,7 @@ class CPrinter:
             # The descriptors of the type parameters its closure supplies
             for i, p in enumerate(f.descriptor_params[:n_captured]):
                 d = self.name(p.var)
-                prologue.append(f"const QTypeDescriptor *{d} = {self.name(f.env)}->d{i};")
+                prologue.append(f"const QTypeDescriptor *{d} = {self.name(f.env)}->d{c_int(i)};")
                 prologue.append(f"(void){d};")
         else:
             prologue.append("(void)_raw_env;")
@@ -1523,10 +1527,10 @@ class CPrinter:
     def env_struct(self, f: ir.Function, closure: ir.MakeClosure) -> list[str]:
         lines = [f"struct QEnv_{self.code_name(f)} {{"]
         for i, _ in enumerate(closure.type_args):
-            lines.append(f"    const QTypeDescriptor *d{i};")
+            lines.append(f"    const QTypeDescriptor *d{c_int(i)};")
         for i, a in enumerate(closure.captures):
             t = a.type if isinstance(a, ir.Var) else a.shape.type
-            lines.append(f"    {self.c_type(t)} c{i};")
+            lines.append(f"    {self.c_type(t)} c{c_int(i)};")
         if not closure.type_args and not closure.captures:
             lines.append("    char _unused;")
         lines.append("};")
@@ -1602,7 +1606,7 @@ class CPrinter:
             if not module_file:
                 out.append("int main(int argc, char **argv);")
             out.append("static const QFuncEntry qr_funcs[] = {")
-            out.extend(f"    {{ (const void *)&{c_name}, {c_string_literal(name)} }}," for c_name, name in funcs)
+            out.extend(f"    {{ (const void *)&{c_name}, {c_string(name)} }}," for c_name, name in funcs)
             out.append("};")
             out.append("")
         # The offset tables of the records the unit views at supertypes, registered for dynamic values, and its
@@ -1623,7 +1627,7 @@ class CPrinter:
         out.extend(self.thunk_defs)
         out.extend(module_inits)
         if module_file:
-            return "\n".join(out)
+            return lines_text(out)
         out.append("int main(int argc, char **argv) {")
         out.append("    quest_gc_init();")
         out.append("    quest_builtins_init(argc, argv);")
@@ -1637,7 +1641,7 @@ class CPrinter:
         out.append("    return 0;")
         out.append("}")
         out.append("")
-        return "\n".join(out)
+        return lines_text(out)
 
     def global_declarations(self) -> list[tuple[int, str, str]]:
         found = []
@@ -1669,9 +1673,9 @@ class CPrinter:
             self.emit(f"{handler}.n_catches = Q_CATCH_UNKNOWN;")
         else:
             array = self.fresh_name("_qc")
-            self.emit(f"const QException *{array}[] = {{ {', '.join(self.atom(a) for a in catches)} }};")
+            self.emit(f"const QException *{array}[] = {{ {comma(self.atom(a) for a in catches)} }};")
             self.emit(f"{handler}.catches = {array};")
-            self.emit(f"{handler}.n_catches = {len(catches)};")
+            self.emit(f"{handler}.n_catches = {c_int(len(catches))};")
 
     def module_init(self, m: ir.Module) -> list[str]:
         """A module's initializer, whose body makes its record (ir.Module.record), stored in the module's global. A
@@ -1710,13 +1714,13 @@ class CPrinter:
             args = module_function_arguments(export.type)
             known = self.closures.get(id(export))
             if known is not None and not known.type_args and not known.captures:
-                call = f"{self.code_name(known.code)}({', '.join(['NULL'] + args)})"
+                called = call(self.code_name(known.code), ["NULL"] + args)
             else:
                 fn_ptr = closure_fn_ptr_type(export.type, self.ctx)
                 clos = self.name(export)
-                call = f"(({fn_ptr})({clos}->fn))({', '.join([f'{clos}->env'] + args)})"
-            out.append(f"{ret_c} {ident}({', '.join(param_decls) or 'void'}) {{")
-            out.append(f"    {call};" if ret_c == "void" else f"    return {call};")
+                called = call(f"(({fn_ptr})({clos}->fn))", [f"{clos}->env"] + args)
+            out.append(f"{ret_c} {call(ident, param_decls or ['void'])} {{")
+            out.append(f"    {called};" if ret_c == "void" else f"    return {called};")
             out.append("}")
             out.append("")
         return out
@@ -1725,14 +1729,15 @@ class CPrinter:
         """Registers a module's abstract types with their representations, for dynamic values (docs/dynamic.md
         §2.3), as the describe pass listed them (an operator's representation as a template whose holes are its
         parameters); a representation without a descriptor is not registered."""
-        lines: list[str] = []
+        registrations: list[str] = []
         for global_name, arity, d in m.abstract_types:
             try:
                 form = descriptor_form(d.type, self.ctx)
             except MissingDescriptorError:
                 continue
-            lines.append(f'    quest_register_abstract_type("{global_name}", {arity}, {form.c_expr});')
-        return lines
+            registered = call("quest_register_abstract_type", [c_string(global_name), c_int(arity), form.c_expr])
+            registrations.append(f"    {registered};")
+        return registrations
 
     def import_declarations(self) -> list[str]:
         imports: list[ir.Import] = []

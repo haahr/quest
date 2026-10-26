@@ -23,7 +23,7 @@ Python features that have no line-by-line Quest counterpart:
 
 The phases are independent of one another; the steps within a phase are ordered.
 
-**Status: in progress.** Phase 1 is done.
+**Status: in progress.** Phases 1 and 2 are done.
 
 ---
 
@@ -69,7 +69,7 @@ overloading or varargs, building trees in Quest is no shorter than building stri
 What changes is that every piece of C text comes from a small set of named helpers, so that each Python line has a
 one-line Quest counterpart.
 
-**2a. Add `codegen/c/syntax.py` with literal formatters.** Move `c_string_literal` and `c_char_literal` there (as
+**2a. Add `codegen/syntax.py` with literal formatters.** Move `c_string_literal` and `c_char_literal` there (as
 `c_string` and `c_char`), and add:
 
 - `c_int(n)`: a nonnegative integer in decimal, for indices, counts, and field numbers (`_{index}`, `c{i}`, `d{i}`).
@@ -114,6 +114,20 @@ interpolated strings become `<>` chains, numbers go through the C formatters (ne
 `call`/`comma` take arrays by listfix, and a `printf`-style helper (`fmt of "$->_$ = $;" b i v end`) is an option where
 a line has many holes. Note in it that the IR printer (`ir/printer.py`, 100 f-strings) follows the same rules if it is
 ported; whether the self-hosted compiler needs it is a decision for then.
+
+**Done**, in one commit, with the generated C of the whole corpus byte-identical. It differs from the plan in three ways:
+
+- **Doubled braces are allowed.** In Quest a brace is just a character of a string literal (`f"{{ {args} }}"` is
+  `"{ " <> args <> " }"`), so banning them would change nothing about translating.
+- **Only the combinators that replace joins exist:** `comma`, `call`, `joined` (names' parts), and `lines_text`.
+  `cast`, `deref`, `addr`, `arrow`, `dot`, `index`, and `paren` would only restyle f-strings of strings, which already
+  translate as they are.
+- **Finding the integers.** Running both suites with every interpolation in the backend wrapped by a recorder of its
+  value's type found the integers (about 120 sites, all `int`); the sites the corpus does not reach were reviewed by
+  hand. The declarations' own escaping of descriptor names became `c_string`.
+
+`tests/python/test_c_text.py` checks the literals (including `c_real` against `conv.real` over every real constant in
+the corpus and the library) and the two rules.
 
 ---
 

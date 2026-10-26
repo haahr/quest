@@ -14,6 +14,7 @@ from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types
+from quest.codegen.syntax import comma, lines_text
 from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
 from quest.codegen.layout import location_representation, slot_representation
 from quest.config.abi import header_stamp
@@ -156,7 +157,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
                             param_c_types.append(f"{location_representation(p.type_val)} *{p_name}")
                         else:
                             param_c_types.append(f"{qtype_to_c_type(p.type_val)} {p_name}")
-                params_decl = ", ".join(param_c_types) if param_c_types else "void"
+                params_decl = comma(param_c_types or ["void"])
                 lines.append(f"/* {sig.name}: {format_type_for_qi(val_t)} */")
                 lines.append(
                     f"typedef {ret_c_type} (*quest_sig_{c_name}_{sig.name})({params_decl});"
@@ -178,7 +179,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
         "",
     ])
 
-    return "\n".join(lines)
+    return lines_text(lines)
 
 
 def interface_header_file(qi_file: Path) -> Path:

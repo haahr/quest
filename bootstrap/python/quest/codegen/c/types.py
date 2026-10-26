@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Optional
 
+from quest.codegen.syntax import c_int, comma
 from quest.codegen.descriptors import (
     bound_var_index,
     canonical_auto_type,
@@ -112,8 +113,10 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     if (index := hole_index(s.type)) is not None:
         # A template's hole (described as such, not by the bound a bounded type variable resolves to)
         bound = s.type.bound
-        tag = f"hole_{index}_{type_digest(bound.bound)}" if isinstance(bound, QPowerKind) else f"hole_{index}"
-        return DescriptorForm("hole", tag=tag, type=s.type, name=str(index))
+        tag = f"hole_{c_int(index)}"
+        if isinstance(bound, QPowerKind):
+            tag = f"{tag}_{type_digest(bound.bound)}"
+        return DescriptorForm("hole", tag=tag, type=s.type, name=c_int(index))
     # Equal types share a descriptor: a type is described by its shape's structure, the unfolding of its canonical
     # form (in which equal types containing recursion are one type)
     t = s.structure
@@ -122,7 +125,7 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
     if s.kind == "word":
         return DescriptorForm("base", expr="&quest_type_Word")
     if (index := bound_var_index(t)) is not None:
-        return DescriptorForm("bound_var", expr=f"(&quest_type_bound_vars[{index}])")
+        return DescriptorForm("bound_var", expr=f"(&quest_type_bound_vars[{c_int(index)}])")
     if isinstance(t, QTupleType) and not t.fields:
         return DescriptorForm("base", expr="&quest_type_EmptyTuple")
     if (
@@ -173,7 +176,7 @@ def descriptor_form(t: QType, ctx: Optional["RecordNamingContext"] = None) -> De
             return DescriptorForm("opaque", tag=f"opaque_{mangle_ident(t.name)}", name=t.name)
         case QPathType():
             # An abstract type of a package value (t.A): opaque, and distinct for each binding of t
-            name = f"{t.root_name}.{t.field_name}#{t.root_symbol_id}"
+            name = f"{t.root_name}.{t.field_name}#{c_int(t.root_symbol_id)}"
             return DescriptorForm("opaque", tag=f"opaque_{text_digest(name)}", name=name)
         case QAutoType():
             canonical = canonical_auto_type(t)
@@ -253,52 +256,6 @@ class RecordNamingContext:
 def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
     """The C type of a value of t: its representation (codegen/layout.py), which is named by the runtime's C type."""
     return representation(t)
-
-
-def c_string_literal(s: str) -> str:
-    """Escapes a Python string into a safe C string literal."""
-    parts = []
-    for ch in s:
-        if ch == "\"":
-            parts.append("\\\"")
-        elif ch == "\\":
-            parts.append("\\\\")
-        elif ch == "\n":
-            parts.append("\\n")
-        elif ch == "\t":
-            parts.append("\\t")
-        elif ch == "\r":
-            parts.append("\\r")
-        elif 32 <= ord(ch) < 127:
-            parts.append(ch)
-        else:
-            parts.append(_octal_escape(ch))
-    return "\"" + "".join(parts) + "\""
-
-
-def _octal_escape(ch: str) -> str:
-    """A character's three-digit octal escape: unlike a hex escape, which takes every hex digit after it, an octal
-    escape takes at most three digits, so it ends where it should whatever character follows."""
-    code = ord(ch)
-    assert code < 256, code
-    return "\\" + str(code // 64) + str(code // 8 % 8) + str(code % 8)
-
-
-def c_char_literal(ch: str) -> str:
-    """Escapes a single Python character into a C char literal."""
-    if ch == "\'":
-        return "'\\''"
-    if ch == "\\":
-        return "'\\\\'"
-    if ch == "\n":
-        return "'\\n'"
-    if ch == "\t":
-        return "'\\t'"
-    if ch == "\r":
-        return "'\\r'"
-    if 32 <= ord(ch) < 127:
-        return f"'{ch}'"
-    return "'" + _octal_escape(ch) + "'"
 
 
 def qval_wrap(expr_str: str, t: QType) -> str:
@@ -402,7 +359,7 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
         param_types.extend("const QTypeDescriptor *" for _ in s.type_params)
         s = s.body
     if s.kind != "fun":
-        return f"{shape_representation(s)} (*)({', '.join(param_types)})"
+        return f"{shape_representation(s)} (*)({comma(param_types)})"
     for p in s.params:
         if p.mode != "value":
             param_types.append(f"{shape_location_representation(p.shape)} *")
@@ -410,7 +367,7 @@ def closure_fn_ptr_type(fun_type: QType, ctx: Optional[RecordNamingContext] = No
             param_types.append("QVal")
         else:
             param_types.append(shape_representation(p.shape))
-    return f"{shape_representation(s.result)} (*)({', '.join(param_types)})"
+    return f"{shape_representation(s.result)} (*)({comma(param_types)})"
 
 
 def _echo_key(t: QType, recursive: tuple[int, ...] = ()) -> Optional[str]:

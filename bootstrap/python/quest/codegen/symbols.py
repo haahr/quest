@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from quest.codegen.syntax import joined
+
 
 SYMBOL_MANGLE_MAP: dict[str, str] = {
     "+": "plus",
@@ -41,24 +43,24 @@ def mangle_symbolic_ident(name: str) -> str:
     for ch in name:
         if ch in SYMBOL_MANGLE_MAP and ch != ".":
             if curr:
-                s = "".join(curr).strip("_")
+                s = joined("", curr).strip("_")
                 if s:
                     parts.append(s)
                 curr.clear()
             parts.append(SYMBOL_MANGLE_MAP[ch])
         elif ch == ".":
             if curr:
-                s = "".join(curr).strip("_")
+                s = joined("", curr).strip("_")
                 if s:
                     parts.append(s)
                 curr.clear()
         else:
             curr.append(ch)
     if curr:
-        s = "".join(curr).strip("_")
+        s = joined("", curr).strip("_")
         if s:
             parts.append(s)
-    return "qv_sym_" + "_".join(parts)
+    return "qv_sym_" + joined("_", parts)
 
 
 def mangle_ident(name: str) -> str:

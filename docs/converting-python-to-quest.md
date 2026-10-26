@@ -135,6 +135,25 @@ sb.str("header\n").int(42).char('\n')
 let result = sb.toString()
 ```
 
+The compiler's C backend writes C text in a form that translates line by line (`codegen/syntax.py`,
+[self-hosting-refactorings.md](self-hosting-refactorings.md) §2):
+
+- Every value it interpolates is already a string, so an f-string becomes a `<>` chain: `f"{arr}->data[{idx}] = {v};"`
+  becomes `arr <> "->data[" <> idx <> "] = " <> v <> ";"`. Its braces are just characters (`f"{{ {args} }}"` is
+  `"{ " <> args <> " }"`).
+- A number goes through a C formatter: `c_int` for an index, a count, or a number in a name; `c_int_literal` for an
+  `int64_t` constant (`5LL`, `(-5LL)`); `c_real` for a `double` (`conv.real`'s digits, with `-` for the sign, and
+  `INFINITY`). Never `conv.int` alone for C, which writes negative numbers with `~`.
+- Lists are joined only by `comma`, `call`, `joined`, and `lines_text`. Ported, they take arrays, so a call's arguments
+  are an array literal:
+
+```quest
+let slot = syntax.call("quest_view_tuple_slot" array of base viewMap syntax.cInt(index) end)
+```
+
+A `printf`-style helper (`fmt("$->_$ = $;" array of b i v end)`) is an option for a line with many holes. The IR's text
+printer (`ir/printer.py`) follows the same rules if it is ported.
+
 **7. Rename to Quest's case conventions.** Values and functions use lowerCamel (`word_count` becomes `wordCount`). Types
 and interfaces are Capitalized. Kinds are ALL CAPS. `let` binds values, `Let` binds types, and `DEF` binds kinds.
 

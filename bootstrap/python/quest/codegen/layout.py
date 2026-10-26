@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Optional
 
+from quest.codegen.syntax import c_int, joined
 from quest.ir.shapes import Shape, shape
 from quest.types.canonical import is_rec_self_symbol, rec_self_level, rec_self_var
 from quest.types import (
@@ -295,10 +296,10 @@ def _recursive_tag(s: Shape) -> str:
     level = sum(1 for sym in t._fv if is_rec_self_symbol(sym))
     if isinstance(t, QRecType):
         body = t.body.substitute({t.symbol_id: rec_self_var(level)})
-        return f"Rec{level}_{type_tag(body)}"
+        return f"Rec{c_int(level)}_{type_tag(body)}"
     subst = {b[1]: rec_self_var(level + i) for i, b in enumerate(t.bindings)}
     tags = [type_tag(b[3].substitute(subst)) for b in t.bindings]
-    return f"RecGroup{level}_{t.active_index}_" + "_".join(tags)
+    return f"RecGroup{c_int(level)}_{c_int(t.active_index)}_" + joined("_", tags)
 
 
 _SELF_NAMED_KINDS = ("tuple", "record", "variant", "option", "array", "cell", "out", "auto")
@@ -324,7 +325,7 @@ def _component_tag(s: Shape) -> str:
 def _shape_tag(s: Shape) -> str:
     s = resolved_shape(s)
     if s.kind == "typevar" and (self_level := rec_self_level(s.type)) is not None:
-        return f"Self{self_level}"
+        return f"Self{c_int(self_level)}"
     if (canonical := shape(s.type)) is not s:
         # Equal types share a tag: a type containing recursion is named by its canonical form
         return shape_tag(canonical)
@@ -344,10 +345,10 @@ def _shape_tag(s: Shape) -> str:
         return "QReader"
     if kind == "tuple":
         tags = [_element_tag(c.shape) for c in s.components]
-        return "QTuple_" + ("_".join(tags) if tags else "empty")
+        return "QTuple_" + (joined("_", tags) if tags else "empty")
     if kind == "record":
         tags = [f"{c.name}_{_element_tag(c.shape)}" for c in s.sorted_components()]
-        return "QRecord_" + ("_".join(tags) if tags else "empty")
+        return "QRecord_" + (joined("_", tags) if tags else "empty")
     if kind in ("fun", "all"):
         return "QClosure"
     if kind in ("cell", "out"):
@@ -356,7 +357,7 @@ def _shape_tag(s: Shape) -> str:
         return f"QArray_{_element_tag(s.element)}"
     if kind in ("variant", "option"):
         tags = [f"{c.name}_{_element_tag(c.shape)}" if c.shape is not None else c.name for c in s.cases]
-        return ("QVariant_" if kind == "variant" else "QOption_") + ("_".join(tags) if tags else "empty")
+        return ("QVariant_" if kind == "variant" else "QOption_") + (joined("_", tags) if tags else "empty")
     if kind == "exception":
         return "QException"
     if kind == "auto":
@@ -426,7 +427,7 @@ def _printed_parts(node: Any) -> list[Any]:
     """The text of str(node) as a list of literal strings and the parts (types, components, kinds) printed
     in between. It mirrors the __str__ methods in quest.types; a node not listed prints as one string."""
 
-    def joined(items: Any) -> list[Any]:
+    def spaced(items: Any) -> list[Any]:
         out: list[Any] = []
         for i, item in enumerate(items):
             if i:
@@ -435,7 +436,7 @@ def _printed_parts(node: Any) -> list[Any]:
         return out
 
     def framed(head: str, items: Any) -> list[Any]:
-        return [f"{head} ", *joined(items), " end"] if items else [f"{head} end"]
+        return [f"{head} ", *spaced(items), " end"] if items else [f"{head} end"]
 
     match node:
         case QExceptionType():
@@ -469,7 +470,7 @@ def _printed_parts(node: Any) -> list[Any]:
             prefix = "var " if node.is_var else ("out " if node.is_out else "")
             return [f"{prefix}{node.name}: ", node.type_val]
         case QFunType():
-            return ["Fun(", *joined(node.params), "): ", node.result_type]
+            return ["Fun(", *spaced(node.params), "): ", node.result_type]
         case QVarType():
             return ["Var(", node.element_type, ")"]
         case QArrayType():
@@ -481,19 +482,19 @@ def _printed_parts(node: Any) -> list[Any]:
                 return [f"{node.name} <: ", node.bound.bound]
             return [f"{node.name} :: ", node.bound]
         case QAllType():
-            return ["All(", *joined(node.quantifiers), ") ", node.body]
+            return ["All(", *spaced(node.quantifiers), ") ", node.body]
         case QAutoType():
             if isinstance(node.kind_bound, QPowerKind):
                 head = [f"Auto {node.type_param} <: ", node.kind_bound.bound, " with "]
             else:
                 head = [f"Auto {node.type_param} :: ", node.kind_bound, " with "]
-            return [*head, *joined(node.signature), " end"]
+            return [*head, *spaced(node.signature), " end"]
         case QTypeFormal():
             return [f"{node.name} :: ", node.bound]
         case QTypeFun():
-            return ["Fun(", *joined(node.params), ") ", node.body]
+            return ["Fun(", *spaced(node.params), ") ", node.body]
         case QTypeApp():
-            return [node.constructor, "(", *joined(node.arguments), ")"]
+            return [node.constructor, "(", *spaced(node.arguments), ")"]
         case QRecType():
             return [f"Rec({node.var_name} :: ", node.bound, ") ", node.body]
         case QPowerKind():
@@ -517,7 +518,7 @@ def _printed_uncached(node: Any) -> tuple[int, str]:
             pieces.append("\0" + part_digest)
     if length <= PRINTED_TEXT_LIMIT:
         return length, hashlib.sha256(str(node).encode("utf-8")).hexdigest()
-    return length, hashlib.sha256(("\1" + "".join(pieces)).encode("utf-8")).hexdigest()
+    return length, hashlib.sha256(("\1" + joined("", pieces)).encode("utf-8")).hexdigest()
 
 
 # The printed lengths and digests of hash-consed nodes (types, components, kinds) without metavariables, by id, kept

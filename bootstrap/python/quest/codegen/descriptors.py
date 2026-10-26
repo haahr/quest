@@ -7,6 +7,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Optional
 
+from quest.codegen.syntax import c_int
 from quest.codegen.layout import type_digest
 from quest.ir.shapes import shape
 from quest.types import (
@@ -56,7 +57,8 @@ def fun_descriptor_tag(t: QType) -> str:
 def bound_var(index: int, bound: Optional[QKind]) -> QTypeVar:
     """The placeholder for the type parameter with de Bruijn index `index`, keeping its bound (which determines
     its C representation)."""
-    return QTypeVar(name=f"#{index}", symbol_id=reserved_symbol_id(ReservedSymbolUse.BOUND_VAR, index), bound=bound)
+    return QTypeVar(name=f"#{c_int(index)}", symbol_id=reserved_symbol_id(ReservedSymbolUse.BOUND_VAR, index),
+                    bound=bound)
 
 
 def bound_var_index(t: QType) -> Optional[int]:
@@ -69,7 +71,7 @@ def bound_var_index(t: QType) -> Optional[int]:
 def hole_var(index: int, bound: Optional[QKind]) -> QTypeVar:
     """The hole for the `index`-th type parameter of a descriptor template, keeping the parameter's bound (which
     determines its C representation, and so the template's layout)."""
-    return QTypeVar(name=f"?{index}", symbol_id=reserved_symbol_id(ReservedSymbolUse.HOLE, index), bound=bound)
+    return QTypeVar(name=f"?{c_int(index)}", symbol_id=reserved_symbol_id(ReservedSymbolUse.HOLE, index), bound=bound)
 
 
 def hole_index(t: QType) -> Optional[int]:
@@ -132,7 +134,7 @@ def canonical_fun_type(t: QType) -> QType:
         subst = {quants[j].symbol_id: bound_var(k - 1 - j, new_quants[j].bound) for j in range(k)}
         bound = bound.substitute_types(subst)
         quant_id = reserved_symbol_id(ReservedSymbolUse.CANONICAL_QUANTIFIER, k)
-        new_quants.append(QQuantifier(name=f"${k}", symbol_id=quant_id, bound=bound))
+        new_quants.append(QQuantifier(name=f"${c_int(k)}", symbol_id=quant_id, bound=bound))
     body = _shift_bound_vars(t.body, n)
     for k, q in enumerate(quants):
         placeholders.append(bound_var(n - 1 - k, new_quants[k].bound))

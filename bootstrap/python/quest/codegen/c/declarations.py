@@ -10,8 +10,8 @@ from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import may_be_stored_as_subtype
 from quest.ir.shapes import Shape, shape
 from quest.ir.written import echo_children, fun_signature, quantified, tuple_type_components
+from quest.codegen.syntax import c_int, c_int_literal, c_string, call, comma
 from quest.codegen.c.types import (
-    c_string_literal,
     closure_fn_ptr_type,
     descriptor_form,
     DescriptorForm,
@@ -271,7 +271,7 @@ class CDeclarationEmitter:
                     sig = module_function_signature(clean_mod, f.name, f.type_val, self.c_type)
                     if sig is not None:
                         ret_c, m_ident, param_decls = sig
-                        lines.append(f"extern {ret_c} {m_ident}({', '.join(param_decls) or 'void'});")
+                        lines.append(f"extern {ret_c} {call(m_ident, param_decls or ['void'])};")
             lines.append("")
         return lines
 
@@ -295,7 +295,7 @@ class CDeclarationEmitter:
                         lines.append("    char _unused;")
                     else:
                         for i, f in enumerate(value_fields):
-                            lines.append(f"    {slot_representation(f.type_val)} _{i};")
+                            lines.append(f"    {slot_representation(f.type_val)} _{c_int(i)};")
                 case QRecordType(fields=fields):
                     lines.append("    QRecordHeader header;")
                     if not fields:
@@ -316,7 +316,7 @@ class CDeclarationEmitter:
                                 lines.append(f"        struct {tag_name}_{o.name}_payload {{")
                                 if payload.kind == "tuple":
                                     for i, c in enumerate(payload.components):
-                                        lines.append(f"            {slot_representation(c.shape.type)} _{i};")
+                                        lines.append(f"            {slot_representation(c.shape.type)} _{c_int(i)};")
                                 else:
                                     for c in payload.sorted_components():
                                         lines.append(f"            {slot_representation(c.shape.type)} qf_{c.name};")
@@ -374,7 +374,7 @@ class CDeclarationEmitter:
                         f"offsetof({src_sname}, qf_{f.name})"
                         for f in sorted(tgt.fields, key=lambda fld: fld.name)
                     ]
-                    lines.append(f"static const {dict_t} {inst_name} = {{ {', '.join(entries)}, NULL }};")
+                    lines.append(f"static const {dict_t} {inst_name} = {{ {comma(entries)}, NULL }};")
             lines.append("")
         return lines
 
@@ -394,8 +394,8 @@ class CDeclarationEmitter:
                 src_name = tuple_struct_name(src)
                 for i in range(len(tgt.value_fields)):
                     lines.append(
-                        f"static_assert(offsetof({src_name}, _{i}) == offsetof({tgt_name}, _{i}), "
-                        f"tuple_coercion_{tgt_name}_{src_name}_{i});"
+                        f"static_assert(offsetof({src_name}, _{c_int(i)}) == offsetof({tgt_name}, _{c_int(i)}), "
+                        f"tuple_coercion_{tgt_name}_{src_name}_{c_int(i)});"
                     )
             lines.append("")
 
@@ -408,12 +408,12 @@ class CDeclarationEmitter:
                 tgt_tag = type_tag(tgt)
                 src_tag = type_tag(src)
                 entries = [
-                    str(next(j for j, tv in enumerate(tgt.variants) if tv.name == sv.name))
+                    c_int(next(j for j, tv in enumerate(tgt.variants) if tv.name == sv.name))
                     for sv in src.variants
                 ]
                 lines.append(
-                    f"static const int64_t tagmap_{tgt_tag}_{src_tag}[{len(src.variants)}] = "
-                    f"{{ {', '.join(entries)} }};"
+                    f"static const int64_t tagmap_{tgt_tag}_{src_tag}[{c_int(len(src.variants))}] = "
+                    f"{{ {comma(entries)} }};"
                 )
             lines.append("")
         return lines
@@ -539,9 +539,6 @@ class CDeclarationEmitter:
             lines.extend(self.emit_forward_typedefs(missing))
             lines.extend(self.emit_aggregate_structs(missing))
 
-        def c_string(text: str) -> str:
-            return text.replace("\\", "\\\\").replace('"', '\\"')
-
         def part_desc(form: DescriptorForm, key: str, t: Optional[QType]) -> str:
             # The descriptor of a part of form's type (t, keyed as echo_children keys it): for an echo-only
             # descriptor, the part's echo-only descriptor if it has one
@@ -557,7 +554,7 @@ class CDeclarationEmitter:
             return [
                 f"static const QTypeDescriptor quest_type_{tag} Q_UNUSED = {{",
                 f"    .kind = {kind},",
-                f"    .name = \"{c_string(name)}\",",
+                f"    .name = {c_string(name)},",
                 f"    .size = {size},",
                 "    .alignment = sizeof(void *),",
                 "    .is_subtype = quest_is_subtype,",
@@ -588,12 +585,13 @@ class CDeclarationEmitter:
                 # An application of an abstract type operator: its arguments are part of its identity
                 args = [desc_fn(a) for a in form.type.arguments]
                 lines.append(
-                    f"static const QTypeDescriptor *const qopaque_args_{form.tag}[{max(1, len(args))}] Q_UNUSED = "
-                    f"{{ {', '.join(args) if args else 'NULL'} }};"
+                    f"static const QTypeDescriptor *const qopaque_args_{form.tag}[{c_int(max(1, len(args)))}] "
+                    f"Q_UNUSED = "
+                    f"{{ {comma(args or ['NULL'])} }};"
                 )
                 lines.append(
                     f"static const QOpaqueTypeDescriptor qopaque_desc_{form.tag} Q_UNUSED = "
-                    f"{{ .arg_count = {len(args)}, .args = qopaque_args_{form.tag} }};"
+                    f"{{ .arg_count = {c_int(len(args))}, .args = qopaque_args_{form.tag} }};"
                 )
                 extra = f"&qopaque_desc_{form.tag}"
             lines.extend(type_descriptor(form.tag, "QTYPE_KIND_OPAQUE", form.name, "sizeof(QVal)", extra))
@@ -632,16 +630,16 @@ class CDeclarationEmitter:
             if quants:
                 bound_descs = [desc_fn(bound) if bound is not None else "NULL" for bound in quants]
                 lines.append(
-                    f"static const QTypeDescriptor *const qfun_bounds_{tag}[{len(quants)}] Q_UNUSED = "
-                    f"{{ {', '.join(bound_descs)} }};"
+                    f"static const QTypeDescriptor *const qfun_bounds_{tag}[{c_int(len(quants))}] Q_UNUSED = "
+                    f"{{ {comma(bound_descs)} }};"
                 )
                 bounds = f"qfun_bounds_{tag}"
             header = [
-                f"    .param_count = {len(params)},",
+                f"    .param_count = {c_int(len(params))},",
                 f"    .result_type = {desc_fn(result_t)},",
                 f"    .adapt = quest_adapt_{tag},",
                 f"    .invoke = quest_invoke_{tag},",
-                f"    .quantifier_count = {len(quants)},",
+                f"    .quantifier_count = {c_int(len(quants))},",
                 f"    .quantifier_bounds = {bounds},",
             ]
             if params:
@@ -652,7 +650,7 @@ class CDeclarationEmitter:
                 lines.append("    QFunInvoker invoke;")
                 lines.append("    size_t quantifier_count;")
                 lines.append("    const QTypeDescriptor *const *quantifier_bounds;")
-                lines.append(f"    const QFunParamDescriptor params[{len(params)}];")
+                lines.append(f"    const QFunParamDescriptor params[{c_int(len(params))}];")
                 lines.append(f"}} qfun_desc_{tag} Q_UNUSED = {{")
                 lines.extend(header)
                 lines.append("    .params = {")
@@ -680,17 +678,17 @@ class CDeclarationEmitter:
             lines.append("    const QTypeDescriptor *bound;")
             lines.append("    size_t payload_size;")
             lines.append("    size_t component_count;")
-            lines.append(f"    const QAutoComponentDescriptor components[{max(n, 1)}];")
+            lines.append(f"    const QAutoComponentDescriptor components[{c_int(max(n, 1))}];")
             lines.append(f"}} qauto_desc_{tag} Q_UNUSED = {{")
             lines.append(f"    .bound = {bound},")
             lines.append(f"    .payload_size = {payload_size},")
-            lines.append(f"    .component_count = {n},")
+            lines.append(f"    .component_count = {c_int(n)},")
             lines.append("    .components = {")
             for i, sig_f in enumerate(auto_t.signature):
                 is_var = "true" if sig_f.is_var else "false"
                 lines.append(
-                    f"        {{ .name = \"{sig_f.name}\", .type = {desc_fn(sig_f.type_val)}, "
-                    f".offset = offsetof(struct {struct_name}, _{i}), .is_var = {is_var} }},"
+                    f"        {{ .name = {c_string(sig_f.name)}, .type = {desc_fn(sig_f.type_val)}, "
+                    f".offset = offsetof(struct {struct_name}, _{c_int(i)}), .is_var = {is_var} }},"
                 )
             lines.append("    }")
             lines.append("};")
@@ -721,14 +719,14 @@ class CDeclarationEmitter:
             if n > 0:
                 lines.append("static const struct {")
                 lines.append("    size_t field_count;")
-                lines.append(f"    const QRecordFieldDescriptor fields[{n}];")
+                lines.append(f"    const QRecordFieldDescriptor fields[{c_int(n)}];")
                 lines.append(f"}} qrec_desc_{tag} Q_UNUSED = {{")
-                lines.append(f"    .field_count = {n},")
+                lines.append(f"    .field_count = {c_int(n)},")
                 lines.append("    .fields = {")
                 for f in sorted_fields:
                     is_var_str = "true" if f.is_var else "false"
                     lines.append(
-                        f"        {{ .name = \"{f.name}\", .type = {part_desc(form, f.name, f.type_val)}, "
+                        f"        {{ .name = {c_string(f.name)}, .type = {part_desc(form, f.name, f.type_val)}, "
                         f".offset = offsetof(struct {struct_name}, qf_{f.name}), .is_var = {is_var_str} }},"
                     )
                 lines.append("    }")
@@ -749,28 +747,29 @@ class CDeclarationEmitter:
             components = tuple_type_components(form.display if form.display is not None else qtype)
             if components:
                 lines.append(
-                    f"static const QTupleTypeComponentDescriptor qtup_components_{tag}[{len(components)}] Q_UNUSED = {{"
+                    f"static const QTupleTypeComponentDescriptor qtup_components_{tag}[{c_int(len(components))}] "
+                    f"Q_UNUSED = {{"
                 )
                 for position, text in components:
-                    lines.append(f"    {{ .position = {position}, .text = {c_string_literal(text)} }},")
+                    lines.append(f"    {{ .position = {c_int(position)}, .text = {c_string(text)} }},")
                 lines.append("};")
             lines.append("static const struct {")
             lines.append("    size_t component_count;")
             lines.append("    const QTupleTypeComponentDescriptor *components;")
             lines.append("    size_t element_count;")
             # (C99 has no empty arrays: a tuple of type components alone has one unused element)
-            lines.append(f"    const QTupleElementDescriptor elements[{max(n, 1)}];")
+            lines.append(f"    const QTupleElementDescriptor elements[{c_int(max(n, 1))}];")
             lines.append(f"}} qtup_desc_{tag} Q_UNUSED = {{")
-            lines.append(f"    .component_count = {len(components)},")
+            lines.append(f"    .component_count = {c_int(len(components))},")
             lines.append(f"    .components = {f'qtup_components_{tag}' if components else 'NULL'},")
-            lines.append(f"    .element_count = {n},")
+            lines.append(f"    .element_count = {c_int(n)},")
             lines.append("    .elements = {")
             for i, f in enumerate(val_fields):
                 name_str = f'"{f.name}"' if getattr(f, "name", None) is not None else "NULL"
                 is_var_str = "true" if f.is_var else "false"
                 lines.append(
-                    f"        {{ .name = {name_str}, .type = {part_desc(form, str(i), f.type_val)}, "
-                    f".offset = offsetof(struct {struct_name}, _{i}), .is_var = {is_var_str} }},"
+                    f"        {{ .name = {name_str}, .type = {part_desc(form, c_int(i), f.type_val)}, "
+                    f".offset = offsetof(struct {struct_name}, _{c_int(i)}), .is_var = {is_var_str} }},"
                 )
             if not val_fields:
                 lines.append("        { .name = NULL },")
@@ -789,16 +788,16 @@ class CDeclarationEmitter:
             n = len(cases)
             lines.append("static const struct {")
             lines.append("    size_t case_count;")
-            lines.append(f"    const QVariantCaseDescriptor cases[{max(n, 1)}];")
+            lines.append(f"    const QVariantCaseDescriptor cases[{c_int(max(n, 1))}];")
             lines.append(f"}} qvar_desc_{tag} Q_UNUSED = {{")
-            lines.append(f"    .case_count = {n},")
+            lines.append(f"    .case_count = {c_int(n)},")
             lines.append("    .cases = {")
             for i, (c_tag_name, p_type, is_var) in enumerate(cases):
                 p_desc = part_desc(form, c_tag_name, p_type)
                 is_var_str = "true" if is_var else "false"
                 lines.append(
-                    f"        {{ .name = \"{c_tag_name}\", .payload_type = {p_desc}, "
-                    f".tag_index = {i}LL, .is_var = {is_var_str} }},"
+                    f"        {{ .name = {c_string(c_tag_name)}, .payload_type = {p_desc}, "
+                    f".tag_index = {c_int_literal(i)}, .is_var = {is_var_str} }},"
                 )
             lines.append("    }")
             lines.append("};")
@@ -833,14 +832,14 @@ class CDeclarationEmitter:
             fn_ptr = closure_fn_ptr_type(fun_t, self.record_ctx)
             nq = len(quants)
             param_decls = ["void *_raw_env"]
-            param_decls.extend(f"const QTypeDescriptor *qv_desc_{k}" for k in range(nq))
+            param_decls.extend(f"const QTypeDescriptor *qv_desc_{c_int(k)}" for k in range(nq))
             direct: list[str] = []
-            uniform: list[str] = [f"QVal qv_args[{max(1, nq + len(params))}];"]
-            uniform.extend(f"qv_args[{k}].p = (void *)qv_desc_{k};" for k in range(nq))
-            call_args = ["e->orig->env"] + [f"qv_desc_{k}" for k in range(nq)]
+            uniform: list[str] = [f"QVal qv_args[{c_int(max(1, nq + len(params)))}];"]
+            uniform.extend(f"qv_args[{c_int(k)}].p = (void *)qv_desc_{c_int(k)};" for k in range(nq))
+            call_args = ["e->orig->env"] + [f"qv_desc_{c_int(k)}" for k in range(nq)]
             for i, p in enumerate(params):
-                name = f"qv_arg_{i}"
-                slot = f"qv_args[{nq + i}]"
+                name = f"qv_arg_{c_int(i)}"
+                slot = f"qv_args[{c_int(nq + i)}]"
                 if p.is_var or p.is_out:
                     param_decls.append(f"{location_representation(p.type_val)} *{name}")
                     uniform.append(f"{slot}.p = (void *){name};")
@@ -849,7 +848,7 @@ class CDeclarationEmitter:
                     uniform.append(f"{slot} = {name};")
                 else:
                     param_decls.append(f"{self.c_type(p.type_val)} {name}")
-                    to_from = f"to->params[{i}].type, from->params[{i}].type"
+                    to_from = f"to->params[{c_int(i)}].type, from->params[{c_int(i)}].type"
                     uniform.append(f"{slot} = quest_convert({qval_wrap(name, p.type_val)}, {to_from});")
                     if may_be_stored_as_subtype(shape(p.type_val)):
                         converted = qval_unwrap(
@@ -857,7 +856,7 @@ class CDeclarationEmitter:
                         )
                         direct.append(f"{name} = {converted};")
                 call_args.append(name)
-            call_expr = f"(({fn_ptr})(e->orig->fn))({', '.join(call_args)})"
+            call_expr = call(f"(({fn_ptr})(e->orig->fn))", call_args)
             invoke_expr = "from->invoke(e->orig, qv_args)"
             if ret_t is OK_TYPE:
                 direct.append(f"{call_expr};")
@@ -880,7 +879,7 @@ class CDeclarationEmitter:
                     + ";"
                 )
             thunk = f"quest_thunk_{tag}"
-            lines.append(f"static {ret_c} {thunk}({', '.join(param_decls)}) {{")
+            lines.append(f"static {ret_c} {call(thunk, param_decls)} {{")
             lines.append("    const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;")
             lines.append("    const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;")
             lines.append("    const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;")
@@ -904,16 +903,16 @@ class CDeclarationEmitter:
             lines.append("    return adapted;")
             lines.append("}")
             # The invoker: a call with QVal forms, for adapters whose closure has this type's C signature
-            inv_args = ["c->env"] + [f"(const QTypeDescriptor *)args[{k}].p" for k in range(nq)]
+            inv_args = ["c->env"] + [f"(const QTypeDescriptor *)args[{c_int(k)}].p" for k in range(nq)]
             for i, p in enumerate(params):
-                arg = f"args[{nq + i}]"
+                arg = f"args[{c_int(nq + i)}]"
                 if p.is_var or p.is_out:
                     inv_args.append(f"({location_representation(p.type_val)} *){arg}.p")
                 elif p.type_val is OK_TYPE:
                     inv_args.append(arg)
                 else:
                     inv_args.append(qval_unwrap(arg, p.type_val, self.record_ctx))
-            inv_call = f"(({fn_ptr})(c->fn))({', '.join(inv_args)})"
+            inv_call = call(f"(({fn_ptr})(c->fn))", inv_args)
             lines.append(f"static QVal quest_invoke_{tag}(const QClosure *c, const QVal *args) {{")
             lines.append("    (void)args;")
             if ret_t is OK_TYPE:
