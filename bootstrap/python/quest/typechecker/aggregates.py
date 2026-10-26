@@ -283,7 +283,7 @@ class AggregateMixin:
                     # Phrases a tuple cannot hold (imports, modules, interfaces), rejected before the arity is checked
                     raise TypeError(
                         f"Unsupported tuple component: {_PHRASES_NOT_IN_TUPLES.get(type(b), type(b).__name__)}",
-                        offset=getattr(b, "offset", expr.offset),
+                        offset=b.offset,
                     )
         if expected_tuple is not None and len(fields) != len(expected_tuple.fields):
             raise TypeError(
@@ -327,7 +327,7 @@ class AggregateMixin:
                     if not isinstance(b, ast.TypeBinding):
                         raise TypeError(
                             f"Expected type witness for type formal '{exp_f.name}', got value component",
-                            offset=getattr(b, "offset", expr.offset),
+                            offset=b.offset,
                         )
                     if b.name != exp_f.name:
                         raise TypeError(
@@ -359,7 +359,7 @@ class AggregateMixin:
                     if not isinstance(b, ast.TypeBinding):
                         raise TypeError(
                             f"Expected type binding for '{exp_f.name}', got value component",
-                            offset=getattr(b, "offset", expr.offset),
+                            offset=b.offset,
                         )
                     if b.name != exp_f.name:
                         raise TypeError(
@@ -465,19 +465,19 @@ class AggregateMixin:
                         label_name, label_type, label_is_var = b.name, val_typed.type_val, b.is_var
                     else:
                         if exp_f.is_var:
-                            if not getattr(b, "is_var", False):
+                            if not b.is_var:
                                 raise TypeError(
                                     f"Tuple field '{exp_f.name or ''}' must be declared mutable (var)",
-                                    offset=getattr(b, "offset", expr.offset),
+                                    offset=b.offset,
                                 )
                             val_typed = self.check_expr(b.value, expected_field_type, env, loop_depth)
                             if not is_type_equal(val_typed.type_val, expected_field_type, env):
                                 raise TypeError(
                                     f"Mutable tuple field '{exp_f.name or ''}' is invariant; "
                                     f"expected '{expected_field_type}', got '{val_typed.type_val}'",
-                                    offset=getattr(b, "offset", expr.offset),
+                                    offset=b.offset,
                                 )
-                        elif getattr(b, "type_annot", None) is not None:
+                        elif b.type_annot is not None:
                             annot_type = elaborate_type(b.type_annot, env)
                             if not is_subtype(annot_type, expected_field_type, env):
                                 raise TypeError(
@@ -836,7 +836,7 @@ class AggregateMixin:
                 return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Array")
             expected_array = expected_lazy
 
-        if getattr(expr, "element_type", None) is not None:
+        if expr.element_type is not None:
             elem_type: Optional[QType] = elaborate_type(expr.element_type, env)
             if expected_array is not None and not is_subtype(elem_type, expected_array.element_type, env):
                 raise TypeError(

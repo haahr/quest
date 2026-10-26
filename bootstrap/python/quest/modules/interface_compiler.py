@@ -81,6 +81,8 @@ from quest.types import (
     QTupleComponent,
     QTupleField,
     QTupleType,
+    QTupleTypeBinding,
+    QTupleTypeFormal,
     QType,
     QTypeApp,
     QTypeFun,
@@ -95,6 +97,7 @@ from quest.types import (
     QAllKind,
     QVariantField,
     QVariantType,
+    pruned,
 )
 
 QI_SCHEMA_TYPE_STR = (
@@ -117,7 +120,7 @@ def format_type_for_qi(
     """Formats a semantic QType into Quest type syntax for .qi metadata; alias references keep their names."""
     if t is None:
         return ""
-    t = t.prune() if hasattr(t, "prune") else t
+    t = pruned(t)
     if isinstance(t, QAliasType):
         return t.name
     if visited is None:
@@ -228,7 +231,7 @@ def format_type_for_qi(
         case QOutType():
             return f"Out({format_type_for_qi(t.value_type, visited)})"
         case QRecType() | QRecGroupType() if id(t) in visited:
-            return getattr(t, "var_name", getattr(t, "current_name", "RecType"))
+            return t.var_name if isinstance(t, QRecType) else "RecType"
         case QRecType():
             visited.add(id(t))
             return (

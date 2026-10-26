@@ -4,7 +4,6 @@ compare, and descriptor tags."""
 
 from __future__ import annotations
 
-import dataclasses
 from typing import Any, Optional
 
 from quest.codegen.syntax import c_int
@@ -14,6 +13,8 @@ from quest.types import (
     QAllType,
     QAutoType,
     QFunType,
+    QKind,
+    QParam,
     QQuantifier,
     QRecordField,
     QType,
@@ -21,8 +22,7 @@ from quest.types import (
     reserved_symbol_id,
     reserved_symbol_index,
     ReservedSymbolUse,
-    QParam,
-    QKind,
+    type_fields,
 )
 
 
@@ -95,9 +95,9 @@ def _bound_vars_in(t: Any) -> list[QTypeVar]:
         if isinstance(node, (tuple, list)):
             for item in node:
                 visit(item)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name))
+        else:
+            for part in type_fields(node) or ():
+                visit(part)
 
     visit(t)
     return list(found.values())

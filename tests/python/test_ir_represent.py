@@ -94,7 +94,7 @@ class TestRepresent(unittest.TestCase):
         cells = [s for s in walk_statements(unit.main, into_functions=False)
                  if isinstance(s, ir.VarDecl) and s.var.hint == "cell"]
         self.assertEqual(len(cells), 2)
-        stores = [s for s in walk_statements(unit.main, into_functions=False) if isinstance(s, ir.Store)]
+        stores = [s for s in walk_statements(unit.main, into_functions=False) if isinstance(s, ir.STORES)]
         self.assertEqual(len(stores), 2)
 
     def test_layouts_that_agree_are_cast(self) -> None:

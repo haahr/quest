@@ -11,25 +11,27 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from quest.types import (
-    short_type_name,
-    QAliasType,
-    strip_aliases,
+    is_type_equal,
     QAbstractType,
+    QAliasType,
     QAllKind,
     QAllType,
     QArrayType,
     QAutoType,
     QExceptionType,
     QFunType,
+    QKind,
     QOptionField,
     QOptionType,
+    QOutType,
+    QParam,
     QPathType,
     QPowerKind,
     QQuantifier,
     QRecGroupType,
-    QRecType,
     QRecordField,
     QRecordType,
+    QRecType,
     QTupleField,
     QTupleType,
     QTupleTypeBinding,
@@ -40,17 +42,17 @@ from quest.types import (
     QTypeFun,
     QTypeKind,
     QTypeVar,
-    QVarType,
-    QOutType,
     QVariantField,
     QVariantType,
-    is_type_equal,
+    QVarType,
     reserved_symbol_id,
     reserved_symbol_index,
     ReservedSymbolUse,
-    QParam,
-    QKind,
+    short_type_name,
+    strip_aliases,
+    type_fields,
     TYPE_KIND,
+    pruned,
 )
 
 
@@ -60,7 +62,7 @@ MAX_BETA_STEPS = 1000
 def beta_reduce_head(t: QType) -> QType:
     """Beta-reduces type operator applications at the head of t, without unfolding recursive types."""
     for _ in range(MAX_BETA_STEPS):
-        t = t.prune() if hasattr(t, "prune") else t
+        t = pruned(t)
         if not isinstance(t, QTypeApp):
             return t
         ctor = beta_reduce_head(t.constructor)
@@ -99,7 +101,7 @@ def unfold_recursive(
         if not isinstance(t, (QRecType, QRecGroupType)):
             break
         t = t.unfold_lazily()
-        t = t.prune() if hasattr(t, "prune") else t
+        t = pruned(t)
         if isinstance(t, QTypeApp):
             t = beta_reduce_head(t)
     if kinds is None:
@@ -117,8 +119,8 @@ def normalize_type(t: QType) -> QType:
     that reduces to a recursive type is replaced by the unfolding when that is a constructed type, and otherwise by
     the application's lazy evaluation when that is a tuple or record type; an application of an abstract type
     operator stays as it is."""
-    t = t.prune() if hasattr(t, "prune") else t
-    if getattr(t, "_has_meta", True):
+    t = pruned(t)
+    if t._has_meta:
         return _normalize_uncached(t)
     entry = _NORMALIZED.get(id(t))
     if entry is None or entry[0] is not t:
@@ -148,16 +150,16 @@ def _normalize_uncached(t: QType) -> QType:
 
 def resolve_type_bound(t: QType) -> QType:
     """t, or for a type variable, abstract type, or path type bounded by POWER(T), the type its bounds resolve to."""
-    curr = t.prune() if hasattr(t, "prune") else t
-    curr = strip_aliases(curr)
+    curr = strip_aliases(pruned(t))
     visited = set()
     while isinstance(curr, (QTypeVar, QAbstractType, QPathType)) and isinstance(curr.bound, QPowerKind):
-        sym_id = getattr(curr, "symbol_id", id(curr))
+        # (A path type is told apart by itself, not by a symbol of its own)
+        sym_id = id(curr) if isinstance(curr, QPathType) else curr.symbol_id
         if sym_id in visited:
             break
         visited.add(sym_id)
         curr = curr.bound.bound
-        curr = curr.prune() if hasattr(curr, "prune") else curr
+        curr = pruned(curr)
     return curr
 
 
@@ -233,7 +235,7 @@ def _canonical_structure(t: QType) -> QType:
     """t with aliases, solved metavariables, type operator applications, and recursive types whose unfoldings are
     graph nodes reduced down to its outer constructor."""
     for _ in range(MAX_BETA_STEPS):
-        t = strip_aliases(t.prune() if hasattr(t, "prune") else t)
+        t = strip_aliases(pruned(t))
         if not isinstance(t, (QRecType, QRecGroupType, QTypeApp)):
             return t
         if (unfolded := unfold_recursive(t, _GRAPH_NODES)) is not None:
@@ -816,8 +818,8 @@ def canonical_type(t: QType) -> Optional[QType]:
 
     Equal types containing recursion have the same canonical form, which therefore has their tag and descriptor.
     """
-    t = t.prune() if hasattr(t, "prune") else t
-    if getattr(t, "_has_meta", True):
+    t = pruned(t)
+    if t._has_meta:
         return None
     entry = _CANONICAL.get(id(t))
     if entry is None or entry[0] is not t:
@@ -838,12 +840,13 @@ def _may_recur(node: Any) -> bool:
         return True
     if isinstance(node, (tuple, list)):
         return any(_may_recur(item) for item in node)
-    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+    parts = type_fields(node)
+    if parts is None:
         return False
     entry = _MAY_RECUR.get(id(node))
     if entry is not None and entry[0] is node:
         return entry[1]
-    result = any(_may_recur(getattr(node, f.name)) for f in dataclasses.fields(node))
+    result = any(_may_recur(part) for part in parts)
     _MAY_RECUR[id(node)] = (node, result)
     return result
 

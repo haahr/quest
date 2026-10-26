@@ -39,11 +39,11 @@ QUEST_CHECK_IR=1, which the test runners set.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 from typing import Optional
 
 from quest.ir import nodes as ir
-from quest.ir.walk import global_variables
+from quest.ir.walk import contents, global_variables, view_map_of
 
 
 def ir_checks_enabled() -> bool:
@@ -104,7 +104,7 @@ class _Verifier:
         if isinstance(o, (ir.Var, ir.Const)):
             self.use(o, scope, where)
             return
-        if not is_dataclass(o) or isinstance(o, (ir.Body, ir.Function)):
+        if contents(o) is None or isinstance(o, (ir.Body, ir.Function)):
             self.problem(f"{where}: not an operation: {type(o).__name__}")
             return
         if isinstance(o, ir.Convert) and not self.represented:
@@ -113,12 +113,9 @@ class _Verifier:
             self.problem(f"{where}: {type(o).__name__} before closure conversion")
         if isinstance(o, ir.MakeClosure) and self.functions is not None and id(o.code) not in self.functions:
             self.problem(f"{where}: a closure of a function that is not the unit's")
-        for f in fields(o):
-            v = getattr(o, f.name)
-            if f.name == "type_components" or f.name in ir.DESCRIPTOR_FIELDS:
-                continue
-            if f.name == "module":
-                if v is not None and id(v) not in self.modules:
+        for v in contents(o):
+            if isinstance(v, (ir.Module, ir.Import)):
+                if id(v) not in self.modules:
                     self.problem(f"{where}: reference to a module that is not the unit's or imported by it")
                 continue
             if isinstance(v, (ir.Var, ir.Const)):
@@ -202,7 +199,7 @@ class _Verifier:
                 self.use(value, scope, where)
                 if not var.mutable:
                     self.problem(f"{where}: assignment to immutable variable '{var.hint}'")
-            case ir.Store():
+            case ir.StoreAt() | ir.StoreField() | ir.StoreComponent() | ir.StoreElement():
                 self.operation(s, scope, where)
             case ir.Do(value=value):
                 self.operation(value, scope, where)
@@ -250,9 +247,8 @@ class _Verifier:
                                scope.outer_mutables, scope.local_mutables, scope.top_level)
                 self.body(body, inner, where)
             case ir.Try(body=body, exception=exception, handler=handler, catches=catches):
-                if isinstance(catches, tuple):
-                    for c in catches:
-                        self.use(c, scope, where)
+                for c in catches:
+                    self.use(c, scope, where)
                 self.body(body, scope, where)
                 self.bind(exception, where)
                 self.body(handler, scope.with_vars(exception), where)
@@ -406,7 +402,7 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
                         slot(a, shape(var.type).element, f"{where}: an element of {var.hint}")
                 case ir.Let(var=var, value=ir.ArrayRep(init=a)):
                     slot(a, shape(var.type).element, f"{where}: the element of {var.hint}")
-                case ir.Let(value=ir.Addr(cell=a)) if a is not None:
+                case ir.Let(value=ir.AddrCell(init=a)):
                     slot(a, shape(atom_type(a)), f"{where}: a cell")
                 case ir.Let(var=var, value=ir.MakeVariant(tag=tag, payload=a)) if a is not None:
                     vs = resolved_shape(shape(var.type))
@@ -417,11 +413,11 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
                     slot(a, es.element if es.kind == "exception" else None, f"{where}: a raised payload")
                 case ir.Echo(value=a, type=t):
                     slot(a, shape(t), f"{where}: an echoed value")
-                case ir.Store(value=a, address=p) if p is not None:
+                case ir.StoreAt(value=a, address=p):
                     slot(a, located(p), f"{where}: a store")
-                case ir.Store(value=a, base=b, index=i) if isinstance(i, int):
+                case ir.StoreComponent(value=a, base=b, index=i):
                     slot(a, resolved_shape(shape(atom_type(b))).components[i].shape, f"{where}: a store")
-                case ir.Store(value=a, base=b, name=None):
+                case ir.StoreElement(value=a, base=b):
                     slot(a, shape(atom_type(b)).element, f"{where}: a store")
                 case ir.VarDecl(var=var, init=init) if init is not None:
                     expect(init, target(var), f"{where}: var {var.hint}")
@@ -615,7 +611,7 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
         for s in walk_statements(f.body, into_functions=False):
             values = [s.value] if isinstance(s, (ir.Let, ir.Do)) else []
             for o in [s] + values:
-                vm = getattr(o, "view_map", None)
+                vm = view_map_of(o)
                 if vm is not None and id(vm) not in maps:
                     problems.append(f"{where}: an operation reads through a view map that is not the function's")
     for table in data.offset_tables:

@@ -55,6 +55,7 @@ from quest.types.model import (
     QVarType,
     register_type_formatter,
     unalias,
+    pruned,
 )
 
 # ============================================================================
@@ -221,7 +222,7 @@ def short_type_name(t: QType) -> str:
     def walk(t: Optional[QType]) -> None:
         if t is None:
             return
-        t = unalias(t.prune() if hasattr(t, "prune") else t)
+        t = unalias(pruned(t))
         match t:
             case QRecordType():
                 emit("Record")

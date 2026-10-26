@@ -125,7 +125,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                             typed_mod = load_module(mod_path, iface_path, env)
                             mod_scope = typed_mod.scope
                         except (QuestCompilerError, OSError) as err:
-                            if getattr(env, "sink", None) is not None:
+                            if env.sink is not None:
                                 if isinstance(err, QuestCompilerError):
                                     env.sink.emit(diagnostic_of(err))
                                 else:

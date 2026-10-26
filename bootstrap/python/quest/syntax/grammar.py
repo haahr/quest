@@ -206,13 +206,24 @@ def _build_kind_all(all_token: Token, left_paren: Token, signatures: tuple[Any, 
     kind = body
     for i in reversed(range(len(signatures))):
         sig = signatures[i]
+        # (A type formal's or type declaration's bound; any other item's parameter is a type)
+        bounded = isinstance(sig, (ast.TypeFormal, ast.TypeBinding))
         kind = ast.KindAll(
-            param_name=getattr(sig, "name", "_"),
-            param_kind=getattr(sig, "bound", ast.KindType(offset=left_paren.offset)),
+            param_name=_signature_name(sig),
+            param_kind=sig.bound if bounded else ast.KindType(offset=left_paren.offset),
             body_kind=kind,
-            offset=all_token.offset if i == 0 else getattr(sig, "offset", left_paren.offset),
+            offset=all_token.offset if i == 0 else sig.offset,
         )
     return kind
+
+
+def _signature_name(sig: Any) -> Optional[str]:
+    """The name a signature item declares (None for an anonymous field), or "_" for a group of declarations."""
+    match sig:
+        case ast.TypeFormal(name=name) | ast.FieldSig(name=name) | ast.TypeBinding(name=name) | \
+                ast.DefKindBinding(name=name):
+            return name
+    return "_"
 
 
 def _quantifier(sig: Any, default_offset: int) -> ast.Quantifier:
@@ -233,9 +244,9 @@ def _quantifier(sig: Any, default_offset: int) -> ast.Quantifier:
             )
         case _:
             return ast.Quantifier(
-                name=getattr(sig, "name", "_") or "_",
+                name=_signature_name(sig) or "_",
                 bound=ast.KindType(offset=default_offset),
-                offset=getattr(sig, "offset", default_offset),
+                offset=sig.offset,
             )
 
 
@@ -537,7 +548,7 @@ def build_quest_grammar() -> None:
     POSTFIX_TYPE_OP.add_rule(
         (P(TK.UNDERSCORE), T(TK.IDENT)),
         lambda ident_token: lambda current: ast.TypeManifest(
-            module_name=getattr(current, "path", ("_",))[-1],
+            module_name=current.path[-1] if isinstance(current, ast.TypePath) else "_",
             type_name=ident_token.lexeme,
             offset=current.offset,
         ),

@@ -27,7 +27,6 @@ those the call's type arguments and the callee's parts refer to (a shape's are i
 
 from __future__ import annotations
 
-import dataclasses
 
 from typing import Any, Optional
 
@@ -49,15 +48,16 @@ from quest.ir.slots import decide_slots, tuple_access
 from quest.ir.walk import statement_bodies
 from quest.ir.written import array_element as written_element, fun_signature, quantified, written_structure
 from quest.types import (
+    auto_payload_type,
+    is_kind_equal,
+    is_type_equal,
     QAbstractType,
     QFunType,
     QOutType,
     QType,
     QTypeVar,
     QVarType,
-    auto_payload_type,
-    is_kind_equal,
-    is_type_equal,
+    type_fields,
 )
 
 
@@ -124,8 +124,8 @@ def _type_vars(t: Any) -> frozenset:
         found = frozenset((t,))
     elif isinstance(t, tuple):
         found = frozenset().union(*(_type_vars(item) for item in t))
-    elif dataclasses.is_dataclass(t) and not isinstance(t, type) and getattr(t, "_fv", True):
-        found = frozenset().union(*(_type_vars(getattr(t, f.name)) for f in dataclasses.fields(t)))
+    elif (parts := type_fields(t)) is not None and t._fv:
+        found = frozenset().union(*(_type_vars(part) for part in parts))
     if len(_TYPE_VARS) > 200_000:
         _TYPE_VARS.clear()
     _TYPE_VARS[id(t)] = (t, found)
@@ -135,7 +135,7 @@ def _type_vars(t: Any) -> frozenset:
 def _same_views(a: QType, b: QType) -> bool:
     """Whether two equal types hold their type parameters at the same views: a type parameter renamed with another
     bound (shared_signatures) is the same type, but held viewed at another bound."""
-    if not (getattr(a, "_fv", None) and getattr(b, "_fv", None)):
+    if not (a._fv and b._fv):
         return True
     bounds: dict[int, Any] = {}
     for var in _type_vars(a) | _type_vars(b):
@@ -563,7 +563,7 @@ class _Representer:
                 s.init = self.convert(init, var.type, before)
             case ir.Assign(var=var, value=value):
                 s.value = self.convert(value, var.type, before)
-            case ir.Store():
+            case ir.StoreAt() | ir.StoreField() | ir.StoreComponent() | ir.StoreElement():
                 target_t = self.stored_type(s)
                 if target_t is not None:
                     s.value = self.convert(s.value, target_t, before)
@@ -663,19 +663,19 @@ class _Representer:
                     return case.type_val if case is not None and case.type_val is not None else None
         return None
 
-    def stored_type(self, s: ir.Store) -> Optional[QType]:
-        """The type of the location a store stores into."""
-        if s.address is not None:
-            return None
-        base_t = _type_of(s.base)
-        if s.name is not None:
-            rt = written_structure(base_t, "record")
-            field = next((f for f in rt.fields if f.name == s.name), None) if rt is not None else None
-            return field.type_val if field is not None else None
-        if isinstance(s.index, int):
-            tt = written_structure(base_t, "tuple")
-            return tt.value_fields[s.index].type_val if tt is not None else None
-        return array_element(base_t)
+    def stored_type(self, s) -> Optional[QType]:
+        """The type of the location a store stores into (None for one through an address)."""
+        match s:
+            case ir.StoreField(base=base, name=name):
+                rt = written_structure(_type_of(base), "record")
+                field = next((f for f in rt.fields if f.name == name), None) if rt is not None else None
+                return field.type_val if field is not None else None
+            case ir.StoreComponent(base=base, index=index):
+                tt = written_structure(_type_of(base), "tuple")
+                return tt.value_fields[index].type_val if tt is not None else None
+            case ir.StoreElement(base=base):
+                return array_element(_type_of(base))
+        return None
 
     def call(self, call: ir.Call, before: list, after: list) -> QType:
         """Converts a call's arguments to its callee's parameter types, returning its callee's result type. A var or
@@ -745,14 +745,14 @@ class _Representer:
                 init = ir.Var("", param_t)
                 before.append(ir.Let(init, ir.Convert(current, p_in)))
         before.append(ir.VarDecl(temp, init))
-        before.append(ir.Let(temp_address, ir.Addr(var=temp)))
+        before.append(ir.Let(temp_address, ir.AddrVar(temp)))
         written = ir.Var("", param_t)
         after.append(ir.Let(written, temp))
         if p_out is not None:
             converted = ir.Var("", location_t)
             after.append(ir.Let(converted, ir.Convert(written, p_out)))
             written = converted
-        after.append(ir.Store(written, address=address))
+        after.append(ir.StoreAt(written, address))
         return temp_address
 
     def run(self) -> None:

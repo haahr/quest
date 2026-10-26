@@ -16,7 +16,7 @@ import json
 from typing import Optional
 
 from quest.ir import nodes as ir
-from quest.ir.walk import global_variables, statement_binders, walk_statements
+from quest.ir.walk import global_variables, statement_binders, view_map_of, walk_statements
 from quest.types import format_type_compact
 
 
@@ -85,7 +85,7 @@ class _Printer:
 
     def through(self, o) -> str:
         """The view map an operation reads a value through its type's bound by, if it has one."""
-        view_map = getattr(o, "view_map", None)
+        view_map = view_map_of(o)
         return f" through {self.name(view_map)}" if view_map is not None else ""
 
     def of(self, d) -> str:
@@ -211,15 +211,15 @@ class _Printer:
                 return f"exception {name}{': ' + self.type(pt) if payload else ''}"
             case ir.ExceptionPayload(exception=e):
                 return f"exception_payload({self.atom(e)})"
-            case ir.Addr(var=var, base=base, name=name, index=index, cell=cell):
-                if var is not None:
-                    return f"addr {self.name(var)}"
-                if cell is not None:
-                    return f"cell({self.atom(cell)})"
-                if name is not None:
-                    return f"addr {self.atom(base)}.{name}"
-                if isinstance(index, int):
-                    return f"addr {self.atom(base)}.#{index}{self.access(o.access)}"
+            case ir.AddrVar(var=var):
+                return f"addr {self.name(var)}"
+            case ir.AddrCell(init=init):
+                return f"cell({self.atom(init)})"
+            case ir.AddrField(base=base, name=name):
+                return f"addr {self.atom(base)}.{name}"
+            case ir.AddrComponent(base=base, index=index, access=access):
+                return f"addr {self.atom(base)}.#{index}{self.access(access)}"
+            case ir.AddrElement(base=base, index=index):
                 return f"addr {self.atom(base)}[{self.atom(index)}]"
             case ir.Load(address=a):
                 return f"load {self.atom(a)}"
@@ -282,16 +282,15 @@ class _Printer:
                     self.emit(depth, f"var {self.decl(var)} = {self.atom(init)}")
             case ir.Assign(var=var, value=value):
                 self.emit(depth, f"{self.name(var)} := {self.atom(value)}")
-            case ir.Store(value=value, base=base, name=name, index=index, address=address):
-                if address is not None:
-                    target = f"*{self.atom(address)}"
-                elif name is not None:
-                    target = f"{self.atom(base)}.{name}"
-                elif isinstance(index, int):
-                    target = f"{self.atom(base)}.#{index}"
-                else:
-                    target = f"{self.atom(base)}[{self.atom(index)}]"
-                self.emit(depth, f"store {target} := {self.atom(value)}{self.access(s.access)}{self.through(s)}")
+            case ir.StoreAt(value=value, address=address):
+                self.emit(depth, f"store *{self.atom(address)} := {self.atom(value)}")
+            case ir.StoreField(value=value, base=base, name=name):
+                self.emit(depth, f"store {self.atom(base)}.{name} := {self.atom(value)}{self.through(s)}")
+            case ir.StoreComponent(value=value, base=base, index=index, access=access):
+                self.emit(depth, f"store {self.atom(base)}.#{index} := {self.atom(value)}{self.access(access)}"
+                                 f"{self.through(s)}")
+            case ir.StoreElement(value=value, base=base, index=index):
+                self.emit(depth, f"store {self.atom(base)}[{self.atom(index)}] := {self.atom(value)}")
             case ir.Do(value=value):
                 self.emit(depth, f"do {self.op(value)}{self.through(value)}")
             case ir.Funs(functions=functions, recursive=recursive):
@@ -336,10 +335,10 @@ class _Printer:
                 self.emit(depth, "}")
             case ir.Loop(label=label, body=body):
                 self.block(f"loop {label}", body, depth)
-            case ir.Try(body=body, exception=exception, handler=handler, catches=catches):
-                if catches is None:
+            case ir.Try(body=body, exception=exception, handler=handler, catching=catching, catches=catches):
+                if catching == ir.CATCH_UNKNOWN:
                     self.emit(depth, "try {")
-                elif catches is ir.CATCH_ALL:
+                elif catching == ir.CATCH_ALL:
                     self.emit(depth, "try catching all {")
                 else:
                     self.emit(depth, f"try catching ({self.atoms(catches)}) {{")

@@ -17,12 +17,12 @@ What it checks:
 
 from __future__ import annotations
 
-import dataclasses
 import os
 from typing import Any, Iterator, Optional
 
 from quest.types.env import ValueSymbol
 from quest.typechecker.typed_ast import (
+    typed_fields,
     TypedBlock,
     TypedCase,
     TypedFor,
@@ -85,9 +85,9 @@ def _local_binders(node: Any) -> Iterator[tuple[ValueSymbol, str]]:
         if isinstance(n, (list, tuple)):
             for item in n:
                 yield from walk(item, top)
-        elif isinstance(n, TypedNode):
-            for f in dataclasses.fields(n):
-                yield from walk(getattr(n, f.name), top)
+        else:
+            for part in typed_fields(n) or ():
+                yield from walk(part, top)
 
     yield from walk(node, True)
 
@@ -115,15 +115,15 @@ class _Checker:
         if isinstance(n, (list, tuple)):
             for item in n:
                 self._collect_type_params(item, seen)
-        elif isinstance(n, TypedNode):
-            for f in dataclasses.fields(n):
-                self._collect_type_params(getattr(n, f.name), seen)
+        else:
+            for part in typed_fields(n) or ():
+                self._collect_type_params(part, seen)
 
     def _check_type(self, t: QType, type_scope: frozenset[int], where: Any) -> None:
-        stray = (set(getattr(t, "_fv", ()) or ()) & self.param_ids) - type_scope
+        stray = (t._fv & self.param_ids) - type_scope
         if stray:
             self.problems.append(
-                f"{type(where).__name__} at offset {getattr(where, 'offset', 0)}: type {t} mentions type parameters "
+                f"{type(where).__name__} at offset {where.offset}: type {t} mentions type parameters "
                 f"{sorted(stray)} outside their function"
             )
 
@@ -142,8 +142,7 @@ class _Checker:
         # Scalars, types, and symbols hold no binders or variables
         if not isinstance(n, TypedNode):
             return
-        for f in dataclasses.fields(n):
-            v = getattr(n, f.name)
+        for v in typed_fields(n):
             if isinstance(v, QType):
                 self._check_type(v, types, n)
             elif isinstance(v, ValueSymbol):
@@ -196,8 +195,8 @@ class _Checker:
                     self.walk(br.body, values | {b.symbol_id for b in br.binders}, types)
                 self.walk(else_branch, values, types)
             case _:
-                for f in dataclasses.fields(n):
-                    self.walk(getattr(n, f.name), values, types)
+                for part in typed_fields(n):
+                    self.walk(part, values, types)
 
 
 def check_well_scoped(prog: TypedProgram) -> list[str]:

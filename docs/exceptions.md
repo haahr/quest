@@ -118,7 +118,7 @@ To see every frame, run the program with the interpreter (`--stop-after interpre
 `ir.Unit` has the source map of its file (`source_map`, from the environment's when the unit is lowered), and the IR
 nodes that can raise have `offset: Optional[int]`, copied from the typed expression they are lowered from: `ir.Raise`;
 `ir.Prim` (integer and real arithmetic); `ir.Payload` (`v!tag`); `ir.MakeOption` (a computed ordinal);
-`ir.ArrayRep`, `ir.Index`, `ir.Addr` of an element, and `ir.Store` to an element (array counts and bounds); and
+`ir.ArrayRep`, `ir.Index`, `ir.AddrElement`, and `ir.StoreElement` (array counts and bounds); and
 `ir.Inspect` (an auto value no case matches). The passes copy offsets with the nodes, as they copy everything else.
 
 The IR lowers calls of the standard library's `arrayOp.new`, `get`, and `set` to the array operations themselves,
@@ -203,9 +203,9 @@ catches everything. A pattern is an expression, evaluated today after the except
 **pure** (an immutable variable, a constant such as a built-in exception, or a field of a module record) evaluating it
 before the try's body gives the same value, so the try can record what it catches when it is entered:
 
-- `ir.Try` gains `catches`: the atoms of its patterns, evaluated before the try (`lower.py` hoists them); or `ALL`,
-  when it has an `else` branch; or `UNKNOWN`, when some pattern is not pure. The handler still tests the patterns as
-  now, against the hoisted atoms.
+- `ir.Try` gains `catching` and `catches`: `CATCH_LISTED` and the atoms of its patterns, evaluated before the try
+  (`lower.py` hoists them); or `CATCH_ALL`, when it has an `else` branch; or `CATCH_UNKNOWN`, when some pattern is not
+  pure. The handler still tests the patterns as now, against the hoisted atoms.
 - `QExceptionHandler` gains `const QException *const *catches` and `int n_catches`, with `-1` for `ALL` and `-2` for
   `UNKNOWN`. Entering a `try` stores them, from a local array of the catch atoms that lives as long as the try's
   block. The handler is popped on every way out of the block, as now.

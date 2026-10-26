@@ -22,7 +22,7 @@ can be applied to any AST node, including a phrase, a type, or a kind.
 
 from __future__ import annotations
 
-from dataclasses import fields, replace
+from dataclasses import replace
 from typing import Any, TypeVar
 
 import quest.syntax.ast as ast
@@ -50,18 +50,12 @@ def _walk(value: Any) -> Any:
     if isinstance(value, tuple):
         walked = tuple(_walk(item) for item in value)
         return value if all(new is old for new, old in zip(walked, value)) else walked
-    if not isinstance(value, ast.ASTNode):
+    parts = ast.ast_fields(value)
+    if parts is None:
         return value
-    changes: dict[str, Any] = {}
-    for field in fields(value):
-        if field.name == "offset":
-            continue
-        old = getattr(value, field.name)
-        new = _walk(old)
-        if new is not old:
-            changes[field.name] = new
-    if changes:
-        value = replace(value, **changes)
+    walked = tuple(_walk(part) for part in parts)
+    if any(new is not old for new, old in zip(walked, parts)):
+        value = ast.rebuild_ast(value, walked)
     return _rewrite(value)
 
 

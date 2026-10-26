@@ -33,7 +33,6 @@ evaluates them is its own business (the C printer evaluates each where it is use
 
 from __future__ import annotations
 
-import dataclasses
 from typing import Any, Optional
 
 from quest.codegen.descriptors import bound_var_index, hole_var
@@ -41,9 +40,10 @@ from quest.codegen.layout import own_view, representation, resolved_shape
 from quest.ir import nodes as ir
 from quest.ir.represent import held_shape
 from quest.ir.shapes import shape
-from quest.ir.walk import statement_bodies
+from quest.ir.walk import contents, statement_bodies
 from quest.ir.written import package_text
 from quest.types import (
+    auto_payload_type,
     QAbstractType,
     QAllKind,
     QPowerKind,
@@ -54,7 +54,7 @@ from quest.types import (
     QTypeFun,
     QTypeKind,
     QTypeVar,
-    auto_payload_type,
+    type_fields,
 )
 
 
@@ -84,7 +84,7 @@ def echo_value_kind(t: QType) -> str:
 def free_type_vars(t: QType, wanted) -> list:
     """The type variables (and abstract types) occurring free in t for which wanted(symbol_id) holds, in order of
     appearance."""
-    free = getattr(t, "_fv", None)
+    free = t._fv
     if not free or not any(wanted(sid) for sid in free):
         return []
     found: dict[int, Any] = {}
@@ -99,9 +99,9 @@ def free_type_vars(t: QType, wanted) -> list:
         if isinstance(node, (tuple, list)):
             for item in node:
                 visit(item)
-        elif dataclasses.is_dataclass(node) and not isinstance(node, type):
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name))
+        else:
+            for part in type_fields(node) or ():
+                visit(part)
 
     visit(t)
     return list(found.values())
@@ -285,7 +285,7 @@ class _Describer:
                 self.inspect(s)
             case ir.Try(exception=e):
                 self.handler_vars.add(id(e))
-            case ir.Store(base=base) if base is not None:
+            case ir.StoreField(base=base) | ir.StoreComponent(base=base):
                 s.view_map = self.view_map(base)
             case ir.Switch(value=value):
                 s.view_map = self.view_map(value)
@@ -319,8 +319,8 @@ class _Describer:
 
     def operation(self, o, result: Optional[ir.Var]) -> None:
         match o:
-            case ir.RecordField(record=a) | ir.TupleField(tuple=a) | ir.Addr(base=a) | ir.IsTag(value=a) | \
-                    ir.Payload(value=a) | ir.Ordinal(value=a) if a is not None:
+            case ir.RecordField(record=a) | ir.TupleField(tuple=a) | ir.AddrField(base=a) | ir.AddrComponent(base=a) | \
+                    ir.IsTag(value=a) | ir.Payload(value=a) | ir.Ordinal(value=a):
                 o.view_map = self.view_map(a)
         match o:
             case ir.Prim(op="is" | "isnot", args=args):
@@ -477,7 +477,12 @@ def unit_types(unit: ir.Unit) -> list[QType]:
                 for item in node.values():
                     visit(item)
                 return
-        if not dataclasses.is_dataclass(node) or isinstance(node, (type, ir.Shape)) or id(node) in seen_nodes:
+        # An IR node's fields, or a kind's (a type parameter's), whose types are declared too; nothing else (a shape,
+        # a name) holds types
+        parts = contents(node)
+        if parts is None:
+            parts = type_fields(node)
+        if parts is None or id(node) in seen_nodes:
             return
         seen_nodes.add(id(node))
         if isinstance(node, ir.MakeRecord):
@@ -486,9 +491,8 @@ def unit_types(unit: ir.Unit) -> list[QType]:
             for case in node.cases:
                 if case.binders:
                     add(auto_payload_type(node.auto_type, case.match_type))
-        for f in dataclasses.fields(node):
-            if f.name not in _UNDECLARED_FIELDS:
-                visit(getattr(node, f.name))
+        for part in parts:
+            visit(part)
 
     visit(unit.modules)
     visit(unit.main)
@@ -502,9 +506,6 @@ def unit_types(unit: ir.Unit) -> list[QType]:
 
 # The fields of IR nodes whose types C declares no aggregates for: descriptor operands (described by the static data's
 # descriptors, which declare what they need) and the static data itself
-_UNDECLARED_FIELDS = ir.DESCRIPTOR_FIELDS | {"static_data", "witness"}
-
-
 def describe_unit(unit: ir.Unit) -> ir.Unit:
     """Gives the unit's run-time uses of types their descriptors, in place, returning it."""
     _Describer(unit).run()

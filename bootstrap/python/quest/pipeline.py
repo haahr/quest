@@ -60,7 +60,7 @@ from quest.typechecker.typecheck import (
     elaborate_program,
     synth_expr,
 )
-from quest.typechecker.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedModule, TypedProgram
+from quest.typechecker.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedModule, TypedNode, TypedProgram
 from quest.types import KindError, QKind, QType
 
 
@@ -292,11 +292,8 @@ class TypecheckPhase(Phase):
             return None
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
-        if hasattr(output_data, "dump"):
-            try:
-                return output_data.dump(env=ctx.env)
-            except TypeError:
-                return output_data.dump()
+        if isinstance(output_data, TypedNode):
+            return output_data.dump(env=ctx.env)
         return str(output_data)
 
 
@@ -442,7 +439,7 @@ class IrCorePhase(Phase):
                 unit = lower_module_file(unit_module(prog, ctx), ctx.env)
             else:
                 unit = lower_program(
-                    prog, ctx.env, echo=ctx.options.echo, print_result=getattr(ctx.options, "print_result", False)
+                    prog, ctx.env, echo=ctx.options.echo, print_result=ctx.options.print_result
                 )
             if ir_checks_enabled():
                 check_unit(unit)

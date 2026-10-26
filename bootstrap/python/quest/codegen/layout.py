@@ -55,6 +55,7 @@ from quest.types import (
     QVariantType,
     auto_payload_type,
     is_type_equal,
+    pruned,
 )
 
 
@@ -528,9 +529,8 @@ _PRINTED_PARTS: dict[int, tuple[Any, tuple[int, str]]] = {}
 
 def printed(node: Any) -> tuple[int, str]:
     """The length of str(node) and a digest of that text, for a type, type component, or kind."""
-    if isinstance(node, QType):
-        node = node.prune() if hasattr(node, "prune") else node
-    if getattr(node, "_has_meta", True):
+    node = pruned(node)
+    if node._has_meta:
         return _printed_uncached(node)
     entry = _PRINTED_PARTS.get(id(node))
     if entry is None or entry[0] is not node:
@@ -588,7 +588,7 @@ def generic_layout_agrees(t: QType, subst: dict[int, QType]) -> bool:
 def _mentions(s: Shape, subst: dict[int, QType]) -> bool:
     """Whether the type of shape s mentions one of the type parameters in subst (free type variables keep their
     symbols in canonical forms)."""
-    return bool((getattr(s.type, "_fv", None) or frozenset()) & subst.keys())
+    return bool(s.type._fv & subst.keys())
 
 
 def _stored_value_agrees(var: Shape, arg: QType, place: str) -> bool:
@@ -712,7 +712,7 @@ def signature_representation(t: QType) -> tuple:
 def qtype_to_name_str(t: QType) -> str:
     """Returns the human-readable Quest type name string for runtime diagnostics and printing (with its alias name,
     which only the type as written has)."""
-    t = t.prune() if hasattr(t, "prune") else t
+    t = pruned(t)
     if isinstance(t, QAliasType):
         return t.name
     if is_word_type(t):

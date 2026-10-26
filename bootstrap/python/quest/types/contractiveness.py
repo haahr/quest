@@ -73,7 +73,7 @@ def is_type_contractive(
         case QTypeVar(symbol_id=sym_id):
             if sym_id in recursive_var_ids:
                 return False
-            if env is not None and hasattr(env, "lookup_type_by_id"):
+            if env is not None:
                 sym = env.lookup_type_by_id(sym_id)
                 if sym is not None and sym.definition is not None and sym_id not in seen:
                     return is_type_contractive(sym.definition, recursive_var_ids, env, seen | {sym_id}, depth + 1)
@@ -82,7 +82,7 @@ def is_type_contractive(
         case QTypeMeta(name=mname):
             if mname == "Top":
                 return True
-            if env is not None and hasattr(env, "lookup_type"):
+            if env is not None:
                 sym = env.lookup_type(mname)
                 if sym is not None and sym.definition is not None and sym.symbol_id not in seen:
                     return is_type_contractive(

@@ -23,7 +23,7 @@ Python features that have no line-by-line Quest counterpart:
 
 The phases are independent of one another; the steps within a phase are ordered.
 
-**Status: in progress.** Phases 1 and 2 are done.
+**Status: complete** (October 2026). Each step's **Done** note says what it did.
 
 ---
 
@@ -160,6 +160,36 @@ which finds types by probing for `type_val`, `symbol`, and `definition` attribut
 and the walker in `codegen/descriptors.py` (line 97). Check `types/kinds.py`, `types/canonical.py`, and
 `types/dump.py`, which use `getattr` too, and convert what is generic traversal.
 
+**Done**, in one commit with phase 4, which changes the IR's classes. The traversals are less specific than planned:
+each family has an accessor of its nodes' field values, in order, and a rebuilder of a node from such values, written
+once from the dataclasses' fields and kept as ordinary code. The walkers kept their logic and read fields through
+these instead of `dataclasses.fields`, `getattr`, and `type(node)(**...)`. A `children`/`operands` per walker would
+have meant a dozen traversals per family where one serves.
+
+Each is a table with an explicit entry per class (`{ir.Var: lambda node: (node.hint, ...), ...}`) rather than a
+`match`: a `match` tests classes in turn, so for the families' 40 to 80 classes it was slower than reflection (C
+generation took 18% longer than main, interning a late class 1.7µs rather than 0.6µs), and a table is 5 times faster
+than reflection. A types' class registers its entries right after its definition, so that interning its first
+instance finds them. Measured on the corpus (CPU time, interleaved), type checking takes 0.96 of main's time and C
+generation 0.83 (with `fresh_name` made linear: its search for a base's next name now starts where the last stopped).
+
+- **Types** (`types/model.py`): `type_fields` and `rebuild_type`, used by interning, `map_aliases`, `strip_aliases`,
+  `unsolved_metas`, `structurally_equal`, `canonical._may_recur`, `represent._type_vars`, `describe.free_type_vars`,
+  the descriptors' bound-variable walker, and `collect_aggregate_types` (whose typed-AST branches were dead: every
+  caller passes types). `QTypeFormal` records its free variables (its bound's), as every other component does.
+- **IR** (`ir/walk.py`): `fields_of` and `rebuild` (specialization's copy), `contents` (the fields but descriptor
+  operands: `_atoms_of`, the verifier, `unit_types`), `replace_vars` (closure conversion's renaming, in place), and
+  `view_map_of`.
+- **Typed AST** (`typed_fields`, `rebuild_typed`): the scope checker's four walkers, `named_exceptions_in`, and
+  `resolve_typed_metas`.
+- **Syntax tree** (`ast_fields`, `rebuild_ast`): desugaring's walk. The tree's printer (`ast_dump`, for `parse`
+  goldens) still reads fields by name, as the IR's and typed AST's printers do their own: debugging printers, to be
+  written per class if they are ported.
+
+`tests/python/test_traversals.py` checks that every class has an entry in each table, and that each agrees
+with the dataclass fields on every node of the `language/` programs (about 80,000 nodes: all of the typed AST's and
+types' classes, 71 of the IR's 75, 77 of the syntax tree's 83).
+
 ---
 
 ## 4. Phase 4: Node Shapes and Duck Typing
@@ -173,6 +203,8 @@ element forms, `view_map` on the field and component forms). The printer's guard
 isinstance(index, int) and vm is not None`) become plain ones. Keep the IR printer's text for them unchanged, so IR
 goldens don't change. Update [ir.md](ir.md).
 
+**Done** as planned (`AddrCell`'s field is `init`). The IR interpreter's `address` and `store` became matches too.
+
 **4b. Other unions in the IR.** Decide, case by case, how these translate, and change the Python where a variant reads
 better:
 
@@ -180,6 +212,10 @@ better:
   per shape.
 - `Try.catches: None | str | tuple[Atom, ...]`: three meanings in one field; make it explicit (a small class or
   separate fields).
+
+**Done.** `Const.value` stays a union: the constant's shape says which, as a Quest port's variant would. A try has
+`catching`, one of `CATCH_LISTED`, `CATCH_ALL`, and `CATCH_UNKNOWN` (in the style of the IR's other tags, such as
+`access`), and `catches`, a plain tuple of atoms.
 
 **4c. Remove duck typing.** Make each of these questions answerable from the declared type:
 
@@ -196,6 +232,15 @@ better:
 
 Leave the `type(x).__name__` uses in error messages; they become strings written per case in Quest, and nothing
 depends on them.
+
+**Done**, for these and every other `getattr` and `hasattr` in the compiler (the interpreter, REPL, and test harness
+keep theirs): `pruned(t)` in `types/model.py` (only a metavariable prunes); `_fv` and `_has_meta` read directly; the
+environment's methods and fields, the options' fields, and AST nodes' offsets read directly (their classes always
+have them); a path type, which has no symbol of its own, told apart by class; the builtin registry's `ensure_module`
+and `ensure_interface` in its protocol; a shape filled in from another by `Shape.fill_from` rather than by its slots'
+names; the parser's signature items by a match (`_signature_name`). Along the way: `format_type_for_qi` named
+`QTupleTypeFormal` and `QTupleTypeBinding` without importing them, so writing a `.qi` type of a tuple with type
+components raised `NameError`; it imports them now, and `test_interface_compiler` tests it.
 
 ---
 

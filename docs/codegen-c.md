@@ -265,8 +265,9 @@ g_origin->_1 = 0.0;
 
 ### 6.3. Field Selection, Proxy Access Modes, & Mutable Assignment
 All aggregate slots are 8-byte words (`slot_representation`). The representation pass (`ir/represent.py`) annotates each
-`ir.Field`, `ir.Tag`, `ir.Addr`, and `ir.Store` with how the aggregate is accessed:
-- **Tuple and Option Selection (`ir.Field`):**
+tuple and option reads (`ir.TupleField`, `ir.IsTag`, `ir.Payload`, `ir.Ordinal`), tuple components' addresses
+(`ir.AddrComponent`), and stores into them (`ir.StoreComponent`) with how the aggregate is accessed:
+- **Tuple and Option Selection (`ir.TupleField`):**
   - **`direct`** (the static type cannot hold a `QProxy`, e.g. `Tuple Int Real end`): emits a direct struct member read
     `l_p->_0`.
   - **`original`** (reading through a `var` location where invariance guarantees no conversion on the component): strips
@@ -275,10 +276,10 @@ All aggregate slots are 8-byte words (`slot_representation`). The representation
     [runtime-design.md §2.3](runtime-design.md)): tests `quest_is_proxy(l_p)` first; on the fast path reads `l_p->_0`
     directly, and on the proxy path calls `quest_proxy_field(l_p, 0, is_mutable)` to convert on demand (memoizing
     immutable components in `proxy->cache`).
-- **Record Selection (`ir.Field` on `QRecordVal`):**
+- **Record Selection (`ir.RecordField` on `QRecordVal`):**
   - Looks up the byte offset in the fat pointer's `.dict` (`((const OffsetDict_Target *)l_r.dict)->offset_x`). If the
     field's type could differ by depth subtyping, checks `dict->stored_types` via `quest_record_field_value`.
-- **Mutable Field Assignment (`ir.Store`):**
+- **Mutable Field Assignment (`ir.StoreField`, `ir.StoreComponent`):**
   - Assigning to a mutable record field writes through the offset dictionary:
     `*((QInt *)((char *)l_r.val + ((const OffsetDict_Target *)l_r.dict)->offset_y)) = 42LL;`.
   - Assigning to a mutable tuple component writes to the unproxied root tuple (`quest_unproxy(l_t)`) via
@@ -358,7 +359,7 @@ static_assert(offsetof(QArray, data) == 8, qarray_data_at_offset_8);
   initial value.
 
 ### 8.3. Indexing and Mutation
-Array indexing (`ir.Index`) and mutation (`ir.Store` to an array element) emit inline bounds checking with source
+Array indexing (`ir.Index`) and mutation (`ir.StoreElement`) emit inline bounds checking with source
 location (`quest_check_array_bounds_at`) followed by direct slot access:
 ```c
 quest_check_array_bounds_at(l_arr, l_i, "file.quest:12:5");

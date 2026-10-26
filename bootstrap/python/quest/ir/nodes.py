@@ -466,22 +466,49 @@ class ExceptionPayload:
     exception: Atom
 
 
+# Addresses of locations, for var and out arguments: of a mutable variable, a fresh cell, a record's var field, a
+# tuple's var component, or an array element
+
 @dataclass(eq=False)
-class Addr:
-    """The address of a location, for a var or out argument (`@x`, `@r.f`, `@t.f`, `@a[i]`): a mutable variable
-    (`var`), a record's or tuple's var component (`base` and `name` or `index`), or an array element (`base`, `index`).
-    A fresh cell holding `init` when `cell` is set (`var(e)`, in its slot form). A tuple's component is reached as
-    `access` says (through a proxy, the original's slot)."""
-    var: Optional[Var] = None
-    base: Optional[Atom] = None
-    name: Optional[str] = None
-    index: Optional[Union[int, Atom]] = None
-    cell: Optional[Atom] = None
-    offset: Optional[int] = None
-    access: str = DIRECT
-    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
-    # view map it is read through the bound by
+class AddrVar:
+    """The address of a mutable variable (`@x`)."""
+    var: Var
+
+
+@dataclass(eq=False)
+class AddrCell:
+    """The address of a fresh cell holding `init`, in its slot form (`var(e)`)."""
+    init: Atom
+
+
+@dataclass(eq=False)
+class AddrField:
+    """The address of a record's var field (`@r.f`)."""
+    base: Atom
+    name: str
+    # After the describe pass, for a value of a type parameter bounded by a record type: the view map it is read
+    # through the bound by
     view_map: Optional[Var] = None
+
+
+@dataclass(eq=False)
+class AddrComponent:
+    """The address of a tuple's var component (`@t.f`), reached as `access` says (through a proxy, the original's
+    slot)."""
+    base: Atom
+    index: int
+    access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a tuple type: the view map it is read through
+    # the bound by
+    view_map: Optional[Var] = None
+
+
+@dataclass(eq=False)
+class AddrElement:
+    """The address of an array's element (`@a[i]`, raising if the index is out of bounds)."""
+    base: Atom
+    index: Atom
+    offset: Optional[int] = None
 
 
 @dataclass(eq=False)
@@ -491,9 +518,9 @@ class Load:
 
 
 Operation = Union[
-    Prim, Call, TypeApp, ModuleMember, Builtin, External, CallExternal, MakeClosure, EnvField, Convert, MakeTuple, TupleField, MakeRecord, RecordField, MakeVariant,
-    MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index, MakeAuto, MakeException, ExceptionPayload, Addr,
-    Load,
+    Prim, Call, TypeApp, ModuleMember, Builtin, External, CallExternal, MakeClosure, EnvField, Convert, MakeTuple,
+    TupleField, MakeRecord, RecordField, MakeVariant, MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index,
+    MakeAuto, MakeException, ExceptionPayload, AddrVar, AddrCell, AddrField, AddrComponent, AddrElement, Load,
 ]
 
 
@@ -523,20 +550,50 @@ class Assign:
     value: Atom
 
 
+# Stores of values in their slot forms: into the location at an address, a record's var field, a tuple's var
+# component, or an array element
+
 @dataclass(eq=False)
-class Store:
-    """A store into a record's or tuple's var component, an array element, or the location at an address, of a value
-    in its slot form; a tuple's component is written as `access` says (through a proxy, into the original)."""
+class StoreAt:
+    """A store into the location at an address."""
     value: Atom
-    base: Optional[Atom] = None
-    name: Optional[str] = None
-    index: Optional[Union[int, Atom]] = None
-    address: Optional[Atom] = None
-    offset: Optional[int] = None
-    access: str = DIRECT
-    # After the describe pass, for a value of a type parameter bounded by a record, variant, or option type: the
-    # view map it is read through the bound by
+    address: Atom
+
+
+@dataclass(eq=False)
+class StoreField:
+    """A store into a record's var field."""
+    value: Atom
+    base: Atom
+    name: str
+    # After the describe pass, for a value of a type parameter bounded by a record type: the view map it is read
+    # through the bound by
     view_map: Optional[Var] = None
+
+
+@dataclass(eq=False)
+class StoreComponent:
+    """A store into a tuple's var component, written as `access` says (through a proxy, into the original)."""
+    value: Atom
+    base: Atom
+    index: int
+    access: str = DIRECT
+    # After the describe pass, for a value of a type parameter bounded by a tuple type: the view map it is read through
+    # the bound by
+    view_map: Optional[Var] = None
+
+
+@dataclass(eq=False)
+class StoreElement:
+    """A store into an array's element (raising if the index is out of bounds)."""
+    value: Atom
+    base: Atom
+    index: Atom
+    offset: Optional[int] = None
+
+
+# The stores, for isinstance
+STORES = (StoreAt, StoreField, StoreComponent, StoreElement)
 
 
 @dataclass(eq=False)
@@ -674,17 +731,18 @@ class Loop:
 @dataclass(eq=False)
 class Try:
     """A try region: a raise in `body`, or in what it calls, transfers to `handler`, with `exception` bound to the
-    exception raised. `catches` says what the handler catches (docs/exceptions.md §5.1): the exceptions its patterns
-    are (atoms bound before the try), or CATCH_ALL (it has an else branch), or None, if its patterns are computed in
-    the handler."""
+    exception raised. `catching` says what the handler catches (docs/exceptions.md §5.1): CATCH_LISTED, the exceptions
+    `catches` (its patterns, atoms bound before the try); CATCH_ALL, every exception (it has an else branch); or
+    CATCH_UNKNOWN, if its patterns are computed in the handler."""
     body: Body
     exception: Var
     handler: Body
-    catches: Union[None, str, tuple[Atom, ...]] = None
+    catching: str = "unknown"
+    catches: tuple[Atom, ...] = ()
 
 
-# A try whose handler catches every exception
-CATCH_ALL = "all"
+# What a try's handler catches (Try.catching)
+CATCH_LISTED, CATCH_ALL, CATCH_UNKNOWN = "listed", "all", "unknown"
 
 
 @dataclass(eq=False)
@@ -759,8 +817,8 @@ class Unreachable:
 
 Terminator = Union[Return, Jump, Break, Continue, Raise, Reraise, Unreachable]
 Statement = Union[
-    Let, VarDecl, Assign, Store, Do, Funs, LetRec, If, Switch, Inspect, Loop, Try, Join, Echo, EchoText, Return,
-    Jump, Break, Continue, Raise, Reraise, Unreachable,
+    Let, VarDecl, Assign, StoreAt, StoreField, StoreComponent, StoreElement, Do, Funs, LetRec, If, Switch, Inspect,
+    Loop, Try, Join, Echo, EchoText, Return, Jump, Break, Continue, Raise, Reraise, Unreachable,
 ]
 TERMINATORS = (Return, Jump, Break, Continue, Raise, Reraise, Unreachable)
 

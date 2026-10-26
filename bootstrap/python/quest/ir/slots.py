@@ -162,23 +162,23 @@ class _Slots:
                 s.init = self.slot(init, before)
             case ir.Assign(var=var, value=value) if var.boxed:
                 s.value = self.slot(value, before)
-            case ir.Store(address=address) if address is not None:
+            case ir.StoreAt(address=address):
                 s.value = self.slot_if_boxed(s.value, _located_shape(address), before)
-            case ir.Store(base=base, name=name) if name is not None:
+            case ir.StoreField(base=base, name=name):
                 rs = _held(_type_of(base), "record")
                 field = next((f.shape for f in rs.sorted_components() if f.name == name), None) if rs else None
                 s.value = self.slot_if_boxed(s.value, field, before)
-            case ir.Store(base=base, index=index) if isinstance(index, int) and own_view(shape(_type_of(base))):
+            case ir.StoreComponent(base=base, index=index) if own_view(shape(_type_of(base))):
                 # Into a tuple-bounded type parameter's value, through the view map (a var component's type is the
                 # bound's)
                 ts = resolved_shape(shape(_type_of(base)))
                 s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
-            case ir.Store(base=base, index=index) if isinstance(index, int):
+            case ir.StoreComponent(base=base, index=index):
                 ts = shape(_type_of(base))
                 s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
                 # A store is never into a fresh tuple's view
                 s.access = tuple_access(ts, index)
-            case ir.Store(base=base):
+            case ir.StoreElement(base=base):
                 s.value = self.slot_if_boxed(s.value, shape(_type_of(base)).element, before)
             case ir.Switch(value=value, cases=cases):
                 ts = _tag_shape(_type_of(value))
@@ -361,9 +361,9 @@ class _Slots:
                 o.args = tuple(self.slot_if_boxed(a, elem, before) for a in args)
             case ir.ArrayRep(init=init) if var is not None:
                 o.init = self.slot_if_boxed(init, shape(var.type).element, before)
-            case ir.Addr(cell=cell) if cell is not None:
-                o.cell = self.slot_if_boxed(cell, shape(_type_of(cell)), before)
-            case ir.Addr(base=base, index=index) if isinstance(index, int) and not own_view(shape(_type_of(base))):
+            case ir.AddrCell(init=init):
+                o.init = self.slot_if_boxed(init, shape(_type_of(init)), before)
+            case ir.AddrComponent(base=base, index=index) if not own_view(shape(_type_of(base))):
                 o.access = tuple_access(shape(_type_of(base)), index)
             case ir.Prim(op="is" | "isnot", args=(a, b)):
                 t, t2 = _type_of(a), _type_of(b)
@@ -397,7 +397,7 @@ def decide_slots(unit: ir.Unit) -> None:
     # parameters of those types (pointers to locations holding them boxed)
     for body in bodies:
         for s in walk_statements(body, into_functions=False):
-            if isinstance(s, ir.Let) and isinstance(s.value, ir.Addr) and s.value.var is not None:
+            if isinstance(s, ir.Let) and isinstance(s.value, ir.AddrVar):
                 v = s.value.var
                 if _boxed(shape(v.type)):
                     v.boxed = True

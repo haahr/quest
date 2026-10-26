@@ -122,7 +122,7 @@ def is_c_compilation_mode(target: Optional[Union[CompilerOptions, Any]] = None) 
         return False
     if isinstance(target, CompilerOptions):
         return target.is_c_compilation_mode
-    opts = getattr(target, "options", None)
+    opts = target.options
     if isinstance(opts, CompilerOptions):
         return opts.is_c_compilation_mode
     return False
@@ -134,7 +134,7 @@ def is_typecheck_only(target: Optional[Union[CompilerOptions, Any]] = None) -> b
         return False
     if isinstance(target, CompilerOptions):
         return target.is_typecheck_only
-    opts = getattr(target, "options", None)
+    opts = target.options
     if isinstance(opts, CompilerOptions):
         return opts.is_typecheck_only
     return False

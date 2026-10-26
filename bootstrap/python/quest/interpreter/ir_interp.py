@@ -458,7 +458,7 @@ class Interpreter:
                     raise IRInterpreterError("exception_payload of a value other than a handler's exception")
                 payload = raised.raised.payload
                 return payload if payload is not None else OK_VALUE
-            case ir.Addr():
+            case ir.AddrVar() | ir.AddrCell() | ir.AddrField() | ir.AddrComponent() | ir.AddrElement():
                 return self.address(o, frame)
             case ir.Load(address=a):
                 return _deref(self.atom(a, frame))
@@ -551,49 +551,55 @@ class Interpreter:
             return QOption(tag=cases[n], payload=p)
         return QOption(tag=tag, payload=p)
 
-    def address(self, o: ir.Addr, frame: _Frame) -> QValue:
-        if o.var is not None:
-            return frame.lookup(o.var)
-        if o.cell is not None:
-            return QRef(self.atom(o.cell, frame))
-        base = _deref(self.atom(o.base, frame))
-        if o.name is not None:
-            cell = base.get(o.name)
-            if not isinstance(cell, QRef):
-                raise QuestRuntimeError(f"Field '{o.name}' is not mutable")
-            return cell
-        if isinstance(o.index, int):
-            i = _element_index(base, o.index)
-            element = base.elements[i]
-            return element if isinstance(element, QRef) else QTupleElementRef(base, i)
-        idx = self.atom(o.index, frame).value
-        if idx < 0 or idx >= base.size():
-            raise self.raising(ARRAY_OP_ERROR_EXC, o.offset)
-        return QArrayElementRef(base, idx)
+    def address(self, o, frame: _Frame) -> QValue:
+        match o:
+            case ir.AddrVar(var=var):
+                return frame.lookup(var)
+            case ir.AddrCell(init=init):
+                return QRef(self.atom(init, frame))
+            case ir.AddrField(base=b, name=name):
+                cell = _deref(self.atom(b, frame)).get(name)
+                if not isinstance(cell, QRef):
+                    raise QuestRuntimeError(f"Field '{name}' is not mutable")
+                return cell
+            case ir.AddrComponent(base=b, index=index):
+                base = _deref(self.atom(b, frame))
+                i = _element_index(base, index)
+                element = base.elements[i]
+                return element if isinstance(element, QRef) else QTupleElementRef(base, i)
+            case ir.AddrElement(base=b, index=index, offset=offset):
+                base = _deref(self.atom(b, frame))
+                idx = self.atom(index, frame).value
+                if idx < 0 or idx >= base.size():
+                    raise self.raising(ARRAY_OP_ERROR_EXC, offset)
+                return QArrayElementRef(base, idx)
+        raise IRInterpreterError(f"not an address: {type(o).__name__}")
 
-    def store(self, s: ir.Store, frame: _Frame) -> None:
+    def store(self, s, frame: _Frame) -> None:
         value = self.atom(s.value, frame)
-        if s.address is not None:
-            self.atom(s.address, frame).assign(value)
-            return
-        base = _deref(self.atom(s.base, frame))
-        if s.name is not None:
-            cell = base.fields.get(s.name)
-            if isinstance(cell, QRef):
-                cell.assign(value)
-            else:
-                base.fields[s.name] = value
-        elif isinstance(s.index, int):
-            i = _element_index(base, s.index)
-            if isinstance(base.elements[i], QRef):
-                base.elements[i].assign(value)
-            else:
-                base.set_by_index(i, value)
-        else:
-            idx = self.atom(s.index, frame).value
-            if idx < 0 or idx >= base.size():
-                raise self.raising(ARRAY_OP_ERROR_EXC, s.offset)
-            base.set(idx, value)
+        match s:
+            case ir.StoreAt(address=address):
+                self.atom(address, frame).assign(value)
+            case ir.StoreField(base=b, name=name):
+                base = _deref(self.atom(b, frame))
+                cell = base.fields.get(name)
+                if isinstance(cell, QRef):
+                    cell.assign(value)
+                else:
+                    base.fields[name] = value
+            case ir.StoreComponent(base=b, index=index):
+                base = _deref(self.atom(b, frame))
+                i = _element_index(base, index)
+                if isinstance(base.elements[i], QRef):
+                    base.elements[i].assign(value)
+                else:
+                    base.set_by_index(i, value)
+            case ir.StoreElement(base=b, index=index, offset=offset):
+                base = _deref(self.atom(b, frame))
+                idx = self.atom(index, frame).value
+                if idx < 0 or idx >= base.size():
+                    raise self.raising(ARRAY_OP_ERROR_EXC, offset)
+                base.set(idx, value)
 
     # Statements
 
@@ -616,7 +622,7 @@ class Interpreter:
                 frame.values[id(var)] = QRef(self.atom(init, frame) if init is not None else OK_VALUE)
             case ir.Assign(var=var, value=value):
                 frame.lookup(var).assign(self.atom(value, frame))
-            case ir.Store():
+            case ir.StoreAt() | ir.StoreField() | ir.StoreComponent() | ir.StoreElement():
                 self.store(s, frame)
             case ir.Do(value=value):
                 self.operation(value, frame, None)

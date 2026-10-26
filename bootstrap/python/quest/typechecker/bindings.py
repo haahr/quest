@@ -171,7 +171,7 @@ class BindingMixin:
                 return self._check_polymorphic_fun_expr(expr, expected_type, expected_lazy, env, loop_depth)
             # A function with type parameters is polymorphic, so it is checked against a function type as it would
             # be against any other type of another form
-            if not isinstance(expected_lazy, QFunType) or getattr(expr, "type_params", ()):
+            if not isinstance(expected_lazy, QFunType) or expr.type_params:
                 return self._check_subsumption(expr, expected_type, env, loop_depth, type_desc="Function")
             if len(expr.params) != len(expected_lazy.params):
                 raise TypeError(
@@ -183,7 +183,7 @@ class BindingMixin:
 
         with env.scoped("fun"):
             quants: list[QQuantifier] = []
-            for tp in getattr(expr, "type_params", ()):
+            for tp in expr.type_params:
                 bound_kind = elaborate_kind(tp.bound, env)
                 sym_id = env.fresh_symbol_id()
                 env.current_scope.declare_type(
@@ -261,7 +261,7 @@ class BindingMixin:
         expected bound. The function's type is the renamed one, so that its parameters and body refer to its own
         quantifiers.
         """
-        written = tuple(getattr(expr, "type_params", ()))
+        written = tuple(expr.type_params)
         if written and len(written) != len(expected_lazy.quantifiers):
             raise TypeError(
                 f"Function has {len(written)} type parameters, but its expected type '{expected_type}' has "
@@ -544,4 +544,4 @@ class BindingMixin:
                 return TypedDefKind(name=binding.name, symbol=k_sym, offset=binding.offset)
 
             case _:
-                raise TypeError(f"Unsupported binding '{binding}'", offset=getattr(binding, "offset", 0))
+                raise TypeError(f"Unsupported binding '{binding}'", offset=binding.offset)

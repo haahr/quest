@@ -109,7 +109,7 @@ def compile_module(
         output_dir = Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if getattr(env, "options", None) is None:
+    if env.options is None:
         env.options = CompilerOptions(
             stop_after="codegen_c",
             build_dir=build_dir,

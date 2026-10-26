@@ -155,7 +155,11 @@ the runtime's `quest_layout_equivalent`.
 
 ## 5. Atoms, Operations, and Bindings
 
-The nodes are defined in `ir/nodes.py`, printed by `ir/printer.py`, and checked by `ir/verify.py`.
+The nodes are defined in `ir/nodes.py`, printed by `ir/printer.py`, and checked by `ir/verify.py`. `ir/walk.py` has
+the traversals the passes share, and the IR's explicit traversal of nodes' fields (`fields_of` and `rebuild`,
+`contents`, `replace_vars`, `view_map_of`), with an entry or case for each class of node, which every walker of fields
+uses rather than reading the dataclasses' fields by reflection
+([self-hosting-refactorings.md](self-hosting-refactorings.md) §3).
 
 **Variables are objects.** An IR variable (`Var`) has a name hint and its Quest type (with alias names, for
 printing); its shape is the type's, derived rather than stored, so that a pass rewriting types (specialization

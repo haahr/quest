@@ -59,8 +59,7 @@ def interface_artifact_root(name: str, env: Environment) -> Optional[Path]:
 
 def resolved_artifact_root(env: Environment, resolved: Resolved) -> Optional[Path]:
     """interface_artifact_root, given the interface's resolution."""
-    opts = getattr(env, "options", None)
-    build_dir = getattr(opts, "build_dir", None)
+    build_dir = env.options.build_dir if env.options is not None else None
     if build_dir is not None:
         return Path(build_dir).resolve()
     if not is_c_compilation_mode(env):

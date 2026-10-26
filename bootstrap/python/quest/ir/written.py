@@ -45,6 +45,7 @@ from quest.types import (
     QVariantType,
     strip_aliases,
     unalias,
+    pruned,
 )
 
 # The kinds of shapes in whose representation a type parameter bounded by one holds its values
@@ -134,7 +135,7 @@ def echo_head(t: QType) -> QType:
     """The type whose structure echo writes a value of type t by: a recursive type unfolded, through its alias if it
     has one, so that its recursive occurrences and the aliases in it keep their names, as the interpreter unfolds
     recursive types as it goes (_exposed_type in interpreter/treewalk.py)."""
-    t = t.prune() if hasattr(t, "prune") else t
+    t = pruned(t)
     if isinstance(t, QAliasType) and isinstance(t.target, (QRecType, QRecGroupType)):
         t = t.unfold_lazily()
     t = unalias(t)
@@ -145,7 +146,7 @@ def echo_head(t: QType) -> QType:
 
 def recursive_identity(t: QType) -> Optional[int]:
     """What tells recursive types apart for echo: the recursive type t is or names, or None if it is not one."""
-    t = t.prune() if hasattr(t, "prune") else t
+    t = pruned(t)
     while isinstance(t, QAliasType):
         if isinstance(t.target, (QRecType, QRecGroupType)):
             return id(t.target)

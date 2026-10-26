@@ -222,7 +222,7 @@ class ApplicationMixin:
                         if f.name == target.field or str(i) == target.field:
                             val_idx = i
                             field_type = f.type_val
-                            is_field_var = getattr(f, "is_var", False) or isinstance(f.type_val, (QVarType, QOutType))
+                            is_field_var = f.is_var or isinstance(f.type_val, (QVarType, QOutType))
                             break
                     if val_idx == -1 or field_type is None:
                         raise TypeError(

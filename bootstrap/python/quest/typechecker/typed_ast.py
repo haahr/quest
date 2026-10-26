@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 from quest.types import (
     BOOL_TYPE,
@@ -977,9 +977,9 @@ def named_exceptions_in(node: Any) -> list[TypedException]:
         if isinstance(n, (list, tuple)):
             for item in n:
                 scan(item)
-        elif isinstance(n, TypedNode):
-            for f in n.__dataclass_fields__:
-                scan(getattr(n, f))
+        else:
+            for part in typed_fields(n) or ():
+                scan(part)
 
     scan(node)
     return found
@@ -997,3 +997,224 @@ def scope_exceptions(node: Any) -> list[TypedException]:
 def typed_ast_dump(node: TypedNode, indent: int = 0, env: Optional[Any] = None) -> str:
     """Formats a TypedNode into a canonical 2-space indented S-expression string."""
     return node.dump(indent, env=env)
+
+
+# The explicit traversal: a case for each class of typed node
+
+def typed_fields(node) -> Optional[tuple]:
+    """The values of a typed node's fields (but its offset), in order; None for a value that is not a typed node. The
+    typed AST's one traversal: every walker of nodes' fields reads them through it."""
+    accessor = _TYPED_FIELDS.get(type(node))
+    return accessor(node) if accessor is not None else None
+
+
+def rebuild_typed(node, values: tuple):
+    """A typed node of node's class, at its offset, whose fields are values (as typed_fields gives them)."""
+    return _REBUILD_TYPED[type(node)](node, values)
+
+
+# The entries of the traversal, a case for each class
+
+_TYPED_FIELDS: dict[type, Callable[[Any], tuple]] = {
+    TypedInt: lambda node: (node.value, node.type_val),
+    TypedReal: lambda node: (node.value, node.type_val),
+    TypedBool: lambda node: (node.value, node.type_val),
+    TypedChar: lambda node: (node.value, node.type_val),
+    TypedString: lambda node: (node.value, node.type_val),
+    TypedOk: lambda node: (node.type_val,),
+    TypedExternal: lambda node: (node.symbol, node.type_val),
+    TypedVar: lambda node: (node.name, node.symbol, node.type_val),
+    TypedParam: lambda node: (node.name, node.symbol, node.type_val, node.is_var, node.is_out),
+    TypedFun: lambda node: (node.params, node.body, node.type_val, node.type_param_ids),
+    TypedApp: lambda node: (node.func, node.args, node.type_val),
+    TypedTypeApp: lambda node: (node.func, node.type_args, node.type_val),
+    TypedInfix: lambda node: (node.left, node.op, node.right, node.type_val),
+    TypedRecordField: lambda node: (node.name, node.value, node.is_var),
+    TypedRecord: lambda node: (node.fields, node.type_val),
+    TypedTypeWitness: lambda node: (node.name, node.witness_type, node.bound, node.type_val),
+    TypedTuple: lambda node: (node.elements, node.type_val, node.rec_groups, node.simultaneous_groups, node.labels),
+    TypedSelect: lambda node: (node.target, node.field, node.type_val),
+    TypedIndex: lambda node: (node.target, node.index, node.type_val),
+    TypedIndexAssign: lambda node: (node.target, node.index, node.value, node.type_val),
+    TypedArray: lambda node: (node.elements, node.type_val),
+    TypedArrayRep: lambda node: (node.count, node.init_val, node.type_val),
+    TypedVarCell: lambda node: (node.value, node.type_val),
+    TypedDerefCell: lambda node: (node.target, node.type_val),
+    TypedSelectRef: lambda node: (node.target, node.field, node.type_val),
+    TypedIndexRef: lambda node: (node.target, node.index, node.type_val),
+    TypedTupleSelectRef: lambda node: (node.target, node.index, node.field, node.type_val),
+    TypedAssign: lambda node: (node.target, node.value, node.type_val),
+    TypedVariant: lambda node: (node.tag, node.type_val, node.payload),
+    TypedOption: lambda node: (node.tag, node.type_val, node.payload, node.ordinal_expr),
+    TypedAuto: lambda node: (node.witness_type, node.auto_type, node.payload, node.type_val),
+    TypedVariantCheck: lambda node: (node.target, node.tag, node.type_val),
+    TypedVariantAssert: lambda node: (node.target, node.tag, node.type_val),
+    TypedCaseBranch: lambda node: (node.tags, node.body, node.binder),
+    TypedCase: lambda node: (node.target, node.branches, node.type_val, node.else_branch),
+    TypedInspectBranch: lambda node: (node.match_type, node.binders, node.body, node.exact),
+    TypedInspect: lambda node: (node.target, node.branches, node.type_val, node.else_branch, node.auto_type),
+    TypedBlock: lambda node: (node.bindings, node.result, node.type_val),
+    TypedIf: lambda node: (node.cond, node.then_branch, node.else_branch, node.type_val),
+    TypedWhile: lambda node: (node.cond, node.body, node.type_val),
+    TypedLoop: lambda node: (node.body, node.type_val),
+    TypedFor: lambda node: (
+        node.var_name, node.symbol, node.start, node.is_downto, node.stop, node.body, node.type_val,
+    ),
+    TypedExit: lambda node: (node.type_val,),
+    TypedException: lambda node: (node.name, node.payload_type, node.type_val, node.symbol),
+    TypedRaise: lambda node: (node.exc, node.type_val, node.payload),
+    TypedTryBranch: lambda node: (node.exc_pattern, node.body, node.binder),
+    TypedTry: lambda node: (node.body, node.branches, node.type_val, node.else_branch),
+    TypedLetValue: lambda node: (node.name, node.value, node.symbol, node.is_rec),
+    TypedLetValueGroup: lambda node: (node.members,),
+    TypedLetType: lambda node: (node.name, node.symbol),
+    TypedLetTypeGroup: lambda node: (node.members,),
+    TypedDefKind: lambda node: (node.name, node.symbol),
+    TypedExprStmt: lambda node: (node.expr,),
+    TypedInterface: lambda node: (node.name, node.signatures, node.scope),
+    TypedModule: lambda node: (
+        node.name, node.interface_name, node.bindings, node.scope, node.c_init, node.is_precompiled, node.symbol_id,
+    ),
+    TypedImportItem: lambda node: (
+        node.names, node.interface_name, node.module_paths, node.interface_path, node.canonical_module_paths,
+        node.symbol_ids,
+    ),
+    TypedImport: lambda node: (node.items,),
+    TypedProgram: lambda node: (node.phrases,),
+}
+
+_REBUILD_TYPED: dict[type, Callable[[Any, tuple], Any]] = {
+    TypedInt: lambda node, values: TypedInt(offset=node.offset, value=values[0], type_val=values[1]),
+    TypedReal: lambda node, values: TypedReal(offset=node.offset, value=values[0], type_val=values[1]),
+    TypedBool: lambda node, values: TypedBool(offset=node.offset, value=values[0], type_val=values[1]),
+    TypedChar: lambda node, values: TypedChar(offset=node.offset, value=values[0], type_val=values[1]),
+    TypedString: lambda node, values: TypedString(offset=node.offset, value=values[0], type_val=values[1]),
+    TypedOk: lambda node, values: TypedOk(offset=node.offset, type_val=values[0]),
+    TypedExternal: lambda node, values: TypedExternal(offset=node.offset, symbol=values[0], type_val=values[1]),
+    TypedVar: lambda node, values: TypedVar(offset=node.offset, name=values[0], symbol=values[1], type_val=values[2]),
+    TypedParam: lambda node, values: TypedParam(
+        offset=node.offset, name=values[0], symbol=values[1], type_val=values[2], is_var=values[3], is_out=values[4],
+    ),
+    TypedFun: lambda node, values: TypedFun(
+        offset=node.offset, params=values[0], body=values[1], type_val=values[2], type_param_ids=values[3],
+    ),
+    TypedApp: lambda node, values: TypedApp(offset=node.offset, func=values[0], args=values[1], type_val=values[2]),
+    TypedTypeApp: lambda node, values: TypedTypeApp(
+        offset=node.offset, func=values[0], type_args=values[1], type_val=values[2],
+    ),
+    TypedInfix: lambda node, values: TypedInfix(
+        offset=node.offset, left=values[0], op=values[1], right=values[2], type_val=values[3],
+    ),
+    TypedRecordField: lambda node, values: TypedRecordField(
+        offset=node.offset, name=values[0], value=values[1], is_var=values[2],
+    ),
+    TypedRecord: lambda node, values: TypedRecord(offset=node.offset, fields=values[0], type_val=values[1]),
+    TypedTypeWitness: lambda node, values: TypedTypeWitness(
+        offset=node.offset, name=values[0], witness_type=values[1], bound=values[2], type_val=values[3],
+    ),
+    TypedTuple: lambda node, values: TypedTuple(
+        offset=node.offset, elements=values[0], type_val=values[1], rec_groups=values[2], simultaneous_groups=values[3],
+        labels=values[4],
+    ),
+    TypedSelect: lambda node, values: TypedSelect(
+        offset=node.offset, target=values[0], field=values[1], type_val=values[2],
+    ),
+    TypedIndex: lambda node, values: TypedIndex(
+        offset=node.offset, target=values[0], index=values[1], type_val=values[2],
+    ),
+    TypedIndexAssign: lambda node, values: TypedIndexAssign(
+        offset=node.offset, target=values[0], index=values[1], value=values[2], type_val=values[3],
+    ),
+    TypedArray: lambda node, values: TypedArray(offset=node.offset, elements=values[0], type_val=values[1]),
+    TypedArrayRep: lambda node, values: TypedArrayRep(
+        offset=node.offset, count=values[0], init_val=values[1], type_val=values[2],
+    ),
+    TypedVarCell: lambda node, values: TypedVarCell(offset=node.offset, value=values[0], type_val=values[1]),
+    TypedDerefCell: lambda node, values: TypedDerefCell(offset=node.offset, target=values[0], type_val=values[1]),
+    TypedSelectRef: lambda node, values: TypedSelectRef(
+        offset=node.offset, target=values[0], field=values[1], type_val=values[2],
+    ),
+    TypedIndexRef: lambda node, values: TypedIndexRef(
+        offset=node.offset, target=values[0], index=values[1], type_val=values[2],
+    ),
+    TypedTupleSelectRef: lambda node, values: TypedTupleSelectRef(
+        offset=node.offset, target=values[0], index=values[1], field=values[2], type_val=values[3],
+    ),
+    TypedAssign: lambda node, values: TypedAssign(
+        offset=node.offset, target=values[0], value=values[1], type_val=values[2],
+    ),
+    TypedVariant: lambda node, values: TypedVariant(
+        offset=node.offset, tag=values[0], type_val=values[1], payload=values[2],
+    ),
+    TypedOption: lambda node, values: TypedOption(
+        offset=node.offset, tag=values[0], type_val=values[1], payload=values[2], ordinal_expr=values[3],
+    ),
+    TypedAuto: lambda node, values: TypedAuto(
+        offset=node.offset, witness_type=values[0], auto_type=values[1], payload=values[2], type_val=values[3],
+    ),
+    TypedVariantCheck: lambda node, values: TypedVariantCheck(
+        offset=node.offset, target=values[0], tag=values[1], type_val=values[2],
+    ),
+    TypedVariantAssert: lambda node, values: TypedVariantAssert(
+        offset=node.offset, target=values[0], tag=values[1], type_val=values[2],
+    ),
+    TypedCaseBranch: lambda node, values: TypedCaseBranch(
+        offset=node.offset, tags=values[0], body=values[1], binder=values[2],
+    ),
+    TypedCase: lambda node, values: TypedCase(
+        offset=node.offset, target=values[0], branches=values[1], type_val=values[2], else_branch=values[3],
+    ),
+    TypedInspectBranch: lambda node, values: TypedInspectBranch(
+        offset=node.offset, match_type=values[0], binders=values[1], body=values[2], exact=values[3],
+    ),
+    TypedInspect: lambda node, values: TypedInspect(
+        offset=node.offset, target=values[0], branches=values[1], type_val=values[2], else_branch=values[3],
+        auto_type=values[4],
+    ),
+    TypedBlock: lambda node, values: TypedBlock(
+        offset=node.offset, bindings=values[0], result=values[1], type_val=values[2],
+    ),
+    TypedIf: lambda node, values: TypedIf(
+        offset=node.offset, cond=values[0], then_branch=values[1], else_branch=values[2], type_val=values[3],
+    ),
+    TypedWhile: lambda node, values: TypedWhile(offset=node.offset, cond=values[0], body=values[1], type_val=values[2]),
+    TypedLoop: lambda node, values: TypedLoop(offset=node.offset, body=values[0], type_val=values[1]),
+    TypedFor: lambda node, values: TypedFor(
+        offset=node.offset, var_name=values[0], symbol=values[1], start=values[2], is_downto=values[3], stop=values[4],
+        body=values[5], type_val=values[6],
+    ),
+    TypedExit: lambda node, values: TypedExit(offset=node.offset, type_val=values[0]),
+    TypedException: lambda node, values: TypedException(
+        offset=node.offset, name=values[0], payload_type=values[1], type_val=values[2], symbol=values[3],
+    ),
+    TypedRaise: lambda node, values: TypedRaise(
+        offset=node.offset, exc=values[0], type_val=values[1], payload=values[2],
+    ),
+    TypedTryBranch: lambda node, values: TypedTryBranch(
+        offset=node.offset, exc_pattern=values[0], body=values[1], binder=values[2],
+    ),
+    TypedTry: lambda node, values: TypedTry(
+        offset=node.offset, body=values[0], branches=values[1], type_val=values[2], else_branch=values[3],
+    ),
+    TypedLetValue: lambda node, values: TypedLetValue(
+        offset=node.offset, name=values[0], value=values[1], symbol=values[2], is_rec=values[3],
+    ),
+    TypedLetValueGroup: lambda node, values: TypedLetValueGroup(offset=node.offset, members=values[0]),
+    TypedLetType: lambda node, values: TypedLetType(offset=node.offset, name=values[0], symbol=values[1]),
+    TypedLetTypeGroup: lambda node, values: TypedLetTypeGroup(offset=node.offset, members=values[0]),
+    TypedDefKind: lambda node, values: TypedDefKind(offset=node.offset, name=values[0], symbol=values[1]),
+    TypedExprStmt: lambda node, values: TypedExprStmt(offset=node.offset, expr=values[0]),
+    TypedInterface: lambda node, values: TypedInterface(
+        offset=node.offset, name=values[0], signatures=values[1], scope=values[2],
+    ),
+    TypedModule: lambda node, values: TypedModule(
+        offset=node.offset, name=values[0], interface_name=values[1], bindings=values[2], scope=values[3],
+        c_init=values[4], is_precompiled=values[5], symbol_id=values[6],
+    ),
+    TypedImportItem: lambda node, values: TypedImportItem(
+        offset=node.offset, names=values[0], interface_name=values[1], module_paths=values[2], interface_path=values[3],
+        canonical_module_paths=values[4], symbol_ids=values[5],
+    ),
+    TypedImport: lambda node, values: TypedImport(offset=node.offset, items=values[0]),
+    TypedProgram: lambda node, values: TypedProgram(offset=node.offset, phrases=values[0]),
+}

@@ -83,6 +83,7 @@ from quest.types import (
     is_subtype,
     is_type_equal,
     unalias,
+    pruned,
 )
 
 FORMAT_VERSION = 1
@@ -168,7 +169,7 @@ def _is_dynamic_type(t: QType) -> bool:
 def _structure(t: QType) -> QType:
     """t with aliases, solved metavariables, applications, and recursion unfolded down to its outer constructor."""
     for _ in range(1000):
-        t = t.prune() if hasattr(t, "prune") else t
+        t = pruned(t)
         t = unalias(t)
         if isinstance(t, (QRecType, QRecGroupType, QTypeApp)):
             unfolded = t.evaluate_lazily()
@@ -196,7 +197,7 @@ def _module_abstract_type(s: QType) -> Optional[tuple[ModuleAbstractType, tuple[
     args: tuple[QType, ...] = ()
     if isinstance(s, QTypeApp):
         args = s.arguments
-        s = unalias(s.constructor.prune() if hasattr(s.constructor, "prune") else s.constructor)
+        s = unalias(pruned(s.constructor))
     if not isinstance(s, QTypeVar):
         return None
     entry = abstract_type_by_symbol(s.symbol_id)

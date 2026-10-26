@@ -141,7 +141,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         """Collects body/result types from typed branch nodes and an optional else branch."""
         types: list[QType] = [initial_type] if initial_type is not None else []
         for b in branches:
-            types.append(b.body.type_val if hasattr(b, "body") else b.type_val)
+            types.append(b.body.type_val)
         if else_branch is not None:
             types.append(else_branch.type_val)
         return types
@@ -162,12 +162,12 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         """Rejects a use, from a closure, of a var or out parameter or a mutable local variable of an enclosing
         function: such locations live in that function's frame, so closures may not capture them. Module-level
         variables (function depth 0) may be used anywhere."""
-        sym_depth = getattr(sym, "function_depth", 0)
+        sym_depth = sym.function_depth
         if (sym.is_out or sym.is_var) and sym_depth > 0 and self.function_depth > sym_depth:
             kind_str = (
                 "'out' parameter"
                 if sym.is_out
-                else ("'var' parameter" if getattr(sym, "is_param", False) else "'var' variable")
+                else ("'var' parameter" if sym.is_param else "'var' variable")
             )
             raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=offset)
 
@@ -496,7 +496,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
                 return self._elaborate_auto_expr(expr, None, env, loop_depth)
 
             case _:
-                raise TypeError(f"Unsupported AST expression '{expr}'", offset=getattr(expr, "offset", 0))
+                raise TypeError(f"Unsupported AST expression '{expr}'", offset=expr.offset)
 
     def elaborate_phrase(
         self,
@@ -520,7 +520,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
             case _:
                 raise TypeError(
                     f"Unsupported top-level phrase '{phrase}'",
-                    offset=getattr(phrase, "offset", 0),
+                    offset=phrase.offset,
                 )
 
     def elaborate_program(

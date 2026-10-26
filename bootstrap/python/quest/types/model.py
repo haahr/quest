@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import enum
 import weakref
 from collections.abc import Iterator
@@ -175,10 +174,10 @@ def _intern_key_part(value: Any) -> Any:
 
 
 def _intern(node: Any) -> Any:
-    if getattr(node, "_has_meta", False):
+    if node._has_meta:
         return node
     try:
-        key = (type(node),) + tuple(_intern_key_part(getattr(node, f.name)) for f in dataclasses.fields(node))
+        key = (type(node),) + tuple(_intern_key_part(v) for v in type_fields(node))
     except _NotInternable:
         return node
     canonical = _INTERN_TABLE.get(key)
@@ -186,6 +185,26 @@ def _intern(node: Any) -> Any:
         _INTERN_TABLE[key] = node
         return node
     return canonical
+
+
+# The family's traversal: each class of types, kinds, and components registers its fields' accessor and its rebuilder
+# right after its definition, so that interning an instance (which reads its fields) finds its class's entry
+
+_TYPE_FIELDS: dict[type, Callable[[Any], tuple]] = {}
+_REBUILD_TYPE: dict[type, Callable[[Any, tuple], Any]] = {}
+
+
+def type_fields(node: Any) -> Optional[tuple]:
+    """The values of the fields of a type, kind, or component (a field, a parameter, a quantifier...), in order; None
+    for any other value. The one traversal of the family's structure: interning, rebuilding, and every walker read a
+    node's parts through it."""
+    accessor = _TYPE_FIELDS.get(type(node))
+    return accessor(node) if accessor is not None else None
+
+
+def rebuild_type(node: Any, values: tuple) -> Any:
+    """A type, kind, or component of node's class whose fields are values (as type_fields gives them)."""
+    return _REBUILD_TYPE[type(node)](node, values)
 
 
 class _InternedNode(type):
@@ -230,6 +249,10 @@ class QTypeKind(QKind):
         return "TYPE"
 
 
+_TYPE_FIELDS[QTypeKind] = lambda node: ()
+_REBUILD_TYPE[QTypeKind] = lambda node, values: QTypeKind()
+
+
 @dataclass(frozen=True)
 class QPowerKind(QKind):
     """The power kind POWER(bound) / <: bound (all subtypes of bound)."""
@@ -247,6 +270,10 @@ class QPowerKind(QKind):
 
     def __str__(self) -> str:
         return f"<: {self.bound}"
+
+
+_TYPE_FIELDS[QPowerKind] = lambda node: (node.bound,)
+_REBUILD_TYPE[QPowerKind] = lambda node, values: QPowerKind(bound=values[0])
 
 
 @dataclass(frozen=True)
@@ -300,6 +327,12 @@ class QAllKind(QKind):
         return f"ALL({self.param_name} :: {self.param_kind}) {self.result_kind}"
 
 
+_TYPE_FIELDS[QAllKind] = lambda node: (node.param_name, node.param_id, node.param_kind, node.result_kind)
+_REBUILD_TYPE[QAllKind] = lambda node, values: QAllKind(
+    param_name=values[0], param_id=values[1], param_kind=values[2], result_kind=values[3],
+)
+
+
 @dataclass(frozen=True)
 class QKindVar(QKind):
     """Kind variable reference."""
@@ -307,7 +340,7 @@ class QKindVar(QKind):
     symbol_id: int
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QKind:
-        if env is not None and hasattr(env, "lookup_kind_by_id"):
+        if env is not None:
             sym = env.lookup_kind_by_id(self.symbol_id)
             if sym is not None:
                 return sym.kind.evaluate_lazily(env)
@@ -318,6 +351,10 @@ class QKindVar(QKind):
 
     def __str__(self) -> str:
         return self.name
+
+
+_TYPE_FIELDS[QKindVar] = lambda node: (node.name, node.symbol_id)
+_REBUILD_TYPE[QKindVar] = lambda node, values: QKindVar(name=values[0], symbol_id=values[1])
 
 
 # Canonical singletons for kinds
@@ -393,10 +430,18 @@ class QIntType(QType):
         return "Int"
 
 
+_TYPE_FIELDS[QIntType] = lambda node: ()
+_REBUILD_TYPE[QIntType] = lambda node, values: QIntType()
+
+
 @dataclass(frozen=True)
 class QRealType(QType):
     def __str__(self) -> str:
         return "Real"
+
+
+_TYPE_FIELDS[QRealType] = lambda node: ()
+_REBUILD_TYPE[QRealType] = lambda node, values: QRealType()
 
 
 @dataclass(frozen=True)
@@ -405,10 +450,18 @@ class QBoolType(QType):
         return "Bool"
 
 
+_TYPE_FIELDS[QBoolType] = lambda node: ()
+_REBUILD_TYPE[QBoolType] = lambda node, values: QBoolType()
+
+
 @dataclass(frozen=True)
 class QCharType(QType):
     def __str__(self) -> str:
         return "Char"
+
+
+_TYPE_FIELDS[QCharType] = lambda node: ()
+_REBUILD_TYPE[QCharType] = lambda node, values: QCharType()
 
 
 @dataclass(frozen=True)
@@ -417,10 +470,18 @@ class QStringType(QType):
         return "String"
 
 
+_TYPE_FIELDS[QStringType] = lambda node: ()
+_REBUILD_TYPE[QStringType] = lambda node, values: QStringType()
+
+
 @dataclass(frozen=True)
 class QOkType(QType):
     def __str__(self) -> str:
         return "Ok"
+
+
+_TYPE_FIELDS[QOkType] = lambda node: ()
+_REBUILD_TYPE[QOkType] = lambda node, values: QOkType()
 
 
 @dataclass(frozen=True)
@@ -428,6 +489,10 @@ class QBottomType(QType):
     """Internal bottom type: subtype of all types, used for divergent expressions like raise."""
     def __str__(self) -> str:
         return "Bottom"
+
+
+_TYPE_FIELDS[QBottomType] = lambda node: ()
+_REBUILD_TYPE[QBottomType] = lambda node, values: QBottomType()
 
 
 @dataclass(frozen=True)
@@ -451,6 +516,10 @@ class QExceptionType(QType):
         return f"Exception({self.payload_type})"
 
 
+_TYPE_FIELDS[QExceptionType] = lambda node: (node.payload_type,)
+_REBUILD_TYPE[QExceptionType] = lambda node, values: QExceptionType(payload_type=values[0])
+
+
 @dataclass(frozen=True)
 class QExternalType(QType):
     """Opaque C data structure type (external "c_type")."""
@@ -459,6 +528,10 @@ class QExternalType(QType):
 
     def __str__(self) -> str:
         return self.name if self.name else f'external "{self.c_type}"'
+
+
+_TYPE_FIELDS[QExternalType] = lambda node: (node.name, node.c_type)
+_REBUILD_TYPE[QExternalType] = lambda node, values: QExternalType(name=values[0], c_type=values[1])
 
 
 # Canonical singletons for primitive types
@@ -504,6 +577,10 @@ class QTupleField(metaclass=_InternedNode):
         return f"{var_prefix}:{self.type_val}"
 
 
+_TYPE_FIELDS[QTupleField] = lambda node: (node.name, node.type_val, node.is_var)
+_REBUILD_TYPE[QTupleField] = lambda node, values: QTupleField(name=values[0], type_val=values[1], is_var=values[2])
+
+
 @dataclass(frozen=True)
 class QTupleTypeFormal(metaclass=_InternedNode):
     """A type formal component in an ordered tuple type: X::K."""
@@ -522,6 +599,12 @@ class QTupleTypeFormal(metaclass=_InternedNode):
 
     def __str__(self) -> str:
         return f"{self.name}::{self.bound}"
+
+
+_TYPE_FIELDS[QTupleTypeFormal] = lambda node: (node.name, node.symbol_id, node.bound)
+_REBUILD_TYPE[QTupleTypeFormal] = lambda node, values: QTupleTypeFormal(
+    name=values[0], symbol_id=values[1], bound=values[2],
+)
 
 
 @dataclass(frozen=True)
@@ -544,6 +627,12 @@ class QTupleTypeBinding(metaclass=_InternedNode):
     def __str__(self) -> str:
         bound_str = f"::{self.bound}" if self.bound else ""
         return f"Let {self.name}{bound_str} = {self.type_val}"
+
+
+_TYPE_FIELDS[QTupleTypeBinding] = lambda node: (node.name, node.type_val, node.bound)
+_REBUILD_TYPE[QTupleTypeBinding] = lambda node, values: QTupleTypeBinding(
+    name=values[0], type_val=values[1], bound=values[2],
+)
 
 
 QTupleComponent = Union[QTupleField, QTupleTypeFormal, QTupleTypeBinding]
@@ -651,6 +740,11 @@ class QTupleType(QType):
         return f"Tuple {elems} end" if elems else "Tuple end"
 
 
+_TYPE_FIELDS[QTupleType] = lambda node: (node.fields,)
+# (QTupleType's own __init__ takes its components as written)
+_REBUILD_TYPE[QTupleType] = lambda node, values: QTupleType(values[0])
+
+
 @dataclass(frozen=True)
 class QRecordField(metaclass=_InternedNode):
     """A single field inside a record type."""
@@ -670,6 +764,10 @@ class QRecordField(metaclass=_InternedNode):
     def __str__(self) -> str:
         var_prefix = "var " if self.is_var else ""
         return f"{var_prefix}{self.name}: {self.type_val}"
+
+
+_TYPE_FIELDS[QRecordField] = lambda node: (node.name, node.type_val, node.is_var)
+_REBUILD_TYPE[QRecordField] = lambda node, values: QRecordField(name=values[0], type_val=values[1], is_var=values[2])
 
 
 @dataclass(frozen=True)
@@ -696,6 +794,10 @@ class QRecordType(QType):
             return f"Module '{self.provenance}'"
         fields_str = " ".join(str(f) for f in self.fields)
         return f"Record {fields_str} end" if fields_str else "Record end"
+
+
+_TYPE_FIELDS[QRecordType] = lambda node: (node.fields, node.provenance)
+_REBUILD_TYPE[QRecordType] = lambda node, values: QRecordType(fields=values[0], provenance=values[1])
 
 
 def binds_module(name: str, t: QType) -> bool:
@@ -729,6 +831,10 @@ class QVariantField(metaclass=_InternedNode):
         return f"{var_prefix}{self.name}"
 
 
+_TYPE_FIELDS[QVariantField] = lambda node: (node.name, node.type_val, node.is_var)
+_REBUILD_TYPE[QVariantField] = lambda node, values: QVariantField(name=values[0], type_val=values[1], is_var=values[2])
+
+
 @dataclass(frozen=True)
 class QVariantType(QType):
     """Variant type: Variant tag1: T1 ... end."""
@@ -752,6 +858,10 @@ class QVariantType(QType):
         return f"Variant {variants_str} end" if variants_str else "Variant end"
 
 
+_TYPE_FIELDS[QVariantType] = lambda node: (node.variants,)
+_REBUILD_TYPE[QVariantType] = lambda node, values: QVariantType(variants=values[0])
+
+
 @dataclass(frozen=True)
 class QOptionField(metaclass=_InternedNode):
     """A tagged case inside an option type."""
@@ -769,6 +879,10 @@ class QOptionField(metaclass=_InternedNode):
         if self.payload_type:
             return f"{self.name} with {self.payload_type}"
         return self.name
+
+
+_TYPE_FIELDS[QOptionField] = lambda node: (node.name, node.payload_type)
+_REBUILD_TYPE[QOptionField] = lambda node, values: QOptionField(name=values[0], payload_type=values[1])
 
 
 @dataclass(frozen=True)
@@ -792,6 +906,10 @@ class QOptionType(QType):
     def __str__(self) -> str:
         options_str = " ".join(str(o) for o in self.options)
         return f"Option {options_str} end" if options_str else "Option end"
+
+
+_TYPE_FIELDS[QOptionType] = lambda node: (node.options,)
+_REBUILD_TYPE[QOptionType] = lambda node, values: QOptionType(options=values[0])
 
 
 # ============================================================================
@@ -820,6 +938,12 @@ class QParam(metaclass=_InternedNode):
         return f"{prefix}{self.name}: {self.type_val}"
 
 
+_TYPE_FIELDS[QParam] = lambda node: (node.name, node.type_val, node.is_var, node.is_out)
+_REBUILD_TYPE[QParam] = lambda node, values: QParam(
+    name=values[0], type_val=values[1], is_var=values[2], is_out=values[3],
+)
+
+
 @dataclass(frozen=True)
 class QFunType(QType):
     """Function type: Fun(params) : result_type."""
@@ -841,6 +965,10 @@ class QFunType(QType):
         return f"Fun({params_str}): {self.result_type}"
 
 
+_TYPE_FIELDS[QFunType] = lambda node: (node.params, node.result_type)
+_REBUILD_TYPE[QFunType] = lambda node, values: QFunType(params=values[0], result_type=values[1])
+
+
 @dataclass(frozen=True)
 class QVarType(QType):
     """Mutable reference cell type: Var(T)."""
@@ -855,6 +983,10 @@ class QVarType(QType):
 
     def __str__(self) -> str:
         return f"Var({self.element_type})"
+
+
+_TYPE_FIELDS[QVarType] = lambda node: (node.element_type,)
+_REBUILD_TYPE[QVarType] = lambda node, values: QVarType(element_type=values[0])
 
 
 @dataclass(frozen=True)
@@ -873,6 +1005,10 @@ class QArrayType(QType):
         return f"Array({self.element_type})"
 
 
+_TYPE_FIELDS[QArrayType] = lambda node: (node.element_type,)
+_REBUILD_TYPE[QArrayType] = lambda node, values: QArrayType(element_type=values[0])
+
+
 @dataclass(frozen=True)
 class QOutType(QType):
     """Write-only output parameter type: Out(T)."""
@@ -887,6 +1023,10 @@ class QOutType(QType):
 
     def __str__(self) -> str:
         return f"Out({self.element_type})"
+
+
+_TYPE_FIELDS[QOutType] = lambda node: (node.element_type,)
+_REBUILD_TYPE[QOutType] = lambda node, values: QOutType(element_type=values[0])
 
 
 # ============================================================================
@@ -913,6 +1053,10 @@ class QQuantifier(metaclass=_InternedNode):
         if isinstance(self.bound, QPowerKind):
             return f"{self.name} <: {self.bound.bound}"
         return f"{self.name} :: {self.bound}"
+
+
+_TYPE_FIELDS[QQuantifier] = lambda node: (node.name, node.symbol_id, node.bound)
+_REBUILD_TYPE[QQuantifier] = lambda node, values: QQuantifier(name=values[0], symbol_id=values[1], bound=values[2])
 
 
 @dataclass(frozen=True)
@@ -952,6 +1096,10 @@ class QAllType(QType):
         return f"All({quants}) {self.body}"
 
 
+_TYPE_FIELDS[QAllType] = lambda node: (node.quantifiers, node.body)
+_REBUILD_TYPE[QAllType] = lambda node, values: QAllType(quantifiers=values[0], body=values[1])
+
+
 @dataclass(frozen=True)
 class QAutoType(QType):
     """Existential / automorphic type: Auto X::K with ... end."""
@@ -983,6 +1131,12 @@ class QAutoType(QType):
         if isinstance(self.kind_bound, QPowerKind):
             return f"Auto {self.type_param} <: {self.kind_bound.bound} with {sig_str} end"
         return f"Auto {self.type_param} :: {self.kind_bound} with {sig_str} end"
+
+
+_TYPE_FIELDS[QAutoType] = lambda node: (node.type_param, node.symbol_id, node.kind_bound, node.signature)
+_REBUILD_TYPE[QAutoType] = lambda node, values: QAutoType(
+    type_param=values[0], symbol_id=values[1], kind_bound=values[2], signature=values[3],
+)
 
 
 def auto_payload_type(auto: QAutoType, witness: Optional[QType] = None) -> QTupleType:
@@ -1026,8 +1180,16 @@ class QTypeFormal(metaclass=_InternedNode):
     symbol_id: int
     bound: QKind
 
+    def __post_init__(self) -> None:
+        # (A QTypeFun's own free variables leave its formals' bounds out, as its substitution does)
+        _init_free_vars(self, self.bound)
+
     def __str__(self) -> str:
         return f"{self.name} :: {self.bound}"
+
+
+_TYPE_FIELDS[QTypeFormal] = lambda node: (node.name, node.symbol_id, node.bound)
+_REBUILD_TYPE[QTypeFormal] = lambda node, values: QTypeFormal(name=values[0], symbol_id=values[1], bound=values[2])
 
 
 @dataclass(frozen=True)
@@ -1048,6 +1210,10 @@ class QTypeFun(QType):
     def __str__(self) -> str:
         params_str = " ".join(str(p) for p in self.params)
         return f"Fun({params_str}) {self.body}"
+
+
+_TYPE_FIELDS[QTypeFun] = lambda node: (node.params, node.body)
+_REBUILD_TYPE[QTypeFun] = lambda node, values: QTypeFun(params=values[0], body=values[1])
 
 
 @dataclass(frozen=True)
@@ -1081,6 +1247,10 @@ class QTypeApp(QType):
     def __str__(self) -> str:
         args_str = " ".join(str(a) for a in self.arguments)
         return f"{self.constructor}({args_str})"
+
+
+_TYPE_FIELDS[QTypeApp] = lambda node: (node.constructor, node.arguments)
+_REBUILD_TYPE[QTypeApp] = lambda node, values: QTypeApp(constructor=values[0], arguments=values[1])
 
 
 # ============================================================================
@@ -1125,6 +1295,12 @@ class QRecType(QType):
 
     def __str__(self) -> str:
         return f"Rec({self.var_name} :: {self.bound}) {self.body}"
+
+
+_TYPE_FIELDS[QRecType] = lambda node: (node.var_name, node.symbol_id, node.bound, node.body)
+_REBUILD_TYPE[QRecType] = lambda node, values: QRecType(
+    var_name=values[0], symbol_id=values[1], bound=values[2], body=values[3],
+)
 
 
 @dataclass(frozen=True)
@@ -1192,6 +1368,10 @@ class QRecGroupType(QType):
         return f"Rec({name} :: {bound}) {body}"
 
 
+_TYPE_FIELDS[QRecGroupType] = lambda node: (node.bindings, node.active_index)
+_REBUILD_TYPE[QRecGroupType] = lambda node, values: QRecGroupType(bindings=values[0], active_index=values[1])
+
+
 @dataclass(frozen=True)
 class QTypeVar(QType):
     """Named type variable with unique symbol identity."""
@@ -1204,7 +1384,7 @@ class QTypeVar(QType):
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         if env is not None:
-            sym = env.lookup_type_by_id(self.symbol_id) if hasattr(env, "lookup_type_by_id") else None
+            sym = env.lookup_type_by_id(self.symbol_id)
             if sym is not None and sym.definition is not None:
                 return sym.definition.evaluate_lazily(env)
         return self
@@ -1214,6 +1394,10 @@ class QTypeVar(QType):
 
     def __str__(self) -> str:
         return self.name
+
+
+_TYPE_FIELDS[QTypeVar] = lambda node: (node.name, node.symbol_id, node.bound)
+_REBUILD_TYPE[QTypeVar] = lambda node, values: QTypeVar(name=values[0], symbol_id=values[1], bound=values[2])
 
 
 @dataclass(frozen=True)
@@ -1231,6 +1415,10 @@ class QAbstractType(QType):
 
     def __str__(self) -> str:
         return self.name
+
+
+_TYPE_FIELDS[QAbstractType] = lambda node: (node.name, node.symbol_id, node.bound)
+_REBUILD_TYPE[QAbstractType] = lambda node, values: QAbstractType(name=values[0], symbol_id=values[1], bound=values[2])
 
 
 @dataclass(frozen=True)
@@ -1264,6 +1452,12 @@ class QPathType(QType):
 
     def __str__(self) -> str:
         return f"{self.root_name}.{self.field_name}"
+
+
+_TYPE_FIELDS[QPathType] = lambda node: (node.root_name, node.root_symbol_id, node.field_name, node.bound)
+_REBUILD_TYPE[QPathType] = lambda node, values: QPathType(
+    root_name=values[0], root_symbol_id=values[1], field_name=values[2], bound=values[3],
+)
 
 
 @dataclass(frozen=True)
@@ -1329,6 +1523,10 @@ class QAliasType(QType):
         return self.name
 
 
+_TYPE_FIELDS[QAliasType] = lambda node: (node.name, node.symbol_id, node.target)
+_REBUILD_TYPE[QAliasType] = lambda node, values: QAliasType(name=values[0], symbol_id=values[1], target=values[2])
+
+
 def alias_reference(name: str, symbol_id: int, target: QType) -> QType:
     """The elaboration of a reference to the alias `name`: an alias node, except for builtin primitives.
 
@@ -1387,11 +1585,10 @@ def map_aliases(
             items = tuple(map_aliases(item, replace, memo) for item in node)
             if any(a is not b for a, b in zip(items, node)):
                 result = items
-        case _ if isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
-            values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
-            mapped = {k: map_aliases(v, replace, memo) for k, v in values.items()}
-            if any(mapped[k] is not values[k] for k in values):
-                result = QTupleType(mapped["fields"]) if isinstance(node, QTupleType) else type(node)(**mapped)
+        case _ if (values := type_fields(node)) is not None:
+            mapped = tuple(map_aliases(v, replace, memo) for v in values)
+            if any(a is not b for a, b in zip(mapped, values)):
+                result = rebuild_type(node, mapped)
     memo[key] = result
     return result
 
@@ -1417,13 +1614,12 @@ def strip_aliases(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
             items = tuple(strip_aliases(item, memo) for item in node)
             if any(a is not b for a, b in zip(items, node)):
                 result = items
-        case _ if isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
-            values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
-            stripped = {k: strip_aliases(v, memo) for k, v in values.items()}
-            if any(stripped[k] is not values[k] for k in values):
-                result = QTupleType(stripped["fields"]) if isinstance(node, QTupleType) else type(node)(**stripped)
+        case _ if (values := type_fields(node)) is not None:
+            stripped = tuple(strip_aliases(v, memo) for v in values)
+            if any(a is not b for a, b in zip(stripped, values)):
+                result = rebuild_type(node, stripped)
     memo[key] = result
-    if isinstance(type(node), _InternedNode) and not getattr(node, "_has_meta", False):
+    if type_fields(node) is not None and not node._has_meta:
         if len(_STRIPPED) > 200_000:
             _STRIPPED.clear()
         _STRIPPED[key] = (node, result)
@@ -1613,6 +1809,11 @@ class QTypeMeta(QType):
         return f"QTypeMeta({self.name})"
 
 
+def pruned(t: Any) -> Any:
+    """t, or for a metavariable, what it stands for (pruned: its solution, if it is solved)."""
+    return t.prune() if isinstance(t, QTypeMeta) else t
+
+
 def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
     """Returns the unsolved metavariables occurring in t (looking through solved ones), in order."""
     found: list[QTypeMeta] = []
@@ -1631,9 +1832,9 @@ def unsolved_metas(t: Union[QType, QKind, None]) -> list[QTypeMeta]:
         elif isinstance(node, (tuple, list)):
             for item in node:
                 visit(item)
-        elif dataclasses.is_dataclass(node):
-            for f in dataclasses.fields(node):
-                visit(getattr(node, f.name))
+        else:
+            for part in type_fields(node) or ():
+                visit(part)
 
     visit(t)
     return found
@@ -1666,12 +1867,12 @@ def structurally_equal(a: Any, b: Any) -> bool:
             return False
         if isinstance(x, (tuple, list)):
             return len(x) == len(y) and all(eq(xi, yi) for xi, yi in zip(x, y))
-        if dataclasses.is_dataclass(x):
+        if (x_parts := type_fields(x)) is not None:
             key = (id(x), id(y))
             if key in assumed:
                 return True
             assumed.add(key)
-            return all(eq(getattr(x, f.name), getattr(y, f.name)) for f in dataclasses.fields(x))
+            return all(eq(xi, yi) for xi, yi in zip(x_parts, type_fields(y)))
         return x == y
 
     return eq(a, b)

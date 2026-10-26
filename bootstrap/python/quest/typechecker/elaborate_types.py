@@ -114,7 +114,7 @@ def elaborate_kind(ast_kind: ast.Kind, env: Environment) -> QKind:
             )
 
         case _:
-            raise KindError(f"Unsupported AST kind node '{ast_kind}'", offset=getattr(ast_kind, 'offset', 0))
+            raise KindError(f"Unsupported AST kind node '{ast_kind}'", offset=ast_kind.offset)
 
 
 # ============================================================================
@@ -259,7 +259,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                             if not name or name == "_":
                                 raise KindError(
                                     "Type formal in tuple signature must have an identifier",
-                                    offset=getattr(f, "offset", None),
+                                    offset=f.offset,
                                 )
                             bound_kind = elaborate_kind(bound, env)
                             symbol_id = env.fresh_symbol_id()
@@ -326,9 +326,9 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
             variants: list[QVariantField] = []
             seen_tags: set[str] = set()
             for v in var_fields:
-                tag = getattr(v, "tag", getattr(v, "name", ""))
+                tag = v.tag
                 if tag in seen_tags:
-                    raise KindError(f"Duplicate variant tag '{tag}'", offset=getattr(v, "offset", None))
+                    raise KindError(f"Duplicate variant tag '{tag}'", offset=v.offset)
                 seen_tags.add(tag)
                 variants.append(
                     QVariantField(
@@ -373,7 +373,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 if len(args) != 1:
                     raise KindError(
                         f"Exception type constructor expects 1 argument, got {len(args)}",
-                        offset=getattr(ctor, "offset", 0),
+                        offset=ctor.offset,
                     )
                 check_kind(args[0], TYPE_KIND, env)
                 return QExceptionType(payload_type=args[0])
@@ -385,7 +385,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 val_params: list[QParam] = []
                 for q in quants_ast:
                     bound_kind = elaborate_kind(q.bound, env)
-                    if getattr(q, "is_type", False):
+                    if q.is_type:
                         symbol_id = env.fresh_symbol_id()
                         env.current_scope.declare_type(
                             TypeSymbol(name=q.name, symbol_id=symbol_id, kind=bound_kind)
@@ -394,8 +394,8 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     elif isinstance(bound_kind, QPowerKind):
                         # Value formal parameter: x : T (represented via Power(T))
                         val_type = bound_kind.bound
-                        is_var = getattr(q, "mode", ast.ParamMode.VALUE) == ast.ParamMode.VAR
-                        is_out = getattr(q, "mode", ast.ParamMode.VALUE) == ast.ParamMode.OUT
+                        is_var = q.mode == ast.ParamMode.VAR
+                        is_out = q.mode == ast.ParamMode.OUT
                         val_params.append(
                             QParam(name=q.name, type_val=val_type, is_var=is_var, is_out=is_out)
                         )
@@ -453,7 +453,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     body,
                     {symbol_id},
                     var_name=vname,
-                    offset=getattr(body_ast, "offset", 0),
+                    offset=body_ast.offset,
                     env=env,
                 )
                 return QRecType(
@@ -498,7 +498,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
             return QExternalType(name="", c_type=c_type)
 
         case _:
-            raise KindError(f"Unsupported AST type node '{ast_type}'", offset=getattr(ast_type, 'offset', 0))
+            raise KindError(f"Unsupported AST type node '{ast_type}'", offset=ast_type.offset)
 
 
 # ============================================================================

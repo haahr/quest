@@ -12,7 +12,7 @@ module member, and a use of a built-in value is a constant or a built-in functio
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional
 
 from quest.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.elaboration import build_record_type_from_scope
@@ -83,6 +83,7 @@ from quest.typechecker.typed_ast import (
 )
 from quest.types import (
     is_type_equal,
+    QPowerKind,
     BOOL_TYPE,
     CHAR_TYPE,
     EXCEPTION_TYPE,
@@ -140,7 +141,7 @@ class _Lowerer:
         self.echo = echo
         self.print_result = print_result
         # The source file's map, in which the offsets of the nodes that can raise are (docs/exceptions.md §3.1)
-        self.source_map = getattr(env, "source_map", None)
+        self.source_map = env.source_map
         # The frame of the code being lowered, which names the functions it makes (docs/exceptions.md §2.3)
         self.frame = MAIN_FRAME
         self.body = ir.Body()
@@ -266,16 +267,16 @@ class _Lowerer:
                 v = self.value(init)
                 return self.let(ir.ArrayRep(n, v, e.offset), e.type_val, into)
             case TypedVarCell(value=v):
-                return self.let(ir.Addr(cell=self.value(v)), e.type_val, into)
+                return self.let(ir.AddrCell(self.value(v)), e.type_val, into)
             case TypedSelectRef(target=target, field=fld):
-                return self.let(ir.Addr(base=self.value(target), name=fld), e.type_val, into)
+                return self.let(ir.AddrField(self.value(target), fld), e.type_val, into)
             case TypedIndexRef(target=target, index=index):
                 a = self.value(target)
                 i = self.value(index)
-                return self.let(ir.Addr(base=a, index=i, offset=e.offset), e.type_val, into)
+                return self.let(ir.AddrElement(a, i, e.offset), e.type_val, into)
             case TypedTupleSelectRef(target=target, index=index, field=fld):
                 t = self.value(target)
-                return self.let(ir.Addr(base=t, index=self.tuple_index(target.type_val, index, fld)), e.type_val, into)
+                return self.let(ir.AddrComponent(t, self.tuple_index(target.type_val, index, fld)), e.type_val, into)
             case TypedVariant(tag=tag, payload=payload):
                 p = self.value(payload) if payload is not None else None
                 return self.let(ir.MakeVariant(tag, p), e.type_val, into)
@@ -328,7 +329,7 @@ class _Lowerer:
         if var is not None:
             if var.mutable:
                 # A mutable variable not read through a dereference is passed by address (@x)
-                return self.let(ir.Addr(var=var), e.type_val, into)
+                return self.let(ir.AddrVar(var), e.type_val, into)
             return self.copy_into(var, into)
         if sym_id in self.builtins:
             name = self.builtins[sym_id]
@@ -399,7 +400,7 @@ class _Lowerer:
             case "get":
                 return self.let(ir.Index(args[0], args[1], offset), t, into)
             case "set":
-                self.emit(ir.Store(args[2], base=args[0], index=args[1], offset=offset))
+                self.emit(ir.StoreElement(args[2], args[0], args[1], offset))
                 return self.copy_into(self.const(None, OK_TYPE), into)
         raise LoweringError(f"arrayOp.{member}")
 
@@ -532,7 +533,7 @@ class _Lowerer:
                 a = self.value(target)
                 i = self.value(index)
                 v = self.value(value)
-                self.emit(ir.Store(v, base=a, index=i, offset=e.offset))
+                self.emit(ir.StoreElement(v, a, i, e.offset))
             case TypedRaise(exc=exc, payload=payload):
                 x = self.value(exc)
                 p = self.value(payload) if payload is not None else None
@@ -556,13 +557,13 @@ class _Lowerer:
                 v = self.value(value)
                 s = resolved_shape(shape(base_e.type_val))
                 if s.kind == "tuple":
-                    self.emit(ir.Store(v, base=base, index=self.tuple_index(base_e.type_val, -1, fld)))
+                    self.emit(ir.StoreComponent(v, base, self.tuple_index(base_e.type_val, -1, fld)))
                 else:
-                    self.emit(ir.Store(v, base=base, name=fld))
+                    self.emit(ir.StoreField(v, base, fld))
             case _:
                 address = self.value(target)
                 v = self.value(value)
-                self.emit(ir.Store(v, address=address))
+                self.emit(ir.StoreAt(v, address))
 
     def for_loop(self, e: TypedFor) -> None:
         start = self.value(e.start)
@@ -634,13 +635,13 @@ class _Lowerer:
                 # What the handler catches, when that is known before the try (docs/exceptions.md §5.1): its
                 # patterns' values, computed before the try when computing them there gives the same values
                 patterns: Optional[list[ir.Atom]] = None
-                catches: Union[None, str, tuple[ir.Atom, ...]] = None
+                catching = ir.CATCH_UNKNOWN
                 if else_e is not None:
-                    catches = ir.CATCH_ALL
+                    catching = ir.CATCH_ALL
                 elif all(self.pure_pattern(br.exc_pattern) for br in branches):
                     patterns = [self.value(br.exc_pattern) for br in branches]
-                    catches = tuple(patterns)
-                stmt = ir.Try(ir.Body(), exception, ir.Body(), catches)
+                    catching = ir.CATCH_LISTED
+                stmt = ir.Try(ir.Body(), exception, ir.Body(), catching, tuple(patterns or ()))
                 self.emit(stmt)
                 with self.in_body(stmt.body):
                     lower_branch(body_e)
@@ -695,7 +696,7 @@ class _Lowerer:
         inner = t
         if isinstance(t, QAllType):
             type_params = tuple(
-                ir.TypeParam(q.name, q.symbol_id, q.bound, shape(q.bound.bound) if hasattr(q.bound, "bound") else None)
+                ir.TypeParam(q.name, q.symbol_id, q.bound, shape(q.bound.bound) if isinstance(q.bound, QPowerKind) else None)
                 for q in t.quantifiers
             )
             inner = t.body
@@ -743,7 +744,7 @@ class _Lowerer:
                 args.append(var)
             else:
                 ref_t = QVarType(element_type=var.type) if mode == "var" else QOutType(element_type=var.type)
-                args.append(self.let(ir.Addr(var=var), ref_t))
+                args.append(self.let(ir.AddrVar(var), ref_t))
         return self.let(ir.CallExternal(ext.symbol, type_args, tuple(args)), result_t)
 
     # Bindings
@@ -975,7 +976,7 @@ def lower_program(
 ) -> ir.Unit:
     """Lowers a typed program to a Core IR unit."""
     if options is not None:
-        echo = bool(getattr(options, "echo", echo))
+        echo = options.echo
     unit = _Lowerer(env, echo, print_result).program(prog)
     for module in unit.modules:
         _add_module_record(module)

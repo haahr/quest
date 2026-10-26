@@ -56,6 +56,7 @@ from quest.types import (
     resolve_metas,
     short_type_name,
     strip_aliases,
+    pruned,
 )
 
 # The kinds of shapes
@@ -129,6 +130,21 @@ class Shape:
         self.bound: Optional[Shape] = None
         self.name: Optional[str] = None
 
+    def fill_from(self, other: Shape) -> None:
+        """Fills this shape in from another's fields, but its type (a recursive type's, from its unfolding's)."""
+        self.kind = other.kind
+        self.structure = other.structure
+        self.components = other.components
+        self.cases = other.cases
+        self.element = other.element
+        self.params = other.params
+        self.result = other.result
+        self.type_params = other.type_params
+        self.body = other.body
+        self.symbol_id = other.symbol_id
+        self.bound = other.bound
+        self.name = other.name
+
     @property
     def is_scalar(self) -> bool:
         return self.kind in SCALAR_KINDS
@@ -180,14 +196,14 @@ _ASKED: dict[int, tuple[QType, Shape]] = {}
 
 def shape(t: QType) -> Shape:
     """The shape of a type (which must not contain unsolved metavariables)."""
-    t = t.prune() if hasattr(t, "prune") else t
+    t = pruned(t)
     entry = _ASKED.get(id(t))
     if entry is not None and entry[0] is t:
         return entry[1]
-    if getattr(t, "_has_meta", False):
+    if t._has_meta:
         # Solved metavariables stand for their solutions, which are cached; the type itself is not
         resolved = resolve_metas(t)
-        if getattr(resolved, "_has_meta", False):
+        if resolved._has_meta:
             raise ValueError(f"the type {t} has unsolved metavariables and no shape")
         return shape(resolved)
     stripped = strip_aliases(t)
@@ -228,10 +244,7 @@ def _shape(t: QType) -> Shape:
             # shape before building the unfolding's, so that they refer to it, and fill it in from the unfolding's
             s = Shape("pending", t)
             _SHAPES[id(t)] = (t, s)
-            unfolded = _shape(t.unfold_lazily())
-            for slot in Shape.__slots__:
-                if slot != "type":
-                    setattr(s, slot, getattr(unfolded, slot))
+            s.fill_from(_shape(t.unfold_lazily()))
             return s
         case QTypeApp() if (reduced := normalize_type(t)) is not t:
             s = _shape(reduced)

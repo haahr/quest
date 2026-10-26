@@ -12,13 +12,12 @@ shared by function and type arguments (by symbol and type identity, never by nam
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
 from typing import Any, Optional
 
 from quest.codegen.layout import type_identity_key
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
-from quest.ir.walk import statement_bodies
+from quest.ir.walk import fields_of, rebuild, statement_bodies
 from quest.ir.written import is_type_operator, quantified
 from quest.types import QFunType, QParam, QType
 
@@ -272,8 +271,9 @@ class _Cloner:
             case ir.Function():
                 return ir.Function(self.copy(node.var), node.type_params, self.copy(node.params),
                                    self.type(node.result_type), self.copy(node.body), trace_name=node.trace_name)
-        if is_dataclass(node) and not isinstance(node, type) and type(node).__module__ == ir.__name__:
-            return type(node)(**{f.name: self.copy(getattr(node, f.name)) for f in fields(node)})
+        parts = fields_of(node)
+        if parts is not None:
+            return rebuild(node, tuple(self.copy(part) for part in parts))
         # Constants' values, names, labels, tags, modes, shapes
         return node
 

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import dataclasses
 from typing import Any, Optional
 
-from quest.typechecker.typed_ast import TypedNode
+from quest.typechecker.typed_ast import TypedNode, rebuild_typed, typed_fields
 from quest.types import QType, resolve_metas
 
 
@@ -25,14 +24,9 @@ def resolve_typed_metas(node: Any, memo: Optional[dict[int, Any]] = None) -> Any
             if any(a is not b for a, b in zip(items, node)):
                 result = items
         case TypedNode():
-            changes = {}
-            for f in dataclasses.fields(node):
-                if f.init:
-                    old = getattr(node, f.name)
-                    new = resolve_typed_metas(old, memo)
-                    if new is not old:
-                        changes[f.name] = new
-            if changes:
-                result = dataclasses.replace(node, **changes)
+            parts = typed_fields(node)
+            resolved = tuple(resolve_typed_metas(part, memo) for part in parts)
+            if any(a is not b for a, b in zip(resolved, parts)):
+                result = rebuild_typed(node, resolved)
     memo[key] = result
     return result

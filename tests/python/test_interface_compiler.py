@@ -17,12 +17,21 @@ import unittest
 
 from quest.types.env import Environment
 from quest.codegen.c.headers import compile_interface_with_header
-from quest.modules.interface_compiler import load_interface_from_qi_file
+from quest.modules.interface_compiler import format_type_for_qi, load_interface_from_qi_file
+from quest.types import INT_TYPE, TYPE_KIND, QTupleField, QTupleType, QTypeVar
+from quest.types.model import QTupleTypeBinding, QTupleTypeFormal
 from quest.modules.loader import load_interface
 
 
 class TestInterfaceCompiler(unittest.TestCase):
     """Test suite for interface compilation (.int.quest -> .h and .qi)."""
+
+    def test_tuple_type_components_in_qi_types(self) -> None:
+        """A tuple type's type components are written in .qi type syntax (formals and bindings)."""
+        a = QTupleTypeFormal("A", 70001, TYPE_KIND)
+        x = QTupleField("x", QTypeVar("A", 70001, TYPE_KIND), False)
+        t = QTupleType((a, x, QTupleTypeBinding("B", INT_TYPE, None)))
+        self.assertEqual(format_type_for_qi(t), "Tuple A::TYPE x: A Let B= Int end")
 
     def test_compile_simple_interface(self) -> None:
         src = """

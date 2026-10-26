@@ -108,7 +108,7 @@ def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
             result_kind=result_kind,
         ):
             check_kind_well_formed(param_kind, env)
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope(f"kind_param_{param_name}")
                 try:
                     env.current_scope.declare_type_variable(
@@ -124,7 +124,7 @@ def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
             return
 
         case QKindVar(name=name, symbol_id=symbol_id):
-            if env is not None and hasattr(env, "lookup_kind_by_id"):
+            if env is not None:
                 sym = env.lookup_kind_by_id(symbol_id)
                 if sym is None:
                     sym = env.lookup_kind(name)
@@ -197,7 +197,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
             return TYPE_KIND
 
         case QTupleType(fields=fields):
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope("tuple_kind_check")
                 try:
                     for f in fields:
@@ -257,7 +257,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
         case QTypeVar(name=name, symbol_id=sym_id, bound=bound):
             if bound is not None:
                 return bound
-            if env is not None and hasattr(env, "lookup_type_by_id"):
+            if env is not None:
                 sym = env.lookup_type_by_id(sym_id)
                 if sym is None:
                     sym = env.lookup_type(name)
@@ -279,7 +279,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
             return type_val.bound
 
         case QAllType(quantifiers=quants, body=body):
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope("all_type")
                 try:
                     for q in quants:
@@ -297,7 +297,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
             return TYPE_KIND
 
         case QAutoType(type_param=param_name, symbol_id=sym_id, kind_bound=kbound, signature=sig):
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope("auto_type")
                 try:
                     check_kind_well_formed(kbound, env)
@@ -316,7 +316,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
 
         case QRecType(var_name=vname, symbol_id=sym_id, bound=bound, body=body):
             check_kind_well_formed(bound, env)
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope(f"rec_{vname}")
                 try:
                     env.current_scope.declare_type_variable(
@@ -330,7 +330,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
             return bound
 
         case QRecGroupType(bindings=bindings, active_index=idx):
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope("rec_group")
                 try:
                     for b_name, b_id, b_kind, _ in bindings:
@@ -345,7 +345,7 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
             return bindings[idx][2]
 
         case QTypeFun(params=formals, body=body):
-            if env is not None and hasattr(env, "push_scope"):
+            if env is not None:
                 env.push_scope("type_fun")
                 try:
                     for formal in formals:
@@ -466,7 +466,7 @@ def _resolve_bound(t: QType, env: Optional[Any], wanted: tuple[type, ...]) -> Op
             isinstance(curr_lazy, (QTypeVar, QAbstractType, QPathType))
             and isinstance(curr_lazy.bound, QPowerKind)
         ):
-            sym_id = getattr(curr_lazy, "symbol_id", id(curr_lazy))
+            sym_id = id(curr_lazy) if isinstance(curr_lazy, QPathType) else curr_lazy.symbol_id
             if sym_id in visited:
                 return None
             visited.add(sym_id)
@@ -524,7 +524,7 @@ def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptio
             isinstance(curr, (QTypeVar, QAbstractType, QPathType))
             and isinstance(curr.bound, QPowerKind)
         ):
-            sym_id = getattr(curr, "symbol_id", id(curr))
+            sym_id = id(curr) if isinstance(curr, QPathType) else curr.symbol_id
             if sym_id in visited:
                 return None
             visited.add(sym_id)

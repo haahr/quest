@@ -266,6 +266,12 @@ class BuiltinRegistry(Protocol):
     def populate_environment(self, env: Environment) -> None:
         ...
 
+    def ensure_interface(self, iface_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
+        ...
+
+    def ensure_module(self, mod_name: str, env: Optional[Environment] = None) -> Optional[Scope]:
+        ...
+
 
 class Environment:
     """Manages the active lexical scope stack, built-in definitions, and module linkages."""
@@ -371,10 +377,8 @@ class Environment:
 
     def lookup_value(self, name: str) -> Optional[ValueSymbol]:
         res = self.current_scope.lookup_value(name)
-        if res is None and getattr(self, "builtin_registry", None):
-            ensure = getattr(self.builtin_registry, "ensure_module", None)
-            if ensure and ensure(name, self):
-                res = self.current_scope.lookup_value(name)
+        if res is None and self.builtin_registry and self.builtin_registry.ensure_module(name, self):
+            res = self.current_scope.lookup_value(name)
         return res
 
     def lookup_type(self, name: str) -> Optional[TypeSymbol]:
@@ -402,10 +406,8 @@ class Environment:
 
     def lookup_interface(self, name: str) -> Optional[Scope]:
         res = self._interfaces.get(name)
-        if res is None and getattr(self, "builtin_registry", None):
-            ensure = getattr(self.builtin_registry, "ensure_interface", None)
-            if ensure:
-                res = ensure(name, self)
+        if res is None and self.builtin_registry:
+            res = self.builtin_registry.ensure_interface(name, self)
         return res
 
     def register_module(self, name: str, scope: Scope) -> None:
@@ -413,10 +415,8 @@ class Environment:
 
     def lookup_module(self, name: str) -> Optional[Scope]:
         res = self._modules.get(name)
-        if res is None and getattr(self, "builtin_registry", None):
-            ensure = getattr(self.builtin_registry, "ensure_module", None)
-            if ensure:
-                res = ensure(name, self)
+        if res is None and self.builtin_registry:
+            res = self.builtin_registry.ensure_module(name, self)
         return res
 
     @contextmanager

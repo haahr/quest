@@ -136,6 +136,7 @@ class CPrinter:
         self.globals = global_variables(unit)
         self.names: dict[int, str] = {}
         self.used_names: set[str] = set()
+        self.name_counts: dict[str, int] = {}
         self.code_names: dict[int, str] = {}
         # Closures bound by lets (by variable), whose calls call their functions directly
         self.closures: dict[int, ir.MakeClosure] = {}
@@ -156,11 +157,13 @@ class CPrinter:
     # Names
 
     def fresh_name(self, base: str) -> str:
-        name = base
-        n = 1
+        # The search for a base's next name starts where its last one stopped: every name before it is taken
+        n = self.name_counts.get(base, 1)
+        name = base if n == 1 else f"{base}_{c_int(n)}"
         while name in self.used_names:
             n += 1
             name = f"{base}_{c_int(n)}"
+        self.name_counts[base] = n
         self.used_names.add(name)
         return name
 
@@ -488,27 +491,27 @@ class CPrinter:
             case ir.ExceptionPayload(exception=e):
                 # In its slot form (a record or variant, for a boxed variable)
                 return shape_qval_to_slot(f"{self.name(e)}.payload", shape(result.type))
-            case ir.Addr(var=var) if var is not None:
+            case ir.AddrVar(var=var):
                 if self.is_pointer_param(var):
                     return self.name(var)
                 if id(var) in self.fs.volatile:
                     return f"(({self.location_c_type(var.type)} *)&{self.name(var)})"
                 return f"(&{self.name(var)})"
-            case ir.Addr(cell=cell) if cell is not None:
+            case ir.AddrCell(init=cell):
                 cell_c = self.temp(self.location_c_type(self.atom_type(cell)))
                 self.emit(f"{cell_c} = {self.atom(cell)};")
                 return f"(&{cell_c})"
             case ir.Load(address=a):
                 return f"(*{self.atom(a)})"
-            case ir.Addr(base=base, name=name) if name is not None:
+            case ir.AddrField(base=base, name=name):
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
                                               o.view_map)
                 return self.slot_address(ptr, field)
-            case ir.Addr(base=base, index=index, view_map=vm) if isinstance(index, int) and vm is not None:
+            case ir.AddrComponent(base=base, index=index, view_map=vm) if vm is not None:
                 component = resolved_shape(shape(self.atom_type(base))).components[index].shape
                 slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(vm)}, {c_int(index)})"
                 return self.slot_address(f"(({self.slot_c_type(component)} *){slot})", component)
-            case ir.Addr(base=base, index=index, access=access) if isinstance(index, int):
+            case ir.AddrComponent(base=base, index=index, access=access):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
                 b = self.atom(base)
@@ -520,7 +523,7 @@ class CPrinter:
                     return self.slot_address(f"(&({unproxied}->_{c_int(index)}))", component)
                 through = f"(({shape_location_representation(component)} *)quest_proxy_slot({b}, {c_int(index)}))"
                 return f"(quest_is_proxy({b}) ? {through} : {address})"
-            case ir.Addr(base=base, index=index, offset=offset):
+            case ir.AddrElement(base=base, index=index, offset=offset):
                 return self.array_slot(self.atom(base), self.atom(index), self.element_shape(base), offset)
             case ir.MakeTuple(args=args, embedded=embedded):
                 shapes = [c.shape for c in shape(result.type).components]
@@ -1181,17 +1184,17 @@ class CPrinter:
                     self.assign(var, self.atom(init))
             case ir.Assign(var=var, value=value):
                 self.assign(var, self.atom(value))
-            case ir.Store(value=value, address=address) if address is not None:
+            case ir.StoreAt(value=value, address=address):
                 self.emit(f"*{self.atom(address)} = {self.atom(value)};")
-            case ir.Store(value=value, base=base, name=name) if name is not None:
+            case ir.StoreField(value=value, base=base, name=name):
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
                                               s.view_map)
                 self.emit(f"*{ptr} = {self.atom(value)};")
-            case ir.Store(value=value, base=base, index=index) if isinstance(index, int) and s.view_map is not None:
+            case ir.StoreComponent(value=value, base=base, index=index) if s.view_map is not None:
                 component = resolved_shape(shape(self.atom_type(base))).components[index].shape
                 slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(s.view_map)}, {c_int(index)})"
                 self.emit(f"*(({self.slot_c_type(component)} *){slot}) = {self.atom(value)};")
-            case ir.Store(value=value, base=base, index=index, access=access) if isinstance(index, int):
+            case ir.StoreComponent(value=value, base=base, index=index, access=access):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
                 b, v = self.atom(base), self.atom(value)
@@ -1205,7 +1208,7 @@ class CPrinter:
                     self.emit(f"else {b}->_{c_int(index)} = {v};")
                 else:
                     self.emit(f"{b}->_{c_int(index)} = {v};")
-            case ir.Store(value=value, base=base, index=index, offset=offset):
+            case ir.StoreElement(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
                 elem = self.element_shape(base)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
@@ -1265,13 +1268,13 @@ class CPrinter:
                     self.assign(p, self.atom(a))
                 self.leave_to(self.fs.label_depth[label])
                 self.emit(f"goto {label};")
-            case ir.Try(body=body, exception=exception, handler=handler, catches=catches):
+            case ir.Try(body=body, exception=exception, handler=handler, catching=catching, catches=catches):
                 h = self.fresh_name("_qh")
                 self.emit("{")
                 self.indent += 1
                 self.emit(f"QExceptionHandler {h};")
                 self.emit(f"{h}.prev = quest_current_exception_handler;")
-                self.emit_catches(h, catches)
+                self.emit_catches(h, catching, catches)
                 self.emit(f"quest_current_exception_handler = &{h};")
                 self.emit(f"if (setjmp({h}.env_jmp) == 0) {{")
                 self.fs.handlers.append(h)
@@ -1663,12 +1666,12 @@ class CPrinter:
             entries.append(("main", MAIN_FRAME))
         return entries
 
-    def emit_catches(self, handler: str, catches) -> None:
+    def emit_catches(self, handler: str, catching: str, catches: tuple[ir.Atom, ...]) -> None:
         """Records in a try's handler what it catches (docs/exceptions.md §5.1)."""
-        if catches is ir.CATCH_ALL:
+        if catching == ir.CATCH_ALL:
             self.emit(f"{handler}.catches = NULL;")
             self.emit(f"{handler}.n_catches = Q_CATCH_ALL;")
-        elif catches is None:
+        elif catching == ir.CATCH_UNKNOWN:
             self.emit(f"{handler}.catches = NULL;")
             self.emit(f"{handler}.n_catches = Q_CATCH_UNKNOWN;")
         else:

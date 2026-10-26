@@ -366,10 +366,10 @@ def has_fresh_module_artifacts(
     Up to date includes its imports still resolving, with the current include paths, to the files it was built
     against.
     """
-    opts = target if isinstance(target, CompilerOptions) else getattr(target, "options", None)
-    build_dir = getattr(opts, "build_dir", None)
-    include_paths = list(getattr(opts, "include_paths", None) or [])
-    program_dir = getattr(opts, "program_dir", None)
+    opts = target if isinstance(target, CompilerOptions) or target is None else target.options
+    build_dir = opts.build_dir if opts is not None else None
+    include_paths = list(opts.include_paths or []) if opts is not None else []
+    program_dir = opts.program_dir if opts is not None else None
     if build_dir is not None:
         root = Path(build_dir).resolve()
         if root not in include_paths:

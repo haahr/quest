@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass, KW_ONLY
 from enum import Enum, auto
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 
 # ============================================================================
@@ -783,3 +783,248 @@ def ast_dump(node: Any, indent: int = 0, show_offsets: bool = False) -> str:
 
     lines.append(f"{padding})")
     return "\n".join(lines)
+
+
+# The explicit traversal: a case for each class of syntax node
+
+def ast_fields(node) -> Optional[tuple]:
+    """The values of a syntax node's fields (but its offset), in order; None for a value that is not a syntax node. The
+    syntax tree's one traversal: walkers of nodes' fields read them through it."""
+    accessor = _AST_FIELDS.get(type(node))
+    return accessor(node) if accessor is not None else None
+
+
+def rebuild_ast(node, values: tuple):
+    """A syntax node of node's class, at its offset, whose fields are values (as ast_fields gives them)."""
+    return _REBUILD_AST[type(node)](node, values)
+
+
+# The entries of the traversal, a case for each class
+
+_AST_FIELDS: dict[type, Callable[[Any], tuple]] = {
+    FormalParam: lambda node: (node.name, node.type_annot, node.mode),
+    TypeFormal: lambda node: (node.name, node.bound),
+    Quantifier: lambda node: (node.name, node.bound, node.mode, node.is_type),
+    KindType: lambda node: (),
+    KindPower: lambda node: (node.bound,),
+    KindAll: lambda node: (node.param_name, node.param_kind, node.body_kind),
+    KindId: lambda node: (node.name,),
+    KindManifest: lambda node: (node.interface_name, node.kind_name),
+    TypePath: lambda node: (node.path,),
+    TypeAll: lambda node: (node.quantifiers, node.result_type),
+    FieldSig: lambda node: (node.name, node.type_sig, node.mode),
+    TypeTuple: lambda node: (node.fields,),
+    RecordFieldSig: lambda node: (node.name, node.type_sig, node.is_var),
+    TypeRecord: lambda node: (node.fields,),
+    OptionFieldSig: lambda node: (node.tag, node.payload_sig),
+    TypeOption: lambda node: (node.variants,),
+    VariantFieldSig: lambda node: (node.tag, node.type_sig, node.is_var),
+    TypeVariant: lambda node: (node.fields,),
+    TypeAuto: lambda node: (node.type_param, node.kind_bound, node.signature),
+    TypeFun: lambda node: (node.params, node.result_kind, node.body),
+    TypeRec: lambda node: (node.var_name, node.bound, node.body),
+    TypeApp: lambda node: (node.constructor, node.arguments),
+    TypeInfix: lambda node: (node.left, node.op, node.right),
+    TypeArray: lambda node: (node.element_type,),
+    TypeVar: lambda node: (node.element_type,),
+    TypeOut: lambda node: (node.element_type,),
+    TypeManifest: lambda node: (node.module_name, node.type_name),
+    TypeExternal: lambda node: (node.c_type,),
+    TypeArgument: lambda node: (node.type_val,),
+    KindArgument: lambda node: (node.kind_val,),
+    ExprInt: lambda node: (node.value, node.lexeme),
+    ExprReal: lambda node: (node.value, node.lexeme),
+    ExprChar: lambda node: (node.value, node.lexeme),
+    ExprString: lambda node: (node.value, node.lexeme),
+    ExprBool: lambda node: (node.value,),
+    ExprOk: lambda node: (),
+    ExprId: lambda node: (node.name,),
+    ExprExternal: lambda node: (node.symbol,),
+    ExprBlock: lambda node: (node.bindings,),
+    ExprIf: lambda node: (node.cond, node.then_branch, node.elsifs, node.else_branch, node.short_circuit),
+    ExprWhile: lambda node: (node.cond, node.body),
+    ExprLoop: lambda node: (node.body,),
+    ExprExit: lambda node: (),
+    ExprFor: lambda node: (node.var_name, node.start, node.is_downto, node.stop, node.body),
+    ExprFun: lambda node: (node.params, node.return_type, node.body, node.type_params),
+    ExprApp: lambda node: (node.func, node.args),
+    ExprInfix: lambda node: (node.left, node.op, node.right),
+    TupleBinding: lambda node: (node.name, node.value, node.type_annot, node.is_var),
+    TupleBindingGroup: lambda node: (node.bindings,),
+    ExprTuple: lambda node: (node.fields,),
+    RecordBinding: lambda node: (node.name, node.value, node.is_var),
+    ExprRecord: lambda node: (node.fields,),
+    ExprOption: lambda node: (node.tag, node.option_type, node.payload, node.ordinal_expr),
+    ExprVariant: lambda node: (node.tag, node.variant_type, node.is_var, node.payload),
+    ExprArray: lambda node: (node.elements, node.element_type),
+    ExprArrayRep: lambda node: (node.count, node.init_val),
+    ExprAuto: lambda node: (node.witness_type, node.payload, node.witness_name, node.witness_bound),
+    ExprSelect: lambda node: (node.target, node.field),
+    ExprIndex: lambda node: (node.target, node.index),
+    ExprIndexAssign: lambda node: (node.target, node.index, node.value),
+    ExprVarCell: lambda node: (node.value,),
+    ExprDerefCell: lambda node: (node.target,),
+    ExprVariantCheck: lambda node: (node.target, node.tag),
+    ExprVariantAssert: lambda node: (node.target, node.tag),
+    CaseBranch: lambda node: (node.tags, node.binder, node.binder_type, node.body),
+    ExprCase: lambda node: (node.target, node.branches, node.else_branch),
+    InspectBranch: lambda node: (node.match_type, node.binders, node.body),
+    ExprInspect: lambda node: (node.target, node.branches, node.else_branch),
+    ExprException: lambda node: (node.name, node.type_annot),
+    ExprRaise: lambda node: (node.exc, node.payload, node.as_type),
+    TryBranch: lambda node: (node.exc_pattern, node.binder, node.binder_type, node.body),
+    ExprTry: lambda node: (node.body, node.branches, node.else_branch),
+    LetValueBinding: lambda node: (node.name, node.value, node.params, node.type_annot, node.is_rec, node.is_var),
+    LetValueBindingGroup: lambda node: (node.bindings,),
+    TypeBinding: lambda node: (node.name, node.type_val, node.params, node.bound, node.is_rec, node.is_def),
+    TypeBindingGroup: lambda node: (node.bindings,),
+    DefKindBinding: lambda node: (node.name, node.kind_val),
+    ExprStmt: lambda node: (node.expr,),
+    ImportItem: lambda node: (node.names, node.interface_name, node.module_paths, node.interface_path),
+    ImportPhrase: lambda node: (node.items,),
+    InterfaceDecl: lambda node: (node.name, node.signatures, node.imports, node.is_unsound),
+    ModuleDecl: lambda node: (node.name, node.interface_name, node.bindings, node.imports, node.is_unsound),
+    Program: lambda node: (node.phrases,),
+}
+
+_REBUILD_AST: dict[type, Callable[[Any, tuple], Any]] = {
+    FormalParam: lambda node, values: FormalParam(
+        offset=node.offset, name=values[0], type_annot=values[1], mode=values[2],
+    ),
+    TypeFormal: lambda node, values: TypeFormal(offset=node.offset, name=values[0], bound=values[1]),
+    Quantifier: lambda node, values: Quantifier(
+        offset=node.offset, name=values[0], bound=values[1], mode=values[2], is_type=values[3],
+    ),
+    KindType: lambda node, values: KindType(offset=node.offset),
+    KindPower: lambda node, values: KindPower(offset=node.offset, bound=values[0]),
+    KindAll: lambda node, values: KindAll(
+        offset=node.offset, param_name=values[0], param_kind=values[1], body_kind=values[2],
+    ),
+    KindId: lambda node, values: KindId(offset=node.offset, name=values[0]),
+    KindManifest: lambda node, values: KindManifest(offset=node.offset, interface_name=values[0], kind_name=values[1]),
+    TypePath: lambda node, values: TypePath(offset=node.offset, path=values[0]),
+    TypeAll: lambda node, values: TypeAll(offset=node.offset, quantifiers=values[0], result_type=values[1]),
+    FieldSig: lambda node, values: FieldSig(offset=node.offset, name=values[0], type_sig=values[1], mode=values[2]),
+    TypeTuple: lambda node, values: TypeTuple(offset=node.offset, fields=values[0]),
+    RecordFieldSig: lambda node, values: RecordFieldSig(
+        offset=node.offset, name=values[0], type_sig=values[1], is_var=values[2],
+    ),
+    TypeRecord: lambda node, values: TypeRecord(offset=node.offset, fields=values[0]),
+    OptionFieldSig: lambda node, values: OptionFieldSig(offset=node.offset, tag=values[0], payload_sig=values[1]),
+    TypeOption: lambda node, values: TypeOption(offset=node.offset, variants=values[0]),
+    VariantFieldSig: lambda node, values: VariantFieldSig(
+        offset=node.offset, tag=values[0], type_sig=values[1], is_var=values[2],
+    ),
+    TypeVariant: lambda node, values: TypeVariant(offset=node.offset, fields=values[0]),
+    TypeAuto: lambda node, values: TypeAuto(
+        offset=node.offset, type_param=values[0], kind_bound=values[1], signature=values[2],
+    ),
+    TypeFun: lambda node, values: TypeFun(offset=node.offset, params=values[0], result_kind=values[1], body=values[2]),
+    TypeRec: lambda node, values: TypeRec(offset=node.offset, var_name=values[0], bound=values[1], body=values[2]),
+    TypeApp: lambda node, values: TypeApp(offset=node.offset, constructor=values[0], arguments=values[1]),
+    TypeInfix: lambda node, values: TypeInfix(offset=node.offset, left=values[0], op=values[1], right=values[2]),
+    TypeArray: lambda node, values: TypeArray(offset=node.offset, element_type=values[0]),
+    TypeVar: lambda node, values: TypeVar(offset=node.offset, element_type=values[0]),
+    TypeOut: lambda node, values: TypeOut(offset=node.offset, element_type=values[0]),
+    TypeManifest: lambda node, values: TypeManifest(offset=node.offset, module_name=values[0], type_name=values[1]),
+    TypeExternal: lambda node, values: TypeExternal(offset=node.offset, c_type=values[0]),
+    TypeArgument: lambda node, values: TypeArgument(offset=node.offset, type_val=values[0]),
+    KindArgument: lambda node, values: KindArgument(offset=node.offset, kind_val=values[0]),
+    ExprInt: lambda node, values: ExprInt(offset=node.offset, value=values[0], lexeme=values[1]),
+    ExprReal: lambda node, values: ExprReal(offset=node.offset, value=values[0], lexeme=values[1]),
+    ExprChar: lambda node, values: ExprChar(offset=node.offset, value=values[0], lexeme=values[1]),
+    ExprString: lambda node, values: ExprString(offset=node.offset, value=values[0], lexeme=values[1]),
+    ExprBool: lambda node, values: ExprBool(offset=node.offset, value=values[0]),
+    ExprOk: lambda node, values: ExprOk(offset=node.offset),
+    ExprId: lambda node, values: ExprId(offset=node.offset, name=values[0]),
+    ExprExternal: lambda node, values: ExprExternal(offset=node.offset, symbol=values[0]),
+    ExprBlock: lambda node, values: ExprBlock(offset=node.offset, bindings=values[0]),
+    ExprIf: lambda node, values: ExprIf(
+        offset=node.offset, cond=values[0], then_branch=values[1], elsifs=values[2], else_branch=values[3],
+        short_circuit=values[4],
+    ),
+    ExprWhile: lambda node, values: ExprWhile(offset=node.offset, cond=values[0], body=values[1]),
+    ExprLoop: lambda node, values: ExprLoop(offset=node.offset, body=values[0]),
+    ExprExit: lambda node, values: ExprExit(offset=node.offset),
+    ExprFor: lambda node, values: ExprFor(
+        offset=node.offset, var_name=values[0], start=values[1], is_downto=values[2], stop=values[3], body=values[4],
+    ),
+    ExprFun: lambda node, values: ExprFun(
+        offset=node.offset, params=values[0], return_type=values[1], body=values[2], type_params=values[3],
+    ),
+    ExprApp: lambda node, values: ExprApp(offset=node.offset, func=values[0], args=values[1]),
+    ExprInfix: lambda node, values: ExprInfix(offset=node.offset, left=values[0], op=values[1], right=values[2]),
+    TupleBinding: lambda node, values: TupleBinding(
+        offset=node.offset, name=values[0], value=values[1], type_annot=values[2], is_var=values[3],
+    ),
+    TupleBindingGroup: lambda node, values: TupleBindingGroup(offset=node.offset, bindings=values[0]),
+    ExprTuple: lambda node, values: ExprTuple(offset=node.offset, fields=values[0]),
+    RecordBinding: lambda node, values: RecordBinding(
+        offset=node.offset, name=values[0], value=values[1], is_var=values[2],
+    ),
+    ExprRecord: lambda node, values: ExprRecord(offset=node.offset, fields=values[0]),
+    ExprOption: lambda node, values: ExprOption(
+        offset=node.offset, tag=values[0], option_type=values[1], payload=values[2], ordinal_expr=values[3],
+    ),
+    ExprVariant: lambda node, values: ExprVariant(
+        offset=node.offset, tag=values[0], variant_type=values[1], is_var=values[2], payload=values[3],
+    ),
+    ExprArray: lambda node, values: ExprArray(offset=node.offset, elements=values[0], element_type=values[1]),
+    ExprArrayRep: lambda node, values: ExprArrayRep(offset=node.offset, count=values[0], init_val=values[1]),
+    ExprAuto: lambda node, values: ExprAuto(
+        offset=node.offset, witness_type=values[0], payload=values[1], witness_name=values[2], witness_bound=values[3],
+    ),
+    ExprSelect: lambda node, values: ExprSelect(offset=node.offset, target=values[0], field=values[1]),
+    ExprIndex: lambda node, values: ExprIndex(offset=node.offset, target=values[0], index=values[1]),
+    ExprIndexAssign: lambda node, values: ExprIndexAssign(
+        offset=node.offset, target=values[0], index=values[1], value=values[2],
+    ),
+    ExprVarCell: lambda node, values: ExprVarCell(offset=node.offset, value=values[0]),
+    ExprDerefCell: lambda node, values: ExprDerefCell(offset=node.offset, target=values[0]),
+    ExprVariantCheck: lambda node, values: ExprVariantCheck(offset=node.offset, target=values[0], tag=values[1]),
+    ExprVariantAssert: lambda node, values: ExprVariantAssert(offset=node.offset, target=values[0], tag=values[1]),
+    CaseBranch: lambda node, values: CaseBranch(
+        offset=node.offset, tags=values[0], binder=values[1], binder_type=values[2], body=values[3],
+    ),
+    ExprCase: lambda node, values: ExprCase(
+        offset=node.offset, target=values[0], branches=values[1], else_branch=values[2],
+    ),
+    InspectBranch: lambda node, values: InspectBranch(
+        offset=node.offset, match_type=values[0], binders=values[1], body=values[2],
+    ),
+    ExprInspect: lambda node, values: ExprInspect(
+        offset=node.offset, target=values[0], branches=values[1], else_branch=values[2],
+    ),
+    ExprException: lambda node, values: ExprException(offset=node.offset, name=values[0], type_annot=values[1]),
+    ExprRaise: lambda node, values: ExprRaise(offset=node.offset, exc=values[0], payload=values[1], as_type=values[2]),
+    TryBranch: lambda node, values: TryBranch(
+        offset=node.offset, exc_pattern=values[0], binder=values[1], binder_type=values[2], body=values[3],
+    ),
+    ExprTry: lambda node, values: ExprTry(
+        offset=node.offset, body=values[0], branches=values[1], else_branch=values[2],
+    ),
+    LetValueBinding: lambda node, values: LetValueBinding(
+        offset=node.offset, name=values[0], value=values[1], params=values[2], type_annot=values[3], is_rec=values[4],
+        is_var=values[5],
+    ),
+    LetValueBindingGroup: lambda node, values: LetValueBindingGroup(offset=node.offset, bindings=values[0]),
+    TypeBinding: lambda node, values: TypeBinding(
+        offset=node.offset, name=values[0], type_val=values[1], params=values[2], bound=values[3], is_rec=values[4],
+        is_def=values[5],
+    ),
+    TypeBindingGroup: lambda node, values: TypeBindingGroup(offset=node.offset, bindings=values[0]),
+    DefKindBinding: lambda node, values: DefKindBinding(offset=node.offset, name=values[0], kind_val=values[1]),
+    ExprStmt: lambda node, values: ExprStmt(offset=node.offset, expr=values[0]),
+    ImportItem: lambda node, values: ImportItem(
+        offset=node.offset, names=values[0], interface_name=values[1], module_paths=values[2], interface_path=values[3],
+    ),
+    ImportPhrase: lambda node, values: ImportPhrase(offset=node.offset, items=values[0]),
+    InterfaceDecl: lambda node, values: InterfaceDecl(
+        offset=node.offset, name=values[0], signatures=values[1], imports=values[2], is_unsound=values[3],
+    ),
+    ModuleDecl: lambda node, values: ModuleDecl(
+        offset=node.offset, name=values[0], interface_name=values[1], bindings=values[2], imports=values[3],
+        is_unsound=values[4],
+    ),
+    Program: lambda node, values: Program(offset=node.offset, phrases=values[0]),
+}

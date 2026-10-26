@@ -14,10 +14,15 @@ the variables being bound, so that the C printer fills in such captures once all
 
 from __future__ import annotations
 
-from dataclasses import fields
-
 from quest.ir import nodes as ir
-from quest.ir.walk import global_variables, statement_binders, statement_bodies, statement_uses, walk_statements
+from quest.ir.walk import (
+    global_variables,
+    replace_vars,
+    statement_binders,
+    statement_bodies,
+    statement_uses,
+    walk_statements,
+)
 from quest.types import OK_TYPE, QTypeVar
 
 
@@ -90,29 +95,7 @@ class _Converter:
 def _rename(body: ir.Body, renamed: dict[int, ir.Var]) -> None:
     """Replaces, in place, the uses in body of the variables renamed maps (none of which body binds)."""
     for s in walk_statements(body, into_functions=False):
-        _rename_fields(s, renamed)
-
-
-def _rename_fields(node, renamed: dict[int, ir.Var]) -> None:
-    for f in fields(node):
-        if f.name == "code":
-            continue
-        v = getattr(node, f.name)
-        new = _renamed(v, renamed)
-        if new is not v:
-            setattr(node, f.name, new)
-        elif f.name in ("value",) and not isinstance(v, (ir.Var, ir.Const)) and hasattr(v, "__dataclass_fields__"):
-            # A let's or do's operation
-            _rename_fields(v, renamed)
-
-
-def _renamed(v, renamed: dict[int, ir.Var]):
-    if isinstance(v, ir.Var):
-        return renamed.get(id(v), v)
-    if isinstance(v, tuple):
-        items = tuple(_renamed(x, renamed) for x in v)
-        return v if all(a is b for a, b in zip(items, v)) else items
-    return v
+        replace_vars(s, lambda v: renamed.get(id(v), v))
 
 
 def closure_convert_unit(unit: ir.Unit) -> ir.Unit:

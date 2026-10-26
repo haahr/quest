@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional, Sequence
 
-from quest.typechecker.typed_ast import TypedLetType, TypedRecord
 from quest.ir.represent import may_be_stored_as_subtype
 from quest.ir.shapes import Shape, shape
 from quest.ir.written import echo_children, fun_signature, quantified, tuple_type_components
@@ -35,13 +34,6 @@ from quest.codegen.layout import (
 from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types import (
     auto_payload_type,
-    QRecordField,
-    QRecGroupType,
-    QRecType,
-    short_type_name,
-    QParam,
-    QPowerKind,
-    QTypeApp,
     BOOL_TYPE,
     CHAR_TYPE,
     INT_TYPE,
@@ -53,14 +45,22 @@ from quest.types import (
     QExternalType,
     QFunType,
     QOptionType,
+    QParam,
+    QPowerKind,
     QQuantifier,
+    QRecGroupType,
+    QRecordField,
     QRecordType,
+    QRecType,
     QTupleType,
     QType,
+    QTypeApp,
     QTypeVar,
     QVariantType,
     REAL_TYPE,
+    short_type_name,
     STRING_TYPE,
+    type_fields,
 )
 
 
@@ -195,28 +195,6 @@ def collect_aggregate_types(
         visited_node_ids.add(n_id)
         if isinstance(n, QType):
             visit_type(n)
-        if isinstance(n, TypedLetType) and n.symbol.definition is not None:
-            if isinstance(n.symbol.definition, QRecordType):
-                ctx.register_alias(n.name, n.symbol.definition)
-        if isinstance(n, TypedRecord):
-            concrete_t = QRecordType(
-                fields=tuple(
-                    QRecordField(name=fld.name, type_val=fld.value.type_val, is_var=fld.is_var)
-                    for fld in n.fields
-                )
-            )
-            visit_type(concrete_t)
-        if hasattr(n, "type_val") and isinstance(getattr(n, "type_val"), QType):
-            visit_type(getattr(n, "type_val"))
-        if hasattr(n, "symbol"):
-            sym = getattr(n, "symbol")
-            if hasattr(sym, "type_val") and isinstance(getattr(sym, "type_val"), QType):
-                visit_type(getattr(sym, "type_val"))
-            if hasattr(sym, "definition") and isinstance(getattr(sym, "definition"), QType):
-                visit_type(getattr(sym, "definition"))
-        if hasattr(n, "definition") and isinstance(getattr(n, "definition"), QType):
-            visit_type(getattr(n, "definition"))
-
         if isinstance(n, (list, tuple)):
             for item in n:
                 visit_node(item)
@@ -226,9 +204,8 @@ def collect_aggregate_types(
         if isinstance(n, (QRecType, QRecGroupType)):
             return
 
-        if hasattr(n, "__dataclass_fields__"):
-            for field_name in n.__dataclass_fields__:
-                visit_node(getattr(n, field_name))
+        for part in type_fields(n) or ():
+            visit_node(part)
 
     visit_node(node)
     return result, variant_types, all_types
@@ -456,7 +433,7 @@ class CDeclarationEmitter:
                     visit(f.type_val)
             elif form.kind == "variant":
                 for v in dt.variants:
-                    visit(getattr(v, "type_val", None))
+                    visit(v.type_val)
             elif form.kind == "option":
                 for o in dt.options:
                     visit(o.payload_type)
@@ -765,7 +742,7 @@ class CDeclarationEmitter:
             lines.append(f"    .element_count = {c_int(n)},")
             lines.append("    .elements = {")
             for i, f in enumerate(val_fields):
-                name_str = f'"{f.name}"' if getattr(f, "name", None) is not None else "NULL"
+                name_str = c_string(f.name) if f.name is not None else "NULL"
                 is_var_str = "true" if f.is_var else "false"
                 lines.append(
                     f"        {{ .name = {name_str}, .type = {part_desc(form, c_int(i), f.type_val)}, "
@@ -781,7 +758,7 @@ class CDeclarationEmitter:
         for form in forms.get("variant", []) + forms.get("option", []):
             tag, qtype = form.tag, form.type
             cases = (
-                [(v.name, getattr(v, "type_val", None), getattr(v, "is_var", False)) for v in qtype.variants]
+                [(v.name, v.type_val, v.is_var) for v in qtype.variants]
                 if isinstance(qtype, QVariantType)
                 else [(o.name, o.payload_type, False) for o in qtype.options]
             )
