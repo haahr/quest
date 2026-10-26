@@ -43,7 +43,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 from quest.ir import nodes as ir
-from quest.ir.walk import contents, global_variables, view_map_of
+from quest.ir.walk import contents, global_variables, statement_binders, statement_bodies, view_map_of, walk_statements
+from quest.codegen.layout import is_boxed_in_slots, representation, resolved_shape, slot_representation
+from quest.ir.describe import free_type_vars
+from quest.ir.shapes import shape
+from quest.ir.written import fun_signature
 
 
 def ir_checks_enabled() -> bool:
@@ -132,9 +136,6 @@ class _Verifier:
 
     def option_cases(self, o, var: ir.Var, where: str) -> None:
         """Checks the cases an option operation counts ordinals in (ir.Ordinal, ir.MakeOption, ir.Payload)."""
-        from quest.codegen.layout import resolved_shape
-        from quest.ir.shapes import shape
-
         def option_shape(t):
             s = resolved_shape(shape(t)) if t is not None else None
             return s if s is not None and s.kind == "option" else None
@@ -323,11 +324,6 @@ def _representation_problems(unit: ir.Unit) -> list[str]:
     representation is its type's, or for a boxed value its slot representation (a boxed mutable variable reads its
     value, and is assigned its box); and the slots of aggregates (components being made or stored, locations, cells)
     take records and variants boxed."""
-    from quest.codegen.layout import is_boxed_in_slots, representation, resolved_shape, slot_representation
-    from quest.ir.written import fun_signature
-    from quest.ir.shapes import shape
-    from quest.ir.walk import statement_binders, walk_statements
-
     problems: list[str] = []
 
     def rep(t) -> Optional[str]:
@@ -451,11 +447,6 @@ class _DescriptorScope:
 def _descriptor_problems(unit: ir.Unit) -> list[str]:
     """The descriptor operands missing, unbound, or ill-formed after the describe pass, and the static descriptors and
     tables operations refer to that are not the unit's static data."""
-    from quest.codegen.layout import representation
-    from quest.ir.describe import free_type_vars
-    from quest.ir.shapes import shape
-    from quest.ir.walk import statement_bodies, walk_statements
-
     problems: list[str] = []
     data = unit.static_data
     if data is None:

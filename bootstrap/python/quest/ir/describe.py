@@ -43,7 +43,6 @@ from quest.ir.shapes import shape
 from quest.ir.walk import contents, statement_bodies
 from quest.ir.written import package_text
 from quest.types import (
-    auto_payload_type,
     QAbstractType,
     QAllKind,
     QPowerKind,
@@ -51,11 +50,14 @@ from quest.types import (
     QRecordType,
     QTupleType,
     QType,
+    QTypeApp,
     QTypeFun,
     QTypeKind,
     QTypeVar,
+    auto_payload_type,
     type_fields,
 )
+from quest.modules.abstract_types import module_abstract_types
 
 
 class UnsupportedDescriptor(Exception):
@@ -69,8 +71,6 @@ _BASE_VALUE_KINDS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char
 def echo_value_kind(t: QType) -> str:
     """How echo writes a value of type t without a descriptor, as the interpreter does (format_value_with_type):
     "Word", "fun", "hidden", or a base type's name; "" if it writes it by a descriptor of its type."""
-    from quest.types import QTypeApp
-
     s = shape(t)
     if s.kind == "word":
         return "Word"
@@ -422,8 +422,6 @@ class _Describer:
     def abstract_types(self, canon: str) -> tuple[tuple[str, int, ir.StaticDescriptor], ...]:
         """A module's abstract types, each registered with its representation (an operator's as a template whose
         holes are its parameters), for dynamic values (docs/dynamic.md §2.3)."""
-        from quest.modules.abstract_types import module_abstract_types
-
         found = []
         for entry in module_abstract_types(canon):
             rep = shape(entry.rep).type

@@ -24,12 +24,11 @@ from quest.types import (
     ReservedSymbolUse,
     type_fields,
 )
+from quest.modules.abstract_types import abstract_type_by_symbol
 
 
 def module_abstract_type_name(t: QType) -> Optional[str]:
     """The global name of a module's abstract type (docs/dynamic.md §2.3), or None for any other type."""
-    from quest.modules.abstract_types import abstract_type_by_symbol
-
     if not isinstance(t, QTypeVar):
         return None
     entry = abstract_type_by_symbol(t.symbol_id)

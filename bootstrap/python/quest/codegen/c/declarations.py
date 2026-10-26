@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional, Sequence
 
-from quest.ir.represent import may_be_stored_as_subtype
+from quest.ir.slots import may_be_stored_as_subtype
 from quest.ir.shapes import Shape, shape
 from quest.ir.written import echo_children, fun_signature, quantified, tuple_type_components
 from quest.codegen.syntax import c_int, c_int_literal, c_string, call, comma

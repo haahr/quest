@@ -48,6 +48,17 @@ from quest.ir.walk import statement_bodies, walk_statements
 from quest.types import QRecordField, QRecordType, QType, is_type_equal
 
 
+_VIEWED_KINDS = ("record", "variant", "option")
+
+
+def may_be_stored_as_subtype(s: Shape) -> bool:
+    """Whether a value of shape s may be laid out as a subtype's value, and so need converting when read at s's type
+    (records, variants, options, nonempty tuples, and functions)."""
+    if s.kind == "tuple":
+        return bool(s.components)
+    return s.kind in ("fun", "all") or resolved_shape(s).kind in _VIEWED_KINDS
+
+
 def _type_of(a: ir.Atom) -> QType:
     return a.type if isinstance(a, ir.Var) else a.shape.type
 
@@ -271,7 +282,7 @@ class _Slots:
                 field = next(f for f in fields if f.name == name)
                 own = own_view(shape(_type_of(r)))
                 if not field.is_var and (own or shape_representation(field.shape) == "QVal"
-                                         or _may_be_stored_as_subtype(field.shape)):
+                                         or may_be_stored_as_subtype(field.shape)):
                     # A subtype's payload may store it at another type, or a bounded type parameter's value (at its own
                     # view) at its type argument's type for it: read through the offset table (and the view map) and
                     # converted, as a value
@@ -371,12 +382,6 @@ class _Slots:
                     # A proxy is the object it views
                     o.access = ir.ORIGINAL
         return False
-
-
-def _may_be_stored_as_subtype(s: Shape) -> bool:
-    from quest.ir.represent import may_be_stored_as_subtype
-
-    return may_be_stored_as_subtype(s)
 
 
 def _runtime_offsets(o: ir.MakeRecord, var: Optional[ir.Var]) -> bool:

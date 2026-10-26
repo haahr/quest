@@ -57,6 +57,7 @@ from quest.types import (
     is_type_equal,
     pruned,
 )
+from quest.modules.abstract_types import is_abstract_type_symbol
 
 
 # ============================================================================
@@ -139,7 +140,6 @@ def held_at_bound(s: Shape) -> bool:
         return False
     if s.kind == "abstract":
         return True
-    from quest.modules.abstract_types import is_abstract_type_symbol
 
     return is_abstract_type_symbol(s.symbol_id)
 

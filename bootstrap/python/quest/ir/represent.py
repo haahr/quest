@@ -44,7 +44,7 @@ from quest.codegen.layout import (
 )
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
-from quest.ir.slots import decide_slots, tuple_access
+from quest.ir.slots import decide_slots, may_be_stored_as_subtype, tuple_access
 from quest.ir.walk import statement_bodies
 from quest.ir.written import array_element as written_element, fun_signature, quantified, written_structure
 from quest.types import (
@@ -84,14 +84,6 @@ def array_element(t: QType) -> QType:
     if element is None:
         raise UnsupportedConversion(f"an array operation on a value of type {t}")
     return element
-
-
-def may_be_stored_as_subtype(s: Shape) -> bool:
-    """Whether a value of shape s may be laid out as a subtype's value, and so need converting when read at s's type
-    (records, variants, options, nonempty tuples, and functions)."""
-    if s.kind == "tuple":
-        return bool(s.components)
-    return s.kind in ("fun", "all") or resolved_shape(s).kind in _VIEWED_KINDS
 
 
 def _bounded_view(s: Shape) -> bool:

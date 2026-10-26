@@ -34,11 +34,7 @@ from quest.interpreter.primitives import (
     real_arithmetic,
     real_relational,
 )
-from quest.interpreter.treewalk import (
-    RuntimeEnvironment,
-    note_frames,
-    run_closure,
-)
+from quest.interpreter.treewalk import RuntimeEnvironment, load_module_for_interpreter, note_frames, run_closure
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,
@@ -79,6 +75,8 @@ from quest.types import (
     is_subtype,
     is_type_equal,
 )
+from quest.codegen.descriptors import hole_var
+from quest.interpreter.builtins import resolve_external_symbol
 
 _INT_ARITHMETIC = ("+", "-", "*", "/", "mod", "%")
 _INT_RELATIONAL = ("<", "<=", ">", ">=")
@@ -250,8 +248,6 @@ class Interpreter:
             raise IRInterpreterError(f"a top level ends with {signal[0]}")
 
     def import_module(self, imp: ir.Import) -> None:
-        from quest.interpreter.treewalk import load_module_for_interpreter
-
         # Run once per program, and kept in its unit (as the source interpreter's imports are)
         value = load_module_for_interpreter(imp.module_path, imp.interface_path, self.renv, imp.canonical_path)
         if value is None:
@@ -385,12 +381,8 @@ class Interpreter:
                 # A change of representation, which values here do not have
                 return self.atom(v, frame)
             case ir.External(symbol=symbol):
-                from quest.interpreter.builtins import resolve_external_symbol
-
                 return resolve_external_symbol(symbol)
             case ir.CallExternal(symbol=symbol, args=args):
-                from quest.interpreter.builtins import resolve_external_symbol
-
                 ext = resolve_external_symbol(symbol)
                 values = self.atoms(args, frame)
                 return ext.fn(*values) if isinstance(ext, QBuiltinFun) else ext
@@ -493,7 +485,6 @@ class Interpreter:
             return t
         if isinstance(d, ir.StaticDescriptor):
             return frame.resolve(d.type)
-        from quest.codegen.descriptors import hole_var
 
         args = {hole_var(i, None).symbol_id: self.described(a, frame) for i, a in enumerate(d.args)}
         return frame.resolve(d.template).substitute(args)
