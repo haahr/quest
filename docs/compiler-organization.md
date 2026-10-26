@@ -335,8 +335,9 @@ components of records, options, imports, and branches, and postfix operators). A
 non-silent results as an `Array(engine.Val)`, with an `engine.Ctx` that gives the span the rule matched and the
 diagnostic bag.
 
-The AST cannot hold some things the bootstrap parses and its later phases reject: an import, an interface, or a module
-below the top level, and declarations in an Auto type, are fatal errors of the parser.
+The AST cannot hold some things the bootstrap parses and its later phases reject: an interface or a module below the
+top level, and declarations in an Auto type, are fatal errors of the parser. An import below the top level is a
+declaration (`declImport`), which the type checker rejects, as the bootstrap's does.
 
 ### 4.2. Packrat Memoization & Syntax Target Identification
 A grammar numbers its syntax targets as it makes them, and the parser's memo is an array with an entry for each target
@@ -386,11 +387,11 @@ Porting proceeds through five self-contained milestones:
   for types, declarations, expressions, operators, and modules (verified against the bootstrap parser by the
   `parser_*` golden tests; see [testing.md](testing.md)).
 
-### Milestone 2: Types & Type Checking (`types`, `typechecker`, `modules` from source) — done but one open question
+### Milestone 2: Types & Type Checking (`types`, `typechecker`, `modules` from source) — done
 The plan is [milestone-2.md](milestone-2.md): `syntax/desugar`, the semantic types, the type checker (reporting every
 error it can), the module system's loading and elaboration of units from source, and a driver for the front end's
-phases, compiled, which passes the bootstrap's tokenize, parse, and typecheck goldens and error tests (all but one,
-an open question of the plan's Step 5). The self-hosted suite (`run_tests.py --self-hosted`) verifies it, with the
+phases, compiled, which passes the bootstrap's tokenize, parse, and typecheck goldens and error tests. The
+self-hosted suite (`run_tests.py --self-hosted`) verifies it, with the
 generated tests of the types (`types_*`) and of elaboration (`elaborate_*`), and tests of several errors
 (`tests/self-hosted/errors`); see [testing.md](testing.md).
 

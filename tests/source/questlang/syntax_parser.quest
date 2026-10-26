@@ -82,13 +82,15 @@ let phraseSpans(p: ast.Program): String =
 show(:ast.Program "let x = 1; import m : M; let y = x" parser.parseProgram phraseSpans);
 show(:ast.Program "" parser.parseProgram phraseSpans);
 
+(* An import below the top level is a declaration, which the type checker rejects *)
+show(:ast.Program "let x = begin import conv : Conv 1 end" parser.parseProgram astprint.dump);
+show(:ast.Program "module m : M export import a : A end" parser.parseProgram astprint.dump);
+
 (* =========================================================================
- * 3. Errors only the self-hosted parser reports: phrases the AST holds only at the top level, and an Auto type's
+ * 3. Errors only the self-hosted parser reports: interfaces and modules below the top level, and an Auto type's
  *    declarations
  * ========================================================================= *)
 
-show(:ast.Program "let x = begin import conv : Conv 1 end" parser.parseProgram astprint.dump);
 show(:ast.Program "let t = tuple interface I export end end" parser.parseProgram astprint.dump);
 show(:ast.Program "let y = f(module m : M export end)" parser.parseProgram astprint.dump);
-show(:ast.Program "module m : M export import a : A end" parser.parseProgram astprint.dump);
 show(:ast.Program "Let A = Auto X::TYPE with Def Y = X y: Y end" parser.parseProgram astprint.dump);

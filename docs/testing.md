@@ -208,7 +208,8 @@ self-hosted parser (`questlang/syntax/parser`) and prints its AST with `astprint
 error, and its golden holds what the bootstrap's parser and `ast_dump` (with every node's offset) give. `forms.quest` uses every rule of the grammar;
 `errors.quest` holds syntax errors, whose messages and positions must be the bootstrap's. Regenerate them with
 `python tests/parser/generate.py` after changing an input. `syntax_parser.quest` tests what only the self-hosted
-parser has (its entry points, its nodes' extents, and the phrases its AST holds only at the top level), and
+parser has (its entry points, its nodes' extents, imports below the top level, and the phrases its AST holds only
+at the top level), and
 `syntax_parser_engine.quest` tests the engine with a small grammar.
 
 **Self-hosted type system:** `tests/types/generate.py` builds types and kinds with the bootstrap's model and applies

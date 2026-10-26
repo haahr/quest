@@ -120,6 +120,20 @@ export
         typeAnnot: maybe.T(TypeExpr)
     end
 
+    (* An import, which a program holds at its top level, and which the bootstrap's parser also accepts as a
+     * declaration anywhere else (a block, a tuple, an argument, a module body), for its type checker to reject *)
+    Let ImportItem = Tuple
+        offset: Int
+        names: vector.T(String)
+        interfaceName: String
+        modulePaths: maybe.T(vector.T(String))
+        interfacePath: maybe.T(String)
+    end
+
+    Let ImportPhrase = Tuple
+        items: vector.T(ImportItem)
+    end
+
     (* =========================================================================
      * 4. Level 0: Expressions and Declarations (ExprForm)
      *
@@ -277,6 +291,8 @@ export
         declTypeBindingGroup with bindings: vector.T(Node(ExprForm)) end
         declDefKind with name: String kindVal: KindExpr end
         declExprStmt with expr: Node(ExprForm) end
+        (* An import other than at the top level *)
+        declImport with phrase: ImportPhrase end
     end
 
     (* Expr and Decl share one representation. Body fields (thenBranch, elseBranch, loop and
@@ -292,18 +308,6 @@ export
     Let CaseBranch = CaseBranchOf(Expr)
     Let InspectBranch = InspectBranchOf(Expr)
     Let TryBranch = TryBranchOf(Expr)
-
-    Let ImportItem = Tuple
-        offset: Int
-        names: vector.T(String)
-        interfaceName: String
-        modulePaths: maybe.T(vector.T(String))
-        interfacePath: maybe.T(String)
-    end
-
-    Let ImportPhrase = Tuple
-        items: vector.T(ImportItem)
-    end
 
     Let InterfaceDecl = Tuple
         name: String

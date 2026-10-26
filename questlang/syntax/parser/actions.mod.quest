@@ -82,17 +82,22 @@ export
 
     let phraseName(p: ast.Phrase): String =
         case p.form
-            when phraseImport then "An import"
             when phraseInterface then "An interface"
             when phraseModule then "A module"
             else "This phrase"
         end
 
-    (* A phrase other than at the top level: a declaration or an expression statement, as the AST holds it *)
+    (* A phrase other than at the top level: a declaration (an import is one) or an expression statement, as the AST
+     * holds it *)
     let decl(ctx: Ctx v: Val): ast.Expr =
         case v
             when expr with x then x.val
-            when phrase with x then reject(:ast.Expr ctx x.val.span phraseName(x.val) <> " is allowed only at the top level")
+            when phrase with x then
+                case x.val.form
+                    when phraseImport with i then
+                        ast.makeDecl(x.val.span option declImport of ExprForm with let phrase = i.phrase end)
+                    else reject(:ast.Expr ctx x.val.span phraseName(x.val) <> " is allowed only at the top level")
+                end
             else wrong(:ast.Expr "a phrase")
         end
     let decls(ctx: Ctx v: Val): vector.T(ast.Expr) = each(:ast.Expr optItems(v) fun(b: Val): ast.Expr decl(ctx b))

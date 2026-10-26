@@ -188,6 +188,14 @@ export
      * 3. Expressions and Declarations
      * ========================================================================= *)
 
+    let importItem(i: ast.ImportItem): S =
+        at(i.offset node("ImportItem" array of
+            f("names" strs(i.names)) f("interface_name" str(i.interfaceName))
+            f("module_paths" optional(:vector.T(String) i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
+        end))
+
+    let importPhrase(p: ast.ImportPhrase): S = node("ImportPhrase" array of f("items" each(:ast.ImportItem p.items importItem)) end)
+
     let rec ex(e: ast.Expr): S = at(e.span.startOffset exForm(e))
     and exForm(e: ast.Expr): S =
         case e.form
@@ -301,6 +309,7 @@ export
             when declDefKind with x then
                 node("DefKindBinding" array of f("name" str(x.name)) f("kind_val" ty(x.kindVal)) end)
             when declExprStmt with x then node("ExprStmt" array of f("expr" ex(x.expr)) end)
+            when declImport with x then importPhrase(x.phrase)
         end
     and optEx(m: maybe.T(ast.Expr)): S = optional(:ast.Expr m ex)
     (* Python holds an elsif as a plain (cond, then) tuple *)
@@ -343,16 +352,9 @@ export
      * 4. Phrases and Programs
      * ========================================================================= *)
 
-    let importItem(i: ast.ImportItem): S =
-        at(i.offset node("ImportItem" array of
-            f("names" strs(i.names)) f("interface_name" str(i.interfaceName))
-            f("module_paths" optional(:vector.T(String) i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
-        end))
-
     let phrase(p: ast.Phrase): S =
         at(p.span.startOffset case p.form
-            when phraseImport with x then
-                node("ImportPhrase" array of f("items" each(:ast.ImportItem x.phrase.items importItem)) end)
+            when phraseImport with x then importPhrase(x.phrase)
             when phraseInterface with x then
                 node("InterfaceDecl" array of
                     f("name" str(x.iface.name)) f("signatures" each(:ast.Signature x.iface.signatures signature))

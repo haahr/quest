@@ -42,8 +42,40 @@ f(1) + x.y => 0-10 (0-4 (0-1 of 1 args) + 7-10 (7-8 .y))
 begin 1 2 end => 0-13 (block of 2)
 let x = 1; import m : M; let y = x => 0-34 0-9 11-23 25-34
  => 0-0
-let x = begin import conv : Conv 1 end => error at 14-32: An import is allowed only at the top level
+let x = begin import conv : Conv 1 end => (Program
+  :phrases (
+    (LetValueBinding
+      :name 'x'
+      :value (ExprBlock
+        :bindings (
+          (ImportPhrase
+            :items (
+              (ImportItem ('conv') 'Conv')
+            )
+          )
+          (ExprStmt
+            :expr (ExprInt 1 '1')
+          )
+        )
+      )
+    )
+  )
+)
+module m : M export import a : A end => (Program
+  :phrases (
+    (ModuleDecl
+      :name 'm'
+      :interface_name 'M'
+      :bindings (
+        (ImportPhrase
+          :items (
+            (ImportItem ('a') 'A')
+          )
+        )
+      )
+    )
+  )
+)
 let t = tuple interface I export end end => error at 14-36: An interface is allowed only at the top level
 let y = f(module m : M export end) => error at 10-33: A module is allowed only at the top level
-module m : M export import a : A end => error at 20-32: An import is allowed only at the top level
 Let A = Auto X::TYPE with Def Y = X y: Y end => error at 26-35: An Auto type has only values

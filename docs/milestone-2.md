@@ -227,9 +227,12 @@ tests the driver failed: those of imports, interfaces, modules, and the standard
 `symbols.poison`), or to its declared type, from its annotations. Every typecheck error test the driver can run passes
 with one error.
 
-Open question: `errors/typecheck:aggregates/tuple_unsupported_component_checked` expects the bootstrap's type error
-for an import inside a tuple, which the self-hosted parser rejects as a syntax error (the self-hosted AST holds
-imports, interfaces, and modules only at the top level, Milestone 1). It stays pending until that is decided.
+`errors/typecheck:aggregates/tuple_unsupported_component_checked` expects the bootstrap's type error for an import
+inside a tuple, which the self-hosted parser rejected as a syntax error: Milestone 1's AST held imports, interfaces,
+and modules only at the top level. The AST now holds an import anywhere a declaration goes (`declImport`), as the
+bootstrap's does, and the checker rejects it there: in a tuple with the bootstrap's message, and in a block, a module
+body, or an argument with its message less the bootstrap's dump of the node (`Unsupported binding`, `Unsupported AST
+expression`). An interface or a module below the top level is still a syntax error.
 
 ### Step 6: Modules from source (done)
 
@@ -237,7 +240,7 @@ Port `modules/paths`, `units`, `graph` (resolution and the unit graph, without a
 `loader` (from source only), `elaboration`, and `stdlib`. The remaining typecheck goldens, which import the standard
 library or the test's own modules, leave the pending list.
 
-Every typecheck golden and error test passes, and the pending list holds only Step 5's open question. Where the two
+Every typecheck golden and error test passes, and the pending list is empty. Where the two
 compilers differ:
 - **Paths** are strings, made absolute and normalized lexically, without following symbolic links. The project
   directory, which the bootstrap knows as its own source tree, is `QUEST_HOME`, which the runners set (the driver runs
@@ -279,9 +282,8 @@ be one of the test's inline expectations, and every expectation must be reported
 Empty the pending list; update compiler-organization.md (§2's "so far", §6) and testing.md; record the divergences
 (as §2 and the representations make them) in this document; remove the scratch tooling.
 
-Done but the pending list: it holds Step 5's open question, an import inside a tuple, which needs a decision (the
-self-hosted AST holding imports, interfaces, and modules below the top level, or the test changing). The divergences
-are recorded in Steps 4 to 7; the scratch tooling was never in the repository.
+Done: the pending list is empty, once the AST held imports below the top level (Step 5). The divergences are
+recorded in Steps 4 to 7; the scratch tooling was never in the repository.
 
 ---
 
