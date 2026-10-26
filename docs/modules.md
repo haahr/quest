@@ -128,7 +128,7 @@ export
     new(init: Int): T
     inc(c: T): T
     get(c: T): Int
-end;
+end
 ```
 
 Interfaces can also import other interfaces using a leading `import` clause with hierarchical paths:
@@ -137,7 +137,7 @@ interface ExtendedCounter
 import :util/Counter
 export
     reset(c: Counter.T): Counter.T
-end;
+end
 ```
 
 ### 4.2. Module Definitions (`.mod.quest`)
@@ -151,7 +151,7 @@ export
     let new(init: Int): T = init
     let inc(c: T): T = c + 1
     let get(c: T): Int = c
-end;
+end
 ```
 
 Modules can declare internal imports before their export block:
@@ -161,7 +161,7 @@ module app : App
 import util/counter: util/Counter
 export
     let run(): Int = counter.get(counter.inc(counter.new(10)))
-end;
+end
 ```
 
 ### 4.3. Top-Level Imports & Hierarchical Aliasing (`main.quest`)
@@ -169,14 +169,14 @@ Client programs import interfaces and modules using the two-tier `import` syntax
 
 - **Flat Imports (Backward-Compatible):**
   ```quest
-  import counter: Counter;
-  import :Counter;
+  import counter: Counter
+  import :Counter
   ```
 
 - **Hierarchical Path Imports:**
   ```quest
-  import util/counter: util/Counter;
-  import :util/Counter;
+  import util/counter: util/Counter
+  import :util/Counter
   ```
   When imported without aliases, the bound local names default to the final component (e.g. `counter` and `Counter`).
 
@@ -185,27 +185,27 @@ Client programs import interfaces and modules using the two-tier `import` syntax
   signature-based aliasing for both modules and interfaces:
   - **Both Module and Interface Aliased:**
     ```quest
-    import cnt : Cnt = util/counter : util/Counter;
+    import cnt : Cnt = util/counter : util/Counter
     ```
     Binds module value `cnt` and interface types/kinds `Cnt` (e.g. `Cnt_T`).
   - **Module Aliased Only:**
     ```quest
-    import cnt = util/counter : util/Counter;
+    import cnt = util/counter : util/Counter
     ```
     Binds module value `cnt` and interface types `Counter` (e.g. `Counter_T`).
   - **Interface Aliased with Module:**
     ```quest
-    import :Cnt = util/counter : util/Counter;
+    import :Cnt = util/counter : util/Counter
     ```
     Binds default module value `counter` and aliased interface types `Cnt` (e.g. `Cnt_T`).
   - **Standalone Interface Aliased:**
     ```quest
-    import :Cnt = :util/Counter;
+    import :Cnt = :util/Counter
     ```
     Binds aliased interface types `Cnt` into scope without instantiating any module.
   - **Multiple Modules for One Interface:**
     ```quest
-    import c1 = util/counter1, c2 = util/counter2 : util/Counter;
+    import c1 = util/counter1, c2 = util/counter2 : util/Counter
     ```
 
 In all contexts, `/` in expressions (e.g. `10 / 2`) remains the standard division operator without syntactic ambiguity.
@@ -322,7 +322,7 @@ The IR and C backend optimize module member calls while preserving Cardelli's fi
      (`m.f(...)`) emits a direct call to the module's exported C wrapper function `qv_<clean>_<member>(...)`
      (`ir.ImportCall`).
 2. **First-Class Concrete Value Records:**
-   - When a module is used as a first-class value (e.g. `let r = m;` or passed to a function expecting the interface
+   - When a module is used as a first-class value (e.g. `let r = m` or passed to a function expecting the interface
      record type) or when accessing a non-function value field (`m.x`), code accesses `qm_<clean>`.
    - During `qv_mod_<clean>_init()`, every exported function (including functions bound via `external`) is wrapped in a
      `QClosure` at the interface's representation and stored alongside exported non-function values in `qm_<clean>`.
@@ -336,7 +336,7 @@ export
     Handle::TYPE
     stdout: Handle
     writeHello(h: Handle): Ok
-end;
+end
 
 (* fileio.mod.quest *)
 module fileio : FileIO
@@ -346,7 +346,7 @@ export
     let stdout: Handle = external "quest_writer_output"
     let writeHello(h: Handle): Ok =
         writer.putString(h "Hello Native!\n")
-end;
+end
 ```
 Inside `fileio`, `writeHello` is a pure Quest function that calls into `writer`, while `Handle` and `stdout` bind
 directly to C runtime types and symbols.
@@ -381,7 +381,7 @@ Compiling an interface (`quest -c counter.int.quest`) generates two artifacts:
          dir: String
          path: String
          source: String
-     end;
+     end
 
      Let InterfaceTypeDecl = Record
          group: Int
@@ -389,13 +389,13 @@ Compiling an interface (`quest -c counter.int.quest`) generates two artifacts:
          kind: String
          manifestType: String
          name: String
-     end;
+     end
 
      Let InterfaceValueDecl = Record
          isPoly: Bool
          name: String
          typeSig: String
-     end;
+     end
 
      Let InterfaceDesc = Record
          abi: Int
@@ -406,7 +406,7 @@ Compiling an interface (`quest -c counter.int.quest`) generates two artifacts:
          source: String
          types: Array(InterfaceTypeDecl)
          values: Array(InterfaceValueDecl)
-     end;
+     end
      ```
    - A manifest type's `manifestType` is its definition in Quest type syntax. The members of a mutually recursive
      group (`Def Rec A = ... and B = ...`) are consecutive declarations sharing a nonzero `group` number (0 for any
@@ -440,7 +440,7 @@ Compiling a module implementation (`quest -c counter.mod.quest`) produces three 
      dependencies for incremental build checking and transitive linking ([build-process.md §4](build-process.md)).
 
 ### 9.3. Client Compilation, Self-Contained `extern` Declarations, and Why There Are No `.mod.h` Files
-When a client compilation unit (another `.mod.quest` or a main `.quest` program) imports a module via `import m : I;`:
+When a client compilation unit (another `.mod.quest` or a main `.quest` program) imports a module via `import m : I`:
 1. **Interface-Only Compile-Time Dependency:**
    - Typechecking and C code generation for the importing unit depend **only** on the interface `I` (`.qi` /
      `.int.quest`) and never on `m.mod.quest` having been compiled—or even existing yet.
@@ -450,7 +450,7 @@ When a client compilation unit (another `.mod.quest` or a main `.quest` program)
      recompilations of its importers.
    - Conversely, the interface header `<iface>.int.h` cannot hardcode `extern` declarations for a specific module
      because an interface does not know which modules implement it (and a program may import multiple modules
-     implementing the same interface, e.g. `import m1, m2 : I;`).
+     implementing the same interface, e.g. `import m1, m2 : I`).
 2. **Self-Contained `extern` Declarations Derived from `(module_name, interface)`:**
    - Because a module's exported C ABI is completely determined by its mangled canonical name `<clean>` and the
      imported interface `I`'s `Scope`, the client `.c` file (`CPrinter.import_declarations` in `codegen/c/printer.py`)

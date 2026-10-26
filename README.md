@@ -128,9 +128,9 @@ While this implementation strives for high fidelity to Luca Cardelli's
 3. **Hierarchical Module Namespaces & Signature Aliasing:**
    Cardelli's module system placed all interfaces and modules in a single flat namespace, with "systems of modules"
    (§7.3) remaining an underspecified concept. This implementation of Quest introduces hierarchical module namespaces
-   with forward slashes (`/`) mapping directly to filesystem directory trees (e.g. `import util/random : util/Random;`),
-   along with two-tier local signature aliasing (`import rnd : Rnd = util/random : util/Random;` and
-   `import :Rnd = :util/Random;`).
+   with forward slashes (`/`) mapping directly to filesystem directory trees (e.g. `import util/random : util/Random`),
+   along with two-tier local signature aliasing (`import rnd : Rnd = util/random : util/Random` and
+   `import :Rnd = :util/Random`).
 
 4. **Optional Semicolons:**
    The paper ends every top-level phrase with `;`. This implementation accepts a semicolon only there too, but does

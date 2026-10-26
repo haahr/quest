@@ -292,7 +292,7 @@ directory. The same holds for error tests in `tests/errors/`.
 
 ```quest
 (* tests/source/modules/import_from_test_directory.quest, beside counter.int.quest and counter.mod.quest *)
-import counter: Counter;
+import counter: Counter
 counter.get(counter.inc(counter.new(10)))
 ```
 
@@ -355,13 +355,13 @@ expectations apply to every test that imports it, so a unit with an error should
 #### Examples
 ```quest
 (* tests/errors/typecheck/non_contractive_rec.quest *)
-Let Rec Bad::TYPE = Bad; (* ERROR: not contractive *)
+Let Rec Bad::TYPE = Bad (* ERROR: not contractive *)
 
 (* tests/errors/typecheck/type_mismatch.quest *)
-let x: Int = "hello"; (* ERROR: type mismatch.*expected 'Int' *)
+let x: Int = "hello" (* ERROR: type mismatch.*expected 'Int' *)
 
 (* tests/errors/typecheck/warnings.quest *)
-let unused = 42; (* WARNING: unused variable 'unused' *)
+let unused = 42 (* WARNING: unused variable 'unused' *)
 ```
 
 ### 3.4. Precursor Phase Validation

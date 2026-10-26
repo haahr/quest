@@ -95,9 +95,9 @@ by a jump in tail position, do not exist at run time; recovering them would need
 every call, against §1's third goal) or reading the C compiler's debug information for inlined code. For
 
 ```quest
-let a = 1;
-let e = exception E end;
-let f(n: Int): Int = raise E end;
+let a = 1
+let e = exception E end
+let f(n: Int): Int = raise E end
 f(a)
 ```
 

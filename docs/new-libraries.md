@@ -16,11 +16,11 @@ Hierarchical libraries are organized by domain under `lib/<category>/`:
 - Filenames are strictly lowercase (e.g. `opt.int.quest`, `stringbuilder.mod.quest`, `strutil.mod.quest`).
 - Import syntax:
   ```quest
-  import category/module : category/Interface;
+  import category/module : category/Interface
   ```
   or aliased:
   ```quest
-  import m = category/module : category/Interface;
+  import m = category/module : category/Interface
   ```
 - Compiled artifacts (`.qi`, `.int.h`, `.mod.c`, `.o`) are placed mirror-wise under `.build/<category>/` or alongside source.
 - Type functors follow Cardelli's convention: `Vector.T(A)`, `Opt.T(A)`, `StringBuilder.T`.
@@ -60,7 +60,7 @@ interface Maybe export
 
     (* Construct a none option value *)
     none: All(A::TYPE) T(A)
-end;
+end
 ```
 
 ---
@@ -98,7 +98,7 @@ export
     end
 
     new(): T
-end;
+end
 ```
 
 ---
@@ -162,7 +162,7 @@ export
     tryToReal(s: String): maybe.T(Real)
     toBool(s: String): Bool
     tryToBool(s: String): maybe.T(Bool)
-end;
+end
 ```
 
 ---
@@ -206,7 +206,7 @@ export
     normalize(path: String): String
     relativeTo(path: String base: String): String
     resolve(path: String): String
-end;
+end
 ```
 
 ---
@@ -265,7 +265,7 @@ export
     getMulti(r: Results name: String): vector.T(String)
     positionals(r: Results): vector.T(String)
     targetArgs(r: Results): vector.T(String)
-end;
+end
 ```
 
 ---
@@ -300,7 +300,7 @@ export
     char(c: Char): word.T
     word(w: word.T): word.T
     string(s: String): word.T
-end;
+end
 ```
 
 ---
@@ -371,7 +371,7 @@ interface Vector export
 
     (* Iterate over all elements of a vector *)
     forEach: All(A::TYPE) All(v: T(A) action: All(elem: A) Ok) Ok
-end;
+end
 ```
 
 #### Memory and Growth Strategy
@@ -486,7 +486,7 @@ export
     filterMap: All(K::TYPE V::TYPE W::TYPE)
         All(m: T(K V) f: All(k: K v: V) maybe.T(W))
         T(K W)
-end;
+end
 ```
 
 ---
@@ -595,5 +595,5 @@ export
             hash: All(b: B) word.T
             f: All(elem: A) maybe.T(B))
         T(B)
-end;
+end
 ```

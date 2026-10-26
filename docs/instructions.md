@@ -55,7 +55,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   rerun). A test that passes either way tests nothing.
 - **Make sure a probe exercises what you think it does.** For example, direct calls of polymorphic functions with
   record or variant type arguments are *specialized* in C, so they never reach the generic code; call through a
-  first-class polymorphic value (`let f: All(A::TYPE x: A) A = g;`) to test generic paths.
+  first-class polymorphic value (`let f: All(A::TYPE x: A) A = g`) to test generic paths.
 - **Fix the class, not the instance.** When a bug comes from a pattern (a structural test on an unreduced type, a
   lookup by name), search for its other occurrences and fix or record them.
 - **Prefer root-cause fixes.** If a workaround is the right step for now, say so in a comment and in a task.

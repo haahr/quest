@@ -125,7 +125,7 @@ record holding a common `span` and a category-specific syntactic form:
 Let Node(Form::TYPE) = Record
     span: location.Span,
     form: Form
-end;
+end
 ```
 
 #### Trade-off Analysis: Parameterized `Node(Form)` vs. Flat Variants
@@ -165,9 +165,9 @@ Let ExprForm = Option
     caseExpr with target: Expr arms: vector.T(CaseArm) elseArm: maybe.T(Expr) end,
     seq with statements: vector.T(Expr) end,
     assign with target: Expr val: Expr end
-end;
+end
 
-Let Expr = Node(ExprForm);
+Let Expr = Node(ExprForm)
 ```
 
 ### 3.3. Type Expression Nodes (`questlang/syntax/ast/type`)
@@ -180,9 +180,9 @@ Let TypeExprForm = Option
     variantType with tags: vector.T(VariantSig) end,
     optionType with tags: vector.T(OptionSig) end,
     appType with target: TypeExpr arg: TypeExpr end
-end;
+end
 
-Let TypeExpr = Node(TypeExprForm);
+Let TypeExpr = Node(TypeExprForm)
 ```
 
 ### 3.4. Declaration Nodes (`questlang/syntax/ast/decl`)
@@ -193,9 +193,9 @@ Let DeclForm = Option
     letType with name: String kindAnn: maybe.T(KindExpr) defType: TypeExpr end,
     valSig with name: String typeExpr: TypeExpr end,
     typeSig with name: String kindExpr: KindExpr end
-end;
+end
 
-Let Decl = Node(DeclForm);
+Let Decl = Node(DeclForm)
 ```
 
 ---
@@ -224,7 +224,7 @@ Let SemanticVal = Option
     phrase with val: ast/phrase.Phrase end,
     list with val: vector.T(SemanticVal) end,
     opt with val: maybe.T(SemanticVal) end
-end;
+end
 ```
 This provides complete static type safety, avoids runtime boxing/unboxing overhead, and allows clean pattern matching
 in semantic actions.

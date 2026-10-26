@@ -175,10 +175,10 @@ Example:
 ```quest
 >>  let a = 10
 ==  let a:Int = 10
->>  let a = 99; let b: Int = "type error"
-<repl>:1:26: error: Type mismatch: synthesized type 'String' is not a subtype of expected type 'Int'
-    let a = 99; let b: Int = "type error"
-                             ^
+>>  let a = 99 let b: Int = "type error"
+<repl>:1:25: error: Type mismatch: synthesized type 'String' is not a subtype of expected type 'Int'
+    let a = 99 let b: Int = "type error"
+                            ^
 >>  a
 ==  10 : Int
 ```

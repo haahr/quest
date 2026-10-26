@@ -530,7 +530,7 @@ or the type checker loaded.
 
 When source code imports a module `M`:
 ```quest
-import util/path : util/Path;
+import util/path : util/Path
 ```
 
 The compiler strictly separates interface binding from implementation scheduling:
@@ -547,7 +547,7 @@ The compiler strictly separates interface binding from implementation scheduling
 In accordance with Luca Cardelli's *Typeful Programming* principles, Quest modules and interfaces adhere to strict
 module isolation:
 - Every imported interface and module used within a `.mod.quest` or `.int.quest` file **must be explicitly declared**
-  in the file's header import clauses (`import m = mod : Mod;`).
+  in the file's header import clauses (`import m = mod : Mod`).
 - Modules and interfaces never receive implicit or ambient module imports. All external dependencies must be
   explicitly stated, ensuring self-contained and auditable compilation units.
 

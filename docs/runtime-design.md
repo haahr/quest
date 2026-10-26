@@ -133,10 +133,10 @@ subtyping. But what about **depth subtyping** when an aggregate's component chan
 
 Consider:
 ```quest
-Let SubRec = Record x: Int y: Int end;
-Let SupRec = Record x: Int end;
-let tSub: Tuple var r: SubRec end = tuple let var r = record x = 1 y = 2 end end;
-let tSup: Tuple r: SupRec end = tSub;   (* depth + mutability forgetting upcast *)
+Let SubRec = Record x: Int y: Int end
+Let SupRec = Record x: Int end
+let tSub: Tuple var r: SubRec end = tuple let var r = record x = 1 y = 2 end end
+let tSup: Tuple r: SupRec end = tSub   (* depth + mutability forgetting upcast *)
 ```
 Here `tSub._0` holds a `QRecordVal *` whose `.dict` is the 2-field dictionary for `SubRec`, whereas code reading
 `tSup._0` expects a `QRecordVal *` whose `.dict` is the 1-field dictionary for `SupRec`. Even more importantly:

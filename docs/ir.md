@@ -62,7 +62,7 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
   (§8.1), and, after closure conversion, every lifted local function. Each has a symbol; module members also carry
   their module's symbol and export name.
 - **Globals:** top-level values and module-level `var` state, each a symbol with a type. Top-level rebindings
-  (`let x = 1; ... let x = 2`) are distinct symbols, so distinct globals.
+  (`let x = 1 ... let x = 2`) are distinct symbols, so distinct globals.
 - **Module records:** a module's exported record, its layout, and its lazy initializer function
   ([c-representation.md](c-representation.md) §5.6). The initializer ends by making the record, a record literal of
   the module's members (`record m_record` after the module's members, `ir.Module.record`), which the printer stores

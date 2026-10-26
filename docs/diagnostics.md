@@ -195,7 +195,7 @@ def compile_stream(source_text: str, file_name: str) -> int:
 Runtime errors are divided into two categories:
 
 #### 1. Language-Level Quest Exceptions (`TypedRaise` / `TypedTry`)
-- User-defined exceptions declared with `let exc = exception E: T end;` (or `exception E: T end;`) and raised via
+- User-defined exceptions declared with `let exc = exception E: T end` (or `exception E: T end`) and raised via
   `raise exc with payload end`.
 - Caught by `try ... when exc with p then ... end`.
 - If uncaught, the exception is reported as a located error at the site it was raised, with the source line, followed
@@ -246,7 +246,7 @@ grp.int.quest:3:29: error: Undefined type 'Nope'
         Def A = Record b: Array(Nope) end
                                 ^
   ::: usegrp.quest:1:11
-    import grp: Grp;
+    import grp: Grp
               - note: imported here
 ```
 
@@ -262,10 +262,10 @@ file but has no import label.
 error[E0105]: record type mismatch
   --> src/geometry.quest:14:10
    |
- 4 | Let Point = Tuple x: Int y: Int end;
+ 4 | Let Point = Tuple x: Int y: Int end
    |             ^ note: expected type defined here
 ...
-14 | let p: Point = tuple x = 10 y = "20" end;
+14 | let p: Point = tuple x = 10 y = "20" end
    |                ^ field 'y' has type 'String', expected 'Int'
    |
    = help: try converting the string using 'Int.fromString(y)'

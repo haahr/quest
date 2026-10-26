@@ -28,7 +28,7 @@ export
     copy(d: T): T
     intern(rd: reader.T): T
     extern(wr: writer.T d: T): Ok
-end;
+end
 ```
 
 *A discrepancy in Cardelli:* the prose of §9.1 defines `Dynamic_T` as `Auto A::TYPE with a:A end`, but the
@@ -328,13 +328,13 @@ the envelope changed, with `ABI_VERSION` 4.
 
 ### Cyclic Record in Quest
 ```quest
-Let Node = Record id: Int var next: Dynamic.T end;
-let n1 = record id = 1 var next = dynamic.new(:Ok ok) end;
-let n2 = record id = 2 var next = dynamic.new(:Node n1) end;
-n1.next := dynamic.new(:Node n2);
+Let Node = Record id: Int var next: Dynamic.T end
+let n1 = record id = 1 var next = dynamic.new(:Ok ok) end
+let n2 = record id = 2 var next = dynamic.new(:Node n1) end
+n1.next := dynamic.new(:Node n2)
 
-let d = dynamic.new(:Node n1);
-dynamic.extern(writer.output d);
+let d = dynamic.new(:Node n1)
+dynamic.extern(writer.output d)
 ```
 
 **Serialized JSON output (compact on the wire, formatted here for clarity):**
@@ -364,9 +364,9 @@ The record type is written once, though three dynamics use it. When decoded with
 
 ### Recursive List
 ```quest
-Let Rec IntList = Option nil cons with head: Int tail: IntList end end;
-let l = option cons of IntList with tuple let head = 1 let tail = option nil of IntList end end end;
-dynamic.extern(writer.output dynamic.new(:IntList l));
+Let Rec IntList = Option nil cons with head: Int tail: IntList end end
+let l = option cons of IntList with tuple let head = 1 let tail = option nil of IntList end end end
+dynamic.extern(writer.output dynamic.new(:IntList l))
 ```
 
 ```json

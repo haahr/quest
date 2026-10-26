@@ -80,7 +80,7 @@ export
     listDirectory(path: String): Array(String)
     (* Returns an array of entry names in the directory at `path` (excluding "." and "..") in sorted order.
        Raises system.error on failure. *)
-end;
+end
 ```
 
 ### Runtime Initialization Contract
@@ -109,8 +109,8 @@ this implementation of Quest provides first-class `external` syntax for types an
 ### 1. External Type Definitions
 In module files (`.mod.quest`) or source files, an opaque C data structure is declared using `external`:
 ```quest
-type Handle = external "QWriter *";
-Let Handle = external "QWriter *";
+type Handle = external "QWriter *"
+Let Handle = external "QWriter *"
 ```
 - In the Quest type system, this is represented by `QExternalType(name, c_type)`.
 - **Subtyping & Equivalence**: Two external types are equivalent if their underlying C types match
@@ -123,9 +123,9 @@ Let Handle = external "QWriter *";
 ### 2. External Value Bindings
 Native C functions and runtime constants are declared using `external`:
 ```quest
-let stdout: Handle = external "quest_writer_output";
-let file(name: String): Handle = external "quest_writer_file";
-let maxVal: Int = external "QUEST_INT_MAX";
+let stdout: Handle = external "quest_writer_output"
+let file(name: String): Handle = external "quest_writer_file"
+let maxVal: Int = external "QUEST_INT_MAX"
 ```
 - Inside the declaring module, direct calls to an `external` function invoke the C symbol directly without allocating a
   closure; when an `external` function is used as a first-class value or stored in the module record, the compiler
@@ -138,19 +138,19 @@ let maxVal: Int = external "QUEST_INT_MAX";
 ## Usage Example
 
 ```quest
-import system: System;
-import writer: Writer;
+import system: System
+import writer: Writer
 
 if arrayOp.size(system.args) < 2 then
     writer.putString(writer.err "Usage: check_file <filename>\n")
     system.sysexit(1)
-end;
+end
 
-let filename = system.args[1];
+let filename = system.args[1]
 if not system.fileExists(filename) then
     writer.putString(writer.err {{"Error: file not found: " <> filename} <> "\n"})
     system.sysexit(1)
-end;
+end
 ```
 
 ---
@@ -169,8 +169,8 @@ using forward slashes (`/`), coupled with **two-tier signature aliasing**:
 ### 1. Hierarchical Paths
 - Modules and interfaces can be organized into arbitrary subdirectory trees:
   ```quest
-  import util/random : util/Random;
-  import :compiler/ast/Types;
+  import util/random : util/Random
+  import :compiler/ast/Types
   ```
 - File lookup maps `/` directly to directory separators, resolving `util/random.mod.quest` and `util/random.int.quest`.
 - Relative sibling resolution ensures that a module in `util/calc.mod.quest` can import `math : Math` and locate
@@ -181,15 +181,15 @@ using forward slashes (`/`), coupled with **two-tier signature aliasing**:
 ### 2. Two-Tier Signature Aliasing
 To prevent local identifier collisions and provide concise local bindings, this implementation allows
 explicit aliasing of both module instances and interface types/kinds:
-- **Both Aliased**: `import rnd : Rnd = util/random : util/Random;`
+- **Both Aliased**: `import rnd : Rnd = util/random : util/Random`
   Binds the module record as `rnd` and interface types as `Rnd` (e.g. `Rnd_T`).
-- **Module Aliased Only**: `import rnd = util/random : util/Random;`
+- **Module Aliased Only**: `import rnd = util/random : util/Random`
   Binds the module record as `rnd` and interface types as `Random` (e.g. `Random_T`).
-- **Interface Aliased with Module**: `import :Rnd = util/random : util/Random;`
+- **Interface Aliased with Module**: `import :Rnd = util/random : util/Random`
   Binds the module record as `random` and interface types as `Rnd`.
-- **Standalone Interface Aliased**: `import :Rnd = :util/Random;`
+- **Standalone Interface Aliased**: `import :Rnd = :util/Random`
   Binds interface types as `Rnd` into scope without instantiating any module.
-- **Multiple Modules**: `import r1 = util/rand1, r2 = util/rand2 : util/Random;`
+- **Multiple Modules**: `import r1 = util/rand1, r2 = util/rand2 : util/Random`
 
 ### 3. C Name Mangling
 In emitted C code and precompiled object files, slashes are mangled to `__` (double underscore):
@@ -345,11 +345,11 @@ interface Word export
 
     (* Returns word with bit at index pos cleared to 0 *)
     clearBit(w: T pos: Int): T
-end;
+end
 ```
 
 ### 2. Concrete C Representation and Runtime Helpers
-- **Underlying Type**: `Word.T` is declared in `lib/word.mod.quest` as `Let T = external "uint64_t";`
+- **Underlying Type**: `Word.T` is declared in `lib/word.mod.quest` as `Let T = external "uint64_t"`
   (`typedef uint64_t QWord;` in `quest_runtime.h`).
 - **Word Size Constant**: `word.bits` evaluates to `64`.
 - **Universal Word Boxing (`QVal`)**: In `QVal`, `Word.T` maps to the raw unsigned 64-bit word member `uint64_t u;`.

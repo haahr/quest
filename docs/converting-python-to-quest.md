@@ -197,7 +197,7 @@ Record name:String end` and accept a `Named`. Any record with at least that fiel
 declaration needed. If the function must return the same type it received, use a bounded parameter:
 
 ```
-let oldest(A<:Aged)(a,b:A):A = if a.age >= b.age then a else b end;
+let oldest(A<:Aged)(a,b:A):A = if a.age >= b.age then a else b end
 ```
 
 ## Control flow
@@ -206,7 +206,7 @@ let oldest(A<:Aged)(a,b:A):A = if a.age >= b.age then a else b end;
 expression, and `begin ... end` blocks yield their last expression. Early-return chains become `if/elsif/else`:
 
 ```
-let sign(x:Int):Int = if x<0 then ~1 elsif x is 0 then 0 else 1 end;
+let sign(x:Int):Int = if x<0 then ~1 elsif x is 0 then 0 else 1 end
 ```
 
 An early return from inside a loop becomes a loop condition plus a result variable, or a raised exception caught at the
@@ -278,16 +278,16 @@ functions may not refer directly to global `var` variables. Python `global`/`non
 inside a tuple, as Cardelli's "own variable" example does:
 
 ```
-let acc = tuple let var total = 0 end;
-let add(x:Int):Ok = acc.total := acc.total+x;
+let acc = tuple let var total = 0 end
+let add(x:Int):Ok = acc.total := acc.total+x
 ```
 
 **24. Translate `None` and `Optional[T]` to `maybe.T(A)`.** Returning `None` from a procedure becomes returning `ok :
 Ok`. `Optional[int]` becomes `maybe.T(Int)`:
 
 ```
-let found:maybe.T(Int) = option some of maybe.T(Int) with 5 end;
-let missing:maybe.T(Int) = option none of maybe.T(Int) end;
+let found:maybe.T(Int) = option some of maybe.T(Int) with 5 end
+let missing:maybe.T(Int) = option none of maybe.T(Int) end
 
 case found
 when none then 0
@@ -334,13 +334,13 @@ checks or `Auto` types.
 `isinstance` checks are better expressed as options (rule 25) or as functions on records (rule 14).
 
 ```
-Let AnyVehicle = Auto A<:Vehicle with a:A end;
-let v:AnyVehicle = auto :Car with myCar end;
+Let AnyVehicle = Auto A<:Vehicle with a:A end
+let v:AnyVehicle = auto :Car with myCar end
 let describe(v:AnyVehicle):String =
   inspect v
   when Car with arm then "car using " <> arm.a.fuel
   else "some vehicle"
-  end;
+  end
 ```
 
 The type after `auto :` can be a concrete type or a type parameter of the enclosing function (but not yet a larger
@@ -353,7 +353,7 @@ branch type.
 attributes become a hidden mutable tuple:
 
 ```
-Let Counter = Tuple incr():Int value():Int end;
+Let Counter = Tuple incr():Int value():Int end
 
 let newCounter(start:Int):Counter =
   begin
@@ -362,7 +362,7 @@ let newCounter(start:Int):Counter =
       let incr():Int = begin state.n := state.n+1 state.n end
       let value():Int = state.n
     end
-  end;
+  end
 ```
 
 There is no `self`. Methods reach state through the closure.

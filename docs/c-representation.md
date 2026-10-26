@@ -123,7 +123,7 @@ Quest allows native C pointer and handle types to be declared directly in source
 
 ### 3.4. Word Representation (`Word.T` / `QWord`)
 Quest provides a standard `Word` module (`lib/word.mod.quest`) for 64-bit unsigned machine operations:
-- **Concrete Representation**: `Word.T` is declared in `lib/word.mod.quest` as `Let T = external "uint64_t";`
+- **Concrete Representation**: `Word.T` is declared in `lib/word.mod.quest` as `Let T = external "uint64_t"`
   (`typedef uint64_t QWord;` in `runtime/quest_runtime.h`).
 - **Universal Word Boxing (`QVal`)**: When boxed into `QVal`, `Word.T` occupies `uint64_t u;`:
   `((QVal){ .u = (uint64_t)(expr) })` and is unboxed via `((expr).u)`.
@@ -441,12 +441,12 @@ Let T =
     a                     (* 0 components *)
     b with x:Bool end     (* 1 component:  x:Bool *)
     c with x,y:String end (* 2 components: x,y:String *)
-  end;
+  end
 ```
 Cardelli explicitly defines the `ordinal(o)` operator, which exposes the 0-based integer index of an option at
 runtime, and the `!` extraction operator, which unpacks the branch signature:
 ```quest
-• bOption!b;
+• bOption!b
 » tuple 1 let x=true end : Tuple :Int x:Bool end
 ```
 
@@ -752,7 +752,7 @@ While monomorphic functions pass values directly, polymorphic functions (`All(A:
 
 - Direct polymorphic function:
   ```quest
-  let id(A::TYPE x:A): A = x;
+  let id(A::TYPE x:A): A = x
   ```
   Compiles to C:
   ```c

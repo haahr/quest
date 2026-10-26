@@ -209,14 +209,14 @@ A type $C$ is contractive in $X$ ($C \succ X$) iff the recursive variable $X$ oc
 type constructor (`Record`, `Tuple`, `Option`, `Variant`, `Fun`, `Array`, `Var`, `Out`).
 - **Bare occurrences are rejected:**
   ```quest
-  Let Rec Bad::TYPE = Bad;              (* REJECTED: bare self-recursion *)
-  Let Rec A = B and B = A;              (* REJECTED: mutual bare cycle *)
+  Let Rec Bad::TYPE = Bad              (* REJECTED: bare self-recursion *)
+  Let Rec A = B and B = A              (* REJECTED: mutual bare cycle *)
   Rec(X)X                               (* REJECTED: inline bare recursion *)
   ```
 - **Guarded occurrences are accepted:**
   ```quest
-  Let Rec List = Tuple head:Int tail:List end;   (* ACCEPTED: guarded by Tuple *)
-  Let Rec Tree = Option empty, node with t:Tree end; (* ACCEPTED: guarded by Option *)
+  Let Rec List = Tuple head:Int tail:List end   (* ACCEPTED: guarded by Tuple *)
+  Let Rec Tree = Option empty, node with t:Tree end (* ACCEPTED: guarded by Option *)
   ```
 
 ### 3.4. Simultaneous and Mutually Recursive Type Declarations (`and`)
@@ -224,8 +224,8 @@ Type declarations joined by `and` (Cardelli's `TypeDecl "and" TypeDecl`) are dec
 `ast.TypeBindingGroup` elaborated by `elaborate_type_binding_group` (`typechecker/elaborate_types.py`):
 ```quest
 Let Rec Forest = Record trees: Array(Tree) end
-and Tree = Variant leaf: Int node: Forest end;   (* mutually recursive *)
-Let Name = String and Size = Int;                (* simultaneous *)
+and Tree = Variant leaf: Int node: Forest end   (* mutually recursive *)
+Let Name = String and Size = Int                (* simultaneous *)
 ```
 - **With `Rec`,** the members are mutually recursive. Every member is in scope in every body, each body must be
   contractive in all the members' variables (§3.3), and each member is defined as a `QRecGroupType`: the group's
@@ -235,7 +235,7 @@ Let Name = String and Size = Int;                (* simultaneous *)
   type with the same infinite unfolding, such as a single recursive type that inlines the other members
   (`Let Rec Tree2 = Variant leaf: Int node: Record trees: Array(Tree2) end end` equals `Tree`).
 - **Without `Rec`,** the members are simultaneous: each is elaborated in the enclosing scope, so it does not see the
-  others (in `Let Size = Bool; Let Size = Int and Flag = Size;`, `Flag` is `Bool`), and all are declared once every
+  others (in `Let Size = Bool Let Size = Int and Flag = Size`, `Flag` is `Bool`), and all are declared once every
   member has been elaborated.
 - **Printing:** A reference to a member is an alias node (`QAliasType`). Unfolding it replaces the other members
   with aliases named after them, qualified as the reference is (`m.Forest` unfolds with `m.Tree`), so types reached
@@ -274,7 +274,7 @@ Let PointPackage = Tuple
   Point::TYPE
   origin: Point
   distance(p1: Point, p2: Point): Real
-end;
+end
 ```
 Signature elaboration (`bootstrap/python/quest/typechecker/elaborate_types.py`) proceeds sequentially in an ordered
 dependent scope. Each type formal `X::K` introduces a `TypeSymbol` into the local scope so subsequent fields can refer
@@ -324,7 +324,7 @@ let p: PointPackage = tuple
   Let Point::TYPE = Tuple x: Real y: Real end
   let origin: Point = tuple 0.0 0.0 end
   let distance(p1: Point, p2: Point): Real = ...
-end;
+end
 ```
 - **Explicit Ascription Required:**
   Existential packages require explicit type ascription (e.g. `let p: PointPackage = tuple ... end`).
@@ -341,7 +341,7 @@ end;
 When an existential tuple is bound to an immutable identifier $x$, its type components can be accessed via
 **path-dependent types** ($x.A$):
 ```quest
-let origin: p.Point = p.origin;
+let origin: p.Point = p.origin
 ```
 - **Representation:** `QPathType(root_name, root_symbol_id, field_name, bound)`.
 - **Immutable Path Roots Only:**
@@ -366,8 +366,8 @@ let origin: p.Point = p.origin;
 ### 4.5. Scope Escape Prevention (Scope Extrusion)
 Abstract path types cannot escape the lexical scope of their root variable:
 ```quest
-let getOrigin(pkg: PointPackage) = pkg.origin;       (* REJECTED: pkg.Point escapes *)
-let getOrigin(pkg: PointPackage): pkg.Point = ...;   (* REJECTED: dependent return type *)
+let getOrigin(pkg: PointPackage) = pkg.origin       (* REJECTED: pkg.Point escapes *)
+let getOrigin(pkg: PointPackage): pkg.Point = ...   (* REJECTED: dependent return type *)
 ```
 - **Checking Rule (`check_no_escaping_path_types`):**
   The typechecker inspects types exiting local scopes (function return types, block results, pattern-matching branches,
@@ -464,8 +464,8 @@ their operands are checked against Bool, so `true andif 3` reports that `3` is n
 ### 6.2. Mutability, Assignment, and Reference Parameters
 Mutable locations are declared with `var`:
 ```quest
-let var x: Int = 10;
-x := x + 1;
+let var x: Int = 10
+x := x + 1
 ```
 - In value positions, mutable locations automatically coerce to their underlying value type (`TypedDerefCell`).
 - In assignment positions (`x := e`), the target must be an explicit mutable location (`is_var=True` or `QVarType`).
@@ -551,8 +551,8 @@ IEEE-754 double and settles those cases as follows, identically in the interpret
 ### 6.4. Explicit Polymorphic Instantiation (`TypedTypeApp`)
 Polymorphic functions can be explicitly instantiated at call sites using type arguments:
 ```quest
-let id = fun(A::TYPE)(x: A): A x;
-let n = id(:Int)(42);
+let id = fun(A::TYPE)(x: A): A x
+let n = id(:Int)(42)
 ```
 Type arguments prefixed with `:` (`:Type`) match leading type quantifiers in `QAllType`. The typechecker
 validates that actual type arguments satisfy their corresponding kind bounds and emits `TypedTypeApp` nodes.
@@ -657,8 +657,8 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   members follow the rules above, and a name may not be declared twice. They may also be tuple components (§4.1).
 - **Simultaneous Bindings:** Without `rec`, `let x = e and y = e' ...` declares its members simultaneously, as type
   declarations without `Rec` are (§3.4): each member is elaborated in the enclosing scope, so it sees the bindings
-  the other members shadow and not the members themselves (after `let x = 1;`, `let x = 2 and y = x;` binds `y` to
-  1, and `let p = q and q = p;` swaps), and all are declared once every member has been elaborated. At run time
+  the other members shadow and not the members themselves (after `let x = 1`, `let x = 2 and y = x` binds `y` to
+  1, and `let p = q and q = p` swaps), and all are declared once every member has been elaborated. At run time
   every value is computed, in order, before any member is bound, and a closure a member's value builds keeps the
   bindings the members shadow. They may also be tuple components (§4.1).
 - **Recursive Value Bindings:**
@@ -696,7 +696,7 @@ In a pure type erasure model (such as standard System $F_{<:}$ or ML), type para
 - **Why Erasure Breaks Generic Wrappers:**
   Consider a polymorphic wrapper:
   ```quest
-  let dynamicWrapper(A::TYPE a:A): dynamic.T = dynamic.new(:A a);
+  let dynamicWrapper(A::TYPE a:A): dynamic.T = dynamic.new(:A a)
   ```
   If `A` were erased, `dynamicWrapper` would have no runtime knowledge of `A` and could not package `a` with its type descriptor.
 - **Comparison with Java RTTI vs. Erasure:**
@@ -708,8 +708,8 @@ kind `K`. An auto value pairs such a type `T`, its *type component*, with compon
 value describes its own shape; `inspect` recovers the type at run time.
 
 ```quest
-Let UniformPair = Auto A::TYPE with fst,snd:A end;
-let p: UniformPair = auto :Bool with false true end;
+Let UniformPair = Auto A::TYPE with fst,snd:A end
+let p: UniformPair = auto :Bool with false true end
 inspect p
 when Bool with arm then arm.fst \/ arm.snd
 when Int with arm then {arm.fst * arm.snd} isnot 0
@@ -791,7 +791,7 @@ it, so every exception a scope names exists throughout it, whether or not the ex
 expression gives that same exception. Making an exception has no other effect, so the difference shows only in which
 exception a name holds: after `if false then exception I end else ... end`, `raise I` raises the scope's `I`, and a
 handler `when I` catches it. Each time a scope begins, it makes its exceptions anew (a function's call, a block's
-evaluation). An exception that a binding is, or binds directly (`exception E end;`, `let e = exception E end;`), is
+evaluation). An exception that a binding is, or binds directly (`exception E end`, `let e = exception E end`), is
 made by the binding as it runs.
 
 `scope_exceptions` in `typechecker/typed_ast.py` finds the exceptions a binding makes in advance. The lowering makes
