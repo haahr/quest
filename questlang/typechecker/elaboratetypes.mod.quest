@@ -1,0 +1,938 @@
+(* Quest Self-Hosted Compiler: Type and Kind Elaboration Implementation *)
+
+module elaborateTypes : ElaborateTypes
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/contractiveness : questlang/types/Contractiveness
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+    Let Kind = model.Kind
+    Let TupleTypeBinding = Tuple member: ast.TypeBinding sym: symbols.TypeSymbol bound: maybe.T(model.Kind) end
+
+    let some(e: env.T): kinds.Env = maybe.some(:env.T e)
+    let checkKind(t: Type k: Kind e: env.T): Ok = kinds.checkKind(t k some(e))
+    let checkKindWellFormed(k: Kind e: env.T): Ok = kinds.checkKindWellFormed(k some(e))
+    let declare(e: env.T sym: symbols.TypeSymbol): symbols.TypeSymbol = symbols.declareType(e.currentScope sym)
+    let declareVariable(e: env.T name: String symbolId: Int kind: Kind): Ok =
+        begin declare(e symbols.newTypeSymbol(name symbolId kind maybe.none(:Type))) ok end
+    let newIds(): hashMap.T(Int Bool) = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+    let joinPath(path: vector.T(String)): String =
+        begin
+            let var s = ""
+            for i = 0 upto {vector.length(:String path) - 1} do
+                s := if i is 0 then vector.get(:String path i) else s <> "." <> vector.get(:String path i) end
+            end
+            s
+        end
+
+    (* =========================================================================
+     * Recursive type operators being defined
+     *
+     * The bootstrap's _RecOperatorSymbol: while the definition of Let Rec T(A::K) = ... is elaborated, T may occur
+     * only applied to exactly its own parameters, as T(A), which stands for the variable of the recursive type the
+     * operator returns (uniform recursion). The symbols declared for operators are recorded here, by id.
+     * ========================================================================= *)
+
+    Let RecOperator = Tuple name: String formals: Array(model.TypeFormal) recVar: Type end
+    let recOperators: hashMap.T(Int RecOperator) =
+        hashMap.new(:Int :RecOperator fun(a: Int b: Int): Bool a is b hash.int)
+
+    let recOperatorOf(sym: symbols.TypeSymbol): maybe.T(RecOperator) =
+        hashMap.get(:Int :RecOperator recOperators sym.symbolId)
+
+    let nonUniformError(op: RecOperator offset: Int): diagnostics.CompilerError =
+        begin
+            let var params = ""
+            for i = 0 upto {extent op.formals - 1} do
+                params := if i is 0 then op.formals[i].name else params <> " " <> op.formals[i].name end
+            end
+            diagnostics.errorAt("Recursive type '" <> op.name <> "' must be applied to exactly its parameters, as " <>
+                op.name <> "(" <> params <> "), in its definition; non-uniform recursion is not supported" offset)
+        end
+
+    (* The recursive variable, for an application of the operator to exactly its parameters *)
+    let applyRecOperator(op: RecOperator args: Array(Type) offset: Int): Type =
+        begin
+            let var uniform = {extent args is extent op.formals}
+            if uniform then
+                for i = 0 upto {extent args - 1} do
+                    case args[i].form
+                        when typeVariable with x then
+                            if x.symbolId isnot op.formals[i].symbolId then uniform := false end
+                        else uniform := false
+                    end
+                end
+            end
+            if not(uniform) then diagnostics.raiseError(:Ok nonUniformError(op offset)) end
+            op.recVar
+        end
+
+    (* The recursive type operator a type application applies, if it is one being defined *)
+    let recOperatorNamed(ctor: ast.TypeExpr e: env.T): maybe.T(RecOperator) =
+        case ctor.form
+            when typePath with x then
+                if vector.length(:String x.path) is 1 then
+                    let sym = env.lookupType(e vector.get(:String x.path 0))
+                    if maybe.isSome(:symbols.TypeSymbol sym) then
+                        recOperatorOf(maybe.unwrap(:symbols.TypeSymbol sym))
+                    else
+                        maybe.none(:RecOperator)
+                    end
+                else
+                    maybe.none(:RecOperator)
+                end
+            else maybe.none(:RecOperator)
+        end
+
+    (* The kind of a type operator with the given parameters and result kind: ALL(X::K) ... resultKind *)
+    let operatorKind(formals: Array(model.TypeFormal) resultKind: Kind): Kind =
+        begin
+            let var kind = resultKind
+            for i = {extent formals - 1} downto 0 do
+                let f = formals[i]
+                kind := model.allKind(f.name f.symbolId f.bound kind)
+            end
+            kind
+        end
+
+    (* A type symbol's reference: an alias of its definition, or a variable *)
+    let reference(name: String varName: String sym: symbols.TypeSymbol): Type =
+        if maybe.isSome(:Type sym.definition) then
+            model.aliasReference(name sym.symbolId maybe.unwrap(:Type sym.definition))
+        else
+            model.typeVariable(varName sym.symbolId maybe.some(:Kind sym.kind))
+        end
+
+    (* The scope of a module or interface of the name *)
+    let moduleOrInterface(e: env.T name: String): maybe.T(symbols.Scope) =
+        begin
+            let m = env.lookupModule(e name)
+            if maybe.isSome(:symbols.Scope m) then m else env.lookupInterface(e name) end
+        end
+
+    (* =========================================================================
+     * 1. Kind Elaboration
+     * ========================================================================= *)
+
+    let rec elaborateKind(k: ast.KindExpr e: env.T): Kind =
+        case k.form
+            when kindType then model.typeKind
+            when kindPower with x then
+                begin
+                    let bound = elaborateType(x.bound e)
+                    checkKind(bound model.typeKind e)
+                    model.powerKind(bound)
+                end
+            when kindAll with x then
+                begin
+                    let paramKind = elaborateKind(x.paramKind e)
+                    let symbolId = env.freshSymbolId(e)
+                    let bodyKind = env.scoped(:Kind e "kind_" <> x.paramName fun(s: symbols.Scope): Kind
+                        begin
+                            declareVariable(e x.paramName symbolId paramKind)
+                            elaborateKind(x.bodyKind e)
+                        end)
+                    model.allKind(x.paramName symbolId paramKind bodyKind)
+                end
+            when kindId with x then
+                begin
+                    let sym = env.lookupKind(e x.name)
+                    if maybe.isNone(:symbols.KindSymbol sym) then
+                        diagnostics.fail(:Ok "Undefined kind '" <> x.name <> "'" k.span.startOffset)
+                    end
+                    let s = maybe.unwrap(:symbols.KindSymbol sym)
+                    model.kindVar(s.name s.symbolId)
+                end
+            when kindManifest with x then
+                begin
+                    let scope = env.lookupInterface(e x.interfaceName)
+                    if maybe.isNone(:symbols.Scope scope) then
+                        diagnostics.fail(:Ok "Undefined interface '" <> x.interfaceName <> "' in manifest kind '" <>
+                            x.interfaceName <> "_" <> x.kindName <> "'" k.span.startOffset)
+                    end
+                    let sym = symbols.lookupKind(maybe.unwrap(:symbols.Scope scope) x.kindName)
+                    if maybe.isNone(:symbols.KindSymbol sym) then
+                        diagnostics.fail(:Ok "Undefined kind '" <> x.kindName <> "' in interface '" <> x.interfaceName <>
+                            "'" k.span.startOffset)
+                    end
+                    model.kindVar(x.interfaceName <> "_" <> x.kindName maybe.unwrap(:symbols.KindSymbol sym).symbolId)
+                end
+            else diagnostics.fail(:Kind "Unsupported AST kind node" k.span.startOffset)
+        end
+
+    (* =========================================================================
+     * 2. Type Elaboration
+     * ========================================================================= *)
+
+    and elaborateType(t: ast.TypeExpr e: env.T): Type =
+        begin
+            let offset = t.span.startOffset
+            case t.form
+                when typePath with x then elaboratePath(x.path offset e)
+                when typeInfix with x then
+                    begin
+                        let left = elaborateType(x.left e)
+                        let right = elaborateType(x.right e)
+                        if not(stringOp.equal(x.op "->")) then
+                            diagnostics.fail(:Ok "Unsupported infix type operator '" <> x.op <> "'" offset)
+                        end
+                        model.funType(array of :model.Param
+                            tuple let name = "" let type = left let isVar = false let isOut = false end
+                        end right)
+                    end
+                when typeTuple with x then elaborateTupleSignature(x.fields e)
+                when typeRecord with x then
+                    begin
+                        let fields = vector.new(:model.RecordField)
+                        for i = 0 upto {vector.length(:ast.RecordFieldSig x.fields) - 1} do
+                            let f = vector.get(:ast.RecordFieldSig x.fields i)
+                            vector.append(:model.RecordField fields tuple
+                                let name = f.name let type = elaborateType(f.typeSig e) let isVar = f.isVar
+                            end)
+                        end
+                        model.recordType(vector.toArray(:model.RecordField fields) maybe.none(:String))
+                    end
+                when typeVariant with x then
+                    begin
+                        let variants = vector.new(:model.VariantField)
+                        let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+                        for i = 0 upto {vector.length(:ast.VariantFieldSig x.fields) - 1} do
+                            let v = vector.get(:ast.VariantFieldSig x.fields i)
+                            if hashMap.contains(:String :Bool seen v.tag) then
+                                diagnostics.fail(:Ok "Duplicate variant tag '" <> v.tag <> "'" v.offset)
+                            end
+                            hashMap.insert(:String :Bool seen v.tag true)
+                            vector.append(:model.VariantField variants tuple
+                                let name = v.tag let type = maybe.some(:Type elaborateType(v.typeSig e))
+                                let isVar = v.isVar
+                            end)
+                        end
+                        model.variantType(vector.toArray(:model.VariantField variants))
+                    end
+                when typeOption with x then
+                    begin
+                        let options = vector.new(:model.OptionField)
+                        for i = 0 upto {vector.length(:ast.OptionFieldSig x.variants) - 1} do
+                            let opt = vector.get(:ast.OptionFieldSig x.variants i)
+                            (* A case's payload is a tuple type: it may have type components and var fields *)
+                            let payload = if vector.empty(:ast.Signature opt.payloadSig) then
+                                maybe.none(:Type)
+                            else
+                                maybe.some(:Type elaborateTupleSignature(opt.payloadSig e))
+                            end
+                            vector.append(:model.OptionField options tuple let name = opt.tag let payload = payload end)
+                        end
+                        model.optionType(vector.toArray(:model.OptionField options))
+                    end
+                when typeFun with x then
+                    env.scoped(:Type e "type_fun" fun(s: symbols.Scope): Type
+                        begin
+                            let formals = elaborateFormals(x.params e)
+                            model.typeOperator(formals elaborateType(x.body e))
+                        end)
+                when typeApp with x then
+                    begin
+                        let args = vector.new(:Type)
+                        let recOperator = recOperatorNamed(x.constructor e)
+                        if maybe.isSome(:RecOperator recOperator) then
+                            for i = 0 upto {vector.length(:ast.TypeExpr x.arguments) - 1} do
+                                vector.append(:Type args elaborateType(vector.get(:ast.TypeExpr x.arguments i) e))
+                            end
+                            applyRecOperator(maybe.unwrap(:RecOperator recOperator) vector.toArray(:Type args)
+                                x.constructor.span.startOffset)
+                        else
+                            let ctor = elaborateType(x.constructor e)
+                            for i = 0 upto {vector.length(:ast.TypeExpr x.arguments) - 1} do
+                                vector.append(:Type args elaborateType(vector.get(:ast.TypeExpr x.arguments i) e))
+                            end
+                            case ctor.form
+                                when typeException then
+                                    begin
+                                        let n = vector.length(:Type args)
+                                        if n isnot 1 then
+                                            diagnostics.fail(:Ok "Exception type constructor expects 1 argument, got " <>
+                                                conv.int(n) x.constructor.span.startOffset)
+                                        end
+                                        checkKind(vector.get(:Type args 0) model.typeKind e)
+                                        model.exceptionOf(vector.get(:Type args 0))
+                                    end
+                                else model.typeApp(ctor vector.toArray(:Type args))
+                            end
+                        end
+                    end
+                when typeAll with x then elaborateAll(x.quantifiers x.resultType e)
+                when typeAuto with x then
+                    env.scoped(:Type e "auto_type" fun(s: symbols.Scope): Type
+                        begin
+                            let kindBound = elaborateKind(x.kindBound e)
+                            let paramName = maybe.unwrapOr(:String x.typeParam "T")
+                            let symbolId = env.freshSymbolId(e)
+                            declareVariable(e paramName symbolId kindBound)
+                            let fields = vector.new(:model.RecordField)
+                            for i = 0 upto {vector.length(:ast.FieldSig x.signature) - 1} do
+                                let f = vector.get(:ast.FieldSig x.signature i)
+                                vector.append(:model.RecordField fields tuple
+                                    let name = maybe.unwrapOr(:String f.name "")
+                                    let type = elaborateType(maybe.unwrap(:ast.TypeExpr f.typeSig) e)
+                                    let isVar = case f.mode when modeVar then true else false end
+                                end)
+                            end
+                            model.autoType(paramName symbolId kindBound vector.toArray(:model.RecordField fields))
+                        end)
+                when typeRec with x then
+                    env.scoped(:Type e "rec_" <> x.varName fun(s: symbols.Scope): Type
+                        begin
+                            let bound = elaborateKind(x.bound e)
+                            let symbolId = env.freshSymbolId(e)
+                            declareVariable(e x.varName symbolId bound)
+                            let body = elaborateType(x.body e)
+                            let ids = newIds()
+                            hashMap.insert(:Int :Bool ids symbolId true)
+                            contractiveness.checkTypeContractive(body ids x.varName x.body.span.startOffset some(e))
+                            model.recType(x.varName symbolId bound body)
+                        end)
+                when typeArray with x then model.arrayType(elaborateType(x.elementType e))
+                when typeVar with x then model.varType(elaborateType(x.elementType e))
+                when typeOut with x then model.outType(elaborateType(x.elementType e))
+                when typeManifest with x then
+                    begin
+                        let scope = moduleOrInterface(e x.moduleName)
+                        let full = x.moduleName <> "_" <> x.typeName
+                        if maybe.isNone(:symbols.Scope scope) then
+                            diagnostics.fail(:Ok "Undefined module/interface '" <> x.moduleName <> "' in manifest type '" <>
+                                full <> "'" offset)
+                        end
+                        let sym = symbols.lookupType(maybe.unwrap(:symbols.Scope scope) x.typeName)
+                        if maybe.isNone(:symbols.TypeSymbol sym) then
+                            diagnostics.fail(:Ok "Undefined type '" <> x.typeName <> "' in module/interface '" <>
+                                x.moduleName <> "'" offset)
+                        end
+                        reference(full full maybe.unwrap(:symbols.TypeSymbol sym))
+                    end
+                when typeExternal with x then model.externalType("" x.cType)
+                else diagnostics.fail(:Type "Unsupported AST type node" offset)
+            end
+        end
+
+    (* Type formals (X::K ...), declared in the current scope *)
+    and elaborateFormals(params: vector.T(ast.TypeFormal) e: env.T): Array(model.TypeFormal) =
+        begin
+            let formals = vector.new(:model.TypeFormal)
+            for i = 0 upto {vector.length(:ast.TypeFormal params) - 1} do
+                let p = vector.get(:ast.TypeFormal params i)
+                let bound = elaborateKind(p.bound e)
+                let symbolId = env.freshSymbolId(e)
+                declareVariable(e p.name symbolId bound)
+                vector.append(:model.TypeFormal formals tuple
+                    let name = p.name let symbolId = symbolId let bound = bound
+                end)
+            end
+            vector.toArray(:model.TypeFormal formals)
+        end
+
+    and elaboratePath(path: vector.T(String) offset: Int e: env.T): Type =
+        begin
+            let n = vector.length(:String path)
+            let first = vector.get(:String path 0)
+            if n is 1 then
+                let sym = env.lookupType(e first)
+                if maybe.isNone(:symbols.TypeSymbol sym) then
+                    diagnostics.fail(:Ok "Undefined type '" <> first <> "'" offset)
+                end
+                let s = maybe.unwrap(:symbols.TypeSymbol sym)
+                let op = recOperatorOf(s)
+                if maybe.isSome(:RecOperator op) then
+                    diagnostics.raiseError(:Ok nonUniformError(maybe.unwrap(:RecOperator op) offset))
+                end
+                reference(first s.name s)
+            else
+                let modScope = moduleOrInterface(e first)
+                if maybe.isSome(:symbols.Scope modScope) then
+                    (* Module or interface scope lookup. Scopes hold no modules, so a longer path names none (the
+                     * bootstrap's Scope has no lookup_module). *)
+                    if n > 2 then
+                        diagnostics.fail(:Ok "Undefined module/interface '" <> vector.get(:String path 1) <>
+                            "' in type path '" <> joinPath(path) <> "'" offset)
+                    end
+                    let scope = maybe.unwrap(:symbols.Scope modScope)
+                    let typeName = vector.get(:String path 1)
+                    let sym = symbols.lookupType(scope typeName)
+                    if maybe.isNone(:symbols.TypeSymbol sym) then
+                        diagnostics.fail(:Ok "Undefined type '" <> typeName <> "' in module/interface '" <> first <> "'"
+                            offset)
+                    end
+                    let varName = if maybe.isSome(:String scope.moduleName) then
+                        maybe.unwrap(:String scope.moduleName) <> "." <> typeName
+                    else
+                        joinPath(path)
+                    end
+                    reference(joinPath(path) varName maybe.unwrap(:symbols.TypeSymbol sym))
+                else
+                    (* Value binding lookup for path-dependent types (e.g. x.A or x.y.A) *)
+                    let valSym = env.lookupValue(e first)
+                    if maybe.isNone(:symbols.ValueSymbol valSym) then
+                        diagnostics.fail(:Ok "Undefined identifier '" <> first <> "' in type path '" <> joinPath(path) <>
+                            "'" offset)
+                    end
+                    elaborateProjection(path maybe.unwrap(:symbols.ValueSymbol valSym) offset e)
+                end
+            end
+        end
+
+    and elaborateProjection(path: vector.T(String) valSym: symbols.ValueSymbol offset: Int e: env.T): Type =
+        begin
+            let n = vector.length(:String path)
+            let first = vector.get(:String path 0)
+            if valSym.isVar then
+                diagnostics.fail(:Ok "Cannot project type from mutable variable '" <> first <> "'" offset)
+            end
+            let var current = model.evaluateLazily(valSym.type symbols.lookup)
+            let var rootName = first
+            for i = 1 upto {n - 2} do
+                let seg = vector.get(:String path i)
+                let fields = tupleFields(current "Cannot project field '" <> seg <> "' from non-tuple type '" <>
+                    model.show(current) <> "'" offset)
+                let comp = model.tupleGetField(fields seg)
+                let fieldType = if maybe.isSome(:model.TupleComponent comp) then
+                    case maybe.unwrap(:model.TupleComponent comp)
+                        when tupleField with c then maybe.some(:Type c.type)
+                        else maybe.none(:Type)
+                    end
+                else
+                    maybe.none(:Type)
+                end
+                if maybe.isNone(:Type fieldType) then
+                    diagnostics.fail(:Ok "Tuple '" <> rootName <> "' has no field named '" <> seg <> "'" offset)
+                end
+                current := model.evaluateLazily(maybe.unwrap(:Type fieldType) symbols.lookup)
+                rootName := rootName <> "." <> seg
+            end
+            let typeName = vector.get(:String path {n - 1})
+            let fields = tupleFields(current "Cannot project type from non-tuple type '" <> model.show(current) <> "'"
+                offset)
+            let comp = model.tupleGetField(fields typeName)
+            if maybe.isNone(:model.TupleComponent comp) then
+                diagnostics.fail(:Ok "Tuple '" <> rootName <> "' has no component named '" <> typeName <> "'" offset)
+            end
+            let formals = model.tupleTypeFormals(fields)
+            let rootId = valSym.symbolId
+            let root = rootName
+            (* The formals other than skip, as path types of the root *)
+            let pathSubst(skip: Int): model.Subst =
+                begin
+                    let subst = model.newSubst()
+                    for i = 0 upto {extent formals - 1} do
+                        let f = formals[i]
+                        if f.symbolId isnot skip then
+                            hashMap.insert(:Int :Type subst f.symbolId model.pathType(root rootId f.name f.bound))
+                        end
+                    end
+                    subst
+                end
+            case maybe.unwrap(:model.TupleComponent comp)
+                when tupleTypeFormal with c then
+                    model.pathType(rootName rootId typeName model.substituteInKind(c.bound pathSubst(c.symbolId)))
+                when tupleTypeBinding with c then model.substitute(c.type pathSubst(0))
+                when tupleField then
+                    diagnostics.fail(:Type "Component '" <> typeName <> "' of tuple '" <> rootName <>
+                        "' is a value field, not a type component" offset)
+            end
+        end
+
+    (* The components of a tuple type, or the error message *)
+    and tupleFields(t: Type message: String offset: Int): Array(model.TupleComponent) =
+        case t.form
+            when typeTuple with x then x.fields
+            else diagnostics.fail(:Array(model.TupleComponent) message offset)
+        end
+
+    and elaborateTupleSignature(sigs: vector.T(ast.Signature) e: env.T): Type =
+        env.scoped(:Type e "tuple_sig" fun(s: symbols.Scope): Type
+            begin
+                let components = vector.new(:model.TupleComponent)
+                for i = 0 upto {vector.length(:ast.Signature sigs) - 1} do
+                    case vector.get(:ast.Signature sigs i)
+                        when sigType with x then
+                            begin
+                                let f = x.val
+                                if stringOp.equal(f.name "") orif stringOp.equal(f.name "_") then
+                                    diagnostics.fail(:Ok "Type formal in tuple signature must have an identifier" f.offset)
+                                end
+                                let bound = elaborateKind(f.bound e)
+                                let symbolId = env.freshSymbolId(e)
+                                declareVariable(e f.name symbolId bound)
+                                vector.append(:model.TupleComponent components option tupleTypeFormal of
+                                    model.TupleComponent with let name = f.name let symbolId = symbolId let bound = bound
+                                end)
+                            end
+                        when sigValue with x then
+                            begin
+                                let f = x.val
+                                let fieldType = elaborateType(maybe.unwrap(:ast.TypeExpr f.typeSig) e)
+                                checkKind(fieldType model.typeKind e)
+                                let isVar = case f.mode when modeVar then true else false end
+                                let isOut = case f.mode when modeOut then true else false end
+                                let name = if maybe.isSome(:String f.name) andif
+                                        not(stringOp.equal(maybe.unwrap(:String f.name) "")) then
+                                    f.name
+                                else
+                                    maybe.none(:String)
+                                end
+                                vector.append(:model.TupleComponent components model.tupleField(name fieldType isVar))
+                                if maybe.isSome(:String name) then
+                                    symbols.declareValue(e.currentScope symbols.newValueSymbol(maybe.unwrap(:String name)
+                                        fieldType isVar isOut false 0 0))
+                                end
+                            end
+                        when sigTypeBinding with x then
+                            declareTupleTypeBindings(components vector.fromArray(:ast.TypeBinding array of x.val end)
+                                false e)
+                        when sigTypeBindingGroup with x then declareTupleTypeBindings(components x.val true e)
+                        when sigKindBinding with x then
+                            begin
+                                let k = elaborateKind(x.val.kindVal e)
+                                symbols.declareKind(e.currentScope
+                                    symbols.newKindSymbol(x.val.name env.freshSymbolId(e) k))
+                                ok
+                            end
+                    end
+                end
+                model.tupleType(vector.toArray(:model.TupleComponent components))
+            end)
+
+    (* The members of a group are elaborated together, then declared together *)
+    and declareTupleTypeBindings(
+        components: vector.T(model.TupleComponent) members: vector.T(ast.TypeBinding) isGroup: Bool e: env.T
+    ): Ok =
+        begin
+            let bindings = elaborateTupleTypeBindings(members isGroup e)
+            for i = 0 upto {extent bindings - 1} do
+                let b = bindings[i]
+                declare(e b.sym)
+                (* Without a bound, a component is a type (checked), as a tuple value's says *)
+                vector.append(:model.TupleComponent components option tupleTypeBinding of model.TupleComponent with
+                    let name = b.member.name
+                    let type = maybe.unwrap(:Type b.sym.definition)
+                    let bound = maybe.some(:Kind maybe.unwrapOr(:Kind b.bound model.typeKind))
+                end)
+            end
+        end
+
+    and elaborateAll(quantifiers: vector.T(ast.Quantifier) resultType: ast.TypeExpr e: env.T): Type =
+        env.scoped(:Type e "all_type" fun(s: symbols.Scope): Type
+            begin
+                let quants = vector.new(:model.Quantifier)
+                let valParams = vector.new(:model.Param)
+                for i = 0 upto {vector.length(:ast.Quantifier quantifiers) - 1} do
+                    let q = vector.get(:ast.Quantifier quantifiers i)
+                    let bound = elaborateKind(q.bound e)
+                    if not(q.isType) andif model.isPower(bound) then
+                        (* Value formal parameter: x : T (represented via Power(T)) *)
+                        let valType = model.powerBound(bound)
+                        let isVar = case q.mode when modeVar then true else false end
+                        let isOut = case q.mode when modeOut then true else false end
+                        vector.append(:model.Param valParams tuple
+                            let name = q.name let type = valType let isVar = isVar let isOut = isOut
+                        end)
+                        symbols.declareValue(e.currentScope symbols.newValueSymbol(q.name valType isVar false false 0 0))
+                        ok
+                    else
+                        let symbolId = env.freshSymbolId(e)
+                        declareVariable(e q.name symbolId bound)
+                        vector.append(:model.Quantifier quants tuple
+                            let name = q.name let symbolId = symbolId let bound = bound
+                        end)
+                    end
+                end
+                let body = elaborateType(resultType e)
+                let fnBody = if not(vector.empty(:model.Param valParams)) orif vector.empty(:ast.Quantifier quantifiers) then
+                    model.funType(vector.toArray(:model.Param valParams) body)
+                else
+                    body
+                end
+                if vector.empty(:model.Quantifier quants) then
+                    fnBody
+                else
+                    model.allType(vector.toArray(:model.Quantifier quants) fnBody)
+                end
+            end)
+
+    (* =========================================================================
+     * 3. Type and Kind Declarations Elaboration
+     * ========================================================================= *)
+
+    (* Rejects a simultaneous declaration that declares one name twice *)
+    and checkDistinctMemberNames(members: vector.T(ast.TypeBinding)): Ok =
+        begin
+            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+            for i = 0 upto {vector.length(:ast.TypeBinding members) - 1} do
+                let m = vector.get(:ast.TypeBinding members i)
+                if hashMap.contains(:String :Bool seen m.name) then
+                    diagnostics.fail(:Ok "Type '" <> m.name <> "' is declared more than once in one simultaneous declaration"
+                        m.offset)
+                end
+                hashMap.insert(:String :Bool seen m.name true)
+            end
+        end
+
+    and tupleTypeBindingMembers(members: vector.T(ast.TypeBinding) isGroup: Bool): vector.T(ast.TypeBinding) =
+        begin
+            if isGroup then checkDistinctMemberNames(members) end
+            members
+        end
+
+    and elaborateTupleTypeBindings(members0: vector.T(ast.TypeBinding) isGroup: Bool e: env.T): Array(TupleTypeBinding) =
+        begin
+            let members = tupleTypeBindingMembers(members0 isGroup)
+            let result = vector.new(:TupleTypeBinding)
+            let n = vector.length(:ast.TypeBinding members)
+            if vector.get(:ast.TypeBinding members 0).isRec then
+                let syms = env.scoped(:Array(symbols.TypeSymbol) e "tuple_rec_types"
+                    fun(s: symbols.Scope): Array(symbols.TypeSymbol)
+                        if isGroup then
+                            elaborateTypeBindingGroup(members e)
+                        else
+                            array of elaborateTypeBinding(vector.get(:ast.TypeBinding members 0) e) end
+                        end)
+                for i = 0 upto {n - 1} do
+                    let member = vector.get(:ast.TypeBinding members i)
+                    let sym = syms[i]
+                    let hasBound = maybe.isSome(:ast.KindExpr member.bound)
+                    (* Like any type component, a recursive one must be a type unless it declares a bound *)
+                    checkKind(maybe.unwrap(:Type sym.definition) if hasBound then sym.kind else model.typeKind end e)
+                end
+                for i = 0 upto {n - 1} do
+                    let member = vector.get(:ast.TypeBinding members i)
+                    let sym = syms[i]
+                    let bound = if maybe.isSome(:ast.KindExpr member.bound) then
+                        maybe.some(:Kind sym.kind)
+                    else
+                        maybe.none(:Kind)
+                    end
+                    vector.append(:TupleTypeBinding result tuple let member = member let sym = sym let bound = bound end)
+                end
+            else
+                for i = 0 upto {n - 1} do
+                    let member = vector.get(:ast.TypeBinding members i)
+                    (* The definition and its declared bound, if any *)
+                    let bound = if maybe.isSome(:ast.KindExpr member.bound) then
+                        maybe.some(:Kind elaborateKind(maybe.unwrap(:ast.KindExpr member.bound) e))
+                    else
+                        maybe.none(:Kind)
+                    end
+                    let mType = elaborateType(member.typeVal e)
+                    let kind = maybe.unwrapOr(:Kind bound model.typeKind)
+                    checkKind(mType kind e)
+                    let sym = symbols.newTypeSymbol(member.name env.freshSymbolId(e) kind maybe.some(:Type mType))
+                    vector.append(:TupleTypeBinding result tuple let member = member let sym = sym let bound = bound end)
+                end
+            end
+            vector.toArray(:TupleTypeBinding result)
+        end
+
+    and differentParamsError(first: ast.TypeBinding member: ast.TypeBinding): diagnostics.CompilerError =
+        diagnostics.errorAt("The members of a recursive group must all have the same type parameters, as '" <>
+            first.name <> "' and '" <> member.name <> "' do not" member.offset)
+
+    (* Whether a recursive type declaration declares a type operator: Let Rec T(A::K) = ..., which the parser makes
+     * Let Rec T = Fun(A::K) .... *)
+    and isRecTypeOperator(b: ast.TypeBinding): Bool =
+        case b.typeVal.form when typeFun then true else false end
+
+    (* Let Rec T(A::K) = Body means Fun(A::K) Rec(T) Body, with T(A) in Body standing for the recursive variable. The
+     * members of a group must take the same parameters, which they share. *)
+    and elaborateRecTypeOperators(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol) =
+        begin
+            Let Shape = Tuple
+                params: vector.T(ast.TypeFormal) resultKind: maybe.T(ast.KindExpr) body: ast.TypeExpr
+            end
+            let n = vector.length(:ast.TypeBinding members)
+            let firstMember = vector.get(:ast.TypeBinding members 0)
+            let shapes = vector.new(:Shape)
+            for i = 0 upto {n - 1} do
+                let member = vector.get(:ast.TypeBinding members i)
+                case member.typeVal.form
+                    when typeFun with f then
+                        begin
+                            if maybe.isSome(:ast.KindExpr member.bound) then
+                                diagnostics.fail(:Ok "Recursive type operator '" <> member.name <>
+                                    "' must be declared with its parameters, as " <> member.name <>
+                                    "(A::K) :: K' = ..., not with a bound and Fun" member.offset)
+                            end
+                            vector.append(:Shape shapes tuple
+                                let params = f.params let resultKind = f.resultKind let body = f.body
+                            end)
+                        end
+                    else diagnostics.raiseError(:Ok differentParamsError(firstMember member))
+                end
+            end
+            let firstParams = vector.get(:Shape shapes 0).params
+            let np = vector.length(:ast.TypeFormal firstParams)
+            for i = 0 upto {n - 1} do
+                let params = vector.get(:Shape shapes i).params
+                let var same = {vector.length(:ast.TypeFormal params) is np}
+                if same then
+                    for j = 0 upto {np - 1} do
+                        if not(stringOp.equal(vector.get(:ast.TypeFormal params j).name
+                                vector.get(:ast.TypeFormal firstParams j).name)) then
+                            same := false
+                        end
+                    end
+                end
+                if not(same) then
+                    diagnostics.raiseError(:Ok differentParamsError(firstMember vector.get(:ast.TypeBinding members i)))
+                end
+            end
+
+            Let Entry = Tuple name: String recId: Int bound: Kind body: Type end
+            Let Result = Tuple params: Array(model.TypeFormal) operators: Array(symbols.TypeSymbol) entries: Array(Entry) end
+            let r = env.scoped(:Result e "rec_operator_" <> firstMember.name fun(s: symbols.Scope): Result
+                begin
+                    let formals = vector.new(:model.TypeFormal)
+                    for j = 0 upto {np - 1} do
+                        let param = vector.get(:ast.TypeFormal firstParams j)
+                        let bound = elaborateKind(param.bound e)
+                        for i = 1 upto {n - 1} do
+                            let other = vector.get(:ast.TypeFormal vector.get(:Shape shapes i).params j)
+                            if not(model.sameKind(elaborateKind(other.bound e) bound)) then
+                                diagnostics.raiseError(:Ok
+                                    differentParamsError(firstMember vector.get(:ast.TypeBinding members i)))
+                            end
+                        end
+                        let symbolId = env.freshSymbolId(e)
+                        declareVariable(e param.name symbolId bound)
+                        vector.append(:model.TypeFormal formals tuple
+                            let name = param.name let symbolId = symbolId let bound = bound
+                        end)
+                    end
+                    let params = vector.toArray(:model.TypeFormal formals)
+
+                    let operators = vector.new(:symbols.TypeSymbol)
+                    let recVars = vector.new(:Type)
+                    let recIds = newIds()
+                    for i = 0 upto {n - 1} do
+                        let member = vector.get(:ast.TypeBinding members i)
+                        let rk = vector.get(:Shape shapes i).resultKind
+                        let resultKind = if maybe.isSome(:ast.KindExpr rk) then
+                            elaborateKind(maybe.unwrap(:ast.KindExpr rk) e)
+                        else
+                            model.typeKind
+                        end
+                        checkKindWellFormed(resultKind e)
+                        let recId = env.freshSymbolId(e)
+                        let recVar = model.typeVariable(member.name recId maybe.some(:Kind resultKind))
+                        let operatorId = env.freshSymbolId(e)
+                        hashMap.insert(:Int :RecOperator recOperators operatorId tuple
+                            let name = member.name let formals = params let recVar = recVar
+                        end)
+                        let operator = declare(e
+                            symbols.newTypeSymbol(member.name operatorId operatorKind(params resultKind) maybe.none(:Type)))
+                        vector.append(:symbols.TypeSymbol operators operator)
+                        vector.append(:Type recVars recVar)
+                        hashMap.insert(:Int :Bool recIds recId true)
+                    end
+
+                    let entries = vector.new(:Entry)
+                    for i = 0 upto {n - 1} do
+                        let member = vector.get(:ast.TypeBinding members i)
+                        let recVar = vector.get(:Type recVars i)
+                        let bound = case recVar.form
+                            when typeVariable with v then maybe.unwrap(:Kind v.bound)
+                            else model.typeKind
+                        end
+                        let body = elaborateType(vector.get(:Shape shapes i).body e)
+                        checkKind(body bound e)
+                        contractiveness.checkTypeContractive(body recIds member.name member.offset some(e))
+                        let recId = case recVar.form when typeVariable with v then v.symbolId else 0 end
+                        vector.append(:Entry entries tuple
+                            let name = member.name let recId = recId let bound = bound let body = body
+                        end)
+                    end
+                    tuple
+                        let params = params
+                        let operators = vector.toArray(:symbols.TypeSymbol operators)
+                        let entries = vector.toArray(:Entry entries)
+                    end
+                end)
+
+            let recursiveTypes = if extent r.entries is 1 then
+                let x = r.entries[0]
+                array of model.recType(x.name x.recId x.bound x.body) end
+            else
+                let bindings = vector.new(:model.RecBinding)
+                for i = 0 upto {extent r.entries - 1} do
+                    let x = r.entries[i]
+                    vector.append(:model.RecBinding bindings tuple
+                        let name = x.name let symbolId = x.recId let bound = x.bound let body = x.body
+                    end)
+                end
+                model.siblings(model.recGroupType(vector.toArray(:model.RecBinding bindings) 0))
+            end
+            let result = vector.new(:symbols.TypeSymbol)
+            for i = 0 upto {extent r.operators - 1} do
+                let operator = r.operators[i]
+                (* The symbol defined has the operator's id, but is an ordinary type symbol *)
+                hashMap.delete(:Int :RecOperator recOperators operator.symbolId)
+                vector.append(:symbols.TypeSymbol result symbols.newTypeSymbol(operator.name operator.symbolId
+                    operator.kind maybe.some(:Type model.typeOperator(r.params recursiveTypes[i]))))
+            end
+            vector.toArray(:symbols.TypeSymbol result)
+        end
+
+    and declareAll(syms: Array(symbols.TypeSymbol) e: env.T): Array(symbols.TypeSymbol) =
+        begin
+            for i = 0 upto {extent syms - 1} do declare(e syms[i]) end
+            syms
+        end
+
+    and elaborateTypeBindingGroup(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol) =
+        begin
+            checkDistinctMemberNames(members)
+            let n = vector.length(:ast.TypeBinding members)
+            if vector.get(:ast.TypeBinding members 0).isRec then
+                let var anyOperator = false
+                for i = 0 upto {n - 1} do
+                    if isRecTypeOperator(vector.get(:ast.TypeBinding members i)) then anyOperator := true end
+                end
+                if anyOperator then
+                    declareAll(elaborateRecTypeOperators(members e) e)
+                else
+                    elaborateMutualRecTypeGroup(members e)
+                end
+            else
+                let syms = vector.new(:symbols.TypeSymbol)
+                for i = 0 upto {n - 1} do
+                    vector.append(:symbols.TypeSymbol syms typeBindingSymbol(vector.get(:ast.TypeBinding members i) e))
+                end
+                declareAll(vector.toArray(:symbols.TypeSymbol syms) e)
+            end
+        end
+
+    and elaborateTypeBinding(b: ast.TypeBinding e: env.T): symbols.TypeSymbol = declare(e typeBindingSymbol(b e))
+
+    (* A single type declaration's symbol, not declared *)
+    and typeBindingSymbol(b: ast.TypeBinding e: env.T): symbols.TypeSymbol =
+        if b.isRec andif isRecTypeOperator(b) then
+            elaborateRecTypeOperators(vector.fromArray(:ast.TypeBinding array of b end) e)[0]
+        else
+            let symbolId = env.freshSymbolId(e)
+            let declaredBound = if maybe.isSome(:ast.KindExpr b.bound) then
+                let k = elaborateKind(maybe.unwrap(:ast.KindExpr b.bound) e)
+                checkKindWellFormed(k e)
+                maybe.some(:Kind k)
+            else
+                maybe.none(:Kind)
+            end
+            let targetBound = maybe.unwrapOr(:Kind declaredBound model.typeKind)
+            Let Elaborated = Tuple type: Type kind: Kind end
+            let elaborated: Elaborated =
+                if not(vector.empty(:ast.TypeFormal b.params)) then
+                    (* Desugar parameterized type definition Let T(X::K): ResultKind = Body into a type operator *)
+                    env.scoped(:Elaborated e "type_fun_" <> b.name fun(s: symbols.Scope): Elaborated
+                        begin
+                            let formals = elaborateFormals(b.params e)
+                            let body = elaborateType(b.typeVal e)
+                            checkKind(body targetBound e)
+                            tuple
+                                let type = model.typeOperator(formals body)
+                                let kind = operatorKind(formals targetBound)
+                            end
+                        end)
+                elsif b.isRec then
+                    (* Single recursive type definition Let Rec T = Body *)
+                    env.scoped(:Elaborated e "rec_" <> b.name fun(s: symbols.Scope): Elaborated
+                        begin
+                            declareVariable(e b.name symbolId targetBound)
+                            let body = elaborateType(b.typeVal e)
+                            checkKind(body targetBound e)
+                            let ids = newIds()
+                            hashMap.insert(:Int :Bool ids symbolId true)
+                            contractiveness.checkTypeContractive(body ids b.name b.offset some(e))
+                            tuple let type = model.recType(b.name symbolId targetBound body) let kind = targetBound end
+                        end)
+                else
+                    let t0 = elaborateType(b.typeVal e)
+                    let t = case t0.form
+                        when typeExternal with x then
+                            if stringOp.equal(x.name "") then model.externalType(b.name x.cType) else t0 end
+                        else t0
+                    end
+                    if maybe.isSome(:Kind declaredBound) then
+                        checkKind(t targetBound e)
+                        tuple let type = t let kind = targetBound end
+                    else
+                        tuple let type = t let kind = kinds.synthKind(t some(e)) end
+                    end
+                end
+            (* Validate overall kind conformance *)
+            checkKind(elaborated.type elaborated.kind e)
+            symbols.newTypeSymbol(b.name symbolId elaborated.kind maybe.some(:Type elaborated.type))
+        end
+
+    and elaborateMutualRecTypeGroup(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol) =
+        begin
+            Let Pre = Tuple name: String symbolId: Int bound: Kind b: ast.TypeBinding end
+            let n = vector.length(:ast.TypeBinding members)
+            (* 1. Allocate symbol ids and declared bounds for all bindings *)
+            let pre = vector.new(:Pre)
+            for i = 0 upto {n - 1} do
+                let b = vector.get(:ast.TypeBinding members i)
+                let symbolId = env.freshSymbolId(e)
+                let bound = if maybe.isSome(:ast.KindExpr b.bound) then
+                    elaborateKind(maybe.unwrap(:ast.KindExpr b.bound) e)
+                else
+                    model.typeKind
+                end
+                checkKindWellFormed(bound e)
+                vector.append(:Pre pre tuple let name = b.name let symbolId = symbolId let bound = bound let b = b end)
+            end
+            (* 2. A scope of the group's abstract type symbols, where 3. each body is elaborated *)
+            let entries = env.scoped(:Array(model.RecBinding) e "mutual_rec_group"
+                fun(s: symbols.Scope): Array(model.RecBinding)
+                    begin
+                        let ids = newIds()
+                        for i = 0 upto {n - 1} do
+                            let p = vector.get(:Pre pre i)
+                            declareVariable(e p.name p.symbolId p.bound)
+                            hashMap.insert(:Int :Bool ids p.symbolId true)
+                        end
+                        let entries = vector.new(:model.RecBinding)
+                        for i = 0 upto {n - 1} do
+                            let p = vector.get(:Pre pre i)
+                            let body = elaborateType(p.b.typeVal e)
+                            checkKind(body p.bound e)
+                            contractiveness.checkTypeContractive(body ids p.name p.b.offset some(e))
+                            vector.append(:model.RecBinding entries tuple
+                                let name = p.name let symbolId = p.symbolId let bound = p.bound let body = body
+                            end)
+                        end
+                        vector.toArray(:model.RecBinding entries)
+                    end)
+            (* 4. A group type for each binding, declared in the enclosing scope *)
+            let result = vector.new(:symbols.TypeSymbol)
+            for i = 0 upto {n - 1} do
+                let x = entries[i]
+                vector.append(:symbols.TypeSymbol result declare(e
+                    symbols.newTypeSymbol(x.name x.symbolId x.bound maybe.some(:Type model.recGroupType(entries i)))))
+            end
+            vector.toArray(:symbols.TypeSymbol result)
+        end
+
+    let elaborateKindBinding(name: String kindVal: ast.KindExpr e: env.T): symbols.KindSymbol =
+        begin
+            let k = elaborateKind(kindVal e)
+            checkKindWellFormed(k e)
+            symbols.declareKind(e.currentScope symbols.newKindSymbol(name env.freshSymbolId(e) k))
+        end
+end

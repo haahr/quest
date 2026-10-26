@@ -199,8 +199,8 @@ tests), which run the questlang tests in every phase.
 
 **Self-hosted parser:** `tests/parser/generate.py` writes a test for each input in `tests/parser`, whose cases are
 separated by lines that are just `(* ---- *)`: `tests/source/questlang/parser_NAME.quest` parses each case with the
-self-hosted parser (`questlang/syntax/parser`) and prints its AST with `astprint.dump`, or its syntax error, and its
-golden holds what the bootstrap's parser and `ast_dump` give. `forms.quest` uses every rule of the grammar;
+self-hosted parser (`questlang/syntax/parser`) and prints its AST with `astprint.dumpWithOffsets`, or its syntax
+error, and its golden holds what the bootstrap's parser and `ast_dump` (with every node's offset) give. `forms.quest` uses every rule of the grammar;
 `errors.quest` holds syntax errors, whose messages and positions must be the bootstrap's. Regenerate them with
 `python tests/parser/generate.py` after changing an input. `syntax_parser.quest` tests what only the self-hosted
 parser has (its entry points, its nodes' extents, and the phrases its AST holds only at the top level), and
@@ -212,6 +212,12 @@ goldens hold what the bootstrap gives: `types_model` the model's operations (pri
 substitution, evaluation and unfolding, metavariables, queries), and `types_judgments` the judgments (subtyping,
 subkinding, kind synthesis and its errors, contractiveness, bounds, the environment's builtins). Regenerate them
 with `python tests/types/generate.py` after changing a case.
+
+**Self-hosted type elaboration:** `tests/elaborate/generate.py` writes a test for each input in `tests/elaborate`,
+whose cases, separated as the parser's are, are programs of type and kind declarations:
+`tests/source/questlang/elaborate_NAME.quest` elaborates each case's declarations in order, in a new environment,
+with `questlang/typechecker/elaboratetypes`, printing the symbols they declare or the first error, and its golden
+holds what the bootstrap's `elaborate_types` gives. Regenerate them with `python tests/elaborate/generate.py`.
 
 **Conversion matrix:** `tests/conversions/generate.py` writes the programs in `tests/source/conversions`, one per place
 compiled code converts values between representations (polymorphic calls, first-class polymorphic values, type

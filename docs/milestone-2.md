@@ -198,15 +198,22 @@ Subtyping takes only the environment's lookups (`subtyping.Env`, the bootstrap's
 fixed a bug of the bootstrap's C backend: a closure returning `Ok` adapted to a generic result
 (`modules/ok_result_closures`).
 
-### Step 4: Elaborating types; the typed AST
+### Step 4: Elaborating types; the typed AST (done)
 
-Port `typechecker/typedast`, `typedastprint`, `elaboratetypes`, and `checks`, and the driver's typecheck phase for
-programs of type and kind bindings. Typecheck goldens of programs without imports and with only type bindings leave
-the pending list.
+Port `typechecker/typedast`, `typedastprint`, `elaboratetypes`, and `checks`. Test elaboration with a generated test,
+as the parser's are: `tests/elaborate/generate.py` makes `elaborate_types`, which elaborates programs of type and kind
+declarations and prints the symbols they declare, or the first error, as the bootstrap does.
+
+The bootstrap locates errors in components (parameters, field signatures, bindings, branches, imports) at their own
+offsets, so the AST's component tuples gained the offsets the bootstrap's nodes have, and the parser tests compare
+them (`astprint.dumpWithOffsets`, the driver's `--show-offsets`). The bootstrap's `_RecOperatorSymbol`, a subclass of
+`TypeSymbol`, is a table of the operators being defined, by symbol id. A type path through a module to a module
+(`m.n.T`) is reported as an undefined module; the bootstrap's scopes have no `lookup_module`, so it fails there. The
+driver's typecheck phase moved to Step 5, since it is the checker's program loop.
 
 ### Step 5: The checker
 
-Port `checker`, `typecheck`, and the construct families in dependency order: literals, variables, blocks, and
+Port `checker`, `typecheck` (and with it the driver's typecheck phase), and the construct families in dependency order: literals, variables, blocks, and
 functions (`bindings`); calls (`application`, `lvalues`, `metas`); control flow (`control`); aggregates; exceptions;
 auto values (`autovalues`, `escape`); and `scoping`, which runs in the driver when `QUEST_CHECK_SCOPES=1`, as the
 runner sets it. Report errors as §2 has them from the first construct on. Goldens of programs without imports leave
