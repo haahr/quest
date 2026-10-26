@@ -251,40 +251,43 @@ def _prove_subtype(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTra
 
 
 def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
-    """Decides one goal, sub <: sup, by the structure of the two types. Each
-    nested goal goes back through _prove_subtype, which consults the cache and
-    records the result.
+    """Decides one goal, sub <: sup, by the structure of the two types.
 
-    Recursive types are equi-recursive: a recursive type is equal to its
-    unfolding, and so stands for an infinite tree, which a structural comparison
-    would never finish walking. So a pair of types being compared is assumed to
-    hold while their parts are compared, and meeting the same pair again counts
-    as proved (a coinductive proof; the comment above _commit_proof explains why
-    this is sound, and what may be cached). The trail of assumptions is
-    consulted twice: for the types as written, and again after evaluate_lazily
-    has exposed their outermost constructors, since a goal can recur in either
-    form.
+    The basic rule is structural. Once evaluate_lazily has exposed each type's
+    outermost constructor (Record, Fun, Option, ...), the constructors must
+    match, and the goal becomes goals about their parts, each decided by a
+    recursive call. Immutable parts are compared covariantly (in the same
+    direction), mutable ones (var fields, Var, arrays) invariantly (in both
+    directions), and function parameters contravariantly (reversed). Records and
+    tuples have width subtyping: a record with more fields is a subtype of one
+    with fewer, as Record a: Int b: Int end <: Record a: Int end, and a tuple is
+    a subtype of a tuple made of a prefix of its components. A type variable has
+    no constructor, but its bound is known: a type parameter declared A <: B is
+    a subtype of whatever B is.
 
-    Metavariables are solved here, greedily: a goal ?A <: T or T <: ?A with ?A
-    unsolved makes T the solution of ?A and succeeds, without checking ?A's
-    bound. That is all the solving that type inference does (see
-    _synth_polymorphic_app), and it is why a solution can depend on the order in
-    which goals are posed.
+    Recursive types are the first complication. Quest's are equi-recursive:
+    Rec(X) T is the same type as its unfolding, T with the Rec type itself put
+    in for X, so it stands for an infinite tree, which comparing part by part
+    would never finish. Instead, a goal is assumed to hold while its parts are
+    compared, and meeting the same goal again counts as proved. Given
 
-    A type variable, abstract type, or path type bounded by POWER(B), and so
-    known to be a subtype of B, is a subtype of whatever B is. Otherwise the
-    outermost constructors must match, and their parts are compared by the rules
-    given at each case: immutable parts covariantly, mutable ones (var fields,
-    Var, arrays) invariantly, and function parameters contravariantly. Records
-    and tuples have width subtyping: a record with more fields is a subtype of
-    one with fewer, and a tuple is a subtype of a tuple made of a prefix of its
-    components. A type component that sup leaves abstract (A::K) may be matched
-    by one that sub defines (A = T), and the definition is substituted into
-    sup's later components.
+        Let Rec P = Record x: Int y: Int next: P end
+        Let Rec Q = Record x: Int next: Q end
 
-    fuel bounds the steps of one proof. Subtyping of bounded polymorphic types
-    is undecidable, and running out raises TypeRecursionLimitExceeded rather
-    than looping.
+    P <: Q holds if its fields' goals do. x gives Int <: Int, and next gives
+    P <: Q again, which is assumed, so P <: Q is proved. (This is a coinductive
+    proof; the comment above _commit_proof explains why it is sound and when its
+    results may be cached.)
+
+    Metavariables are the second. During type inference (_synth_polymorphic_app)
+    an unknown type argument is a placeholder, a metavariable ?A, and this is
+    where it is solved: a goal ?A <: T or T <: ?A, with ?A unsolved, makes T the
+    solution and succeeds. Solving is greedy, with no backtracking, so a
+    solution can depend on the order in which goals are posed.
+
+    fuel bounds the number of steps in one proof. Subtyping of bounded
+    polymorphic types is undecidable, so a proof that runs out raises
+    TypeRecursionLimitExceeded rather than looping.
     """
     if fuel <= 0:
         raise TypeRecursionLimitExceeded(
@@ -323,7 +326,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
     if isinstance(sub_lazy, QBottomType):
         return True
 
-    # 3. Metavariable resolution & unification
+    # 3. Metavariable resolution & unification. A solution's bound is not
+    #    checked here; _synth_polymorphic_app checks it.
     if isinstance(sub_lazy, QTypeMeta):
         pruned = sub_lazy.prune()
         if pruned is not sub_lazy:
@@ -339,7 +343,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
 
     # 4. Top types: in Quest, any proper type is a subtype of itself or upper
     #    bounds
-    # 5. Coinductive trail check
+    # 5. Coinductive trail check, again after unfolding (step 0 checked the
+    #    types as written), since a goal can recur in either form
     pair = trail.pair(sub_lazy, sup_lazy)
     if pair in trail:
         return True
@@ -354,7 +359,9 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
     # 7. Pattern matching across type pairs
     match (sub_lazy, sup_lazy):
         # Tuples: prefix match (Cardelli §7.1, §10.2), matching names, covariant
-        # elements / subkinds
+        # elements / subkinds. A type component that sup leaves abstract (A::K)
+        # may be matched by one that sub defines (A = T), and the definition is
+        # substituted into sup's later components.
         case (QTupleType(fields=sub_fields), QTupleType(fields=sup_fields)):
             if len(sub_fields) < len(sup_fields):
                 return False
