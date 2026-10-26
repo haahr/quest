@@ -1,0 +1,160 @@
+(* Quest Self-Hosted Compiler: Parser Actions Interface
+ *
+ * The semantic actions of the grammar's rules (grammar), which build the AST as the actions and helpers of
+ * bootstrap/python/quest/syntax/grammar.py build the bootstrap's. Each action's comment shows the rule's non-silent
+ * items, which are its arguments. A node is positioned where the bootstrap positions it, and extends to the end of
+ * the rule that builds it.
+ *
+ * The AST cannot hold some things the bootstrap parses and its later phases reject:
+ * - An import, an interface, or a module anywhere but at the top level, and an Auto type's declarations (it has only
+ *   values): an action given one reports a fatal error.
+ * - The parameter of ALL(...) that an anonymous field or an unbounded Def declares, which the bootstrap leaves
+ *   without a name or a kind: here it is "_" of kind TYPE. *)
+
+interface Actions
+import
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
+export
+    (* The value of a rule's one argument *)
+    first: engine.Action
+    (* A list of lists, flattened *)
+    flatten: engine.Action
+    (* A token's lexeme *)
+    lexeme: engine.Action
+
+    (* =========================================================================
+     * Identifiers, Paths, and Imports
+     * ========================================================================= *)
+
+    ideList: engine.Action                  (* ide {, ide} *)
+    path: engine.Action                     (* ident {/ ident} *)
+    moduleEntryNamed: engine.Action         (* ident = Path *)
+    moduleEntry: engine.Action              (* Path *)
+    importDual: engine.Action               (* IdeList : ident = PathList : Path *)
+    importAliasPaths: engine.Action         (* : ident = PathList : Path *)
+    importAliasInterface: engine.Action     (* : ident = : Path *)
+    importInterface: engine.Action          (* : Path *)
+    importModules: engine.Action            (* ModuleEntryList : Path *)
+
+    (* =========================================================================
+     * Kinds
+     * ========================================================================= *)
+
+    kindAll: engine.Action                  (* ALL ( Signature ) Kind *)
+    kindType: engine.Action                 (* TYPE *)
+    kindPower: engine.Action                (* POWER ( Type ) *)
+    kindManifest: engine.Action             (* ide _ ide *)
+    kindId: engine.Action                   (* ide *)
+    hasKindSubtype: engine.Action           (* <: Type *)
+
+    (* =========================================================================
+     * Types
+     * ========================================================================= *)
+
+    typeInfix: engine.Action                (* PostfixType [infix Type] *)
+    typePostfix: engine.Action              (* PrimaryType {PostfixTypeOp} *)
+    selectTypeOp: engine.Action             (* . ident *)
+    typeAppOp: engine.Action                (* ( [TypeBinding] ) *)
+    typeManifestOp: engine.Action           (* _ ident *)
+    typeAll: engine.Action                  (* All ( Signature ) Type *)
+    typeTuple: engine.Action                (* Tuple Signature end *)
+    typeOption: engine.Action               (* Option OptionSignature end *)
+    typeRecord: engine.Action               (* Record ValueSignature end *)
+    typeVariant: engine.Action              (* Variant ValueSignature end *)
+    typeAuto: engine.Action                 (* Auto [ide] HasKind with Signature end *)
+    typeFun: engine.Action                  (* Fun ( TypeFormals ) [HasKind] Type *)
+    typeRec: engine.Action                  (* Rec ( ide HasKind ) Type *)
+    typeArray: engine.Action                (* Array ( Type ) *)
+    typeVar: engine.Action                  (* Var ( Type ) *)
+    typeOut: engine.Action                  (* Out ( Type ) *)
+    typeManifest: engine.Action             (* ide _ ide *)
+    typeName: engine.Action                 (* ide, or { infix } *)
+    typeException: engine.Action            (* Exception *)
+    typeAppInfix: engine.Action             (* infix ( [TypeBinding] ) *)
+    typeExternal: engine.Action             (* external "c_type" *)
+
+    (* =========================================================================
+     * Signatures
+     * ========================================================================= *)
+
+    sigKindDecl: engine.Action              (* DEF KindDecl *)
+    sigDefType: engine.Action               (* Def [Rec] TypeDecl {and TypeDecl} *)
+    fieldSigs: engine.Action                (* [var] [out] IdeList {( Signature )} : Type *)
+    sigMutField: engine.Action              (* HasMutType *)
+    typeFormals: engine.Action              (* [IdeList] HasKind *)
+    recordFieldSigs: engine.Action          (* {[var] IdeList HasType} *)
+    optionFieldSigs: engine.Action          (* {ide {, ide} [with Signature end]} *)
+    (* : Type and the like (an anonymous field of a mode) *)
+    mutField(mode: ast.ParamMode): engine.Action
+
+    (* =========================================================================
+     * Values
+     * ========================================================================= *)
+
+    valueInfix: engine.Action               (* PostfixValue [InfixOp Value] *)
+    valuePostfix: engine.Action             (* PrimaryValue {PostfixOp} *)
+    selectOp: engine.Action                 (* . ident *)
+    variantCheckOp: engine.Action           (* ? ident *)
+    variantAssertOp: engine.Action          (* ! ident *)
+    callOp: engine.Action                   (* ( [Binding] ) *)
+    indexOp: engine.Action                  (* [ Value ] *)
+    ofRepOp: engine.Action                  (* of ( Value Value ) *)
+    ofOp: engine.Action                     (* of [Binding] end *)
+    exprInt: engine.Action
+    exprReal: engine.Action
+    exprChar: engine.Action
+    exprString: engine.Action
+    exprTrue: engine.Action
+    exprFalse: engine.Action
+    exprOk: engine.Action
+    exprExit: engine.Action
+    exprExternal: engine.Action             (* external "symbol" *)
+    exprIf: engine.Action                   (* if Value Binding {elsif Value Binding} [else Binding] end *)
+    exprBegin: engine.Action                (* begin Binding end *)
+    exprLoop: engine.Action                 (* loop Binding end *)
+    exprWhile: engine.Action                (* while Value do Binding end *)
+    exprFor: engine.Action                  (* for ident = Value [upto] [downto] Value do Binding end *)
+    exprFun: engine.Action                  (* fun {( Signature )} [: Type] Value *)
+    exprTuple: engine.Action                (* tuple Binding end *)
+    exprRecord: engine.Action               (* record ValueBinding end *)
+    exprArrayRep: engine.Action             (* array of ( Value Value ) *)
+    exprArray: engine.Action                (* array of [Binding] end *)
+    exprOption: engine.Action               (* option ide of Type [with Binding] end *)
+    exprOptionOrdinal: engine.Action        (* option ordinal ( Value ) of Type [with Binding] end *)
+    exprVariant: engine.Action              (* variant [var] ident of Type [with Value] end *)
+    exprAuto: engine.Action                 (* auto [let ident [HasKind] =] : Type with [Binding] end *)
+    exprCase: engine.Action                 (* case Value CaseBranches end *)
+    exprInspect: engine.Action              (* inspect Value InspectBranches end *)
+    exprException: engine.Action            (* exception ident [: Type] end *)
+    exprRaise: engine.Action                (* raise Value [with Value] [as Type] end *)
+    exprTry: engine.Action                  (* try Binding TryBranches end *)
+    exprVarCell: engine.Action              (* var ( Value ) *)
+    exprDeref: engine.Action                (* @ Value *)
+    exprId: engine.Action                   (* ident, { infix }, or not, extent, or ordinal *)
+    exprPrefixApp: engine.Action            (* infix ( [Binding] ) *)
+    monadicApp: engine.Action               (* not, extent, or ordinal PostfixValue *)
+    recordBindings: engine.Action           (* {[var] ident = Value} *)
+    caseBranches: engine.Action             (* {when IdeList [with ident [: Type]] then Binding} [else Binding] *)
+    inspectBranches: engine.Action          (* {when Type [with IdeList [: Type]] then Binding} [else Binding] *)
+    tryBranches: engine.Action              (* {when Value [with ident [: Type]] then Binding} [else Binding] *)
+
+    (* =========================================================================
+     * Declarations and Phrases
+     * ========================================================================= *)
+
+    kindDecl: engine.Action                 (* ide = Kind *)
+    typeDecl: engine.Action                 (* ide {( TypeFormals )} [HasKind] = Type *)
+    valueDecl: engine.Action                (* [var] ide {( Signature )} [: Type] = Value *)
+    interfaceDecl: engine.Action            (* [unsound] interface ident [import Import] export Signature end *)
+    moduleDecl: engine.Action               (* [unsound] module ident : Path [import Import] export Binding end *)
+    letType: engine.Action                  (* Let [Rec] TypeDecl {and TypeDecl} *)
+    letValue: engine.Action                 (* let [rec] ValueDecl {and ValueDecl} *)
+    varDecl: engine.Action                  (* var ValueDecl *)
+    defType: engine.Action                  (* Def [Rec] TypeDecl {and TypeDecl} *)
+    typeArg: engine.Action                  (* : Type *)
+    kindArg: engine.Action                  (* :: Kind *)
+    exprStmt: engine.Action                 (* Value *)
+    linkage: engine.Action                  (* import Import *)
+    program: engine.Action                  (* {Phrase} *)
+end

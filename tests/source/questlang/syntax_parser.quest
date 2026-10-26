@@ -1,0 +1,94 @@
+(* Self-Hosted Quest Compiler: Test the Parser's Entry Points, Positions, and Its Own Errors
+ *
+ * The parser's ASTs and syntax errors are tested against the bootstrap's by the tests tests/parser/generate.py
+ * writes (parser_*.quest); this tests what only the self-hosted parser has. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+(* @timeout: 300.0 *)
+
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/astprint : questlang/syntax/AstPrint
+    collections/vector : collections/Vector
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+
+Let Parse(A::TYPE) = All(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T) A;
+
+(* Parses text with an entry point and shows the result, or the syntax error *)
+let show(A::TYPE text: String parse: Parse(A) dump: All(a: A) String): Ok =
+    begin
+        let sm = location.newSourceMap("parser.quest" text)
+        let bag = diagbag.new()
+        let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
+        try
+            emit(text <> " => " <> dump(parse(toks sm bag)))
+        when diagbag.fatalError with d then
+            let sp = diagnostics.span(d)
+            emit(text <> " => error at " <> conv.int(sp.startOffset) <> "-" <> conv.int(sp.endOffset) <> ": " <>
+                diagnostics.message(d))
+        end
+    end;
+
+(* =========================================================================
+ * 1. Entry Points: a type, a kind, a value, and a program
+ * ========================================================================= *)
+
+show(:ast.TypeExpr "Array(Int) + T.U" parser.parseType astprint.dumpTypeExpr);
+show(:ast.TypeExpr "Int Int" parser.parseType astprint.dumpTypeExpr);
+show(:ast.KindExpr "ALL(X::TYPE) POWER(X)" parser.parseKind astprint.dumpTypeExpr);
+show(:ast.Expr "f(1) + x.y" parser.parseValue astprint.dumpExpr);
+show(:ast.Expr "let x = 1" parser.parseValue astprint.dumpExpr);
+show(:ast.Program "1; 2" parser.parseProgram astprint.dump);
+
+(* =========================================================================
+ * 2. Positions: a node starts where the bootstrap positions it (here, a postfix or infix node at its operand), and
+ *    ends where the rule that builds it ends
+ * ========================================================================= *)
+
+let at(sp: location.Span): String = conv.int(sp.startOffset) <> "-" <> conv.int(sp.endOffset);
+
+let rec spans(e: ast.Expr): String =
+    at(e.span) <> case e.form
+        when exprInfix with x then " (" <> spans(x.left) <> " " <> x.op <> " " <> spans(x.right) <> ")"
+        when exprApp with x then
+            " (" <> spans(x.func) <> " of " <> conv.int(vector.length(:ast.Expr x.args)) <> " args)"
+        when exprSelect with x then " (" <> spans(x.target) <> " ." <> x.field <> ")"
+        when exprBlock with x then " (block of " <> conv.int(vector.length(:ast.Expr x.bindings)) <> ")"
+        else ""
+    end;
+
+show(:ast.Expr "f(1) + x.y" parser.parseValue spans);
+show(:ast.Expr "  a.b.c(d)  " parser.parseValue spans);
+show(:ast.Expr "begin 1 2 end" parser.parseValue spans);
+
+let phraseSpans(p: ast.Program): String =
+    begin
+        let var s = at(p.span)
+        for i = 0 upto {vector.length(:ast.Phrase p.form.phrases) - 1} do
+            s := s <> " " <> at(vector.get(:ast.Phrase p.form.phrases i).span)
+        end
+        s
+    end;
+
+show(:ast.Program "let x = 1; import m : M; let y = x" parser.parseProgram phraseSpans);
+show(:ast.Program "" parser.parseProgram phraseSpans);
+
+(* =========================================================================
+ * 3. Errors only the self-hosted parser reports: phrases the AST holds only at the top level, and an Auto type's
+ *    declarations
+ * ========================================================================= *)
+
+show(:ast.Program "let x = begin import conv : Conv 1 end" parser.parseProgram astprint.dump);
+show(:ast.Program "let t = tuple interface I export end end" parser.parseProgram astprint.dump);
+show(:ast.Program "let y = f(module m : M export end)" parser.parseProgram astprint.dump);
+show(:ast.Program "module m : M export import a : A end" parser.parseProgram astprint.dump);
+show(:ast.Program "Let A = Auto X::TYPE with Def Y = X y: Y end" parser.parseProgram astprint.dump);

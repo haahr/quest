@@ -1,0 +1,49 @@
+Array(Int) + T.U => (TypeInfix
+  :left (TypeArray
+    :element_type (TypePath ('Int'))
+  )
+  :op '+'
+  :right (TypePath ('T' 'U'))
+)
+Int Int => error at 4-7: Unexpected token 'Int' (IDENT), expected: DOT, LPAREN, PostfixTypeOp, SYMBOLIC_INFIX, UNDERSCORE
+ALL(X::TYPE) POWER(X) => (KindAll
+  :param_name 'X'
+  :param_kind (KindType)
+  :body_kind (KindPower
+    :bound (TypePath ('X'))
+  )
+)
+f(1) + x.y => (ExprInfix
+  :left (ExprApp
+    :func (ExprId 'f')
+    :args (
+      (ExprInt 1 '1')
+    )
+  )
+  :op '+'
+  :right (ExprSelect
+    :target (ExprId 'x')
+    :field 'y'
+  )
+)
+let x = 1 => error at 0-3: Unexpected token 'let' (KW_LET), expected: AT, CHAR_LIT, IDENT, INT_LIT, KW_ARRAY, KW_AUTO, KW_BEGIN, KW_CASE, KW_EXCEPTION, KW_EXIT, KW_EXTENT, KW_EXTERNAL, KW_FALSE, KW_FOR, KW_FUN, KW_IF, KW_INSPECT, KW_LOOP, KW_NOT, KW_OK, KW_OPTION, KW_ORDINAL, KW_RAISE, KW_RECORD, KW_TRUE, KW_TRY, KW_TUPLE, KW_VAR, KW_VARIANT, KW_WHILE, LBRACE, PostfixValue, PrimaryValue, REAL_LIT, STRING_LIT, SYMBOLIC_INFIX
+1; 2 => (Program
+  :phrases (
+    (ExprStmt
+      :expr (ExprInt 1 '1')
+    )
+    (ExprStmt
+      :expr (ExprInt 2 '2')
+    )
+  )
+)
+f(1) + x.y => 0-10 (0-4 (0-1 of 1 args) + 7-10 (7-8 .y))
+  a.b.c(d)   => 2-10 (2-7 (2-5 (2-3 .b) .c) of 1 args)
+begin 1 2 end => 0-13 (block of 2)
+let x = 1; import m : M; let y = x => 0-34 0-9 11-23 25-34
+ => 0-0
+let x = begin import conv : Conv 1 end => error at 14-32: An import is allowed only at the top level
+let t = tuple interface I export end end => error at 14-36: An interface is allowed only at the top level
+let y = f(module m : M export end) => error at 10-33: A module is allowed only at the top level
+module m : M export import a : A end => error at 20-32: An import is allowed only at the top level
+Let A = Auto X::TYPE with Def Y = X y: Y end => error at 26-35: An Auto type has only values

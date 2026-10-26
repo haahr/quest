@@ -1,0 +1,31 @@
+(* Quest Self-Hosted Compiler: Parser Implementation *)
+
+module parser : Parser
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
+    questlang/syntax/parser/grammar : questlang/syntax/parser/Grammar
+    collections/vector : collections/Vector
+export
+    let quest = grammar.new()
+
+    let parse(start: engine.Construct toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): engine.Val =
+        engine.parse(engine.newParser(quest.g toks sm bag) start)
+
+    let wrong(A::TYPE what: String): A = raise engine.error with "expected " <> what end
+
+    let parseProgram(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): ast.Program =
+        case parse(quest.program toks sm bag) when program with x then x.val else wrong(:ast.Program "a program") end
+
+    let parseType(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): ast.TypeExpr =
+        case parse(quest.type toks sm bag) when typeExpr with x then x.val else wrong(:ast.TypeExpr "a type") end
+
+    let parseKind(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): ast.KindExpr =
+        case parse(quest.kind toks sm bag) when typeExpr with x then x.val else wrong(:ast.KindExpr "a kind") end
+
+    let parseValue(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): ast.Expr =
+        case parse(quest.value toks sm bag) when expr with x then x.val else wrong(:ast.Expr "a value") end
+end

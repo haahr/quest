@@ -296,7 +296,7 @@ The interpreter's output, and so every golden, is unchanged; both suites pass at
   Milestone 3. Phase 5 covers them.)
 - **Spelling changes to generated C** beyond 1a, such as normalizing parenthesization.
 - **The parser's grammar actions** (`syntax/grammar.py`), by decision: they stay as they are, though the Quest
-  parser's actions take a uniform `SemanticVal` list ([compiler-organization.md](compiler-organization.md) §4.1) and
+  parser's actions take a uniform array of `engine.Val` ([compiler-organization.md](compiler-organization.md) §4.1) and
   the Python ones mixed positional values, and though the postfix operators' actions return closures. The Quest code
   may diverge there.
 - **Exceptions**, by decision until there is more experience with the compiler in Quest: the Python errors' class

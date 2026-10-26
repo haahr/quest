@@ -1,0 +1,547 @@
+(* Quest Self-Hosted Compiler: Quest Grammar Implementation *)
+
+module grammar : Grammar
+import
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
+    questlang/syntax/parser/actions : questlang/syntax/parser/Actions
+export
+    Let K = tokens.TokenKind
+    Let C = engine.Construct
+
+    let t = engine.t
+    let p = engine.p
+    let pLex = engine.pLex
+    let opt = engine.opt
+    let rep = engine.rep
+    let sepBy = engine.sepBy
+    let rule = engine.rule
+
+    (* =========================================================================
+     * 1. Token Kinds
+     * ========================================================================= *)
+
+    let intLit = option intLit of K end
+    let realLit = option realLit of K end
+    let charLit = option charLit of K end
+    let stringLit = option stringLit of K end
+    let ident = option ident of K end
+    let symbolicInfix = option symbolicInfix of K end
+    let lparen = option lparen of K end
+    let rparen = option rparen of K end
+    let lbracket = option lbracket of K end
+    let rbracket = option rbracket of K end
+    let lbrace = option lbrace of K end
+    let rbrace = option rbrace of K end
+    let comma = option comma of K end
+    let semicolon = option semicolon of K end
+    let dot = option dot of K end
+    let colon = option colon of K end
+    let colonColon = option colonColon of K end
+    let subtype = option subtype of K end
+    let assign = option assign of K end
+    let equal = option equal of K end
+    let question = option question of K end
+    let bang = option bang of K end
+    let at = option at of K end
+    let underscore = option underscore of K end
+    let kwType = option kwType of K end
+    let kwPower = option kwPower of K end
+    let kwAllKind = option kwAllKind of K end
+    let kwDefKind = option kwDefKind of K end
+    let kwAll = option kwAll of K end
+    let kwArrayType = option kwArrayType of K end
+    let kwAutoType = option kwAutoType of K end
+    let kwDef = option kwDef of K end
+    let kwExceptionType = option kwExceptionType of K end
+    let kwFunType = option kwFunType of K end
+    let kwLetType = option kwLetType of K end
+    let kwOptionType = option kwOptionType of K end
+    let kwOutType = option kwOutType of K end
+    let kwRecType = option kwRecType of K end
+    let kwRecordType = option kwRecordType of K end
+    let kwTupleType = option kwTupleType of K end
+    let kwVarType = option kwVarType of K end
+    let kwVariantType = option kwVariantType of K end
+    let kwAnd = option kwAnd of K end
+    let kwAndif = option kwAndif of K end
+    let kwArray = option kwArray of K end
+    let kwAs = option kwAs of K end
+    let kwAuto = option kwAuto of K end
+    let kwBegin = option kwBegin of K end
+    let kwCase = option kwCase of K end
+    let kwDo = option kwDo of K end
+    let kwDownto = option kwDownto of K end
+    let kwElse = option kwElse of K end
+    let kwElsif = option kwElsif of K end
+    let kwEnd = option kwEnd of K end
+    let kwException = option kwException of K end
+    let kwExit = option kwExit of K end
+    let kwExport = option kwExport of K end
+    let kwExtent = option kwExtent of K end
+    let kwExternal = option kwExternal of K end
+    let kwFalse = option kwFalse of K end
+    let kwFor = option kwFor of K end
+    let kwFun = option kwFun of K end
+    let kwIf = option kwIf of K end
+    let kwImport = option kwImport of K end
+    let kwInspect = option kwInspect of K end
+    let kwInterface = option kwInterface of K end
+    let kwIs = option kwIs of K end
+    let kwIsnot = option kwIsnot of K end
+    let kwLet = option kwLet of K end
+    let kwLoop = option kwLoop of K end
+    let kwModule = option kwModule of K end
+    let kwNot = option kwNot of K end
+    let kwOf = option kwOf of K end
+    let kwOk = option kwOk of K end
+    let kwOption = option kwOption of K end
+    let kwOrdinal = option kwOrdinal of K end
+    let kwOrif = option kwOrif of K end
+    let kwOut = option kwOut of K end
+    let kwRaise = option kwRaise of K end
+    let kwRec = option kwRec of K end
+    let kwRecord = option kwRecord of K end
+    let kwThen = option kwThen of K end
+    let kwTrue = option kwTrue of K end
+    let kwTry = option kwTry of K end
+    let kwTuple = option kwTuple of K end
+    let kwUnsound = option kwUnsound of K end
+    let kwUpto = option kwUpto of K end
+    let kwVar = option kwVar of K end
+    let kwVariant = option kwVariant of K end
+    let kwWhen = option kwWhen of K end
+    let kwWhile = option kwWhile of K end
+    let kwWith = option kwWith of K end
+
+    let mValue = option modeValue of ast.ParamMode end
+    let mVar = option modeVar of ast.ParamMode end
+    let mOut = option modeOut of ast.ParamMode end
+
+    (* =========================================================================
+     * 2. Syntax Targets (Non-Terminals)
+     * ========================================================================= *)
+
+    Let Targets = Tuple
+        program: C phrase: C linkage: C importList: C importItem: C
+        ide: C ideList: C path: C pathList: C moduleEntry: C moduleEntryList: C
+        kind: C primaryKind: C
+        type: C postfixType: C postfixTypeOp: C primaryType: C
+        typeSignature: C valueSignature: C optionSignature: C signature: C
+        value: C postfixValue: C postfixOp: C primaryValue: C infixOp: C
+        binding: C typeBinding: C valueBinding: C
+        kindDecl: C typeDecl: C valueDecl: C typeFormal: C typeFormals: C
+        caseBranches: C inspectBranches: C tryBranches: C
+        hasType: C hasMutType: C hasKind: C
+    end
+
+    let targets(g: engine.Grammar): Targets =
+        tuple
+            let program = engine.target(g "Program")
+            let phrase = engine.target(g "Phrase")
+            let linkage = engine.target(g "Linkage")
+            let importList = engine.target(g "Import")
+            let importItem = engine.target(g "ImportItem")
+            let ide = engine.target(g "Ide")
+            let ideList = engine.target(g "IdeList")
+            let path = engine.target(g "Path")
+            let pathList = engine.target(g "PathList")
+            let moduleEntry = engine.target(g "ModuleEntry")
+            let moduleEntryList = engine.target(g "ModuleEntryList")
+            let kind = engine.target(g "Kind")
+            let primaryKind = engine.target(g "PrimaryKind")
+            let type = engine.target(g "Type")
+            let postfixType = engine.target(g "PostfixType")
+            let postfixTypeOp = engine.target(g "PostfixTypeOp")
+            let primaryType = engine.target(g "PrimaryType")
+            let typeSignature = engine.target(g "TypeSignature")
+            let valueSignature = engine.target(g "ValueSignature")
+            let optionSignature = engine.target(g "OptionSignature")
+            let signature = engine.target(g "Signature")
+            let value = engine.target(g "Value")
+            let postfixValue = engine.target(g "PostfixValue")
+            let postfixOp = engine.target(g "PostfixOp")
+            let primaryValue = engine.target(g "PrimaryValue")
+            let infixOp = engine.target(g "InfixOp")
+            let binding = engine.target(g "Binding")
+            let typeBinding = engine.target(g "TypeBinding")
+            let valueBinding = engine.target(g "ValueBinding")
+            let kindDecl = engine.target(g "KindDecl")
+            let typeDecl = engine.target(g "TypeDecl")
+            let valueDecl = engine.target(g "ValueDecl")
+            let typeFormal = engine.target(g "TypeFormal")
+            let typeFormals = engine.target(g "TypeFormals")
+            let caseBranches = engine.target(g "CaseBranches")
+            let inspectBranches = engine.target(g "InspectBranches")
+            let tryBranches = engine.target(g "TryBranches")
+            let hasType = engine.target(g "HasType")
+            let hasMutType = engine.target(g "HasMutType")
+            let hasKind = engine.target(g "HasKind")
+        end
+
+    (* =========================================================================
+     * 3. Rules
+     * ========================================================================= *)
+
+    let identifierRules(x: Targets): Ok =
+        begin
+            rule(x.ide actions.first) of t(ident) end
+            rule(x.ide actions.first) of t(symbolicInfix) end
+            (* IdeList: ide {, ide} *)
+            rule(x.ideList actions.ideList) of sepBy(x.ide p(comma)) end
+            (* Path: ident {/ ident} *)
+            rule(x.path actions.path) of sepBy(t(ident) pLex(symbolicInfix "/")) end
+            (* PathList: Path {, Path} *)
+            rule(x.pathList actions.first) of sepBy(x.path p(comma)) end
+            (* ModuleEntry: ident = Path | Path *)
+            rule(x.moduleEntry actions.moduleEntryNamed) of t(ident) p(equal) x.path end
+            rule(x.moduleEntry actions.moduleEntry) of x.path end
+            (* ModuleEntryList: ModuleEntry {, ModuleEntry} *)
+            rule(x.moduleEntryList actions.first) of sepBy(x.moduleEntry p(comma)) end
+        end
+
+    (* Kinds (Level 2) *)
+    let kindRules(x: Targets): Ok =
+        begin
+            (* ALL ( TypeSignature ) Kind *)
+            rule(x.kind actions.kindAll) of t(kwAllKind) t(lparen) x.signature p(rparen) x.kind end
+            rule(x.kind actions.first) of x.primaryKind end
+            (* TYPE *)
+            rule(x.primaryKind actions.kindType) of t(kwType) end
+            (* POWER ( Type ) *)
+            rule(x.primaryKind actions.kindPower) of t(kwPower) p(lparen) x.type p(rparen) end
+            (* ide _ ide (Manifest kind) *)
+            rule(x.primaryKind actions.kindManifest) of t(ident) p(underscore) t(ident) end
+            (* ide (Kind identifier) *)
+            rule(x.primaryKind actions.kindId) of t(ident) end
+            (* { Kind } *)
+            rule(x.primaryKind actions.first) of p(lbrace) x.kind p(rbrace) end
+        end
+
+    (* Types (Level 1) *)
+    let typeRules(x: Targets): Ok =
+        begin
+            (* PostfixType [ InfixTail ] *)
+            rule(x.type actions.typeInfix) of x.postfixType opt of t(symbolicInfix) x.type end end
+            rule(x.postfixType actions.typePostfix) of x.primaryType rep of x.postfixTypeOp end end
+            (* . ide *)
+            rule(x.postfixTypeOp actions.selectTypeOp) of p(dot) t(ident) end
+            (* ( TypeBinding ) *)
+            rule(x.postfixTypeOp actions.typeAppOp) of p(lparen) opt of x.typeBinding end p(rparen) end
+            (* _ ide *)
+            rule(x.postfixTypeOp actions.typeManifestOp) of p(underscore) t(ident) end
+            (* All ( Signature ) Type *)
+            rule(x.primaryType actions.typeAll) of t(kwAll) t(lparen) x.signature p(rparen) x.type end
+            (* Tuple Signature end *)
+            rule(x.primaryType actions.typeTuple) of t(kwTupleType) x.signature p(kwEnd) end
+            (* Option OptionSignature end *)
+            rule(x.primaryType actions.typeOption) of t(kwOptionType) x.optionSignature p(kwEnd) end
+            (* Record ValueSignature end *)
+            rule(x.primaryType actions.typeRecord) of t(kwRecordType) x.valueSignature p(kwEnd) end
+            (* Variant ValueSignature end *)
+            rule(x.primaryType actions.typeVariant) of t(kwVariantType) x.valueSignature p(kwEnd) end
+            (* Auto [ide] HasKind with Signature end *)
+            rule(x.primaryType actions.typeAuto) of
+                t(kwAutoType) opt of t(ident) end x.hasKind p(kwWith) x.signature p(kwEnd)
+            end
+            (* Fun ( TypeFormals ) [HasKind] Type *)
+            rule(x.primaryType actions.typeFun) of
+                t(kwFunType) p(lparen) x.typeFormals p(rparen) opt of x.hasKind end x.type
+            end
+            (* Rec ( ide HasKind ) Type *)
+            rule(x.primaryType actions.typeRec) of t(kwRecType) p(lparen) t(ident) x.hasKind p(rparen) x.type end
+            (* Array ( Type ), Var ( Type ), Out ( Type ) *)
+            rule(x.primaryType actions.typeArray) of t(kwArrayType) p(lparen) x.type p(rparen) end
+            rule(x.primaryType actions.typeVar) of t(kwVarType) p(lparen) x.type p(rparen) end
+            rule(x.primaryType actions.typeOut) of t(kwOutType) p(lparen) x.type p(rparen) end
+            (* ide _ ide (Manifest type) *)
+            rule(x.primaryType actions.typeManifest) of t(ident) p(underscore) t(ident) end
+            (* ide (Named type: Int, Real, Bool, String, Char, Ok, Exception, or User Type) *)
+            rule(x.primaryType actions.typeName) of t(ident) end
+            rule(x.primaryType actions.typeException) of t(kwExceptionType) end
+            (* { infix } *)
+            rule(x.primaryType actions.typeName) of p(lbrace) t(symbolicInfix) p(rbrace) end
+            (* infix ( TypeBinding ) *)
+            rule(x.primaryType actions.typeAppInfix) of t(symbolicInfix) p(lparen) opt of x.typeBinding end p(rparen) end
+            (* { Type } *)
+            rule(x.primaryType actions.first) of p(lbrace) x.type p(rbrace) end
+            (* external "c_type" *)
+            rule(x.primaryType actions.typeExternal) of t(kwExternal) t(stringLit) end
+        end
+
+    (* Signatures: every TypeSignature rule yields a list of signature items *)
+    let signatureRules(x: Targets): Ok =
+        begin
+            rule(x.signature actions.flatten) of rep of x.typeSignature end end
+            (* DEF KindDecl *)
+            rule(x.typeSignature actions.sigKindDecl) of p(kwDefKind) x.kindDecl end
+            (* Def [Rec] TypeDecl {and TypeDecl} *)
+            rule(x.typeSignature actions.sigDefType) of t(kwDef) opt of t(kwRecType) end sepBy(x.typeDecl p(kwAnd)) end
+            (* [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals; plain fields have no groups) *)
+            rule(x.typeSignature actions.fieldSigs) of
+                opt of t(kwVar) end opt of t(kwOut) end x.ideList rep of p(lparen) x.signature p(rparen) end t(colon) x.type
+            end
+            (* [IdeList] HasKind *)
+            rule(x.typeSignature actions.first) of x.typeFormal end
+            rule(x.typeFormal actions.typeFormals) of opt of x.ideList end x.hasKind end
+            (* Operator parameters (Fun and Let X(...)) are type formals only: X::K or X <: T *)
+            rule(x.typeFormals actions.flatten) of rep of x.typeFormal end end
+            (* HasMutType (Anonymous tuple/signature field :Int or :Var(Int) or :Out(Int)) *)
+            rule(x.typeSignature actions.sigMutField) of x.hasMutType end
+            (* [var] IdeList HasType (Record/Variant type signatures) *)
+            rule(x.valueSignature actions.recordFieldSigs) of rep of opt of t(kwVar) end x.ideList x.hasType end end
+            (* IdeList [with Signature end] (the tags are matched as tokens for their positions) *)
+            rule(x.optionSignature actions.optionFieldSigs) of
+                rep of sepBy(x.ide p(comma)) opt of p(kwWith) x.signature p(kwEnd) end end
+            end
+        end
+
+    (* Values and Expressions (Level 0) *)
+    let valueRules(x: Targets): Ok =
+        begin
+            rule(x.infixOp actions.lexeme) of t(symbolicInfix) end
+            rule(x.infixOp actions.lexeme) of t(kwIs) end
+            rule(x.infixOp actions.lexeme) of t(kwIsnot) end
+            rule(x.infixOp actions.lexeme) of t(kwAndif) end
+            rule(x.infixOp actions.lexeme) of t(kwOrif) end
+            rule(x.infixOp actions.lexeme) of t(assign) end
+            (* PostfixValue [ InfixOp Value ] *)
+            rule(x.value actions.valueInfix) of x.postfixValue opt of x.infixOp x.value end end
+            rule(x.postfixValue actions.valuePostfix) of x.primaryValue rep of x.postfixOp end end
+            (* . ide, ? ide, ! ide *)
+            rule(x.postfixOp actions.selectOp) of p(dot) t(ident) end
+            rule(x.postfixOp actions.variantCheckOp) of p(question) t(ident) end
+            rule(x.postfixOp actions.variantAssertOp) of p(bang) t(ident) end
+            (* ( Binding ) *)
+            rule(x.postfixOp actions.callOp) of p(lparen) opt of x.binding end p(rparen) end
+            (* [ Value ] *)
+            rule(x.postfixOp actions.indexOp) of p(lbracket) x.value p(rbracket) end
+            (* Listfix application: f of(count init) and f of ... end *)
+            rule(x.postfixOp actions.ofRepOp) of t(kwOf) p(lparen) x.value x.value p(rparen) end
+            rule(x.postfixOp actions.ofOp) of t(kwOf) opt of x.binding end p(kwEnd) end
+
+            (* Literals *)
+            rule(x.primaryValue actions.exprInt) of t(intLit) end
+            rule(x.primaryValue actions.exprReal) of t(realLit) end
+            rule(x.primaryValue actions.exprChar) of t(charLit) end
+            rule(x.primaryValue actions.exprString) of t(stringLit) end
+            rule(x.primaryValue actions.exprTrue) of t(kwTrue) end
+            rule(x.primaryValue actions.exprFalse) of t(kwFalse) end
+            rule(x.primaryValue actions.exprOk) of t(kwOk) end
+            rule(x.primaryValue actions.exprExit) of t(kwExit) end
+            rule(x.primaryValue actions.exprExternal) of t(kwExternal) t(stringLit) end
+
+            (* if Binding [then Binding] {elsif Binding [then Binding]} [else Binding] end *)
+            rule(x.primaryValue actions.exprIf) of
+                t(kwIf) x.value opt of p(kwThen) end x.binding
+                rep of t(kwElsif) x.value opt of p(kwThen) end x.binding end
+                opt of t(kwElse) x.binding end
+                p(kwEnd)
+            end
+            (* begin Binding end *)
+            rule(x.primaryValue actions.exprBegin) of t(kwBegin) x.binding p(kwEnd) end
+            (* loop Binding end *)
+            rule(x.primaryValue actions.exprLoop) of t(kwLoop) x.binding p(kwEnd) end
+            (* while Binding do Binding end *)
+            rule(x.primaryValue actions.exprWhile) of t(kwWhile) x.value p(kwDo) x.binding p(kwEnd) end
+            (* for ide = Binding (upto | downto) Binding do Binding end *)
+            rule(x.primaryValue actions.exprFor) of
+                t(kwFor) t(ident) p(equal) x.value opt of p(kwUpto) end opt of t(kwDownto) end x.value
+                p(kwDo) x.binding p(kwEnd)
+            end
+            (* fun { ( Signature ) } [: Type] Value *)
+            rule(x.primaryValue actions.exprFun) of
+                t(kwFun) rep of p(lparen) x.signature p(rparen) end opt of p(colon) x.type end x.value
+            end
+            (* tuple Binding end *)
+            rule(x.primaryValue actions.exprTuple) of t(kwTuple) x.binding p(kwEnd) end
+            (* record ValueBinding end *)
+            rule(x.primaryValue actions.exprRecord) of t(kwRecord) x.valueBinding p(kwEnd) end
+            (* array of ( Binding end | ( Value Value ) ) *)
+            rule(x.primaryValue actions.exprArrayRep) of t(kwArray) p(kwOf) p(lparen) x.value x.value p(rparen) end
+            rule(x.primaryValue actions.exprArray) of t(kwArray) p(kwOf) opt of x.binding end p(kwEnd) end
+            (* option (ide | ordinal(Value)) of Type [with Binding] end *)
+            rule(x.primaryValue actions.exprOption) of
+                t(kwOption) x.ide p(kwOf) x.type opt of p(kwWith) x.binding end p(kwEnd)
+            end
+            rule(x.primaryValue actions.exprOptionOrdinal) of
+                t(kwOption) p(kwOrdinal) p(lparen) x.value p(rparen) p(kwOf) x.type opt of p(kwWith) x.binding end p(kwEnd)
+            end
+            (* variant [var] ide of Type [with Value] end *)
+            rule(x.primaryValue actions.exprVariant) of
+                t(kwVariant) opt of t(kwVar) end t(ident) p(kwOf) x.type opt of p(kwWith) x.value end p(kwEnd)
+            end
+            (* auto [let ide [HasKind] =] : Type with Binding end *)
+            rule(x.primaryValue actions.exprAuto) of
+                t(kwAuto) opt of p(kwLet) t(ident) opt of x.hasKind end p(equal) end p(colon) x.type t(kwWith)
+                opt of x.binding end p(kwEnd)
+            end
+            (* case Value CaseBranches end *)
+            rule(x.primaryValue actions.exprCase) of t(kwCase) x.value x.caseBranches p(kwEnd) end
+            (* inspect Value InspectBranches end *)
+            rule(x.primaryValue actions.exprInspect) of t(kwInspect) x.value x.inspectBranches p(kwEnd) end
+            (* exception ide [: Type] end *)
+            rule(x.primaryValue actions.exprException) of t(kwException) t(ident) opt of p(colon) x.type end p(kwEnd) end
+            (* raise Value [with Value] [as Type] end *)
+            rule(x.primaryValue actions.exprRaise) of
+                t(kwRaise) x.value opt of p(kwWith) x.value end opt of p(kwAs) x.type end p(kwEnd)
+            end
+            (* try Binding TryBranches end *)
+            rule(x.primaryValue actions.exprTry) of t(kwTry) x.binding x.tryBranches p(kwEnd) end
+            (* var ( Value ) *)
+            rule(x.primaryValue actions.exprVarCell) of t(kwVar) p(lparen) x.value p(rparen) end
+            (* @ Value *)
+            rule(x.primaryValue actions.exprDeref) of t(at) x.value end
+            (* ide (Identifier) *)
+            rule(x.primaryValue actions.exprId) of t(ident) end
+            (* { infix } (Stand-alone infix identifier, e.g. {+}) *)
+            rule(x.primaryValue actions.exprId) of p(lbrace) t(symbolicInfix) p(rbrace) end
+            (* prefix infix application: +(x y) *)
+            rule(x.primaryValue actions.exprPrefixApp) of t(symbolicInfix) p(lparen) opt of x.binding end p(rparen) end
+            (* { Value } *)
+            rule(x.primaryValue actions.first) of p(lbrace) x.value p(rbrace) end
+            (* Monadic Operators: not, extent, ordinal (Cardelli §4.2, §4.3, §4.5), applied or stand-alone *)
+            rule(x.primaryValue actions.monadicApp) of t(kwNot) x.postfixValue end
+            rule(x.primaryValue actions.exprId) of t(kwNot) end
+            rule(x.primaryValue actions.monadicApp) of t(kwExtent) x.postfixValue end
+            rule(x.primaryValue actions.exprId) of t(kwExtent) end
+            rule(x.primaryValue actions.monadicApp) of t(kwOrdinal) x.postfixValue end
+            rule(x.primaryValue actions.exprId) of t(kwOrdinal) end
+        end
+
+    (* Bindings (inside blocks, tuples, and phrases) and declarations *)
+    let declarationRules(x: Targets): Ok =
+        begin
+            rule(x.binding actions.first) of rep of x.phrase end end
+            rule(x.typeBinding actions.first) of rep of x.type end end
+            rule(x.valueBinding actions.recordBindings) of rep of opt of t(kwVar) end t(ident) p(equal) x.value end end
+
+            rule(x.kindDecl actions.kindDecl) of x.ide p(equal) x.kind end
+            rule(x.typeDecl actions.typeDecl) of
+                x.ide rep of p(lparen) x.typeFormals p(rparen) end opt of x.hasKind end p(equal) x.type
+            end
+            rule(x.valueDecl actions.valueDecl) of
+                opt of t(kwVar) end x.ide rep of p(lparen) x.signature p(rparen) end opt of p(colon) x.type end p(equal)
+                x.value
+            end
+        end
+
+    (* Case, Inspect, Try Branches: {when Pattern [with Binder [: Type]] then Binding} [else Binding] *)
+    let branchRules(x: Targets): Ok =
+        begin
+            rule(x.caseBranches actions.caseBranches) of
+                rep of t(kwWhen) x.ideList opt of p(kwWith) t(ident) opt of p(colon) x.type end end p(kwThen) x.binding end
+                opt of t(kwElse) x.binding end
+            end
+            rule(x.inspectBranches actions.inspectBranches) of
+                rep of t(kwWhen) x.type opt of p(kwWith) x.ideList opt of p(colon) x.type end end p(kwThen) x.binding end
+                opt of t(kwElse) x.binding end
+            end
+            rule(x.tryBranches actions.tryBranches) of
+                rep of t(kwWhen) x.value opt of p(kwWith) t(ident) opt of p(colon) x.type end end p(kwThen) x.binding end
+                opt of t(kwElse) x.binding end
+            end
+        end
+
+    (* HasType / HasMutType / HasKind *)
+    let hasRules(x: Targets): Ok =
+        begin
+            rule(x.hasType actions.first) of p(colon) x.type end
+            (* : Var(Type), : Out(Type), var : Type, out : Type, : Type (an anonymous field; its position is that of
+             * the first token) *)
+            rule(x.hasMutType actions.mutField(mVar)) of t(colon) p(kwVarType) p(lparen) x.type p(rparen) end
+            rule(x.hasMutType actions.mutField(mOut)) of t(colon) p(kwOutType) p(lparen) x.type p(rparen) end
+            rule(x.hasMutType actions.mutField(mVar)) of t(kwVar) p(colon) x.type end
+            rule(x.hasMutType actions.mutField(mOut)) of t(kwOut) p(colon) x.type end
+            rule(x.hasMutType actions.mutField(mValue)) of t(colon) x.type end
+            rule(x.hasKind actions.hasKindSubtype) of t(subtype) x.type end
+            rule(x.hasKind actions.first) of p(colonColon) x.kind end
+        end
+
+    (* Phrases & Program (Top Level) *)
+    let phraseRules(x: Targets): Ok =
+        begin
+            (* Interface *)
+            rule(x.phrase actions.interfaceDecl) of
+                opt of t(kwUnsound) end t(kwInterface) t(ident) opt of p(kwImport) x.importList end p(kwExport)
+                x.signature p(kwEnd)
+            end
+            (* Module *)
+            rule(x.phrase actions.moduleDecl) of
+                opt of t(kwUnsound) end t(kwModule) t(ident) p(colon) x.path opt of p(kwImport) x.importList end
+                p(kwExport) x.binding p(kwEnd)
+            end
+            (* Let [Rec] TypeDecl {and TypeDecl} *)
+            rule(x.phrase actions.letType) of t(kwLetType) opt of t(kwRecType) end sepBy(x.typeDecl p(kwAnd)) end
+            (* let [rec] ValueDecl {and ValueDecl} *)
+            rule(x.phrase actions.letValue) of t(kwLet) opt of t(kwRec) end sepBy(x.valueDecl p(kwAnd)) end
+            (* var ValueDecl (allows 'var x = 0' inside tuples, blocks, or module phrases) *)
+            rule(x.phrase actions.varDecl) of t(kwVar) x.valueDecl end
+            (* DEF KindDecl *)
+            rule(x.phrase actions.first) of p(kwDefKind) x.kindDecl end
+            (* Def [Rec] TypeDecl {and TypeDecl} *)
+            rule(x.phrase actions.defType) of t(kwDef) opt of t(kwRecType) end sepBy(x.typeDecl p(kwAnd)) end
+            (* : Type (TypeArgument in call bindings / phrases) *)
+            rule(x.phrase actions.typeArg) of t(colon) x.type end
+            (* :: Kind (KindArgument in call bindings / phrases) *)
+            rule(x.phrase actions.kindArg) of t(colonColon) x.kind end
+            (* Top-level Value Expression *)
+            rule(x.phrase actions.exprStmt) of x.value end
+
+            (* import ImportList *)
+            rule(x.linkage actions.linkage) of t(kwImport) x.importList end
+            rule(x.phrase actions.first) of x.linkage end
+
+            (* 1. Dual alias with =: r1, r2 : Rnd = p1, p2 : IfacePath *)
+            rule(x.importItem actions.importDual) of x.ideList t(colon) t(ident) p(equal) x.pathList p(colon) x.path end
+            (* 2. Interface alias with module path: :Rnd = p1, p2 : IfacePath *)
+            rule(x.importItem actions.importAliasPaths) of t(colon) t(ident) p(equal) x.pathList p(colon) x.path end
+            (* 3. Interface alias, interface-only: :Rnd = :IfacePath *)
+            rule(x.importItem actions.importAliasInterface) of t(colon) t(ident) p(equal) p(colon) x.path end
+            (* 4. Interface-only, unaliased: :IfacePath *)
+            rule(x.importItem actions.importInterface) of t(colon) x.path end
+            (* 5. Module & interface (including module aliases and unaliased paths):
+             *    m1 = p1, m2 = p2 : IfacePath  OR  p1, p2 : IfacePath *)
+            rule(x.importItem actions.importModules) of x.moduleEntryList t(colon) x.path end
+
+            rule(x.importList actions.first) of rep of x.importItem end end
+
+            (* Semicolons appear only here, ending top-level phrases ({[Phrase] ";"} in the paper), and are optional *)
+            rule(x.program actions.program) of rep of p(semicolon) end rep of x.phrase rep of p(semicolon) end end end
+        end
+
+    Let T = Tuple
+        g: engine.Grammar
+        program: C
+        phrase: C
+        type: C
+        kind: C
+        value: C
+        signature: C
+    end
+
+    let new(): T =
+        begin
+            let g = engine.newGrammar()
+            let x = targets(g)
+            identifierRules(x)
+            kindRules(x)
+            typeRules(x)
+            signatureRules(x)
+            valueRules(x)
+            declarationRules(x)
+            branchRules(x)
+            hasRules(x)
+            phraseRules(x)
+            tuple
+                let g = g
+                let program = x.program
+                let phrase = x.phrase
+                let type = x.type
+                let kind = x.kind
+                let value = x.value
+                let signature = x.signature
+            end
+        end
+end

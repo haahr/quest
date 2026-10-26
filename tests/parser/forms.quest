@@ -1,0 +1,172 @@
+(* Input for tests/parser/generate.py: cases that use every rule of the grammar, each a program that only has to
+   parse. This case is empty but for this comment. *)
+(* ---- *)
+;; ;
+(* ---- *)
+(* Imports: every form of import item *)
+import writer: Writer;
+import r1, r2 : Rnd = util/p1, p2 : util/Iface;
+import :Rnd = p1, util/p2 : util/Iface;
+import :Rnd = :util/Iface;
+import :util/Iface;
+import :Iface;
+import pick = util/pick, util/other : util/Pick conv : Conv
+(* ---- *)
+(* Interfaces and modules *)
+interface Shapes
+import base: Base
+export
+    T::TYPE
+    U, V <: Int
+    ::TYPE
+    Def U = Int
+    Def Rec L = Option nil cons with head: Int tail: L end end
+    Def A = Tuple x: Int end and B = Tuple y: A end
+    DEF K = TYPE
+    area(s: T): Int
+    curried(A::TYPE)(x: A y: A): A
+    var count, total: Int
+    out result: Int
+    : Int
+    :Var(Int) :Out(Int) var: Int out: String
+end;
+unsound interface Raw export end;
+module shapes : util/Shapes
+import base: Base
+export
+    Let T = Tuple side: Int end
+    let area(s: T): Int = s.side * s.side
+end;
+unsound module raw : Raw export
+    let id(x: Int): Int = x
+end
+(* ---- *)
+(* Kinds *)
+DEF K = TYPE;
+DEF KP = POWER(Int);
+DEF KA = ALL(X::TYPE) TYPE;
+DEF KB = ALL(A, B::TYPE C <: Int x: Int Def D <: Int = Int) K;
+DEF KI = K;
+DEF KM = Shapes_K;
+DEF KG = {ALL(X::TYPE) {K}};
+DEF ++ = TYPE
+(* ---- *)
+(* Types *)
+Let P = All(A::TYPE var x: A out y: A z: Int) Tuple A::K Def B = Int DEF J = TYPE Def C::TYPE = Int and D::TYPE = Int x: A end;
+Let R = Record a: Int var b, c: String end;
+Let O = Option red green with c: Int end blue, black with Def K = Int k: K end end;
+Let V = Variant a: Int var b: String end;
+Let Au = Auto X::TYPE with x: X var y: X end;
+Let Au2 = Auto <: Int with x: Int end;
+Let F(X::TYPE Y::K)(Z <: Int) :: TYPE = Fun(Z::TYPE) :: POWER(Z) Array(Var(Out(X)));
+Let G = Fun(A, B::TYPE) A;
+Let Rec Re::TYPE = Tuple next: Re end;
+Let Ap = F(Int String) ++ Shapes_T;
+Let Ap2 = F() + G(Int)(String).T.U_V;
+Let Pa = a.b.C;
+Let Ex = external "int64_t";
+Let Ex2 = Exception;
+Let Re2 = Rec(S::TYPE) Tuple s: S end;
+Let In = {+} + ++(Int String) + {Int};
+Let Rec G1 = Option g end and G2 = Option h end;
+Let Def1 <: Int = Int;
+Def D2 = Int and D3 = String;
+Def Rec D4 = Option d end
+(* ---- *)
+(* Literals and names *)
+let i = 42;
+let n = ~7;
+let r = ~3.5e~2;
+let c = '\n';
+let s = "a\"b\t";
+let b = true and f = false;
+let ok1 = ok;
+let ext = external "quest_x";
+let plus = {+};
+let notOp = not;
+let ext2 = extent;
+let ord = ordinal
+(* ---- *)
+(* Values: declarations, functions, and application *)
+let rec fact(n: Int): Int = if n is 0 then 1 elsif n is 1 then 1 else n * fact(n - 1) end
+and other(n: Int): Int = fact(n);
+let var v: Int = 0;
+var w = 1;
+let g(A::TYPE x: A var y: Int out z: Int): A = begin z := y x end;
+let curried(x: Int)(y: Int): Int = x + y;
+let curriedTyped(A::TYPE)(x: A): A = x;
+let typeOnly(A::TYPE): Int = 1;
+let anonymous(:Int): Int = 1;
+let noParams(): Int = 1;
+let h = fun(x: Int): Int x;
+let h2 = fun(A::TYPE)(x: A) x;
+let h3 = fun 3;
+let app = g(:Int ::K 1 v v);
+let app2 = f()(1)(2 3);
+let infix = 1 + 2 * 3 <> "s" andif true orif false is true isnot false;
+let prefix = +(1 2);
+let monadic = not(true) andif not true;
+let size = extent(a) + extent a;
+let o = ordinal(x);
+let listfix = f of 1 2 3 end;
+let listfixEmpty = f of end;
+let listfixTyped = f of :Int 1 end;
+let listfixRep = f of(3 0);
+let let1 = let2
+(* ---- *)
+(* Values: aggregates *)
+let tup = tuple let a = 1 var b: Int = 2 Let T = Int DEF K2 = TYPE Let G3 = Int and G4 = Int 3 :Int end;
+let rec rv: Re = tuple let next = rv end;
+let groups = tuple let a1 = 1 and a2 = 2 let rec ev(n: Int): Bool = n is 0 and od(n: Int): Bool = ev(n) end;
+let fns = tuple let f(x: Int): Int = x let g(x: Int)(y: Int): Int = y end;
+let empty = tuple end;
+let rcd = record a = 1 var b = "x" end;
+let arr = array of 1 2 3 end;
+let arrT = array of :Int end;
+let arrE = array of end;
+let rep = array of(3 0);
+let opt = option green of O with let c = 1 end;
+let opt2 = option green of O with tuple let c = 1 end end;
+let opt3 = option green of O with 1 end;
+let opt4 = option red of O with end;
+let opt5 = option + of O end;
+let optOrd = option ordinal(0) of O end;
+let optOrd2 = option ordinal(1) of O with 5 end;
+let vrt = variant a of V with 1 end;
+let vrtVar = variant var b of V with "s" end;
+let vrt0 = variant c of V end;
+let au = auto let X::TYPE = :Int with 3 end;
+let au2 = auto :Int with 3 end;
+let au3 = auto let X = :Int with end
+(* ---- *)
+(* Values: selection, cells, and control *)
+let sel = rcd.a.b;
+let idx = arr[0][i + 1];
+arr[1] := 5;
+v := 3;
+let cell = var(v);
+let deref = @cell;
+let chk = vrt?a;
+let asr = vrt!a.x;
+let cs = case opt when red, green then 1 when green with x: Tuple c: Int end then x.c when blue with y then y else 0 end;
+let cs2 = case opt when red then 1 end;
+let ins = inspect d when Int with x then x when Tuple a: Int b: String end with y, z: String then 1 else 2 end;
+let ins2 = inspect d when Int then 0 end;
+let e = exception Bad: Int end;
+let e2 = exception Plain end;
+let rs = raise Bad with 3 as Int end;
+let rs2 = raise Plain end;
+let tr = try 1 when Bad with x: Int then x when Plain then 0 when other with y then y else 5 end;
+let tr2 = try let x = 1 x when Plain then 0 end;
+while v > 0 do v := v - 1 end;
+loop exit end;
+loop let x = 1 end;
+for k = 10 downto 1 do ok end;
+for k = 1 upto 10 do ok end;
+for k = 1 10 do let y = k end;
+if a then b end;
+if a b elsif c d else let e = 1 end;
+begin let x = 1 Let T = Int DEF K3 = TYPE x end;
+begin end;
+:Int;
+::TYPE

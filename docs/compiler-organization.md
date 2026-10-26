@@ -43,18 +43,11 @@ questlang/
 │   ├── tokenizer            # Lexical scanner
 │   ├── ast                  # Abstract syntax tree: Node, TypeForm, ExprForm, PhraseForm (§3)
 │   ├── astprint             # Canonical S-expression printer, matching the bootstrap ast_dump
+│   ├── parser               # Parsing a program, a type, a kind, or a value (§4)
 │   └── parser/              # Data-driven PEG / Packrat parser
-│       ├── engine           # Generic PEG engine (Construct, SyntaxTarget, Rule, Memo)
-│       ├── rules/           # Grammar rule definitions
-│       │   ├── expr         # Expression and operator grammar rules
-│       │   ├── type         # Type expression grammar rules
-│       │   ├── decl         # Declaration grammar rules
-│       │   └── module       # Interface and module grammar rules
-│       └── actions/         # Semantic action callbacks constructing AST nodes
-│           ├── expr         # Expression AST construction
-│           ├── type         # Type AST construction
-│           ├── decl         # Declaration AST construction
-│           └── module       # Module AST construction
+│       ├── engine           # Generic PEG engine (constructs, syntax targets, rules, memo) and semantic values
+│       ├── grammar          # The grammar's syntax targets and rules
+│       └── actions          # Semantic actions constructing AST nodes
 │
 ├── types/                   # Semantic type system model
 │   ├── kind                 # Kind representations (Kind)
@@ -99,8 +92,7 @@ questlang/
     └── main                 # Top-level executable entry point
 ```
 
-So far `common/*` and, in `syntax/`, `tokens`, `tokenizer`, `ast`, and `astprint` exist; the rest of the tree is the
-plan.
+So far `common/*` and `syntax/*` exist; the rest of the tree is the plan.
 
 ---
 
@@ -303,38 +295,37 @@ common nodes, such as
 
 The parser preserves the architecture of the Python implementation (`bootstrap/python/quest/syntax/parser.py` and
 `grammar.py`), separating:
-1. **Engine (`questlang/syntax/parser/engine`):** Generic PEG parser combinators (`MatchToken`, `SyntaxTarget`,
-   `Optional`, `Repeated`, `Sequence`, `SepBy`, with silent tokens) and packrat memoization tables.
-2. **Rules (`questlang/syntax/parser/rules/*`):** Declarative definitions of grammar non-terminals and production rules.
-3. **Actions (`questlang/syntax/parser/actions/*`):** Semantic action callbacks that transform matched tokens and child
-   nodes into concrete AST objects.
+1. **Engine (`questlang/syntax/parser/engine`):** Generic PEG constructs (tokens, silent punctuation, optional and
+   repeated items, sequences, separated lists), syntax targets and their rules, and the packrat parser that evaluates
+   them, with the bootstrap's semantics: a target's first matching rule wins, a left-recursive attempt fails, and a
+   parse that does not reach EOF reports the farthest failure and what was expected there, in the bootstrap's words.
+2. **Grammar (`questlang/syntax/parser/grammar`):** The syntax targets and their rules, rule for rule and in the order
+   of `grammar.py` (PEG tries rules in order), written as `rule(x.type actions.typeInfix) of x.postfixType opt of
+   t(symbolicInfix) x.type end end`.
+3. **Actions (`questlang/syntax/parser/actions`):** The rules' semantic actions, which build the AST as `grammar.py`'s
+   actions and helpers build the bootstrap's. A node starts where the bootstrap positions it and extends to the end of
+   the rule that builds it.
 
-### 4.1. Intermediate Semantic Values (`SemanticVal`)
-In accordance with Principle 7 (minimizing `dynamic.T`), intermediate values produced by PEG combinators use a
-dedicated sum type (`Option`) rather than dynamic boxing:
+`questlang/syntax/parser` parses tokens as a program, a type, a kind, or a value. The bootstrap's grammar actions stay
+as they are, so the self-hosted actions follow them even where Quest would suggest another shape (postfix operators,
+for instance, match as functions from their operand to the node).
 
-```quest
-Let Rec SemanticVal = Option
-    none
-    tok with val: tokens.Token end
-    expr with val: ast.Expr end
-    typeExpr with val: ast.TypeExpr end
-    phrase with val: ast.Phrase end
-    list with val: vector.T(SemanticVal) end
-    opt with val: maybe.T(SemanticVal) end
-end
-```
-This provides complete static type safety, avoids runtime boxing/unboxing overhead, and allows clean pattern matching
-in semantic actions.
+### 4.1. Intermediate Semantic Values (`engine.Val`)
+In accordance with Principle 7 (minimizing `dynamic.T`), intermediate values produced by PEG constructs use a dedicated
+sum type (`Option`) rather than dynamic boxing: an optional construct that did not match (Python's `None`), a token, a
+string, a list (the results of a repetition, a separated list, or a sequence of several non-silent items), or one of
+the AST's values (types, expressions and declarations, top-level phrases, signature items with their positions, the
+components of records, options, imports, and branches, and postfix operators). An action receives its rule's
+non-silent results as an `Array(engine.Val)`, with an `engine.Ctx` that gives the span the rule matched and the
+diagnostic bag.
+
+The AST cannot hold some things the bootstrap parses and its later phases reject: an import, an interface, or a module
+below the top level, and declarations in an Auto type, are fatal errors of the parser.
 
 ### 4.2. Packrat Memoization & Syntax Target Identification
-Syntax targets (`SyntaxTarget`) are identified by instance identity using machine addresses (`identityHash`),
-matching Quest's `is` / `isnot` semantics. The packrat memoization table in `parser/engine` maps a target and a
-position to an optional entry:
-```quest
-Let MemoLookup = All(target: SyntaxTarget pos: Int) maybe.T(MemoEntry)
-```
-It hashes targets with `identityHash` and compares them with `is`, for $O(1)$ lookup and linear-time parsing.
+A grammar numbers its syntax targets as it makes them, and the parser's memo is an array with an entry for each target
+at each position (at `pos * targets + id`): not yet tried, being tried, or the outcome. Lookups take constant time, so
+parsing is linear in the number of tokens.
 
 ---
 
@@ -376,8 +367,9 @@ Porting proceeds through four self-contained milestones:
 - `questlang/syntax/tokens` and `questlang/syntax/tokenizer` (verified against `tokenize` goldens).
 - `questlang/syntax/ast` and `questlang/syntax/astprint` (verified against `ast_dump` for every parseable `.quest`
   file by `tests/astprint/generate.py --check`; see [testing.md](testing.md)).
-- `questlang/syntax/parser/*`: generic PEG engine with memoization and grammar rules/actions for types, declarations,
-  expressions, operators, and modules (verified against `parse` goldens).
+- `questlang/syntax/parser` and `parser/*`: generic PEG engine with memoization, and the grammar's rules and actions
+  for types, declarations, expressions, operators, and modules (verified against the bootstrap parser by the
+  `parser_*` golden tests; see [testing.md](testing.md)).
 
 ### Milestone 2: Types & Typechecking (`types` and `typecheck`)
 - Semantic `kind`, `model` (Cardelli types), and lexical `env`.
@@ -401,11 +393,11 @@ Porting proceeds through four self-contained milestones:
 
 ### 6.1. Milestone 1 Verification Strategy
 
-Milestone 1 is validated using the Python test runner (`run_tests.py`) via focused Quest CLI driver harnesses:
-- `tests/questlang_tokenize.quest`: Invokes `questlang/syntax/tokenizer` and emits token outputs matching the exact
-  format of `tests/golden/tokenize/*.out`.
-- `tests/questlang_parse.quest`: Invokes `questlang/syntax/parser` and formats AST outputs matching
-  `tests/golden/parse/*.out`.
-
-This allows `run_tests.py --phase tokenize` and `run_tests.py --phase parse` to verify the self-hosted frontend
-against all existing language tests.
+Milestone 1 is validated by golden tests in `tests/source/questlang`, which run under `run_tests.py` in every phase
+that runs programs, interpreted and compiled to C ([testing.md](testing.md)):
+- `syntax_tokenizer` and `syntax_tokens` check the tokenizer's tokens and errors.
+- The `astprint_*` tests, generated by `tests/astprint/generate.py`, build the self-hosted AST of Quest files and print
+  it, which must give what the bootstrap's `ast_dump` prints.
+- The `parser_*` tests, generated by `tests/parser/generate.py`, parse cases that use every rule of the grammar, and
+  cases with syntax errors; their goldens are the bootstrap parser's ASTs and errors. `syntax_parser` and
+  `syntax_parser_engine` test what only the self-hosted parser has.

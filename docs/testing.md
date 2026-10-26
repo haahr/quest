@@ -187,7 +187,17 @@ output must be what `ast_dump` prints. The `astprint_*` tests in `tests/source/q
 the inputs in `tests/astprint` (`forms.quest` uses every node the parser produces), with goldens holding `ast_dump`'s
 output; regenerate them with `python tests/astprint/generate.py` after changing the AST. `python
 tests/astprint/generate.py --check` (add `--c` to compile to C) checks every parseable `.quest` file in the
-repository, in about a minute.
+repository but the generated tests, in about two minutes. (It skips the files with an import, interface, or module
+below the top level, which the self-hosted AST cannot hold.)
+
+**Self-hosted parser:** `tests/parser/generate.py` writes a test for each input in `tests/parser`, whose cases are
+separated by lines that are just `(* ---- *)`: `tests/source/questlang/parser_NAME.quest` parses each case with the
+self-hosted parser (`questlang/syntax/parser`) and prints its AST with `astprint.dump`, or its syntax error, and its
+golden holds what the bootstrap's parser and `ast_dump` give. `forms.quest` uses every rule of the grammar;
+`errors.quest` holds syntax errors, whose messages and positions must be the bootstrap's. Regenerate them with
+`python tests/parser/generate.py` after changing an input. `syntax_parser.quest` tests what only the self-hosted
+parser has (its entry points, its nodes' extents, and the phrases its AST holds only at the top level), and
+`syntax_parser_engine.quest` tests the engine with a small grammar.
 
 **Conversion matrix:** `tests/conversions/generate.py` writes the programs in `tests/source/conversions`, one per place
 compiled code converts values between representations (polymorphic calls, first-class polymorphic values, type

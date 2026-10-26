@@ -1,0 +1,1295 @@
+(* Quest Self-Hosted Compiler: Parser Actions Implementation *)
+
+module actions : Actions
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    Let Val = engine.Val
+    Let Ctx = engine.Ctx
+    Let Args = Array(Val)
+    Let TypeForm = ast.TypeForm
+    Let ExprForm = ast.ExprForm
+
+    (* =========================================================================
+     * 1. Values
+     * ========================================================================= *)
+
+    let wrong(A::TYPE what: String): A = raise engine.error with "expected " <> what end
+
+    let tok(v: Val): tokens.Token = case v when tok with x then x.val else wrong(:tokens.Token "a token") end
+    let present(v: Val): Bool = case v when absent then false else true end
+    let items(v: Val): Args = case v when list with x then x.items else wrong(:Args "a list") end
+    let str(v: Val): String = case v when str with x then x.val else wrong(:String "a string") end
+    let ty(v: Val): ast.TypeExpr = case v when typeExpr with x then x.val else wrong(:ast.TypeExpr "a type") end
+    let ex(v: Val): ast.Expr = case v when expr with x then x.val else wrong(:ast.Expr "an expression") end
+    let sigOf(v: Val): ast.Signature = case v when sig with x then x.val else wrong(:ast.Signature "a signature") end
+    let sigSpan(v: Val): location.Span = case v when sig with x then x.span else wrong(:location.Span "a signature") end
+    let sigStart(v: Val): Int = sigSpan(v).startOffset
+
+    (* An optional item's value, if it matched *)
+    let optTy(v: Val): maybe.T(ast.TypeExpr) =
+        if present(v) then maybe.some(:ast.TypeExpr ty(v)) else maybe.none(:ast.TypeExpr) end
+    let optEx(v: Val): maybe.T(ast.Expr) = if present(v) then maybe.some(:ast.Expr ex(v)) else maybe.none(:ast.Expr) end
+    let optName(v: Val): maybe.T(String) =
+        if present(v) then maybe.some(:String tok(v).lexeme) else maybe.none(:String) end
+    (* An optional list's items, none if it did not match *)
+    let optItems(v: Val): Args = if present(v) then items(v) else array of :Val end end
+
+    let absent: Val = option absent of Val end
+    let vStr(s: String): Val = option str of Val with let val = s end
+    let vList(xs: Args): Val = option list of Val with let items = xs end
+    let vType(t: ast.TypeExpr): Val = option typeExpr of Val with let val = t end
+    let vExpr(e: ast.Expr): Val = option expr of Val with let val = e end
+    let vPhrase(p: ast.Phrase): Val = option phrase of Val with let val = p end
+    let vSig(s: ast.Signature sp: location.Span): Val = option sig of Val with let val = s let span = sp end
+
+    (* f of each value *)
+    let each(A::TYPE vals: Args f: All(v: Val) A): vector.T(A) =
+        begin
+            let result = vector.newWithCapacity(:A extent(vals))
+            for i = 0 upto {extent(vals) - 1} do vector.append(:A result f(vals[i])) end
+            result
+        end
+    let eachVal(vals: Args f: All(v: Val) Val): Val = vList(vector.toArray(:Val each(:Val vals f)))
+    let strs(v: Val): vector.T(String) = each(:String items(v) str)
+    let types(v: Val): vector.T(ast.TypeExpr) = each(:ast.TypeExpr optItems(v) ty)
+
+    let firstOf(A::TYPE v: vector.T(A)): A = vector.get(:A v 0)
+
+    (* =========================================================================
+     * 2. Positions and Errors
+     * ========================================================================= *)
+
+    (* From start to the end of the rule's match *)
+    let from(ctx: Ctx start: Int): location.Span = location.span(ctx.file start ctx.stop)
+    let at(ctx: Ctx t: tokens.Token): location.Span = from(ctx t.span.startOffset)
+
+    (* Reports a fatal error *)
+    let reject(A::TYPE ctx: Ctx sp: location.Span message: String): A =
+        begin
+            let d = diagnostics.fatal(message sp)
+            diagbag.add(ctx.bag d)
+            raise diagbag.fatalError with d end
+        end
+
+    let phraseName(p: ast.Phrase): String =
+        case p.form
+            when phraseImport then "An import"
+            when phraseInterface then "An interface"
+            when phraseModule then "A module"
+            else "This phrase"
+        end
+
+    (* A phrase other than at the top level: a declaration or an expression statement, as the AST holds it *)
+    let decl(ctx: Ctx v: Val): ast.Expr =
+        case v
+            when expr with x then x.val
+            when phrase with x then reject(:ast.Expr ctx x.val.span phraseName(x.val) <> " is allowed only at the top level")
+            else wrong(:ast.Expr "a phrase")
+        end
+    let decls(ctx: Ctx v: Val): vector.T(ast.Expr) = each(:ast.Expr optItems(v) fun(b: Val): ast.Expr decl(ctx b))
+
+    (* =========================================================================
+     * 3. Node Construction
+     * ========================================================================= *)
+
+    let mValue = option modeValue of ast.ParamMode end
+    let mVar = option modeVar of ast.ParamMode end
+    let mOut = option modeOut of ast.ParamMode end
+
+    let mkType(sp: location.Span form: TypeForm): Val = vType(ast.makeType(sp form))
+    let mkExpr(sp: location.Span form: ExprForm): Val = vExpr(ast.makeExpr(sp form))
+    let typeKind(sp: location.Span): ast.KindExpr = ast.makeType(sp option kindType of TypeForm end)
+    let powerKind(sp: location.Span bound: ast.TypeExpr): ast.KindExpr =
+        ast.makeType(sp option kindPower of TypeForm with let bound = bound end)
+
+    let isExprStmt(e: ast.Expr): Bool = case e.form when declExprStmt then true else false end
+    let stmtExpr(e: ast.Expr): ast.Expr = case e.form when declExprStmt with x then x.expr else e end
+
+    let basename(path: String): String =
+        stringOp.getSub(path {strutil.rfind(path "/") + 1} {{stringOp.length(path) - strutil.rfind(path "/")} - 1})
+
+    let paramMode(varToken: Val outToken: Val): ast.ParamMode =
+        if present(varToken) then mVar elsif present(outToken) then mOut else mValue end
+
+    (* The arguments of a call's phrases *)
+    let callArgs(ctx: Ctx bindings: Val): vector.T(ast.Expr) =
+        each(:ast.Expr optItems(bindings) fun(b: Val): ast.Expr stmtExpr(decl(ctx b)))
+
+    (* The expression for a body of phrases: a lone expression itself, otherwise a block (including a lone
+     * declaration, which is not an expression) *)
+    let body(ctx: Ctx bindings: Val start: Int): ast.Expr =
+        begin
+            let phrases = decls(ctx bindings)
+            if {vector.length(:ast.Expr phrases) is 1} andif isExprStmt(firstOf(:ast.Expr phrases)) then
+                stmtExpr(firstOf(:ast.Expr phrases))
+            else
+                ast.makeExpr(from(ctx start) option exprBlock of ExprForm with let bindings = phrases end)
+            end
+        end
+
+    (* The body of an optional else Binding clause *)
+    let elseBody(ctx: Ctx clause: Val): maybe.T(ast.Expr) =
+        if present(clause) then
+            maybe.some(:ast.Expr body(ctx items(clause)[1] tok(items(clause)[0]).span.startOffset))
+        else
+            maybe.none(:ast.Expr)
+        end
+
+    let vElse(m: maybe.T(ast.Expr)): Val = if maybe.isSome(:ast.Expr m) then vExpr(maybe.unwrap(:ast.Expr m)) else absent end
+
+    (* An array's elements, with the element type a leading : Type gives *)
+    let arrayExpr(ctx: Ctx start: Int bindings: Val): ast.Expr =
+        begin
+            let phrases = optItems(bindings)
+            let leading =
+                if extent(phrases) > 0 then
+                    case decl(ctx phrases[0]).form when typeArg with x then maybe.some(:ast.TypeExpr x.typeVal)
+                    else maybe.none(:ast.TypeExpr) end
+                else
+                    maybe.none(:ast.TypeExpr)
+                end
+            let elements = callArgs(ctx bindings)
+            if maybe.isSome(:ast.TypeExpr leading) then vector.delete(:ast.Expr elements 0) end
+            ast.makeExpr(from(ctx start)
+                option exprArray of ExprForm with let elements = elements let elementType = leading end)
+        end
+
+    (* The tuple component a let declares: a function's parameters become a function value *)
+    let tupleBinding(ctx: Ctx e: ast.Expr): ast.TupleFieldBinding =
+        case e.form
+            when declLetVal with x then
+                if vector.empty(:ast.FormalParam x.params) then
+                    ast.tupleBinding(maybe.some(:String x.name) x.value x.typeAnnot x.isVar)
+                else
+                    let fn = ast.makeExpr(from(ctx e.span.startOffset) option exprFun of ExprForm with
+                        let params = x.params
+                        let returnType = x.typeAnnot
+                        let body = x.value
+                        let typeParams = vector.new(:ast.TypeFormal)
+                    end)
+                    ast.tupleBinding(maybe.some(:String x.name) fn maybe.none(:ast.TypeExpr) x.isVar)
+                end
+            else
+                wrong(:ast.TupleFieldBinding "a value declaration")
+        end
+
+    let fieldVal(b: ast.TupleFieldBinding): ast.TupleField = option fieldVal of ast.TupleField with let val = b end
+    let fieldDecl(e: ast.Expr): ast.TupleField = option fieldDecl of ast.TupleField with let val = e end
+
+    (* The phrases inside a tuple constructor, as tuple components *)
+    let tupleFields(ctx: Ctx bindings: Val): vector.T(ast.TupleField) =
+        each(:ast.TupleField optItems(bindings) fun(b: Val): ast.TupleField
+            begin
+                let e = decl(ctx b)
+                case e.form
+                    (* Recursive declarations keep their parameters and annotations, which type them before their
+                     * values *)
+                    when declLetVal with x then
+                        if x.isRec then fieldDecl(e) else fieldVal(tupleBinding(ctx e)) end
+                    when declLetValGroup with x then
+                        let isRec = case firstOf(:ast.Expr x.bindings).form when declLetVal with m then m.isRec else false end
+                        if isRec then
+                            fieldDecl(e)
+                        else
+                            option fieldGroup of ast.TupleField with
+                                let val = vector.map(:ast.Expr :ast.TupleFieldBinding x.bindings
+                                    fun(m: ast.Expr): ast.TupleFieldBinding tupleBinding(ctx m))
+                            end
+                        end
+                    when declExprStmt with x then
+                        fieldVal(ast.tupleBinding(maybe.none(:String) x.expr maybe.none(:ast.TypeExpr) false))
+                    when typeArg then
+                        fieldVal(ast.tupleBinding(maybe.none(:String) e maybe.none(:ast.TypeExpr) false))
+                    when kindArg then
+                        fieldVal(ast.tupleBinding(maybe.none(:String) e maybe.none(:ast.TypeExpr) false))
+                    else
+                        fieldDecl(e)
+                end
+            end)
+
+    (* An option's payload from the phrases of its with clause: a lone tuple itself *)
+    let optionPayload(ctx: Ctx withBindings: Val start: Int): maybe.T(ast.Expr) =
+        begin
+            let phrases = optItems(withBindings)
+            if extent(phrases) is 0 then
+                maybe.none(:ast.Expr)
+            else
+                let lone = if extent(phrases) is 1 then
+                    case stmtExpr(decl(ctx phrases[0])).form when exprTuple then isExprStmt(decl(ctx phrases[0]))
+                    else false end
+                else
+                    false
+                end
+                if lone then
+                    maybe.some(:ast.Expr stmtExpr(decl(ctx phrases[0])))
+                else
+                    maybe.some(:ast.Expr ast.makeExpr(from(ctx start)
+                        option exprTuple of ExprForm with let fields = tupleFields(ctx withBindings) end))
+                end
+            end
+        end
+
+    (* =========================================================================
+     * 4. Signatures and Curried Functions
+     * ========================================================================= *)
+
+    (* The name a signature item declares (none for an anonymous field), or "_" for a group of declarations *)
+    let signatureName(s: ast.Signature): maybe.T(String) =
+        case s
+            when sigValue with x then x.val.name
+            when sigType with x then maybe.some(:String x.val.name)
+            when sigTypeBinding with x then maybe.some(:String x.val.name)
+            when sigKindBinding with x then maybe.some(:String x.val.name)
+            else maybe.some(:String "_")
+        end
+    let nameOr(m: maybe.T(String)): String = maybe.unwrapOr(:String m "_")
+
+    (* A type declaration's (declTypeBinding's) binding *)
+    let typeBindingOf(e: ast.Expr): ast.TypeBinding =
+        case e.form
+            when declTypeBinding with x then
+                tuple
+                    let name = x.name
+                    let typeVal = x.typeVal
+                    let params = x.params
+                    let bound = x.bound
+                    let isRec = x.isRec
+                    let isDef = x.isDef
+                end
+            else
+                wrong(:ast.TypeBinding "a type declaration")
+        end
+
+    (* A declaration in a signature: a type declaration or a group of them, or a kind declaration *)
+    let declSig(e: ast.Expr): Val =
+        case e.form
+            when declTypeBinding then
+                vSig(option sigTypeBinding of ast.Signature with let val = typeBindingOf(e) end e.span)
+            when declTypeBindingGroup with x then
+                vSig(option sigTypeBindingGroup of ast.Signature with
+                    let val = vector.map(:ast.Expr :ast.TypeBinding x.bindings typeBindingOf)
+                end e.span)
+            when declDefKind with x then
+                vSig(option sigKindBinding of ast.Signature with
+                    let val = tuple let name = x.name let kindVal = x.kindVal end
+                end e.span)
+            else
+                wrong(:Val "a declaration in a signature")
+        end
+
+    let typeFormalOf(v: Val): ast.TypeFormal =
+        case sigOf(v) when sigType with x then x.val else wrong(:ast.TypeFormal "a type formal") end
+
+    (* A value field's signature, or an error at the item *)
+    let fieldSigOf(ctx: Ctx v: Val what: String): ast.FieldSig =
+        case sigOf(v)
+            when sigValue with x then x.val
+            else reject(:ast.FieldSig ctx sigSpan(v) what <> " has only values")
+        end
+
+    (* The quantifier for one signature item of All(...) or of a curried parameter group: a type parameter keeps
+     * its kind; a value parameter x: T is bounded by POWER(T) *)
+    let quantifier(ctx: Ctx v: Val defaultStart: Int): ast.Quantifier =
+        case sigOf(v)
+            when sigType with x then
+                tuple let name = x.val.name let bound = x.val.bound let mode = mValue let isType = true end
+            when sigValue with x then
+                tuple
+                    let name = nameOr(x.val.name)
+                    let bound = powerKind(sigSpan(v) maybe.unwrap(:ast.TypeExpr x.val.typeSig))
+                    let mode = x.val.mode
+                    let isType = false
+                end
+            else
+                tuple
+                    let name = nameOr(signatureName(sigOf(v)))
+                    let bound = typeKind(from(ctx defaultStart))
+                    let mode = mValue
+                    let isType = false
+                end
+        end
+
+    (* The type All(group1) ... All(groupN) result of a curried function signature *)
+    let curriedType(ctx: Ctx groups: Args result: ast.TypeExpr start: Int): ast.TypeExpr =
+        begin
+            let var current = result
+            for i = {extent(groups) - 1} downto 0 do
+                current := ast.makeType(from(ctx start) option typeAll of TypeForm with
+                    let quantifiers = each(:ast.Quantifier items(groups[i]) fun(v: Val): ast.Quantifier quantifier(ctx v start))
+                    let resultType = current
+                end)
+            end
+            current
+        end
+
+    (* One parenthesized parameter group's type parameters *)
+    let typeParams(group: Val): vector.T(ast.TypeFormal) =
+        vector.map(:Val :ast.TypeFormal
+            vector.filter(:Val vector.fromArray(:Val items(group))
+                fun(v: Val): Bool case sigOf(v) when sigType then true else false end)
+            typeFormalOf)
+
+    (* One parenthesized parameter group's value parameters (its named fields) *)
+    let valueParams(group: Val): vector.T(ast.FormalParam) =
+        vector.filterMap(:Val :ast.FormalParam vector.fromArray(:Val items(group)) fun(v: Val): maybe.T(ast.FormalParam)
+            case sigOf(v)
+                when sigValue with x then
+                    if maybe.isSome(:String x.val.name) then
+                        maybe.some(:ast.FormalParam
+                            ast.formalParam(maybe.unwrap(:String x.val.name) x.val.typeSig x.val.mode))
+                    else
+                        maybe.none(:ast.FormalParam)
+                    end
+                else
+                    maybe.none(:ast.FormalParam)
+            end)
+
+    (* One function per parameter group, nested; the return type annotates the innermost one *)
+    let curriedFun(ctx: Ctx groups: Args returnType: maybe.T(ast.TypeExpr) body: ast.Expr start: Int): ast.Expr =
+        if extent(groups) is 0 then
+            ast.makeExpr(from(ctx start) option exprFun of ExprForm with
+                let params = vector.new(:ast.FormalParam)
+                let returnType = returnType
+                let body = body
+                let typeParams = vector.new(:ast.TypeFormal)
+            end)
+        else
+            let var current = body
+            for i = {extent(groups) - 1} downto 0 do
+                current := ast.makeExpr(from(ctx start) option exprFun of ExprForm with
+                    let params = valueParams(groups[i])
+                    let returnType = if i is {extent(groups) - 1} then returnType else maybe.none(:ast.TypeExpr) end
+                    let body = current
+                    let typeParams = typeParams(groups[i])
+                end)
+            end
+            current
+        end
+
+    (* =========================================================================
+     * 5. Generic Actions
+     * ========================================================================= *)
+
+    let first(ctx: Ctx args: Args): Val = args[0]
+
+    let flatten(ctx: Ctx args: Args): Val =
+        begin
+            let result = vector.new(:Val)
+            let groups = items(args[0])
+            for i = 0 upto {extent(groups) - 1} do
+                let group = items(groups[i])
+                for j = 0 upto {extent(group) - 1} do vector.append(:Val result group[j]) end
+            end
+            vList(vector.toArray(:Val result))
+        end
+
+    let lexeme(ctx: Ctx args: Args): Val = vStr(tok(args[0]).lexeme)
+
+    (* =========================================================================
+     * 6. Identifiers, Paths, and Imports
+     * ========================================================================= *)
+
+    let ideList(ctx: Ctx args: Args): Val = eachVal(items(args[0]) fun(t: Val): Val vStr(tok(t).lexeme))
+
+    let path(ctx: Ctx args: Args): Val =
+        vStr(strutil.join("/" each(:String items(args[0]) fun(t: Val): String tok(t).lexeme)))
+
+    let moduleEntryNamed(ctx: Ctx args: Args): Val = vList(array of vStr(tok(args[0]).lexeme) args[1] end)
+
+    let moduleEntry(ctx: Ctx args: Args): Val = vList(array of vStr(basename(str(args[0]))) args[0] end)
+
+    let vImport(item: ast.ImportItem): Val = option importItem of Val with let val = item end
+    let somePaths(paths: vector.T(String)): maybe.T(vector.T(String)) = maybe.some(:vector.T(String) paths)
+    let noPaths: maybe.T(vector.T(String)) = maybe.none(:vector.T(String))
+    (* A path that names a directory, as the bootstrap keeps it *)
+    let dirPath(path: String): maybe.T(String) =
+        if strutil.contains(path "/") then maybe.some(:String path) else maybe.none(:String) end
+
+    (* r1, r2 : Rnd = p1, p2 : IfacePath *)
+    let importDual(ctx: Ctx args: Args): Val =
+        vImport(ast.importItem(strs(args[0]) tok(args[2]).lexeme somePaths(strs(args[3])) maybe.some(:String str(args[4]))))
+
+    (* : Rnd = p1, p2 : IfacePath *)
+    let importAliasPaths(ctx: Ctx args: Args): Val =
+        vImport(ast.importItem(
+            vector.map(:String :String strs(args[2]) basename) tok(args[1]).lexeme somePaths(strs(args[2]))
+            maybe.some(:String str(args[3]))
+        ))
+
+    (* : Rnd = : IfacePath *)
+    let importAliasInterface(ctx: Ctx args: Args): Val =
+        vImport(ast.importItem(vector.new(:String) tok(args[1]).lexeme noPaths maybe.some(:String str(args[2]))))
+
+    (* : IfacePath *)
+    let importInterface(ctx: Ctx args: Args): Val =
+        vImport(ast.importItem(vector.new(:String) basename(str(args[1])) noPaths dirPath(str(args[1]))))
+
+    (* m1 = p1, m2 = p2 : IfacePath or p1, p2 : IfacePath *)
+    let importModules(ctx: Ctx args: Args): Val =
+        begin
+            let entries = items(args[0])
+            let names = each(:String entries fun(e: Val): String str(items(e)[0]))
+            let paths = each(:String entries fun(e: Val): String str(items(e)[1]))
+            let var aliased = false
+            for i = 0 upto {extent(entries) - 1} do
+                let p = vector.get(:String paths i)
+                if strutil.contains(p "/") orif not(stringOp.equal(p vector.get(:String names i))) then
+                    aliased := true
+                end
+            end
+            let ifacePath = str(args[2])
+            vImport(ast.importItem(names basename(ifacePath) if aliased then somePaths(paths) else noPaths end
+                dirPath(ifacePath)))
+        end
+
+    (* =========================================================================
+     * 7. Kinds
+     * ========================================================================= *)
+
+    (* Curries ALL(A,B::K1 C::K2) K into ALL(A::K1) ALL(B::K1) ALL(C::K2) K (Cardelli's ALL(TypeSignature)Kind) *)
+    let kindAll(ctx: Ctx args: Args): Val =
+        begin
+            let leftParen = tok(args[1])
+            let signatures = items(args[2])
+            let var kind = ty(args[3])
+            for i = {extent(signatures) - 1} downto 0 do
+                let s = sigOf(signatures[i])
+                (* A type formal's or type declaration's bound; any other item's parameter is a type *)
+                let paramKind = case s
+                    when sigType with x then x.val.bound
+                    when sigTypeBinding with x then maybe.unwrapOr(:ast.KindExpr x.val.bound typeKind(at(ctx leftParen)))
+                    else typeKind(at(ctx leftParen))
+                end
+                kind := ast.makeType(if i is 0 then at(ctx tok(args[0])) else from(ctx sigStart(signatures[i])) end
+                    option kindAll of TypeForm with
+                        let paramName = nameOr(signatureName(s))
+                        let paramKind = paramKind
+                        let bodyKind = kind
+                    end)
+            end
+            vType(kind)
+        end
+
+    let kindType(ctx: Ctx args: Args): Val = vType(typeKind(at(ctx tok(args[0]))))
+
+    let kindPower(ctx: Ctx args: Args): Val = vType(powerKind(at(ctx tok(args[0])) ty(args[1])))
+
+    let kindManifest(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option kindManifest of TypeForm with
+            let interfaceName = tok(args[0]).lexeme
+            let kindName = tok(args[1]).lexeme
+        end)
+
+    let kindId(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option kindId of TypeForm with let name = tok(args[0]).lexeme end)
+
+    let hasKindSubtype(ctx: Ctx args: Args): Val = vType(powerKind(at(ctx tok(args[0])) ty(args[1])))
+
+    (* =========================================================================
+     * 8. Types
+     * ========================================================================= *)
+
+    let typeInfix(ctx: Ctx args: Args): Val =
+        if present(args[1]) then
+            let left = ty(args[0])
+            let tail = items(args[1])
+            mkType(from(ctx left.span.startOffset) option typeInfix of TypeForm with
+                let left = left
+                let op = tok(tail[0]).lexeme
+                let right = ty(tail[1])
+            end)
+        else
+            args[0]
+        end
+
+    (* A postfix chain applies its operators left to right *)
+    let typePostfix(ctx: Ctx args: Args): Val =
+        begin
+            let var current = ty(args[0])
+            let ops = items(args[1])
+            for i = 0 upto {extent(ops) - 1} do
+                case ops[i] when typeOp with x then current := x.apply(current) else wrong(:Ok "a type operator") end
+            end
+            vType(current)
+        end
+
+    let typeOp(f: All(operand: ast.TypeExpr) ast.TypeExpr): Val = option typeOp of Val with let apply = f end
+
+    let selectTypeOp(ctx: Ctx args: Args): Val =
+        typeOp(fun(current: ast.TypeExpr): ast.TypeExpr
+            begin
+                let path = case current.form
+                    when typePath with x then vector.copy(:String x.path)
+                    else vector.new(:String)
+                end
+                vector.append(:String path tok(args[0]).lexeme)
+                ast.typePath(from(ctx current.span.startOffset) path)
+            end)
+
+    let typeAppOp(ctx: Ctx args: Args): Val =
+        typeOp(fun(current: ast.TypeExpr): ast.TypeExpr
+            ast.makeType(from(ctx current.span.startOffset) option typeApp of TypeForm with
+                let constructor = current
+                let arguments = types(args[0])
+            end))
+
+    let typeManifestOp(ctx: Ctx args: Args): Val =
+        typeOp(fun(current: ast.TypeExpr): ast.TypeExpr
+            ast.makeType(from(ctx current.span.startOffset) option typeManifest of TypeForm with
+                let moduleName = case current.form
+                    when typePath with x then vector.last(:String x.path)
+                    else "_"
+                end
+                let typeName = tok(args[0]).lexeme
+            end))
+
+    let typeAll(ctx: Ctx args: Args): Val =
+        begin
+            let leftParen = tok(args[1])
+            mkType(at(ctx tok(args[0])) option typeAll of TypeForm with
+                let quantifiers = each(:ast.Quantifier items(args[2])
+                    fun(v: Val): ast.Quantifier quantifier(ctx v leftParen.span.startOffset))
+                let resultType = ty(args[3])
+            end)
+        end
+
+    let typeTuple(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeTuple of TypeForm with let fields = each(:ast.Signature items(args[1]) sigOf) end)
+
+    let typeOption(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeOption of TypeForm with
+            let variants = each(:ast.OptionFieldSig items(args[1]) fun(v: Val): ast.OptionFieldSig
+                case v when optionFieldSig with x then x.val else wrong(:ast.OptionFieldSig "an option's signature") end)
+        end)
+
+    let recordFieldSigOf(v: Val): ast.RecordFieldSig =
+        case v when recordFieldSig with x then x.val else wrong(:ast.RecordFieldSig "a field's signature") end
+
+    let typeRecord(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeRecord of TypeForm with
+            let fields = each(:ast.RecordFieldSig items(args[1]) recordFieldSigOf)
+        end)
+
+    let typeVariant(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeVariant of TypeForm with
+            let fields = each(:ast.VariantFieldSig items(args[1]) fun(v: Val): ast.VariantFieldSig
+                begin
+                    let s = recordFieldSigOf(v)
+                    tuple let tag = s.name let typeSig = s.typeSig let isVar = s.isVar end
+                end)
+        end)
+
+    let typeAuto(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeAuto of TypeForm with
+            let typeParam = optName(args[1])
+            let kindBound = ty(args[2])
+            let signature = each(:ast.FieldSig items(args[3]) fun(v: Val): ast.FieldSig fieldSigOf(ctx v "An Auto type"))
+        end)
+
+    let typeFun(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeFun of TypeForm with
+            let params = each(:ast.TypeFormal items(args[1]) typeFormalOf)
+            let resultKind = optTy(args[2])
+            let body = ty(args[3])
+        end)
+
+    let typeRec(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeRec of TypeForm with
+            let varName = tok(args[1]).lexeme
+            let bound = ty(args[2])
+            let body = ty(args[3])
+        end)
+
+    let typeArray(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeArray of TypeForm with let elementType = ty(args[1]) end)
+
+    let typeVar(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeVar of TypeForm with let elementType = ty(args[1]) end)
+
+    let typeOut(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeOut of TypeForm with let elementType = ty(args[1]) end)
+
+    let typeManifest(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeManifest of TypeForm with
+            let moduleName = tok(args[0]).lexeme
+            let typeName = tok(args[1]).lexeme
+        end)
+
+    let typeName(ctx: Ctx args: Args): Val = vType(ast.typePathSimple(at(ctx tok(args[0])) tok(args[0]).lexeme))
+
+    let typeException(ctx: Ctx args: Args): Val = vType(ast.typePathSimple(at(ctx tok(args[0])) "Exception"))
+
+    let typeAppInfix(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            mkType(at(ctx t) option typeApp of TypeForm with
+                let constructor = ast.typePathSimple(t.span t.lexeme)
+                let arguments = types(args[1])
+            end)
+        end
+
+    let stringValue(t: tokens.Token): String = case t.value when stringVal with x then x.val else t.lexeme end
+
+    let typeExternal(ctx: Ctx args: Args): Val =
+        mkType(at(ctx tok(args[0])) option typeExternal of TypeForm with let cType = stringValue(tok(args[1])) end)
+
+    (* =========================================================================
+     * 9. Signatures
+     * ========================================================================= *)
+
+    let sigKindDecl(ctx: Ctx args: Args): Val = vList(array of declSig(ex(args[0])) end)
+
+    (* Let [Rec] or Def [Rec] TypeDecl {and TypeDecl}: one declaration is a binding positioned at the keyword; two or
+     * more are a group positioned at the keyword, whose members share its Rec and Def and keep their own positions *)
+    let typeBinding(ctx: Ctx keyword: tokens.Token recToken: Val declarations: Val isDef: Bool): ast.Expr =
+        begin
+            let withFlags = fun(e: ast.Expr sp: location.Span): ast.Expr
+                begin
+                    let b = typeBindingOf(e)
+                    ast.makeExpr(sp option declTypeBinding of ExprForm with
+                        let name = b.name
+                        let typeVal = b.typeVal
+                        let params = b.params
+                        let bound = b.bound
+                        let isRec = present(recToken)
+                        let isDef = isDef
+                    end)
+                end
+            let members = items(declarations)
+            if extent(members) is 1 then
+                withFlags(ex(members[0]) at(ctx keyword))
+            else
+                ast.makeExpr(at(ctx keyword) option declTypeBindingGroup of ExprForm with
+                    let bindings = each(:ast.Expr members fun(v: Val): ast.Expr withFlags(ex(v) ex(v).span))
+                end)
+            end
+        end
+
+    let sigDefType(ctx: Ctx args: Args): Val =
+        vList(array of declSig(typeBinding(ctx tok(args[0]) args[1] args[2] true)) end)
+
+    (* [var | out] IdeList {( Signature )} : Type: each name's field, of a curried type if it has parameters *)
+    let fieldSigs(ctx: Ctx args: Args): Val =
+        begin
+            let colon = tok(args[4])
+            let fieldType = curriedType(ctx items(args[3]) ty(args[5]) colon.span.startOffset)
+            let mode = paramMode(args[0] args[1])
+            eachVal(items(args[2]) fun(name: Val): Val
+                vSig(option sigValue of ast.Signature with
+                    let val = ast.fieldSig(maybe.some(:String str(name)) maybe.some(:ast.TypeExpr fieldType) mode)
+                end at(ctx colon)))
+        end
+
+    let sigMutField(ctx: Ctx args: Args): Val = vList(array of args[0] end)
+
+    (* [IdeList] HasKind: a formal for each name, or an anonymous one, positioned at the kind *)
+    let typeFormals(ctx: Ctx args: Args): Val =
+        begin
+            let bound = ty(args[1])
+            let names = if present(args[0]) then items(args[0]) else array of vStr("_") end end
+            eachVal(names fun(name: Val): Val
+                vSig(option sigType of ast.Signature with
+                    let val = tuple let name = str(name) let bound = bound end
+                end from(ctx bound.span.startOffset)))
+        end
+
+    (* {[var] IdeList HasType} *)
+    let recordFieldSigs(ctx: Ctx args: Args): Val =
+        begin
+            let result = vector.new(:Val)
+            let fields = items(args[0])
+            for i = 0 upto {extent(fields) - 1} do
+                let field = items(fields[i])
+                let names = items(field[1])
+                for j = 0 upto {extent(names) - 1} do
+                    vector.append(:Val result option recordFieldSig of Val with
+                        let val = tuple let name = str(names[j]) let typeSig = ty(field[2]) let isVar = present(field[0]) end
+                    end)
+                end
+            end
+            vList(vector.toArray(:Val result))
+        end
+
+    (* {ide {, ide} [with Signature end]}: the tags are matched as tokens for their positions *)
+    let optionFieldSigs(ctx: Ctx args: Args): Val =
+        begin
+            let result = vector.new(:Val)
+            let options = items(args[0])
+            for i = 0 upto {extent(options) - 1} do
+                let alternative = items(options[i])
+                let payload = each(:ast.Signature optItems(alternative[1]) sigOf)
+                let tags = items(alternative[0])
+                for j = 0 upto {extent(tags) - 1} do
+                    vector.append(:Val result option optionFieldSig of Val with
+                        let val = tuple let tag = tok(tags[j]).lexeme let payloadSig = payload end
+                    end)
+                end
+            end
+            vList(vector.toArray(:Val result))
+        end
+
+    (* An anonymous field of a mode, positioned at its first token *)
+    let mutField(mode: ast.ParamMode): engine.Action =
+        fun(ctx: Ctx args: Args): Val
+            vSig(option sigValue of ast.Signature with
+                let val = ast.fieldSig(maybe.none(:String) maybe.some(:ast.TypeExpr ty(args[1])) mode)
+            end at(ctx tok(args[0])))
+
+    (* =========================================================================
+     * 10. Values
+     * ========================================================================= *)
+
+    let valueInfix(ctx: Ctx args: Args): Val =
+        if present(args[1]) then
+            let left = ex(args[0])
+            let tail = items(args[1])
+            mkExpr(from(ctx left.span.startOffset) option exprInfix of ExprForm with
+                let left = left
+                let op = str(tail[0])
+                let right = ex(tail[1])
+            end)
+        else
+            args[0]
+        end
+
+    let valuePostfix(ctx: Ctx args: Args): Val =
+        begin
+            let var current = ex(args[0])
+            let ops = items(args[1])
+            for i = 0 upto {extent(ops) - 1} do
+                case ops[i] when exprOp with x then current := x.apply(current) else wrong(:Ok "a postfix operator") end
+            end
+            vExpr(current)
+        end
+
+    let exprOp(f: All(operand: ast.Expr) ast.Expr): Val = option exprOp of Val with let apply = f end
+
+    let selectOp(ctx: Ctx args: Args): Val =
+        exprOp(fun(target: ast.Expr): ast.Expr
+            ast.makeExpr(from(ctx target.span.startOffset) option exprSelect of ExprForm with
+                let target = target
+                let field = tok(args[0]).lexeme
+            end))
+
+    let variantCheckOp(ctx: Ctx args: Args): Val =
+        exprOp(fun(target: ast.Expr): ast.Expr
+            ast.makeExpr(from(ctx target.span.startOffset) option exprVariantCheck of ExprForm with
+                let target = target
+                let tag = tok(args[0]).lexeme
+            end))
+
+    let variantAssertOp(ctx: Ctx args: Args): Val =
+        exprOp(fun(target: ast.Expr): ast.Expr
+            ast.makeExpr(from(ctx target.span.startOffset) option exprVariantAssert of ExprForm with
+                let target = target
+                let tag = tok(args[0]).lexeme
+            end))
+
+    let callOp(ctx: Ctx args: Args): Val =
+        begin
+            let arguments = callArgs(ctx args[0])
+            exprOp(fun(func: ast.Expr): ast.Expr ast.exprApp(from(ctx func.span.startOffset) func arguments))
+        end
+
+    let indexOp(ctx: Ctx args: Args): Val =
+        exprOp(fun(target: ast.Expr): ast.Expr
+            ast.makeExpr(from(ctx target.span.startOffset) option exprIndex of ExprForm with
+                let target = target
+                let index = ex(args[0])
+            end))
+
+    (* Listfix application: f of(count init) and f of ... end *)
+    let ofRepOp(ctx: Ctx args: Args): Val =
+        begin
+            let rep = ast.makeExpr(at(ctx tok(args[0])) option exprArrayRep of ExprForm with
+                let count = ex(args[1])
+                let initVal = ex(args[2])
+            end)
+            exprOp(fun(func: ast.Expr): ast.Expr
+                ast.exprApp(from(ctx func.span.startOffset) func vector.fromArray(:ast.Expr array of rep end)))
+        end
+
+    let ofOp(ctx: Ctx args: Args): Val =
+        begin
+            let elements = arrayExpr(ctx tok(args[0]).span.startOffset args[1])
+            exprOp(fun(func: ast.Expr): ast.Expr
+                ast.exprApp(from(ctx func.span.startOffset) func vector.fromArray(:ast.Expr array of elements end)))
+        end
+
+    (* --- Literals --- *)
+
+    let exprInt(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            vExpr(ast.exprInt(at(ctx t) case t.value when intVal with x then x.val else 0 end t.lexeme))
+        end
+
+    let exprReal(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            vExpr(ast.exprReal(at(ctx t) case t.value when realVal with x then x.val else 0.0 end t.lexeme))
+        end
+
+    let exprChar(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            vExpr(ast.exprChar(at(ctx t) case t.value when charVal with x then x.val else ' ' end t.lexeme))
+        end
+
+    let exprString(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            vExpr(ast.exprString(at(ctx t) stringValue(t) t.lexeme))
+        end
+
+    let exprTrue(ctx: Ctx args: Args): Val = vExpr(ast.exprBool(at(ctx tok(args[0])) true))
+    let exprFalse(ctx: Ctx args: Args): Val = vExpr(ast.exprBool(at(ctx tok(args[0])) false))
+    let exprOk(ctx: Ctx args: Args): Val = vExpr(ast.exprOk(at(ctx tok(args[0]))))
+    let exprExit(ctx: Ctx args: Args): Val = mkExpr(at(ctx tok(args[0])) option exprExit of ExprForm end)
+
+    let exprExternal(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprExternal of ExprForm with let symbol = stringValue(tok(args[1])) end)
+
+    (* --- Control --- *)
+
+    let exprIf(ctx: Ctx args: Args): Val =
+        begin
+            let ifToken = tok(args[0])
+            mkExpr(at(ctx ifToken) option exprIf of ExprForm with
+                let cond = ex(args[1])
+                let thenBranch = body(ctx args[2] ifToken.span.startOffset)
+                let elsifs = each(:ast.ElsifBranch items(args[3]) fun(v: Val): ast.ElsifBranch
+                    begin
+                        let clause = items(v)
+                        tuple
+                            let cond = ex(clause[1])
+                            let thenBranch = body(ctx clause[2] tok(clause[0]).span.startOffset)
+                        end
+                    end)
+                let elseBranch = elseBody(ctx args[4])
+            end)
+        end
+
+    let exprBegin(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprBlock of ExprForm with let bindings = decls(ctx args[1]) end)
+
+    let exprLoop(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            mkExpr(at(ctx t) option exprLoop of ExprForm with let body = body(ctx args[1] t.span.startOffset) end)
+        end
+
+    let exprWhile(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            mkExpr(at(ctx t) option exprWhile of ExprForm with
+                let cond = ex(args[1])
+                let body = body(ctx args[2] t.span.startOffset)
+            end)
+        end
+
+    let exprFor(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            mkExpr(at(ctx t) option exprFor of ExprForm with
+                let varName = tok(args[1]).lexeme
+                let start = ex(args[2])
+                let isDownto = present(args[3])
+                let stop = ex(args[4])
+                let body = body(ctx args[5] t.span.startOffset)
+            end)
+        end
+
+    let exprFun(ctx: Ctx args: Args): Val =
+        vExpr(curriedFun(ctx items(args[1]) optTy(args[2]) ex(args[3]) tok(args[0]).span.startOffset))
+
+    (* --- Aggregates --- *)
+
+    let exprTuple(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprTuple of ExprForm with let fields = tupleFields(ctx args[1]) end)
+
+    let exprRecord(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprRecord of ExprForm with
+            let fields = each(:ast.RecordBinding items(args[1]) fun(v: Val): ast.RecordBinding
+                case v when recordBinding with x then x.val else wrong(:ast.RecordBinding "a field") end)
+        end)
+
+    let exprArrayRep(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprArrayRep of ExprForm with
+            let count = ex(args[1])
+            let initVal = ex(args[2])
+        end)
+
+    let exprArray(ctx: Ctx args: Args): Val = vExpr(arrayExpr(ctx tok(args[0]).span.startOffset args[1]))
+
+    let exprOption(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            mkExpr(at(ctx t) option exprOption of ExprForm with
+                let tag = maybe.some(:String tok(args[1]).lexeme)
+                let optionType = ty(args[2])
+                let payload = optionPayload(ctx args[3] t.span.startOffset)
+                let ordinalExpr = maybe.none(:ast.Expr)
+            end)
+        end
+
+    let exprOptionOrdinal(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            mkExpr(at(ctx t) option exprOption of ExprForm with
+                let tag = maybe.none(:String)
+                let optionType = ty(args[2])
+                let payload = optionPayload(ctx args[3] t.span.startOffset)
+                let ordinalExpr = maybe.some(:ast.Expr ex(args[1]))
+            end)
+        end
+
+    let exprVariant(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprVariant of ExprForm with
+            let tag = tok(args[2]).lexeme
+            let variantType = ty(args[3])
+            let isVar = present(args[1])
+            let payload = optEx(args[4])
+        end)
+
+    let exprAuto(ctx: Ctx args: Args): Val =
+        begin
+            let witness = args[1]
+            mkExpr(at(ctx tok(args[0])) option exprAuto of ExprForm with
+                let witnessType = ty(args[2])
+                let payload = ast.makeExpr(at(ctx tok(args[3]))
+                    option exprTuple of ExprForm with let fields = tupleFields(ctx args[4]) end)
+                let witnessName = if present(witness) then optName(items(witness)[0]) else maybe.none(:String) end
+                let witnessBound = if present(witness) then optTy(items(witness)[1]) else maybe.none(:ast.TypeExpr) end
+            end)
+        end
+
+    (* --- Case, inspect, and try: {when Pattern [with Binder [: Type]] then Binding} [else Binding], which match as
+     * a list of the branches and the else body --- *)
+
+    let branches(ctx: Ctx args: Args branch: All(whenToken: tokens.Token pattern: Val binder: Val bindings: Val) Val): Val =
+        vList(array of
+            eachVal(items(args[0]) fun(v: Val): Val
+                begin
+                    let b = items(v)
+                    branch(tok(b[0]) b[1] b[2] b[3])
+                end)
+            vElse(elseBody(ctx args[1]))
+        end)
+
+    (* A branch's binder and its type *)
+    let binderPart(binder: Val i: Int): Val = if present(binder) then items(binder)[i] else absent end
+
+    let caseBranches(ctx: Ctx args: Args): Val =
+        branches(ctx args fun(whenToken: tokens.Token pattern: Val binder: Val bindings: Val): Val
+            begin
+                let name = optName(binderPart(binder 0))
+                let nameType = optTy(binderPart(binder 1))
+                option caseBranch of Val with
+                    let val = tuple
+                        let tags = strs(pattern)
+                        let binder = name
+                        let binderType = nameType
+                        let body = body(ctx bindings whenToken.span.startOffset)
+                    end
+                end
+            end)
+
+    let inspectBranches(ctx: Ctx args: Args): Val =
+        branches(ctx args fun(whenToken: tokens.Token pattern: Val binder: Val bindings: Val): Val
+            begin
+                let names = if present(binder) then strs(items(binder)[0]) else vector.new(:String) end
+                let binderType = optTy(binderPart(binder 1))
+                option inspectBranch of Val with
+                    let val = tuple
+                        let matchType = ty(pattern)
+                        let binders = vector.map(:String :ast.InspectBinder names
+                            fun(name: String): ast.InspectBinder tuple let name = name let typeAnnot = binderType end)
+                        let body = body(ctx bindings whenToken.span.startOffset)
+                    end
+                end
+            end)
+
+    let tryBranches(ctx: Ctx args: Args): Val =
+        branches(ctx args fun(whenToken: tokens.Token pattern: Val binder: Val bindings: Val): Val
+            begin
+                let name = optName(binderPart(binder 0))
+                let nameType = optTy(binderPart(binder 1))
+                option tryBranch of Val with
+                    let val = tuple
+                        let excPattern = ex(pattern)
+                        let binder = name
+                        let binderType = nameType
+                        let body = body(ctx bindings whenToken.span.startOffset)
+                    end
+                end
+            end)
+
+    let exprCase(ctx: Ctx args: Args): Val =
+        begin
+            let b = items(args[2])
+            mkExpr(at(ctx tok(args[0])) option exprCase of ExprForm with
+                let target = ex(args[1])
+                let branches = each(:ast.CaseBranch items(b[0]) fun(v: Val): ast.CaseBranch
+                    case v when caseBranch with x then x.val else wrong(:ast.CaseBranch "a case branch") end)
+                let elseBranch = optEx(b[1])
+            end)
+        end
+
+    let exprInspect(ctx: Ctx args: Args): Val =
+        begin
+            let b = items(args[2])
+            mkExpr(at(ctx tok(args[0])) option exprInspect of ExprForm with
+                let target = ex(args[1])
+                let branches = each(:ast.InspectBranch items(b[0]) fun(v: Val): ast.InspectBranch
+                    case v when inspectBranch with x then x.val else wrong(:ast.InspectBranch "an inspect branch") end)
+                let elseBranch = optEx(b[1])
+            end)
+        end
+
+    let exprTry(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            let b = items(args[2])
+            mkExpr(at(ctx t) option exprTry of ExprForm with
+                let body = body(ctx args[1] t.span.startOffset)
+                let branches = each(:ast.TryBranch items(b[0]) fun(v: Val): ast.TryBranch
+                    case v when tryBranch with x then x.val else wrong(:ast.TryBranch "a try branch") end)
+                let elseBranch = optEx(b[1])
+            end)
+        end
+
+    (* --- Exceptions, cells, and names --- *)
+
+    let exprException(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprException of ExprForm with
+            let name = tok(args[1]).lexeme
+            let typeAnnot = optTy(args[2])
+        end)
+
+    let exprRaise(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprRaise of ExprForm with
+            let exc = ex(args[1])
+            let payload = optEx(args[2])
+            let asType = optTy(args[3])
+        end)
+
+    let exprVarCell(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprVarCell of ExprForm with let value = ex(args[1]) end)
+
+    let exprDeref(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option exprDerefCell of ExprForm with let target = ex(args[1]) end)
+
+    let exprId(ctx: Ctx args: Args): Val = vExpr(ast.exprId(at(ctx tok(args[0])) tok(args[0]).lexeme))
+
+    (* +(x y) *)
+    let exprPrefixApp(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            vExpr(ast.exprApp(at(ctx t) ast.exprId(t.span t.lexeme) callArgs(ctx args[1])))
+        end
+
+    (* not, extent, or ordinal applied to an operand *)
+    let monadicApp(ctx: Ctx args: Args): Val =
+        begin
+            let t = tok(args[0])
+            vExpr(ast.exprApp(at(ctx t) ast.exprId(t.span t.lexeme) vector.fromArray(:ast.Expr array of ex(args[1]) end)))
+        end
+
+    (* {[var] ident = Value} *)
+    let recordBindings(ctx: Ctx args: Args): Val =
+        eachVal(items(args[0]) fun(v: Val): Val
+            begin
+                let b = items(v)
+                option recordBinding of Val with
+                    let val = tuple let name = tok(b[1]).lexeme let value = ex(b[2]) let isVar = present(b[0]) end
+                end
+            end)
+
+    (* =========================================================================
+     * 11. Declarations and Phrases
+     * ========================================================================= *)
+
+    let kindDecl(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option declDefKind of ExprForm with
+            let name = tok(args[0]).lexeme
+            let kindVal = ty(args[1])
+        end)
+
+    (* ide {( TypeFormals )} [HasKind] = Type: a type operator's formals make its value a Fun *)
+    let typeDecl(ctx: Ctx args: Args): Val =
+        begin
+            let ide = tok(args[0])
+            let groups = items(args[1])
+            let typeNode = ty(args[3])
+            let hasParams = extent(groups) > 0
+            let typeVal = if hasParams then
+                ast.makeType(at(ctx ide) option typeFun of TypeForm with
+                    let params = vector.fold(:Val :vector.T(ast.TypeFormal) vector.fromArray(:Val groups) vector.new(:ast.TypeFormal)
+                        fun(acc: vector.T(ast.TypeFormal) group: Val): vector.T(ast.TypeFormal)
+                            vector.concat(:ast.TypeFormal acc each(:ast.TypeFormal items(group) typeFormalOf)))
+                    let resultKind = optTy(args[2])
+                    let body = typeNode
+                end)
+            else
+                typeNode
+            end
+            mkExpr(at(ctx ide) option declTypeBinding of ExprForm with
+                let name = ide.lexeme
+                let typeVal = typeVal
+                let params = vector.new(:ast.TypeFormal)
+                let bound = if hasParams then maybe.none(:ast.KindExpr) else optTy(args[2]) end
+                let isRec = false
+                let isDef = false
+            end)
+        end
+
+    (* [var] ide {( Signature )} [: Type] = Value: let f(x: Int): Int = ... keeps its parameters on the binding;
+     * other parameters make the value a (curried) function *)
+    let valueDecl(ctx: Ctx args: Args): Val =
+        begin
+            let ide = tok(args[1])
+            let groups = items(args[2])
+            let returnType = optTy(args[3])
+            let value = ex(args[4])
+            let binding = fun(value: ast.Expr params: vector.T(ast.FormalParam) typeAnnot: maybe.T(ast.TypeExpr)): Val
+                mkExpr(at(ctx ide) option declLetVal of ExprForm with
+                    let name = ide.lexeme
+                    let value = value
+                    let params = params
+                    let typeAnnot = typeAnnot
+                    let isRec = false
+                    let isVar = present(args[0])
+                end)
+            let simple = {extent(groups) is 1} andif
+                {vector.empty(:ast.TypeFormal typeParams(groups[0])) andif not(vector.empty(:ast.FormalParam valueParams(groups[0])))}
+            if extent(groups) is 0 then
+                binding(value vector.new(:ast.FormalParam) returnType)
+            elsif simple then
+                binding(value valueParams(groups[0]) returnType)
+            else
+                let fullType = if maybe.isSome(:ast.TypeExpr returnType) then
+                    maybe.some(:ast.TypeExpr curriedType(ctx groups maybe.unwrap(:ast.TypeExpr returnType) ide.span.startOffset))
+                else
+                    maybe.none(:ast.TypeExpr)
+                end
+                binding(curriedFun(ctx groups returnType value ide.span.startOffset) vector.new(:ast.FormalParam) fullType)
+            end
+        end
+
+    let imports(v: Val): vector.T(ast.ImportItem) =
+        each(:ast.ImportItem optItems(v) fun(i: Val): ast.ImportItem
+            case i when importItem with x then x.val else wrong(:ast.ImportItem "an import item") end)
+
+    let interfaceDecl(ctx: Ctx args: Args): Val =
+        vPhrase(ast.makePhrase(at(ctx tok(args[1])) option phraseInterface of ast.PhraseForm with
+            let iface = tuple
+                let name = tok(args[2]).lexeme
+                let signatures = each(:ast.Signature items(args[4]) sigOf)
+                let imports = imports(args[3])
+                let isUnsound = present(args[0])
+            end
+        end))
+
+    let moduleDecl(ctx: Ctx args: Args): Val =
+        vPhrase(ast.makePhrase(at(ctx tok(args[1])) option phraseModule of ast.PhraseForm with
+            let modDecl = tuple
+                let name = tok(args[2]).lexeme
+                let interfaceName = str(args[3])
+                let bindings = decls(ctx args[5])
+                let imports = imports(args[4])
+                let isUnsound = present(args[0])
+            end
+        end))
+
+    let letType(ctx: Ctx args: Args): Val = vExpr(typeBinding(ctx tok(args[0]) args[1] args[2] false))
+
+    let defType(ctx: Ctx args: Args): Val = vExpr(typeBinding(ctx tok(args[0]) args[1] args[2] true))
+
+    (* A value declaration with its rec and var, positioned *)
+    let withLetFlags(e: ast.Expr sp: location.Span isRec: Bool isVar: Bool): ast.Expr =
+        case e.form
+            when declLetVal with x then
+                ast.makeExpr(sp option declLetVal of ExprForm with
+                    let name = x.name
+                    let value = x.value
+                    let params = x.params
+                    let typeAnnot = x.typeAnnot
+                    let isRec = isRec
+                    let isVar = isVar
+                end)
+            else
+                wrong(:ast.Expr "a value declaration")
+        end
+
+    let isVarDecl(e: ast.Expr): Bool = case e.form when declLetVal with x then x.isVar else false end
+
+    (* let [rec] ValueDecl {and ValueDecl}: one declaration is positioned at let; two or more are a group positioned
+     * at let, whose members share its rec and keep their own positions *)
+    let letValue(ctx: Ctx args: Args): Val =
+        begin
+            let isRec = present(args[1])
+            let members = items(args[2])
+            if extent(members) is 1 then
+                vExpr(withLetFlags(ex(members[0]) at(ctx tok(args[0])) isRec isVarDecl(ex(members[0]))))
+            else
+                mkExpr(at(ctx tok(args[0])) option declLetValGroup of ExprForm with
+                    let bindings = each(:ast.Expr members
+                        fun(v: Val): ast.Expr withLetFlags(ex(v) ex(v).span isRec isVarDecl(ex(v))))
+                end)
+            end
+        end
+
+    (* var ValueDecl *)
+    let varDecl(ctx: Ctx args: Args): Val = vExpr(withLetFlags(ex(args[1]) at(ctx tok(args[0])) false true))
+
+    let typeArg(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option typeArg of ExprForm with let typeVal = ty(args[1]) end)
+
+    let kindArg(ctx: Ctx args: Args): Val =
+        mkExpr(at(ctx tok(args[0])) option kindArg of ExprForm with let kindVal = ty(args[1]) end)
+
+    let exprStmt(ctx: Ctx args: Args): Val =
+        begin
+            let e = ex(args[0])
+            vExpr(ast.declExprStmt(e.span e))
+        end
+
+    let linkage(ctx: Ctx args: Args): Val =
+        vPhrase(ast.makePhrase(at(ctx tok(args[0])) option phraseImport of ast.PhraseForm with
+            let phrase = tuple let items = imports(args[1]) end
+        end))
+
+    (* A top-level phrase: a type or kind argument is an expression, other expressions and declarations are
+     * declarations (an expression is an expression statement) *)
+    let topPhrase(v: Val): ast.Phrase =
+        case v
+            when phrase with x then
+                x.val
+            when expr with x then
+                case x.val.form
+                    when typeArg then ast.makePhrase(x.val.span option phraseExpr of ast.PhraseForm with let expr = x.val end)
+                    when kindArg then ast.makePhrase(x.val.span option phraseExpr of ast.PhraseForm with let expr = x.val end)
+                    else ast.makePhrase(x.val.span option phraseDecl of ast.PhraseForm with let decl = x.val end)
+                end
+            else
+                wrong(:ast.Phrase "a phrase")
+        end
+
+    let program(ctx: Ctx args: Args): Val =
+        begin
+            let phrases = each(:ast.Phrase items(args[0]) topPhrase)
+            let start = if vector.empty(:ast.Phrase phrases) then 0 else firstOf(:ast.Phrase phrases).span.startOffset end
+            option program of Val with let val = ast.makeProgram(from(ctx start) phrases) end
+        end
+end
