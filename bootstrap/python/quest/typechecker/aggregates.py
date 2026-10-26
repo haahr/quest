@@ -256,34 +256,35 @@ class AggregateMixin:
         simultaneous_members: dict[int, tuple[ast.TupleBinding, ...]] = {}
         kinds_before: dict[int, list[ast.DefKindBinding]] = {}
         for b in expr.fields:
-            if isinstance(b, ast.DefKindBinding):
-                kinds_before.setdefault(len(fields), []).append(b)
-            elif isinstance(b, (ast.TypeBinding, ast.TypeBindingGroup)):
-                if checking:
-                    members = tuple_type_binding_members(b)
-                else:
-                    members = b.bindings if isinstance(b, ast.TypeBindingGroup) else (b,)
-                fields.extend(members)
-                type_bindings.update((id(member), b) for member in members)
-            elif isinstance(b, (ast.LetValueBinding, ast.LetValueBindingGroup)):
-                value_members = b.bindings if isinstance(b, ast.LetValueBindingGroup) else (b,)
-                if checking:
-                    check_distinct_names(value_members)
-                fields.extend(value_members)
-                rec_members.update((id(member), (b, value_members)) for member in value_members)
-            elif isinstance(b, ast.TupleBindingGroup):
-                if checking:
-                    check_distinct_names(b.bindings)
-                fields.extend(b.bindings)
-                simultaneous_members.update((id(member), b.bindings) for member in b.bindings)
-            elif isinstance(b, ast.TupleBinding):
-                fields.append(b)
-            else:
-                # Phrases a tuple cannot hold (imports, modules, interfaces), rejected before the arity is checked
-                raise TypeError(
-                    f"Unsupported tuple component: {_PHRASES_NOT_IN_TUPLES.get(type(b), type(b).__name__)}",
-                    offset=getattr(b, "offset", expr.offset),
-                )
+            match b:
+                case ast.DefKindBinding():
+                    kinds_before.setdefault(len(fields), []).append(b)
+                case ast.TypeBinding() | ast.TypeBindingGroup():
+                    if checking:
+                        members = tuple_type_binding_members(b)
+                    else:
+                        members = b.bindings if isinstance(b, ast.TypeBindingGroup) else (b,)
+                    fields.extend(members)
+                    type_bindings.update((id(member), b) for member in members)
+                case ast.LetValueBinding() | ast.LetValueBindingGroup():
+                    value_members = b.bindings if isinstance(b, ast.LetValueBindingGroup) else (b,)
+                    if checking:
+                        check_distinct_names(value_members)
+                    fields.extend(value_members)
+                    rec_members.update((id(member), (b, value_members)) for member in value_members)
+                case ast.TupleBindingGroup():
+                    if checking:
+                        check_distinct_names(b.bindings)
+                    fields.extend(b.bindings)
+                    simultaneous_members.update((id(member), b.bindings) for member in b.bindings)
+                case ast.TupleBinding():
+                    fields.append(b)
+                case _:
+                    # Phrases a tuple cannot hold (imports, modules, interfaces), rejected before the arity is checked
+                    raise TypeError(
+                        f"Unsupported tuple component: {_PHRASES_NOT_IN_TUPLES.get(type(b), type(b).__name__)}",
+                        offset=getattr(b, "offset", expr.offset),
+                    )
         if expected_tuple is not None and len(fields) != len(expected_tuple.fields):
             raise TypeError(
                 f"Tuple arity mismatch: expected {len(expected_tuple.fields)} components, got {len(fields)}",

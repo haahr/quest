@@ -179,125 +179,124 @@ class ApplicationMixin:
         offset: int,
     ) -> TypedExpr:
         mode_name = "out" if is_out else "var"
-        if isinstance(target, ast.ExprId):
-            sym = env.lookup_value(target.name)
-            if sym is None:
-                raise TypeError(f"Undefined variable '{target.name}'", offset=offset)
-            self._check_capturable(sym, offset)
-            if is_out:
-                if not sym.is_var and not sym.is_out and not isinstance(sym.type_val, (QVarType, QOutType)):
-                    raise TypeError(
-                        f"Argument to 'out' parameter '{target.name}' must be a mutable variable or out parameter",
-                        offset=offset,
-                    )
-            else:
-                if not sym.is_var and not isinstance(sym.type_val, QVarType):
-                    raise TypeError(
-                        f"Argument to 'var' parameter '{target.name}' must be a mutable variable",
-                        offset=offset,
-                    )
-            dest_type = check_lvalue_mode_type(
-                param_type, sym.type_val, is_out, "variable", offset, env
-            )
-            return TypedVar(
-                name=sym.name,
-                symbol=sym,
-                type_val=QVarType(dest_type),
-                offset=offset,
-            )
-
-        if isinstance(target, ast.ExprSelect):
-            rec_typed = self.synth_expr(target.target, env, loop_depth)
-            rec_type = rec_typed.type_val.evaluate_lazily(env)
-            if not isinstance(rec_type, QTupleType) and resolve_record_bound(rec_type, env) is None:
-                # A type parameter bounded by a tuple type: its components are its bound's
-                rec_type = resolve_tuple_bound(rec_type, env) or rec_type
-
-            # Check for mutable tuple component: @t.f or @t.1
-            if isinstance(rec_type, QTupleType):
-                val_idx = -1
-                field_type = None
-                is_field_var = False
-                for i, f in enumerate(rec_type.value_fields):
-                    if f.name == target.field or str(i) == target.field:
-                        val_idx = i
-                        field_type = f.type_val
-                        is_field_var = getattr(f, "is_var", False) or isinstance(f.type_val, (QVarType, QOutType))
-                        break
-                if val_idx == -1 or field_type is None:
-                    raise TypeError(
-                        f"Tuple type '{rec_type}' has no component matching '{target.field}'",
-                        offset=offset,
-                    )
-                if not is_field_var:
-                    raise TypeError(
-                        f"Tuple component '{target.field}' is not mutable",
-                        offset=offset,
-                    )
+        match target:
+            case ast.ExprId():
+                sym = env.lookup_value(target.name)
+                if sym is None:
+                    raise TypeError(f"Undefined variable '{target.name}'", offset=offset)
+                self._check_capturable(sym, offset)
+                if is_out:
+                    if not sym.is_var and not sym.is_out and not isinstance(sym.type_val, (QVarType, QOutType)):
+                        raise TypeError(
+                            f"Argument to 'out' parameter '{target.name}' must be a mutable variable or out parameter",
+                            offset=offset,
+                        )
+                else:
+                    if not sym.is_var and not isinstance(sym.type_val, QVarType):
+                        raise TypeError(
+                            f"Argument to 'var' parameter '{target.name}' must be a mutable variable",
+                            offset=offset,
+                        )
                 dest_type = check_lvalue_mode_type(
-                    param_type, field_type, is_out, "tuple component", offset, env
+                    param_type, sym.type_val, is_out, "variable", offset, env
                 )
-                fld_name = target.field if not target.field.isdigit() else None
-                return TypedTupleSelectRef(
-                    target=rec_typed,
-                    index=val_idx,
-                    field=fld_name,
+                return TypedVar(
+                    name=sym.name,
+                    symbol=sym,
                     type_val=QVarType(dest_type),
                     offset=offset,
                 )
+            case ast.ExprSelect():
+                rec_typed = self.synth_expr(target.target, env, loop_depth)
+                rec_type = rec_typed.type_val.evaluate_lazily(env)
+                if not isinstance(rec_type, QTupleType) and resolve_record_bound(rec_type, env) is None:
+                    # A type parameter bounded by a tuple type: its components are its bound's
+                    rec_type = resolve_tuple_bound(rec_type, env) or rec_type
 
-            rec_bound = resolve_record_bound(rec_type, env)
-            if rec_bound is None:
-                raise TypeError(
-                    f"Target of field selection in '{mode_name}' argument must be a Record or Tuple, "
-                    f"got '{rec_type}'",
-                    offset=offset,
-                )
-            field = rec_bound.get_field(target.field)
-            if field is None:
-                raise TypeError(
-                    f"Record type '{rec_type}' has no field '{target.field}'",
-                    offset=offset,
-                )
-            if not field.is_var and not isinstance(field.type_val, (QVarType, QOutType)):
-                raise TypeError(
-                    f"Record field '{target.field}' is not mutable",
-                    offset=offset,
-                )
-            field_type = check_lvalue_mode_type(
-                param_type, field.type_val, is_out, "field", offset, env
-            )
-            return TypedSelectRef(
-                target=rec_typed,
-                field=target.field,
-                type_val=QVarType(field_type),
-                offset=offset,
-            )
+                # Check for mutable tuple component: @t.f or @t.1
+                if isinstance(rec_type, QTupleType):
+                    val_idx = -1
+                    field_type = None
+                    is_field_var = False
+                    for i, f in enumerate(rec_type.value_fields):
+                        if f.name == target.field or str(i) == target.field:
+                            val_idx = i
+                            field_type = f.type_val
+                            is_field_var = getattr(f, "is_var", False) or isinstance(f.type_val, (QVarType, QOutType))
+                            break
+                    if val_idx == -1 or field_type is None:
+                        raise TypeError(
+                            f"Tuple type '{rec_type}' has no component matching '{target.field}'",
+                            offset=offset,
+                        )
+                    if not is_field_var:
+                        raise TypeError(
+                            f"Tuple component '{target.field}' is not mutable",
+                            offset=offset,
+                        )
+                    dest_type = check_lvalue_mode_type(
+                        param_type, field_type, is_out, "tuple component", offset, env
+                    )
+                    fld_name = target.field if not target.field.isdigit() else None
+                    return TypedTupleSelectRef(
+                        target=rec_typed,
+                        index=val_idx,
+                        field=fld_name,
+                        type_val=QVarType(dest_type),
+                        offset=offset,
+                    )
 
-        if isinstance(target, ast.ExprIndex):
-            arr_typed = self.synth_expr(target.target, env, loop_depth)
-            arr_type = arr_typed.type_val.evaluate_lazily(env)
-            if not isinstance(arr_type, QArrayType):
-                raise TypeError(
-                    f"Target of array indexing in '{mode_name}' argument must be an Array, "
-                    f"got '{arr_type}'",
+                rec_bound = resolve_record_bound(rec_type, env)
+                if rec_bound is None:
+                    raise TypeError(
+                        f"Target of field selection in '{mode_name}' argument must be a Record or Tuple, "
+                        f"got '{rec_type}'",
+                        offset=offset,
+                    )
+                field = rec_bound.get_field(target.field)
+                if field is None:
+                    raise TypeError(
+                        f"Record type '{rec_type}' has no field '{target.field}'",
+                        offset=offset,
+                    )
+                if not field.is_var and not isinstance(field.type_val, (QVarType, QOutType)):
+                    raise TypeError(
+                        f"Record field '{target.field}' is not mutable",
+                        offset=offset,
+                    )
+                field_type = check_lvalue_mode_type(
+                    param_type, field.type_val, is_out, "field", offset, env
+                )
+                return TypedSelectRef(
+                    target=rec_typed,
+                    field=target.field,
+                    type_val=QVarType(field_type),
                     offset=offset,
                 )
-            idx_typed = self.check_expr(target.index, INT_TYPE, env, loop_depth)
-            dest_type = check_lvalue_mode_type(
-                param_type, arr_type.element_type, is_out, "array element", offset, env
-            )
-            return TypedIndexRef(
-                target=arr_typed,
-                index=idx_typed,
-                type_val=QVarType(dest_type),
-                offset=offset,
-            )
-
-        raise TypeError(
-            f"Argument to '{mode_name}' parameter must be a mutable variable, field, or array element",
-            offset=offset,
-        )
+            case ast.ExprIndex():
+                arr_typed = self.synth_expr(target.target, env, loop_depth)
+                arr_type = arr_typed.type_val.evaluate_lazily(env)
+                if not isinstance(arr_type, QArrayType):
+                    raise TypeError(
+                        f"Target of array indexing in '{mode_name}' argument must be an Array, "
+                        f"got '{arr_type}'",
+                        offset=offset,
+                    )
+                idx_typed = self.check_expr(target.index, INT_TYPE, env, loop_depth)
+                dest_type = check_lvalue_mode_type(
+                    param_type, arr_type.element_type, is_out, "array element", offset, env
+                )
+                return TypedIndexRef(
+                    target=arr_typed,
+                    index=idx_typed,
+                    type_val=QVarType(dest_type),
+                    offset=offset,
+                )
+            case _:
+                raise TypeError(
+                    f"Argument to '{mode_name}' parameter must be a mutable variable, field, or array element",
+                    offset=offset,
+                )
 
     def _synth_polymorphic_app(
         self,

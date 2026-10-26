@@ -135,16 +135,11 @@ class _Checker:
             )
 
     def walk(self, n: Any, values: frozenset[int], types: frozenset[int]) -> None:
-        if n is None or isinstance(n, (str, int, float, bool)):
-            return
-        if isinstance(n, QType):
-            return
-        if isinstance(n, ValueSymbol):
-            return
         if isinstance(n, (list, tuple)):
             for item in n:
                 self.walk(item, values, types)
             return
+        # Scalars, types, and symbols hold no binders or variables
         if not isinstance(n, TypedNode):
             return
         for f in dataclasses.fields(n):

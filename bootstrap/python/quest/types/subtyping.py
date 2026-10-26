@@ -295,39 +295,40 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
             for idx in range(len(curr_sup_fields)):
                 s_f = sub_fields[idx]
                 t_f = curr_sup_fields[idx]
-                if isinstance(s_f, QTupleTypeFormal) and isinstance(t_f, QTupleTypeFormal):
-                    if s_f.name != t_f.name or not is_subkind(s_f.bound, t_f.bound, env):
-                        return False
-                    if t_f.symbol_id != s_f.symbol_id:
-                        subst = {t_f.symbol_id: QTypeVar(s_f.name, s_f.symbol_id, s_f.bound)}
+                match s_f, t_f:
+                    case QTupleTypeFormal(), QTupleTypeFormal():
+                        if s_f.name != t_f.name or not is_subkind(s_f.bound, t_f.bound, env):
+                            return False
+                        if t_f.symbol_id != s_f.symbol_id:
+                            subst = {t_f.symbol_id: QTypeVar(s_f.name, s_f.symbol_id, s_f.bound)}
+                            for rem_idx in range(idx + 1, len(curr_sup_fields)):
+                                curr_sup_fields[rem_idx] = curr_sup_fields[rem_idx].substitute(subst)
+                    case QTupleTypeBinding(), QTupleTypeFormal():
+                        if s_f.name != t_f.name:
+                            return False
+                        if isinstance(t_f.bound, QPowerKind):
+                            if not _prove_subtype(s_f.type_val, t_f.bound.bound, env, trail, fuel):
+                                return False
+                        subst = {t_f.symbol_id: s_f.type_val}
                         for rem_idx in range(idx + 1, len(curr_sup_fields)):
                             curr_sup_fields[rem_idx] = curr_sup_fields[rem_idx].substitute(subst)
-                elif isinstance(s_f, QTupleTypeBinding) and isinstance(t_f, QTupleTypeFormal):
-                    if s_f.name != t_f.name:
+                    case QTupleField(), QTupleField():
+                        if t_f.name is not None and s_f.name != t_f.name:
+                            return False
+                        if t_f.is_var:
+                            if not s_f.is_var:
+                                return False
+                            if not (_prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel)
+                                    and _prove_subtype(t_f.type_val, s_f.type_val, env, trail, fuel)):
+                                return False
+                        else:
+                            if not _prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
+                                return False
+                    case QTupleTypeBinding(), QTupleTypeBinding():
+                        if s_f.name != t_f.name or not _prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
+                            return False
+                    case _:
                         return False
-                    if isinstance(t_f.bound, QPowerKind):
-                        if not _prove_subtype(s_f.type_val, t_f.bound.bound, env, trail, fuel):
-                            return False
-                    subst = {t_f.symbol_id: s_f.type_val}
-                    for rem_idx in range(idx + 1, len(curr_sup_fields)):
-                        curr_sup_fields[rem_idx] = curr_sup_fields[rem_idx].substitute(subst)
-                elif isinstance(s_f, QTupleField) and isinstance(t_f, QTupleField):
-                    if t_f.name is not None and s_f.name != t_f.name:
-                        return False
-                    if t_f.is_var:
-                        if not s_f.is_var:
-                            return False
-                        if not (_prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel)
-                                and _prove_subtype(t_f.type_val, s_f.type_val, env, trail, fuel)):
-                            return False
-                    else:
-                        if not _prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
-                            return False
-                elif isinstance(s_f, QTupleTypeBinding) and isinstance(t_f, QTupleTypeBinding):
-                    if s_f.name != t_f.name or not _prove_subtype(s_f.type_val, t_f.type_val, env, trail, fuel):
-                        return False
-                else:
-                    return False
             return True
 
         # Records: width, depth, and mutable invariance
