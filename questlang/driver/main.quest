@@ -34,6 +34,7 @@ import
     questlang/ir/verify : questlang/ir/Verify
     questlang/ir/specialize : questlang/ir/Specialize
     questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/represent : questlang/ir/Represent
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -45,11 +46,11 @@ import
 ;
 
 (* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and runs (run_ir_STAGE) *)
-let irStages = array of "core" "specialized" "closed" end;
+let irStages = array of "core" "specialized" "closed" "represented" end;
 
 let phases = array of
-    "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "run_ir_core" "run_ir_specialized"
-    "run_ir_closed" "interpret"
+    "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "ir_represented" "run_ir_core"
+    "run_ir_specialized" "run_ir_closed" "run_ir_represented" "interpret"
 end;
 
 let usage(message: String): Ok =
@@ -178,6 +179,7 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
         let passes = array of
             fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
             fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
+            fun(u: nodes.Unit): nodes.Unit represent.representUnit(u)
         end
         let var i = 1
         while {i < extent irStages} andif not(stringOp.equal(irStages[i - 1] stage)) do
@@ -197,6 +199,8 @@ let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
         when closure.capturesMutable with m then internal(m)
+        when represent.unsupportedConversion with m then internal(m)
+        when represent.rejectedConversion with m then internal(m)
         end
     end;
 
@@ -231,6 +235,8 @@ let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag
         when verify.verifyError with m then internal(m)
         when irInterp.irInterpreterError with m then internal(m)
         when closure.capturesMutable with m then internal(m)
+        when represent.unsupportedConversion with m then internal(m)
+        when represent.rejectedConversion with m then internal(m)
         end
     end;
 

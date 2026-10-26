@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: Representation Interface
+ *
+ * bootstrap/python/quest/ir/represent.py (docs/ir.md section 8.3): inserts convert wherever a value's representation
+ * differs from the one its use requires. A value's representation is its type's (codegen/layout); a use requires the
+ * representation of the type it expects. Where the two differ, the value is converted by the plan of the pair (plan).
+ * The pass also decides how inspect cases get their components (nodes.InspectArm), the thunks' plans of type
+ * applications, and, in its last step (ir/slots), boxing at slots and reads through proxies. *)
+
+interface Represent
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
+export
+    (* A change of representation the represent pass does not handle *)
+    unsupportedConversion: Exception(String)
+    (* A conversion that would copy mutable data laid out differently, which would then not share its updates *)
+    rejectedConversion: Exception(String)
+
+    (* How a value of type source is converted to be used at type target (none when it is used as it is); layout is
+     * given for a value passed to or returned from a polymorphic callee *)
+    plan(source: model.Type target: model.Type layout: maybe.T(nodes.PlanLayout)): maybe.T(nodes.Plan)
+    (* Inserts the unit's conversions, in place, returning it *)
+    representUnit(unit: nodes.Unit): nodes.Unit
+end

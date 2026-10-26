@@ -52,8 +52,8 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # errors it reports after the bootstrap's one are recorded (docs/milestone-2.md §3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 SELF_HOSTED_PHASES = (
-    "tokenize", "parse", "typecheck", "ir_core", "ir_specialized", "ir_closed", "run_ir_core", "run_ir_specialized",
-    "run_ir_closed", "interpret",
+    "tokenize", "parse", "typecheck", "ir_core", "ir_specialized", "ir_closed", "ir_represented", "run_ir_core",
+    "run_ir_specialized", "run_ir_closed", "run_ir_represented", "interpret",
 )
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
