@@ -2981,6 +2981,9 @@ QAuto *quest_dynamic_copy(const QAuto *d) {
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
+#include <poll.h>
+#include <spawn.h>
+#include <sys/wait.h>
 
 /* System module primitives */
 QArray *quest_system_args = NULL;
@@ -3159,6 +3162,143 @@ QArray *quest_system_list_directory(const QString *path) {
     }
     free(entries);
     return res;
+}
+
+/* A growing byte buffer for a child's output */
+typedef struct QRunBuffer {
+    char  *data;
+    size_t len;
+    size_t cap;
+} QRunBuffer;
+
+static bool quest_run_append(QRunBuffer *b, const char *src, size_t n) {
+    if (b->len + n > b->cap) {
+        size_t cap = b->cap > 0 ? b->cap : 4096;
+        while (cap < b->len + n) cap *= 2;
+        char *data = (char *)realloc(b->data, cap);
+        if (data == NULL) return false;
+        b->data = data;
+        b->cap = cap;
+    }
+    memcpy(b->data + b->len, src, n);
+    b->len += n;
+    return true;
+}
+
+/* Reads the child's standard output and error until both end, polling so that
+ * neither pipe fills while the other is read */
+static bool quest_run_collect(int out_fd, int err_fd, QRunBuffer *out, QRunBuffer *err) {
+    struct pollfd fds[2] = { { out_fd, POLLIN, 0 }, { err_fd, POLLIN, 0 } };
+    QRunBuffer *bufs[2] = { out, err };
+    int open_count = 2;
+    char chunk[8192];
+    while (open_count > 0) {
+        if (poll(fds, 2, -1) < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        for (int i = 0; i < 2; i++) {
+            if (fds[i].fd < 0 || fds[i].revents == 0) continue;
+            ssize_t n = read(fds[i].fd, chunk, sizeof(chunk));
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) {
+                fds[i].fd = -1;
+                open_count--;
+            } else if (!quest_run_append(bufs[i], chunk, (size_t)n)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+extern char **environ;
+
+void *quest_system_run(const QArray *args) {
+    if (args == NULL || args->length == 0) quest_raise_system_error();
+    size_t argc = (size_t)args->length;
+    char **argv = (char **)malloc((argc + 1) * sizeof(char *));
+    if (argv == NULL) quest_raise_system_error();
+    for (size_t i = 0; i < argc; i++) {
+        const QString *arg = (const QString *)args->data[i].p;
+        if (arg == NULL || arg->data == NULL) {
+            free(argv);
+            quest_raise_system_error();
+        }
+        argv[i] = arg->data;
+    }
+    argv[argc] = NULL;
+
+    int out_pipe[2], err_pipe[2];
+    if (pipe(out_pipe) != 0) {
+        free(argv);
+        quest_raise_system_error();
+    }
+    if (pipe(err_pipe) != 0) {
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        free(argv);
+        quest_raise_system_error();
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, out_pipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, err_pipe[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
+    posix_spawn_file_actions_addclose(&actions, err_pipe[0]);
+    posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
+    posix_spawn_file_actions_addclose(&actions, err_pipe[1]);
+    pid_t pid;
+    int spawned = posix_spawnp(&pid, argv[0], &actions, NULL, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    free(argv);
+    close(out_pipe[1]);
+    close(err_pipe[1]);
+    if (spawned != 0) {
+        close(out_pipe[0]);
+        close(err_pipe[0]);
+        quest_raise_system_error();
+    }
+
+    QRunBuffer out = { NULL, 0, 0 }, err = { NULL, 0, 0 };
+    bool collected = quest_run_collect(out_pipe[0], err_pipe[0], &out, &err);
+    close(out_pipe[0]);
+    close(err_pipe[0]);
+    int status;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            collected = false;
+            break;
+        }
+    }
+    if (!collected) {
+        free(out.data);
+        free(err.data);
+        quest_raise_system_error();
+    }
+
+    /* Laid out as Tuple code: Int stdout: String stderr: String end; a child killed
+     * by a signal has its negated number as its code, as in Python */
+    QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal));
+    result[0].i = WIFEXITED(status) ? WEXITSTATUS(status) : WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
+    result[1].p = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
+    result[2].p = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
+    free(out.data);
+    free(err.data);
+    return result;
+}
+
+QReal quest_system_modified_time(const QString *path) {
+    struct stat st;
+    if (path == NULL || path->data == NULL || stat(path->data, &st) != 0) {
+        quest_raise_system_error();
+    }
+    /* Computed as Python computes st_mtime, so that the two agree exactly */
+#ifdef __APPLE__
+    return (double)st.st_mtimespec.tv_sec + (double)st.st_mtimespec.tv_nsec * 1e-9;
+#else
+    return (double)st.st_mtim.tv_sec + (double)st.st_mtim.tv_nsec * 1e-9;
+#endif
 }
 
 /* Writer module primitives */

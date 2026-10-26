@@ -15,7 +15,7 @@ The decisions this plan rests on (2026-10-26):
   on the checkout). The self-hosted suite compares the digest of its own C; on a mismatch the runner regenerates the
   bootstrap's C and shows the difference. This holds while the two compilers are kept in step. When they are allowed
   to diverge, and only the self-hosted compiler is maintained, the check changes (its goldens would be its own).
-- **New system primitives.** `system.run(args: Array(String)): Tuple code: Int out: String err: String end` runs a
+- **New system primitives.** `system.run(args: Array(String)): Tuple code: Int stdout: String stderr: String end` runs a
   program (by `posix_spawn`, no shell), capturing its output, which the compiler runner needs for the C compiler's
   diagnostics; `system.modifiedTime(path: String): Real` gives a file's modification time in seconds, as Python's
   `st_mtime` does, so that `.qm` manifests are interchangeable.

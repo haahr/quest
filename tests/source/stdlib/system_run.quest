@@ -1,0 +1,36 @@
+(* system.run runs a program without a shell and gives its exit code and
+   output; system.modifiedTime gives a file's modification time. The test runs
+   in a fresh, empty directory of its own (docs/testing.md section 2.2). *)
+import system: System;
+import writer: Writer;
+import conv: Conv;
+import real: RealOp;
+import stringOp = string: StringOp;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let show(r: Tuple code: Int stdout: String stderr: String end): Ok =
+    print("code " <> conv.int(r.code) <> ", stdout [" <> r.stdout <> "], stderr [" <> r.stderr <> "]");
+
+(* A program found on PATH, its arguments passed as they are *)
+show(system.run(array of "echo" "two  spaces" "$HOME" end));
+
+(* Standard error, an exit code, and output larger than a pipe holds *)
+show(system.run(array of "sh" "-c" "echo out; echo err >&2; exit 3" end));
+let big = system.run(array of "sh" "-c" "i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done" end);
+print("big: " <> conv.int(big.code) <> " " <> conv.int(stringOp.length(big.stdout)));
+
+(* A killed program's code is its signal's number, negated *)
+print("killed: " <> conv.int(system.run(array of "sh" "-c" "kill -9 $$" end).code));
+
+(* A program that cannot run, and no program at all *)
+print(try system.run(array of "no-such-program-quest" end).stdout when system.error then "cannot run" end);
+print(try system.run(array of end).stdout when system.error then "no program" end);
+
+(* Modification times: a file's, and a missing file's *)
+let f = writer.file("written.txt");
+writer.putString(f "x");
+writer.close(f);
+let t = system.modifiedTime("written.txt");
+let again = system.modifiedTime("written.txt");
+print("time: " <> conv.bool(real.greater(t 1000000000.0)) <> " "
+    <> conv.bool(real.smallerEq(t again) andif real.greaterEq(t again)));
+print(try conv.real(system.modifiedTime("missing.txt")) when system.error then "missing" end)

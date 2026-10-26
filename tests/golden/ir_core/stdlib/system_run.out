@@ -1,0 +1,130 @@
+import system = "system" : System
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import real = "real" : RealOp
+import stringOp = "string" : StringOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun show(r: Tuple code: Int stdout: String stderr: String end): Ok {
+      let %4: Int = tuple_field(r, 0)
+      let %5: String = call conv.int(%4)
+      let %6: String = tuple_field(r, 1)
+      let %7: String = tuple_field(r, 2)
+      let %8: String = prim <>(%7, "]")
+      let %9: String = prim <>("], stderr [", %8)
+      let %10: String = prim <>(%6, %9)
+      let %11: String = prim <>(", stdout [", %10)
+      let %12: String = prim <>(%5, %11)
+      let %13: String = prim <>("code ", %12)
+      let %14: Ok = call print(%13)
+      return %14
+    }
+  }
+  let %15: Array(String) = array("echo", "two  spaces", "$HOME")
+  let %16: Tuple code: Int stdout: String stderr: String end = call system.run(%15)
+  do call show(%16)
+  let %17: Array(String) = array("sh", "-c", "echo out; echo err >&2; exit 3")
+  let %18: Tuple code: Int stdout: String stderr: String end = call system.run(%17)
+  do call show(%18)
+  let %19: Array(String) = array("sh", "-c", "i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done")
+  let big: Tuple code: Int stdout: String stderr: String end = call system.run(%19)
+  let %20: Int = tuple_field(big, 0)
+  let %21: String = call conv.int(%20)
+  let %22: String = tuple_field(big, 1)
+  let %23: Int = call stringOp.length(%22)
+  let %24: String = call conv.int(%23)
+  let %25: String = prim <>(" ", %24)
+  let %26: String = prim <>(%21, %25)
+  let %27: String = prim <>("big: ", %26)
+  do call print(%27)
+  let %28: Array(String) = array("sh", "-c", "kill -9 $$")
+  let %29: Tuple code: Int stdout: String stderr: String end = call system.run(%28)
+  let %30: Int = tuple_field(%29, 0)
+  let %31: String = call conv.int(%30)
+  let %32: String = prim <>("killed: ", %31)
+  do call print(%32)
+  join k1(r.1: String) {
+    do call print(r.1)
+    join k2(r.2: String) {
+      do call print(r.2)
+      let f: writer.T = call writer.file("written.txt")
+      do call writer.putString(f, "x")
+      do call writer.close(f)
+      let t: Real = call system.modifiedTime("written.txt")
+      let again: Real = call system.modifiedTime("written.txt")
+      let %33: Bool = call real.greater(t, 1000000000.0)
+      let %34: String = call conv.bool(%33)
+      join k3(r.3: Bool) {
+        let %35: String = call conv.bool(r.3)
+        let %36: String = prim <>(" ", %35)
+        let %37: String = prim <>(%34, %36)
+        let %38: String = prim <>("time: ", %37)
+        do call print(%38)
+        join k4(r.4: String) {
+          do call print(r.4)
+        } in {
+          let %39: Exception = member system.error
+          try catching (%39) {
+            let %40: Real = call system.modifiedTime("missing.txt")
+            let %41: String = call conv.real(%40)
+            jump k4(%41)
+          } handle (e: Exception) {
+            let %42: Bool = prim is(e, %39)
+            if %42 {
+              jump k4("missing")
+            } else {
+              reraise e
+            }
+          }
+        }
+      } in {
+        let %43: Bool = call real.smallerEq(t, again)
+        if %43 {
+          let %44: Bool = call real.greaterEq(t, again)
+          jump k3(%44)
+        } else {
+          jump k3(false)
+        }
+      }
+    } in {
+      let %45: Exception = member system.error
+      try catching (%45) {
+        let %46: Array(String) = array()
+        let %47: Tuple code: Int stdout: String stderr: String end = call system.run(%46)
+        let %48: String = tuple_field(%47, 1)
+        jump k2(%48)
+      } handle (e.1: Exception) {
+        let %49: Bool = prim is(e.1, %45)
+        if %49 {
+          jump k2("no program")
+        } else {
+          reraise e.1
+        }
+      }
+    }
+  } in {
+    let %50: Exception = member system.error
+    try catching (%50) {
+      let %51: Array(String) = array("no-such-program-quest")
+      let %52: Tuple code: Int stdout: String stderr: String end = call system.run(%51)
+      let %53: String = tuple_field(%52, 1)
+      jump k1(%53)
+    } handle (e.2: Exception) {
+      let %54: Bool = prim is(e.2, %50)
+      if %54 {
+        jump k1("cannot run")
+      } else {
+        reraise e.2
+      }
+    }
+  }
+}
+

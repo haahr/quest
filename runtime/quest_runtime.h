@@ -501,6 +501,11 @@ void     quest_system_rename_file(const QString *old_path, const QString *new_pa
 QString *quest_system_current_directory(void);
 void     quest_system_change_directory(const QString *path);
 QArray  *quest_system_list_directory(const QString *path);
+/* Runs a program (args[0], found on PATH) with arguments, without a shell,
+ * waiting for it: its exit code and output, as a Tuple code: Int stdout:
+ * String stderr: String end */
+void    *quest_system_run(const QArray *args);
+QReal    quest_system_modified_time(const QString *path);
 
 /* io/readline module primitives (quest_readline.c) */
 extern const QException quest_exc_readline_error;

@@ -26,23 +26,25 @@ topological sort queues) are straightforwardly implemented on top of `collection
 
 Quest's `System` interface provides operating system and filesystem primitives:
 `args`, `sysexit`, `getEnv`, `fileExists`, `isFile`, `isDirectory`, `makeDirectory`, `removeFile`,
-`removeDirectory`, `renameFile`, `currentDirectory`, `changeDirectory`, and `listDirectory`.
-
-To support compiling programs end-to-end to native binaries without relying on external drivers, the
-remaining OS primitive is:
+`removeDirectory`, `renameFile`, `currentDirectory`, `changeDirectory`, `listDirectory`, `run`, and `modifiedTime`.
 
 ### 2.1. Process Execution (`subprocess.run`)
-- **Python Usage**: `compiler_runner.py` invokes the host C compiler (`clang` or `gcc`) to assemble and link generated
-  C source into relocatable object files (`.o`) and executables.
-- **Current Status**: Quest has no child process execution primitive; compilation currently delegates to Python driver.
-- **Required Primitive**:
+- **Python Usage**: `compiler_runner.py` invokes the host C compiler (`clang` or `gcc`) to compile and link generated
+  C source into object files (`.o`) and executables, reading its diagnostics from its standard error.
+- **Primitive** (Milestone 5, [milestone-5.md](milestone-5.md)):
   ```quest
-  system.exec(command: String): Int
+  system.run(args: Array(String)): Tuple code: Int stdout: String stderr: String end
   ```
-  Returns the process exit code (0 for success, non-zero for failure). Can be implemented using standard C POSIX
-  `system()` or `fork`/`execvp`.
+  Runs `args[0]`, found on `PATH`, with the rest as its arguments, without a shell (`posix_spawnp`), and waits for
+  it: its exit code (a signal's negated number when one killed it, as in Python) and what it wrote to standard
+  output and error, read together so that neither pipe fills. A program that cannot be run raises `system.error`.
 
-### 2.2. Host Toolchain Discovery (`shutil.which`)
+### 2.2. File Modification Times (`os.stat(...).st_mtime`)
+- **Python Usage**: the build's staleness checks and `.qm` manifests compare modification times.
+- **Primitive**: `system.modifiedTime(path: String): Real`, the seconds since the epoch, computed as Python computes
+  `st_mtime`, so that the two compilers' manifests agree.
+
+### 2.3. Host Toolchain Discovery (`shutil.which`)
 - **Python Usage**: Locating `clang` or `gcc` in the host `$PATH`.
 - **Implementation**: Pure Quest function reading `system.getEnv("PATH")`, splitting on `:`, and checking
   `system.fileExists`.

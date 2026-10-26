@@ -12,6 +12,7 @@ import io
 import math
 import os
 import struct
+import subprocess
 import sys
 from typing import Any, Callable, Optional
 
@@ -532,6 +533,28 @@ def _system_list_directory(path_val: QString) -> QArray:
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
+def _system_run(args_val: QArray) -> QTuple:
+    """Runs a program without a shell, as quest_system_run does: its exit
+    code (a signal's negated number) and its output, a character per byte."""
+    args = [_os_path(a) for a in args_val.elements]
+    if not args:
+        raise QuestException(SYSTEM_ERROR_EXC)
+    try:
+        proc = subprocess.run(args, capture_output=True)
+    except (OSError, ValueError):
+        raise QuestException(SYSTEM_ERROR_EXC)
+    return QTuple(
+        elements=(QInt(proc.returncode), QString(proc.stdout.decode(BYTE_ENCODING)),
+                  QString(proc.stderr.decode(BYTE_ENCODING))),
+        labels=("code", "stdout", "stderr"),
+    )
+
+def _system_modified_time(path_val: QString) -> QReal:
+    try:
+        return QReal(os.stat(_os_path(path_val)).st_mtime)
+    except OSError:
+        raise QuestException(SYSTEM_ERROR_EXC)
+
 def _word_not_bits(w: QWord) -> QWord:
     return QWord((~w.value) & 0xFFFF_FFFF_FFFF_FFFF)
 
@@ -982,6 +1005,8 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_remove_file": _system_remove_file,
     "quest_system_remove_directory": _system_remove_directory,
     "quest_system_rename_file": _system_rename_file,
+    "quest_system_run": _system_run,
+    "quest_system_modified_time": _system_modified_time,
     "quest_system_exit": _system_exit,
 
     # io/readline

@@ -1,0 +1,303 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('system') : 'System')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('real') : 'RealOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'show' :type Fun(r: Tuple code: Int stdout: String stderr: String end): Ok
+      :value (TypedFun :params (('r' : Tuple code: Int stdout: String stderr: String end)) :type Fun(r: Tuple code: Int stdout: String stderr: String end): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedString 'code ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'code' :type Int
+                      :target (TypedVar 'r' :type Tuple code: Int stdout: String stderr: String end))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ', stdout [' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedSelect 'stdout' :type String
+                      :target (TypedVar 'r' :type Tuple code: Int stdout: String stderr: String end))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString '], stderr [' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedSelect 'stderr' :type String
+                          :target (TypedVar 'r' :type Tuple code: Int stdout: String stderr: String end))
+                        :right (TypedString ']' :type String)))))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(r: Tuple code: Int stdout: String stderr: String end): Ok)
+        :args (
+          (TypedApp :type Tuple code: Int stdout: String stderr: String end
+            :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+              :target (TypedVar 'system' :type Module 'system'))
+            :args (
+              (TypedArray :type Array(String)
+                :elements (
+                  (TypedString 'echo' :type String)
+                  (TypedString 'two  spaces' :type String)
+                  (TypedString '$HOME' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(r: Tuple code: Int stdout: String stderr: String end): Ok)
+        :args (
+          (TypedApp :type Tuple code: Int stdout: String stderr: String end
+            :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+              :target (TypedVar 'system' :type Module 'system'))
+            :args (
+              (TypedArray :type Array(String)
+                :elements (
+                  (TypedString 'sh' :type String)
+                  (TypedString '-c' :type String)
+                  (TypedString 'echo out; echo err >&2; exit 3' :type String)
+                ))
+            ))
+        )))
+    (TypedLetValue 'big' :type Tuple code: Int stdout: String stderr: String end
+      :value (TypedApp :type Tuple code: Int stdout: String stderr: String end
+        :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedArray :type Array(String)
+            :elements (
+              (TypedString 'sh' :type String)
+              (TypedString '-c' :type String)
+              (TypedString 'i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'big: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'code' :type Int
+                    :target (TypedVar 'big' :type Tuple code: Int stdout: String stderr: String end))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedSelect 'length' :type Fun(string: String): Int
+                        :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                      :args (
+                        (TypedSelect 'stdout' :type String
+                          :target (TypedVar 'big' :type Tuple code: Int stdout: String stderr: String end))
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'killed: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'code' :type Int
+                  :target (TypedApp :type Tuple code: Int stdout: String stderr: String end
+                    :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+                      :target (TypedVar 'system' :type Module 'system'))
+                    :args (
+                      (TypedArray :type Array(String)
+                        :elements (
+                          (TypedString 'sh' :type String)
+                          (TypedString '-c' :type String)
+                          (TypedString 'kill -9 $$' :type String)
+                        ))
+                    )))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedSelect 'stdout' :type String
+              :target (TypedApp :type Tuple code: Int stdout: String stderr: String end
+                :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+                  :target (TypedVar 'system' :type Module 'system'))
+                :args (
+                  (TypedArray :type Array(String)
+                    :elements (
+                      (TypedString 'no-such-program-quest' :type String)
+                    ))
+                )))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'cannot run' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedSelect 'stdout' :type String
+              :target (TypedApp :type Tuple code: Int stdout: String stderr: String end
+                :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+                  :target (TypedVar 'system' :type Module 'system'))
+                :args (
+                  (TypedArray :type Array(String)
+                    :elements ())
+                )))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'no program' :type String))
+            ))
+        )))
+    (TypedLetValue 'f' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'written.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'f' :type writer.T)
+          (TypedString 'x' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'f' :type writer.T)
+        )))
+    (TypedLetValue 't' :type Real
+      :value (TypedApp :type Real
+        :func (TypedSelect 'modifiedTime' :type Fun(path: String): Real
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedString 'written.txt' :type String)
+        )))
+    (TypedLetValue 'again' :type Real
+      :value (TypedApp :type Real
+        :func (TypedSelect 'modifiedTime' :type Fun(path: String): Real
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedString 'written.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'time: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedSelect 'greater' :type Fun(a: Real b: Real): Bool
+                      :target (TypedVar 'real' :type Module 'real'))
+                    :args (
+                      (TypedVar 't' :type Real)
+                      (TypedReal 1000000000.0 :type Real)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedIf :type Bool
+                      :cond (TypedApp :type Bool
+                        :func (TypedSelect 'smallerEq' :type Fun(a: Real b: Real): Bool
+                          :target (TypedVar 'real' :type Module 'real'))
+                        :args (
+                          (TypedVar 't' :type Real)
+                          (TypedVar 'again' :type Real)
+                        ))
+                      :then (TypedApp :type Bool
+                        :func (TypedSelect 'greaterEq' :type Fun(a: Real b: Real): Bool
+                          :target (TypedVar 'real' :type Module 'real'))
+                        :args (
+                          (TypedVar 't' :type Real)
+                          (TypedVar 'again' :type Real)
+                        ))
+                      :else (TypedBool false))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'real' :type Fun(r: Real): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Real
+                  :func (TypedSelect 'modifiedTime' :type Fun(path: String): Real
+                    :target (TypedVar 'system' :type Module 'system'))
+                  :args (
+                    (TypedString 'missing.txt' :type String)
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'missing' :type String))
+            ))
+        )))
+  ))

@@ -80,6 +80,15 @@ export
     listDirectory(path: String): Array(String)
     (* Returns an array of entry names in the directory at `path` (excluding "." and "..") in sorted order.
        Raises system.error on failure. *)
+
+    run(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+    (* Runs the program args[0], found on PATH, with the other strings as its arguments, without a shell, and waits
+       for it: its exit code (a signal's negated number if one killed it) and its standard output and error. Raises
+       system.error if the program cannot be run. *)
+
+    modifiedTime(path: String): Real
+    (* Returns the time the file at `path` was last modified, in seconds since the epoch, as Python's st_mtime gives
+       it. Raises system.error on failure. *)
 end
 ```
 
