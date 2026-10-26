@@ -1,0 +1,159 @@
+(* Quest Self-Hosted Compiler: Auto Values Implementation *)
+
+module autoValues : AutoValues
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/escape : questlang/typechecker/Escape
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Let Type = model.Type
+
+    let internal(A::TYPE what: String expr: ast.Expr): A =
+        diagnostics.fail(:A "internal: not " <> what expr.span.startOffset)
+
+    let isAuto(t: Type): Bool = case t.form when typeAuto then true else false end
+
+    let checkClosedType(t: Type what: String offset: Int): Ok = escape.checkNoPackageTypes(t what offset)
+
+    let elaborateInspect(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+        case expr.form
+            when exprInspect with x then
+                begin
+                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let autoType = model.evaluateLazily(targetTyped.type symbols.lookup)
+                    if not(isAuto(autoType)) then
+                        diagnostics.fail(:Ok "Target of inspect must have an Auto type (such as Dynamic), got '" <>
+                            model.show(autoType) <> "'" x.target.span.startOffset)
+                    end
+                    (* In the branch for type T, the binders denote the auto value's components, with signature S[T] *)
+                    let exact = not(model.autoMatchesSubtypes(autoType))
+                    let branches = vector.new(:typedAst.InspectBranch)
+                    let bodies = vector.new(:typedAst.Expr)
+                    for i = 0 upto {vector.length(:ast.InspectBranch x.branches) - 1} do
+                        let branch = vector.get(:ast.InspectBranch x.branches i)
+                        let matchT = elaborateTypes.elaborateType(branch.matchType e)
+                        checkClosedType(matchT "The type in an inspect when clause" branch.matchType.span.startOffset)
+                        let armType = model.autoPayloadType(autoType maybe.some(:Type matchT))
+                        Let Arm = Tuple binders: Array(symbols.ValueSymbol) body: typedAst.Expr end
+                        let arm = env.scoped(:Arm e "inspect_branch" fun(s: symbols.Scope): Arm
+                            begin
+                                let syms = vector.new(:symbols.ValueSymbol)
+                                for j = 0 upto {vector.length(:ast.InspectBinder branch.binders) - 1} do
+                                    let binder = vector.get(:ast.InspectBinder branch.binders j)
+                                    let bType = if maybe.isSome(:ast.TypeExpr binder.typeAnnot) then
+                                        let annot = maybe.unwrap(:ast.TypeExpr binder.typeAnnot)
+                                        let t = elaborateTypes.elaborateType(annot e)
+                                        if not(subtyping.isSubtype(armType t env.lookupOf(e))) then
+                                            diagnostics.fail(:Ok "Inspect binder '" <> binder.name <>
+                                                "' has components of type '" <> model.show(armType) <>
+                                                "', which is not a subtype of the declared type '" <> model.show(t) <>
+                                                "'" annot.span.startOffset)
+                                        end
+                                        t
+                                    else
+                                        armType
+                                    end
+                                    let sym = symbols.newValueSymbol(binder.name bType false false false c.functionDepth 0)
+                                    symbols.declareValue(e.currentScope sym)
+                                    vector.append(:symbols.ValueSymbol syms sym)
+                                end
+                                tuple
+                                    let binders = vector.toArray(:symbols.ValueSymbol syms)
+                                    let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
+                                end
+                            end)
+                        vector.append(:typedAst.InspectBranch branches tuple
+                            let offset = branch.offset let matchType = matchT let binders = arm.binders
+                            let body = arm.body let exact = exact
+                        end)
+                        vector.append(:typedAst.Expr bodies arm.body)
+                    end
+                    let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                    let types = checker.branchTypes(maybe.none(:Type) vector.toArray(:typedAst.Expr bodies) elseTyped)
+                    let resultType = if maybe.isSome(:Type expected) then
+                        maybe.unwrap(:Type expected)
+                    elsif extent types > 0 then
+                        checks.joinTypes(types e expr.span.startOffset
+                            maybe.some(:String "Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'"))
+                    else
+                        model.okType
+                    end
+                    typedAst.expr(expr.span.startOffset resultType option exprInspect of typedAst.ExprForm with
+                        let target = targetTyped
+                        let branches = vector.toArray(:typedAst.InspectBranch branches)
+                        let elseBranch = elseTyped
+                        let autoType = escape.inspectedAutoType(targetTyped e)
+                    end)
+                end
+            else internal(:typedAst.Expr "an inspect" expr)
+        end
+
+    (* Checks that witness has the kind, else fails with message *)
+    let checkWitnessKind(witness: Type kind: model.Kind e: env.T message: String offset: Int): Ok =
+        try
+            kinds.checkKind(witness kind maybe.some(:env.T e))
+        when diagnostics.compilerError with err then
+            if err.isFatal orif err.silent then diagnostics.raiseError(:Ok err) end
+            diagnostics.fail(:Ok message offset)
+        end
+
+    let elaborateAuto(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+        case expr.form
+            when exprAuto with x then
+                begin
+                    if maybe.isNone(:Type expected) then
+                        diagnostics.fail(:Ok "Cannot infer the type of an auto value; give it an expected Auto type " <>
+                            "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)" expr.span.startOffset)
+                    end
+                    let expectedType = maybe.unwrap(:Type expected)
+                    let autoType = model.evaluateLazily(expectedType symbols.lookup)
+                    let kindBound = case autoType.form
+                        when typeAuto with a then a.kindBound
+                        else
+                            diagnostics.fail(:model.Kind "Auto value used where a value of type '" <>
+                                model.show(expectedType) <> "' is expected; auto values have Auto types"
+                                expr.span.startOffset)
+                    end
+                    let witness = elaborateTypes.elaborateType(x.witnessType e)
+                    let witnessOffset = x.witnessType.span.startOffset
+                    checkClosedType(witness "The type component of an auto value" witnessOffset)
+                    checkWitnessKind(witness kindBound e "Type component '" <> model.show(witness) <>
+                        "' of the auto value does not have kind '" <> checks.describeKind(kindBound) <>
+                        "' required by '" <> model.show(expectedType) <> "'" witnessOffset)
+                    let payloadType = model.autoPayloadType(autoType maybe.some(:Type witness))
+                    let payloadTyped = env.scoped(:typedAst.Expr e "auto_value" fun(s: symbols.Scope): typedAst.Expr
+                        begin
+                            if maybe.isSome(:String x.witnessName) then
+                                let name = maybe.unwrap(:String x.witnessName)
+                                let localBound = if maybe.isSome(:ast.KindExpr x.witnessBound) then
+                                    elaborateTypes.elaborateKind(maybe.unwrap(:ast.KindExpr x.witnessBound) e)
+                                else
+                                    model.typeKind
+                                end
+                                checkWitnessKind(witness localBound e "Type component '" <> model.show(witness) <>
+                                    "' of the auto value does not have the declared kind '" <>
+                                    checks.describeKind(localBound) <> "' of '" <> name <> "'" witnessOffset)
+                                symbols.declareType(e.currentScope
+                                    symbols.newTypeSymbol(name env.freshSymbolId(e) localBound maybe.some(:Type witness)))
+                                ok
+                            end
+                            checker.checkExpr(c x.payload payloadType e loopDepth)
+                        end)
+                    typedAst.expr(expr.span.startOffset expectedType option exprAuto of typedAst.ExprForm with
+                        let witnessType = witness let autoType = autoType let payload = payloadTyped
+                    end)
+                end
+            else internal(:typedAst.Expr "an auto value" expr)
+        end
+end

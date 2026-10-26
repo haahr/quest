@@ -1,7 +1,8 @@
 (* Quest Self-Hosted Compiler: Driver
  *
  * Runs the self-hosted compiler's phases on a Quest file, as the bootstrap driver (bootstrap/python/quest_driver.py)
- * runs the bootstrap's: `main --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, or desugar) in the
+ * runs the bootstrap's: `main --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar, or
+ * typecheck) in the
  * bootstrap's format on standard output, and the diagnostics on standard error, exiting with 1 if there are errors.
  * run_tests.py --self-hosted compiles it and checks it against the bootstrap's goldens (docs/milestone-2.md
  * section 3). *)
@@ -9,13 +10,19 @@
 import
     questlang/common/location : questlang/common/Location
     questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/tokens : questlang/syntax/Tokens
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/syntax/parser : questlang/syntax/Parser
     questlang/syntax/desugar : questlang/syntax/Desugar
     questlang/syntax/astprint : questlang/syntax/AstPrint
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/typedAstPrint : questlang/typechecker/TypedAstPrint
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     reader : Reader
@@ -23,12 +30,12 @@ import
     system : System
 ;
 
-let phases = array of "tokenize" "parse" "desugar" end;
+let phases = array of "tokenize" "parse" "desugar" "typecheck" end;
 
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
-        writer.putString(writer.err "usage: main --stop-after tokenize|parse|desugar [--show-offsets] FILE\n")
+        writer.putString(writer.err "usage: main --stop-after tokenize|parse|desugar|typecheck [--show-offsets] FILE\n")
         system.sysexit(2)
     end;
 
@@ -112,8 +119,16 @@ let run(): Ok =
                 let show = if options.showOffsets then astprint.dumpWithOffsets else astprint.dump end
                 if stringOp.equal(options.stopAfter "parse") then
                     print(show(program))
-                else
+                elsif stringOp.equal(options.stopAfter "desugar") then
                     print(show(desugar.program(program)))
+                else
+                    let result = typecheck.elaborateProgram(desugar.program(program) env.new())
+                    for i = 0 upto {extent result.errors - 1} do
+                        diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
+                    end
+                    if maybe.isSome(:typedAst.Program result.program) then
+                        print(typedAstPrint.dumpProgram(maybe.unwrap(:typedAst.Program result.program)))
+                    end
                 end
             end
         when diagbag.fatalError then

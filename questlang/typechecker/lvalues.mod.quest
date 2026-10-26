@@ -1,0 +1,33 @@
+(* Quest Self-Hosted Compiler: L-Value and Reference Parameter Validation Implementation *)
+
+module lvalues : Lvalues
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+export
+    let checkLvalueModeType(
+        paramType: model.Type destRawType: model.Type isOut: Bool targetDesc: String offset: Int e: env.T
+    ): model.Type =
+        begin
+            let destType = case destRawType.form
+                when typeVar with x then x.element
+                when typeOut with x then x.element
+                else destRawType
+            end
+            let lookup = env.lookupOf(e)
+            if isOut then
+                if not(subtyping.isSubtype(paramType destType lookup)) then
+                    diagnostics.fail(:Ok "Type mismatch on out parameter: parameter type '" <> model.show(paramType) <>
+                        "' is not a subtype of destination " <> targetDesc <> " type '" <> model.show(destType) <> "'"
+                        offset)
+                end
+            elsif not(subtyping.isSubtype(paramType destType lookup) andif subtyping.isSubtype(destType paramType lookup)) then
+                diagnostics.fail(:Ok "Type mismatch on var parameter: expected exactly '" <> model.show(paramType) <>
+                    "', but got " <> targetDesc <> " of type '" <> model.show(destType) <>
+                    "' (var parameters are invariant)" offset)
+            end
+            destType
+        end
+end

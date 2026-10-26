@@ -161,6 +161,7 @@ export
         notes: vector.T(String)
         (* The file of the unit the error was raised in, once it propagates out of it (the bootstrap's in_unit) *)
         file: maybe.T(String)
+        silent: Bool
     end
 
     let compilerError: Exception(CompilerError) = exception compilerError: CompilerError end
@@ -174,6 +175,19 @@ export
             let help = maybe.none(:String)
             let notes = vector.new(:String)
             let file = maybe.none(:String)
+            let silent = false
+        end
+
+    let silentError: CompilerError =
+        tuple
+            let message = ""
+            let offset = 0
+            let length = 1
+            let isFatal = false
+            let help = maybe.none(:String)
+            let notes = vector.new(:String)
+            let file = maybe.none(:String)
+            let silent = true
         end
 
     let inFile(e: CompilerError file: String): CompilerError =
@@ -188,6 +202,7 @@ export
                 let help = e.help
                 let notes = e.notes
                 let file = maybe.some(:String file)
+                let silent = e.silent
             end
         end
 

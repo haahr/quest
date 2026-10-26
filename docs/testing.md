@@ -183,7 +183,7 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 
 **Self-hosted compiler:** `python3 run_tests.py --self-hosted` compiles the self-hosted compiler's driver
 (`questlang/driver/main.quest`) to C with the bootstrap, then runs it, instead of the bootstrap's driver, on every test
-of the phases it has (now tokenize and parse; [milestone-2.md](milestone-2.md) §3), against the bootstrap's goldens and
+of the phases it has (now tokenize, parse, and typecheck; [milestone-2.md](milestone-2.md) §3), against the bootstrap's goldens and
 error expectations, which it never writes. The driver takes the bootstrap driver's `--stop-after PHASE FILE` and prints
 the phase's dump in the bootstrap's format (it also has `desugar`, which has no goldens). It reports errors after the
 bootstrap's one: an error test passes when the driver's first diagnostic is the expected one and, if it reports more,

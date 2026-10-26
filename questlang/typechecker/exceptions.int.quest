@@ -1,0 +1,21 @@
+(* Quest Self-Hosted Compiler: Exceptions Interface
+ *
+ * The construct family of bootstrap/python/quest/typechecker/exceptions.py: exception declarations, raise, and try.
+ * Each function takes an expression of its form. *)
+
+interface Exceptions
+import
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    util/maybe : util/Maybe
+export
+    (* exception Name [: PayloadType] end, which declares Name in the current scope *)
+    synthException(c: checker.T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr
+    (* raise Exc [with Payload] [as Type] end: it diverges, so it has any expected type *)
+    elaborateRaise(c: checker.T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr
+    (* try: its body and branches are checked against the expected type if there is one, else joined *)
+    elaborateTry(c: checker.T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr
+end

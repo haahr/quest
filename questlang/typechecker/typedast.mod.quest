@@ -151,4 +151,167 @@ export
             when bindModule with x then maybe.some(:String x.name)
             else maybe.none(:String)
         end
+
+    (* =========================================================================
+     * Mapping types
+     * ========================================================================= *)
+
+    let mapArray(A::TYPE xs: Array(A) g: All(x: A) A): Array(A) =
+        begin
+            let result = vector.new(:A)
+            for i = 0 upto {extent xs - 1} do vector.append(:A result g(xs[i])) end
+            vector.toArray(:A result)
+        end
+
+    let mapMaybe(A::TYPE x: maybe.T(A) g: All(x: A) A): maybe.T(A) =
+        if maybe.isSome(:A x) then maybe.some(:A g(maybe.unwrap(:A x))) else x end
+
+    let rec mapTypes(e: Expr f: All(t: model.Type) model.Type): Expr =
+        begin
+            let m(x: Expr): Expr = mapTypes(x f)
+            let ms(xs: Array(Expr)): Array(Expr) = mapArray(:Expr xs m)
+            let mm(x: maybe.T(Expr)): maybe.T(Expr) = mapMaybe(:Expr x m)
+            let form = case e.form
+                when exprFun with x then
+                    option exprFun of ExprForm with
+                        let params = mapArray(:Param x.params fun(p: Param): Param
+                            tuple
+                                let offset = p.offset let name = p.name let symbol = p.symbol let type = f(p.type)
+                                let isVar = p.isVar let isOut = p.isOut
+                            end)
+                        let body = m(x.body)
+                        let typeParamIds = x.typeParamIds
+                    end
+                when exprApp with x then option exprApp of ExprForm with let func = m(x.func) let args = ms(x.args) end
+                when exprTypeApp with x then
+                    option exprTypeApp of ExprForm with
+                        let func = m(x.func) let typeArgs = mapArray(:model.Type x.typeArgs f)
+                    end
+                when exprInfix with x then
+                    option exprInfix of ExprForm with let left = m(x.left) let op = x.op let right = m(x.right) end
+                when exprRecord with x then
+                    option exprRecord of ExprForm with
+                        let fields = mapArray(:RecordField x.fields fun(r: RecordField): RecordField
+                            tuple let offset = r.offset let name = r.name let value = m(r.value) let isVar = r.isVar end)
+                    end
+                when exprTypeWitness with x then
+                    option exprTypeWitness of ExprForm with
+                        let name = x.name let witnessType = f(x.witnessType) let bound = x.bound
+                    end
+                when exprTuple with x then
+                    option exprTuple of ExprForm with
+                        let elements = ms(x.elements) let recGroups = x.recGroups
+                        let simultaneousGroups = x.simultaneousGroups let labels = x.labels
+                    end
+                when exprSelect with x then option exprSelect of ExprForm with let target = m(x.target) let field = x.field end
+                when exprIndex with x then option exprIndex of ExprForm with let target = m(x.target) let index = m(x.index) end
+                when exprIndexAssign with x then
+                    option exprIndexAssign of ExprForm with
+                        let target = m(x.target) let index = m(x.index) let value = m(x.value)
+                    end
+                when exprArray with x then option exprArray of ExprForm with let elements = ms(x.elements) end
+                when exprArrayRep with x then
+                    option exprArrayRep of ExprForm with let count = m(x.count) let initVal = m(x.initVal) end
+                when exprVarCell with x then option exprVarCell of ExprForm with let value = m(x.value) end
+                when exprDerefCell with x then option exprDerefCell of ExprForm with let target = m(x.target) end
+                when exprSelectRef with x then
+                    option exprSelectRef of ExprForm with let target = m(x.target) let field = x.field end
+                when exprIndexRef with x then
+                    option exprIndexRef of ExprForm with let target = m(x.target) let index = m(x.index) end
+                when exprTupleSelectRef with x then
+                    option exprTupleSelectRef of ExprForm with let target = m(x.target) let index = x.index let field = x.field end
+                when exprAssign with x then option exprAssign of ExprForm with let target = m(x.target) let value = m(x.value) end
+                when exprVariant with x then option exprVariant of ExprForm with let tag = x.tag let payload = mm(x.payload) end
+                when exprOption with x then
+                    option exprOption of ExprForm with
+                        let tag = x.tag let payload = mm(x.payload) let ordinalExpr = mm(x.ordinalExpr)
+                    end
+                when exprAuto with x then
+                    option exprAuto of ExprForm with
+                        let witnessType = f(x.witnessType) let autoType = f(x.autoType) let payload = m(x.payload)
+                    end
+                when exprVariantCheck with x then
+                    option exprVariantCheck of ExprForm with let target = m(x.target) let tag = x.tag end
+                when exprVariantAssert with x then
+                    option exprVariantAssert of ExprForm with let target = m(x.target) let tag = x.tag end
+                when exprCase with x then
+                    option exprCase of ExprForm with
+                        let target = m(x.target)
+                        let branches = mapArray(:CaseBranch x.branches fun(b: CaseBranch): CaseBranch
+                            tuple let offset = b.offset let tags = b.tags let body = m(b.body) let binder = b.binder end)
+                        let elseBranch = mm(x.elseBranch)
+                    end
+                when exprInspect with x then
+                    option exprInspect of ExprForm with
+                        let target = m(x.target)
+                        let branches = mapArray(:InspectBranch x.branches fun(b: InspectBranch): InspectBranch
+                            tuple
+                                let offset = b.offset let matchType = f(b.matchType) let binders = b.binders
+                                let body = m(b.body) let exact = b.exact
+                            end)
+                        let elseBranch = mm(x.elseBranch)
+                        let autoType = mapMaybe(:model.Type x.autoType f)
+                    end
+                when exprBlock with x then
+                    option exprBlock of ExprForm with
+                        let bindings = mapArray(:Binding x.bindings fun(b: Binding): Binding mapBindingTypes(b f))
+                        let result = m(x.result)
+                    end
+                when exprIf with x then
+                    option exprIf of ExprForm with
+                        let cond = m(x.cond) let thenBranch = m(x.thenBranch) let elseBranch = m(x.elseBranch)
+                    end
+                when exprWhile with x then option exprWhile of ExprForm with let cond = m(x.cond) let body = m(x.body) end
+                when exprLoop with x then option exprLoop of ExprForm with let body = m(x.body) end
+                when exprFor with x then
+                    option exprFor of ExprForm with
+                        let varName = x.varName let symbol = x.symbol let start = m(x.start) let isDownto = x.isDownto
+                        let stop = m(x.stop) let body = m(x.body)
+                    end
+                when exprException with x then
+                    option exprException of ExprForm with
+                        let name = x.name let payloadType = mapMaybe(:model.Type x.payloadType f) let symbol = x.symbol
+                    end
+                when exprRaise with x then option exprRaise of ExprForm with let exc = m(x.exc) let payload = mm(x.payload) end
+                when exprTry with x then
+                    option exprTry of ExprForm with
+                        let body = m(x.body)
+                        let branches = mapArray(:TryBranch x.branches fun(b: TryBranch): TryBranch
+                            tuple
+                                let offset = b.offset let excPattern = m(b.excPattern) let body = m(b.body)
+                                let binder = b.binder
+                            end)
+                        let elseBranch = mm(x.elseBranch)
+                    end
+                else e.form
+            end
+            expr(e.offset f(e.type) form)
+        end
+    and mapBindingTypes(b: Binding f: All(t: model.Type) model.Type): Binding =
+        begin
+            let letValue(v: LetValue): LetValue =
+                tuple
+                    let offset = v.offset let name = v.name let value = mapTypes(v.value f) let symbol = v.symbol
+                    let isRec = v.isRec
+                end
+            let bs(xs: Array(Binding)): Array(Binding) = mapArray(:Binding xs fun(x: Binding): Binding mapBindingTypes(x f))
+            let form = case b.form
+                when bindLetValue with x then option bindLetValue of BindingForm with let value = letValue(x.value) end
+                when bindLetValueGroup with x then
+                    option bindLetValueGroup of BindingForm with let members = mapArray(:LetValue x.members letValue) end
+                when bindExprStmt with x then option bindExprStmt of BindingForm with let expr = mapTypes(x.expr f) end
+                when bindInterface with x then
+                    option bindInterface of BindingForm with
+                        let name = x.name let signatures = bs(x.signatures) let scope = x.scope
+                    end
+                when bindModule with x then
+                    option bindModule of BindingForm with
+                        let name = x.name let interfaceName = x.interfaceName let bindings = bs(x.bindings)
+                        let scope = x.scope let cInit = x.cInit let isPrecompiled = x.isPrecompiled
+                        let symbolId = x.symbolId
+                    end
+                else b.form
+            end
+            binding(b.offset form)
+        end
 end

@@ -211,13 +211,25 @@ them (`astprint.dumpWithOffsets`, the driver's `--show-offsets`). The bootstrap'
 (`m.n.T`) is reported as an undefined module; the bootstrap's scopes have no `lookup_module`, so it fails there. The
 driver's typecheck phase moved to Step 5, since it is the checker's program loop.
 
-### Step 5: The checker
+### Step 5: The checker (done)
 
-Port `checker`, `typecheck` (and with it the driver's typecheck phase), and the construct families in dependency order: literals, variables, blocks, and
-functions (`bindings`); calls (`application`, `lvalues`, `metas`); control flow (`control`); aggregates; exceptions;
-auto values (`autovalues`, `escape`); and `scoping`, which runs in the driver when `QUEST_CHECK_SCOPES=1`, as the
-runner sets it. Report errors as §2 has them from the first construct on. Goldens of programs without imports leave
-the pending list as their constructs land.
+Port `checker`, `typecheck` (and with it the driver's typecheck phase), and the construct families in dependency
+order: literals, variables, blocks, and functions (`bindings`); calls (`application`, `lvalues`, `metas`); control
+flow (`control`); aggregates; exceptions; auto values (`autovalues`, `escape`); and `scoping`, which runs in the driver
+when `QUEST_CHECK_SCOPES=1`, as the runner sets it. Report errors as §2 has them from the first construct on. Goldens
+of programs without imports leave the pending list as their constructs land.
+
+The runner's self-hosted phases include typecheck, and the pending list started with the typecheck goldens and error
+tests the driver failed: those of imports, interfaces, modules, and the standard library, which Step 6 takes off.
+§2's recovery is in place: a phrase, a block's binding, and (Step 6) a module's member are recovery points
+(`bindings.elaborateRecovering`, `checker.attempt`), and a block with a failed binding fails silently
+(`diagnostics.silentError`); a failed declaration's names are bound to poisoned symbols (`symbols.poisonValue`,
+`symbols.poison`), or to its declared type, from its annotations. Every typecheck error test the driver can run passes
+with one error.
+
+Open question: `errors/typecheck:aggregates/tuple_unsupported_component_checked` expects the bootstrap's type error
+for an import inside a tuple, which the self-hosted parser rejects as a syntax error (the self-hosted AST holds
+imports, interfaces, and modules only at the top level, Milestone 1). It stays pending until that is decided.
 
 ### Step 6: Modules from source
 

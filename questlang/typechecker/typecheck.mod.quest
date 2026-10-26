@@ -1,0 +1,274 @@
+(* Quest Self-Hosted Compiler: Bidirectional Type Checker Implementation *)
+
+module typecheck : Typecheck
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/bindings : questlang/typechecker/Bindings
+    questlang/typechecker/application : questlang/typechecker/Application
+    questlang/typechecker/aggregates : questlang/typechecker/Aggregates
+    questlang/typechecker/control : questlang/typechecker/Control
+    questlang/typechecker/exceptions : questlang/typechecker/Exceptions
+    questlang/typechecker/autoValues : questlang/typechecker/AutoValues
+    questlang/typechecker/scoping : questlang/typechecker/Scoping
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Type = model.Type
+    Let Result = Tuple program: maybe.T(typedAst.Program) errors: Array(diagnostics.CompilerError) end
+
+    let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
+
+    let rec checkExpr(c: checker.T x0: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
+        begin
+            let exp = maybe.some(:Type expected)
+            case x0.form
+                (* Conditionals with an else branch: both branches are checked against the expected type (a
+                 * short-circuit operator is Bool, and is checked by subsumption) *)
+                when exprIf with x then
+                    if maybe.isSome(:ast.Expr x.elseBranch) andif not(x.shortCircuit) then
+                        control.elaborateIf(c x0 exp e loopDepth)
+                    else
+                        checker.checkSubsumption(c x0 expected e loopDepth maybe.none(:String))
+                    end
+                when exprBlock then control.elaborateBlock(c x0 exp e loopDepth)
+                when exprFun then bindings.elaborateFun(c x0 exp e loopDepth)
+                when exprRecord then aggregates.elaborateRecord(c x0 exp e loopDepth)
+                when exprTuple then aggregates.elaborateTuple(c x0 exp e loopDepth)
+                when exprCase then control.elaborateCase(c x0 exp e loopDepth)
+                when exprArray then aggregates.elaborateArray(c x0 exp e loopDepth)
+                when exprArrayRep then aggregates.elaborateArrayRep(c x0 exp e loopDepth)
+                when exprRaise then exceptions.elaborateRaise(c x0 exp e loopDepth)
+                when exprTry then exceptions.elaborateTry(c x0 exp e loopDepth)
+                when exprInspect then autoValues.elaborateInspect(c x0 exp e loopDepth)
+                when exprAuto then autoValues.elaborateAuto(c x0 exp e loopDepth)
+                (* An external C symbol's binding *)
+                when exprExternal with x then
+                    expr(x0.span.startOffset expected option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
+                (* An application: the type required by the context can determine implicit type arguments (Cardelli,
+                 * The Quest Language and System section 4: cons(3 nil())) *)
+                when exprApp then
+                    checks.requireSubtype(x0.span.startOffset application.elaborateApp(c x0 exp e loopDepth) expected e
+                        maybe.none(:String))
+                (* Subsumption: the minimal type is synthesized and must be a subtype *)
+                else checker.checkSubsumption(c x0 expected e loopDepth maybe.none(:String))
+            end
+        end
+
+    and synthExpr(c: checker.T x0: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr =
+        begin
+            let offset = x0.span.startOffset
+            let none = maybe.none(:Type)
+            case x0.form
+                (* Literals *)
+                when exprInt with x then expr(offset model.intType option exprInt of typedAst.ExprForm with let value = x.value end)
+                when exprReal with x then
+                    expr(offset model.realType option exprReal of typedAst.ExprForm with let value = x.value end)
+                when exprBool with x then
+                    expr(offset model.boolType option exprBool of typedAst.ExprForm with let value = x.value end)
+                when exprChar with x then
+                    expr(offset model.charType option exprChar of typedAst.ExprForm with let value = x.value end)
+                when exprString with x then
+                    expr(offset model.stringType option exprString of typedAst.ExprForm with let value = x.value end)
+                when exprOk then expr(offset model.okType option exprOk of typedAst.ExprForm end)
+                when exprExit then
+                    begin
+                        if loopDepth <= 0 then diagnostics.fail(:Ok "Exit statement outside of any loop" offset) end
+                        expr(offset model.okType option exprExit of typedAst.ExprForm end)
+                    end
+                when exprExternal with x then
+                    diagnostics.fail(:typedAst.Expr "External binding '" <> x.symbol <> "' requires an explicit type annotation"
+                        offset)
+
+                (* Variables *)
+                when exprId with x then
+                    begin
+                        let name = x.name
+                        if not(isCallee) andif {stringOp.equal(name "not") orif stringOp.equal(name "extent") orif
+                                stringOp.equal(name "ordinal")} then
+                            diagnostics.fail(:Ok "Monadic operator '" <> name <> "' cannot be used as a value without an operand"
+                                offset)
+                        end
+                        let found = checker.lookupValue(c e name)
+                        if maybe.isNone(:symbols.ValueSymbol found) then
+                            diagnostics.fail(:Ok "Undefined variable '" <> name <> "'" offset)
+                        end
+                        let sym = maybe.unwrap(:symbols.ValueSymbol found)
+                        (* Closures may not capture out or var parameters or mutable local variables *)
+                        checker.checkCapturable(c sym offset)
+                        (* Out parameters are write-only *)
+                        if sym.isOut then
+                            diagnostics.fail(:Ok "Cannot read from write-only 'out' parameter '" <> sym.name <> "'" offset)
+                        end
+                        let varForm = option exprVar of typedAst.ExprForm with let name = sym.name let symbol = sym end
+                        (* A mutable variable in a value position is dereferenced *)
+                        if sym.isVar then
+                            let varNode = expr(offset model.varType(sym.type) varForm)
+                            expr(offset sym.type option exprDerefCell of typedAst.ExprForm with let target = varNode end)
+                        else
+                            expr(offset sym.type varForm)
+                        end
+                    end
+
+                (* Explicit dereference (@e or !e) *)
+                when exprDerefCell with x then
+                    case x.target.form
+                        when exprId with id then
+                            begin
+                                let targetOffset = x.target.span.startOffset
+                                let found = checker.lookupValue(c e id.name)
+                                if maybe.isNone(:symbols.ValueSymbol found) then
+                                    diagnostics.fail(:Ok "Undefined variable '" <> id.name <> "'" targetOffset)
+                                end
+                                let sym = maybe.unwrap(:symbols.ValueSymbol found)
+                                let element = case sym.type.form when typeVar with v then maybe.some(:Type v.element) else none end
+                                if not(sym.isVar) andif maybe.isNone(:Type element) then
+                                    diagnostics.fail(:Ok "Cannot dereference non-variable symbol '" <> id.name <> "'" targetOffset)
+                                end
+                                let varType = if sym.isVar then model.varType(sym.type) else sym.type end
+                                let elemType = if sym.isVar then sym.type else maybe.unwrap(:Type element) end
+                                let varNode = expr(targetOffset varType option exprVar of typedAst.ExprForm with
+                                    let name = sym.name let symbol = sym
+                                end)
+                                expr(offset elemType option exprDerefCell of typedAst.ExprForm with let target = varNode end)
+                            end
+                        else
+                            begin
+                                let targetTyped = synthExpr(c x.target e loopDepth false)
+                                case targetTyped.type.form
+                                    when typeVar with v then
+                                        expr(offset v.element option exprDerefCell of typedAst.ExprForm with
+                                            let target = targetTyped
+                                        end)
+                                    else
+                                        diagnostics.fail(:typedAst.Expr "Cannot dereference non-variable type '" <>
+                                            model.show(targetTyped.type) <> "'" offset)
+                                end
+                            end
+                    end
+
+                (* Reference cell allocation (var e) *)
+                when exprVarCell with x then
+                    begin
+                        let valTyped = synthExpr(c x.value e loopDepth false)
+                        expr(offset model.varType(valTyped.type) option exprVarCell of typedAst.ExprForm with
+                            let value = valTyped
+                        end)
+                    end
+
+                when exprInfix then control.synthInfix(c x0 e loopDepth)
+                when exprIf then control.elaborateIf(c x0 none e loopDepth)
+
+                (* Loops *)
+                when exprWhile with x then
+                    begin
+                        let condTyped = checkExpr(c x.cond model.boolType e loopDepth)
+                        c.loopDepth := loopDepth
+                        let bodyTyped = checker.inLoop(:typedAst.Expr c fun(): typedAst.Expr
+                            synthExpr(c x.body e c.loopDepth false))
+                        expr(offset model.okType option exprWhile of typedAst.ExprForm with
+                            let cond = condTyped let body = bodyTyped
+                        end)
+                    end
+                when exprLoop with x then
+                    begin
+                        c.loopDepth := loopDepth
+                        let bodyTyped = checker.inLoop(:typedAst.Expr c fun(): typedAst.Expr
+                            synthExpr(c x.body e c.loopDepth false))
+                        expr(offset model.okType option exprLoop of typedAst.ExprForm with let body = bodyTyped end)
+                    end
+                when exprFor then control.synthFor(c x0 e loopDepth)
+
+                when exprBlock then control.elaborateBlock(c x0 none e loopDepth)
+                when exprFun then bindings.elaborateFun(c x0 none e loopDepth)
+                when exprApp then application.elaborateApp(c x0 none e loopDepth)
+
+                (* Aggregates *)
+                when exprRecord then aggregates.elaborateRecord(c x0 none e loopDepth)
+                when exprTuple then aggregates.elaborateTuple(c x0 none e loopDepth)
+                when exprSelect then aggregates.synthSelect(c x0 e loopDepth)
+                when exprOption then aggregates.synthOption(c x0 e loopDepth)
+                when exprVariant then aggregates.synthVariant(c x0 e loopDepth)
+                when exprVariantCheck then aggregates.synthVariantCheck(c x0 e loopDepth)
+                when exprVariantAssert then aggregates.synthVariantAssert(c x0 e loopDepth)
+                when exprCase then control.elaborateCase(c x0 none e loopDepth)
+                when exprArray then aggregates.elaborateArray(c x0 none e loopDepth)
+                when exprArrayRep then aggregates.elaborateArrayRep(c x0 none e loopDepth)
+                when exprIndex then aggregates.synthIndex(c x0 e loopDepth)
+                when exprIndexAssign then aggregates.synthIndexAssign(c x0 e loopDepth)
+
+                (* Exceptions and auto values *)
+                when exprException then exceptions.synthException(c x0 e loopDepth)
+                when exprRaise then exceptions.elaborateRaise(c x0 none e loopDepth)
+                when exprTry then exceptions.elaborateTry(c x0 none e loopDepth)
+                when exprInspect then autoValues.elaborateInspect(c x0 none e loopDepth)
+                when exprAuto then autoValues.elaborateAuto(c x0 none e loopDepth)
+
+                else diagnostics.fail(:typedAst.Expr "Unsupported AST expression" offset)
+            end
+        end
+
+    let newChecker(e: env.T loopDepth: Int): checker.T =
+        begin
+            let c = checker.new(e loopDepth)
+            c.checkHook := checkExpr
+            c.synthHook := synthExpr
+            c
+        end
+
+    (* A top-level phrase (an import, interface, module, binding, or expression), or none if it fails *)
+    let elaboratePhrase(c: checker.T p: ast.Phrase e: env.T): maybe.T(typedAst.Binding) =
+        case p.form
+            when phraseDecl with x then bindings.elaborateRecovering(c x.decl e 0)
+            when phraseExpr with x then
+                checker.attempt(:typedAst.Binding c fun(): typedAst.Binding
+                    typedAst.binding(p.span.startOffset option bindExprStmt of typedAst.BindingForm with
+                        let expr = synthExpr(c x.expr e 0 false)
+                    end))
+            else
+                (* Imports, interfaces, and modules come with the module system (docs/milestone-2.md, Step 6) *)
+                checker.attempt(:typedAst.Binding c fun(): typedAst.Binding
+                    diagnostics.fail(:typedAst.Binding "internal: imports, interfaces, and modules are not yet supported"
+                        p.span.startOffset))
+        end
+
+    let elaborateProgram(program: ast.Program e: env.T): Result =
+        begin
+            let c = newChecker(e 0)
+            let phrases = vector.new(:typedAst.Binding)
+            try
+                for i = 0 upto {vector.length(:ast.Phrase program.form.phrases) - 1} do
+                    let typed = elaboratePhrase(c vector.get(:ast.Phrase program.form.phrases i) e)
+                    if maybe.isSome(:typedAst.Binding typed) then
+                        vector.append(:typedAst.Binding phrases maybe.unwrap(:typedAst.Binding typed))
+                    end
+                end
+            when diagnostics.compilerError with err then
+                (* A fatal error, or the limit of errors, stops the check *)
+                vector.append(:diagnostics.CompilerError c.errors err)
+            end
+            let typed: typedAst.Program = tuple
+                let offset = program.span.startOffset let phrases = vector.toArray(:typedAst.Binding phrases)
+            end
+            if vector.empty(:diagnostics.CompilerError c.errors) andif scoping.scopeChecksEnabled() then
+                let problems = scoping.checkWellScoped(typed)
+                if extent problems > 0 then
+                    let var message = "internal: the typed program is not well scoped:"
+                    for i = 0 upto {if extent problems < 20 then extent problems - 1 else 19 end} do
+                        message := message <> "\n  " <> problems[i]
+                    end
+                    vector.append(:diagnostics.CompilerError c.errors diagnostics.errorAt(message 0))
+                end
+            end
+            let errors = vector.toArray(:diagnostics.CompilerError c.errors)
+            let result = if extent errors is 0 then maybe.some(:typedAst.Program typed) else maybe.none(:typedAst.Program) end
+            tuple let program = result let errors = errors end
+        end
+end

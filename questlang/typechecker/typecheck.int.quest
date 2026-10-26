@@ -1,0 +1,30 @@
+(* Quest Self-Hosted Compiler: Bidirectional Type Checker Interface
+ *
+ * bootstrap/python/quest/typechecker/typecheck.py: the dispatch on expression forms (checking, Gamma |- e <= T, and
+ * synthesis, Gamma |- e => T), with the literals, variables, dereference, and while and loop inline, and the
+ * elaboration of phrases and programs into the typed AST. The constructs are the construct families' (bindings,
+ * application, aggregates, control, exceptions, autovalues).
+ *
+ * A program's check reports every error it can (docs/milestone-2.md section 2): each phrase that fails is reported,
+ * and the check goes on with the next, until 20 errors or a fatal one. *)
+
+interface Typecheck
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    util/maybe : util/Maybe
+export
+    (* A checker of the environment, with its dispatch *)
+    newChecker(e: env.T loopDepth: Int): checker.T
+
+    checkExpr(c: checker.T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr
+    synthExpr(c: checker.T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr
+
+    (* The typed program, if there were no errors, and the errors found, in order *)
+    Def Result = Tuple program: maybe.T(typedAst.Program) errors: Array(diagnostics.CompilerError) end
+    elaborateProgram(program: ast.Program e: env.T): Result
+end

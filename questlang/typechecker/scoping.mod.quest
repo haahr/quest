@@ -1,0 +1,453 @@
+(* Quest Self-Hosted Compiler: Well-Scopedness Check Implementation *)
+
+module scoping : Scoping
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    conv : Conv
+    system : System
+export
+    Let Expr = typedAst.Expr
+    Let Binding = typedAst.Binding
+    Let Ids = hashMap.T(Int Bool)
+
+    let scopeChecksEnabled(): Bool = stringOp.equal(system.getEnv("QUEST_CHECK_SCOPES") "1")
+
+    let newIds(): Ids = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+    let copyIds(ids: Ids): Ids =
+        begin
+            let copy = newIds()
+            let keys = hashMap.keys(:Int :Bool ids)
+            for i = 0 upto {vector.length(:Int keys) - 1} do hashMap.insert(:Int :Bool copy vector.get(:Int keys i) true) end
+            copy
+        end
+    let withIds(ids: Ids more: Array(Int)): Ids =
+        begin
+            let copy = copyIds(ids)
+            for i = 0 upto {extent more - 1} do hashMap.insert(:Int :Bool copy more[i] true) end
+            copy
+        end
+
+    (* Python's repr of a sequence of ints: (1, 2) or [1, 2] *)
+    let reprInts(xs: Array(Int) open: String close: String): String =
+        begin
+            let var s = open
+            for i = 0 upto {extent xs - 1} do
+                s := if i is 0 then s <> conv.int(xs[i]) else s <> ", " <> conv.int(xs[i]) end
+            end
+            if {extent xs is 1} andif stringOp.equal(open "(") then s <> ",)" else s <> close end
+        end
+
+    (* The class name of a node, as the bootstrap's problems name it *)
+    let nodeName(e: Expr): String =
+        case e.form
+            when exprInt then "TypedInt" when exprReal then "TypedReal" when exprBool then "TypedBool"
+            when exprChar then "TypedChar" when exprString then "TypedString" when exprOk then "TypedOk"
+            when exprExternal then "TypedExternal" when exprVar then "TypedVar" when exprFun then "TypedFun"
+            when exprApp then "TypedApp" when exprTypeApp then "TypedTypeApp" when exprInfix then "TypedInfix"
+            when exprRecord then "TypedRecord" when exprTypeWitness then "TypedTypeWitness" when exprTuple then "TypedTuple"
+            when exprSelect then "TypedSelect" when exprIndex then "TypedIndex" when exprIndexAssign then "TypedIndexAssign"
+            when exprArray then "TypedArray" when exprArrayRep then "TypedArrayRep" when exprVarCell then "TypedVarCell"
+            when exprDerefCell then "TypedDerefCell" when exprSelectRef then "TypedSelectRef"
+            when exprIndexRef then "TypedIndexRef" when exprTupleSelectRef then "TypedTupleSelectRef"
+            when exprAssign then "TypedAssign" when exprVariant then "TypedVariant" when exprOption then "TypedOption"
+            when exprAuto then "TypedAuto" when exprVariantCheck then "TypedVariantCheck"
+            when exprVariantAssert then "TypedVariantAssert" when exprCase then "TypedCase" when exprInspect then "TypedInspect"
+            when exprBlock then "TypedBlock" when exprIf then "TypedIf" when exprWhile then "TypedWhile"
+            when exprLoop then "TypedLoop" when exprFor then "TypedFor" when exprExit then "TypedExit"
+            when exprException then "TypedException" when exprRaise then "TypedRaise" when exprTry then "TypedTry"
+        end
+
+    (* A child of a node: an expression or a binding, in the order of the node's fields *)
+    Let Child = Option
+        childExpr with e: Expr end
+        childBinding with b: Binding end
+    end
+
+    let ex(e: Expr): Child = option childExpr of Child with let e = e end
+    let opt(e: maybe.T(Expr)): Array(Child) =
+        if maybe.isSome(:Expr e) then
+            array of ex(maybe.unwrap(:Expr e)) end
+        else
+            array of :Child end
+        end
+    let exs(es: Array(Expr)): Array(Child) =
+        begin
+            let children = vector.new(:Child)
+            for i = 0 upto {extent es - 1} do vector.append(:Child children ex(es[i])) end
+            vector.toArray(:Child children)
+        end
+    let concat(parts: Array(Array(Child))): Array(Child) =
+        begin
+            let children = vector.new(:Child)
+            for i = 0 upto {extent parts - 1} do
+                for j = 0 upto {extent parts[i] - 1} do vector.append(:Child children parts[i][j]) end
+            end
+            vector.toArray(:Child children)
+        end
+
+    let children(e: Expr): Array(Child) =
+        case e.form
+            when exprFun with x then array of ex(x.body) end
+            when exprApp with x then concat(array of array of ex(x.func) end exs(x.args) end)
+            when exprTypeApp with x then array of ex(x.func) end
+            when exprInfix with x then array of ex(x.left) ex(x.right) end
+            when exprRecord with x then
+                begin
+                    let values = vector.new(:Expr)
+                    for i = 0 upto {extent x.fields - 1} do vector.append(:Expr values x.fields[i].value) end
+                    exs(vector.toArray(:Expr values))
+                end
+            when exprTuple with x then exs(x.elements)
+            when exprSelect with x then array of ex(x.target) end
+            when exprIndex with x then array of ex(x.target) ex(x.index) end
+            when exprIndexAssign with x then array of ex(x.target) ex(x.index) ex(x.value) end
+            when exprArray with x then exs(x.elements)
+            when exprArrayRep with x then array of ex(x.count) ex(x.initVal) end
+            when exprVarCell with x then array of ex(x.value) end
+            when exprDerefCell with x then array of ex(x.target) end
+            when exprSelectRef with x then array of ex(x.target) end
+            when exprIndexRef with x then array of ex(x.target) ex(x.index) end
+            when exprTupleSelectRef with x then array of ex(x.target) end
+            when exprAssign with x then array of ex(x.target) ex(x.value) end
+            when exprVariant with x then opt(x.payload)
+            when exprOption with x then concat(array of opt(x.payload) opt(x.ordinalExpr) end)
+            when exprAuto with x then array of ex(x.payload) end
+            when exprVariantCheck with x then array of ex(x.target) end
+            when exprVariantAssert with x then array of ex(x.target) end
+            when exprCase with x then
+                begin
+                    let bodies = vector.new(:Expr)
+                    for i = 0 upto {extent x.branches - 1} do vector.append(:Expr bodies x.branches[i].body) end
+                    concat(array of array of ex(x.target) end exs(vector.toArray(:Expr bodies)) opt(x.elseBranch) end)
+                end
+            when exprInspect with x then
+                begin
+                    let bodies = vector.new(:Expr)
+                    for i = 0 upto {extent x.branches - 1} do vector.append(:Expr bodies x.branches[i].body) end
+                    concat(array of array of ex(x.target) end exs(vector.toArray(:Expr bodies)) opt(x.elseBranch) end)
+                end
+            when exprBlock with x then
+                begin
+                    let children = vector.new(:Child)
+                    for i = 0 upto {extent x.bindings - 1} do
+                        vector.append(:Child children option childBinding of Child with let b = x.bindings[i] end)
+                    end
+                    vector.append(:Child children ex(x.result))
+                    vector.toArray(:Child children)
+                end
+            when exprIf with x then array of ex(x.cond) ex(x.thenBranch) ex(x.elseBranch) end
+            when exprWhile with x then array of ex(x.cond) ex(x.body) end
+            when exprLoop with x then array of ex(x.body) end
+            when exprFor with x then array of ex(x.start) ex(x.stop) ex(x.body) end
+            when exprRaise with x then concat(array of array of ex(x.exc) end opt(x.payload) end)
+            when exprTry with x then
+                begin
+                    let parts = vector.new(:Expr)
+                    for i = 0 upto {extent x.branches - 1} do
+                        vector.append(:Expr parts x.branches[i].excPattern)
+                        vector.append(:Expr parts x.branches[i].body)
+                    end
+                    concat(array of array of ex(x.body) end exs(vector.toArray(:Expr parts)) opt(x.elseBranch) end)
+                end
+            else array of :Child end
+        end
+
+    let bindingChildren(b: Binding): Array(Child) =
+        case b.form
+            when bindLetValue with x then array of ex(x.value.value) end
+            when bindLetValueGroup with x then
+                begin
+                    let values = vector.new(:Expr)
+                    for i = 0 upto {extent x.members - 1} do vector.append(:Expr values x.members[i].value) end
+                    exs(vector.toArray(:Expr values))
+                end
+            when bindExprStmt with x then array of ex(x.expr) end
+            when bindInterface with x then
+                begin
+                    let children = vector.new(:Child)
+                    for i = 0 upto {extent x.signatures - 1} do
+                        vector.append(:Child children option childBinding of Child with let b = x.signatures[i] end)
+                    end
+                    vector.toArray(:Child children)
+                end
+            when bindModule with x then
+                begin
+                    let children = vector.new(:Child)
+                    for i = 0 upto {extent x.bindings - 1} do
+                        vector.append(:Child children option childBinding of Child with let b = x.bindings[i] end)
+                    end
+                    vector.toArray(:Child children)
+                end
+            else array of :Child end
+        end
+
+    (* The let declarations of a binding *)
+    let letValues(b: Binding): Array(typedAst.LetValue) =
+        case b.form
+            when bindLetValue with x then array of x.value end
+            when bindLetValueGroup with x then x.members
+            else array of :typedAst.LetValue end
+        end
+
+    let quantifierIds(f: Expr): Array(Int) =
+        case f.type.form
+            when typeAll with a then
+                begin
+                    let ids = vector.new(:Int)
+                    for i = 0 upto {extent a.quantifiers - 1} do vector.append(:Int ids a.quantifiers[i].symbolId) end
+                    vector.toArray(:Int ids)
+                end
+            else array of :Int end
+        end
+
+    Let State = Tuple problems: vector.T(String) localIds: Ids paramIds: Ids end
+
+    (* =========================================================================
+     * The local binders, and the type parameters
+     * ========================================================================= *)
+
+    let rec collectExpr(st: State e: Expr): Ok =
+        begin
+            case e.form
+                when exprFun with x then
+                    begin
+                        for i = 0 upto {extent x.params - 1} do
+                            hashMap.insert(:Int :Bool st.localIds x.params[i].symbol.symbolId true)
+                        end
+                        let quants = quantifierIds(e)
+                        for i = 0 upto {extent quants - 1} do hashMap.insert(:Int :Bool st.paramIds quants[i] true) end
+                        for i = 0 upto {extent x.typeParamIds - 1} do
+                            hashMap.insert(:Int :Bool st.paramIds x.typeParamIds[i] true)
+                        end
+                        let var same = extent x.typeParamIds is extent quants
+                        if same then
+                            for i = 0 upto {extent quants - 1} do
+                                if quants[i] isnot x.typeParamIds[i] then same := false end
+                            end
+                        end
+                        if {extent x.typeParamIds > 0} andif not(same) then
+                            vector.append(:String st.problems "function at offset " <> conv.int(e.offset) <>
+                                ": type_param_ids " <> reprInts(x.typeParamIds "(" ")") <> " are not the quantifiers " <>
+                                reprInts(quants "(" ")") <> " of its type " <> model.show(e.type))
+                        end
+                    end
+                when exprBlock with x then
+                    for i = 0 upto {extent x.bindings - 1} do
+                        let lets = letValues(x.bindings[i])
+                        for j = 0 upto {extent lets - 1} do
+                            hashMap.insert(:Int :Bool st.localIds lets[j].symbol.symbolId true)
+                        end
+                    end
+                when exprFor with x then begin hashMap.insert(:Int :Bool st.localIds x.symbol.symbolId true) ok end
+                when exprCase with x then
+                    for i = 0 upto {extent x.branches - 1} do
+                        let binder = x.branches[i].binder
+                        if maybe.isSome(:symbols.ValueSymbol binder) then
+                            hashMap.insert(:Int :Bool st.localIds maybe.unwrap(:symbols.ValueSymbol binder).symbolId true)
+                        end
+                    end
+                when exprTry with x then
+                    for i = 0 upto {extent x.branches - 1} do
+                        let binder = x.branches[i].binder
+                        if maybe.isSome(:symbols.ValueSymbol binder) then
+                            hashMap.insert(:Int :Bool st.localIds maybe.unwrap(:symbols.ValueSymbol binder).symbolId true)
+                        end
+                    end
+                when exprInspect with x then
+                    for i = 0 upto {extent x.branches - 1} do
+                        let binders = x.branches[i].binders
+                        for j = 0 upto {extent binders - 1} do
+                            hashMap.insert(:Int :Bool st.localIds binders[j].symbolId true)
+                        end
+                    end
+                else ok
+            end
+            collectChildren(st children(e))
+        end
+    and collectChildren(st: State cs: Array(Child)): Ok =
+        for i = 0 upto {extent cs - 1} do
+            case cs[i]
+                when childExpr with x then collectExpr(st x.e)
+                when childBinding with x then collectChildren(st bindingChildren(x.b))
+            end
+        end
+
+    (* =========================================================================
+     * The check
+     * ========================================================================= *)
+
+    let checkType(st: State t: model.Type typeScope: Ids whereName: String whereOffset: Int): Ok =
+        begin
+            let stray = vector.new(:Int)
+            for i = 0 upto {extent t.fv - 1} do
+                let id = t.fv[i]
+                if hashMap.contains(:Int :Bool st.paramIds id) andif not(hashMap.contains(:Int :Bool typeScope id)) then
+                    vector.append(:Int stray id)
+                end
+            end
+            if not(vector.empty(:Int stray)) then
+                vector.append(:String st.problems whereName <> " at offset " <> conv.int(whereOffset) <> ": type " <>
+                    model.show(t) <> " mentions type parameters " <> reprInts(vector.toArray(:Int stray) "[" "]") <>
+                    " outside their function")
+            end
+        end
+
+    (* The types and value symbols a node holds directly, which are checked against the type parameters in scope *)
+    let checkDirect(st: State e: Expr types: Ids): Ok =
+        begin
+            let name = nodeName(e)
+            let check(t: model.Type): Ok = checkType(st t types name e.offset)
+            case e.form
+                when exprTypeWitness with x then check(x.witnessType)
+                when exprAuto with x then begin check(x.witnessType) check(x.autoType) end
+                else ok
+            end
+            case e.form
+                (* The bootstrap's TypedTypeWitness has a kind as its type *)
+                when exprTypeWitness then ok
+                else check(e.type)
+            end
+            case e.form
+                when exprVar with x then check(x.symbol.type)
+                when exprFor with x then check(x.symbol.type)
+                when exprInspect with x then if maybe.isSome(:model.Type x.autoType) then check(maybe.unwrap(:model.Type x.autoType)) end
+                when exprException with x then
+                    begin
+                        if maybe.isSome(:model.Type x.payloadType) then check(maybe.unwrap(:model.Type x.payloadType)) end
+                        if maybe.isSome(:symbols.ValueSymbol x.symbol) then
+                            check(maybe.unwrap(:symbols.ValueSymbol x.symbol).type)
+                        end
+                    end
+                else ok
+            end
+        end
+
+    let rec walkExpr(st: State e: Expr values: Ids types: Ids): Ok =
+        begin
+            checkDirect(st e types)
+            case e.form
+                when exprVar with x then
+                    begin
+                        let symId = x.symbol.symbolId
+                        if hashMap.contains(:Int :Bool st.localIds symId) andif not(hashMap.contains(:Int :Bool values symId)) then
+                            vector.append(:String st.problems "variable '" <> x.name <> "' (#" <> conv.int(symId) <>
+                                ") at offset " <> conv.int(e.offset) <> " is used outside the scope of its binder")
+                        end
+                    end
+                when exprFun with x then
+                    begin
+                        (* The function's type parameters are the quantifiers of its own type *)
+                        let quants = quantifierIds(e)
+                        let innerTypes = withIds(types if extent quants > 0 then quants else x.typeParamIds end)
+                        let paramIds = vector.new(:Int)
+                        for i = 0 upto {extent x.params - 1} do vector.append(:Int paramIds x.params[i].symbol.symbolId) end
+                        let innerValues = withIds(values vector.toArray(:Int paramIds))
+                        for i = 0 upto {extent x.params - 1} do
+                            checkType(st x.params[i].type innerTypes "TypedParam" x.params[i].offset)
+                        end
+                        walkExpr(st x.body innerValues innerTypes)
+                    end
+                when exprBlock with x then
+                    begin
+                        let scope = copyIds(values)
+                        for i = 0 upto {extent x.bindings - 1} do
+                            let b = x.bindings[i]
+                            let lets = letValues(b)
+                            let var isRec = false
+                            for j = 0 upto {extent lets - 1} do if lets[j].isRec then isRec := true end end
+                            if isRec then
+                                (* Recursive members see one another *)
+                                for j = 0 upto {extent lets - 1} do hashMap.insert(:Int :Bool scope lets[j].symbol.symbolId true) end
+                                walkBinding(st b copyIds(scope) types)
+                            else
+                                (* The values see the bindings in scope before the declaration, not its members *)
+                                walkBinding(st b copyIds(scope) types)
+                                for j = 0 upto {extent lets - 1} do hashMap.insert(:Int :Bool scope lets[j].symbol.symbolId true) end
+                            end
+                        end
+                        walkExpr(st x.result scope types)
+                    end
+                when exprFor with x then
+                    begin
+                        walkExpr(st x.start values types)
+                        walkExpr(st x.stop values types)
+                        walkExpr(st x.body withIds(values array of x.symbol.symbolId end) types)
+                    end
+                when exprCase with x then
+                    begin
+                        walkExpr(st x.target values types)
+                        for i = 0 upto {extent x.branches - 1} do
+                            let br = x.branches[i]
+                            let inner = if maybe.isSome(:symbols.ValueSymbol br.binder) then
+                                withIds(values array of maybe.unwrap(:symbols.ValueSymbol br.binder).symbolId end)
+                            else
+                                values
+                            end
+                            walkExpr(st br.body inner types)
+                        end
+                        walkOpt(st x.elseBranch values types)
+                    end
+                when exprTry with x then
+                    begin
+                        walkExpr(st x.body values types)
+                        for i = 0 upto {extent x.branches - 1} do
+                            let br = x.branches[i]
+                            walkExpr(st br.excPattern values types)
+                            let inner = if maybe.isSome(:symbols.ValueSymbol br.binder) then
+                                withIds(values array of maybe.unwrap(:symbols.ValueSymbol br.binder).symbolId end)
+                            else
+                                values
+                            end
+                            walkExpr(st br.body inner types)
+                        end
+                        walkOpt(st x.elseBranch values types)
+                    end
+                when exprInspect with x then
+                    begin
+                        walkExpr(st x.target values types)
+                        for i = 0 upto {extent x.branches - 1} do
+                            let br = x.branches[i]
+                            checkType(st br.matchType types "TypedInspectBranch" br.offset)
+                            let ids = vector.new(:Int)
+                            for j = 0 upto {extent br.binders - 1} do vector.append(:Int ids br.binders[j].symbolId) end
+                            walkExpr(st br.body withIds(values vector.toArray(:Int ids)) types)
+                        end
+                        walkOpt(st x.elseBranch values types)
+                    end
+                else walkChildren(st children(e) values types)
+            end
+        end
+    and walkOpt(st: State e: maybe.T(Expr) values: Ids types: Ids): Ok =
+        if maybe.isSome(:Expr e) then walkExpr(st maybe.unwrap(:Expr e) values types) end
+    and walkChildren(st: State cs: Array(Child) values: Ids types: Ids): Ok =
+        for i = 0 upto {extent cs - 1} do
+            case cs[i]
+                when childExpr with x then walkExpr(st x.e values types)
+                when childBinding with x then walkBinding(st x.b values types)
+            end
+        end
+    and walkBinding(st: State b: Binding values: Ids types: Ids): Ok =
+        begin
+            let lets = letValues(b)
+            for i = 0 upto {extent lets - 1} do
+                checkType(st lets[i].symbol.type types "TypedLetValue" lets[i].offset)
+                walkExpr(st lets[i].value values types)
+            end
+            if extent lets is 0 then walkChildren(st bindingChildren(b) values types) end
+        end
+
+    let checkWellScoped(p: typedAst.Program): Array(String) =
+        begin
+            let st: State = tuple let problems = vector.new(:String) let localIds = newIds() let paramIds = newIds() end
+            for i = 0 upto {extent p.phrases - 1} do collectChildren(st array of option childBinding of Child with let b = p.phrases[i] end end) end
+            for i = 0 upto {extent p.phrases - 1} do walkBinding(st p.phrases[i] newIds() newIds()) end
+            vector.toArray(:String st.problems)
+        end
+end

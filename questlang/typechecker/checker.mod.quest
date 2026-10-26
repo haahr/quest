@@ -1,0 +1,161 @@
+(* Quest Self-Hosted Compiler: The Checker's State and Shared Helpers Implementation *)
+
+module checker : Checker
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    conv : Conv
+export
+    Let PendingTypeArg = Tuple meta: model.Type quantifier: model.Quantifier offset: Int end
+
+    Let Rec T = Tuple
+        env: env.T
+        var loopDepth: Int
+        var functionDepth: Int
+        var pendingTypeArgs: maybe.T(vector.T(PendingTypeArg))
+        errors: vector.T(diagnostics.CompilerError)
+        var checkHook: All(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int) typedAst.Expr
+        var synthHook: All(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool) typedAst.Expr
+    end
+
+    let new(e: env.T loopDepth: Int): T =
+        tuple
+            let env = e
+            let var loopDepth = loopDepth
+            let var functionDepth = 0
+            let var pendingTypeArgs = maybe.none(:vector.T(PendingTypeArg))
+            let errors = vector.new(:diagnostics.CompilerError)
+            let var checkHook = fun(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr
+                diagnostics.fail(:typedAst.Expr "internal: the checker has no dispatch" expr.span.startOffset)
+            let var synthHook = fun(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr
+                diagnostics.fail(:typedAst.Expr "internal: the checker has no dispatch" expr.span.startOffset)
+        end
+
+    let checkExpr(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr =
+        c.checkHook(c expr expected e loopDepth)
+    let synthExpr(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr = c.synthHook(c expr e loopDepth false)
+    let synthCallee(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr = c.synthHook(c expr e loopDepth true)
+
+    let inLoop(A::TYPE c: T body: All() A): A =
+        begin
+            c.loopDepth := c.loopDepth + 1
+            let result =
+                try
+                    body()
+                when diagnostics.compilerError with err then
+                    c.loopDepth := c.loopDepth - 1
+                    diagnostics.raiseError(:A err)
+                end
+            c.loopDepth := c.loopDepth - 1
+            result
+        end
+
+    let inFunction(A::TYPE c: T body: All() A): A =
+        begin
+            let savedDepth = c.loopDepth
+            c.loopDepth := 0
+            c.functionDepth := c.functionDepth + 1
+            let result =
+                try
+                    body()
+                when diagnostics.compilerError with err then
+                    c.loopDepth := savedDepth
+                    c.functionDepth := c.functionDepth - 1
+                    diagnostics.raiseError(:A err)
+                end
+            c.loopDepth := savedDepth
+            c.functionDepth := c.functionDepth - 1
+            result
+        end
+
+    let elaborateSubexpr(c: T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr =
+        if maybe.isSome(:model.Type expected) then
+            checkExpr(c expr maybe.unwrap(:model.Type expected) e loopDepth)
+        else
+            synthExpr(c expr e loopDepth)
+        end
+
+    let elaborateOptionalBranch(
+        c: T expr: maybe.T(ast.Expr) expected: maybe.T(model.Type) e: env.T loopDepth: Int
+    ): maybe.T(typedAst.Expr) =
+        if maybe.isSome(:ast.Expr expr) then
+            maybe.some(:typedAst.Expr elaborateSubexpr(c maybe.unwrap(:ast.Expr expr) expected e loopDepth))
+        else
+            maybe.none(:typedAst.Expr)
+        end
+
+    let branchTypes(
+        initial: maybe.T(model.Type) bodies: Array(typedAst.Expr) elseBranch: maybe.T(typedAst.Expr)
+    ): Array(model.Type) =
+        begin
+            let types = vector.new(:model.Type)
+            if maybe.isSome(:model.Type initial) then vector.append(:model.Type types maybe.unwrap(:model.Type initial)) end
+            for i = 0 upto {extent bodies - 1} do vector.append(:model.Type types bodies[i].type) end
+            if maybe.isSome(:typedAst.Expr elseBranch) then
+                vector.append(:model.Type types maybe.unwrap(:typedAst.Expr elseBranch).type)
+            end
+            vector.toArray(:model.Type types)
+        end
+
+    let checkSubsumption(
+        c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int typeDesc: maybe.T(String)
+    ): typedAst.Expr =
+        checks.requireSubtype(expr.span.startOffset synthExpr(c expr e loopDepth) expected e typeDesc)
+
+    let checkCapturable(c: T sym: symbols.ValueSymbol offset: Int): Ok =
+        if {sym.isOut orif sym.isVar} andif {sym.functionDepth > 0} andif {c.functionDepth > sym.functionDepth} then
+            let kindStr = if sym.isOut then
+                "'out' parameter"
+            elsif sym.isParam then
+                "'var' parameter"
+            else
+                "'var' variable"
+            end
+            diagnostics.fail(:Ok "Cannot capture " <> kindStr <> " '" <> sym.name <> "' in closure" offset)
+        end
+
+    let checkPoisoned(sym: symbols.ValueSymbol): Ok =
+        if symbols.isPoisonedValue(sym.symbolId) then diagnostics.raiseError(:Ok diagnostics.silentError) end
+
+    let lookupValue(c: T e: env.T name: String): maybe.T(symbols.ValueSymbol) =
+        begin
+            let sym = env.lookupValue(e name)
+            if maybe.isSome(:symbols.ValueSymbol sym) then checkPoisoned(maybe.unwrap(:symbols.ValueSymbol sym)) end
+            sym
+        end
+
+    let maxErrors = 20
+
+    let report(c: T err: diagnostics.CompilerError): Ok =
+        begin
+            vector.append(:diagnostics.CompilerError c.errors err)
+            if vector.length(:diagnostics.CompilerError c.errors) >= maxErrors then
+                diagnostics.raiseError(:Ok tuple
+                    let message = "Too many errors (" <> conv.int(maxErrors) <> "); stopping"
+                    let offset = err.offset
+                    let length = err.length
+                    let isFatal = true
+                    let help = maybe.none(:String)
+                    let notes = vector.new(:String)
+                    let file = err.file
+                    let silent = false
+                end)
+            end
+        end
+
+    let attempt(A::TYPE c: T body: All() A): maybe.T(A) =
+        try
+            maybe.some(:A body())
+        when diagnostics.compilerError with err then
+            if err.isFatal then diagnostics.raiseError(:Ok err) end
+            if not(err.silent) then report(c err) end
+            maybe.none(:A)
+        end
+end

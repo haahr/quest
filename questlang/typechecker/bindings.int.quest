@@ -1,0 +1,39 @@
+(* Quest Self-Hosted Compiler: Functions and Bindings Interface
+ *
+ * The construct family of bootstrap/python/quest/typechecker/bindings.py: function abstractions and their
+ * parameters, let declarations (external, recursive, and simultaneous), and type and kind bindings. Desugaring has
+ * made function values of the parameters of let declarations that are neither recursive nor external.
+ *
+ * It also has the checker's recovery point (docs/milestone-2.md section 2): a binding that fails reports its error and
+ * binds the names it declares to poisoned symbols, or, if it declares its type, to symbols of that type. *)
+
+interface Bindings
+import
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* A function abstraction fun[(type params)](params): RetType Body, checked against an expected type or
+     * synthesized *)
+    elaborateFun(c: checker.T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr
+
+    (* The symbol of a recursive value declaration (let rec), typed by its annotations, declared before its value is
+     * checked; and the check of its value against that type *)
+    declareRecValue(c: checker.T b: ast.Decl e: env.T): symbols.ValueSymbol
+    checkRecValue(c: checker.T b: ast.Decl sym: symbols.ValueSymbol e: env.T loopDepth: Int): typedAst.LetValue
+
+    (* A binding or statement inside a block, module, or program *)
+    elaborateBinding(c: checker.T b: ast.Decl e: env.T loopDepth: Int): typedAst.Binding
+    (* elaborateBinding, or none if it fails: its error is reported and the names it declares are poisoned *)
+    elaborateRecovering(c: checker.T b: ast.Decl e: env.T loopDepth: Int): maybe.T(typedAst.Binding)
+
+    (* A type binding declaration as elaboration takes it *)
+    typeBindingOf(d: ast.Decl): ast.TypeBinding
+    (* The members of a let declaration or a group of them *)
+    valueMembers(d: ast.Decl): vector.T(ast.Decl)
+end

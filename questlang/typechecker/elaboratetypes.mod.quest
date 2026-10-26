@@ -106,12 +106,19 @@ export
             kind
         end
 
+    (* A use of a symbol that a failed declaration poisoned fails silently *)
+    let checkPoisoned(symbolId: Int): Ok =
+        if symbols.isPoisoned(symbolId) then diagnostics.raiseError(:Ok diagnostics.silentError) end
+
     (* A type symbol's reference: an alias of its definition, or a variable *)
     let reference(name: String varName: String sym: symbols.TypeSymbol): Type =
-        if maybe.isSome(:Type sym.definition) then
-            model.aliasReference(name sym.symbolId maybe.unwrap(:Type sym.definition))
-        else
-            model.typeVariable(varName sym.symbolId maybe.some(:Kind sym.kind))
+        begin
+            checkPoisoned(sym.symbolId)
+            if maybe.isSome(:Type sym.definition) then
+                model.aliasReference(name sym.symbolId maybe.unwrap(:Type sym.definition))
+            else
+                model.typeVariable(varName sym.symbolId maybe.some(:Kind sym.kind))
+            end
         end
 
     (* The scope of a module or interface of the name *)
@@ -152,6 +159,7 @@ export
                         diagnostics.fail(:Ok "Undefined kind '" <> x.name <> "'" k.span.startOffset)
                     end
                     let s = maybe.unwrap(:symbols.KindSymbol sym)
+                    checkPoisoned(s.symbolId)
                     model.kindVar(s.name s.symbolId)
                 end
             when kindManifest with x then
@@ -394,6 +402,7 @@ export
         begin
             let n = vector.length(:String path)
             let first = vector.get(:String path 0)
+            if symbols.isPoisonedValue(valSym.symbolId) then diagnostics.raiseError(:Ok diagnostics.silentError) end
             if valSym.isVar then
                 diagnostics.fail(:Ok "Cannot project type from mutable variable '" <> first <> "'" offset)
             end

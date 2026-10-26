@@ -1,0 +1,83 @@
+(* Quest Self-Hosted Compiler: Path-Type Escape Analysis and Closedness Implementation *)
+
+module escape : Escape
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    stringOp = string : StringOp
+export
+    let inspectedAutoType(target: typedAst.Expr e: env.T): maybe.T(model.Type) =
+        begin
+            let t = model.evaluateLazily(target.type symbols.lookup)
+            case t.form when typeAuto then maybe.some(:model.Type t) else maybe.none(:model.Type) end
+        end
+
+    let isAutoType(t: model.Type): Bool = case model.unalias(t).form when typeAuto then true else false end
+
+    let checkDynamicTypeArgs(
+        allType: model.Type typeArgs: Array(model.Type) offset: Int check: All(t: model.Type what: String offset: Int) Ok
+    ): Ok =
+        case allType.form
+            when typeAll with a then
+                case a.body.form
+                    when typeFun with f then
+                        if {extent a.quantifiers is 1} andif {extent f.params is 1} andif {extent typeArgs > 0} then
+                            let aId = a.quantifiers[0].symbolId
+                            let isA(t: model.Type): Bool =
+                                case model.unalias(t).form when typeVariable with v then v.symbolId is aId else false end
+                            let paramT = f.params[0].type
+                            if {isA(paramT) andif isAutoType(f.result)} orif {isAutoType(paramT) andif isA(f.result)} then
+                                check(typeArgs[0] "The type of a dynamic value" offset)
+                            end
+                        end
+                    else ok
+                end
+            else ok
+        end
+
+    let pathName(p: model.Type): String =
+        case p.form when typePath with x then x.rootName <> "." <> x.fieldName else "" end
+
+    let checkNoPackageTypes(t: model.Type what: String offset: Int): Ok =
+        begin
+            let paths = model.findPathTypes(model.stripAliases(t))
+            if extent paths > 0 then
+                let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let names = vector.new(:String)
+                for i = 0 upto {extent paths - 1} do
+                    let name = pathName(paths[i])
+                    if hashMap.insert(:String :Bool seen name true) then vector.append(:String names name) end
+                end
+                sort.sortVector(:String names sort.stringCompare)
+                let var joined = ""
+                for i = 0 upto {vector.length(:String names) - 1} do
+                    joined := if i is 0 then vector.get(:String names i) else joined <> ", " <> vector.get(:String names i) end
+                end
+                diagnostics.fail(:Ok what <> " cannot mention " <> joined <> ", an abstract type of a package value, " <>
+                    "because its identity is not known at run time" offset)
+            end
+        end
+
+    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: hashMap.T(Int Bool) contextDesc: String offset: Int): Ok =
+        begin
+            let paths = model.findPathTypes(t)
+            for i = 0 upto {extent paths - 1} do
+                case paths[i].form
+                    when typePath with p then
+                        if hashMap.contains(:Int :Bool localSymbolIds p.rootSymbolId) then
+                            diagnostics.fail(:Ok "Abstract type '" <> p.rootName <> "." <> p.fieldName <>
+                                "' cannot escape " <> contextDesc <> " in type '" <> model.show(t) <> "'" offset)
+                        end
+                    else ok
+                end
+            end
+        end
+end

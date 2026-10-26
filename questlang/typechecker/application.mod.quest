@@ -1,0 +1,467 @@
+(* Quest Self-Hosted Compiler: Function Application Implementation *)
+
+module application : Application
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/escape : questlang/typechecker/Escape
+    questlang/typechecker/lvalues : questlang/typechecker/Lvalues
+    questlang/typechecker/metas : questlang/typechecker/Metas
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/autoValues : questlang/typechecker/AutoValues
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+
+    let some(e: env.T): kinds.Env = maybe.some(:env.T e)
+    let evaluate(t: Type): Type = model.evaluateLazily(t symbols.lookup)
+    let varType(t: Type): Type = model.varType(t)
+    let isRefType(t: Type): Bool = case t.form when typeVar then true when typeOut then true else false end
+    let isVarType(t: Type): Bool = case t.form when typeVar then true else false end
+
+    let digits(s: String): Bool =
+        begin
+            let var all = stringOp.length(s) > 0
+            for i = 0 upto {stringOp.length(s) - 1} do
+                if not(strutil.isDigit(stringOp.getChar(s i))) then all := false end
+            end
+            all
+        end
+
+    let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
+
+    (* Validates arity and elaborates call arguments against formal parameter modes *)
+    let rec checkCallArgs(
+        c: checker.T args: Array(ast.Expr) params: Array(model.Param) e: env.T loopDepth: Int offset: Int
+    ): Array(typedAst.Expr) =
+        begin
+            if extent args isnot extent params then
+                diagnostics.fail(:Ok "Function expects " <> conv.int(extent params) <> " arguments, but got " <>
+                    conv.int(extent args) offset)
+            end
+            let typed = vector.new(:typedAst.Expr)
+            for i = 0 upto {extent args - 1} do
+                let param = params[i]
+                vector.append(:typedAst.Expr typed
+                    if param.isVar orif param.isOut then
+                        checkLvalueArg(c args[i] param.type e loopDepth param.isOut)
+                    else
+                        checker.checkExpr(c args[i] param.type e loopDepth)
+                    end)
+            end
+            vector.toArray(:typedAst.Expr typed)
+        end
+
+    (* Validates that arg is a mutable location for a var or out parameter: @target, or var(initial value) *)
+    and checkLvalueArg(c: checker.T arg: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool): typedAst.Expr =
+        case arg.form
+            when exprDerefCell with x then checkLvalueTarget(c x.target paramType e loopDepth isOut arg.span.startOffset)
+            when exprVarCell with x then
+                expr(arg.span.startOffset varType(paramType) option exprVarCell of typedAst.ExprForm with
+                    let value = checker.checkExpr(c x.value paramType e loopDepth)
+                end)
+            else
+                diagnostics.fail(:typedAst.Expr "Argument to '" <> {if isOut then "out" else "var" end} <>
+                    "' parameter must be passed with '@' or 'var(...)'" arg.span.startOffset)
+        end
+
+    and checkLvalueTarget(
+        c: checker.T target: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool offset: Int
+    ): typedAst.Expr =
+        begin
+            let modeName = if isOut then "out" else "var" end
+            case target.form
+                when exprId with x then
+                    begin
+                        let found = checker.lookupValue(c e x.name)
+                        if maybe.isNone(:symbols.ValueSymbol found) then
+                            diagnostics.fail(:Ok "Undefined variable '" <> x.name <> "'" offset)
+                        end
+                        let sym = maybe.unwrap(:symbols.ValueSymbol found)
+                        checker.checkCapturable(c sym offset)
+                        if isOut then
+                            if not(sym.isVar) andif not(sym.isOut) andif not(isRefType(sym.type)) then
+                                diagnostics.fail(:Ok "Argument to 'out' parameter '" <> x.name <>
+                                    "' must be a mutable variable or out parameter" offset)
+                            end
+                        elsif not(sym.isVar) andif not(isVarType(sym.type)) then
+                            diagnostics.fail(:Ok "Argument to 'var' parameter '" <> x.name <> "' must be a mutable variable"
+                                offset)
+                        end
+                        let destType = lvalues.checkLvalueModeType(paramType sym.type isOut "variable" offset e)
+                        expr(offset varType(destType) option exprVar of typedAst.ExprForm with
+                            let name = sym.name let symbol = sym
+                        end)
+                    end
+                when exprSelect with x then
+                    begin
+                        let recTyped = checker.synthExpr(c x.target e loopDepth)
+                        let var recType = evaluate(recTyped.type)
+                        let isTuple = case recType.form when typeTuple then true else false end
+                        if not(isTuple) andif maybe.isNone(:Type kinds.resolveRecordBound(recType some(e))) then
+                            (* A type parameter bounded by a tuple type: its components are its bound's *)
+                            recType := maybe.unwrapOr(:Type kinds.resolveTupleBound(recType some(e)) recType)
+                        end
+                        case recType.form
+                            when typeTuple with t then
+                                begin
+                                    (* A mutable tuple component: @t.f or @t.1 *)
+                                    let fields = model.tupleValueFields(t.fields)
+                                    let var index = ~1
+                                    for i = {extent fields - 1} downto 0 do
+                                        let f = fields[i]
+                                        let named = maybe.isSome(:String f.name) andif
+                                            stringOp.equal(maybe.unwrap(:String f.name) x.field)
+                                        if named orif stringOp.equal(conv.int(i) x.field) then index := i end
+                                    end
+                                    if index < 0 then
+                                        diagnostics.fail(:Ok "Tuple type '" <> model.show(recType) <>
+                                            "' has no component matching '" <> x.field <> "'" offset)
+                                    end
+                                    let f = fields[index]
+                                    if not(f.isVar orif isRefType(f.type)) then
+                                        diagnostics.fail(:Ok "Tuple component '" <> x.field <> "' is not mutable" offset)
+                                    end
+                                    let destType = lvalues.checkLvalueModeType(paramType f.type isOut "tuple component"
+                                        offset e)
+                                    let fieldName = if digits(x.field) then maybe.none(:String) else maybe.some(:String x.field) end
+                                    expr(offset varType(destType) option exprTupleSelectRef of typedAst.ExprForm with
+                                        let target = recTyped let index = index let field = fieldName
+                                    end)
+                                end
+                            else
+                                begin
+                                    let recBound = kinds.resolveRecordBound(recType some(e))
+                                    if maybe.isNone(:Type recBound) then
+                                        diagnostics.fail(:Ok "Target of field selection in '" <> modeName <>
+                                            "' argument must be a Record or Tuple, got '" <> model.show(recType) <> "'"
+                                            offset)
+                                    end
+                                    let fields = case maybe.unwrap(:Type recBound).form
+                                        when typeRecord with r then r.fields
+                                        else array of :model.RecordField end
+                                    end
+                                    let field = model.recordGetField(fields x.field)
+                                    if maybe.isNone(:model.RecordField field) then
+                                        diagnostics.fail(:Ok "Record type '" <> model.show(recType) <> "' has no field '" <>
+                                            x.field <> "'" offset)
+                                    end
+                                    let f = maybe.unwrap(:model.RecordField field)
+                                    if not(f.isVar) andif not(isRefType(f.type)) then
+                                        diagnostics.fail(:Ok "Record field '" <> x.field <> "' is not mutable" offset)
+                                    end
+                                    let fieldType = lvalues.checkLvalueModeType(paramType f.type isOut "field" offset e)
+                                    expr(offset varType(fieldType) option exprSelectRef of typedAst.ExprForm with
+                                        let target = recTyped let field = x.field
+                                    end)
+                                end
+                        end
+                    end
+                when exprIndex with x then
+                    begin
+                        let arrTyped = checker.synthExpr(c x.target e loopDepth)
+                        let arrType = evaluate(arrTyped.type)
+                        let element = case arrType.form
+                            when typeArray with a then a.element
+                            else
+                                diagnostics.fail(:Type "Target of array indexing in '" <> modeName <>
+                                    "' argument must be an Array, got '" <> model.show(arrType) <> "'" offset)
+                        end
+                        let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
+                        let destType = lvalues.checkLvalueModeType(paramType element isOut "array element" offset e)
+                        expr(offset varType(destType) option exprIndexRef of typedAst.ExprForm with
+                            let target = arrTyped let index = idxTyped
+                        end)
+                    end
+                else
+                    diagnostics.fail(:typedAst.Expr "Argument to '" <> modeName <>
+                        "' parameter must be a mutable variable, field, or array element" offset)
+            end
+        end
+
+    let synthMonomorphicApp(
+        c: checker.T offset: Int funcTyped: typedAst.Expr args: Array(ast.Expr) fnType: Type e: env.T loopDepth: Int
+    ): typedAst.Expr =
+        case fnType.form
+            when typeFun with f then
+                expr(offset f.result option exprApp of typedAst.ExprForm with
+                    let func = funcTyped let args = checkCallArgs(c args f.params e loopDepth offset)
+                end)
+            else diagnostics.fail(:typedAst.Expr "internal: not a function type" offset)
+        end
+
+    let isTypeOrKindArg(a: ast.Expr): Bool = case a.form when typeArg then true when kindArg then true else false end
+
+    let pruned(m: Type): Bool = not(model.same(model.prune(m) m))
+
+    (* Instantiates a polymorphic function using explicit type arguments or metavariable inference. Following
+     * Cardelli (The Quest Language and System section 4), omitted type arguments are inferred from the types of the
+     * arguments and, failing that, from the type required by the context (expected). A type argument that cannot be
+     * inferred is an error, except that a call whose expected type still depends on the enclosing call's unsolved type
+     * arguments defers its own to that call (e.g. nil() in cons(nil() tail)). *)
+    let rec synthPolymorphicApp(
+        c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type e: env.T loopDepth: Int
+        expected: maybe.T(Type)
+    ): typedAst.Expr =
+        case allType.form
+            when typeAll with all then
+                begin
+                    (* 1. Explicit type and kind arguments (f(:Int 42), id(:Int)) *)
+                    let var numTargs = 0
+                    while {numTargs < extent args} andif isTypeOrKindArg(args[numTargs]) do numTargs := numTargs + 1 end
+                    if numTargs > 0 then
+                        explicitTypeApp(c offset args numTargs funcTyped allType all.quantifiers all.body e loopDepth
+                            expected)
+                    else
+                        inferredTypeApp(c offset args funcTyped allType all.quantifiers all.body e loopDepth expected)
+                    end
+                end
+            else diagnostics.fail(:typedAst.Expr "internal: not a polymorphic type" offset)
+        end
+
+    and explicitTypeApp(
+        c: checker.T offset: Int args: Array(ast.Expr) numTargs: Int funcTyped: typedAst.Expr allType: Type
+        quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
+    ): typedAst.Expr =
+        begin
+            if numTargs > extent quantifiers then
+                diagnostics.fail(:Ok "Too many type arguments: expected at most " <> conv.int(extent quantifiers) <>
+                    ", got " <> conv.int(numTargs) offset)
+            end
+            let subst = model.newSubst()
+            let resolved = vector.new(:Type)
+            for i = 0 upto {numTargs - 1} do
+                let q = quantifiers[i]
+                let targ = args[i]
+                case targ.form
+                    when typeArg with x then
+                        begin
+                            let targVal = elaborateTypes.elaborateType(x.typeVal e)
+                            checks.checkTypeArgKind("Type argument" targVal model.substituteInKind(q.bound subst) e
+                                targ.span.startOffset)
+                            hashMap.insert(:Int :Type subst q.symbolId targVal)
+                            vector.append(:Type resolved targVal)
+                        end
+                    else
+                        diagnostics.fail(:Ok "Explicit kind arguments are not supported in runtime calls"
+                            targ.span.startOffset)
+                end
+            end
+            let instantiated = if numTargs < extent quantifiers then
+                let remaining = vector.new(:model.Quantifier)
+                for i = numTargs upto {extent quantifiers - 1} do
+                    let q = quantifiers[i]
+                    vector.append(:model.Quantifier remaining tuple
+                        let name = q.name let symbolId = q.symbolId let bound = model.substituteInKind(q.bound subst)
+                    end)
+                end
+                model.allType(vector.toArray(:model.Quantifier remaining) model.substitute(body subst))
+            else
+                model.substitute(body subst)
+            end
+            let resolvedTargs = vector.toArray(:Type resolved)
+            escape.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
+            let typedTypeApp = expr(offset instantiated option exprTypeApp of typedAst.ExprForm with
+                let func = funcTyped let typeArgs = resolvedTargs
+            end)
+            if numTargs is extent args then
+                typedTypeApp
+            else
+                let remainingArgs = vector.new(:ast.Expr)
+                for i = numTargs upto {extent args - 1} do vector.append(:ast.Expr remainingArgs args[i]) end
+                let rest = vector.toArray(:ast.Expr remainingArgs)
+                let instLazy = evaluate(instantiated)
+                case instLazy.form
+                    when typeAll then synthPolymorphicApp(c offset rest typedTypeApp instLazy e loopDepth expected)
+                    when typeFun then synthMonomorphicApp(c offset typedTypeApp rest instLazy e loopDepth)
+                    else
+                        diagnostics.fail(:typedAst.Expr "Cannot invoke non-function type '" <> model.show(instLazy) <> "'"
+                            offset)
+                end
+            end
+        end
+
+    (* Metavariable inference for implicit type arguments *)
+    and inferredTypeApp(
+        c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type
+        quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
+    ): typedAst.Expr =
+        begin
+            let fnBody = evaluate(body)
+            (* An empty application of a polymorphic constant instantiates it (Cardelli: nil()) *)
+            let isInstantiation = case fnBody.form when typeFun then false else true end
+            if isInstantiation andif {extent args > 0} then
+                diagnostics.fail(:Ok "Polymorphic body is '" <> model.show(fnBody) <> "', not a function type" offset)
+            end
+            let metaMap = model.newSubst()
+            for i = 0 upto {extent quantifiers - 1} do
+                let q = quantifiers[i]
+                hashMap.insert(:Int :Type metaMap q.symbolId model.newMeta(model.typeKind maybe.some(:String "?" <> q.name)))
+            end
+            let instantiatedFn = model.substitute(fnBody metaMap)
+            let resultType = case instantiatedFn.form
+                when typeFun with f then if isInstantiation then instantiatedFn else f.result end
+                else instantiatedFn
+            end
+            (* This call's type arguments, plus any that calls nested in its arguments defer to it *)
+            let typeArgs = vector.new(:checker.PendingTypeArg)
+            for i = 0 upto {extent quantifiers - 1} do
+                let q = quantifiers[i]
+                vector.append(:checker.PendingTypeArg typeArgs tuple
+                    let meta = hashMap.find(:Int :Type metaMap q.symbolId) let quantifier = q let offset = offset
+                end)
+            end
+            let enclosing = c.pendingTypeArgs
+            c.pendingTypeArgs := maybe.some(:vector.T(checker.PendingTypeArg) typeArgs)
+            let var typedArgs =
+                try
+                    case instantiatedFn.form
+                        when typeFun with f then
+                            if isInstantiation then
+                                array of :typedAst.Expr end
+                            else
+                                checkCallArgs(c args f.params e loopDepth offset)
+                            end
+                        else array of :typedAst.Expr end
+                    end
+                when diagnostics.compilerError with err then
+                    c.pendingTypeArgs := enclosing
+                    diagnostics.raiseError(:Array(typedAst.Expr) err)
+                end
+            c.pendingTypeArgs := enclosing
+
+            let anyUnsolved(): Bool =
+                begin
+                    let var found = false
+                    for i = 0 upto {vector.length(:checker.PendingTypeArg typeArgs) - 1} do
+                        if not(pruned(vector.get(:checker.PendingTypeArg typeArgs i).meta)) then found := true end
+                    end
+                    found
+                end
+            if maybe.isSome(:Type expected) andif anyUnsolved() then
+                (* Inference from the type required by this instance (a failed match is reported by the caller) *)
+                subtyping.isSubtype(resultType maybe.unwrap(:Type expected) env.lookupOf(e))
+                ok
+            end
+
+            let unsolved = vector.filter(:checker.PendingTypeArg typeArgs
+                fun(p: checker.PendingTypeArg): Bool not(pruned(p.meta)))
+            if not(vector.empty(:checker.PendingTypeArg unsolved)) then
+                let defers = maybe.isSome(:vector.T(checker.PendingTypeArg) enclosing) andif
+                    maybe.isSome(:Type expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}
+                if defers then
+                    let outer = maybe.unwrap(:vector.T(checker.PendingTypeArg) enclosing)
+                    for i = 0 upto {vector.length(:checker.PendingTypeArg unsolved) - 1} do
+                        vector.append(:checker.PendingTypeArg outer vector.get(:checker.PendingTypeArg unsolved i))
+                    end
+                else
+                    let n = vector.length(:checker.PendingTypeArg unsolved)
+                    let var names = ""
+                    for i = 0 upto {n - 1} do
+                        let name = "'" <> vector.get(:checker.PendingTypeArg unsolved i).quantifier.name <> "'"
+                        names := if i is 0 then name else names <> ", " <> name end
+                    end
+                    let plural = n > 1
+                    diagnostics.fail(:Ok "Cannot infer type argument" <> {if plural then "s" else "" end} <> " " <> names <>
+                        " from the arguments or the expected type; supply " <> {if plural then "them" else "it" end} <>
+                        " explicitly" vector.get(:checker.PendingTypeArg unsolved 0).offset)
+                end
+            end
+
+            for i = 0 upto {vector.length(:checker.PendingTypeArg typeArgs) - 1} do
+                let p = vector.get(:checker.PendingTypeArg typeArgs i)
+                let solved = model.prune(p.meta)
+                if not(model.same(solved p.meta)) then
+                    (* Substituting prunes the solved metavariables *)
+                    let bound = model.substituteInKind(model.substituteInKind(p.quantifier.bound metaMap) model.newSubst())
+                    checks.checkTypeArgKind("Inferred type argument" model.resolveMetas(solved) bound e p.offset)
+                end
+            end
+
+            let resolved = vector.new(:Type)
+            for i = 0 upto {extent quantifiers - 1} do
+                vector.append(:Type resolved model.resolveMetas(hashMap.find(:Int :Type metaMap quantifiers[i].symbolId)))
+            end
+            let resolvedTargs = vector.toArray(:Type resolved)
+            let finalFn = model.resolveMetas(instantiatedFn)
+            if maybe.isNone(:vector.T(checker.PendingTypeArg) c.pendingTypeArgs) then
+                (* Arguments elaborated in check mode and nested calls that deferred to this one still refer to the
+                 * now-solved metavariables *)
+                let resolvedArgs = vector.new(:typedAst.Expr)
+                for i = 0 upto {extent typedArgs - 1} do
+                    vector.append(:typedAst.Expr resolvedArgs metas.resolveTypedMetas(typedArgs[i]))
+                end
+                typedArgs := vector.toArray(:typedAst.Expr resolvedArgs)
+                let var leaked = extent model.unsolvedMetas(finalFn) > 0
+                for i = 0 upto {extent resolvedTargs - 1} do
+                    if extent model.unsolvedMetas(resolvedTargs[i]) > 0 then leaked := true end
+                end
+                if leaked then diagnostics.fail(:Ok "internal: metavariables escaped polymorphic call inference" offset) end
+            end
+
+            escape.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
+            let typedTypeApp = expr(offset finalFn option exprTypeApp of typedAst.ExprForm with
+                let func = funcTyped let typeArgs = resolvedTargs
+            end)
+            if isInstantiation then
+                typedTypeApp
+            else
+                case finalFn.form
+                    when typeFun with f then
+                        expr(offset f.result option exprApp of typedAst.ExprForm with
+                            let func = typedTypeApp let args = typedArgs
+                        end)
+                    else diagnostics.fail(:typedAst.Expr "internal: not a function type" offset)
+                end
+            end
+        end
+
+    let elaborateApp(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+        case x0.form
+            when exprApp with x then
+                begin
+                    let offset = x0.span.startOffset
+                    let args = vector.toArray(:ast.Expr x.args)
+                    let isOrdinal = case x.func.form when exprId with f then stringOp.equal(f.name "ordinal") else false end
+                    if isOrdinal then
+                        (* The built-in monadic operator ordinal (Cardelli section 4.5) *)
+                        if extent args isnot 1 then diagnostics.fail(:Ok "ordinal expects 1 argument" offset) end
+                        let argTyped = checker.synthExpr(c args[0] e loopDepth)
+                        let argLazy = evaluate(argTyped.type)
+                        let isOption = case argLazy.form when typeOption then true else false end
+                        if not(isOption) andif maybe.isNone(:Type kinds.resolveOptionBound(argLazy maybe.none(:env.T))) then
+                            diagnostics.fail(:Ok "ordinal requires an Option type, got '" <> model.show(argTyped.type) <> "'"
+                                args[0].span.startOffset)
+                        end
+                        let funcTyped = checker.synthCallee(c x.func e loopDepth)
+                        expr(offset model.intType option exprApp of typedAst.ExprForm with
+                            let func = funcTyped let args = array of argTyped end
+                        end)
+                    else
+                        let funcTyped = checker.synthCallee(c x.func e loopDepth)
+                        let fnType = evaluate(funcTyped.type)
+                        case fnType.form
+                            when typeAll then synthPolymorphicApp(c offset args funcTyped fnType e loopDepth expected)
+                            when typeFun then synthMonomorphicApp(c offset funcTyped args fnType e loopDepth)
+                            else
+                                diagnostics.fail(:typedAst.Expr "Cannot invoke non-function type '" <> model.show(fnType) <>
+                                    "'" x.func.span.startOffset)
+                        end
+                    end
+                end
+            else diagnostics.fail(:typedAst.Expr "internal: not an application" x0.span.startOffset)
+        end
+end

@@ -53,6 +53,14 @@ export
     let kindIdsSeenUndefined = hashMap.new(:Int :Bool intEqual hash.int)
 
     let meaningsChanged(): Ok = counters.generation := counters.generation + 1
+
+    (* The symbols failed declarations bound, by id: value ids have a counter of their own *)
+    let poisonedValues = hashMap.new(:Int :Bool intEqual hash.int)
+    let poisonedTypes = hashMap.new(:Int :Bool intEqual hash.int)
+    let poisonValue(symbolId: Int): Ok = begin hashMap.insert(:Int :Bool poisonedValues symbolId true) ok end
+    let isPoisonedValue(symbolId: Int): Bool = hashMap.contains(:Int :Bool poisonedValues symbolId)
+    let poison(symbolId: Int): Ok = begin hashMap.insert(:Int :Bool poisonedTypes symbolId true) ok end
+    let isPoisoned(symbolId: Int): Bool = hashMap.contains(:Int :Bool poisonedTypes symbolId)
     let meaningGeneration(): Int = counters.generation
 
     let newValueSymbol(
