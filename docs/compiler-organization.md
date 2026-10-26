@@ -130,6 +130,12 @@ Def Node(Form::TYPE) = Tuple
 end
 ```
 
+`Node`, like the other components of the AST, is a tuple rather than a record because tuples are cheaper. A tuple is one
+pointer to its components, each at a fixed offset, so `node.span` is a single load
+([c-representation.md](c-representation.md) §5.1). A record allows subtyping in any order, so it is a 16-byte pair of
+payload and offset table, its payload carries a header, and each field access goes through the table (same document,
+§5.2). The AST needs none of that subtyping.
+
 #### Trade-off Analysis: Parameterized `Node(Form)` vs. Flat Variants
 
 - **Pros:**
