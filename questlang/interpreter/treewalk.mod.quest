@@ -407,7 +407,9 @@ export
             found
         end
 
-    (* What opt!tag gives for an option: a tuple of the case's ordinal followed by the payload's components *)
+    (* What opt!tag gives for an option: a new tuple of the case's ordinal
+       followed by the payload's components (its var components copies of the
+       payload's, which a case's binder shares) *)
     let optionAssertion(t: model.Tagged caseIndex: Int): Value =
         begin
             let ord = model.intValue(caseIndex)
@@ -421,7 +423,10 @@ export
                         let elements = array of({n + 1} ord)
                         let labels = array of({n + 1} noLabel)
                         for i = 0 upto {n - 1} do
-                            elements[i + 1] := x.t.elements[i]
+                            elements[i + 1] := case x.t.elements[i]
+                                when vRef with r then model.cellValue(model.deref(r.r))
+                                else x.t.elements[i]
+                            end
                             if maybe.isSome(:Array(maybe.T(String)) x.t.labels)
                                 andif {i < extent maybe.unwrap(:Array(maybe.T(String)) x.t.labels)} then
                                 labels[i + 1] := maybe.unwrap(:Array(maybe.T(String)) x.t.labels)[i]

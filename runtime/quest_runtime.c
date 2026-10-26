@@ -1328,6 +1328,29 @@ QVal quest_proxy_option_element(const void *p, size_t i) {
                               quest_payload_element_type(tc->payload_type, i));
 }
 
+/* The payload of case `tag` of option orig (an original, of type `stored`),
+ * viewed at the payload of case `view_tag` of type `view` (the same case) */
+static void *quest_option_payload_viewed(const void *orig, const QTypeDescriptor *stored, int64_t tag,
+                                         const QTypeDescriptor *view, int64_t view_tag) {
+    const QVariantCaseDescriptor *fc = &((const QVariantTypeDescriptor *)quest_proxied_type(stored)->extra)->cases[tag];
+    const QVariantCaseDescriptor *tc =
+        &((const QVariantTypeDescriptor *)quest_proxied_type(view)->extra)->cases[view_tag];
+    QVal payload = { .p = (void *)((const char *)orig + Q_OPTION_PAYLOAD_OFFSET) };
+    return quest_convert(payload, fc->payload_type, tc->payload_type).p;
+}
+
+void *quest_proxy_option_payload(const void *p) {
+    const QProxy *proxy = quest_proxy_of(p);
+    int64_t tag = *(const int64_t *)proxy->orig;
+    return quest_option_payload_viewed(proxy->orig, proxy->stored, tag, proxy->view, proxy->tags[tag]);
+}
+
+void *quest_view_option_payload(const void *opt, const QViewMap *m) {
+    const void *orig = quest_unproxy(opt);
+    const QTypeDescriptor *stored = quest_is_proxy(opt) ? quest_proxy_of(opt)->stored : m->actual;
+    return quest_option_payload_viewed(orig, stored, *(const int64_t *)orig, m->bound, quest_view_option_tag(opt, m));
+}
+
 /* Whether a value of type d (a tuple or option) may be a proxy, as the compiler decides it for the type
  * (may_be_proxied in codegen/layout.py), or less often: a tuple one of whose components may change view, an option
  * of two or more cases or one of whose payloads' components may. A component may change view when it is

@@ -1,0 +1,209 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun read(o: O): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(o) {
+          case some (p: Tuple k: Int var x: Int end): {
+            let %4: Int = tuple_field(p, 1)
+            jump k1(%4)
+          }
+          else: {
+            jump k1(0)
+          }
+        }
+      }
+    }
+  }
+  let k: Int = 1
+  let x: Int = 1
+  let %5: Tuple k: Int var x: Int end = tuple(k, x)
+  let o.1: O = option(some, %5)
+  switch tag(o.1) {
+    case some (p.1: Tuple k: Int var x: Int end): {
+      store p.1.#1 := 2
+    }
+    else: {
+    }
+  }
+  let %6: Int = call read(o.1)
+  let %7: String = call conv.int(%6)
+  let %8: String = prim <>("binder: ", %7)
+  do call print(%8)
+  let arr: Array(O) = array(o.1)
+  let %9: O = index(arr, 0)
+  switch tag(%9) {
+    case some (p.2: Tuple k: Int var x: Int end): {
+      let %10: Int = tuple_field(p.2, 1)
+      let %11: Int = prim +(%10, 1)
+      store p.2.#1 := %11
+    }
+    else: {
+    }
+  }
+  let %12: Int = call read(o.1)
+  let %13: String = call conv.int(%12)
+  let %14: String = prim <>("in an array: ", %13)
+  do call print(%14)
+  let o.2: O = o.1
+  let t: Tuple o: O end = tuple(o.2)
+  let %15: O = tuple_field(t, 0)
+  switch tag(%15) {
+    case some (p.3: Tuple k: Int var x: Int end): {
+      let %16: Int = tuple_field(p.3, 1)
+      let %17: Int = prim +(%16, 1)
+      store p.3.#1 := %17
+    }
+    else: {
+    }
+  }
+  let %18: Int = call read(o.1)
+  let %19: String = call conv.int(%18)
+  let %20: String = prim <>("in a tuple: ", %19)
+  do call print(%20)
+  join k2(same: Bool) {
+    let %21: String = call conv.bool(same)
+    let %22: String = prim <>("bindings are the same: ", %21)
+    do call print(%22)
+    join k4(keep: Tuple k: Int var x: Int end) {
+      store keep.#1 := 10
+      let %23: Int = call read(o.1)
+      let %24: String = call conv.int(%23)
+      let %25: String = prim <>("kept binding: ", %24)
+      do call print(%25)
+      let %26: Tuple Int k: Int var x: Int end = payload(o.1, some) #1
+      let %27: Int = tuple_field(%26, 2)
+      let %28: String = call conv.int(%27)
+      let %29: String = prim <>("! of it: ", %28)
+      do call print(%29)
+      let e: Tuple Int k: Int var x: Int end = payload(o.1, some) #1
+      store e.#2 := 20
+      let %30: Int = call read(o.1)
+      let %31: String = call conv.int(%30)
+      let %32: Int = tuple_field(e, 2)
+      let %33: String = call conv.int(%32)
+      let %34: String = prim <>(" ", %33)
+      let %35: String = prim <>(%31, %34)
+      let %36: String = prim <>("! is a copy: ", %35)
+      do call print(%36)
+      let u: O2 = o.1
+      switch tag(u) {
+        case some (p.4: Tuple k: Int var x: Int end): {
+          store p.4.#1 := 30
+        }
+        else: {
+        }
+      }
+      let %37: Int = call read(o.1)
+      let %38: String = call conv.int(%37)
+      let %39: String = prim <>("through an upcast: ", %38)
+      do call print(%39)
+      let r.1: Record a: Int b: Int end = record(a = 1, b = 2)
+      let x.1: Int = 0
+      let %40: Tuple r: Big var x: Int end = tuple(r.1, x.1)
+      let r1: R1 = option(some, %40)
+      let r2: R2 = r1
+      switch tag(r2) {
+        case some (p.5: Tuple r: Small var x: Int end): {
+          let %41: Small = tuple_field(p.5, 0)
+          let %42: Int = record_field(%41, a)
+          let %43: Int = prim +(%42, 40)
+          store p.5.#1 := %43
+        }
+        else: {
+        }
+      }
+      join k5(r.2: Int) {
+        let %44: String = call conv.int(r.2)
+        let %45: String = prim <>("payload viewed at a supertype: ", %44)
+        do call print(%45)
+        funs {
+          fun bump0 [A::<: R2](v: A): Ok {
+            switch tag(v) {
+              case some (p.6: Tuple r: Small var x: Int end): {
+                let %46: Int = tuple_field(p.6, 1)
+                let %47: Int = prim +(%46, 1)
+                store p.6.#1 := %47
+              }
+              else: {
+              }
+            }
+            return ok
+          }
+        }
+        let bump: All(A <: R2) Fun(v: A): Ok = bump0
+        do call bump [R1](r1)
+        join k6(r.3: Int) {
+          let %48: String = call conv.int(r.3)
+          let %49: String = prim <>("through a bound: ", %48)
+          do call print(%49)
+        } in {
+          switch tag(r1) {
+            case some (p.7: Tuple r: Big var x: Int end): {
+              let %50: Int = tuple_field(p.7, 1)
+              jump k6(%50)
+            }
+            else: {
+              jump k6(0)
+            }
+          }
+        }
+      } in {
+        switch tag(r1) {
+          case some (p.8: Tuple r: Big var x: Int end): {
+            let %51: Int = tuple_field(p.8, 1)
+            jump k5(%51)
+          }
+          else: {
+            jump k5(0)
+          }
+        }
+      }
+    } in {
+      switch tag(o.1) {
+        case some (p.9: Tuple k: Int var x: Int end): {
+          jump k4(p.9)
+        }
+        else: {
+          let k.1: Int = 0
+          let x.2: Int = 0
+          let %52: Tuple k: Int var x: Int end = tuple(k.1, x.2)
+          jump k4(%52)
+        }
+      }
+    }
+  } in {
+    switch tag(o.1) {
+      case some (p.10: Tuple k: Int var x: Int end): {
+        join k3(r.4: Bool) {
+          jump k2(r.4)
+        } in {
+          switch tag(o.1) {
+            case some (q: Tuple k: Int var x: Int end): {
+              let %53: Bool = prim is(p.10, q)
+              jump k3(%53)
+            }
+            else: {
+              jump k3(false)
+            }
+          }
+        }
+      }
+      else: {
+        jump k2(false)
+      }
+    }
+  }
+}
+

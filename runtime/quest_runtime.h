@@ -747,6 +747,14 @@ void    quest_proxy_store(const void *p, size_t i, QVal v);
 /* Through a proxy of an option: its tag in the view's numbering, and element i of its case's payload */
 int64_t quest_proxy_tag(const void *p);
 QVal    quest_proxy_option_element(const void *p, size_t i);
+/* The tuple payload of an option's case, which a case's binder shares (var
+ * components included): the original's, which follows its tag, viewed at the
+ * view's payload type for the case (a proxy of it where a component changes
+ * view), through a proxy of the option or through a view map of a bounded type
+ * parameter's */
+void   *quest_proxy_option_payload(const void *p);
+struct QViewMap;
+void   *quest_view_option_payload(const void *opt, const struct QViewMap *m);
 
 /* A tuple's element i, an option's tag, and element i of an option's case payload, through a proxy or not, for the
  * runtime's readers of values by descriptor (t: the value's type) */

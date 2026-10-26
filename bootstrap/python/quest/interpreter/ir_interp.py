@@ -738,7 +738,10 @@ def _payload(v: QValue, tag: str, ordinal_index: Optional[int]) -> QValue:
         if v.payload is None:
             return QTuple(elements=(ordinal,), labels=(None,))
         if isinstance(v.payload, QTuple):
-            return QTuple(elements=(ordinal, *v.payload.elements), labels=(None, *v.payload.labels))
+            # A new tuple: its var components are copies of the payload's
+            # (which a case's binder shares)
+            elements = (QRef(e.deref()) if isinstance(e, QRef) else e for e in v.payload.elements)
+            return QTuple(elements=(ordinal, *elements), labels=(None, *v.payload.labels))
         return QTuple(elements=(ordinal, v.payload), labels=(None, None))
     return v.payload if v.payload is not None else QOk()
 

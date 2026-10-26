@@ -603,6 +603,11 @@ Option types provide ordered sum types with ordinal reflection and extraction (C
   type of `e`, the ordinal component of `opt!tag` in the static type of `opt`, and construction by ordinal in
   `OptionType`. After `let p: Option b a end = option b of Option a b end end`, `ordinal(p)` is 0
   (`language/option_case_order`).
+- **Payload Sharing:** an option is a tag and a binding (the paper, §5.4), and a case's binder (`when tag with p`)
+  is that binding itself: assigning a `var` component through `p` changes the option, seen by every later case and
+  binding, however the option is reached (through an aggregate, an upcast, or a bounded type parameter). `opt!tag`
+  is a new tuple, since its ordinal depends on the static type: assigning its `var` components changes only it
+  (`language/option_payload_sharing`).
 - **Option Construction by Ordinal:** `option ordinal(e) of OptionType [with Binding] end`:
   - Checks $e \Leftarrow \text{Int}$.
   - Requires that all branches of `OptionType` share identical signatures (component names and types). Mismatched

@@ -1,0 +1,62 @@
+(* An option is a tag and a binding (the paper, section 5.4): a case's binder
+   is the option's payload itself, so assigning a var component through it
+   changes the option, as seen by later cases and other bindings, however the
+   option is reached. o!tag is a new tuple, of the case's ordinal and the
+   payload's components: assigning its var components changes only it. (C: the
+   binder points to the option's payload, or through a proxy, to its
+   original's, docs/c-representation.md section 5.3.) *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let O = Option none some with k: Int var x: Int end end;
+let read(o: O): Int = case o when some with p then p.x else 0 end;
+let o = option some of O with let k = 1 let var x = 1 end;
+
+(* Through a case's binder, directly and through aggregates holding the option *)
+case o when some with p then p.x := 2 else ok end;
+print("binder: " <> conv.int(read(o)));
+let arr = array of o end;
+case arr[0] when some with p then p.x := p.x + 1 else ok end;
+print("in an array: " <> conv.int(read(o)));
+let t = tuple let o = o end;
+case t.o when some with p then p.x := p.x + 1 else ok end;
+print("in a tuple: " <> conv.int(read(o)));
+
+(* Two bindings of the payload are one tuple *)
+let same = case o when some with p then case o when some with q then p is q else false end else false end;
+print("bindings are the same: " <> conv.bool(same));
+
+(* A binding kept past its case still shares *)
+let keep = case o when some with p then p else tuple let k = 0 let var x = 0 end end;
+keep.x := 10;
+print("kept binding: " <> conv.int(read(o)));
+print("! of it: " <> conv.int(o!some.x));
+
+(* o!tag is a new tuple *)
+let e = o!some;
+e.x := 20;
+print("! is a copy: " <> conv.int(read(o)) <> " " <> conv.int(e.x));
+
+(* Through an upcast that numbers the cases differently (C: a proxy) *)
+Let O2 = Option some with k: Int var x: Int end none aa end;
+let u: O2 = o;
+case u when some with p then p.x := 30 else ok end;
+print("through an upcast: " <> conv.int(read(o)));
+
+(* Through an upcast at which a component changes view (C: the payload is
+   proxied too) *)
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+Let R1 = Option none some with r: Big var x: Int end end;
+Let R2 = Option some with r: Small var x: Int end zz none end;
+let r1 = option some of R1 with let r = record a = 1 b = 2 end let var x = 0 end;
+let r2: R2 = r1;
+case r2 when some with p then p.x := p.r.a + 40 else ok end;
+print("payload viewed at a supertype: " <> conv.int(case r1 when some with p then p.x else 0 end));
+
+(* In generic code, through a bounded type parameter's view *)
+let bump0(A <: R2 v: A): Ok = case v when some with p then p.x := p.x + 1 else ok end;
+let bump: All(A <: R2 v: A) Ok = bump0;
+bump(:R1 r1);
+print("through a bound: " <> conv.int(case r1 when some with p then p.x else 0 end))

@@ -501,6 +501,12 @@ typedef struct QT_T {
       case QTAG_T_c: use(opt->u.c.qv_x, opt->u.c.qv_y); break;
   }
   ```
+- **Case Binders Share the Payload:** a tuple has no header, so a case's payload struct, which follows the tag, is a
+  tuple of the payload's type. A case's binder points to it (`(QTuple_... *)((const char *)opt + sizeof(int64_t))`),
+  allocating nothing and sharing the option's `var` components (type-system.md §6.8). Through a proxy (§5.8) it is
+  the original's payload, viewed at the proxy's payload type for the case (`quest_proxy_option_payload`: the payload
+  itself where no component changes view, else a proxy of it); through a bounded type parameter's view map, at the
+  bound's (`quest_view_option_payload`). `opt!tag` is a new tuple: its ordinal, then copies of the components.
 
 #### 2. Variant Types (Unordered, First-Class 16-Byte `QVariantVal`, Zero-Allocation Tag Remapping)
 Unlike options, variants are unordered and each branch has **exactly one type** $A_i$ (§6.3):

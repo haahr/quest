@@ -1,0 +1,860 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (TypeBinding
+      :name 'O'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'k'
+                :type_sig (TypePath ('Int'))
+                :mode VALUE
+              )
+              (FieldSig
+                :name 'x'
+                :type_sig (TypePath ('Int'))
+                :mode VAR
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'read'
+      :value (ExprCase
+        :target (ExprId 'o')
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprSelect
+              :target (ExprId 'p')
+              :field 'x'
+            )
+          )
+        )
+        :else_branch (ExprInt 0 '0')
+      )
+      :params (
+        (FormalParam
+          :name 'o'
+          :type_annot (TypePath ('O'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'o'
+      :value (ExprOption
+        :tag 'some'
+        :option_type (TypePath ('O'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'k'
+              :value (ExprInt 1 '1')
+            )
+            (TupleBinding
+              :name 'x'
+              :value (ExprInt 1 '1')
+              :is_var True
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprCase
+        :target (ExprId 'o')
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'p')
+                :field 'x'
+              )
+              :op ':='
+              :right (ExprInt 2 '2')
+            )
+          )
+        )
+        :else_branch (ExprOk)
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'binder: ' '"binder: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'read')
+                  :args (
+                    (ExprId 'o')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'arr'
+      :value (ExprArray
+        :elements (
+          (ExprId 'o')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprCase
+        :target (ExprIndex
+          :target (ExprId 'arr')
+          :index (ExprInt 0 '0')
+        )
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'p')
+                :field 'x'
+              )
+              :op ':='
+              :right (ExprInfix
+                :left (ExprSelect
+                  :target (ExprId 'p')
+                  :field 'x'
+                )
+                :op '+'
+                :right (ExprInt 1 '1')
+              )
+            )
+          )
+        )
+        :else_branch (ExprOk)
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'in an array: ' '"in an array: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'read')
+                  :args (
+                    (ExprId 'o')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 't'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'o'
+            :value (ExprId 'o')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprCase
+        :target (ExprSelect
+          :target (ExprId 't')
+          :field 'o'
+        )
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'p')
+                :field 'x'
+              )
+              :op ':='
+              :right (ExprInfix
+                :left (ExprSelect
+                  :target (ExprId 'p')
+                  :field 'x'
+                )
+                :op '+'
+                :right (ExprInt 1 '1')
+              )
+            )
+          )
+        )
+        :else_branch (ExprOk)
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'in a tuple: ' '"in a tuple: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'read')
+                  :args (
+                    (ExprId 'o')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'same'
+      :value (ExprCase
+        :target (ExprId 'o')
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprCase
+              :target (ExprId 'o')
+              :branches (
+                (CaseBranch
+                  :tags ('some')
+                  :binder 'q'
+                  :body (ExprInfix
+                    :left (ExprId 'p')
+                    :op 'is'
+                    :right (ExprId 'q')
+                  )
+                )
+              )
+              :else_branch (ExprBool False)
+            )
+          )
+        )
+        :else_branch (ExprBool False)
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'bindings are the same: ' '"bindings are the same: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprId 'same')
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'keep'
+      :value (ExprCase
+        :target (ExprId 'o')
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprId 'p')
+          )
+        )
+        :else_branch (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'k'
+              :value (ExprInt 0 '0')
+            )
+            (TupleBinding
+              :name 'x'
+              :value (ExprInt 0 '0')
+              :is_var True
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprSelect
+          :target (ExprId 'keep')
+          :field 'x'
+        )
+        :op ':='
+        :right (ExprInt 10 '10')
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'kept binding: ' '"kept binding: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'read')
+                  :args (
+                    (ExprId 'o')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '! of it: ' '"! of it: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprVariantAssert
+                    :target (ExprId 'o')
+                    :tag 'some'
+                  )
+                  :field 'x'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'e'
+      :value (ExprVariantAssert
+        :target (ExprId 'o')
+        :tag 'some'
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprSelect
+          :target (ExprId 'e')
+          :field 'x'
+        )
+        :op ':='
+        :right (ExprInt 20 '20')
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '! is a copy: ' '"! is a copy: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprId 'read')
+                    :args (
+                      (ExprId 'o')
+                    )
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'e')
+                      :field 'x'
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'O2'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'k'
+                :type_sig (TypePath ('Int'))
+                :mode VALUE
+              )
+              (FieldSig
+                :name 'x'
+                :type_sig (TypePath ('Int'))
+                :mode VAR
+              )
+            )
+          )
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig 'aa' ())
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'u'
+      :value (ExprId 'o')
+      :type_annot (TypePath ('O2'))
+    )
+    (ExprStmt
+      :expr (ExprCase
+        :target (ExprId 'u')
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'p')
+                :field 'x'
+              )
+              :op ':='
+              :right (ExprInt 30 '30')
+            )
+          )
+        )
+        :else_branch (ExprOk)
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'through an upcast: ' '"through an upcast: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'read')
+                  :args (
+                    (ExprId 'o')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Big'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'b'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Small'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'R1'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('Big'))
+                :mode VALUE
+              )
+              (FieldSig
+                :name 'x'
+                :type_sig (TypePath ('Int'))
+                :mode VAR
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'R2'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('Small'))
+                :mode VALUE
+              )
+              (FieldSig
+                :name 'x'
+                :type_sig (TypePath ('Int'))
+                :mode VAR
+              )
+            )
+          )
+          (OptionFieldSig 'zz' ())
+          (OptionFieldSig 'none' ())
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r1'
+      :value (ExprOption
+        :tag 'some'
+        :option_type (TypePath ('R1'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'r'
+              :value (ExprRecord
+                :fields (
+                  (RecordBinding
+                    :name 'a'
+                    :value (ExprInt 1 '1')
+                  )
+                  (RecordBinding
+                    :name 'b'
+                    :value (ExprInt 2 '2')
+                  )
+                )
+              )
+            )
+            (TupleBinding
+              :name 'x'
+              :value (ExprInt 0 '0')
+              :is_var True
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r2'
+      :value (ExprId 'r1')
+      :type_annot (TypePath ('R2'))
+    )
+    (ExprStmt
+      :expr (ExprCase
+        :target (ExprId 'r2')
+        :branches (
+          (CaseBranch
+            :tags ('some')
+            :binder 'p'
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'p')
+                :field 'x'
+              )
+              :op ':='
+              :right (ExprInfix
+                :left (ExprSelect
+                  :target (ExprSelect
+                    :target (ExprId 'p')
+                    :field 'r'
+                  )
+                  :field 'a'
+                )
+                :op '+'
+                :right (ExprInt 40 '40')
+              )
+            )
+          )
+        )
+        :else_branch (ExprOk)
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'payload viewed at a supertype: ' '"payload viewed at a supertype: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprCase
+                  :target (ExprId 'r1')
+                  :branches (
+                    (CaseBranch
+                      :tags ('some')
+                      :binder 'p'
+                      :body (ExprSelect
+                        :target (ExprId 'p')
+                        :field 'x'
+                      )
+                    )
+                  )
+                  :else_branch (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'bump0'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'v'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('Ok'))
+        :body (ExprCase
+          :target (ExprId 'v')
+          :branches (
+            (CaseBranch
+              :tags ('some')
+              :binder 'p'
+              :body (ExprInfix
+                :left (ExprSelect
+                  :target (ExprId 'p')
+                  :field 'x'
+                )
+                :op ':='
+                :right (ExprInfix
+                  :left (ExprSelect
+                    :target (ExprId 'p')
+                    :field 'x'
+                  )
+                  :op '+'
+                  :right (ExprInt 1 '1')
+                )
+              )
+            )
+          )
+          :else_branch (ExprOk)
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('R2'))
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('R2'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'v'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+    )
+    (LetValueBinding
+      :name 'bump'
+      :value (ExprId 'bump0')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindPower
+              :bound (TypePath ('R2'))
+            )
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'v'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'bump')
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('R1'))
+          )
+          (ExprId 'r1')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'through a bound: ' '"through a bound: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprCase
+                  :target (ExprId 'r1')
+                  :branches (
+                    (CaseBranch
+                      :tags ('some')
+                      :binder 'p'
+                      :body (ExprSelect
+                        :target (ExprId 'p')
+                        :field 'x'
+                      )
+                    )
+                  )
+                  :else_branch (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

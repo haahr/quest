@@ -951,6 +951,23 @@ class CPrinter:
             self.emit(f"{tmp}->_{c_int(offset)} = {self.option_component(opt, os, tag, None, access[0])};")
         return tmp
 
+    def option_case_payload(self, opt: str, tuple_t: QType, tag_access: str, access: tuple[str, ...]) -> str:
+        """The payload of an option's case, a tuple, which a case's binder
+        shares (var components included): the option's own, which follows its
+        tag (a tuple's struct), or through a proxy, the original's, viewed at
+        the proxy's payload type (proxied where a component changes view)."""
+        self.c_type(tuple_t)
+        struct = shape_tag(shape(tuple_t))
+
+        def own(o: str) -> str:
+            return f"(({struct} *)((const char *)({o}) + sizeof(int64_t)))"
+
+        if tag_access == ir.DIRECT:
+            return own(opt)
+        if ir.PROXY not in access:
+            return own(f"quest_unproxy({opt})")
+        return f"(quest_is_proxy({opt}) ? ({struct} *)quest_proxy_option_payload({opt}) : {own(opt)})"
+
     def payload(self, o: ir.Payload, t: QType) -> str:
         v, tag, offset = o.value, o.tag, o.offset
         ts = self.tag_shape(self.atom_type(v))
@@ -1329,15 +1346,20 @@ class CPrinter:
             self.emit("{")
             self.indent += 1
             if c.binder is not None and not self.is_ok(c.binder.type):
-                if view_map is not None:
+                if view_map is not None and not is_variant and shape(c.binder.type).kind == "tuple":
+                    # A bounded type parameter's value: its payload, viewed
+                    # at the bound's payload type
+                    self.c_type(c.binder.type)
+                    struct = shape_tag(shape(c.binder.type))
+                    self.assign(c.binder, f"(({struct} *)quest_view_option_payload({v}, {self.name(view_map)}))")
+                elif view_map is not None:
                     # A bounded type parameter's value: its payload read through the view map, converted
                     self.assign(c.binder, self.view_payload(v, t, c.tags[0], view_map, c.binder.type))
                 elif is_variant:
                     # In its slot form (a record or variant, for a boxed variable)
                     self.assign(c.binder, shape_qval_to_slot(f"{v}.payload", shape(c.binder.type)))
                 elif shape(c.binder.type).kind == "tuple":
-                    self.assign(c.binder, self.option_case_tuple(v, t, c.tags[0], c.binder.type, 0, access,
-                                                                 c.components))
+                    self.assign(c.binder, self.option_case_payload(v, c.binder.type, access, c.components))
                 else:
                     # In its slot form (a record or variant, for a boxed variable)
                     self.assign(c.binder, self.option_component(v, t, c.tags[0], None, c.components[0]))

@@ -798,8 +798,11 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                 if target_val.payload is None:
                     return QTuple(elements=(ord_val,), labels=(None,))
                 if isinstance(target_val.payload, QTuple):
+                    # A new tuple: its var components are copies of the
+                    # payload's (which a case's binder shares)
                     return QTuple(
-                        elements=(ord_val, *target_val.payload.elements),
+                        elements=(ord_val, *(QRef(e.deref()) if isinstance(e, QRef) else e
+                                             for e in target_val.payload.elements)),
                         labels=(None, *target_val.payload.labels),
                     )
                 return QTuple(elements=(ord_val, target_val.payload), labels=(None, None))
