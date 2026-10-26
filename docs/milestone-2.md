@@ -151,7 +151,7 @@ suites when it changes what they test. testing.md and the memory of push rules c
 
 Each step is one or more commits; each ends with its runs passing.
 
-### Step 0: Bootstrap refactorings
+### Step 0: Bootstrap refactorings (done)
 
 Break the cycles of §1.1 in the bootstrap: `types/symbols.py`; the elaboration hooks; `typechecker/checker.py`. No
 output changes; both bootstrap suites pass. (The benchmarks, `tests/perf/measure.py`, time the C backend and compiled
@@ -160,7 +160,7 @@ programs, which this step does not change.)
 **Done when** the bootstrap's import graph among `types`, `typechecker`, `modules`, and `syntax` (lazy imports
 included) is acyclic.
 
-### Step 1: Driver, desugaring, and the self-hosted suite
+### Step 1: Driver, desugaring, and the self-hosted suite (done)
 
 Port `syntax/desugar`; write `driver/main` with the
 tokenize, parse, and desugar phases; add `--self-hosted` and the pending list to the runner; remove the generated

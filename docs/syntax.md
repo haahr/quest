@@ -75,10 +75,11 @@ coordinates on demand:
   embedded character codes, hexadecimal `\xH` or `\xHH` and decimal `\d`, `\dd`, or `\ddd`.
 - **Characters (`CHAR_LIT`):** Delimited by single quotes `'a'`, with the same escapes.
 - **Characters are ASCII**, as in Typeful Programming: a character's code is 0 to 127. A source file must be ASCII,
-  comments included (`Non-ASCII character with code 167`), and an escape giving a code above 127 is an error
-  (`Character code 128 out of ASCII range`). The library keeps to ASCII too: `ascii.char` of a code above 127, a
-  reader reading a byte above 127, `dynamic.intern` of a string that is not ASCII, and a `system` string from the OS
-  (an argument, an environment variable, a directory or file name) that is not ASCII raise the module's `error`.
+  comments included (`Non-ASCII character`, without its code, which the self-hosted compiler's reader cannot see), and
+  an escape giving a code above 127 is an error (`Character code 128 out of ASCII range`). The library keeps to ASCII
+  too: `ascii.char` of a code above 127, a reader reading a byte above 127, `dynamic.intern` of a string that is not
+  ASCII, and a `system` string from the OS (an argument, an environment variable, a directory or file name) that is
+  not ASCII raise the module's `error`.
 
 ### 2.4. Nested Block Comments
 Quest comments nest to arbitrary depth using `(*` and `*)`:

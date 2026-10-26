@@ -1,0 +1,32 @@
+(* Quest Self-Hosted Compiler: Desugaring Interface
+ *
+ * The desugaring of bootstrap/python/quest/syntax/desugar.py: rewrites the parser's syntactic sugar into the core
+ * forms the type checker elaborates. It runs between parsing and type checking, needs neither types nor scopes, and
+ * keeps the spans of the syntax it replaces, so that errors point at the source as written (docs/syntax.md section 5).
+ *
+ * - `a andif b` becomes `if a then b else false end`, and `a orif b` becomes `if a then true else b end`, marked
+ *   shortCircuit: the type checker checks their operands against Bool and gives them type Bool.
+ * - An infix operator that is not built in (isBuiltinInfix), `a op b`, becomes the call `op(a b)`.
+ * - `a[i] := v` becomes exprIndexAssign (other assignments stay infix: their targets are told apart by scope).
+ * - `if c1 then e1 elsif c2 then e2 ... [else e] end` becomes conditionals nested in the else branches, each at its
+ *   elsif's condition; a chain without an else branch ends with `ok`. A conditional with neither elsif nor else
+ *   branches is left alone: it is a statement, of type Ok.
+ * - `let f(params): T = e`, not recursive and not external, becomes `let f = fun(params): T e`. A recursive one keeps
+ *   its parameters and result annotation, which declare its type before any value is checked; so does an external
+ *   one, whose parameters declare the external function's type.
+ *
+ * Types and kinds hold no expressions, so they are left as they are. *)
+
+interface Desugar
+import
+    questlang/syntax/ast : questlang/syntax/Ast
+export
+    (* Whether the type checker elaborates infix operator op itself: the arithmetic, relational, concatenation, and
+     * eager boolean operators, assignment, is and isnot, and == and !=, which it rejects with a suggestion *)
+    isBuiltinInfix(op: String): Bool
+
+    (* A program, a phrase, or an expression or declaration with its sugar rewritten *)
+    program(p: ast.Program): ast.Program
+    phrase(p: ast.Phrase): ast.Phrase
+    expr(e: ast.Expr): ast.Expr
+end

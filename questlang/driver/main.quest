@@ -1,0 +1,120 @@
+(* Quest Self-Hosted Compiler: Driver
+ *
+ * Runs the self-hosted compiler's phases on a Quest file, as the bootstrap driver (bootstrap/python/quest_driver.py)
+ * runs the bootstrap's: `main --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, or desugar) in the
+ * bootstrap's format on standard output, and the diagnostics on standard error, exiting with 1 if there are errors.
+ * run_tests.py --self-hosted compiles it and checks it against the bootstrap's goldens (docs/milestone-2.md
+ * section 3). *)
+
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/desugar : questlang/syntax/Desugar
+    questlang/syntax/astprint : questlang/syntax/AstPrint
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    reader : Reader
+    writer : Writer
+    system : System
+;
+
+let phases = array of "tokenize" "parse" "desugar" end;
+
+let usage(message: String): Ok =
+    begin
+        writer.putString(writer.err "main: " <> message <> "\n")
+        writer.putString(writer.err "usage: main --stop-after tokenize|parse|desugar FILE\n")
+        system.sysexit(2)
+    end;
+
+(* The command line: the phase to stop after, and the file *)
+let options =
+    begin
+        let var stopAfter = ""
+        let var file = ""
+        let var i = 1
+        while i < extent system.args do
+            let arg = system.args[i]
+            if {stringOp.equal(arg "--stop-after")} andif {{i + 1} < extent system.args} then
+                stopAfter := system.args[i + 1]
+                i := i + 2
+            elsif stringOp.equal(file "") then
+                file := arg
+                i := i + 1
+            else
+                usage("more than one file: " <> arg)
+                i := i + 1
+            end
+        end
+        let var known = false
+        for j = 0 upto {extent phases - 1} do
+            if stringOp.equal(phases[j] stopAfter) then known := true end
+        end
+        if not(known) then usage("unknown phase '" <> stopAfter <> "'") end
+        if stringOp.equal(file "") then usage("no file") end
+        tuple let stopAfter = stopAfter let file = file end
+    end;
+
+(* The text of a file, up to its first byte that is not ASCII, if any: a character is ASCII, and a reader raises
+ * reader.error rather than read another (the bootstrap's tokenizer rejects such a file first) *)
+let readFile(name: String): Tuple text: String isAscii: Bool end =
+    begin
+        let r = reader.file(name)
+        let b = stringBuilder.new()
+        let isAscii =
+            try
+                while reader.more(r) do b.char(reader.getChar(r)) end
+                true
+            when reader.error then
+                false
+            end
+        reader.close(r)
+        tuple let text = b.toString() let isAscii = isAscii end
+    end;
+
+let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+
+(* Reports the diagnostics and exits, with 1 if there are errors *)
+let finish(bag: diagbag.T sm: location.SourceMap): Ok =
+    begin
+        diagbag.renderAll(bag sm writer.err)
+        writer.flush(writer.output)
+        writer.flush(writer.err)
+        system.sysexit(if diagbag.hasErrors(bag) then 1 else 0 end)
+    end;
+
+let run(): Ok =
+    begin
+        let source = readFile(options.file)
+        let sm = location.newSourceMap(options.file source.text)
+        let bag = diagbag.new()
+        try
+            if not(source.isAscii) then
+                let offset = stringOp.length(source.text)
+                diagbag.addStoppingError(bag location.span(options.file offset {offset + 1}) "Non-ASCII character")
+            end
+            let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
+            if diagbag.hasErrors(bag) then
+                ok
+            elsif stringOp.equal(options.stopAfter "tokenize") then
+                print(tokenizer.formatDump(toks sm false))
+            else
+                let program = parser.parseProgram(toks sm bag)
+                if stringOp.equal(options.stopAfter "parse") then
+                    print(astprint.dump(program))
+                else
+                    print(astprint.dump(desugar.program(program)))
+                end
+            end
+        when diagbag.fatalError then
+            ok
+        end
+        finish(bag sm)
+    end;
+
+run();

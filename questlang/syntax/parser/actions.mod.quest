@@ -73,12 +73,11 @@ export
     let from(ctx: Ctx start: Int): location.Span = location.span(ctx.file start ctx.stop)
     let at(ctx: Ctx t: tokens.Token): location.Span = from(ctx t.span.startOffset)
 
-    (* Reports a fatal error *)
+    (* Reports an error, which stops parsing *)
     let reject(A::TYPE ctx: Ctx sp: location.Span message: String): A =
         begin
-            let d = diagnostics.fatal(message sp)
-            diagbag.add(ctx.bag d)
-            raise diagbag.fatalError with d end
+            diagbag.addStoppingError(ctx.bag sp message)
+            raise diagbag.fatalError with diagbag.get(ctx.bag {diagbag.count(ctx.bag) - 1}) end
         end
 
     let phraseName(p: ast.Phrase): String =
@@ -877,6 +876,7 @@ export
                         end
                     end)
                 let elseBranch = elseBody(ctx args[4])
+                let shortCircuit = false
             end)
         end
 

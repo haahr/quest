@@ -1,0 +1,330 @@
+(* Quest Self-Hosted Compiler: Desugaring Implementation
+ *
+ * The rewrite is bottom up, as the bootstrap's: a node's subexpressions are desugared first, then the node. *)
+
+module desugar : Desugar
+import
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let ExprForm = ast.ExprForm
+    Let PhraseForm = ast.PhraseForm
+
+    (* The infix operators the type checker elaborates itself (the bootstrap's BUILTIN_INFIX_OPERATORS) *)
+    let builtinInfix = array of
+        "+" "-" "*" "/" "%" "mod" "<" "<=" ">" ">="
+        "++" "--" "**" "//" "^^" "<<" "<<=" ">>" ">>="
+        "<>" "/\\" "\\/"
+        ":=" "is" "isnot" "==" "!="
+    end
+
+    let isBuiltinInfix(op: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent builtinInfix - 1} do
+                if stringOp.equal(builtinInfix[i] op) then found := true end
+            end
+            found
+        end
+
+    (* =========================================================================
+     * 1. Rewriting one node, whose subexpressions are desugared
+     * ========================================================================= *)
+
+    (* A conditional with an else branch and no elsifs *)
+    let conditional(sp: location.Span c: ast.Expr t: ast.Expr f: ast.Expr shortCircuit: Bool): ast.Expr =
+        ast.makeExpr(sp option exprIf of ExprForm with
+            let cond = c
+            let thenBranch = t
+            let elsifs = vector.new(:ast.ElsifBranch)
+            let elseBranch = maybe.some(:ast.Expr f)
+            let shortCircuit = shortCircuit
+        end)
+
+    (* An infix operator that is not built in is a call *)
+    let call(e: ast.Expr left: ast.Expr op: String right: ast.Expr): ast.Expr =
+        if isBuiltinInfix(op) then
+            e
+        else
+            ast.exprApp(e.span ast.exprId(e.span op) vector.fromArray(:ast.Expr array of left right end))
+        end
+
+    let rewriteInfix(e: ast.Expr left: ast.Expr op: String right: ast.Expr): ast.Expr =
+        if stringOp.equal(op "andif") then
+            conditional(e.span left right ast.exprBool(e.span false) true)
+        elsif stringOp.equal(op "orif") then
+            conditional(e.span left ast.exprBool(e.span true) right true)
+        else
+            case left.form
+                when exprIndex with i then
+                    if stringOp.equal(op ":=") then
+                        ast.makeExpr(e.span option exprIndexAssign of ExprForm with
+                            let target = i.target
+                            let index = i.index
+                            let value = right
+                        end)
+                    else
+                        call(e left op right)
+                    end
+                else
+                    call(e left op right)
+            end
+        end
+
+    (* elsifs become conditionals nested in the else branches, each at its elsif's condition *)
+    let nestElsifs(e: ast.Expr x: Tuple
+            cond: ast.Expr
+            thenBranch: ast.Expr
+            elsifs: vector.T(ast.ElsifBranch)
+            elseBranch: maybe.T(ast.Expr)
+            shortCircuit: Bool
+        end): ast.Expr =
+        begin
+            let var nested = maybe.unwrapOr(:ast.Expr x.elseBranch ast.exprOk(e.span))
+            for i = {vector.length(:ast.ElsifBranch x.elsifs) - 1} downto 0 do
+                let b = vector.get(:ast.ElsifBranch x.elsifs i)
+                let sp = location.span(b.cond.span.file b.cond.span.startOffset e.span.endOffset)
+                nested := conditional(sp b.cond b.thenBranch nested false)
+            end
+            ast.makeExpr(e.span option exprIf of ExprForm with
+                let cond = x.cond
+                let thenBranch = x.thenBranch
+                let elsifs = vector.new(:ast.ElsifBranch)
+                let elseBranch = maybe.some(:ast.Expr nested)
+                let shortCircuit = x.shortCircuit
+            end)
+        end
+
+    let isExternal(e: ast.Expr): Bool = case e.form when exprExternal then true else false end
+
+    let rewrite(e: ast.Expr): ast.Expr =
+        case e.form
+            when exprInfix with x then rewriteInfix(e x.left x.op x.right)
+            when exprIf with x then if vector.empty(:ast.ElsifBranch x.elsifs) then e else nestElsifs(e x) end
+            when declLetVal with x then
+                if not(vector.empty(:ast.FormalParam x.params)) andif not(x.isRec) andif not(isExternal(x.value)) then
+                    let fn = ast.makeExpr(e.span option exprFun of ExprForm with
+                        let params = x.params
+                        let returnType = x.typeAnnot
+                        let body = x.value
+                        let typeParams = vector.new(:ast.TypeFormal)
+                    end)
+                    ast.makeExpr(e.span option declLetVal of ExprForm with
+                        let name = x.name
+                        let value = fn
+                        let params = vector.new(:ast.FormalParam)
+                        let typeAnnot = maybe.none(:ast.TypeExpr)
+                        let isRec = x.isRec
+                        let isVar = x.isVar
+                    end)
+                else
+                    e
+                end
+            else e
+        end
+
+    (* =========================================================================
+     * 2. The walk
+     * ========================================================================= *)
+
+    let rec expr(e: ast.Expr): ast.Expr = rewrite(ast.makeExpr(e.span walk(e.form)))
+    and exprs(v: vector.T(ast.Expr)): vector.T(ast.Expr) = vector.map(:ast.Expr :ast.Expr v expr)
+    and optExpr(o: maybe.T(ast.Expr)): maybe.T(ast.Expr) =
+        if maybe.isSome(:ast.Expr o) then maybe.some(:ast.Expr expr(maybe.unwrap(:ast.Expr o))) else o end
+    and tupleBinding(b: ast.TupleFieldBinding): ast.TupleFieldBinding =
+        tuple
+            let name = b.name
+            let value = expr(b.value)
+            let typeAnnot = b.typeAnnot
+            let isVar = b.isVar
+        end
+    and tupleField(t: ast.TupleField): ast.TupleField =
+        case t
+            when fieldVal with x then option fieldVal of ast.TupleField with let val = tupleBinding(x.val) end
+            when fieldGroup with x then
+                option fieldGroup of ast.TupleField with
+                    let val = vector.map(:ast.TupleFieldBinding :ast.TupleFieldBinding x.val tupleBinding)
+                end
+            when fieldDecl with x then option fieldDecl of ast.TupleField with let val = expr(x.val) end
+        end
+    and walk(f: ExprForm): ExprForm =
+        case f
+            when exprBlock with x then option exprBlock of ExprForm with let bindings = exprs(x.bindings) end
+            when exprIf with x then
+                option exprIf of ExprForm with
+                    let cond = expr(x.cond)
+                    let thenBranch = expr(x.thenBranch)
+                    let elsifs = vector.map(:ast.ElsifBranch :ast.ElsifBranch x.elsifs
+                        fun(b: ast.ElsifBranch): ast.ElsifBranch
+                            tuple
+                                let cond = expr(b.cond)
+                                let thenBranch = expr(b.thenBranch)
+                            end)
+                    let elseBranch = optExpr(x.elseBranch)
+                    let shortCircuit = x.shortCircuit
+                end
+            when exprWhile with x then
+                option exprWhile of ExprForm with let cond = expr(x.cond) let body = expr(x.body) end
+            when exprLoop with x then option exprLoop of ExprForm with let body = expr(x.body) end
+            when exprFor with x then
+                option exprFor of ExprForm with
+                    let varName = x.varName
+                    let start = expr(x.start)
+                    let isDownto = x.isDownto
+                    let stop = expr(x.stop)
+                    let body = expr(x.body)
+                end
+            when exprFun with x then
+                option exprFun of ExprForm with
+                    let params = x.params
+                    let returnType = x.returnType
+                    let body = expr(x.body)
+                    let typeParams = x.typeParams
+                end
+            when exprApp with x then
+                option exprApp of ExprForm with let func = expr(x.func) let args = exprs(x.args) end
+            when exprInfix with x then
+                option exprInfix of ExprForm with let left = expr(x.left) let op = x.op let right = expr(x.right) end
+            when exprTuple with x then
+                option exprTuple of ExprForm with
+                    let fields = vector.map(:ast.TupleField :ast.TupleField x.fields tupleField)
+                end
+            when exprRecord with x then
+                option exprRecord of ExprForm with
+                    let fields = vector.map(:ast.RecordBinding :ast.RecordBinding x.fields
+                        fun(b: ast.RecordBinding): ast.RecordBinding
+                            tuple
+                                let name = b.name
+                                let value = expr(b.value)
+                                let isVar = b.isVar
+                            end)
+                end
+            when exprArray with x then
+                option exprArray of ExprForm with let elements = exprs(x.elements) let elementType = x.elementType end
+            when exprArrayRep with x then
+                option exprArrayRep of ExprForm with let count = expr(x.count) let initVal = expr(x.initVal) end
+            when exprOption with x then
+                option exprOption of ExprForm with
+                    let tag = x.tag
+                    let optionType = x.optionType
+                    let payload = optExpr(x.payload)
+                    let ordinalExpr = optExpr(x.ordinalExpr)
+                end
+            when exprVariant with x then
+                option exprVariant of ExprForm with
+                    let tag = x.tag
+                    let variantType = x.variantType
+                    let isVar = x.isVar
+                    let payload = optExpr(x.payload)
+                end
+            when exprAuto with x then
+                option exprAuto of ExprForm with
+                    let witnessType = x.witnessType
+                    let payload = expr(x.payload)
+                    let witnessName = x.witnessName
+                    let witnessBound = x.witnessBound
+                end
+            when exprSelect with x then
+                option exprSelect of ExprForm with let target = expr(x.target) let field = x.field end
+            when exprIndex with x then
+                option exprIndex of ExprForm with let target = expr(x.target) let index = expr(x.index) end
+            when exprIndexAssign with x then
+                option exprIndexAssign of ExprForm with
+                    let target = expr(x.target)
+                    let index = expr(x.index)
+                    let value = expr(x.value)
+                end
+            when exprVarCell with x then option exprVarCell of ExprForm with let value = expr(x.value) end
+            when exprDerefCell with x then option exprDerefCell of ExprForm with let target = expr(x.target) end
+            when exprVariantCheck with x then
+                option exprVariantCheck of ExprForm with let target = expr(x.target) let tag = x.tag end
+            when exprVariantAssert with x then
+                option exprVariantAssert of ExprForm with let target = expr(x.target) let tag = x.tag end
+            when exprCase with x then
+                option exprCase of ExprForm with
+                    let target = expr(x.target)
+                    let branches = vector.map(:ast.CaseBranch :ast.CaseBranch x.branches
+                        fun(b: ast.CaseBranch): ast.CaseBranch
+                            tuple
+                                let tags = b.tags
+                                let binder = b.binder
+                                let binderType = b.binderType
+                                let body = expr(b.body)
+                            end)
+                    let elseBranch = optExpr(x.elseBranch)
+                end
+            when exprInspect with x then
+                option exprInspect of ExprForm with
+                    let target = expr(x.target)
+                    let branches = vector.map(:ast.InspectBranch :ast.InspectBranch x.branches
+                        fun(b: ast.InspectBranch): ast.InspectBranch
+                            tuple
+                                let matchType = b.matchType
+                                let binders = b.binders
+                                let body = expr(b.body)
+                            end)
+                    let elseBranch = optExpr(x.elseBranch)
+                end
+            when exprRaise with x then
+                option exprRaise of ExprForm with
+                    let exc = expr(x.exc)
+                    let payload = optExpr(x.payload)
+                    let asType = x.asType
+                end
+            when exprTry with x then
+                option exprTry of ExprForm with
+                    let body = expr(x.body)
+                    let branches = vector.map(:ast.TryBranch :ast.TryBranch x.branches
+                        fun(b: ast.TryBranch): ast.TryBranch
+                            tuple
+                                let excPattern = expr(b.excPattern)
+                                let binder = b.binder
+                                let binderType = b.binderType
+                                let body = expr(b.body)
+                            end)
+                    let elseBranch = optExpr(x.elseBranch)
+                end
+            when declLetVal with x then
+                option declLetVal of ExprForm with
+                    let name = x.name
+                    let value = expr(x.value)
+                    let params = x.params
+                    let typeAnnot = x.typeAnnot
+                    let isRec = x.isRec
+                    let isVar = x.isVar
+                end
+            when declLetValGroup with x then
+                option declLetValGroup of ExprForm with let bindings = exprs(x.bindings) end
+            when declExprStmt with x then option declExprStmt of ExprForm with let expr = expr(x.expr) end
+            else f
+        end
+
+    (* =========================================================================
+     * 3. Phrases and programs
+     * ========================================================================= *)
+
+    let phrase(p: ast.Phrase): ast.Phrase =
+        case p.form
+            when phraseDecl with x then
+                ast.makePhrase(p.span option phraseDecl of PhraseForm with let decl = expr(x.decl) end)
+            when phraseExpr with x then
+                ast.makePhrase(p.span option phraseExpr of PhraseForm with let expr = expr(x.expr) end)
+            when phraseModule with x then
+                ast.makePhrase(p.span option phraseModule of PhraseForm with
+                    let modDecl = tuple
+                        let name = x.modDecl.name
+                        let interfaceName = x.modDecl.interfaceName
+                        let bindings = exprs(x.modDecl.bindings)
+                        let imports = x.modDecl.imports
+                        let isUnsound = x.modDecl.isUnsound
+                    end
+                end)
+            else p
+        end
+
+    let program(p: ast.Program): ast.Program =
+        ast.makeProgram(p.span vector.map(:ast.Phrase :ast.Phrase p.form.phrases phrase))
+end

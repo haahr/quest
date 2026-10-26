@@ -335,7 +335,7 @@ export
             end
         end
 
-    (* Reports a syntax error at the farthest failure, as the bootstrap's ParserError does (addFatal raises) *)
+    (* Reports a syntax error at the farthest failure, as the bootstrap's ParserError does (addStoppingError raises) *)
     let syntaxError(ps: Parser): Val =
         begin
             let tok = peek(ps ps.farthest)
@@ -343,7 +343,7 @@ export
             let expected = if vector.empty(:String ps.expected) then "valid syntax" else strutil.join(", " ps.expected) end
             let length = tok.span.endOffset - tok.span.startOffset
             let sp = location.span(ps.file tok.span.startOffset {tok.span.startOffset + {if length < 1 then 1 else length end}})
-            diagbag.addFatal(ps.bag sp
+            diagbag.addStoppingError(ps.bag sp
                 "Unexpected token " <> diagnostics.pyRepr(tok.lexeme) <> " (" <> tokens.tokenKindName(tok.kind) <>
                     "), expected: " <> expected)
             absent

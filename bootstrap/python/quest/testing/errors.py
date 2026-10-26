@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 import subprocess
@@ -229,22 +230,27 @@ def execute_phase(
     timeout: Optional[float] = None,
     build_dir: Optional[Path] = None,
     driver_args: Optional[list[str]] = None,
+    driver_command: Optional[list[str]] = None,
 ) -> tuple[int, str, str]:
-    """Executes the compiler driver up to the specified phase with an optional timeout."""
-    driver_script = root_dir / "bootstrap" / "python" / "quest_driver.py"
-    command = [
-        python_executable,
-        str(driver_script),
-        "--stop-after",
-        phase_name,
-    ]
-    if driver_args:
-        command.extend(driver_args)
-    # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
-    if build_dir is None:
-        build_dir = root_dir / ".build"
-    build_dir.mkdir(parents=True, exist_ok=True)
-    command.extend(["--build-dir", str(build_dir)])
+    """Executes the compiler driver up to the specified phase with an optional timeout: the bootstrap's, or the one
+    driver_command runs (the self-hosted driver, which has no build directory)."""
+    if driver_command is not None:
+        command = [*driver_command, "--stop-after", phase_name]
+    else:
+        driver_script = root_dir / "bootstrap" / "python" / "quest_driver.py"
+        command = [
+            python_executable,
+            str(driver_script),
+            "--stop-after",
+            phase_name,
+        ]
+        if driver_args:
+            command.extend(driver_args)
+        # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
+        if build_dir is None:
+            build_dir = root_dir / ".build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+        command.extend(["--build-dir", str(build_dir)])
     if extra_args:
         command.extend(extra_args)
     command.append(str(source_file.resolve()))
@@ -283,6 +289,48 @@ def execute_phase(
         return -1, stdout, full_err
 
 
+def _diagnostic_blocks(stderr: str) -> list[str]:
+    """stderr's diagnostics, each its header line and the lines after it up to the next header."""
+    blocks: list[list[str]] = []
+    for line in stderr.splitlines():
+        if DIAGNOSTIC_HEADER_PATTERN.match(line) or not blocks:
+            blocks.append([line])
+        else:
+            blocks[-1].append(line)
+    return ["\n".join(block) + "\n" for block in blocks]
+
+
+def _check_further_errors(
+    stderr: str, root_dir: Path, further_errors_file: Optional[Path], update_golden: bool
+) -> tuple[bool, str, str]:
+    """For the self-hosted driver: checks the diagnostics after its first against further_errors_file (or records
+    them there), and returns the first, which the test's expectations are matched against."""
+    blocks = _diagnostic_blocks(stderr)
+    if len(blocks) <= 1:
+        if further_errors_file is not None and further_errors_file.exists():
+            return False, f"  Further errors recorded in {further_errors_file.name} were not reported", stderr
+        return True, "", stderr
+    full = relativize_root_paths(stderr, root_dir)
+    if further_errors_file is None:
+        return True, "", blocks[0]
+    if update_golden:
+        further_errors_file.parent.mkdir(parents=True, exist_ok=True)
+        further_errors_file.write_text(full, encoding="utf-8")
+    elif not further_errors_file.exists():
+        shown = "\n".join(f"    | {line}" for line in full.strip().splitlines())
+        where = further_errors_file.relative_to(root_dir)
+        return False, f"  Further errors are not recorded in {where} (review, then --update-golden):\n{shown}", stderr
+    elif further_errors_file.read_text(encoding="utf-8") != full:
+        diff = difflib.unified_diff(
+            further_errors_file.read_text(encoding="utf-8").splitlines(keepends=True),
+            full.splitlines(keepends=True),
+            fromfile=str(further_errors_file.relative_to(root_dir)),
+            tofile="actual",
+        )
+        return False, "  Further errors differ:\n" + "".join(diff).rstrip(), stderr
+    return True, "", blocks[0]
+
+
 def run_error_test(
     source_file: Path,
     target_phase: str,
@@ -298,14 +346,20 @@ def run_error_test(
     timeout: Optional[float] = None,
     build_dir: Optional[Path] = None,
     driver_args: Optional[list[str]] = None,
+    driver_command: Optional[list[str]] = None,
+    further_errors_file: Optional[Path] = None,
 ) -> tuple[bool, str]:
-    """Runs an error test with precursor validation, timeout, and pattern-based or diagnostic matching."""
+    """Runs an error test with precursor validation, timeout, and pattern-based or diagnostic matching.
+
+    With driver_command, the test runs the self-hosted driver, which may report errors after the bootstrap's one
+    (docs/milestone-2.md §2): its first diagnostic must be the one expected, and when it reports more, its whole
+    output must be further_errors_file's, which --update-golden writes for review."""
     # Step 1: Precursor Phase Validation
     for pre_phase in precursor_phases:
         rc, _, stderr = execute_phase(
             pre_phase, source_file, python_executable, root_dir,
             extra_args=extra_args, env_vars=env_vars, stdin_data=stdin_data,
-            timeout=timeout, build_dir=build_dir, driver_args=driver_args,
+            timeout=timeout, build_dir=build_dir, driver_args=driver_args, driver_command=driver_command,
         )
         if rc != 0 or parse_actual_diagnostics(stderr):
             err_msg = stderr.strip() if stderr.strip() else f"exited with code {rc}"
@@ -318,18 +372,24 @@ def run_error_test(
     rc, stdout, stderr = execute_phase(
         target_phase, source_file, python_executable, root_dir,
         extra_args=extra_args, env_vars=env_vars, stdin_data=stdin_data,
-        timeout=timeout, build_dir=build_dir, driver_args=driver_args,
+        timeout=timeout, build_dir=build_dir, driver_args=driver_args, driver_command=driver_command,
     )
     if rc == -1 and f"timed out after {timeout} seconds" in stderr:
         return False, f"Target phase '{target_phase}' timed out after {timeout}s"
     if rc == 0:
         return False, f"Expected error in phase '{target_phase}', but command succeeded with return code 0"
 
+    if driver_command is not None:
+        ok, report, stderr = _check_further_errors(stderr, root_dir, further_errors_file, update_golden)
+        if not ok:
+            return False, report
+
     # Step 3: Golden Pattern Matching (or update)
     if golden_error_file is not None:
         # Golden files must not depend on where the repository is checked out
         stderr = relativize_root_paths(stderr, root_dir)
-        if update_golden:
+        # The bootstrap's goldens are the bootstrap's: the self-hosted driver only records its further errors
+        if update_golden and driver_command is None:
             golden_content = format_canonical_error_golden(stderr)
             golden_error_file.parent.mkdir(parents=True, exist_ok=True)
             golden_error_file.write_text(golden_content, encoding="utf-8")

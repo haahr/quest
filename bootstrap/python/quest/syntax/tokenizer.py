@@ -187,7 +187,7 @@ class Tokenizer:
         self.checked_ascii = True
         for offset, char in enumerate(self.source_text):
             if ord(char) > CHAR_MAX:
-                raise TokenizerError(f"Non-ASCII character with code {ord(char)}", offset, 1)
+                raise TokenizerError("Non-ASCII character", offset, 1)
 
     def _lex_char(self) -> Token:
         start = self.cursor

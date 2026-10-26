@@ -181,14 +181,21 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 `python tests/abi/corpus.py --update`; to snapshot newer library interfaces, run `python tests/abi/corpus.py
 --refresh-inputs`.
 
-**Self-hosted AST printer:** `tests/astprint/generate.py` translates the bootstrap parser's AST of a Quest file into a
-Quest program that builds the same self-hosted AST (`questlang/syntax/ast`) and prints it with `astprint.dump`, whose
-output must be what `ast_dump` prints. The `astprint_*` tests in `tests/source/questlang` are generated this way from
-the inputs in `tests/astprint` (`forms.quest` uses every node the parser produces), with goldens holding `ast_dump`'s
-output; regenerate them with `python tests/astprint/generate.py` after changing the AST. `python
-tests/astprint/generate.py --check` (add `--c` to compile to C) checks every parseable `.quest` file in the
-repository but the generated tests, in about two minutes. (It skips the files with an import, interface, or module
-below the top level, which the self-hosted AST cannot hold.)
+**Self-hosted compiler:** `python3 run_tests.py --self-hosted` compiles the self-hosted compiler's driver
+(`questlang/driver/main.quest`) to C with the bootstrap, then runs it, instead of the bootstrap's driver, on every test
+of the phases it has (now tokenize and parse; [milestone-2.md](milestone-2.md) §3), against the bootstrap's goldens and
+error expectations, which it never writes. The driver takes the bootstrap driver's `--stop-after PHASE FILE` and prints
+the phase's dump in the bootstrap's format (it also has `desugar`, which has no goldens). It reports errors after the
+bootstrap's one: an error test passes when the driver's first diagnostic is the expected one and, if it reports more,
+when its whole output is `tests/golden/self-hosted/errors/PHASE/TEST.error`, which `--self-hosted --update-golden`
+writes for review. `tests/self-hosted/pending.txt` lists the tests the driver is not yet expected to pass
+(`PHASE:TEST`, or `errors/PHASE:TEST`): they are reported as pending, and one that passes fails, so that it is taken
+off the list.
+
+**Which runs:** a change to the self-hosted compiler alone (`questlang/`) runs the self-hosted suite and the questlang
+tests compiled, `python3 run_tests.py --phase run_c_compiled -k questlang/`; interpreting the self-hosted compiler is
+slow. A change to the bootstrap, `lib/`, or `runtime/` also runs the bootstrap's suites (`run_tests.py` and the unit
+tests), which run the questlang tests in every phase.
 
 **Self-hosted parser:** `tests/parser/generate.py` writes a test for each input in `tests/parser`, whose cases are
 separated by lines that are just `(* ---- *)`: `tests/source/questlang/parser_NAME.quest` parses each case with the
@@ -407,6 +414,8 @@ bidirectional matching:
 | **Golden Tests** | Valid end-to-end outputs | `python3 run_tests.py` |
 | **Error Tests** | Semantic diagnostic verification | `python3 run_tests.py --errors` |
 | **Update Goldens** | Refresh golden output files | `python3 run_tests.py --update-golden` |
+| **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
+| **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py --phase run_c_compiled -k questlang/` |
 
 ---
 

@@ -4,6 +4,9 @@ Each test is a driver run of its own (quest_driver.py, in a subprocess), and so 
 with its own unit graph and resolver (docs/build-process.md §2.1): a test's builds never see another's resolutions
 or typed units, only the artifacts in the worker's build directory, whose staleness rules decide whether they are
 reused (docs/testing.md §2.2).
+
+With --self-hosted, the tests of the phases the self-hosted compiler has run its driver instead (questlang/driver/main,
+compiled to C first), against the bootstrap's goldens and error expectations (docs/milestone-2.md §3).
 """
 
 import argparse
@@ -43,6 +46,13 @@ EXAMPLES_DIR = ROOT_DIR / "examples"
 TESTS_GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TESTS_ERRORS_DIR = ROOT_DIR / "tests" / "errors"
 DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
+
+# The self-hosted compiler's driver, the phases it has, the tests it is not yet expected to pass, and where the
+# errors it reports after the bootstrap's one are recorded (docs/milestone-2.md §3)
+SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
+SELF_HOSTED_PHASES = ("tokenize", "parse")
+SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
+SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
 
 
@@ -207,7 +217,10 @@ def run_single_golden_test(
     timeout: float = 30.0,
     build_dir: Optional[Path] = None,
     driver_args: Optional[list[str]] = None,
+    driver_command: Optional[list[str]] = None,
 ) -> tuple[bool, str, str]:
+    """Runs a golden test with the bootstrap driver, or the one driver_command runs (the self-hosted driver, whose
+    output is compared with the bootstrap's goldens and never written to them)."""
     golden_base = golden_dir_for_phase(phase_name)
     rel_source = golden_test_id(source_file)
     target_dir = golden_base / rel_source.parent
@@ -218,19 +231,22 @@ def run_single_golden_test(
     expected_exit = directives.exit_code if phase_name in RUN_PHASES else 0
     effective_timeout = directives.timeout if directives.timeout is not None else timeout
 
-    command = [
-        python_executable,
-        str(DRIVER_SCRIPT),
-        "--stop-after",
-        phase_name,
-    ]
-    if driver_args:
-        command.extend(driver_args)
-    # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
-    if build_dir is None:
-        build_dir = ROOT_DIR / ".build"
-    build_dir.mkdir(parents=True, exist_ok=True)
-    command.extend(["--build-dir", str(build_dir)])
+    if driver_command is not None:
+        command = [*driver_command, "--stop-after", phase_name]
+    else:
+        command = [
+            python_executable,
+            str(DRIVER_SCRIPT),
+            "--stop-after",
+            phase_name,
+        ]
+        if driver_args:
+            command.extend(driver_args)
+        # Every phase builds and reuses artifacts in the build directory (docs/build-process.md §5.2.4).
+        if build_dir is None:
+            build_dir = ROOT_DIR / ".build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+        command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
     if directives.echo and phase_name in RUN_PHASES:
@@ -286,7 +302,7 @@ def run_single_golden_test(
             msg += f"\n{process.stderr.rstrip()}"
         return False, "[FAIL]", msg
 
-    if update_golden:
+    if update_golden and driver_command is None:
         out_file.write_text(process.stdout, encoding="utf-8")
         return True, "[UPDATED]", ""
 
@@ -360,6 +376,53 @@ def run_phase_tasks(
     return total_count, passed_count
 
 
+def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
+    """Compiles the self-hosted driver to an executable in build_dir, with the bootstrap."""
+    binary = build_dir / "questlang-driver"
+    command = [
+        python_executable,
+        str(DRIVER_SCRIPT),
+        "--build-dir",
+        str(build_dir / "self-hosted"),
+        "-o",
+        str(binary),
+        str(SELF_HOSTED_DRIVER),
+    ]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+    process = subprocess.run(command, capture_output=True, text=True, env=environment, cwd=ROOT_DIR)
+    if process.returncode != 0:
+        sys.exit(f"Compiling {SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)} failed:\n{process.stdout}{process.stderr}")
+    return binary
+
+
+def self_hosted_pending() -> set[str]:
+    """The tests the self-hosted driver is not yet expected to pass: PHASE:TEST for a golden test, and
+    errors/PHASE:TEST for an error test, one per line (# starts a comment)."""
+    if not SELF_HOSTED_PENDING.exists():
+        return set()
+    entries = (line.split("#", 1)[0].strip() for line in SELF_HOSTED_PENDING.read_text(encoding="utf-8").splitlines())
+    return {entry for entry in entries if entry}
+
+
+def with_pending(
+    key: str, pending: set[str], counts: dict[str, int], run_fn: Callable[[Path], tuple[bool, str, str]]
+) -> Callable[[Path], tuple[bool, str, str]]:
+    """run_fn, for a test that may be pending: a pending test that fails is reported as pending, and one that passes
+    fails, so that it is taken off the list."""
+    if key not in pending:
+        return run_fn
+
+    def run(w_dir: Path) -> tuple[bool, str, str]:
+        passed, status, report = run_fn(w_dir)
+        if passed:
+            return False, "[FAIL]", f"  (passes, but is pending: remove '{key}' from {SELF_HOSTED_PENDING.name})"
+        counts["pending"] += 1
+        return True, "[PENDING]", ""
+
+    return run
+
+
 def main() -> int:
     available_phases = [
         "tokenize",
@@ -416,6 +479,13 @@ def main() -> int:
     )
 
     arg_parser.add_argument(
+        "--self-hosted",
+        action="store_true",
+        help="Test the self-hosted compiler: compile its driver, and run it on the tests of the phases it has, "
+        "against the bootstrap's goldens.",
+    )
+
+    arg_parser.add_argument(
         "--build-dir",
         help="Build directory for C phases, reused across runs (default: a fresh temporary directory per run, "
         "so that results never depend on artifacts from earlier compiler versions).",
@@ -454,6 +524,15 @@ def run_all_tests(
     python_executable = args.python if os.path.exists(args.python) else sys.executable
 
     phases_to_run = available_phases if args.phase == "all" else [args.phase]
+
+    driver_command: Optional[list[str]] = None
+    pending: set[str] = set()
+    pending_counts = {"pending": 0}
+    if args.self_hosted:
+        phases_to_run = [phase for phase in phases_to_run if phase in SELF_HOSTED_PHASES]
+        print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)})...")
+        driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
+        pending = self_hosted_pending()
 
     total_golden = 0
     passed_golden = 0
@@ -513,11 +592,13 @@ def run_all_tests(
                                 timeout=args.timeout,
                                 build_dir=w_dir,
                                 driver_args=driver_args,
+                                driver_command=driver_command,
                             )
 
-                        phase_tasks.append(
-                            PhaseTask(test_id=test_id, run_fn=make_golden_runner(source_file, phase))
+                        run_fn = with_pending(
+                            f"{phase}:{test_id}", pending, pending_counts, make_golden_runner(source_file, phase)
                         )
+                        phase_tasks.append(PhaseTask(test_id=test_id, run_fn=run_fn))
 
                     p_total, p_passed = run_phase_tasks(
                         phase, phase_tasks, worker_pool, executor, jobs
@@ -573,6 +654,7 @@ def run_all_tests(
                         g_file: Path,
                         d: TestDirectives,
                         eff_timeout: float,
+                        f_file: Optional[Path],
                     ) -> Callable[[Path], tuple[bool, str, str]]:
                         def runner(w_dir: Path) -> tuple[bool, str, str]:
                             passed, report = run_error_test(
@@ -589,6 +671,8 @@ def run_all_tests(
                                 timeout=eff_timeout,
                                 build_dir=w_dir,
                                 driver_args=driver_args,
+                                driver_command=driver_command,
+                                further_errors_file=f_file,
                             )
                             if passed:
                                 status = "[UPDATED]" if report == "[UPDATED]" else "[PASS]"
@@ -597,14 +681,22 @@ def run_all_tests(
 
                         return runner
 
-                    error_tasks.append(
-                        PhaseTask(
-                            test_id=rel_id,
-                            run_fn=make_error_runner(
-                                error_file, phase, golden_err_file, directives, effective_timeout
-                            ),
-                        )
+                    run_fn = with_pending(
+                        f"errors/{phase}:{rel_id}",
+                        pending,
+                        pending_counts,
+                        make_error_runner(
+                            error_file,
+                            phase,
+                            golden_err_file,
+                            directives,
+                            effective_timeout,
+                            SELF_HOSTED_ERRORS_GOLDEN_DIR / phase / Path(rel_id).with_suffix(".error")
+                            if driver_command is not None
+                            else None,
+                        ),
                     )
+                    error_tasks.append(PhaseTask(test_id=rel_id, run_fn=run_fn))
 
                 e_total, e_passed = run_phase_tasks(
                     phase, error_tasks, worker_pool, executor, jobs
@@ -618,6 +710,8 @@ def run_all_tests(
     total_duration = time.perf_counter() - start_time
 
     skip_str = f" ({skipped_golden} skipped)" if skipped_golden > 0 else ""
+    if pending_counts["pending"]:
+        skip_str += f" ({pending_counts['pending']} pending)"
     print(f"\nSummary: {total_passed}/{total_tests} tests passed{skip_str}.")
     if suite_mode == "all":
         print(f"  Golden tests: {passed_golden}/{total_golden} passed{skip_str}")
