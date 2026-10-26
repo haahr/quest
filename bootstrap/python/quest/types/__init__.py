@@ -109,8 +109,8 @@ from quest.types.subtyping import (
 )
 
 # 3. Kinds, Well-kindedness, Operators, and Bounds
+from quest.types.env import INFIX_OPERATORS
 from quest.types.kinds import (
-    INFIX_OPERATORS,
     KindError,
     check_kind,
     check_kind_well_formed,

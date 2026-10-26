@@ -1,0 +1,530 @@
+(* Quest Self-Hosted Compiler: Kind Synthesis and Checking Implementation *)
+
+module kinds : Kinds
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    conv : Conv
+export
+    Let Env = maybe.T(env.T)
+    Let Type = model.Type
+    Let Kind = model.Kind
+
+    let kindError(A::TYPE message: String): A = diagnostics.fail(:A message 0)
+
+    let lookupOf(e: Env): model.Lookup =
+        if maybe.isSome(:env.T e) then symbols.lookup else model.noLookup end
+
+    let subEnv(e: Env): subtyping.Env =
+        if maybe.isSome(:env.T e) then env.lookupOf(maybe.unwrap(:env.T e)) else maybe.none(:model.Lookup) end
+
+    let evaluate(t: Type e: Env): Type = model.evaluateLazily(t lookupOf(e))
+    let evaluateKind(k: Kind e: Env): Kind = model.evaluateKindLazily(k lookupOf(e))
+
+    (* body in a scope of e's, if there is an environment *)
+    let inScope(e: Env name: String body: All() Ok): Ok =
+        if maybe.isSome(:env.T e) then
+            env.scoped(:Ok maybe.unwrap(:env.T e) name fun(s: symbols.Scope): Ok body())
+        else
+            body()
+        end
+
+    let declare(e: Env name: String symbolId: Int kind: Kind definition: maybe.T(Type)): Ok =
+        if maybe.isSome(:env.T e) then
+            env.declareTypeVariable(maybe.unwrap(:env.T e) name symbolId kind definition)
+            ok
+        end
+
+    let noDefinition: maybe.T(Type) = maybe.none(:Type)
+
+    (* =========================================================================
+     * 1. The kind memo
+     * ========================================================================= *)
+
+    Let Memo = Tuple kinds: hashMap.T(Int Kind) e: Env end
+    Let MemoState = Tuple var active: maybe.T(Memo) end
+    let memo: MemoState = tuple let var active = maybe.none(:Memo) end
+
+    let newKinds(): hashMap.T(Int Kind) = hashMap.new(:Int :Kind fun(a: Int b: Int): Bool a is b hash.int)
+
+    let sameEnv(a: Env b: Env): Bool =
+        if maybe.isSome(:env.T a) andif maybe.isSome(:env.T b) then
+            hash.identityEqual(:env.T maybe.unwrap(:env.T a) maybe.unwrap(:env.T b))
+        else
+            maybe.isNone(:env.T a) andif maybe.isNone(:env.T b)
+        end
+
+    (* =========================================================================
+     * 2. Well-formed kinds, and kind checking
+     * ========================================================================= *)
+
+    let rec checkKindWellFormed(kind: Kind e: Env): Ok =
+        begin
+            let k = evaluateKind(kind e)
+            case k.form
+                when kindType then ok
+                when kindPower with x then
+                    (* The bound of a power kind must be a proper type, of kind TYPE *)
+                    checkKind(x.bound model.typeKind e)
+                when kindAll with x then
+                    begin
+                        checkKindWellFormed(x.paramKind e)
+                        inScope(e "kind_param_" <> x.paramName fun(): Ok
+                            begin
+                                declare(e x.paramName x.paramId x.paramKind noDefinition)
+                                checkKindWellFormed(x.resultKind e)
+                            end)
+                    end
+                when kindVar with x then
+                    if maybe.isSome(:env.T e) then
+                        let en = maybe.unwrap(:env.T e)
+                        let found = env.lookupKindById(en x.symbolId)
+                        let sym = if maybe.isSome(:symbols.KindSymbol found) then
+                            found
+                        else
+                            env.lookupKind(en x.name)
+                        end
+                        if maybe.isNone(:symbols.KindSymbol sym) then
+                            kindError(:Ok "Unbound kind variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
+                        end
+                    end
+            end
+        end
+    and checkKind(t: Type expected: Kind e: Env): Ok =
+        begin
+            let exp = evaluateKind(expected e)
+            if model.isPower(exp) then
+                if not(subtyping.isSubtype(t model.powerBound(exp) subEnv(e))) then
+                    kindError(:Ok "Kind mismatch: type '" <> model.show(t) <> "' is not a subtype of bound '" <>
+                        model.show(model.powerBound(exp)) <> "'")
+                end
+            else
+                let synthesized = synthKind(t e)
+                if not(subtyping.isSubkind(synthesized exp subEnv(e))) then
+                    kindError(:Ok "Kind mismatch: type '" <> model.show(t) <> "' has kind '" <>
+                        model.showKind(synthesized) <> "', which is not a subkind of expected kind '" <>
+                        model.showKind(expected) <> "'")
+                end
+            end
+        end
+    (* Kinds synthesized during the current top-level check, by node: elaborated types are DAGs (aliases are
+     * shared), so without it every shared subterm is checked again on every path to it. A node's kind depends only on
+     * the node and the binders in scope, which have unique ids, so a shared node has one kind wherever it occurs.
+     * Metavariables are not memoized, and a nested call with another environment bypasses the memo. *)
+    and synthKind(t: Type e: Env): Kind =
+        case t.form
+            when typeMeta then synthUncached(t e)
+            else
+                if maybe.isSome(:Memo memo.active) then
+                    let m = maybe.unwrap(:Memo memo.active)
+                    if not(sameEnv(m.e e)) then
+                        synthUncached(t e)
+                    else
+                        let hit = hashMap.get(:Int :Kind m.kinds t.id)
+                        if maybe.isSome(:Kind hit) then
+                            maybe.unwrap(:Kind hit)
+                        else
+                            let k = synthUncached(t e)
+                            hashMap.insert(:Int :Kind m.kinds t.id k)
+                            k
+                        end
+                    end
+                else
+                    memo.active := maybe.some(:Memo tuple let kinds = newKinds() let e = e end)
+                    let k = try
+                        synthUncached(t e)
+                    when diagnostics.compilerError with err then
+                        begin
+                            memo.active := maybe.none(:Memo)
+                            diagnostics.raiseError(:Kind err)
+                        end
+                    end
+                    memo.active := maybe.none(:Memo)
+                    k
+                end
+        end
+    and synthUncached(t: Type e: Env): Kind =
+        case t.form
+            when typeInt then model.typeKind
+            when typeReal then model.typeKind
+            when typeBool then model.typeKind
+            when typeChar then model.typeKind
+            when typeString then model.typeKind
+            when typeOk then model.typeKind
+            when typeException then model.typeKind
+            when typeExternal then model.typeKind
+            when typeTuple with x then
+                begin
+                    inScope(e "tuple_kind_check" fun(): Ok
+                        for i = 0 upto {extent x.fields - 1} do
+                            case x.fields[i]
+                                when tupleTypeFormal with f then
+                                    begin
+                                        checkKindWellFormed(f.bound e)
+                                        declare(e f.name f.symbolId f.bound noDefinition)
+                                    end
+                                when tupleField with f then checkKind(f.type model.typeKind e)
+                                when tupleTypeBinding with f then
+                                    begin
+                                        checkKind(f.type model.typeKind e)
+                                        if maybe.isSome(:env.T e) then
+                                            declare(e f.name env.freshSymbolId(maybe.unwrap(:env.T e))
+                                                maybe.unwrapOr(:Kind f.bound model.typeKind) maybe.some(:Type f.type))
+                                        end
+                                    end
+                            end
+                        end)
+                    model.typeKind
+                end
+            when typeRecord with x then
+                begin
+                    for i = 0 upto {extent x.fields - 1} do checkKind(x.fields[i].type model.typeKind e) end
+                    model.typeKind
+                end
+            when typeVariant with x then
+                begin
+                    for i = 0 upto {extent x.variants - 1} do
+                        let p = x.variants[i].type
+                        if maybe.isSome(:Type p) then checkKind(maybe.unwrap(:Type p) model.typeKind e) end
+                    end
+                    model.typeKind
+                end
+            when typeOption with x then
+                begin
+                    for i = 0 upto {extent x.options - 1} do
+                        let p = x.options[i].payload
+                        if maybe.isSome(:Type p) then checkKind(maybe.unwrap(:Type p) model.typeKind e) end
+                    end
+                    model.typeKind
+                end
+            when typeFun with x then
+                begin
+                    for i = 0 upto {extent x.params - 1} do checkKind(x.params[i].type model.typeKind e) end
+                    checkKind(x.result model.typeKind e)
+                    model.typeKind
+                end
+            when typeVar with x then begin checkKind(x.element model.typeKind e) model.typeKind end
+            when typeArray with x then begin checkKind(x.element model.typeKind e) model.typeKind end
+            when typeOut with x then begin checkKind(x.element model.typeKind e) model.typeKind end
+            when typeVariable with x then
+                if maybe.isSome(:Kind x.bound) then
+                    maybe.unwrap(:Kind x.bound)
+                else
+                    let sym = if maybe.isSome(:env.T e) then
+                        let en = maybe.unwrap(:env.T e)
+                        let found = env.lookupTypeById(en x.symbolId)
+                        if maybe.isSome(:symbols.TypeSymbol found) then found else env.lookupType(en x.name) end
+                    else
+                        maybe.none(:symbols.TypeSymbol)
+                    end
+                    if maybe.isSome(:symbols.TypeSymbol sym) then
+                        maybe.unwrap(:symbols.TypeSymbol sym).kind
+                    else
+                        kindError(:Kind "Unbound type variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
+                    end
+                end
+            when typeAbstract with x then begin checkKindWellFormed(x.bound e) x.bound end
+            when typePath with x then begin checkKindWellFormed(x.bound e) x.bound end
+            when typeAlias with x then synthKind(x.target e)
+            when typeMeta with x then
+                begin
+                    let p = model.prune(t)
+                    if model.same(p t) then x.meta.bound else synthKind(p e) end
+                end
+            when typeAll with x then
+                begin
+                    inScope(e "all_type" fun(): Ok
+                        begin
+                            for i = 0 upto {extent x.quantifiers - 1} do
+                                let q = x.quantifiers[i]
+                                checkKindWellFormed(q.bound e)
+                                declare(e q.name q.symbolId q.bound noDefinition)
+                            end
+                            checkKind(x.body model.typeKind e)
+                        end)
+                    model.typeKind
+                end
+            when typeAuto with x then
+                begin
+                    inScope(e "auto_type" fun(): Ok
+                        begin
+                            checkKindWellFormed(x.kindBound e)
+                            declare(e x.typeParam x.symbolId x.kindBound noDefinition)
+                            for i = 0 upto {extent x.signature - 1} do
+                                checkKind(x.signature[i].type model.typeKind e)
+                            end
+                        end)
+                    model.typeKind
+                end
+            when typeRec with x then
+                begin
+                    checkKindWellFormed(x.bound e)
+                    inScope(e "rec_" <> x.varName fun(): Ok
+                        begin
+                            declare(e x.varName x.symbolId x.bound noDefinition)
+                            checkKind(x.body x.bound e)
+                        end)
+                    x.bound
+                end
+            when typeRecGroup with x then
+                begin
+                    if maybe.isSome(:env.T e) then
+                        inScope(e "rec_group" fun(): Ok
+                            begin
+                                for i = 0 upto {extent x.bindings - 1} do
+                                    let b = x.bindings[i]
+                                    checkKindWellFormed(b.bound e)
+                                    declare(e b.name b.symbolId b.bound noDefinition)
+                                end
+                                for i = 0 upto {extent x.bindings - 1} do
+                                    checkKind(x.bindings[i].body x.bindings[i].bound e)
+                                end
+                            end)
+                    end
+                    x.bindings[x.activeIndex].bound
+                end
+            when typeOperator with x then
+                begin
+                    Let Box = Tuple var kind: Kind end
+                    let bodyKind: Box = tuple let var kind = model.typeKind end
+                    inScope(e "type_fun" fun(): Ok
+                        begin
+                            for i = 0 upto {extent x.params - 1} do
+                                let f = x.params[i]
+                                checkKindWellFormed(f.bound e)
+                                declare(e f.name f.symbolId f.bound noDefinition)
+                            end
+                            bodyKind.kind := synthKind(x.body e)
+                        end)
+                    let var result = bodyKind.kind
+                    for i = {extent x.params - 1} downto 0 do
+                        let f = x.params[i]
+                        result := model.allKind(f.name f.symbolId f.bound result)
+                    end
+                    result
+                end
+            when typeApp with x then
+                begin
+                    let var ctorKind = evaluateKind(synthKind(x.constructor e) e)
+                    for i = 0 upto {extent x.arguments - 1} do
+                        let arg = x.arguments[i]
+                        case ctorKind.form
+                            when kindAll with k then
+                                begin
+                                    checkKind(arg k.paramKind e)
+                                    let applied = model.substituteInKind(k.resultKind model.singleSubst(k.paramId arg))
+                                    ctorKind := evaluateKind(applied e)
+                                end
+                            else
+                                kindError(:Ok "Type application error: constructor '" <> model.show(x.constructor) <>
+                                    "' has non-operator kind '" <> model.showKind(ctorKind) <> "'")
+                        end
+                    end
+                    ctorKind
+                end
+            else kindError(:Kind "Cannot synthesize kind for unknown type node '" <> model.show(t) <> "'")
+        end
+
+    (* =========================================================================
+     * 3. Unfolding, and resolving bounds
+     * ========================================================================= *)
+
+    let unfoldHead(t: Type): maybe.T(Type) =
+        case t.form
+            when typeRec then maybe.some(:Type model.unfoldLazily(t))
+            when typeRecGroup then maybe.some(:Type model.unfoldLazily(t))
+            when typeApp with x then
+                begin
+                    let ctor = model.unalias(x.constructor)
+                    case ctor.form
+                        when typeOperator with f then
+                            if extent f.params is extent x.arguments then
+                                let subst = model.newSubst()
+                                for i = 0 upto {extent f.params - 1} do
+                                    hashMap.insert(:Int :Type subst f.params[i].symbolId x.arguments[i])
+                                end
+                                maybe.some(:Type model.substitute(f.body subst))
+                            else
+                                maybe.none(:Type)
+                            end
+                        else maybe.none(:Type)
+                    end
+                end
+            else maybe.none(:Type)
+        end
+
+    (* The id a variable is visited by: its symbol, or for a path type its node *)
+    let boundedVariable(t: Type): maybe.T(Tuple id: Int bound: Type end) =
+        begin
+            Let Bounded = Tuple id: Int bound: Type end
+            let boundOf = fun(id: Int k: maybe.T(Kind)): maybe.T(Bounded)
+                if maybe.isSome(:Kind k) andif model.isPower(maybe.unwrap(:Kind k)) then
+                    maybe.some(:Bounded tuple let id = id let bound = model.powerBound(maybe.unwrap(:Kind k)) end)
+                else
+                    maybe.none(:Bounded)
+                end
+            case t.form
+                when typeVariable with x then boundOf(x.symbolId x.bound)
+                when typeAbstract with x then boundOf(x.symbolId maybe.some(:Kind x.bound))
+                when typePath with x then boundOf({~1 * t.id} maybe.some(:Kind x.bound))
+                else maybe.none(:Bounded)
+            end
+        end
+
+    let resolveBound(t: Type e: Env wanted: All(u: Type) Bool): maybe.T(Type) =
+        begin
+            let visited = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+            let unfolded = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+            let var current = t
+            let var result = maybe.none(:Type)
+            let var searching = true
+            while searching do
+                let lazy = if maybe.isSome(:env.T e) then evaluate(current e) else model.unalias(current) end
+                if wanted(lazy) then
+                    result := maybe.some(:Type lazy)
+                    searching := false
+                else
+                    let isHead = case lazy.form
+                        when typeRec then true
+                        when typeRecGroup then true
+                        when typeApp then true
+                        else false
+                    end
+                    if isHead then
+                        if hashMap.contains(:Int :Bool unfolded lazy.id) then
+                            searching := false
+                        else
+                            hashMap.insert(:Int :Bool unfolded lazy.id true)
+                            let next = unfoldHead(lazy)
+                            if maybe.isNone(:Type next) then
+                                searching := false
+                            else
+                                current := maybe.unwrap(:Type next)
+                            end
+                        end
+                    else
+                        let bounded = boundedVariable(lazy)
+                        if maybe.isNone(:Tuple id: Int bound: Type end bounded) then
+                            searching := false
+                        else
+                            let b = maybe.unwrap(:Tuple id: Int bound: Type end bounded)
+                            if hashMap.contains(:Int :Bool visited b.id) then
+                                searching := false
+                            else
+                                hashMap.insert(:Int :Bool visited b.id true)
+                                current := b.bound
+                            end
+                        end
+                    end
+                end
+            end
+            result
+        end
+
+    let isRecord(u: Type): Bool = case u.form when typeRecord then true else false end
+    let isVariant(u: Type): Bool = case u.form when typeVariant then true else false end
+    let isSum(u: Type): Bool = case u.form when typeVariant then true when typeOption then true else false end
+    let isTuple(u: Type): Bool = case u.form when typeTuple then true else false end
+
+    let resolveRecordBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isRecord)
+    let resolveVariantBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isVariant)
+    let resolveSumBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isSum)
+    let resolveTupleBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isTuple)
+
+    (* The form's tag, as the bootstrap compares node classes *)
+    let formTag(t: Type): Int = ordinal(t.form)
+
+    let resolveOptionBound(t: Type e: Env): maybe.T(Type) =
+        begin
+            let visited = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+            let var current = t
+            let var result = maybe.none(:Type)
+            let var searching = true
+            while searching do
+                current := model.unalias(current)
+                let var advanced = false
+                case current.form
+                    when typeOption then
+                        begin
+                            result := maybe.some(:Type current)
+                            searching := false
+                        end
+                    when typeRec with r then
+                        begin
+                            current := r.body
+                            advanced := true
+                        end
+                    when typeApp with a then
+                        begin
+                            let var ctor = a.constructor
+                            if maybe.isSome(:env.T e) then
+                                case ctor.form
+                                    when typeVariable then ctor := evaluate(ctor e)
+                                    when typeAbstract then ctor := evaluate(ctor e)
+                                    when typePath then ctor := evaluate(ctor e)
+                                    else ok
+                                end
+                            end
+                            case ctor.form
+                                when typeOperator with f then
+                                    begin
+                                        let subst = model.newSubst()
+                                        let n = if extent f.params < extent a.arguments then
+                                            extent f.params
+                                        else
+                                            extent a.arguments
+                                        end
+                                        for i = 0 upto {n - 1} do
+                                            hashMap.insert(:Int :Type subst f.params[i].symbolId a.arguments[i])
+                                        end
+                                        current := model.substitute(f.body subst)
+                                        advanced := true
+                                    end
+                                else
+                                    if maybe.isSome(:env.T e) then
+                                        let lazy = evaluate(current e)
+                                        case lazy.form
+                                            when typeApp then ok
+                                            else
+                                                begin
+                                                    current := lazy
+                                                    advanced := true
+                                                end
+                                        end
+                                    end
+                            end
+                        end
+                    else ok
+                end
+                if searching andif not(advanced) then
+                    let bounded = boundedVariable(current)
+                    if maybe.isSome(:Tuple id: Int bound: Type end bounded) then
+                        let b = maybe.unwrap(:Tuple id: Int bound: Type end bounded)
+                        if hashMap.contains(:Int :Bool visited b.id) then
+                            searching := false
+                        else
+                            hashMap.insert(:Int :Bool visited b.id true)
+                            current := b.bound
+                        end
+                    elsif maybe.isSome(:env.T e) then
+                        let lazy = evaluate(current e)
+                        if not(model.same(lazy current)) andif {formTag(lazy) isnot formTag(current)} then
+                            current := lazy
+                        else
+                            searching := false
+                        end
+                    else
+                        searching := false
+                    end
+                end
+            end
+            result
+        end
+end

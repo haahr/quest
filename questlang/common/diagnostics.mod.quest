@@ -148,6 +148,62 @@ export
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
     (* Python's repr of a string: single quotes unless the string holds a single quote and no double quote *)
+    (* =========================================================================
+     * Errors raised where they are found
+     * ========================================================================= *)
+
+    Let CompilerError = Tuple
+        message: String
+        offset: Int
+        length: Int
+        isFatal: Bool
+        help: maybe.T(String)
+        notes: vector.T(String)
+        (* The file of the unit the error was raised in, once it propagates out of it (the bootstrap's in_unit) *)
+        file: maybe.T(String)
+    end
+
+    let compilerError: Exception(CompilerError) = exception compilerError: CompilerError end
+
+    let errorAt(message: String offset: Int): CompilerError =
+        tuple
+            let message = message
+            let offset = offset
+            let length = 1
+            let isFatal = false
+            let help = maybe.none(:String)
+            let notes = vector.new(:String)
+            let file = maybe.none(:String)
+        end
+
+    let inFile(e: CompilerError file: String): CompilerError =
+        if maybe.isSome(:String e.file) then
+            e
+        else
+            tuple
+                let message = e.message
+                let offset = e.offset
+                let length = e.length
+                let isFatal = e.isFatal
+                let help = e.help
+                let notes = e.notes
+                let file = maybe.some(:String file)
+            end
+        end
+
+    let raiseError(A::TYPE e: CompilerError): A = raise compilerError with e end
+
+    let fail(A::TYPE message: String offset: Int): A = raise compilerError with errorAt(message offset) end
+
+    let errorDiagnostic(e: CompilerError file: String): Diagnostic =
+        begin
+            let sp = location.span(maybe.unwrapOr(:String e.file file) e.offset {e.offset + e.length})
+            let d = if e.isFatal then fatal(e.message sp) else error(e.message sp) end
+            if maybe.isSome(:String e.help) then setHelp(d maybe.unwrap(:String e.help)) end
+            for i = 0 upto {vector.length(:String e.notes) - 1} do addNote(d vector.get(:String e.notes i)) end
+            d
+        end
+
     let pyRepr(s: String): String =
         begin
             let size = stringOp.length(s)

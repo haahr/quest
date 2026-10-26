@@ -1,10 +1,11 @@
-"""Generates the self-hosted type model's golden test (questlang/types/model, symbols, and dump) from the bootstrap's.
+"""Generates the self-hosted type system's golden tests (questlang/types/*) from the bootstrap's.
 
-The cases below build types and kinds with the bootstrap's model (bootstrap/python/quest/types/model.py) and apply its
-operations to them: printing (str, format_type_compact, qtype_dump, short_type_name), hash-consing, free variables,
-substitution, lazy evaluation and unfolding, metavariables, and the model's queries. The generator writes
-tests/source/questlang/types_model.quest, which builds the same types with the self-hosted model and applies the same
-operations, and its golden, which holds what the bootstrap gives.
+The cases below build types and kinds with the bootstrap's model (bootstrap/python/quest/types/model.py) and apply
+operations to them. tests/source/questlang/types_model.quest applies the model's: printing (str, format_type_compact,
+qtype_dump, short_type_name), hash-consing, free variables, substitution, lazy evaluation and unfolding,
+metavariables, and the model's queries. tests/source/questlang/types_judgments.quest applies the judgments of
+subtyping, kinds, and contractiveness, the resolution of bounds, and the environment's builtins. Each builds the same
+types with the self-hosted modules and applies the same operations; its golden holds what the bootstrap gives.
 
     python tests/types/generate.py
 
@@ -76,8 +77,23 @@ from quest.types.model import (  # noqa: E402
 )
 from quest.types.dump import format_type_compact, qtype_dump, short_type_name  # noqa: E402
 
-TEST_FILE = ROOT_DIR / "tests" / "source" / "questlang" / "types_model.quest"
-GOLDEN_FILE = ROOT_DIR / "tests" / "golden" / "run" / "questlang" / "types_model.out"
+from quest.types.contractiveness import is_type_contractive  # noqa: E402
+from quest.types.env import Environment, KindSymbol, TypeSymbol  # noqa: E402
+from quest.types.kinds import (  # noqa: E402
+    KindError,
+    check_kind,
+    check_kind_well_formed,
+    resolve_option_bound,
+    resolve_record_bound,
+    resolve_sum_bound,
+    resolve_tuple_bound,
+    synth_kind,
+)
+from quest.types.subtyping import is_subkind, is_subtype, is_type_equal  # noqa: E402
+from quest.diagnostics import QuestCompilerError  # noqa: E402
+
+TEST_DIR = ROOT_DIR / "tests" / "source" / "questlang"
+GOLDEN_DIR = ROOT_DIR / "tests" / "golden" / "run" / "questlang"
 
 
 # =========================================================================
@@ -130,6 +146,10 @@ class Emitter:
         self.keep.append(node)
         self.lines.append(f"let {name} = {expr};")
         return name
+
+    def stmt(self, code: str) -> None:
+        """A statement among the lets, run where the bootstrap ran it."""
+        self.lines.append(code)
 
     def meta(self, m: QTypeMeta) -> str:
         """Declares a metavariable, in the order the bootstrap made them."""
@@ -470,6 +490,251 @@ def build_cases(em: Emitter) -> list[tuple[str, str]]:
     return checks
 
 
+def build_judgments(em: Emitter) -> list[tuple[str, str]]:
+    """The judgments' checks: (Quest expression of a String, the bootstrap's value)."""
+    checks: list[tuple[str, str]] = []
+
+    def check(label: str, quest: str, value: str) -> None:
+        checks.append((f"{qstr(label + ': ')} <> {quest}", f"{label}: {value}"))
+
+    def flag(b: bool) -> str:
+        return "true" if b else "false"
+
+    def attempt(f: Callable[[], str]) -> str:
+        try:
+            return f()
+        except (KindError, QuestCompilerError) as e:
+            return f"error: {e.message}"
+
+    # The environment, and its symbols, declared before any check
+    E = Environment(builtin_registry=False)
+    em.stmt("let e = env.newWith(maybe.none(:env.Registry));")
+    em.stmt("let en = maybe.some(:env.T e);")
+    em.stmt("let noEnv = maybe.none(:env.T);")
+    record_a = QRecordType((QRecordField("a", INT_TYPE),))
+    record_ab = QRecordType((QRecordField("a", INT_TYPE), QRecordField("b", STRING_TYPE)))
+    E.current_scope.declare_type(TypeSymbol("T", 201, TYPE_KIND, definition=INT_TYPE))
+    em.stmt("env.declareTypeVariable(e \"T\" 201 model.typeKind maybe.some(:model.Type model.intType));")
+    u_bound = QPowerKind(record_ab)
+    E.current_scope.declare_type(TypeSymbol("U", 202, u_bound))
+    em.stmt(f"env.declareTypeVariable(e \"U\" 202 {em.kind(u_bound)} maybe.none(:model.Type));")
+    E.current_scope.declare_kind(KindSymbol("K", 203, TYPE_KIND))
+    em.stmt("symbols.declareKind(e.currentScope symbols.newKindSymbol(\"K\" 203 model.typeKind));")
+
+    def env_of(use_env: bool) -> tuple[Any, str, str]:
+        return (E, "env.lookupOf(e)", "en") if use_env else (None, "maybe.none(:model.Lookup)", "noEnv")
+
+    def subtype(label: str, a: Any, b: Any, use_env: bool = True) -> None:
+        py_env, q_env, _ = env_of(use_env)
+        check(label, f"conv.bool(subtyping.isSubtype({em.type(a)} {em.type(b)} {q_env}))",
+              flag(is_subtype(a, b, py_env)))
+
+    def equal(label: str, a: Any, b: Any, use_env: bool = True) -> None:
+        py_env, q_env, _ = env_of(use_env)
+        check(label, f"conv.bool(subtyping.isTypeEqual({em.type(a)} {em.type(b)} {q_env}))",
+              flag(is_type_equal(a, b, py_env)))
+
+    def subkind(label: str, a: Any, b: Any) -> None:
+        check(label, f"conv.bool(subtyping.isSubkind({em.kind(a)} {em.kind(b)} env.lookupOf(e)))",
+              flag(is_subkind(a, b, E)))
+
+    def synth(label: str, t: Any, use_env: bool = True) -> None:
+        py_env, _, k_env = env_of(use_env)
+        check(label, f"attempt(fun(): String model.showKind(kinds.synthKind({em.type(t)} {k_env})))",
+              attempt(lambda: str(synth_kind(t, py_env))))
+
+    def kind_check(label: str, t: Any, k: Any) -> None:
+        check(label, f"attempt(fun(): String begin kinds.checkKind({em.type(t)} {em.kind(k)} en) \"ok\" end)",
+              attempt(lambda: (check_kind(t, k, E), "ok")[1]))
+
+    def well_formed(label: str, k: Any) -> None:
+        check(label, f"attempt(fun(): String begin kinds.checkKindWellFormed({em.kind(k)} en) \"ok\" end)",
+              attempt(lambda: (check_kind_well_formed(k, E), "ok")[1]))
+
+    A = QTypeVar("A", 101, TYPE_KIND)
+    X = QTypeVar("X", 103, TYPE_KIND)
+
+    # Subtyping
+    subtype("record width", record_ab, record_a)
+    subtype("record width reversed", record_a, record_ab)
+    var_a = QRecordType((QRecordField("a", INT_TYPE, is_var=True),))
+    subtype("var field to field", var_a, record_a)
+    subtype("field to var field", record_a, var_a)
+    subtype("record depth", QRecordType((QRecordField("r", record_ab),)), QRecordType((QRecordField("r", record_a),)))
+    subtype("variant width", QVariantType((QVariantField("a"),)),
+            QVariantType((QVariantField("a"), QVariantField("b", INT_TYPE))))
+    subtype("variant width reversed", QVariantType((QVariantField("a"), QVariantField("b", INT_TYPE))),
+            QVariantType((QVariantField("a"),)))
+    subtype("option width", QOptionType((QOptionField("a"),)), QOptionType((QOptionField("a"), QOptionField("b"))))
+    subtype("fun", QFunType((QParam("x", record_a),), record_ab), QFunType((QParam("x", record_ab),), record_a))
+    subtype("fun reversed", QFunType((QParam("x", record_ab),), record_a),
+            QFunType((QParam("x", record_a),), record_ab))
+    subtype("array invariant", QArrayType(record_ab), QArrayType(record_a))
+    subtype("out contravariant", QOutType(record_a), QOutType(record_ab))
+    subtype("exception invariant", QExceptionType(INT_TYPE), QExceptionType(BOOL_TYPE))
+    weak = QAllType((QQuantifier("A", 101, QPowerKind(record_a)),), QFunType((QParam("x", A),), A))
+    B = QTypeVar("B", 102, TYPE_KIND)
+    strong = QAllType((QQuantifier("B", 102, QPowerKind(record_ab)),), QFunType((QParam("x", B),), B))
+    subtype("all bounds", weak, strong)
+    subtype("all bounds reversed", strong, weak)
+    auto1 = QAutoType("P", 106, TYPE_KIND, (QRecordField("v", QTypeVar("P", 106)),))
+    auto2 = QAutoType("Q", 107, TYPE_KIND, (QRecordField("v", QTypeVar("Q", 107)),))
+    subtype("auto renamed", auto1, auto2)
+    box = QTypeFun((QTypeFormal("A", 101, TYPE_KIND),), QTupleType((QTupleField("x", A),)))
+    box2 = QTypeFun((QTypeFormal("B", 102, TYPE_KIND),), QTupleType((QTupleField("x", B),)))
+    subtype("operator renamed", box, box2)
+    box_alias = QAliasType("Box", 108, box)
+    subtype("app reduced", QTypeApp(box_alias, (record_ab,)), QTypeApp(box_alias, (record_a,)))
+    subtype("external", QExternalType("", "FILE *"), QExternalType("F", " FILE * "))
+    l_body = lambda var: QOptionType((QOptionField("nil"), QOptionField("cons", QTupleType(  # noqa: E731
+        (QTupleField("h", INT_TYPE), QTupleField("t", var))))))
+    list1 = QRecType("L", 109, TYPE_KIND, l_body(QTypeVar("L", 109, TYPE_KIND)))
+    list2 = QRecType("M", 120, TYPE_KIND, l_body(QTypeVar("M", 120, TYPE_KIND)))
+    equal("rec encodings", list1, list2)
+    equal("rec unfolded", list1, list1.unfold_lazily())
+    equal("record order", record_ab, QRecordType((QRecordField("b", STRING_TYPE), QRecordField("a", INT_TYPE))))
+    subtype("bottom", BOTTOM_TYPE, record_ab)
+    subtype("defined var with env", QTypeVar("T", 201), INT_TYPE)
+    subtype("defined var without env", QTypeVar("T", 201), INT_TYPE, use_env=False)
+    subtype("bounded var", QTypeVar("V", 204, QPowerKind(record_ab)), record_a)
+    x_formal = QTupleType((QTupleTypeFormal("X", 103, TYPE_KIND), QTupleField("x", X)))
+    y_formal = QTupleType((QTupleTypeFormal("X", 121, TYPE_KIND), QTupleField("x", QTypeVar("X", 121, TYPE_KIND))))
+    subtype("tuple formals renamed", x_formal, y_formal)
+    subtype("tuple binding to formal",
+            QTupleType((QTupleTypeBinding("X", INT_TYPE), QTupleField("x", INT_TYPE))), y_formal)
+    subtype("tuple prefix", QTupleType((QTupleField("a", INT_TYPE), QTupleField("b", BOOL_TYPE))),
+            QTupleType((QTupleField("a", INT_TYPE),)))
+    subtype("path identity", QPathType("p", 113, "T", TYPE_KIND), QPathType("p", 113, "T", QPowerKind(INT_TYPE)))
+    QTypeMeta.reset_counter()
+    m = QTypeMeta()
+    n = em.meta(m)
+    subtype("meta solved", m, record_ab)
+    check("meta solution", f"model.show(model.prune({n}))", str(m.prune()))
+
+    # Subkinding
+    subkind("power to TYPE", QPowerKind(record_ab), TYPE_KIND)
+    subkind("power to power", QPowerKind(record_ab), QPowerKind(record_a))
+    subkind("power to power reversed", QPowerKind(record_a), QPowerKind(record_ab))
+    subkind("TYPE to power", TYPE_KIND, QPowerKind(record_a))
+    subkind("all kinds", QAllKind("A", 101, TYPE_KIND, TYPE_KIND), QAllKind("B", 102, TYPE_KIND, TYPE_KIND))
+
+    # Kinds
+    synth("synth Int", INT_TYPE)
+    synth("synth record", record_ab)
+    synth("synth defined var", QTypeVar("T", 201))
+    synth("synth unbound var", QTypeVar("Z", 299))
+    synth("synth unbound var without env", QTypeVar("Z", 299), use_env=False)
+    synth("synth operator", box)
+    synth("synth app", QTypeApp(box_alias, (INT_TYPE,)))
+    synth("synth app of non-operator", QTypeApp(INT_TYPE, (INT_TYPE,)))
+    synth("synth abstract", QAbstractType("U", 202, u_bound))
+    synth("synth rec", list1)
+    tree_body = QRecordType((QRecordField("kids", QTypeVar("Forest", 111, TYPE_KIND)),))
+    forest_body = QOptionType((QOptionField("none"), QOptionField("some", QTypeVar("Tree", 110, TYPE_KIND))))
+    group = QRecGroupType((("Tree", 110, TYPE_KIND, tree_body), ("Forest", 111, TYPE_KIND, forest_body)), 0)
+    synth("synth group", group)
+    synth("synth all", weak)
+    synth("synth auto", auto1)
+    synth("synth tuple", QTupleType((QTupleTypeFormal("X", 103, TYPE_KIND), QTupleField("x", X),
+                                     QTupleTypeBinding("Y", INT_TYPE))))
+    synth("synth bottom", BOTTOM_TYPE)
+    kind_check("check bound", INT_TYPE, QPowerKind(record_a))
+    kind_check("check subkind", box, TYPE_KIND)
+    kind_check("check power", record_ab, QPowerKind(record_a))
+    well_formed("well-formed kind var", QKindVar("K", 203))
+    well_formed("unbound kind var", QKindVar("Q", 298))
+    well_formed("well-formed all", QAllKind("A", 101, TYPE_KIND, QPowerKind(A)))
+
+    # Contractiveness
+    def contractive(label: str, t: Any, ids: list[int]) -> None:
+        items = " ".join(str(i) for i in ids)
+        check(label, f"conv.bool(contractiveness.isTypeContractive({em.type(t)} idSet(array of {items} end) en))",
+              flag(is_type_contractive(t, set(ids), E)))
+
+    contractive("bare variable", X, [103])
+    contractive("guarded variable", QRecordType((QRecordField("x", X),)), [103])
+    contractive("quantified body", QAllType((QQuantifier("A", 101, TYPE_KIND),), X), [103])
+    contractive("reduced application", QTypeApp(box_alias, (X,)), [103])
+    contractive("other variable", A, [103])
+
+    # Bounds
+    def bound(label: str, quest_fn: str, py_fn: Callable[..., Any], t: Any) -> None:
+        result = py_fn(t, E)
+        check(label, f"showMaybe(kinds.{quest_fn}({em.type(t)} en))", str(result) if result is not None else "none")
+
+    bound("record bound of variable", "resolveRecordBound", resolve_record_bound,
+          QTypeVar("V", 204, QPowerKind(record_ab)))
+    bound("record bound of record", "resolveRecordBound", resolve_record_bound, record_a)
+    bound("record bound of Int", "resolveRecordBound", resolve_record_bound, INT_TYPE)
+    bound("tuple bound of application", "resolveTupleBound", resolve_tuple_bound, QTypeApp(box_alias, (INT_TYPE,)))
+    bound("sum bound of rec", "resolveSumBound", resolve_sum_bound, list1)
+    bound("option bound of rec", "resolveOptionBound", resolve_option_bound, list1)
+    bound("option bound of variable", "resolveOptionBound", resolve_option_bound,
+          QTypeVar("W", 205, QPowerKind(QOptionType((QOptionField("x"),)))))
+
+    # The environment's builtins
+    for name in ["+", "<>", "\\/", "not", "extent", "ordinal", "true", "ok"]:
+        check(f"builtin {name}",
+              f"model.show(maybe.unwrap(:symbols.ValueSymbol env.lookupValue(e {qstr(name)})).type)",
+              str(E.lookup_value(name).type_val))
+    for name in ["Int", "Exception", "Dynamic"]:
+        sym = E.lookup_type(name)
+        check(f"builtin type {name}",
+              f"model.show(maybe.unwrap(:model.Type "
+              f"maybe.unwrap(:symbols.TypeSymbol env.lookupType(e {qstr(name)})).definition))",
+              str(sym.definition))
+    check("builtin kind TYPE",
+          "model.showKind(maybe.unwrap(:symbols.KindSymbol env.lookupKind(e \"TYPE\")).kind)",
+          str(E.lookup_kind("TYPE").kind))
+    check("undeclared value", "conv.bool(maybe.isNone(:symbols.ValueSymbol env.lookupValue(e \"nothing\")))",
+          flag(E.lookup_value("nothing") is None))
+    return checks
+
+
+JUDGMENTS_PRELUDE = """import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/contractiveness : questlang/types/Contractiveness
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\\n") end;
+
+let attempt(f: All() String): String =
+    try f() when diagnostics.compilerError with err then "error: " <> err.message end;
+
+let showMaybe(t: maybe.T(model.Type)): String =
+    if maybe.isSome(:model.Type t) then model.show(maybe.unwrap(:model.Type t)) else "none" end;
+
+let idSet(a: Array(Int)): hashMap.T(Int Bool) =
+    begin
+        let s = hashMap.new(:Int :Bool fun(x: Int y: Int): Bool x is y hash.int)
+        for i = 0 upto {extent a - 1} do hashMap.insert(:Int :Bool s a[i] true) end
+        s
+    end;
+
+model.resetMetaCounter();
+"""
+
+JUDGMENTS_HEADER = """(* Self-Hosted Quest Compiler: Test Subtyping, Kinds, and Environments
+ * (generated by tests/types/generate.py; do not edit)
+ *
+ * Applies the judgments of the self-hosted type system (questlang/types/subtyping, kinds, contractiveness, env) to
+ * types; the golden holds what the bootstrap's give for the same types. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+(* @timeout: 300.0 *)
+
+"""
+
+
 PRELUDE = """import
     questlang/types/model : questlang/types/Model
     questlang/types/dump : questlang/types/Dump
@@ -539,17 +804,24 @@ HEADER = """(* Self-Hosted Quest Compiler: Test the Type Model (generated by tes
 """
 
 
-def main() -> None:
+def write(name: str, header: str, prelude: str, build: Callable[[Emitter], list[tuple[str, str]]]) -> None:
     em = Emitter()
     QTypeMeta.reset_counter()
-    checks = build_cases(em)
-    # The lets come before the checks: each check's types are bound by then. Metavariables are made among the lets,
-    # in the order the bootstrap made them.
-    body = [HEADER, PRELUDE, "\n", "\n".join(em.lines), "\n\n"]
+    checks = build(em)
+    # The lets (and statements) come before the checks: each check's types are bound by then. Metavariables are made
+    # among the lets, in the order the bootstrap made them.
+    body = [header, prelude, "\n", "\n".join(em.lines), "\n\n"]
     body.extend(f"emit({q});\n" for q, _ in checks)
-    TEST_FILE.write_text("".join(body), encoding="utf-8")
-    GOLDEN_FILE.write_text("".join(v + "\n" for _, v in checks), encoding="utf-8")
-    print(f"wrote {TEST_FILE.relative_to(ROOT_DIR)} and {GOLDEN_FILE.relative_to(ROOT_DIR)}")
+    test_file = TEST_DIR / f"{name}.quest"
+    golden_file = GOLDEN_DIR / f"{name}.out"
+    test_file.write_text("".join(body), encoding="utf-8")
+    golden_file.write_text("".join(v + "\n" for _, v in checks), encoding="utf-8")
+    print(f"wrote {test_file.relative_to(ROOT_DIR)} and {golden_file.relative_to(ROOT_DIR)}")
+
+
+def main() -> None:
+    write("types_model", HEADER, PRELUDE, build_cases)
+    write("types_judgments", JUDGMENTS_HEADER, JUDGMENTS_PRELUDE, build_judgments)
 
 
 if __name__ == "__main__":

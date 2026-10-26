@@ -28,7 +28,7 @@ from typing import Any, TypeVar
 import quest.syntax.ast as ast
 
 # Infix operators the type checker elaborates itself; every other infix operator is a call. The arithmetic,
-# relational, concatenation, and eager boolean operators are those typed by quest.types.kinds.INFIX_OPERATORS, which
+# relational, concatenation, and eager boolean operators are those typed by quest.types.env.INFIX_OPERATORS, which
 # maps them to their operand and result types (test_desugar checks that the two agree); == and != are rejected with
 # a suggestion. The table stays with the types it names, so that syntax does not depend on types.
 BUILTIN_INFIX_OPERATORS = frozenset((

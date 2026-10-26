@@ -90,15 +90,20 @@ mixins' calls back into the checker. Step 0 broke each in the bootstrap, so that
 The bootstrap raises `QuestTypeError` at the first error and the pipeline reports it. The self-hosted checker
 reports that error first, with the same message and span, and goes on to find others.
 
-- **Reporting.** `diagbag` gains `failed: Exception(Ok)` and `fail(bag span message)`, which adds an error to the bag
-  and raises `failed`. Every place the bootstrap raises a type error calls `fail` (through `checks` and the checker's
-  helpers), so an error stops the work it was part of, as in the bootstrap.
-- **Recovery.** The checker catches `failed` at each binding: each phrase of a program, each binding of a block
-  (function bodies, conditionals, and loops are made of blocks), and each member of an interface or module. The
-  failed binding contributes nothing to the typed AST, and the checker goes on with the next.
+- **Reporting.** As the bootstrap raises `QuestCompilerError` and its subclasses where it finds an error, the
+  self-hosted compiler raises `diagnostics.compilerError`, whose payload is the message, the offset in the unit being
+  checked (0 where the raiser does not know where, as for the bootstrap's kind errors, which it reports at 1:1), the
+  length, the help and notes, and whether it is fatal. Raising stops the work the error was part of, as in the
+  bootstrap. An error that propagates out of a unit loaded from a file records the file (`env.withUnitSource`, the
+  bootstrap's `in_unit`); `diagnostics.errorDiagnostic` makes the diagnostic, in that file or the current one.
+- **Recovery.** The checker catches `compilerError` at each binding: each phrase of a program, each binding of a
+  block (function bodies, conditionals, and loops are made of blocks), and each member of an interface or module,
+  and adds its diagnostic to the bag. The failed binding contributes nothing to the typed AST, and the checker goes
+  on with the next. Code that changes the environment's state (its scopes, the unit being elaborated) restores it as
+  the error propagates, as the bootstrap's `finally` blocks do (`env.scoped`).
 - **No cascades.** The names a failed binding declares are bound to poisoned symbols: a poisoned value symbol, or a
-  type or kind symbol whose definition is unknown. Using a poisoned symbol raises `failed` without adding an error,
-  so a binding that depends on one fails silently. A binding with a declared type (`let f(x: Int): Int = ...`,
+  type or kind symbol whose definition is unknown. Using a poisoned symbol raises an error that the recovery point
+  does not report, so a binding that depends on one fails silently. A binding with a declared type (`let f(x: Int): Int = ...`,
   `let x: T = ...`) is bound at that type even if its value fails, so its users are still checked. A failed import
   poisons the names it would have bound.
 - **Fatal errors** stay fatal: an error that leaves nothing sensible to check (a cycle of imports, an internal error,
@@ -181,11 +186,17 @@ bootstrap building the same types.
 **Done when** those tests pass compiled. (`structurally_equal` is not ported: nothing uses it. The model's components
 are plain tuples, whose identity is that of the types they hold; nodes record their identity as an id.)
 
-### Step 3: Subtyping, kinds, contractiveness, environments
+### Step 3: Subtyping, kinds, contractiveness, environments (done)
 
 Port `subtyping` (equi-recursive proofs and their cache), `kinds` (kind synthesis and checking), `contractiveness`,
 and `env` (the environment and the builtin registry, without units yet). Test the judgments with generated tests, as
 in Step 2.
+
+`kinds` and `contractiveness` use the environment's scopes, so in Quest they are above `env`; the bootstrap's
+`INFIX_OPERATORS`, which `env` declares and `kinds` only held, moved to `env.py` to keep the two layouts the same.
+Subtyping takes only the environment's lookups (`subtyping.Env`, the bootstrap's `env` or `None`). The step found and
+fixed a bug of the bootstrap's C backend: a closure returning `Ok` adapted to a generic result
+(`modules/ok_result_closures`).
 
 ### Step 4: Elaborating types; the typed AST
 

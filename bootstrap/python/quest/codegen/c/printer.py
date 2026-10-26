@@ -715,6 +715,13 @@ class CPrinter:
             self.emit(f"{called};")
             self.emit("return;")
             return
+        if self.is_ok(source_result):
+            # A closure returning Ok returns nothing in C; adapted to a generic result (Ok at a type parameter), it
+            # returns Ok's value
+            assert self.c_type(target_result) == "QVal", f"adapting an Ok result to {target_result}"
+            self.emit(f"{called};")
+            self.emit("return Q_OK_VAL;")
+            return
         if result_plan is None:
             self.emit(f"return {called};")
             return

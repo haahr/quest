@@ -984,6 +984,23 @@ export
             all
         end
 
+    let substituteComponent(c: TupleComponent subst: Subst): TupleComponent =
+        case c
+            when tupleField with f then tupleField(f.name substitute(f.type subst) f.isVar)
+            when tupleTypeFormal with f then
+                option tupleTypeFormal of TupleComponent with
+                    let name = f.name
+                    let symbolId = f.symbolId
+                    let bound = substituteInKind(f.bound subst)
+                end
+            when tupleTypeBinding with f then
+                option tupleTypeBinding of TupleComponent with
+                    let name = f.name
+                    let type = substitute(f.type subst)
+                    let bound = substituteOptKind(f.bound subst)
+                end
+        end
+
     let rec substituteKinds(k: Kind subst: KindSubst): Kind =
         case k.form
             when kindAll with x then

@@ -6,11 +6,6 @@ from typing import Any, Optional, Union
 
 from quest.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
 from quest.types.model import (
-    BOOL_TYPE,
-    INT_TYPE,
-    OK_TYPE,
-    REAL_TYPE,
-    STRING_TYPE,
     TYPE_KIND,
     QAbstractType,
     QAliasType,
@@ -388,44 +383,6 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
         case _:
             raise KindError(f"Cannot synthesize kind for unknown type node '{type_val}'")
 
-
-
-# ============================================================================
-# Operator Signatures (Cardelli §4.2)
-# ============================================================================
-
-# Operator signature table for non-overloaded Quest infix operators:
-# Maps operator symbol -> (expected_left_type, expected_right_type, result_type)
-INFIX_OPERATORS: dict[str, tuple[QType, QType, QType]] = {
-    # Integer arithmetic
-    "+": (INT_TYPE, INT_TYPE, INT_TYPE),
-    "-": (INT_TYPE, INT_TYPE, INT_TYPE),
-    "*": (INT_TYPE, INT_TYPE, INT_TYPE),
-    "/": (INT_TYPE, INT_TYPE, INT_TYPE),
-    "%": (INT_TYPE, INT_TYPE, INT_TYPE),
-    "mod": (INT_TYPE, INT_TYPE, INT_TYPE),
-    # Integer relational
-    "<": (INT_TYPE, INT_TYPE, BOOL_TYPE),
-    "<=": (INT_TYPE, INT_TYPE, BOOL_TYPE),
-    ">": (INT_TYPE, INT_TYPE, BOOL_TYPE),
-    ">=": (INT_TYPE, INT_TYPE, BOOL_TYPE),
-    # Real arithmetic (doubled)
-    "++": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
-    "--": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
-    "**": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
-    "//": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
-    "^^": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
-    # Real relational (doubled)
-    "<<": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
-    "<<=": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
-    ">>": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
-    ">>=": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
-    # String concatenation
-    "<>": (STRING_TYPE, STRING_TYPE, STRING_TYPE),
-    # Boolean eager operations
-    "/\\": (BOOL_TYPE, BOOL_TYPE, BOOL_TYPE),
-    "\\/": (BOOL_TYPE, BOOL_TYPE, BOOL_TYPE),
-}
 
 
 def unfold_head(t: QType) -> Optional[QType]:

@@ -206,11 +206,12 @@ golden holds what the bootstrap's parser and `ast_dump` give. `forms.quest` uses
 parser has (its entry points, its nodes' extents, and the phrases its AST holds only at the top level), and
 `syntax_parser_engine.quest` tests the engine with a small grammar.
 
-**Self-hosted type model:** `tests/types/generate.py` builds types and kinds with the bootstrap's model and applies
-its operations to them (printing, hash-consing, free variables, substitution, evaluation and unfolding,
-metavariables, queries), and writes `tests/source/questlang/types_model.quest`, which does the same with the
-self-hosted model (`questlang/types/model`, `dump`), and its golden, which holds what the bootstrap gives. Regenerate
-them with `python tests/types/generate.py` after changing a case.
+**Self-hosted type system:** `tests/types/generate.py` builds types and kinds with the bootstrap's model and applies
+operations to them, and writes tests that do the same with the self-hosted modules (`questlang/types/*`), whose
+goldens hold what the bootstrap gives: `types_model` the model's operations (printing, hash-consing, free variables,
+substitution, evaluation and unfolding, metavariables, queries), and `types_judgments` the judgments (subtyping,
+subkinding, kind synthesis and its errors, contractiveness, bounds, the environment's builtins). Regenerate them
+with `python tests/types/generate.py` after changing a case.
 
 **Conversion matrix:** `tests/conversions/generate.py` writes the programs in `tests/source/conversions`, one per place
 compiled code converts values between representations (polymorphic calls, first-class polymorphic values, type

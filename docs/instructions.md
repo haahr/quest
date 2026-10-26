@@ -96,8 +96,8 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   generation cannot ...`. See [diagnostics.md](diagnostics.md).
 - **Generated C stays readable:** structured, with names derived from the source, so that it can be debugged.
 - **Generated files are not edited by hand.** `tests/source/conversions/` comes from `tests/conversions/generate.py`
-  the `parser_*` tests from `tests/parser/generate.py`, and `types_model` from `tests/types/generate.py`; change the
-  generator and regenerate.
+  the `parser_*` tests from `tests/parser/generate.py`, and the `types_*` tests from `tests/types/generate.py`; change
+  the generator and regenerate.
 - **Interface and ABI changes:** a change to what `.qi` files or generated headers contain needs an `ABI_VERSION`
   bump ([build-process.md](build-process.md) §5.2); `tests/python/test_abi_corpus.py` checks it.
 

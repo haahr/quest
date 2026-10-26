@@ -79,7 +79,7 @@ class TestDesugar(unittest.TestCase):
         )
 
     def test_builtin_infix_operators_are_those_the_type_checker_types(self) -> None:
-        from quest.types.kinds import INFIX_OPERATORS
+        from quest.types.env import INFIX_OPERATORS
 
         self.assertEqual(BUILTIN_INFIX_OPERATORS, {*INFIX_OPERATORS, ":=", "is", "isnot", "==", "!="})
 

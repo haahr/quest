@@ -10,7 +10,6 @@ from typing import Any, ClassVar, Optional, Protocol
 
 from quest.diagnostics import in_unit
 from quest.modules.graph import UnitGraph
-from quest.types.kinds import INFIX_OPERATORS
 from quest.types.model import (
     BOOL_TYPE,
     CHAR_TYPE,
@@ -42,6 +41,44 @@ from quest.types.symbols import (
     _TYPE_SYMBOLS_BY_ID,
     allocate_symbol_id,
 )
+
+
+# ============================================================================
+# Operator Signatures (Cardelli §4.2)
+# ============================================================================
+
+# Operator signature table for non-overloaded Quest infix operators, which the environment declares as functions:
+# Maps operator symbol -> (expected_left_type, expected_right_type, result_type)
+INFIX_OPERATORS: dict[str, tuple[QType, QType, QType]] = {
+    # Integer arithmetic
+    "+": (INT_TYPE, INT_TYPE, INT_TYPE),
+    "-": (INT_TYPE, INT_TYPE, INT_TYPE),
+    "*": (INT_TYPE, INT_TYPE, INT_TYPE),
+    "/": (INT_TYPE, INT_TYPE, INT_TYPE),
+    "%": (INT_TYPE, INT_TYPE, INT_TYPE),
+    "mod": (INT_TYPE, INT_TYPE, INT_TYPE),
+    # Integer relational
+    "<": (INT_TYPE, INT_TYPE, BOOL_TYPE),
+    "<=": (INT_TYPE, INT_TYPE, BOOL_TYPE),
+    ">": (INT_TYPE, INT_TYPE, BOOL_TYPE),
+    ">=": (INT_TYPE, INT_TYPE, BOOL_TYPE),
+    # Real arithmetic (doubled)
+    "++": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
+    "--": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
+    "**": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
+    "//": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
+    "^^": (REAL_TYPE, REAL_TYPE, REAL_TYPE),
+    # Real relational (doubled)
+    "<<": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
+    "<<=": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
+    ">>": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
+    ">>=": (REAL_TYPE, REAL_TYPE, BOOL_TYPE),
+    # String concatenation
+    "<>": (STRING_TYPE, STRING_TYPE, STRING_TYPE),
+    # Boolean eager operations
+    "/\\": (BOOL_TYPE, BOOL_TYPE, BOOL_TYPE),
+    "\\/": (BOOL_TYPE, BOOL_TYPE, BOOL_TYPE),
+}
 
 
 # ============================================================================

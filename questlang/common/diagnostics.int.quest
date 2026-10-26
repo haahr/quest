@@ -62,6 +62,38 @@ export
     render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok
 
     (* =========================================================================
+     * Errors raised where they are found
+     *
+     * As the bootstrap's QuestCompilerError and its subclasses (KindError, QuestTypeError, ...), an error is raised
+     * where it is found, located by an offset in the unit being checked (0 where the raiser does not know where), and
+     * the code that reports it makes a diagnostic of it in that unit's file.
+     * ========================================================================= *)
+
+    Def CompilerError = Tuple
+        message: String
+        offset: Int
+        length: Int
+        isFatal: Bool
+        help: maybe.T(String)
+        notes: vector.T(String)
+        (* The file of the unit the error was raised in, once it propagates out of it (the bootstrap's in_unit) *)
+        file: maybe.T(String)
+    end
+
+    compilerError: Exception(CompilerError)
+
+    (* An error, of length 1 and without help or notes *)
+    errorAt(message: String offset: Int): CompilerError
+    (* Raises an error (of any type, as raise has) *)
+    raiseError(A::TYPE e: CompilerError): A
+    (* Raises errorAt(message offset) *)
+    fail(A::TYPE message: String offset: Int): A
+    (* An error located in file, unless it already is *)
+    inFile(e: CompilerError file: String): CompilerError
+    (* The diagnostic of an error, in its file, or else in file *)
+    errorDiagnostic(e: CompilerError file: String): Diagnostic
+
+    (* =========================================================================
      * Quoting
      * ========================================================================= *)
 

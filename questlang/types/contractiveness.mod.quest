@@ -1,0 +1,134 @@
+(* Quest Self-Hosted Compiler: Contractiveness of Recursive Types Implementation *)
+
+module contractiveness : Contractiveness
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+    Let Ids = hashMap.T(Int Bool)
+
+    let maxTypeExpansionDepth = 500
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
+
+    (* ids with one more *)
+    let plus(ids: Ids id: Int): Ids =
+        begin
+            let more = hashMap.filter(:Int :Bool ids fun(k: Int v: Bool): Bool true)
+            hashMap.insert(:Int :Bool more id true)
+            more
+        end
+
+    let union(a: Ids b: Ids): Ids =
+        begin
+            let both = hashMap.filter(:Int :Bool a fun(k: Int v: Bool): Bool true)
+            hashMap.forEach(:Int :Bool b fun(k: Int v: Bool): Ok begin hashMap.insert(:Int :Bool both k true) ok end)
+            both
+        end
+
+    let has(ids: Ids id: Int): Bool = hashMap.contains(:Int :Bool ids id)
+
+    (* Contractiveness (Cardelli and Longo, section 2.4): primitive types and type constructors are contractive; a
+     * variable is contractive in X iff it is not X; All(X' :: K) B iff B is; an application iff its (opaque, since
+     * evaluation reduces applications of type operators) constructor is; Rec(X') B iff B is in X' and in X *)
+    let rec contractive(t: Type ids: Ids e: maybe.T(env.T) seen: Ids depth: Int): Bool =
+        begin
+            if depth > maxTypeExpansionDepth then
+                diagnostics.raiseError(:Ok tuple
+                    let message = "Fatal compiler error: Type contractiveness check exceeded recursion depth of " <>
+                        conv.int(maxTypeExpansionDepth)
+                    let offset = 0
+                    let length = 1
+                    let isFatal = true
+                    let help = maybe.none(:String)
+                    let notes = vector.fromArray(:String array of
+                        "Compiler terminated to prevent infinite recursion during typechecking."
+                    end)
+                    let file = maybe.none(:String)
+                end)
+            end
+            let lookup = if maybe.isSome(:env.T e) then symbols.lookup else model.noLookup end
+            let lazy = model.evaluateLazily(t lookup)
+            case lazy.form
+                when typeVariable with x then
+                    if has(ids x.symbolId) then
+                        false
+                    elsif maybe.isSome(:env.T e) then
+                        let sym = env.lookupTypeById(maybe.unwrap(:env.T e) x.symbolId)
+                        if maybe.isSome(:symbols.TypeSymbol sym) andif
+                            maybe.isSome(:Type maybe.unwrap(:symbols.TypeSymbol sym).definition) andif
+                            not(has(seen x.symbolId)) then
+                            contractive(maybe.unwrap(:Type maybe.unwrap(:symbols.TypeSymbol sym).definition) ids e
+                                plus(seen x.symbolId) {depth + 1})
+                        else
+                            true
+                        end
+                    else
+                        true
+                    end
+                when typeMeta with x then
+                    if stringOp.equal(x.meta.name "Top") then
+                        true
+                    elsif maybe.isSome(:env.T e) then
+                        let sym = env.lookupType(maybe.unwrap(:env.T e) x.meta.name)
+                        if maybe.isSome(:symbols.TypeSymbol sym) then
+                            let s = maybe.unwrap(:symbols.TypeSymbol sym)
+                            if maybe.isSome(:Type s.definition) andif not(has(seen s.symbolId)) then
+                                contractive(maybe.unwrap(:Type s.definition) ids e plus(seen s.symbolId) {depth + 1})
+                            else
+                                true
+                            end
+                        else
+                            true
+                        end
+                    else
+                        true
+                    end
+                when typeRec with x then
+                    contractive(x.body plus(newIds() x.symbolId) e seen {depth + 1}) andif
+                        contractive(x.body ids e seen {depth + 1})
+                when typeRecGroup with x then
+                    begin
+                        let groupIds = newIds()
+                        for i = 0 upto {extent x.bindings - 1} do
+                            hashMap.insert(:Int :Bool groupIds x.bindings[i].symbolId true)
+                        end
+                        contractive(x.bindings[x.activeIndex].body union(ids groupIds) e seen {depth + 1})
+                    end
+                when typeAll with x then contractive(x.body ids e seen {depth + 1})
+                when typeApp with x then contractive(model.evaluateLazily(x.constructor lookup) ids e seen {depth + 1})
+                else true
+            end
+        end
+
+    let isTypeContractive(t: Type ids: Ids e: maybe.T(env.T)): Bool = contractive(t ids e newIds() 0)
+
+    let checkTypeContractive(t: Type ids: Ids varName: String offset: Int e: maybe.T(env.T)): Ok =
+        if not(isTypeContractive(t ids e)) then
+            diagnostics.raiseError(:Ok tuple
+                let message = "Recursive type '" <> varName <> "' is not contractive; " <>
+                    "recursive type variable must be guarded by a constructor"
+                let offset = offset
+                let length = 1
+                let isFatal = false
+                let help = maybe.some(:String
+                    "ensure recursive variable appears inside a record, tuple, function, option, variant, or " <>
+                        "array type")
+                let notes = vector.fromArray(:String array of
+                    "definition of '" <> varName <> "' refers directly to itself as a bare alias without a " <>
+                        "guarding constructor"
+                end)
+                let file = maybe.none(:String)
+            end)
+        end
+end

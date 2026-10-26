@@ -106,8 +106,8 @@ questlang/
     └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
 ```
 
-So far `common/*`, `syntax/*`, `types/symbols`, `model`, and `dump`, and `driver/main` (the front end's phases) exist;
-the rest of the tree is the plan.
+So far `common/*`, `syntax/*`, `types/*` (but `canonical`), and `driver/main` (the front end's phases) exist; the rest
+of the tree is the plan.
 
 ---
 
@@ -352,17 +352,20 @@ between parts of the type checker:
 ```
 Layer 0: common/*
 Layer 1: syntax/* (tokens, tokenizer, ast, astprint, parser, parser/*, desugar)
-Layer 2: types/symbols, model, dump → subtyping → kinds, contractiveness → env
-Layer 3: typechecker/typedast, typedastprint, elaboratetypes, checks, escape, lvalues, metas
-Layer 4: modules/paths, units, graph, abstracttypes, loader, elaboration, stdlib
-Layer 5: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
+Layer 2: types/model → symbols, dump → subtyping
+Layer 3: modules/paths, units, graph
+Layer 4: types/env → kinds, contractiveness
+Layer 5: typechecker/typedast, typedastprint, elaboratetypes, checks, escape, lvalues, metas
+Layer 6: modules/abstracttypes, loader, elaboration, stdlib
+Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
          scoping
-Layer 6: values/*, interpreter/* | ir/*, types/canonical | codegen/*, modules' artifacts, config/*, build/*
-Layer 7: driver/*
+Layer 8: values/*, interpreter/* | ir/*, types/canonical | codegen/*, modules' artifacts, config/*, build/*
+Layer 9: driver/*
 ```
 
 The bootstrap's lazy imports made cycles that this order does not allow; they were broken in the bootstrap before the
-port ([milestone-2.md](milestone-2.md) §1.1): symbols and scopes are `types/symbols`; the loader and the checker
+port ([milestone-2.md](milestone-2.md) §1.1): symbols and scopes are `types/symbols`; the operator table is
+`types/env`'s, so that `kinds`, which uses environments, is above it; the loader and the checker
 register the functions module elaboration calls back, rather than elaboration importing them; and the checker's
 construct families reach the dispatch through `typechecker/checker` (in Quest, a tuple whose function fields
 `typecheck` fills).

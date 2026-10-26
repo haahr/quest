@@ -1,0 +1,50 @@
+import runner = "runner" : Runner
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun show(n: Int): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = call conv.int(n)
+      do call writer.putString(%1, %2)
+      let %3: writer.T = member writer.output
+      let %4: Ok = call writer.putString(%3, "\n")
+      return %4
+    }
+  }
+  funs {
+    fun inScope(body: Fun(): Ok): Ok {
+      funs {
+        fun f(s: Int): Ok {
+          let %5: Ok = call body()
+          return %5
+        }
+      }
+      let %6: Ok = call runner.run [Ok](f)
+      return %6
+    }
+  }
+  funs {
+    fun f.1(): Ok {
+      let %7: Ok = call show(1)
+      return %7
+    }
+  }
+  do call inScope(f.1)
+  funs {
+    fun f.2(s.1: Int): Ok {
+      let %8: Ok = call show(s.1)
+      return %8
+    }
+  }
+  do call runner.run [Ok](f.2)
+  funs {
+    fun f.3(s.2: Int): Int {
+      let %9: Int = prim +(s.2, 1)
+      return %9
+    }
+  }
+  let %10: Int = call runner.run [Int](f.3)
+  do call show(%10)
+}
+

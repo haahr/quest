@@ -297,7 +297,7 @@ than as conditional branches the reader did not write.
 The built-in infix operators, which stay infix (`BUILTIN_INFIX_OPERATORS`), are the arithmetic, relational,
 concatenation, and eager boolean operators of [type-system.md](type-system.md) §6.3, `is`, `isnot`, `:=`, and `==`
 and `!=` (which the type checker rejects with a suggestion). The table of their types, `INFIX_OPERATORS`, stays in
-`quest/types/kinds.py`, and a unit test checks that the two name the same operators. A conditional with neither
+`quest/types/env.py`, which declares them, and a unit test checks that the two name the same operators. A conditional with neither
 elsif nor else branches stays as it is: it is a statement, of type Ok. A recursive `let` with parameters keeps them,
 since its parameters and result annotation declare its type before any value is checked
 ([type-system.md](type-system.md) §6.10); so does an external one, whose parameters declare the external function's

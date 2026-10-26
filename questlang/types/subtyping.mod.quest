@@ -1,0 +1,675 @@
+(* Quest Self-Hosted Compiler: Equi-Recursive Subtyping Implementation *)
+
+module subtyping : Subtyping
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Env = maybe.T(model.Lookup)
+    Let Type = model.Type
+    Let Kind = model.Kind
+
+    let maxSubtypeFuel = 10000
+    (* The fuel a comparison of quantified types costs *)
+    let quantifierFuel = 500
+
+    let lookupOf(env: Env): model.Lookup = maybe.unwrapOr(:model.Lookup env model.noLookup)
+    let evaluate(t: Type env: Env): Type = model.evaluateLazily(t lookupOf(env))
+
+    (* =========================================================================
+     * 1. The subtype cache
+     *
+     * Results of subtyping proofs, by the ids of hash-consed types and whether an environment was given (without one,
+     * aliases are not expanded). Pairs involving a metavariable are never cached, because isSubtype solves
+     * metavariables as a side effect. Results are committed only when a top-level proof finishes: a nested goal
+     * decided while a coinductive assumption is still open may be true only because of it.
+     *
+     * - When a top-level proof returns true, every pair it decided or assumed is a true fact, and all are cached.
+     * - False results are always cached: extra assumptions only make more goals provable.
+     * - Conditional true results of a proof that returns false are discarded.
+     *
+     * Symbol meanings only become more defined, so the cache is dropped when an id that some lookup saw as undefined
+     * gains a meaning (types/symbols).
+     * ========================================================================= *)
+
+    let cacheLimit = 250000
+
+    Let CacheState = Tuple var generation: Int end
+    let cacheState: CacheState = tuple let var generation = symbols.meaningGeneration() end
+    let cache = hashMap.new(:String :Bool stringOp.equal hash.string)
+
+    let clearSubtypeCache(): Ok = hashMap.clear(:String :Bool cache)
+
+    let checkGeneration(): Ok =
+        begin
+            let generation = symbols.meaningGeneration()
+            if generation isnot cacheState.generation then
+                hashMap.clear(:String :Bool cache)
+                cacheState.generation := generation
+            end
+        end
+
+    let cacheKey(sub: Type sup: Type env: Env): String =
+        conv.int(sub.id) <> "," <> conv.int(sup.id) <> {if maybe.isNone(:model.Lookup env) then ",n" else ",e" end}
+
+    let cacheLookup(sub: Type sup: Type env: Env): maybe.T(Bool) =
+        begin
+            checkGeneration()
+            hashMap.get(:String :Bool cache cacheKey(sub sup env))
+        end
+
+    let cacheStore(sub: Type sup: Type env: Env result: Bool): Ok =
+        if not(sub.hasMeta orif sup.hasMeta) then
+            checkGeneration()
+            if hashMap.size(:String :Bool cache) >= cacheLimit then hashMap.clear(:String :Bool cache) end
+            hashMap.insert(:String :Bool cache cacheKey(sub sup env) result)
+            ok
+        end
+
+    (* =========================================================================
+     * 2. Trails: the coinductive assumptions of one proof
+     *
+     * Named type variables are keyed by symbol and everything else by node identity.
+     * ========================================================================= *)
+
+    Let Pair = Tuple sub: Type sup: Type end
+    Let Result = Tuple sub: Type sup: Type result: Bool end
+    Let Trail = Tuple
+        assumed: hashMap.T(String Bool)
+        (* The pairs assumed, in order *)
+        pairs: vector.T(Pair)
+        (* The metavariable-free pairs decided during the proof *)
+        results: vector.T(Result)
+    end
+
+    let newTrail(): Trail =
+        tuple
+            let assumed = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let pairs = vector.new(:Pair)
+            let results = vector.new(:Result)
+        end
+
+    let key(t: Type): String =
+        case t.form
+            when typeVariable with x then "v" <> conv.int(x.symbolId)
+            when typeAbstract with x then "v" <> conv.int(x.symbolId)
+            when typePath with x then "p" <> conv.int(x.rootSymbolId) <> "." <> x.fieldName
+            else "o" <> conv.int(t.id)
+        end
+
+    let pairKey(sub: Type sup: Type): String = key(sub) <> "|" <> key(sup)
+
+    let isAssumed(trail: Trail k: String): Bool = hashMap.contains(:String :Bool trail.assumed k)
+
+    let assume(trail: Trail k: String sub: Type sup: Type): Ok =
+        begin
+            hashMap.insert(:String :Bool trail.assumed k true)
+            vector.append(:Pair trail.pairs tuple let sub = sub let sup = sup end)
+        end
+
+    let commitProof(trail: Trail result: Bool env: Env): Ok =
+        if result then
+            vector.forEach(:Result trail.results fun(r: Result): Ok cacheStore(r.sub r.sup env r.result))
+            vector.forEach(:Pair trail.pairs fun(p: Pair): Ok cacheStore(p.sub p.sup env true))
+        else
+            vector.forEach(:Result trail.results
+                fun(r: Result): Ok if not(r.result) then cacheStore(r.sub r.sup env false) end)
+        end
+
+    (* =========================================================================
+     * 3. Proofs
+     * ========================================================================= *)
+
+    let isNamed(t: Type): Bool =
+        case t.form
+            when typeVariable then true
+            when typeAbstract then true
+            when typePath then true
+            else false
+        end
+
+    let isRecursive(t: Type): Bool =
+        case t.form
+            when typeRec then true
+            when typeRecGroup then true
+            else false
+        end
+
+    (* Int, Real, Bool, Char, String, and Ok, each a subtype only of itself *)
+    let primitiveTag(t: Type): Int =
+        case t.form
+            when typeInt then 1
+            when typeReal then 2
+            when typeBool then 3
+            when typeChar then 4
+            when typeString then 5
+            when typeOk then 6
+            else 0
+        end
+
+    (* The upper bound of a type variable, abstract type, or path type, if a power kind *)
+    let namedBound(t: Type): maybe.T(Type) =
+        begin
+            let bound = case t.form
+                when typeVariable with x then x.bound
+                when typeAbstract with x then maybe.some(:Kind x.bound)
+                when typePath with x then maybe.some(:Kind x.bound)
+                else maybe.none(:Kind)
+            end
+            if maybe.isSome(:Kind bound) andif model.isPower(maybe.unwrap(:Kind bound)) then
+                maybe.some(:Type model.powerBound(maybe.unwrap(:Kind bound)))
+            else
+                maybe.none(:Type)
+            end
+        end
+
+    let optName(n: maybe.T(String)): String = maybe.unwrapOr(:String n "\n")
+    let sameName(a: maybe.T(String) b: maybe.T(String)): Bool =
+        if maybe.isSome(:String a) andif maybe.isSome(:String b) then
+            stringOp.equal(maybe.unwrap(:String a) maybe.unwrap(:String b))
+        else
+            maybe.isNone(:String a) andif maybe.isNone(:String b)
+        end
+
+    let solve(meta: Type t: Type): Ok =
+        case meta.form when typeMeta with x then x.meta.instance := maybe.some(:Type t) else ok end
+
+    let rec prove(sub: Type sup: Type env: Env trail: Trail fuel: Int): Bool =
+        if model.same(sub sup) then
+            true
+        else
+            let cacheable = not(sub.hasMeta orif sup.hasMeta)
+            let cached = if cacheable then cacheLookup(sub sup env) else maybe.none(:Bool) end
+            if maybe.isSome(:Bool cached) then
+                maybe.unwrap(:Bool cached)
+            else
+                let result = step(sub sup env trail fuel)
+                if cacheable then
+                    vector.append(:Result trail.results tuple let sub = sub let sup = sup let result = result end)
+                end
+                result
+            end
+        end
+    and both(a: Type b: Type env: Env trail: Trail fuel: Int): Bool =
+        prove(a b env trail fuel) andif prove(b a env trail fuel)
+    and step(sub0: Type sup0: Type env: Env trail: Trail fuel0: Int): Bool =
+        begin
+            if fuel0 <= 0 then
+                diagnostics.raiseError(:Ok tuple
+                    let message = "Fatal compiler error: Subtyping proof exceeded step limit of " <>
+                        conv.int(maxSubtypeFuel) <> " steps while checking (" <> model.show(sub0) <> " <: " <>
+                        model.show(sup0) <> ")"
+                    let offset = 0
+                    let length = 1
+                    let isFatal = true
+                    let help = maybe.none(:String)
+                    let notes = vector.fromArray(:String array of
+                        "Compiler terminated to prevent infinite recursion during typechecking."
+                    end)
+                    let file = maybe.none(:String)
+                end)
+            end
+            let fuel = fuel0 - 1
+            (* 0. Coinductive cycle detection for recursive types before lazy unfolding *)
+            let typePair = pairKey(sub0 sup0)
+            if isAssumed(trail typePair) then
+                true
+            else
+                if isRecursive(sub0) orif isRecursive(sup0) then assume(trail typePair sub0 sup0) end
+                (* 1. Evaluate both types lazily to expose outermost constructors *)
+                let sub = evaluate(sub0 env)
+                let sup = evaluate(sup0 env)
+                (* 2. Reflexivity *)
+                if model.same(sub sup) then
+                    true
+                elsif isNamed(sub) andif isNamed(sup) andif stringOp.equal(key(sub) key(sup)) then
+                    true
+                elsif {primitiveTag(sub) > 0} andif {primitiveTag(sub) is primitiveTag(sup)} then
+                    true
+                else
+                    let bottom = case sub.form when typeBottom then true else false end
+                    let subMeta = case sub.form when typeMeta then true else false end
+                    let supMeta = case sup.form when typeMeta then true else false end
+                    if bottom then
+                        true
+                    elsif subMeta then
+                        (* 3. Metavariable resolution and unification *)
+                        let p = model.prune(sub)
+                        if not(model.same(p sub)) then
+                            prove(p sup env trail fuel)
+                        else
+                            begin solve(sub sup) true end
+                        end
+                    elsif supMeta then
+                        let p = model.prune(sup)
+                        if not(model.same(p sup)) then
+                            prove(sub p env trail fuel)
+                        else
+                            begin solve(sup sub) true end
+                        end
+                    else
+                        (* 5. Coinductive trail check *)
+                        let lazyPair = pairKey(sub sup)
+                        if isAssumed(trail lazyPair) then
+                            true
+                        else
+                            assume(trail lazyPair sub sup)
+                            (* 6. A type variable's bound *)
+                            let bound = if isNamed(sub) then namedBound(sub) else maybe.none(:Type) end
+                            if maybe.isSome(:Type bound) andif prove(maybe.unwrap(:Type bound) sup env trail fuel) then
+                                true
+                            else
+                                structural(sub sup env trail fuel)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    (* 7. The rules for pairs of type constructors *)
+    and structural(sub: Type sup: Type env: Env trail: Trail fuel: Int): Bool =
+        case sub.form
+            when typeTuple with s then
+                case sup.form when typeTuple with t then tuples(s.fields t.fields env trail fuel) else false end
+            when typeRecord with s then
+                case sup.form
+                    when typeRecord with t then
+                        (* Width, depth, and mutable invariance *)
+                        begin
+                            let var good = true
+                            for i = 0 upto {extent t.fields - 1} do
+                                if good then
+                                    let supField = t.fields[i]
+                                    let found = model.recordGetField(s.fields supField.name)
+                                    if maybe.isNone(:model.RecordField found) then
+                                        good := false
+                                    else
+                                        let subField = maybe.unwrap(:model.RecordField found)
+                                        if supField.isVar then
+                                            if not(subField.isVar) orif
+                                                not(both(subField.type supField.type env trail fuel)) then
+                                                good := false
+                                            end
+                                        elsif not(prove(subField.type supField.type env trail fuel)) then
+                                            good := false
+                                        end
+                                    end
+                                end
+                            end
+                            good
+                        end
+                    else false
+                end
+            when typeVariant with s then
+                case sup.form
+                    when typeVariant with t then
+                        (* Width and payload covariance *)
+                        begin
+                            let var good = true
+                            for i = 0 upto {extent s.variants - 1} do
+                                if good then
+                                    let subVar = s.variants[i]
+                                    let found = model.variantGetField(t.variants subVar.name)
+                                    if maybe.isNone(:model.VariantField found) then
+                                        good := false
+                                    else
+                                        let supVar = maybe.unwrap(:model.VariantField found)
+                                        if maybe.isSome(:Type subVar.type) then
+                                            if maybe.isNone(:Type supVar.type) then
+                                                good := false
+                                            else
+                                                let a = maybe.unwrap(:Type subVar.type)
+                                                let b = maybe.unwrap(:Type supVar.type)
+                                                let holds = if subVar.isVar orif supVar.isVar then
+                                                    both(a b env trail fuel)
+                                                else
+                                                    prove(a b env trail fuel)
+                                                end
+                                                if not(holds) then good := false end
+                                            end
+                                        elsif maybe.isSome(:Type supVar.type) then
+                                            good := false
+                                        end
+                                    end
+                                end
+                            end
+                            good
+                        end
+                    else false
+                end
+            when typeOption with s then
+                case sup.form
+                    when typeOption with t then
+                        begin
+                            let var good = true
+                            for i = 0 upto {extent s.options - 1} do
+                                if good then
+                                    let subOpt = s.options[i]
+                                    let found = model.optionGetField(t.options subOpt.name)
+                                    if maybe.isNone(:model.OptionField found) then
+                                        good := false
+                                    else
+                                        let supOpt = maybe.unwrap(:model.OptionField found)
+                                        if maybe.isSome(:Type subOpt.payload) then
+                                            let subPayload = maybe.unwrap(:Type subOpt.payload)
+                                            if maybe.isNone(:Type supOpt.payload) then
+                                                good := false
+                                            elsif not(prove(subPayload maybe.unwrap(:Type supOpt.payload)
+                                                env trail fuel)) then
+                                                good := false
+                                            end
+                                        elsif maybe.isSome(:Type supOpt.payload) then
+                                            good := false
+                                        end
+                                    end
+                                end
+                            end
+                            good
+                        end
+                    else false
+                end
+            when typeFun with s then
+                case sup.form
+                    when typeFun with t then
+                        (* Contravariant value parameters, invariant var parameters, covariant out parameters and
+                         * result *)
+                        if extent s.params isnot extent t.params then
+                            false
+                        else
+                            let var good = true
+                            for i = 0 upto {extent s.params - 1} do
+                                if good then
+                                    let sp = s.params[i]
+                                    let tp = t.params[i]
+                                    if sp.isVar orif tp.isVar then
+                                        if {sp.isVar isnot tp.isVar} orif not(both(tp.type sp.type env trail fuel)) then
+                                            good := false
+                                        end
+                                    elsif sp.isOut orif tp.isOut then
+                                        if {sp.isOut isnot tp.isOut} orif
+                                            not(prove(sp.type tp.type env trail fuel)) then
+                                            good := false
+                                        end
+                                    elsif not(prove(tp.type sp.type env trail fuel)) then
+                                        good := false
+                                    end
+                                end
+                            end
+                            good andif prove(s.result t.result env trail fuel)
+                        end
+                    else false
+                end
+            when typeVar with s then
+                case sup.form
+                    when typeVar with t then
+                        model.same(s.element t.element) orif both(s.element t.element env trail fuel)
+                    else false
+                end
+            when typeArray with s then
+                case sup.form
+                    when typeArray with t then
+                        model.same(s.element t.element) orif both(s.element t.element env trail fuel)
+                    else false
+                end
+            when typeOut with s then
+                case sup.form
+                    when typeOut with t then
+                        model.same(s.element t.element) orif prove(t.element s.element env trail fuel)
+                    else false
+                end
+            when typeException with s then
+                case sup.form
+                    when typeException with t then
+                        model.same(s.payload t.payload) orif both(s.payload t.payload env trail fuel)
+                    else false
+                end
+            when typeAll with s then
+                case sup.form when typeAll with t then quantified(s t env trail fuel) else false end
+            when typeAuto with s then
+                case sup.form
+                    when typeAuto with t then
+                        (* Subkind for the type component; for the signature, a prefix match with matching names,
+                         * covariant immutable and invariant mutable components *)
+                        if {extent s.signature < extent t.signature} orif
+                            not(isSubkind(s.kindBound t.kindBound env)) then
+                            false
+                        else
+                            let subst = model.singleSubst(t.symbolId
+                                model.typeVariable(s.typeParam s.symbolId maybe.some(:Kind s.kindBound)))
+                            let var good = true
+                            for i = 0 upto {extent t.signature - 1} do
+                                if good then
+                                    let sf = s.signature[i]
+                                    let tf = t.signature[i]
+                                    if not(stringOp.equal(sf.name tf.name)) orif {sf.isVar isnot tf.isVar} then
+                                        good := false
+                                    else
+                                        let tType = model.substitute(tf.type subst)
+                                        if not(prove(sf.type tType env trail fuel)) then
+                                            good := false
+                                        elsif tf.isVar andif not(prove(tType sf.type env trail fuel)) then
+                                            good := false
+                                        end
+                                    end
+                                end
+                            end
+                            good
+                        end
+                    else false
+                end
+            when typeOperator with s then
+                case sup.form
+                    when typeOperator with t then
+                        (* Parameter kinds match, bodies subtype under substitution *)
+                        if extent s.params isnot extent t.params then
+                            false
+                        else
+                            let subst = model.newSubst()
+                            for i = 0 upto {extent s.params - 1} do
+                                let sp = s.params[i]
+                                hashMap.insert(:Int :Type subst t.params[i].symbolId
+                                    model.typeVariable(sp.name sp.symbolId maybe.some(:Kind sp.bound)))
+                            end
+                            let var good = true
+                            for i = 0 upto {extent s.params - 1} do
+                                let renamed = model.substituteInKind(t.params[i].bound subst)
+                                if good andif not(isKindEqual(s.params[i].bound renamed env)) then
+                                    good := false
+                                end
+                            end
+                            good andif prove(s.body model.substitute(t.body subst) env trail fuel)
+                        end
+                    else false
+                end
+            when typeApp with s then
+                case sup.form
+                    when typeApp with t then
+                        if {extent s.arguments isnot extent t.arguments} orif
+                            not(isTypeEqual(s.constructor t.constructor env)) then
+                            false
+                        else
+                            let var good = true
+                            for i = 0 upto {extent s.arguments - 1} do
+                                let a = s.arguments[i]
+                                let b = t.arguments[i]
+                                if good andif not(model.same(a b)) andif not(both(a b env trail fuel)) then
+                                    good := false
+                                end
+                            end
+                            good
+                        end
+                    else false
+                end
+            when typeExternal with s then
+                case sup.form
+                    when typeExternal with t then stringOp.equal(strutil.strip(s.cType) strutil.strip(t.cType))
+                    else false
+                end
+            else false
+        end
+    (* Tuples: a prefix match, with matching names, covariant elements, and subkinds *)
+    and tuples(
+        subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: Env trail: Trail fuel: Int
+    ): Bool =
+        if extent subFields < extent supFields0 then
+            false
+        else
+            let supFields = vector.fromArray(:model.TupleComponent supFields0)
+            let rename = fun(from: Int subst: model.Subst): Ok
+                for j = from upto {vector.length(:model.TupleComponent supFields) - 1} do
+                    vector.set(:model.TupleComponent supFields j
+                        model.substituteComponent(vector.get(:model.TupleComponent supFields j) subst))
+                end
+            let var good = true
+            for i = 0 upto {vector.length(:model.TupleComponent supFields) - 1} do
+                if good then
+                    let sf = subFields[i]
+                    let tf = vector.get(:model.TupleComponent supFields i)
+                    case sf
+                        when tupleTypeFormal with s then
+                            case tf
+                                when tupleTypeFormal with t then
+                                    if not(stringOp.equal(s.name t.name)) orif not(isSubkind(s.bound t.bound env)) then
+                                        good := false
+                                    elsif t.symbolId isnot s.symbolId then
+                                        rename({i + 1} model.singleSubst(t.symbolId
+                                            model.typeVariable(s.name s.symbolId maybe.some(:Kind s.bound))))
+                                    end
+                                else good := false
+                            end
+                        when tupleTypeBinding with s then
+                            case tf
+                                when tupleTypeFormal with t then
+                                    if not(stringOp.equal(s.name t.name)) then
+                                        good := false
+                                    elsif model.isPower(t.bound) andif
+                                        not(prove(s.type model.powerBound(t.bound) env trail fuel)) then
+                                        good := false
+                                    else
+                                        rename({i + 1} model.singleSubst(t.symbolId s.type))
+                                    end
+                                when tupleTypeBinding with t then
+                                    if not(stringOp.equal(s.name t.name)) orif
+                                        not(prove(s.type t.type env trail fuel)) then
+                                        good := false
+                                    end
+                                else good := false
+                            end
+                        when tupleField with s then
+                            case tf
+                                when tupleField with t then
+                                    if maybe.isSome(:String t.name) andif not(sameName(s.name t.name)) then
+                                        good := false
+                                    elsif t.isVar then
+                                        if not(s.isVar) orif not(both(s.type t.type env trail fuel)) then
+                                            good := false
+                                        end
+                                    elsif not(prove(s.type t.type env trail fuel)) then
+                                        good := false
+                                    end
+                                else good := false
+                            end
+                    end
+                end
+            end
+            good
+        end
+    (* Universal quantifiers: bounds contravariant, body covariant, compared under the supertype's bounds. As in full
+     * F<: this is undecidable; fuel keeps it terminating *)
+    and quantified(s: Tuple quantifiers: Array(model.Quantifier) body: Type end
+            t: Tuple quantifiers: Array(model.Quantifier) body: Type end env: Env trail: Trail fuel0: Int): Bool =
+        if extent s.quantifiers isnot extent t.quantifiers then
+            false
+        elsif fuel0 <= quantifierFuel then
+            false
+        else
+            let fuel = fuel0 - quantifierFuel
+            (* Both sides' quantifiers become fresh variables, with the supertype's bounds *)
+            let subSubst = model.newSubst()
+            let supSubst = model.newSubst()
+            let var good = true
+            for i = 0 upto {extent s.quantifiers - 1} do
+                if good then
+                    let sq = s.quantifiers[i]
+                    let tq = t.quantifiers[i]
+                    let freshBound = model.substituteInKind(tq.bound supSubst)
+                    let fresh = model.typeVariable(tq.name symbols.allocateSymbolId() maybe.some(:Kind freshBound))
+                    let sBound = model.substituteInKind(sq.bound subSubst)
+                    let holds = if model.isPower(freshBound) andif model.isPower(sBound) then
+                        prove(model.powerBound(freshBound) model.powerBound(sBound) env trail fuel)
+                    else
+                        isSubkind(freshBound sBound env)
+                    end
+                    if holds then
+                        hashMap.insert(:Int :Type subSubst sq.symbolId fresh)
+                        hashMap.insert(:Int :Type supSubst tq.symbolId fresh)
+                        ok
+                    else
+                        good := false
+                    end
+                end
+            end
+            good andif prove(model.substitute(s.body subSubst) model.substitute(t.body supSubst) env trail fuel)
+        end
+    and isSubtype(sub: Type sup: Type env: Env): Bool =
+        if model.same(sub sup) then
+            true
+        else
+            let trail = newTrail()
+            let result = prove(sub sup env trail maxSubtypeFuel)
+            commitProof(trail result env)
+            result
+        end
+    and isTypeEqual(a: Type b: Type env: Env): Bool =
+        if model.same(a b) then
+            true
+        else
+            let trail = newTrail()
+            let result = prove(a b env trail maxSubtypeFuel) andif prove(b a env trail maxSubtypeFuel)
+            commitProof(trail result env)
+            result
+        end
+    and isKindEqual(a: Kind b: Kind env: Env): Bool = isSubkind(a b env) andif isSubkind(b a env)
+    and isSubkind(sub0: Kind sup0: Kind env: Env): Bool =
+        begin
+            let sub = model.evaluateKindLazily(sub0 lookupOf(env))
+            let sup = model.evaluateKindLazily(sup0 lookupOf(env))
+            if model.sameKind(sub sup) then
+                true
+            else
+                case sub.form
+                    when kindPower with s then
+                        case sup.form
+                            when kindType then true
+                            when kindPower with t then isSubtype(s.bound t.bound env)
+                            else false
+                        end
+                    when kindAll with s then
+                        case sup.form
+                            when kindAll with t then
+                                (* ALL(X :: K1) K2 <= ALL(Y :: K1') K2' iff K1' <= K1 and K2 <= K2'[Y -> X] *)
+                                if not(isSubkind(t.paramKind s.paramKind env)) then
+                                    false
+                                else
+                                    let renamedParam = model.typeVariable(s.paramName t.paramId maybe.none(:Kind))
+                                    let renamedTypes = model.substituteInKind(t.resultKind
+                                        model.singleSubst(t.paramId renamedParam))
+                                    let kindSubst = model.newKindSubst()
+                                    hashMap.insert(:Int :Kind kindSubst t.paramId model.kindVar(s.paramName s.paramId))
+                                    isSubkind(s.resultKind model.substituteKinds(renamedTypes kindSubst) env)
+                                end
+                            else false
+                        end
+                    else false
+                end
+            end
+        end
+end
