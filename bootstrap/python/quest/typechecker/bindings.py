@@ -457,31 +457,45 @@ class BindingMixin(Checker):
         )
 
     def _elaborate_binding(self, binding: ast.BindingNode, env: Environment, loop_depth: int) -> TypedBinding:
-        """Elaborates one binding, a declaration or a statement, in a block,
-        module, or program, declaring what it binds in env's current scope.
+        """Elaborates one binding and declares the names it binds in env's
+        current scope, so that the bindings after it can use them.
 
-        What tells the forms apart is when the name is declared relative to its
-        value. An ordinary let elaborates its value first and declares the name
-        after, so the value cannot refer to the name: a use of it inside refers
-        to whatever earlier binding it shadows. The name's type is its
-        annotation, if written, against which the value is checked, so that let
-        r: Record p: Int end = record p = 1 q = 2 end gives r only a field p;
-        otherwise it is the value's synthesized type. A let rec is declared
-        first instead, so that its value can refer to it. Its type cannot then
-        come from the value and must be written in full, which is why a
-        recursive function needs annotations on all its parameters and its
-        result (_declare_rec_value, then _check_rec_value). The members of a
-        simultaneous declaration (let x = ... and y = ...) are declared
-        together, after all their values or, with rec, before any
-        (_elaborate_value_group). An external function, implemented in C, has no
-        body to synthesize a type from, so its annotations are its type.
+        A block, a module, and a program are each a sequence of bindings,
+        Cardelli's term for both declarations (let x = e) and statements (an
+        expression evaluated for its effect, which declares nothing). They are
+        elaborated in order, so each binding sees exactly the names declared
+        before it.
 
-        Desugaring has rewritten let f(params) = e, when neither recursive nor
-        external, as let f = fun(params) e, so only those two forms arrive here
-        with parameters. Type and kind declarations are elaborated by
-        elaborate_types.py, and interfaces and modules met inside a block by
-        modules/elaboration.py. A statement, an expression evaluated for its
-        effect, declares nothing.
+        For a value declaration, the question is whether its own name is in
+        scope in its value. An ordinary let checks the value first and declares
+        the name afterward, so a use of the name inside the value refers to an
+        earlier binding:
+
+            let x = 1
+            let x = x + 1        (the second x is the first one; x is now 2)
+
+        A let rec declares the name first, so that the value can refer to
+        itself, as a recursive function must:
+
+            let rec fact(n: Int): Int =
+                if n is 0 then 1 else n * fact(n - 1) end
+
+        Since the name is used before its value has been checked, its type must
+        come from the annotations alone, so a recursive function annotates every
+        parameter and its result.
+
+        Otherwise the name's type is its annotation, if it has one, and the
+        value's synthesized type if not. An annotation may be less specific than
+        the value, and it is what the name gets, so that here r.q is an error:
+
+            let r: Record p: Int end = record p = 1 q = 2 end
+
+        Declarations joined by and (let x = ... and y = ...) are declared
+        together: after all their values, or, with rec, before any, so that they
+        can refer to one another (_elaborate_value_group). An external function
+        is implemented in C, so its annotations are its type. Type declarations,
+        interfaces, and modules are elaborated by elaborate_types.py and
+        modules/elaboration.py, to which this method passes them.
         """
         match binding:
             case ast.InterfaceDecl():
