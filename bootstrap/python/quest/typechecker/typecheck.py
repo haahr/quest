@@ -244,9 +244,20 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         loop_depth: int = 0,
         is_callee: bool = False,
     ) -> TypedExpr:
-        """Synthesizes the minimal QType and elaborated TypedExpr (Gamma |- e => T).
+        """Synthesizes the type of expr from expr alone, bottom up, and returns its elaborated node (Gamma |- e => T).
 
-        A new expression form needs a case here, and one in check_expr too if an expected type should flow into it; a
+        The type synthesized is the most specific one the checker can determine, which subsumption may then widen. The
+        cases fall into two groups. A form that check_expr also handles delegates to its _elaborate_X_expr method with
+        no expected type, so that each construct has one elaboration whichever mode reaches it. Every other form is
+        synthesized only: the simplest inline here, the rest by _synth_X methods in the mixins. Variables show what
+        inline elaboration involves: the name is looked up in env to find its symbol, and a mutable variable, which in
+        a value position stands for its contents, is wrapped in an explicit dereference.
+
+        is_callee is true only for the function of a call. The monadic operators not, extent, and ordinal are names
+        that may be called but are not values, so anywhere else they are rejected.
+
+        A form with no case here falls to the last one, which reports it as unsupported. A new expression form needs a
+        case here, and one in check_expr too if an expected type should flow into it; a
         typed node in typed_ast.py, with its dump; and its evaluation (interpreter/treewalk.py) and lowering
         (ir/lower.py), since those read only the typed AST.
         """

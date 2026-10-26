@@ -122,8 +122,35 @@ def elaborate_kind(ast_kind: ast.Kind, env: Environment) -> QKind:
 # ============================================================================
 
 def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
-    """Elaborates a syntactic AST Type into a semantic QType."""
+    """Elaborates a type as written (an ast.Type) into the checker's semantic type (a QType).
+
+    Annotations and type declarations are syntax, but the checker reasons about QTypes, in which every name has been
+    resolved to its symbol, so that a type means the same thing wherever it is carried, even out of the scope it was
+    written in. Elaboration is a recursive walk that resolves names in env, opens a scope for each construct that binds
+    type names (a tuple with type components, a type operator, All, Auto, Rec), and checks some of what constructs
+    require of their parts: that a field's type is a type of values (kind TYPE, not a type operator), and that a
+    recursive type is contractive (its recursion passes through a constructor, so that it is not defined as itself).
+    The kind of a declared type as a whole is checked by its declaration (elaborate_type_binding). A name with a
+    definition (a type alias) becomes a QAliasType, which the checker sees through to its definition but which keeps
+    the name written, for printing; a name without one (a type parameter, or an interface's abstract type) becomes a
+    QTypeVar referring to its symbol.
+
+    Most cases translate directly. The two that do not, names with paths and All, are explained where they are handled.
+    """
     match ast_type:
+        # A name T is looked up in scope. A path A.B.T names a type inside something else, tried in this order:
+        #
+        # 1. A module or interface: walk the nested modules to T, which is an alias or a variable as above, named by
+        #    its whole path. Modules come first, so a value of the same name does not hide a module's types.
+        # 2. An immutable value x (or a field of one, x.y) whose type is a tuple with type components, such as
+        #    Tuple A::TYPE f: A end: x.A is a path type, standing for whatever type x's component A is, unknown here.
+        #    Such a component is how Quest hides a type behind a signature, and x.A lets code use values of that type
+        #    without knowing it. Two path types are the same type when they have the same root symbol and component,
+        #    so the root must be immutable: were x reassigned, x.A could change under code that relied on it. What
+        #    x.A's bound (what is known of it) says of other components B is restated in terms of x.B, since outside
+        #    the tuple only x.B names them. A component defined in the tuple's type (A = Int) is known, and its
+        #    definition is returned instead.
+        # 3. Otherwise the path is undefined.
         case ast.TypePath(path=path, offset=offset):
             if len(path) == 1:
                 name = path[0]
@@ -379,6 +406,12 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 return QExceptionType(payload_type=args[0])
             return QTypeApp(constructor=ctor_type, arguments=args)
 
+        # All(...) R lists type parameters (A::K or A <: B) and value parameters (x: T) together, as a function's
+        # signature does. The parser makes each a quantifier: a type parameter marked is_type, and a value parameter
+        # with the kind POWER(T), the kind whose members are T's subtypes. Here they part again: the type parameters
+        # become the quantifiers of an All type and the value parameters the parameters of a function type, giving
+        # All(A::K) Fun(x: T): R; with no type parameters, just the function type, and with no value parameters (but
+        # some type parameters), All(A::K) R.
         case ast.TypeAll(quantifiers=quants_ast, result_type=res_type):
             with env.scoped("all_type"):
                 quants: list[QQuantifier] = []
