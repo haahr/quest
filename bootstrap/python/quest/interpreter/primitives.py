@@ -38,6 +38,9 @@ REAL_ERROR_EXC = QExceptionVal("real.error")
 WORD_ERROR_EXC = QExceptionVal("word.error")
 STRING_ERROR_EXC = QExceptionVal("string.error")
 SYSTEM_ERROR_EXC = QExceptionVal("system.error")
+READLINE_ERROR_EXC = QExceptionVal("readline.error")
+READLINE_END_OF_INPUT_EXC = QExceptionVal("readline.endOfInput")
+READLINE_INTERRUPTED_EXC = QExceptionVal("readline.interrupted")
 VARIANT_ERROR_EXC = QExceptionVal("variant.tagMismatch")
 
 

@@ -1,0 +1,24 @@
+interface Readline export
+    (* Raised on a system error, such as a history file that cannot be written *)
+    error: Exception
+    (* Raised by readLine at the end of the input (Ctrl-D on an empty line) *)
+    endOfInput: Exception
+    (* Raised by readLine when the line is interrupted (Ctrl-C); the line typed so far is discarded *)
+    interrupted: Exception
+
+    (* Whether readLine edits lines: standard input and output are terminals, TERM is not empty, dumb, or emacs, and
+       the runtime has a line editor *)
+    editing(): Bool
+    (* Writes prompt and reads a line, without its newline, editing it if editing() is true. Without editing, it reads
+       from the same buffer as reader.input, so a program may use both; a last line without a newline is a line *)
+    readLine(prompt: String): String
+
+    (* The history, which Up and Down move through when editing. A history file holds a line per entry, whatever the
+       line editor, so a line holding a newline is read back as two *)
+    (* Adds a line to the history *)
+    addHistory(line: String): Ok
+    (* Adds the lines of a history file to the history, if the file exists *)
+    readHistory(path: String): Ok
+    (* Writes the history's last maxLines lines to a file *)
+    writeHistory(path: String maxLines: Int): Ok
+end

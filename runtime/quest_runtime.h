@@ -502,6 +502,16 @@ QString *quest_system_current_directory(void);
 void     quest_system_change_directory(const QString *path);
 QArray  *quest_system_list_directory(const QString *path);
 
+/* io/readline module primitives (quest_readline.c) */
+extern const QException quest_exc_readline_error;
+extern const QException quest_exc_readline_end_of_input;
+extern const QException quest_exc_readline_interrupted;
+bool     quest_readline_editing(void);
+QString *quest_readline_read_line(const QString *prompt);
+void     quest_readline_add_history(const QString *line);
+void     quest_readline_read_history(const QString *path);
+void     quest_readline_write_history(const QString *path, int64_t max_lines);
+
 /* Writer module primitives */
 extern QWriter quest_writer_output_val;
 extern QWriter quest_writer_err_val;

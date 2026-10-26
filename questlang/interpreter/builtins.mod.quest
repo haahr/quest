@@ -20,6 +20,7 @@ import
     reader : Reader
     writer : Writer
     system : System
+    io/readline : io/Readline
 export
     Let Value = model.Value
     Let Args = Array(Value)
@@ -75,6 +76,9 @@ export
             when word.error then model.raiseException(:Value primitives.wordError maybe.none(:Int))
             when arrayOp.error then model.raiseException(:Value primitives.arrayOpError maybe.none(:Int))
             when system.error then model.raiseException(:Value primitives.systemError maybe.none(:Int))
+            when readline.error then model.raiseException(:Value primitives.readlineError maybe.none(:Int))
+            when readline.endOfInput then model.raiseException(:Value primitives.readlineEndOfInput maybe.none(:Int))
+            when readline.interrupted then model.raiseException(:Value primitives.readlineInterrupted maybe.none(:Int))
             end
 
     (* =========================================================================
@@ -344,6 +348,17 @@ export
             fn("quest_system_current_directory" fun(a: Args): Value vString(system.currentDirectory()))
             fn("quest_system_change_directory" fun(a: Args): Value begin system.changeDirectory(str(a[0])) unit end)
             fn("quest_system_list_directory" fun(a: Args): Value strings(system.listDirectory(str(a[0]))))
+
+            (* io/readline *)
+            exc("quest_exc_readline_error" primitives.readlineError)
+            exc("quest_exc_readline_end_of_input" primitives.readlineEndOfInput)
+            exc("quest_exc_readline_interrupted" primitives.readlineInterrupted)
+            fn("quest_readline_editing" fun(a: Args): Value vBool(readline.editing()))
+            fn("quest_readline_read_line" fun(a: Args): Value vString(readline.readLine(str(a[0]))))
+            fn("quest_readline_add_history" fun(a: Args): Value begin readline.addHistory(str(a[0])) unit end)
+            fn("quest_readline_read_history" fun(a: Args): Value begin readline.readHistory(str(a[0])) unit end)
+            fn("quest_readline_write_history" fun(a: Args): Value
+                begin readline.writeHistory(str(a[0]) int(a[1])) unit end)
 
             (* Dynamic *)
             exc("quest_exc_dynamic_error" model.dynamicError)

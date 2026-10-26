@@ -13,6 +13,13 @@ import struct
 import sys
 from typing import Any, Callable, Optional
 
+try:
+    import readline as line_editor
+    # readLine's caller adds lines to the history, as compiled code's does
+    line_editor.set_auto_history(False)
+except ImportError:
+    line_editor = None  # type: ignore[assignment]
+
 from quest.syntax.sources import BYTE_ENCODING, os_text
 from quest.values.dynamic_json import jsog_decode, jsog_encode
 from quest.interpreter.primitives import (
@@ -21,6 +28,9 @@ from quest.interpreter.primitives import (
     INT_ERROR_EXC,
     QuestRuntimeError,
     READER_ERROR_EXC,
+    READLINE_END_OF_INPUT_EXC,
+    READLINE_ERROR_EXC,
+    READLINE_INTERRUPTED_EXC,
     REAL_ERROR_EXC,
     STRING_ERROR_EXC,
     SYSTEM_ERROR_EXC,
@@ -711,6 +721,109 @@ def _sb_append(b: QStringBuilder, text: str) -> QOk:
     return OK_VALUE
 
 
+# io/readline (runtime/quest_readline.c): line editing through Python's readline, which input() uses, and a history
+# kept here, as the C runtime keeps its own, so that its file is plain lines whatever the line editor
+_readline_history: list[str] = []
+
+
+def readline_editing() -> bool:
+    """Whether readLine edits lines: standard input and output are terminals, TERM is not empty, dumb, or emacs, and
+    Python has a line editor."""
+    if line_editor is None:
+        return False
+    try:
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            return False
+    except (AttributeError, ValueError):
+        return False
+    return os.environ.get("TERM", "") not in ("", "dumb", "emacs")
+
+
+def _readline_editing() -> QBool:
+    return TRUE_VALUE if readline_editing() else FALSE_VALUE
+
+
+def _readline_read_line(prompt: QString) -> QString:
+    if readline_editing():
+        try:
+            return QString(input(prompt.value))
+        except EOFError:
+            raise QuestException(READLINE_END_OF_INPUT_EXC)
+        except KeyboardInterrupt:
+            raise QuestException(READLINE_INTERRUPTED_EXC)
+    # Without editing, a line of reader.input, through its buffer
+    output: QWriter = EXTERNAL_VALUES["quest_writer_output"]  # type: ignore[assignment]
+    reader: QReader = EXTERNAL_VALUES["quest_reader_input"]  # type: ignore[assignment]
+    try:
+        output.stream.write(prompt.value)
+        output.stream.flush()
+        chars: list[str] = []
+        ch = _reader_read_one(reader)
+        if not ch:
+            raise QuestException(READLINE_END_OF_INPUT_EXC)
+        while ch and ch != "\n":
+            chars.append(ch)
+            ch = _reader_read_one(reader)
+    except OSError:
+        raise QuestException(READLINE_ERROR_EXC)
+    return QString("".join(chars))
+
+
+def _readline_remember(line: str) -> None:
+    _readline_history.append(line)
+    if line_editor is not None:
+        line_editor.add_history(line)
+
+
+def _readline_add_history(line: QString) -> QOk:
+    _readline_remember(line.value)
+    return OK_VALUE
+
+
+def _readline_read_history(path: QString) -> QOk:
+    try:
+        with open(_os_path(path), "rb") as f:
+            data = f.read().decode(BYTE_ENCODING)
+    except FileNotFoundError:
+        return OK_VALUE
+    except OSError:
+        raise QuestException(READLINE_ERROR_EXC)
+    lines = data.split("\n")
+    # A last line without a newline is a line; the empty string after a last newline is not
+    for line in lines if lines[-1] else lines[:-1]:
+        _readline_remember(line)
+    return OK_VALUE
+
+
+def _readline_write_history(path: QString, max_lines: QInt) -> QOk:
+    if max_lines.value < 0:
+        raise QuestException(READLINE_ERROR_EXC)
+    lines = _readline_history[max(0, len(_readline_history) - max_lines.value):]
+    try:
+        with open(_os_path(path), "wb") as f:
+            f.write("".join(line + "\n" for line in lines).encode(BYTE_ENCODING))
+    except OSError:
+        raise QuestException(READLINE_ERROR_EXC)
+    return OK_VALUE
+
+
+# The same for Python callers (quest.repl): strings as Python has them, and paths as it decodes them from the OS
+def readline_read_line(prompt: str) -> str:
+    return _readline_read_line(QString(prompt)).value
+
+
+def readline_add_history(line: str) -> None:
+    _readline_add_history(QString(line))
+
+
+def readline_read_history(path: str) -> None:
+    _readline_read_history(QString(os_text(path)))
+
+
+def readline_write_history(path: str, max_lines: int) -> None:
+    _readline_write_history(QString(os_text(path)), QInt(max_lines))
+
+
 # The external C functions the interpreter implements, by symbol
 EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     # Writer
@@ -860,6 +973,13 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_rename_file": _system_rename_file,
     "quest_system_exit": _system_exit,
 
+    # io/readline
+    "quest_readline_editing": _readline_editing,
+    "quest_readline_read_line": _readline_read_line,
+    "quest_readline_add_history": _readline_add_history,
+    "quest_readline_read_history": _readline_read_history,
+    "quest_readline_write_history": _readline_write_history,
+
     # Dynamic
     "quest_dynamic_copy": _dynamic_copy,
     "quest_dynamic_intern": _dynamic_intern,
@@ -918,6 +1038,14 @@ EXTERNAL_VALUES: dict[str, QValue] = {
     "(&quest_exc_system_error)": SYSTEM_ERROR_EXC,
     "quest_exc_system_error": SYSTEM_ERROR_EXC,
     "quest_system_args": QArray(tuple(QString(os_text(a)) for a in sys.argv)),
+
+    # io/readline
+    "(&quest_exc_readline_error)": READLINE_ERROR_EXC,
+    "quest_exc_readline_error": READLINE_ERROR_EXC,
+    "(&quest_exc_readline_end_of_input)": READLINE_END_OF_INPUT_EXC,
+    "quest_exc_readline_end_of_input": READLINE_END_OF_INPUT_EXC,
+    "(&quest_exc_readline_interrupted)": READLINE_INTERRUPTED_EXC,
+    "quest_exc_readline_interrupted": READLINE_INTERRUPTED_EXC,
 
     # Dynamic
     "(&quest_exc_dynamic_error)": DYNAMIC_ERROR_EXC,

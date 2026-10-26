@@ -1,0 +1,48 @@
+(* io/readline without a terminal: readLine writes its prompt and reads a plain line through reader.input's buffer,
+   and the history, kept by the runtime, is written and read as plain lines whatever the line editor *)
+(* @echo *)
+(* @stdin:
+first line
+second
+xyz
+last without newline*)
+import io/readline : io/Readline
+import reader: Reader
+import writer: Writer
+import system: System
+
+readline.editing()
+
+(* Lines, then a character read directly, then the rest of its line *)
+readline.readLine("1> ")
+readline.readLine("2> ")
+reader.getChar(reader.input)
+readline.readLine("")
+readline.readLine("3> ")
+try readline.readLine("4> ") when readline.endOfInput then "the end" end
+try readline.readLine("5> ") when readline.endOfInput then "still the end" end
+
+(* The history's last lines, written and read *)
+readline.addHistory("alpha")
+readline.addHistory("beta gamma")
+readline.addHistory("")
+readline.addHistory("delta")
+readline.writeHistory("short.txt" 2)
+let contents(name: String): String =
+    begin let r = reader.file(name) let s = reader.getString(r 1000) reader.close(r) s end
+contents("short.txt")
+readline.readHistory("missing.txt")
+system.isFile("missing.txt")
+readline.readHistory("short.txt")
+readline.writeHistory("all.txt" 100)
+contents("all.txt")
+let w = writer.file("unterminated.txt")
+writer.putString(w "one\ntwo")
+writer.close(w)
+readline.readHistory("unterminated.txt")
+readline.writeHistory("tail.txt" 3)
+contents("tail.txt")
+readline.writeHistory("none.txt" 0)
+contents("none.txt")
+try readline.writeHistory("no/such/directory.txt" 5) "written" when readline.error then "no file" end
+try readline.writeHistory("negative.txt" ~1) "written" when readline.error then "negative" end

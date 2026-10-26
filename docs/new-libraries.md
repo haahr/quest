@@ -597,3 +597,42 @@ export
         T(B)
 end
 ```
+
+---
+
+## 3. Input and Output (`lib/io/`)
+
+### 3.1. `io/readline : io/Readline`
+
+Lines read from the user, edited at a terminal, with a history; the REPL reads its input through it
+([self-hosted-repl.md](self-hosted-repl.md) §1). Its externals are `runtime/quest_readline.c`'s, built with GNU readline
+or libedit (or neither, when lines are not edited), and the interpreter's are Python's `readline`.
+
+#### Interface Summary
+
+```quest
+interface Readline export
+    (* Raised on a system error, such as a history file that cannot be written *)
+    error: Exception
+    (* Raised by readLine at the end of the input (Ctrl-D on an empty line) *)
+    endOfInput: Exception
+    (* Raised by readLine when the line is interrupted (Ctrl-C); the line typed so far is discarded *)
+    interrupted: Exception
+
+    (* Whether readLine edits lines: standard input and output are terminals, TERM is not empty, dumb, or emacs, and
+       the runtime has a line editor *)
+    editing(): Bool
+    (* Writes prompt and reads a line, without its newline, editing it if editing() is true. Without editing, it reads
+       from the same buffer as reader.input, so a program may use both; a last line without a newline is a line *)
+    readLine(prompt: String): String
+
+    (* The history, which Up and Down move through when editing. A history file holds a line per entry, whatever the
+       line editor, so a line holding a newline is read back as two *)
+    addHistory(line: String): Ok
+    readHistory(path: String): Ok
+    writeHistory(path: String maxLines: Int): Ok
+end
+```
+
+`readLine` does not add the lines it reads to the history: its caller decides which lines to keep. `readHistory`
+does nothing if the file does not exist, and `writeHistory` writes the history's last `maxLines` lines.

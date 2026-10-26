@@ -69,6 +69,50 @@ def detect_gc_flags(nogc: bool = False) -> list[str]:
     return ["-DQUEST_NOGC"]
 
 
+@functools.cache
+def detect_readline_flags() -> tuple[str, ...]:
+    """Detects the line editor quest_readline.c is compiled with (docs/self-hosted-repl.md §1.1): GNU readline where
+    it is installed, else libedit's readline-compatible API, else none (-DQUEST_NOREADLINE). QUEST_READLINE, if set,
+    chooses one: gnu, edit, or none."""
+    choice = os.environ.get("QUEST_READLINE", "")
+    if choice not in ("", "gnu", "edit", "none"):
+        raise RuntimeError(f"QUEST_READLINE must be gnu, edit, or none, not '{choice}'")
+    if choice in ("", "gnu"):
+        for prefix in (Path("/opt/homebrew/opt/readline"), Path("/usr/local/opt/readline"), Path("/usr")):
+            inc = prefix / "include"
+            lib = prefix / "lib"
+            # GNU readline's own headers, which libedit's compatibility headers do not have
+            if (inc / "readline" / "rlconf.h").exists() and any(
+                (lib / f"libreadline.{suffix}").exists() for suffix in ("dylib", "so", "a")
+            ):
+                return (f"-I{inc}", "-DQUEST_GNU_READLINE", f"-L{lib}", "-lreadline")
+        if choice == "gnu":
+            raise RuntimeError("QUEST_READLINE=gnu, but GNU readline is not installed")
+    if choice in ("", "edit"):
+        if _sdk_has("readline/readline.h"):
+            return ("-ledit",)
+        if choice == "edit":
+            raise RuntimeError("QUEST_READLINE=edit, but libedit's readline.h is not installed")
+    return ("-DQUEST_NOREADLINE",)
+
+
+def _sdk_has(header: str) -> bool:
+    """Whether the system's headers (on macOS, the SDK's) include header."""
+    roots = [Path("/usr/include")]
+    try:
+        sdk = subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True, check=False).stdout.strip()
+        if sdk:
+            roots.append(Path(sdk) / "usr" / "include")
+    except OSError:
+        pass
+    return any((root / header).exists() for root in roots)
+
+
+def runtime_sources(runtime_dir: Path) -> list[str]:
+    """The runtime's C files, which every program is compiled with."""
+    return [str(runtime_dir / name) for name in ("quest_runtime.c", "quest_serialization.c", "quest_readline.c")]
+
+
 def compile_c_source(
     c_source: str,
     output_binary: Optional[Path | str] = None,
@@ -85,8 +129,6 @@ def compile_c_source(
     target_bin = Path(out_target)
     compiler = compiler_path or find_c_compiler()
     runtime_dir = get_runtime_dir()
-    runtime_c = runtime_dir / "quest_runtime.c"
-    serialization_c = runtime_dir / "quest_serialization.c"
 
     # Create temporary .c file for the source
     with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False, encoding="utf-8") as f:
@@ -104,8 +146,7 @@ def compile_c_source(
             "-O2",
             *traceback_flags(compiler),
             f"-I{runtime_dir}",
-            str(runtime_c),
-            str(serialization_c),
+            *runtime_sources(runtime_dir),
             str(temp_c_path),
         ]
         if extra_objects:
@@ -115,6 +156,7 @@ def compile_c_source(
             str(target_bin),
         ])
         cmd.extend(detect_gc_flags(nogc=nogc))
+        cmd.extend(detect_readline_flags())
         if extra_flags:
             cmd.extend(extra_flags)
 
@@ -213,8 +255,6 @@ def link_objects(
     target_bin.parent.mkdir(parents=True, exist_ok=True)
     compiler = compiler_path or find_c_compiler()
     runtime_dir = get_runtime_dir()
-    runtime_c = runtime_dir / "quest_runtime.c"
-    serialization_c = runtime_dir / "quest_serialization.c"
 
     cmd = [
         compiler,
@@ -226,8 +266,7 @@ def link_objects(
         "-O2",
         *traceback_flags(compiler),
         f"-I{runtime_dir}",
-        str(runtime_c),
-        str(serialization_c),
+        *runtime_sources(runtime_dir),
     ]
     cmd.extend(str(obj) for obj in objects)
     cmd.extend([
@@ -235,6 +274,7 @@ def link_objects(
         str(target_bin),
     ])
     cmd.extend(detect_gc_flags(nogc=nogc))
+    cmd.extend(detect_readline_flags())
     if extra_flags:
         cmd.extend(extra_flags)
 

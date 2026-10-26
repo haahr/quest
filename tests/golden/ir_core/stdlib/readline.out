@@ -1,0 +1,101 @@
+import readline = "io/readline" : io/Readline
+import reader = "reader" : Reader
+import writer = "writer" : Writer
+import system = "system" : System
+main {
+  let %1: Bool = call readline.editing()
+  let %2: String = call readline.readLine("1> ")
+  let %3: String = call readline.readLine("2> ")
+  let %4: reader.T = member reader.input
+  let %5: Char = call reader.getChar(%4)
+  let %6: String = call readline.readLine("")
+  let %7: String = call readline.readLine("3> ")
+  join k1(r: String) {
+    join k2(r.1: String) {
+      do call readline.addHistory("alpha")
+      do call readline.addHistory("beta gamma")
+      do call readline.addHistory("")
+      do call readline.addHistory("delta")
+      do call readline.writeHistory("short.txt", 2)
+      funs {
+        fun contents(name: String): String {
+          let r.2: reader.T = call reader.file(name)
+          let s: String = call reader.getString(r.2, 1000)
+          do call reader.close(r.2)
+          return s
+        }
+      }
+      let %8: String = call contents("short.txt")
+      do call readline.readHistory("missing.txt")
+      let %9: Bool = call system.isFile("missing.txt")
+      do call readline.readHistory("short.txt")
+      do call readline.writeHistory("all.txt", 100)
+      let %10: String = call contents("all.txt")
+      let w: writer.T = call writer.file("unterminated.txt")
+      do call writer.putString(w, "one\ntwo")
+      do call writer.close(w)
+      do call readline.readHistory("unterminated.txt")
+      do call readline.writeHistory("tail.txt", 3)
+      let %11: String = call contents("tail.txt")
+      do call readline.writeHistory("none.txt", 0)
+      let %12: String = call contents("none.txt")
+      join k3(r.3: String) {
+        join k4(r.4: String) {
+        } in {
+          let %13: Exception = member readline.error
+          try catching (%13) {
+            do call readline.writeHistory("negative.txt", -1)
+            jump k4("written")
+          } handle (e: Exception) {
+            let %14: Bool = prim is(e, %13)
+            if %14 {
+              jump k4("negative")
+            } else {
+              reraise e
+            }
+          }
+        }
+      } in {
+        let %15: Exception = member readline.error
+        try catching (%15) {
+          do call readline.writeHistory("no/such/directory.txt", 5)
+          jump k3("written")
+        } handle (e.1: Exception) {
+          let %16: Bool = prim is(e.1, %15)
+          if %16 {
+            jump k3("no file")
+          } else {
+            reraise e.1
+          }
+        }
+      }
+    } in {
+      let %17: Exception = member readline.endOfInput
+      try catching (%17) {
+        let %18: String = call readline.readLine("5> ")
+        jump k2(%18)
+      } handle (e.2: Exception) {
+        let %19: Bool = prim is(e.2, %17)
+        if %19 {
+          jump k2("still the end")
+        } else {
+          reraise e.2
+        }
+      }
+    }
+  } in {
+    let %20: Exception = member readline.endOfInput
+    try catching (%20) {
+      let %21: String = call readline.readLine("4> ")
+      jump k1(%21)
+    } handle (e.3: Exception) {
+      let %22: Bool = prim is(e.3, %20)
+      if %22 {
+        jump k1("the end")
+      } else {
+        reraise e.3
+      }
+    }
+  }
+}
+
