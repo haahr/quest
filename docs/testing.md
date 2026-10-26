@@ -347,6 +347,24 @@ share names, and may share names with library units, without their artifacts col
 One test may also use different units with the same base name (`counter` and `util/counter` in
 `tests/source/modules/same_name_units.quest`).
 
+### 2.7. REPL Transcripts (`tests/repl/`)
+The REPL ([repl.md](repl.md)) is tested by transcripts, in the `repl` phase. Each `tests/repl/NAME.quest` is the
+standard input of `quest -i`, run in a scratch directory of its own, and `tests/golden/repl/NAME.out` is what the
+driver writes: its standard output, its standard error, and its exit status. Standard input is not a terminal, so the
+REPL writes its prompts without editing and the input lines are not echoed: a line's prompt is followed directly by
+the response to it, if any. Paths under the checkout are written relative to it (or `<root>` for the checkout itself),
+and the scratch directory as `<scratch>`.
+
+- `(* @load: PATH *)` names a file, relative to `tests/repl` (they are in `tests/repl/files/`), for `-i` to run before
+  reading input. Only the `.quest` files directly in `tests/repl` are transcripts.
+- `@args` are the program's arguments, after the loaded file or after a `--`; `@env` and `@timeout` are as for golden
+  tests (section 2.5).
+- A transcript that needs interfaces and modules writes them itself (with `writer`), since the REPL resolves imports
+  from its directory, the scratch directory.
+
+Comment lines are inputs too, so a transcript's opening comment shows as a prompt (and a continuation prompt per extra
+line). Line editing, history, and Ctrl-C need a terminal, and are not tested here.
+
 ---
 
 ## 3. Diagnostic & Error Testing Framework (`tests/errors/`)
@@ -441,6 +459,7 @@ bidirectional matching:
 | **Golden Tests** | Valid end-to-end outputs | `python3 run_tests.py` |
 | **Error Tests** | Semantic diagnostic verification | `python3 run_tests.py --errors` |
 | **Update Goldens** | Refresh golden output files | `python3 run_tests.py --update-golden` |
+| **REPL** | REPL transcripts (section 2.7) | `python3 run_tests.py --phase repl` |
 | **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
 | **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py --phase run_c_compiled -k questlang/` |
 

@@ -1,0 +1,20 @@
+(* A module imported by several inputs runs once; an input that fails forgets the modules it loaded and ran, but not
+   those earlier inputs did, and their state is not undone. Imports are resolved again for each input, finding files
+   created since. *)
+import writer: Writer
+let save(name: String text: String): Ok = begin let w = writer.file(name) writer.putString(w text) writer.close(w) end
+save("counter.int.quest" "interface Counter export next(): Int end\n")
+save("counter.mod.quest" "module counter: Counter export let var n = 0 let next(): Int = begin n := n + 1 n end end\n")
+import counter: Counter; counter.next(); 1 / 0
+import counter: Counter; let b: Int = "x"
+import counter: Counter
+counter.next()
+import counter: Counter
+counter.next()
+counter.next(); 1 / 0
+counter.next()
+import later: Later
+save("later.int.quest" "interface Later export x: Int end\n")
+save("later.mod.quest" "module later: Later export let x = 7 end\n")
+import later: Later
+later.x

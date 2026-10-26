@@ -39,7 +39,7 @@ from quest.pipeline import (
 )
 from quest.modules.graph import UnitKind, file_unit_kind
 from quest.syntax.sources import BYTE_ENCODING
-from quest.testing.errors import run_error_test
+from quest.testing.errors import relativize_root_paths, run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
 # The example programs the documentation walks through, run as golden tests too (docs/testing.md §2.1)
@@ -60,6 +60,10 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
+# REPL transcripts: each tests/repl/NAME.quest is the input to quest -i, and tests/golden/repl/NAME.out what it writes
+# (docs/testing.md §2.7); tests/repl/files holds what they load
+TESTS_REPL_DIR = ROOT_DIR / "tests" / "repl"
+TESTS_REPL_GOLDEN_DIR = TESTS_GOLDEN_DIR / "repl"
 TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
 
 
@@ -83,6 +87,7 @@ ENV_PATTERN = re.compile(r"\(\*\s*@env:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 EXIT_PATTERN = re.compile(r"\(\*\s*@exit:\s*([0-9]+)\s*\*\)", re.IGNORECASE)
 TIMEOUT_PATTERN = re.compile(r"\(\*\s*@timeout:\s*([0-9.]+)\s*\*\)", re.IGNORECASE)
 ECHO_PATTERN = re.compile(r"\(\*\s*@echo\s*\*\)", re.IGNORECASE)
+LOAD_PATTERN = re.compile(r"\(\*\s*@load:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 STDIN_PATTERN = re.compile(r"\(\*\s*@stdin:(?:[ \t]*\r?\n)?(.*?)\*\)", re.DOTALL | re.IGNORECASE)
 
 
@@ -451,6 +456,82 @@ def run_eval_test(driver_command: list[str], timeout: float) -> tuple[bool, str,
     return False, "[FAIL]", "  (transcript mismatch)\n" + "".join(diff).rstrip()
 
 
+def discover_repl_tests() -> list[Path]:
+    """The REPL transcripts: the .quest files directly in tests/repl."""
+    return sorted(TESTS_REPL_DIR.glob("*.quest"))
+
+
+def repl_transcript(source_file: Path, command: list[str], timeout: float) -> tuple[str, int]:
+    """What a driver writes when source_file is the input to its REPL (quest -i), in a fresh directory of its own:
+    its standard output and error, and its exit status. An @load directive names a file, relative to tests/repl, for
+    -i to run first; the @args are the program's arguments, after the file or a --."""
+    directives = parse_test_directives(source_file)
+    text = source_file.read_text(encoding=BYTE_ENCODING)
+    load = LOAD_PATTERN.search(text)
+    command = [*command, "-i"]
+    if load:
+        command.append(str((TESTS_REPL_DIR / load.group(1)).resolve()))
+    elif directives.args:
+        command.append("--")
+    command.extend(directives.args)
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+    environment["QUEST_HOME"] = str(ROOT_DIR)
+    environment["QUEST_CHECK_CANONICAL"] = "1"
+    environment["QUEST_CHECK_SCOPES"] = "1"
+    environment["QUEST_CHECK_IR"] = "1"
+    environment.update(directives.env)
+    with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
+        process = subprocess.run(
+            command,
+            input=text,
+            capture_output=True,
+            encoding=BYTE_ENCODING,
+            env=environment,
+            timeout=directives.timeout or timeout,
+            cwd=scratch_dir,
+        )
+        transcript = f"--- stdout\n{process.stdout}--- stderr\n{process.stderr}--- exit {process.returncode}\n"
+        # The scratch directory and the checkout, which the module system's errors name, and the checkout's files,
+        # by relative paths
+        for scratch in sorted({scratch_dir, os.path.realpath(scratch_dir)}, key=len, reverse=True):
+            transcript = transcript.replace(scratch, "<scratch>")
+    transcript = relativize_root_paths(transcript, ROOT_DIR)
+    for root in sorted({str(ROOT_DIR), str(ROOT_DIR.resolve())}, key=len, reverse=True):
+        transcript = transcript.replace(root, "<root>")
+    return transcript, process.returncode
+
+
+def run_repl_test(
+    source_file: Path,
+    update_golden: bool,
+    python_executable: str,
+    timeout: float,
+    build_dir: Path,
+    driver_command: Optional[list[str]],
+) -> tuple[bool, str, str]:
+    """A REPL transcript (repl_transcript) against its golden, with the bootstrap's driver or driver_command."""
+    command = driver_command or [python_executable, str(DRIVER_SCRIPT), "--build-dir", str(build_dir)]
+    out_file = TESTS_REPL_GOLDEN_DIR / source_file.with_suffix(".out").name
+    try:
+        actual, _ = repl_transcript(source_file, command, timeout)
+    except subprocess.TimeoutExpired:
+        return False, "[FAIL]", "  (TIMED OUT)"
+    if update_golden and driver_command is None:
+        out_file.write_text(actual, encoding=BYTE_ENCODING)
+        return True, "[UPDATED]", ""
+    if not out_file.exists():
+        return False, "[MISSING GOLDEN]", f"  (expected {out_file.relative_to(ROOT_DIR)})"
+    expected = out_file.read_text(encoding=BYTE_ENCODING)
+    if actual == expected:
+        return True, "[PASS]", ""
+    diff = difflib.unified_diff(
+        expected.splitlines(keepends=True), actual.splitlines(keepends=True),
+        fromfile=f"golden/repl/{out_file.name}", tofile=f"actual/repl/{out_file.name}",
+    )
+    return False, "[FAIL]", "  (transcript mismatch)\n" + "".join(diff).rstrip()
+
+
 def self_hosted_pending() -> set[str]:
     """The tests the self-hosted driver is not yet expected to pass: PHASE:TEST for a golden test, and
     errors/PHASE:TEST for an error test, one per line (# starts a comment)."""
@@ -487,6 +568,7 @@ def main() -> int:
         *IR_RUN_PHASES,
         "interpret",
         "run_c_compiled",
+        "repl",
     ]
 
     arg_parser = argparse.ArgumentParser(description="Run Quest compiler tests (golden outputs and error suites).")
@@ -625,7 +707,8 @@ def run_all_tests(
                 source_files = [sf for sf in source_files if args.test in str(golden_test_id(sf))]
 
             runs_eval = driver_command is not None and (not args.test or args.test in "self-hosted/eval")
-            if source_files or runs_eval:
+            repl_files = [f for f in discover_repl_tests() if not args.test or args.test in f"repl/{f.stem}"]
+            if source_files or runs_eval or repl_files:
                 print("=== Golden Tests ===")
                 for phase in phases_to_run:
                     golden_dir = golden_dir_for_phase(phase)
@@ -633,7 +716,20 @@ def run_all_tests(
                         continue
                     print(f"--- Phase: {phase} ---")
                     phase_tasks: list[PhaseTask] = []
-                    for source_file in source_files:
+                    # The REPL's transcripts, rather than the programs
+                    for source_file in repl_files if phase == "repl" else []:
+                        def make_repl_runner(sf: Path) -> Callable[[Path], tuple[bool, str, str]]:
+                            return lambda w_dir: run_repl_test(
+                                sf, args.update_golden, python_executable, args.timeout, w_dir, driver_command
+                            )
+
+                        test_id = f"repl/{source_file.stem}"
+                        phase_tasks.append(PhaseTask(
+                            test_id=test_id,
+                            run_fn=with_pending(f"{phase}:{test_id}", pending, pending_counts,
+                                                make_repl_runner(source_file)),
+                        ))
+                    for source_file in source_files if phase != "repl" else []:
                         skipped_phases = parse_skipped_phases(source_file)
                         rel_source = golden_test_id(source_file)
                         test_id = str(rel_source.with_suffix(""))
