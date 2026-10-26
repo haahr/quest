@@ -1,0 +1,42 @@
+(* Quest Self-Hosted Compiler: The Tree-Walking Interpreter Interface
+ *
+ * bootstrap/python/quest/interpreter/treewalk.py: evaluates typed expressions, bindings, and programs in lexically
+ * scoped frames (model.Frame, the bootstrap's RuntimeEnvironment), loading and running the modules a program imports
+ * (loadModule). Errors raised while running are model.runError, located in the file whose code raised them, with
+ * the frames running (docs/exceptions.md). *)
+
+interface Treewalk
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/model : questlang/types/Model
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/values/model : questlang/values/Model
+    util/maybe : util/Maybe
+export
+    (* =========================================================================
+     * Frames
+     * ========================================================================= *)
+
+    (* The root frame: true, false, ok, and the operators as functions; units is the type checker's graph *)
+    newRoot(units: graph.UnitGraph): model.Frame
+    pushScope(f: model.Frame): model.Frame
+    define(f: model.Frame name: String v: model.Value): Ok
+    (* A variable's value, outward from f; at the root, a standard library module used without an import *)
+    lookup(f: model.Frame name: String offset: maybe.T(Int)): model.Value
+
+    (* =========================================================================
+     * Evaluation
+     * ========================================================================= *)
+
+    evalExpr(e: typedAst.Expr f: model.Frame): model.Value
+    (* A binding of a block, a program, or a module, evaluated in f's frame: its value, and the frame the bindings
+     * after it are evaluated in (eval_scoped_binding) *)
+    Def Scoped = Tuple value: model.Value frame: model.Frame end
+    evalScopedBinding(b: typedAst.Binding f: model.Frame): Scoped
+    (* A program's phrases in order, each with its value; on gives each as soon as it is evaluated *)
+    Def PhraseResult = Tuple phrase: typedAst.Binding value: model.Value end
+    evalProgramPhrases(p: typedAst.Program f: model.Frame on: All(r: PhraseResult) Ok): Array(PhraseResult)
+    (* Records on an error the frames running where it was raised, the first time it leaves a frame *)
+    noteFrames(e: model.RunError f: model.Frame): Ok
+end

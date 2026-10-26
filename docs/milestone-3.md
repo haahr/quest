@@ -116,7 +116,7 @@ Each step is one or more commits; each ends with its runs passing.
 §1.1, in the bootstrap. `tests/python/test_unit_graph.py`'s tests of the values a snapshot keeps and forgets move
 to the interpreter's table, and both bootstrap suites pass.
 
-### Step 1: Values, the core evaluator, and the interpret phase
+### Step 1: Values, the core evaluator, and the interpret phase (done)
 
 Port `values/model`, `types/canonical`'s part (§1), `interpreter/primitives`, `formatting`, and the core of
 `treewalk`: literals, variables and references, operators, blocks, functions and application, conditionals and
@@ -124,24 +124,46 @@ loops, records, tuples, arrays, variants, options, and `case`. Add the interpret
 `interpret` to the runner's self-hosted phases, and the run goldens and error tests to the pending list. Enough of
 the builtins for output (`writer`, `conv`) lands here, so that goldens of programs without imports leave the list.
 
-### Step 2: Exceptions and run-time errors
+The evaluator was ported whole, so Steps 2 to 4 landed with this one: every run golden and run-time error test passes
+but the 13 that serialize dynamic values, which are pending until Step 5. The runner gained `--self-hosted-driver
+PATH`, which runs a driver already compiled rather than compiling one (four minutes). Where the two interpreters
+differ:
+- **Frames** (the bootstrap's `RuntimeEnvironment`) are declared in `values/model`, beside the closures that hold
+  them; their operations are `treewalk`'s.
+- **Errors.** The bootstrap's `QuestException` and `QuestRuntimeError` are one Quest exception, `model.runError`,
+  whose cause tells a Quest exception from an error of the interpreter; it is located and given its frames as the
+  bootstrap's `QuestCompilerError` is. The loop exit is a Quest exception too.
+- **Lists.** The bootstrap's `QList` and its `_list_*` builtins were dead (`lib/list` is written in Quest, and no
+  external names them), so they were removed from the bootstrap rather than ported; so was the `list.nil` special
+  case of type application.
+- **Builtins** are only the symbols `lib/` binds (the bootstrap's table also has `sin`, `cos`, and the like), and each
+  calls the native library (§2). A string builder's buffer is a native `stringBuilder.T`, whose methods its
+  externals call, and `quest_strutil_to_real` is `strutil.tryToReal`, whose syntax its callers have checked.
+- **Reduced types** (`types/canonical`) are not cached by node, as the bootstrap's `normalize_type` is.
+
+### Step 2: Exceptions and run-time errors (done, with Step 1)
 
 Exceptions (`exception`, `raise`, `try`, the exceptions a scope makes in advance), the checked operations' errors
 (`int.error`, `arrayOp.error`, `variant.tagMismatch`, and the rest), closures' frame names and the call stack, and
 diagnostics' traces. The run-time error tests leave the pending list.
 
-### Step 3: Modules and the standard library
+The typed AST gained `scopeExceptions` and `exprScopeExceptions` (the bootstrap's `scope_exceptions`), and diagnostics
+their traces and the frame names of tracebacks (`mainFrame`, `initFrame`, `frameName`).
+
+### Step 3: Modules and the standard library (done, with Step 1)
 
 `load_module_for_interpreter`, imports, module declarations, the standard library modules a program uses without
 importing them, and the complete builtins table (§2), with `--expected-exit` and program arguments. Goldens that
 import the standard library or their own modules leave the list.
 
-### Step 4: Types at run time
+`modules/stdlib` exports its table of modules (`standardModules`) for the lookup of one used without an import.
+
+### Step 4: Types at run time (done, with Step 1)
 
 Type arguments (`type_bindings`, a closure's instantiation), auto values, type witnesses, `inspect`, and
 `dynamic.new` and `be`, with the subtyping they use.
 
-### Step 5: `dynamic` serialization
+### Step 5: `dynamic` serialization (done)
 
 Port `values/json` (§1.2's decision) and `dynamicjson`: the canonical type table (the graph of types, merged by
 bisimulation and numbered depth first), the writer, `parse_type_string` (through the self-hosted parser and
@@ -149,15 +171,32 @@ elaboration), the reader, sharing and cycles, and abstract types' representation
 `copy` join the builtins. The goldens that serialize leave the list; their text must be the bootstrap's, byte for
 byte, which is also the C runtime's.
 
-### Step 6: `-e`, and the interpreted questlang tests
+All 13 pass, byte for byte. `modules/abstracttypes` gained the representations an unlinked module's types were read
+with (`Instance`, `registerUnlinkedAbstractType`). Where the two differ:
+- **`parse_type_string`**, which only `.qi` files use, waits for them (Milestone 5).
+- **JSON.** A number keeps its text, so that a word's integer (up to 2^64 - 1) is read exactly; an integer read as an
+  `Int` must fit one, where Python's are unbounded. A `\u` escape above `\u00ff` fails as the text is parsed, rather
+  than when the string is used as a value: a character is a byte.
+- **`dynamic.intern`** reads a document from a native reader, which cannot put a character back: after a value that
+  is not an object, array, or string, the delimiter that ends it is read too. Such a document is not a dynamic value,
+  so it fails either way.
+
+### Step 6: `-e`, and the interpreted questlang tests (done)
 
 Add `-e` and its generated test (§3.2). The questlang tests the bootstrap interprets run in the self-hosted
 interpreter; any that take too long under the test timeout get `@timeout`, recorded here.
 
-### Step 7: Done
+`tests/eval/cases.quest` holds the programs, `tests/eval/generate.py` writes the bootstrap's transcript of them
+(`tests/golden/self-hosted/eval.out`: each one's standard output, standard error, and exit status), and the
+self-hosted suite compares the driver's (`interpret:self-hosted/eval`). The ten interpreted questlang tests pass
+within the default timeout; none needed `@timeout`.
+
+### Step 7: Done (done)
 
 Empty the pending list; update compiler-organization.md (§2's "so far", §6's Milestone 3 status), interpreter.md (the
 self-hosted interpreter beside the bootstrap's), and testing.md; record the divergences in this document.
+
+The pending list is empty, and the divergences are recorded in Steps 1 and 5.
 
 ---
 

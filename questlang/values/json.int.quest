@@ -1,0 +1,52 @@
+(* Quest Self-Hosted Compiler: JSON Text Interface
+ *
+ * What bootstrap/python/quest/values/dynamic_json.py takes from Python's json module, for the dynamic format: a JSON
+ * value, parsed as json.loads parses one (strictly, rejecting NaN and the infinities), and printed as json.dumps
+ * prints one with separators (",", ":"): ASCII, a byte above 127 or a control character escaped, an object's members
+ * in order. A number keeps its text, since a word's integer does not fit an Int; an object's members are in the order
+ * first given, a repeated member's last value winning, as a Python dictionary has them. *)
+
+interface Json
+import
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Def Rec Value = Option
+        jNull
+        jBool with b: Bool end
+        (* A number as written: an integer if it has neither a fraction nor an exponent *)
+        jNumber with text: String isInteger: Bool end
+        jString with s: String end
+        jArray with items: vector.T(Value) end
+        jObject with o: Object end
+    end
+    and Object = Tuple names: vector.T(String) members: hashMap.T(String Value) end
+
+    (* Raised on text that is not a JSON value *)
+    error: Exception
+
+    parse(text: String): Value
+    dump(v: Value): String
+
+    (* Constructors *)
+    null: Value
+    bool(b: Bool): Value
+    (* An integer, written as Python writes one *)
+    int(n: Int): Value
+    (* A real, written as Python's repr writes it *)
+    real(r: Real): Value
+    (* A number given as its text *)
+    number(text: String isInteger: Bool): Value
+    string(s: String): Value
+    arrayValue(items: vector.T(Value)): Value
+    newObject(): Object
+    object(o: Object): Value
+    (* Sets a member: a new one at the end, an existing one in place *)
+    put(o: Object name: String v: Value): Ok
+
+    (* An object's member, if it has one *)
+    get(o: Object name: String): maybe.T(Value)
+    (* An object's member names, in order *)
+    names(o: Object): Array(String)
+end

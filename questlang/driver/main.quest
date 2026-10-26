@@ -2,10 +2,11 @@
  *
  * Runs the self-hosted compiler's phases on a Quest file, as the bootstrap driver (bootstrap/python/quest_driver.py)
  * runs the bootstrap's: `main --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar, or
- * typecheck) in the
- * bootstrap's format on standard output, and the diagnostics on standard error, exiting with 1 if there are errors.
- * run_tests.py --self-hosted compiles it and checks it against the bootstrap's goldens (docs/milestone-2.md
- * section 3). *)
+ * typecheck) in the bootstrap's format on standard output, and the diagnostics on standard error, exiting with 1 if
+ * there are errors. The interpret phase, the default, runs the program in the tree-walking interpreter and prints its
+ * last phrase's result (or, with --echo, every phrase's); `-e PROGRAM` runs a program given as a string, and the
+ * arguments after `--` are the program's. run_tests.py --self-hosted compiles it and checks it against the
+ * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section 3). *)
 
 import
     questlang/common/location : questlang/common/Location
@@ -23,6 +24,10 @@ import
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/values/model : questlang/values/Model
+    questlang/interpreter/builtins : questlang/interpreter/Builtins
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
+    questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
@@ -32,30 +37,47 @@ import
     system : System
 ;
 
-let phases = array of "tokenize" "parse" "desugar" "typecheck" end;
+let phases = array of "tokenize" "parse" "desugar" "typecheck" "interpret" end;
 
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
-        writer.putString(writer.err "usage: main --stop-after tokenize|parse|desugar|typecheck [--show-offsets] FILE\n")
+        writer.putString(writer.err
+            "usage: main [--stop-after tokenize|parse|desugar|typecheck|interpret] [--show-offsets] [--echo] "
+            <> "[--expected-exit N] (FILE | -e PROGRAM) [-- ARG...]\n")
         system.sysexit(2)
     end;
 
-(* The command line: the phase to stop after, and the file *)
+(* The command line: the phase to stop after, the file or the program given, and the program's arguments *)
 let options =
     begin
-        let var stopAfter = ""
+        let var stopAfter = "interpret"
         let var file = ""
+        let var code = maybe.none(:String)
         let var showOffsets = false
+        let var echo = false
+        let programArgs = vector.new(:String)
         let var i = 1
         while i < extent system.args do
             let arg = system.args[i]
             if {stringOp.equal(arg "--stop-after")} andif {{i + 1} < extent system.args} then
                 stopAfter := system.args[i + 1]
                 i := i + 2
+            elsif {stringOp.equal(arg "--expected-exit")} andif {{i + 1} < extent system.args} then
+                (* What a compiled program's exit status must be; the interpreter's is the program's own *)
+                i := i + 2
+            elsif {stringOp.equal(arg "-e")} andif {{i + 1} < extent system.args} then
+                code := maybe.some(:String system.args[i + 1])
+                i := i + 2
             elsif stringOp.equal(arg "--show-offsets") then
                 showOffsets := true
                 i := i + 1
+            elsif stringOp.equal(arg "--echo") then
+                echo := true
+                i := i + 1
+            elsif stringOp.equal(arg "--") then
+                for j = {i + 1} upto {extent system.args - 1} do vector.append(:String programArgs system.args[j]) end
+                i := extent system.args
             elsif stringOp.equal(file "") then
                 file := arg
                 i := i + 1
@@ -69,8 +91,16 @@ let options =
             if stringOp.equal(phases[j] stopAfter) then known := true end
         end
         if not(known) then usage("unknown phase '" <> stopAfter <> "'") end
-        if stringOp.equal(file "") then usage("no file") end
-        tuple let stopAfter = stopAfter let file = file let showOffsets = showOffsets end
+        if stringOp.equal(file "") andif maybe.isNone(:String code) then usage("no file") end
+        tuple
+            let stopAfter = stopAfter
+            (* The program's name, as the bootstrap's diagnostics name it *)
+            let file = if maybe.isSome(:String code) then "<string>" else file end
+            let code = code
+            let showOffsets = showOffsets
+            let echo = echo
+            let programArgs = vector.toArray(:String programArgs)
+        end
     end;
 
 (* The text of a file *)
@@ -85,6 +115,13 @@ let readFile(name: String): String =
 
 let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
 
+(* Prints a phrase's result in interactive style, unless it shows nothing *)
+let printResult(phrase: typedAst.Binding v: model.Value): Ok =
+    begin
+        let shown = formatting.formatInteractiveResult(phrase v)
+        if stringOp.length(shown) > 0 then print(shown) end
+    end;
+
 (* Reports the diagnostics and exits, with 1 if there are errors *)
 let finish(bag: diagbag.T sm: location.SourceMap): Ok =
     begin
@@ -94,9 +131,52 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
         system.sysexit(if diagbag.hasErrors(bag) then 1 else 0 end)
     end;
 
+(* The diagnostic of an error raised while running, in the file whose code raised it, with its frames *)
+let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic =
+    begin
+        let file = if maybe.isSome(:location.SourceMap err.sourceMap) then
+            location.file(maybe.unwrap(:location.SourceMap err.sourceMap))
+        else
+            mainFile
+        end
+        let sp = if maybe.isSome(:Int err.offset) then
+            location.span(file maybe.unwrap(:Int err.offset) {maybe.unwrap(:Int err.offset) + 1})
+        else
+            location.span("" ~1 ~1)
+        end
+        let d = diagnostics.error(model.runErrorMessage(err) sp)
+        if maybe.isSome(:Array(String) err.frames) then diagnostics.setTrace(d maybe.unwrap(:Array(String) err.frames)) end
+        d
+    end;
+
+(* Runs a type-checked program, as the bootstrap's interpret phase does *)
+let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let f = treewalk.newRoot(e.units)
+        f.root.includePaths := vector.toArray(:String e.includePaths)
+        f.root.programDir := e.programDir
+        f.currentDir := e.currentDir
+        f.sourceMap := maybe.some(:location.SourceMap sm)
+        let args = array of({extent options.programArgs + 1} options.file)
+        for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
+        builtins.setSystemArgs(args)
+        (* The program's phrases run in the outermost frame (docs/exceptions.md section 4) *)
+        vector.append(:String f.root.callStack diagnostics.mainFrame)
+        try
+            let results = treewalk.evalProgramPhrases(program f fun(r: treewalk.PhraseResult): Ok
+                if options.echo then printResult(r.phrase r.value) end)
+            if not(options.echo) andif {extent results > 0} then
+                printResult(results[extent results - 1].phrase results[extent results - 1].value)
+            end
+        when model.runError with err then
+            treewalk.noteFrames(err f)
+            diagbag.add(bag runErrorDiagnostic(err options.file))
+        end
+    end;
+
 let run(): Ok =
     begin
-        let source = readFile(options.file)
+        let source = if maybe.isSome(:String options.code) then maybe.unwrap(:String options.code) else readFile(options.file) end
         let sm = location.newSourceMap(options.file source)
         let bag = diagbag.new()
         try
@@ -115,7 +195,8 @@ let run(): Ok =
                 else
                     stdlib.install()
                     let e = env.new()
-                    let dir = paths.parent(paths.absolute(options.file))
+                    let dir = if maybe.isSome(:String options.code) then paths.absolute(".")
+                        else paths.parent(paths.absolute(options.file)) end
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
                     e.sourceFile := options.file
@@ -124,7 +205,12 @@ let run(): Ok =
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
                     end
                     if maybe.isSome(:typedAst.Program result.program) then
-                        print(typedAstPrint.dumpProgram(maybe.unwrap(:typedAst.Program result.program)))
+                        let typed = maybe.unwrap(:typedAst.Program result.program)
+                        if stringOp.equal(options.stopAfter "typecheck") then
+                            print(typedAstPrint.dumpProgram(typed))
+                        elsif not(diagbag.hasErrors(bag)) then
+                            interpret(typed e sm bag)
+                        end
                     end
                 end
             end

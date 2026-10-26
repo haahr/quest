@@ -21,6 +21,11 @@ compilation or machine code generation. It serves three primary purposes:
 
 The interpreter consumes the typed AST produced by `typecheck` and produces runtime Quest values (`QValue`).
 
+The self-hosted compiler has the same interpreter, in Quest (`questlang/values/`, `questlang/interpreter/`;
+[milestone-3.md](milestone-3.md)): a value is a case of `model.Value`, a frame is `model.Frame`, and the standard
+library's externals call the native library rather than reimplementing it. Its output, errors, and dynamic documents
+are the bootstrap's; where they differ is recorded in milestone-3.md.
+
 ```
                               ┌─────────────────────────┐
                               │    TypedProgram AST     │
@@ -88,9 +93,6 @@ a human-readable `type_name` and a `to_str(visited)` method supporting cycle det
 - **`QArray(elements: list[QValue])`:**
   - Represents fixed-size, mutable linear buffers (`get(i)`, `set(i, val)`, `size()`).
   - Formats as `array of 1 2 3 end`.
-- **`QList(elements: tuple[QValue, ...])`:**
-  - Represents immutable linear lists.
-  - Formats as `list of 1 2 3 end` (or `list of end` for empty lists).
 - **`QVariant(tag, payload)` & `QOption(tag, payload)`:**
   - Represent tagged sum types with optional payloads.
   - The `ordinal` operator and `opt!tag` compute the zero-based declaration index of `tag` in the static `Option` type
@@ -301,7 +303,7 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
     unified module loader; their external C symbols are the interpreter's builtins (`builtins.py`:
     `EXTERNAL_FUNCTIONS` and `EXTERNAL_VALUES`).
 - **List Operations (`list: List`):**
-  - Built-in `list` module backed by runtime `QList` values.
+  - `lib/list.mod.quest`, written in Quest, which the interpreter runs as any other module.
   - Provides `nil`, `cons`, `null`, `head`, `tail`, `length`, `enum`, and `error`.
 - **String Substring Precedence (`StringOp.precedesSub`):**
   - `string.precedesSub(s1, start1, size1, s2, start2, size2)` compares substrings lexicographically, raising

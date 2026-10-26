@@ -51,10 +51,14 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # The self-hosted compiler's driver, the phases it has, the tests it is not yet expected to pass, and where the
 # errors it reports after the bootstrap's one are recorded (docs/milestone-2.md §3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
-SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck")
+SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck", "interpret")
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports: tests/self-hosted/errors/PHASE/NAME.quest
+# The programs the self-hosted driver's -e runs, and the bootstrap's transcript of them (docs/milestone-3.md §3.2),
+# which tests/eval/generate.py writes
+EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
+EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
 TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
 
@@ -406,6 +410,47 @@ def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
     return binary
 
 
+def eval_programs() -> list[str]:
+    """The programs of tests/eval/cases.quest, one per line, after its opening comment."""
+    lines = EVAL_CASES.read_text(encoding=BYTE_ENCODING).splitlines()
+    end = next(i for i, line in enumerate(lines) if line.rstrip().endswith("*)"))
+    return [line for line in lines[end + 1:] if line.strip()]
+
+
+def eval_transcript(driver_command: list[str], timeout: float = 30.0) -> str:
+    """What a driver writes for each program of eval_programs run with -e: its standard output and error, and its
+    exit status, each run in a fresh directory of its own."""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+    environment["QUEST_HOME"] = str(ROOT_DIR)
+    parts: list[str] = []
+    for program in eval_programs():
+        with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
+            process = subprocess.run(
+                [*driver_command, "-e", program],
+                capture_output=True,
+                encoding=BYTE_ENCODING,
+                env=environment,
+                timeout=timeout,
+                cwd=scratch_dir,
+            )
+        parts.append(f"=== {program}\n--- stdout\n{process.stdout}--- stderr\n{process.stderr}--- exit {process.returncode}\n")
+    return "".join(parts)
+
+
+def run_eval_test(driver_command: list[str], timeout: float) -> tuple[bool, str, str]:
+    """The self-hosted driver's -e against the bootstrap's transcript (eval_transcript)."""
+    actual = eval_transcript(driver_command, timeout)
+    expected = EVAL_GOLDEN.read_text(encoding=BYTE_ENCODING)
+    if actual == expected:
+        return True, "[PASS]", ""
+    diff = difflib.unified_diff(
+        expected.splitlines(keepends=True), actual.splitlines(keepends=True),
+        fromfile="golden/self-hosted/eval.out", tofile="actual/self-hosted/eval.out",
+    )
+    return False, "[FAIL]", "  (transcript mismatch)\n" + "".join(diff).rstrip()
+
+
 def self_hosted_pending() -> set[str]:
     """The tests the self-hosted driver is not yet expected to pass: PHASE:TEST for a golden test, and
     errors/PHASE:TEST for an error test, one per line (# starts a comment)."""
@@ -494,6 +539,11 @@ def main() -> int:
         help="Test the self-hosted compiler: compile its driver, and run it on the tests of the phases it has, "
         "against the bootstrap's goldens.",
     )
+    arg_parser.add_argument(
+        "--self-hosted-driver",
+        metavar="PATH",
+        help="With --self-hosted, run this compiled self-hosted driver rather than compiling one.",
+    )
 
     arg_parser.add_argument(
         "--build-dir",
@@ -540,8 +590,11 @@ def run_all_tests(
     pending_counts = {"pending": 0}
     if args.self_hosted:
         phases_to_run = [phase for phase in phases_to_run if phase in SELF_HOSTED_PHASES]
-        print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)})...")
-        driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
+        if args.self_hosted_driver:
+            driver_command = [str(Path(args.self_hosted_driver).resolve())]
+        else:
+            print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)})...")
+            driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
         pending = self_hosted_pending()
 
     total_golden = 0
@@ -571,7 +624,8 @@ def run_all_tests(
             if args.test:
                 source_files = [sf for sf in source_files if args.test in str(golden_test_id(sf))]
 
-            if source_files:
+            runs_eval = driver_command is not None and (not args.test or args.test in "self-hosted/eval")
+            if source_files or runs_eval:
                 print("=== Golden Tests ===")
                 for phase in phases_to_run:
                     golden_dir = golden_dir_for_phase(phase)
@@ -609,6 +663,17 @@ def run_all_tests(
                             f"{phase}:{test_id}", pending, pending_counts, make_golden_runner(source_file, phase)
                         )
                         phase_tasks.append(PhaseTask(test_id=test_id, run_fn=run_fn))
+
+                    # The self-hosted driver's -e, against the bootstrap's transcript
+                    if phase == "interpret" and runs_eval:
+                        eval_command = driver_command
+                        phase_tasks.append(PhaseTask(
+                            test_id="self-hosted/eval",
+                            run_fn=with_pending(
+                                f"{phase}:self-hosted/eval", pending, pending_counts,
+                                lambda w_dir: run_eval_test(eval_command, args.timeout),
+                            ),
+                        ))
 
                     p_total, p_passed = run_phase_tasks(
                         phase, phase_tasks, worker_pool, executor, jobs

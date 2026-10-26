@@ -1,0 +1,63 @@
+(* Quest Self-Hosted Compiler: The Interpreter's Primitive Operations Implementation *)
+
+module primitives : Primitives
+import
+    questlang/values/model : questlang/values/Model
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    intOp = int : IntOp
+    realOp = real : RealOp
+export
+    let arrayOpError = model.exceptionValue("arrayOp.error")
+    let writerError = model.exceptionValue("writer.error")
+    let readerError = model.exceptionValue("reader.error")
+    let asciiError = model.exceptionValue("ascii.error")
+    let intError = model.exceptionValue("int.error")
+    let realError = model.exceptionValue("real.error")
+    let wordError = model.exceptionValue("word.error")
+    let stringError = model.exceptionValue("string.error")
+    let systemError = model.exceptionValue("system.error")
+    let variantError = model.exceptionValue("variant.tagMismatch")
+
+    let intArithmetic(op: String a: Int b: Int offset: maybe.T(Int)): Int =
+        try
+            if stringOp.equal(op "+") then a + b
+            elsif stringOp.equal(op "-") then a - b
+            elsif stringOp.equal(op "*") then a * b
+            elsif stringOp.equal(op "/") then a / b
+            elsif stringOp.equal(op "mod") orif stringOp.equal(op "%") then a % b
+            else model.internalError(:Int "Unknown integer arithmetic operator '" <> op <> "'" offset)
+            end
+        when intOp.error then
+            model.raiseException(:Int intError offset)
+        end
+
+    let intRelational(op: String a: Int b: Int offset: maybe.T(Int)): Bool =
+        if stringOp.equal(op "<") then a < b
+        elsif stringOp.equal(op "<=") then a <= b
+        elsif stringOp.equal(op ">") then a > b
+        elsif stringOp.equal(op ">=") then a >= b
+        else model.internalError(:Bool "Unknown integer relational operator '" <> op <> "'" offset)
+        end
+
+    let realArithmetic(op: String a: Real b: Real offset: maybe.T(Int)): Real =
+        try
+            if stringOp.equal(op "++") then a ++ b
+            elsif stringOp.equal(op "--") then a -- b
+            elsif stringOp.equal(op "**") then a ** b
+            elsif stringOp.equal(op "//") then a // b
+            elsif stringOp.equal(op "^^") then a ^^ b
+            else model.internalError(:Real "Unknown real arithmetic operator '" <> op <> "'" offset)
+            end
+        when realOp.error then
+            model.raiseException(:Real realError offset)
+        end
+
+    let realRelational(op: String a: Real b: Real offset: maybe.T(Int)): Bool =
+        if stringOp.equal(op "<<") then a << b
+        elsif stringOp.equal(op "<<=") then a <<= b
+        elsif stringOp.equal(op ">>") then a >> b
+        elsif stringOp.equal(op ">>=") then a >>= b
+        else model.internalError(:Bool "Unknown real relational operator '" <> op <> "'" offset)
+        end
+end

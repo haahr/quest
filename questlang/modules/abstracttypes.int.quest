@@ -8,16 +8,28 @@
 interface AbstractTypes
 import
     questlang/types/model : questlang/types/Model
+    collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
+    (* The representation an application of an unlinked module's type (none for a type) was written with *)
+    Def Instance = Tuple args: Array(model.Type) rep: model.Type end
     (* An abstract type exported by a module: linked if the program links the module; rep, its representation, once
-     * the module has been elaborated from its source *)
-    Def ModuleAbstractType = Tuple globalName: String typeVar: model.Type linked: Bool var rep: maybe.T(model.Type) end
+     * the module has been elaborated from its source; and an unlinked type's representations, as dynamic.intern
+     * read them *)
+    Def ModuleAbstractType = Tuple
+        globalName: String
+        typeVar: model.Type
+        linked: Bool
+        var rep: maybe.T(model.Type)
+        instances: vector.T(Instance)
+    end
 
     abstractTypeSymbolId(globalName: String): Int
     isAbstractTypeSymbol(symbolId: Int): Bool
     registerExportedAbstractType(globalName: String typeVar: model.Type): Ok
     registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok
+    (* Records an abstract type read from a module the program does not link *)
+    registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType
     abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType)
     abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType)
 end

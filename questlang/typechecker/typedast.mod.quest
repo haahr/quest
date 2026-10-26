@@ -6,6 +6,7 @@ import
     questlang/types/symbols : questlang/types/Symbols
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    stringOp = string : StringOp
 export
     Let Rec Expr = Tuple
         offset: Int
@@ -313,5 +314,118 @@ export
                 else b.form
             end
             binding(b.offset form)
+        end
+
+    (* =========================================================================
+     * Named exceptions
+     * ========================================================================= *)
+
+    (* The named exceptions made in a node whose names bind in its scope (named_exceptions_in): not inside functions
+     * or blocks, which are scopes of their own *)
+    Let Found = vector.T(Expr)
+
+    let rec scanExpr(e: Expr found: Found): Ok =
+        begin
+            let s(x: Expr): Ok = scanExpr(x found)
+            let ss(xs: Array(Expr)): Ok = for i = 0 upto {extent xs - 1} do s(xs[i]) end
+            let sm(x: maybe.T(Expr)): Ok = if maybe.isSome(:Expr x) then s(maybe.unwrap(:Expr x)) end
+            case e.form
+                when exprFun then ok
+                when exprBlock then ok
+                when exprException with x then
+                    if stringOp.length(x.name) > 0 then vector.append(:Expr found e) end
+                when exprApp with x then begin s(x.func) ss(x.args) end
+                when exprTypeApp with x then s(x.func)
+                when exprInfix with x then begin s(x.left) s(x.right) end
+                when exprRecord with x then for i = 0 upto {extent x.fields - 1} do s(x.fields[i].value) end
+                when exprTuple with x then ss(x.elements)
+                when exprSelect with x then s(x.target)
+                when exprIndex with x then begin s(x.target) s(x.index) end
+                when exprIndexAssign with x then begin s(x.target) s(x.index) s(x.value) end
+                when exprArray with x then ss(x.elements)
+                when exprArrayRep with x then begin s(x.count) s(x.initVal) end
+                when exprVarCell with x then s(x.value)
+                when exprDerefCell with x then s(x.target)
+                when exprSelectRef with x then s(x.target)
+                when exprIndexRef with x then begin s(x.target) s(x.index) end
+                when exprTupleSelectRef with x then s(x.target)
+                when exprAssign with x then begin s(x.target) s(x.value) end
+                when exprVariant with x then sm(x.payload)
+                when exprOption with x then begin sm(x.payload) sm(x.ordinalExpr) end
+                when exprAuto with x then s(x.payload)
+                when exprVariantCheck with x then s(x.target)
+                when exprVariantAssert with x then s(x.target)
+                when exprCase with x then
+                    begin
+                        s(x.target)
+                        for i = 0 upto {extent x.branches - 1} do s(x.branches[i].body) end
+                        sm(x.elseBranch)
+                    end
+                when exprInspect with x then
+                    begin
+                        s(x.target)
+                        for i = 0 upto {extent x.branches - 1} do s(x.branches[i].body) end
+                        sm(x.elseBranch)
+                    end
+                when exprIf with x then begin s(x.cond) s(x.thenBranch) s(x.elseBranch) end
+                when exprWhile with x then begin s(x.cond) s(x.body) end
+                when exprLoop with x then s(x.body)
+                when exprFor with x then begin s(x.start) s(x.stop) s(x.body) end
+                when exprRaise with x then begin s(x.exc) sm(x.payload) end
+                when exprTry with x then
+                    begin
+                        s(x.body)
+                        for i = 0 upto {extent x.branches - 1} do
+                            s(x.branches[i].excPattern)
+                            s(x.branches[i].body)
+                        end
+                        sm(x.elseBranch)
+                    end
+                else ok
+            end
+        end
+
+    let rec scanBinding(b: Binding found: Found): Ok =
+        case b.form
+            when bindLetValue with x then scanExpr(x.value.value found)
+            when bindLetValueGroup with x then for i = 0 upto {extent x.members - 1} do scanExpr(x.members[i].value found) end
+            when bindExprStmt with x then scanExpr(x.expr found)
+            when bindModule with x then for i = 0 upto {extent x.bindings - 1} do scanBinding(x.bindings[i] found) end
+            else ok
+        end
+
+    (* The exceptions found but the direct one, which a node makes as it runs, and those without symbols *)
+    let withoutDirect(found: Found direct: maybe.T(Expr)): Array(Expr) =
+        begin
+            let result = vector.new(:Expr)
+            for i = 0 upto {vector.length(:Expr found) - 1} do
+                let exc = vector.get(:Expr found i)
+                let isDirect = maybe.isSome(:Expr direct) andif {exc is maybe.unwrap(:Expr direct)}
+                let hasSymbol = case exc.form
+                    when exprException with x then maybe.isSome(:symbols.ValueSymbol x.symbol)
+                    else false
+                end
+                if not(isDirect) andif hasSymbol then vector.append(:Expr result exc) end
+            end
+            vector.toArray(:Expr result)
+        end
+
+    let scopeExceptions(b: Binding): Array(Expr) =
+        begin
+            let found = vector.new(:Expr)
+            scanBinding(b found)
+            let direct = case b.form
+                when bindExprStmt with x then maybe.some(:Expr x.expr)
+                when bindLetValue with x then maybe.some(:Expr x.value.value)
+                else maybe.none(:Expr)
+            end
+            withoutDirect(found direct)
+        end
+
+    let exprScopeExceptions(e: Expr): Array(Expr) =
+        begin
+            let found = vector.new(:Expr)
+            scanExpr(e found)
+            withoutDirect(found maybe.some(:Expr e))
         end
 end

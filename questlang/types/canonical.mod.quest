@@ -1,0 +1,198 @@
+(* Quest Self-Hosted Compiler: Reduced Forms of Types Implementation *)
+
+module canonical : Canonical
+import
+    questlang/types/model : questlang/types/Model
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Let Type = model.Type
+
+    (* An internal error: a type that is not an option where one must be (the bootstrap's ValueError) *)
+    let notAnOption: Exception(String) = exception notAnOption: String end
+
+    let maxBetaSteps = 1000
+
+    let isApp(t: Type): Bool = t.form?typeApp
+    let isRecursive(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
+
+    let rec betaReduceHead(t0: Type): Type =
+        begin
+            let var t = t0
+            let var done = false
+            let var steps = 0
+            while not(done) andif {steps < maxBetaSteps} do
+                steps := steps + 1
+                t := model.pruned(t)
+                case t.form
+                    when typeApp with app then
+                        let ctor = betaReduceHead(app.constructor)
+                        case ctor.form
+                            when typeException then
+                                if extent app.arguments is 1 then
+                                    t := model.exceptionOf(app.arguments[0])
+                                end
+                                done := true
+                            when typeOperator with op then
+                                if extent op.params is extent app.arguments then
+                                    let subst = model.newSubst()
+                                    for i = 0 upto {extent op.params - 1} do
+                                        hashMap.insert(:Int :Type subst op.params[i].symbolId app.arguments[i])
+                                    end
+                                    t := model.substitute(op.body subst)
+                                else
+                                    done := true
+                                end
+                            else done := true
+                        end
+                    else done := true
+                end
+            end
+            t
+        end
+
+    (* The unfolding of t, through recursive types and applications *)
+    let unfolding(t0: Type): Type =
+        begin
+            let var t = if isApp(t0) then betaReduceHead(t0) else t0 end
+            let var steps = 0
+            while isRecursive(t) andif {steps < maxBetaSteps} do
+                steps := steps + 1
+                t := model.pruned(model.unfoldLazily(t))
+                if isApp(t) then t := betaReduceHead(t) end
+            end
+            t
+        end
+
+    let unfoldRecursiveAny(t: Type): maybe.T(Type) =
+        begin
+            let u = unfolding(t)
+            if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(:Type u) end
+        end
+
+    (* The constructed types a value is represented like its recursive type's unfolding (_UNFOLDED_REPRESENTATION) *)
+    let isUnfoldedRepresentation(t: Type): Bool =
+        case t.form
+            when typeTuple then true
+            when typeRecord then true
+            when typeVariant then true
+            when typeOption then true
+            when typeArray then true
+            when typeVar then true
+            when typeOut then true
+            when typeAuto then true
+            when typeFun then true
+            when typeAll then true
+            when typeException then true
+            else false
+        end
+
+    let unfoldRecursive(t: Type): maybe.T(Type) =
+        begin
+            let u = unfolding(t)
+            if isUnfoldedRepresentation(u) then maybe.some(:Type u) else maybe.none(:Type) end
+        end
+
+    let normalizeType(t0: Type): Type =
+        begin
+            let t = model.stripAliases(model.pruned(t0))
+            let var result = t
+            let var found = false
+            if isRecursive(t) then
+                let unfolded = unfoldRecursiveAny(t)
+                if maybe.isSome(:Type unfolded) then
+                    result := maybe.unwrap(:Type unfolded)
+                    found := true
+                end
+            end
+            if not(found) andif isApp(t) then
+                let unfolded = unfoldRecursive(t)
+                if maybe.isSome(:Type unfolded) then
+                    result := maybe.unwrap(:Type unfolded)
+                else
+                    let reduced = betaReduceHead(t)
+                    if not(isApp(reduced) orif isRecursive(reduced)) then
+                        result := reduced
+                    else
+                        let evaled = model.evaluateLazily(t model.noLookup)
+                        if not(model.same(evaled t)) andif {evaled.form?typeTuple orif evaled.form?typeRecord} then
+                            result := evaled
+                        end
+                    end
+                end
+            end
+            result
+        end
+
+    (* A variable's, abstract type's, or path type's bound, if it is a power kind *)
+    let powerBoundOf(t: Type): maybe.T(Type) =
+        begin
+            let bound = case t.form
+                when typeVariable with x then x.bound
+                when typeAbstract with x then maybe.some(:model.Kind x.bound)
+                when typePath with x then maybe.some(:model.Kind x.bound)
+                else maybe.none(:model.Kind)
+            end
+            if maybe.isSome(:model.Kind bound) andif model.isPower(maybe.unwrap(:model.Kind bound)) then
+                maybe.some(:Type model.powerBound(maybe.unwrap(:model.Kind bound)))
+            else
+                maybe.none(:Type)
+            end
+        end
+
+    (* Whether two bounded types are one, as resolve_type_bound tells them apart: a variable or abstract type by its
+     * symbol, a path type by itself *)
+    let sameNode(a: Type b: Type): Bool =
+        case a.form
+            when typeVariable with x then case b.form when typeVariable with y then x.symbolId is y.symbolId else false end
+            when typeAbstract with x then case b.form when typeAbstract with y then x.symbolId is y.symbolId else false end
+            else model.same(a b)
+        end
+
+    let resolveTypeBound(t: Type): Type =
+        begin
+            let var curr = model.stripAliases(model.pruned(t))
+            (* The nodes passed through: a variable or abstract type by its symbol, a path type by itself *)
+            let visited = vector.new(:Type)
+            let var done = false
+            while not(done) do
+                let bound = powerBoundOf(curr)
+                if maybe.isNone(:Type bound) then
+                    done := true
+                else
+                    let var seen = false
+                    for i = 0 upto {vector.length(:Type visited) - 1} do
+                        let v = vector.get(:Type visited i)
+                        if sameNode(v curr) then seen := true end
+                    end
+                    if seen then
+                        done := true
+                    else
+                        vector.append(:Type visited curr)
+                        curr := model.pruned(maybe.unwrap(:Type bound))
+                    end
+                end
+            end
+            curr
+        end
+
+    let optionCaseNames(t: Type): Array(String) =
+        begin
+            let var curr = normalizeType(t)
+            while not(curr.form?typeOption) do
+                let exposed = normalizeType(resolveTypeBound(curr))
+                if model.same(exposed curr) then
+                    raise notAnOption with model.show(t) <> " is not an option type" end
+                end
+                curr := exposed
+            end
+            case curr.form
+                when typeOption with x then
+                    let names = array of(extent x.options "")
+                    for i = 0 upto {extent x.options - 1} do names[i] := x.options[i].name end
+                    names
+                else array of :String end
+            end
+        end
+end

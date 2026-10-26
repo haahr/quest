@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: Reduced Forms of Types Interface
+ *
+ * The part of bootstrap/python/quest/types/canonical.py that the interpreter uses: type operator applications
+ * reduced, recursive types unfolded, and an option type's cases in order. Canonical forms, which the backends use,
+ * are Milestone 4's. *)
+
+interface Canonical
+import
+    questlang/types/model : questlang/types/Model
+    util/maybe : util/Maybe
+export
+    (* t with the type operator applications at its head beta-reduced, without unfolding recursive types *)
+    betaReduceHead(t: model.Type): model.Type
+    (* The unfolding of a recursive type (or an application reducing to one) when it is neither recursive nor an
+     * application (unfold_recursive with kinds None) *)
+    unfoldRecursiveAny(t: model.Type): maybe.T(model.Type)
+    (* The unfolding when it is a constructed type, as values are represented (unfold_recursive's default kinds) *)
+    unfoldRecursive(t: model.Type): maybe.T(model.Type)
+    (* t with its outermost constructor exposed: aliases stripped, a recursive type unfolded, an application reduced *)
+    normalizeType(t: model.Type): model.Type
+    (* t, or for a variable, abstract type, or path type bounded by POWER(T), the type its bounds resolve to *)
+    resolveTypeBound(t: model.Type): model.Type
+    (* The names of an option type's cases as written, in order (for a parameter bounded by one, its bound's) *)
+    optionCaseNames(t: model.Type): Array(String)
+end

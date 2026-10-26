@@ -1,0 +1,1628 @@
+(* Quest Self-Hosted Compiler: The Dynamic Format Implementation *)
+
+module dynamicJson : DynamicJson
+import
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/values/model : questlang/values/Model
+    questlang/values/json : questlang/values/Json
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    realOp = real : RealOp
+    conv : Conv
+    word : Word
+export
+    Let Type = tm.Type
+    Let Value = model.Value
+
+    let formatVersion = 1
+    (* Graphs larger than this come from types that are not regular (their unfoldings never repeat) *)
+    let maxTypeNodes = 100000
+    let wordType = "uint64_t"
+
+    let none = maybe.none(:Int)
+    let fail(A::TYPE): A = model.raiseException(:A model.dynamicError none)
+    let intEqual(a: Int b: Int): Bool = a is b
+    let intKey(i: Int): String = conv.int(i)
+
+    (* A type ref: a built-in type's name, or a node's index *)
+    Let Ref = Tuple name: String index: Int end
+    let builtin(name: String): Ref = tuple let name = name let index = ~1 end
+    let nodeRef(index: Int): Ref = tuple let name = "" let index = index end
+    let isBuiltin(r: Ref): Bool = stringOp.length(r.name) > 0
+    let isRef(r: Ref name: String): Bool = stringOp.equal(r.name name)
+
+    (* The built-in types a ref may name *)
+    let builtinNames = array of "Ok" "Bool" "Char" "String" "Int" "Real" "Dynamic" end
+    let builtinTypes = array of tm.okType tm.boolType tm.charType tm.stringType tm.intType tm.realType tm.dynamicType end
+
+    let builtinType(name: String): Type =
+        begin
+            let var found = tm.okType
+            for i = 0 upto {extent builtinNames - 1} do
+                if stringOp.equal(builtinNames[i] name) then found := builtinTypes[i] end
+            end
+            found
+        end
+
+    let isBuiltinName(name: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent builtinNames - 1} do if stringOp.equal(builtinNames[i] name) then found := true end end
+            found
+        end
+
+    let varLabel(name: String isVar: Bool): String =
+        if not(isVar) then name elsif stringOp.length(name) > 0 then "var " <> name else "var" end
+
+    let fieldName(label: String): String =
+        if strutil.startsWith(label "var ") then stringOp.getSub(label 4 {stringOp.length(label) - 4})
+        elsif stringOp.equal(label "var") then ""
+        else label end
+
+    let isVarLabel(label: String): Bool = strutil.startsWith(label "var ") orif stringOp.equal(label "var")
+
+    let mentions(t: Type symbolId: Int): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent t.fv - 1} do if t.fv[i] is symbolId then found := true end end
+            found
+        end
+
+    (* =========================================================================
+     * 1. Types
+     * ========================================================================= *)
+
+    (* True for Auto A::TYPE with a:A end, the type of dynamic values, whatever its parameter is named *)
+    let isDynamicType(t: Type): Bool =
+        case t.form
+            when typeAuto with x then
+                if tm.sameKind(x.kindBound tm.typeKind) andif {extent x.signature is 1} then
+                    let f = x.signature[0]
+                    stringOp.equal(f.name "a") andif not(f.isVar) andif
+                        case f.type.form when typeVariable with v then v.symbolId is x.symbolId else false end
+                else
+                    false
+                end
+            else false
+        end
+
+    (* t with aliases, solved metavariables, applications, and recursion unfolded down to its outer constructor *)
+    let structure(t0: Type): Type =
+        begin
+            let var t = t0
+            let var result = maybe.none(:Type)
+            let var steps = 0
+            while maybe.isNone(:Type result) andif {steps < 1000} do
+                steps := steps + 1
+                t := tm.unalias(tm.pruned(t))
+                if t.form?typeRec orif t.form?typeRecGroup orif t.form?typeApp then
+                    let unfolded = tm.evaluateLazily(t tm.noLookup)
+                    if tm.same(unfolded t) then result := maybe.some(:Type t) else t := unfolded end
+                else
+                    result := maybe.some(:Type t)
+                end
+            end
+            if maybe.isNone(:Type result) then fail(:Ok) end
+            maybe.unwrap(:Type result)
+        end
+
+    (* Whether an abstract type of this kind is encodable: TYPE or POWER(B), or an operator from types to TYPE *)
+    let isUnbounded(k0: tm.Kind): Bool =
+        if tm.isPower(k0) then
+            true
+        else
+            let var k = k0
+            let var ok0 = true
+            while k.form?kindAll do
+                case k.form
+                    when kindAll with a then
+                        if not(a.paramKind.form?kindType) then ok0 := false end
+                        k := a.resultKind
+                    else ok
+                end
+            end
+            ok0 andif k.form?kindType
+        end
+
+    let boundOf(t: Type): tm.Kind =
+        case t.form
+            when typeVariable with v then maybe.unwrapOr(:tm.Kind v.bound tm.typeKind)
+            else tm.typeKind
+        end
+
+    Let Abstract = Tuple entry: abstractTypes.ModuleAbstractType args: Array(Type) end
+
+    (* The module abstract type s is, or is an application of, with the application's arguments *)
+    let moduleAbstractType(s0: Type): maybe.T(Abstract) =
+        begin
+            let var s = s0
+            let var args = array of :Type end
+            case s0.form
+                when typeApp with a then
+                    args := a.arguments
+                    s := tm.unalias(tm.pruned(a.constructor))
+                else ok
+            end
+            case s.form
+                when typeVariable with v then
+                    let entry = abstractTypes.abstractTypeBySymbol(v.symbolId)
+                    if maybe.isNone(:abstractTypes.ModuleAbstractType entry)
+                        orif not(isUnbounded(boundOf(maybe.unwrap(:abstractTypes.ModuleAbstractType entry).typeVar))) then
+                        maybe.none(:Abstract)
+                    else
+                        maybe.some(:Abstract tuple
+                            let entry = maybe.unwrap(:abstractTypes.ModuleAbstractType entry) let args = args
+                        end)
+                    end
+                else maybe.none(:Abstract)
+            end
+        end
+
+    let allTypesEqual(a: Array(Type) b: Array(Type)): Bool =
+        begin
+            let var equal = extent a is extent b
+            if equal then
+                for i = 0 upto {extent a - 1} do
+                    if not(subtyping.isTypeEqual(a[i] b[i] maybe.none(:tm.Lookup))) then equal := false end
+                end
+            end
+            equal
+        end
+
+    (* The representation of a module abstract type, or of an application of an abstract type operator *)
+    let representation(entry: abstractTypes.ModuleAbstractType args: Array(Type)): Type =
+        if entry.linked then
+            if maybe.isNone(:Type entry.rep) then fail(:Ok) end
+            let rep = maybe.unwrap(:Type entry.rep)
+            if extent args > 0 then tm.typeApp(rep args) else rep end
+        else
+            let var found = maybe.none(:Type)
+            for i = 0 upto {vector.length(:abstractTypes.Instance entry.instances) - 1} do
+                let inst = vector.get(:abstractTypes.Instance entry.instances i)
+                if maybe.isNone(:Type found) andif allTypesEqual(inst.args args) then found := maybe.some(:Type inst.rep) end
+            end
+            if maybe.isNone(:Type found) then fail(:Ok) end
+            maybe.unwrap(:Type found)
+        end
+
+    (* =========================================================================
+     * 2. The graph of types
+     *
+     * A node is a shape and children. The shape holds the constructor and its labels; children are type refs, in
+     * the order the node lists them: record fields sorted by name, tuple components and function parameters in
+     * order (then the function's result), variant and option cases by name (only those with a payload), an
+     * abstract type's arguments (then its representation), and an auto type's bound (if it has one, then its
+     * components). A param node refers to the type parameter of the auto type N auto types out from it.
+     * ========================================================================= *)
+
+    (* kind; the labels of fields, cases, or parameter modes; flags (a case's payload, an auto type's bound); text
+     * (an external type's C type, an abstract type's global name); and count (an abstract type's arguments, a
+     * param node's depth) *)
+    Let Shape = Tuple kind: String labels: Array(String) flags: Array(Bool) text: String count: Int end
+    Let Node = Tuple shape: Shape children: Array(Ref) end
+
+    let shape(kind: String labels: Array(String) flags: Array(Bool) text: String count: Int): Shape =
+        tuple let kind = kind let labels = labels let flags = flags let text = text let count = count end
+
+    (* The key by which equal shapes are told apart *)
+    let shapeKey(s: Shape): String =
+        begin
+            let b = stringBuilder.new()
+            b.str(s.kind).char('\x01').str(s.text).char('\x01').int(s.count).char('\x01')
+            for i = 0 upto {extent s.labels - 1} do b.str(s.labels[i]).char('\x02') end
+            b.char('\x01')
+            for i = 0 upto {extent s.flags - 1} do b.char(if s.flags[i] then 't' else 'f' end) end
+            b.toString()
+        end
+
+    Let Graph = Tuple
+        nodes: vector.T(Node)
+        index: hashMap.T(String Int)
+        (* The type parameters of the auto types around the type being added, innermost last *)
+        binders: vector.T(Int)
+    end
+
+    let newGraph(): Graph =
+        tuple
+            let nodes = vector.new(:Node)
+            let index = hashMap.new(:String :Int stringOp.equal hash.string)
+            let binders = vector.new(:Int)
+        end
+
+    let nodeOf(g: Graph r: Ref): Node = vector.get(:Node g.nodes r.index)
+    let kindOf(g: Graph r: Ref): String = if isBuiltin(r) then "" else nodeOf(g r).shape.kind end
+
+    let placeholder: Node = tuple let shape = shape("" array of :String end array of :Bool end "" 0) let children = array of :Ref end end
+
+    let sortedRecordFields(fields: Array(tm.RecordField)): Array(tm.RecordField) =
+        sort.sorted(:tm.RecordField fields fun(a: tm.RecordField b: tm.RecordField): Int sort.stringCompare(a.name b.name))
+
+    let refs(n: Int): Array(Ref) = array of(n builtin("Ok"))
+
+    let rec ref(g: Graph t: Type): Ref =
+        begin
+            let s = structure(t)
+            let var found = maybe.none(:Ref)
+            for i = 0 upto {extent builtinTypes - 1} do
+                if maybe.isNone(:Ref found) andif tm.same(s builtinTypes[i]) then found := maybe.some(:Ref builtin(builtinNames[i])) end
+            end
+            if maybe.isSome(:Ref found) then
+                maybe.unwrap(:Ref found)
+            elsif isDynamicType(s) then
+                builtin("Dynamic")
+            else
+                let n = vector.length(:Int g.binders)
+                let var depth = ~1
+                case s.form
+                    when typeVariable with v then
+                        for i = 0 upto {n - 1} do
+                            if vector.get(:Int g.binders i) is v.symbolId then depth := {n - 1} - i end
+                        end
+                    else ok
+                end
+                if depth >= 0 then
+                    add(g "p" <> intKey(depth) s false depth)
+                else
+                    (* A type that mentions enclosing auto types' parameters is a node for each way it refers to them *)
+                    let key = stringBuilder.new()
+                    key.char('s').int(s.id)
+                    for i = 0 upto {n - 1} do
+                        let b = vector.get(:Int g.binders i)
+                        if mentions(s b) then key.char(':').int(b).char(',').int({n - 1} - i) end
+                    end
+                    add(g key.toString() s true 0)
+                end
+            end
+        end
+    and add(g: Graph key: String s: Type isStructure: Bool depth: Int): Ref =
+        begin
+            let existing = hashMap.get(:String :Int g.index key)
+            if maybe.isSome(:Int existing) then
+                nodeRef(maybe.unwrap(:Int existing))
+            else
+                if vector.length(:Node g.nodes) >= maxTypeNodes then fail(:Ok) end
+                let index = vector.length(:Node g.nodes)
+                hashMap.insert(:String :Int g.index key index)
+                vector.append(:Node g.nodes placeholder)
+                let n = if isStructure then makeNode(g s) else
+                    tuple let shape = shape("param" array of :String end array of :Bool end "" depth) let children = array of :Ref end end
+                end
+                vector.set(:Node g.nodes index n)
+                nodeRef(index)
+            end
+        end
+    and makeNode(g: Graph s: Type): Node =
+        begin
+            let noLabels = array of :String end
+            let noFlags = array of :Bool end
+            let make(sh: Shape children: Array(Ref)): Node = tuple let shape = sh let children = children end
+            case s.form
+                when typeRecord with x then
+                    let fields = sortedRecordFields(x.fields)
+                    let labels = array of(extent fields "")
+                    let children = refs(extent fields)
+                    for i = 0 upto {extent fields - 1} do
+                        labels[i] := varLabel(fields[i].name fields[i].isVar)
+                        children[i] := ref(g fields[i].type)
+                    end
+                    make(shape("record" labels noFlags "" 0) children)
+                when typeTuple with x then
+                    let components = tm.tupleValueFields(x.fields)
+                    (* Type components (an abstract tuple): not encodable yet *)
+                    if extent components isnot extent x.fields then fail(:Ok) end
+                    let labels = array of(extent components "")
+                    let children = refs(extent components)
+                    for i = 0 upto {extent components - 1} do
+                        labels[i] := varLabel(maybe.unwrapOr(:String components[i].name "") components[i].isVar)
+                        children[i] := ref(g components[i].type)
+                    end
+                    make(shape("tuple" labels noFlags "" 0) children)
+                when typeVariant with x then
+                    (* Cases are listed by name, as compiled code numbers them (docs/dynamic.md section 2.2) *)
+                    let cases = sort.sorted(:tm.VariantField x.variants
+                        fun(a: tm.VariantField b: tm.VariantField): Int sort.stringCompare(a.name b.name))
+                    let labels = array of(extent cases "")
+                    let flags = array of(extent cases false)
+                    let children = vector.new(:Ref)
+                    for i = 0 upto {extent cases - 1} do
+                        labels[i] := varLabel(cases[i].name cases[i].isVar)
+                        flags[i] := maybe.isSome(:Type cases[i].type)
+                        if flags[i] then vector.append(:Ref children ref(g maybe.unwrap(:Type cases[i].type))) end
+                    end
+                    make(shape("variant" labels flags "" 0) vector.toArray(:Ref children))
+                when typeOption with x then
+                    let cases = sort.sorted(:tm.OptionField x.options
+                        fun(a: tm.OptionField b: tm.OptionField): Int sort.stringCompare(a.name b.name))
+                    let labels = array of(extent cases "")
+                    let flags = array of(extent cases false)
+                    let children = vector.new(:Ref)
+                    for i = 0 upto {extent cases - 1} do
+                        labels[i] := cases[i].name
+                        flags[i] := maybe.isSome(:Type cases[i].payload)
+                        if flags[i] then vector.append(:Ref children ref(g maybe.unwrap(:Type cases[i].payload))) end
+                    end
+                    make(shape("option" labels flags "" 0) vector.toArray(:Ref children))
+                when typeArray with x then
+                    make(shape("array" noLabels noFlags "" 0) array of ref(g x.element) end)
+                when typeFun with x then
+                    let modes = array of(extent x.params "")
+                    let children = refs({extent x.params + 1})
+                    for i = 0 upto {extent x.params - 1} do
+                        modes[i] := if x.params[i].isVar then "var" elsif x.params[i].isOut then "out" else "" end
+                        children[i] := ref(g x.params[i].type)
+                    end
+                    children[extent x.params] := ref(g x.result)
+                    make(shape("fun" modes noFlags "" 0) children)
+                when typeException with x then
+                    make(shape("exception" noLabels noFlags "" 0) array of ref(g x.payload) end)
+                when typeAuto with x then
+                    let bound = if tm.isPower(x.kindBound) then
+                        array of ref(g tm.powerBound(x.kindBound)) end
+                    elsif x.kindBound.form?kindType then
+                        array of :Ref end
+                    else
+                        fail(:Array(Ref))
+                    end
+                    let labels = array of(extent x.signature "")
+                    let children = refs({extent bound + extent x.signature})
+                    if extent bound > 0 then children[0] := bound[0] end
+                    vector.append(:Int g.binders x.symbolId)
+                    for i = 0 upto {extent x.signature - 1} do
+                        labels[i] := varLabel(x.signature[i].name x.signature[i].isVar)
+                        children[extent bound + i] := ref(g x.signature[i].type)
+                    end
+                    vector.pop(:Int g.binders)
+                    make(shape("auto" labels array of {extent bound > 0} end "" 0) children)
+                else
+                    let isWord = case s.form
+                        when typeExternal with x then stringOp.equal(x.cType wordType)
+                        else false
+                    end
+                    if isWord then
+                        make(shape("external" noLabels noFlags wordType 0) array of :Ref end)
+                    else
+                        let found = moduleAbstractType(s)
+                        (* Polymorphic types, other abstract and external types, and type operators: not encodable *)
+                        if maybe.isNone(:Abstract found) then fail(:Ok) end
+                        let a = maybe.unwrap(:Abstract found)
+                        let children = refs({extent a.args + 1})
+                        for i = 0 upto {extent a.args - 1} do children[i] := ref(g a.args[i]) end
+                        children[extent a.args] := ref(g representation(a.entry a.args))
+                        make(shape("abstract" noLabels noFlags a.entry.globalName extent a.args) children)
+                    end
+            end
+        end
+
+    (* =========================================================================
+     * 3. The canonical table
+     * ========================================================================= *)
+
+    Let Table = Tuple types: json.Value index: hashMap.T(Int Int) end
+
+    let refJson(r: Ref t: Table): json.Value =
+        if isBuiltin(r) then json.string(r.name) else json.int(hashMap.find(:Int :Int t.index r.index)) end
+
+    (* Merges equivalent nodes and numbers the rest from the roots *)
+    let canonicalTable(nodes: vector.T(Node) roots: vector.T(Ref)): Table =
+        begin
+            let n = vector.length(:Node nodes)
+            let shapeIds = hashMap.new(:String :Int stringOp.equal hash.string)
+            let var cls = array of(n 0)
+            for i = 0 upto {n - 1} do
+                let key = shapeKey(vector.get(:Node nodes i).shape)
+                if not(hashMap.contains(:String :Int shapeIds key)) then
+                    hashMap.insert(:String :Int shapeIds key hashMap.size(:String :Int shapeIds))
+                end
+                cls[i] := hashMap.find(:String :Int shapeIds key)
+            end
+            let var count = hashMap.size(:String :Int shapeIds)
+            let var stable = false
+            while not(stable) do
+                let sigs = hashMap.new(:String :Int stringOp.equal hash.string)
+                let refined = array of(n 0)
+                for i = 0 upto {n - 1} do
+                    let key = stringBuilder.new()
+                    key.int(cls[i])
+                    let children = vector.get(:Node nodes i).children
+                    for j = 0 upto {extent children - 1} do
+                        if isBuiltin(children[j]) then key.char(':').str(children[j].name)
+                        else key.char('#').int(cls[children[j].index]) end
+                    end
+                    let k = key.toString()
+                    if not(hashMap.contains(:String :Int sigs k)) then hashMap.insert(:String :Int sigs k hashMap.size(:String :Int sigs)) end
+                    refined[i] := hashMap.find(:String :Int sigs k)
+                end
+                if hashMap.size(:String :Int sigs) is count then
+                    stable := true
+                else
+                    cls := refined
+                    count := hashMap.size(:String :Int sigs)
+                end
+            end
+            let classes = cls
+            (* class -> table index, and a representative node of each class, in table order *)
+            let number = hashMap.new(:Int :Int intEqual hash.int)
+            let order = vector.new(:Int)
+            let rec visit(r: Ref): Ok =
+                if isBuiltin(r) orif hashMap.contains(:Int :Int number classes[r.index]) then
+                    ok
+                else
+                    hashMap.insert(:Int :Int number classes[r.index] vector.length(:Int order))
+                    vector.append(:Int order r.index)
+                    let children = vector.get(:Node nodes r.index).children
+                    for j = 0 upto {extent children - 1} do visit(children[j]) end
+                end
+            for i = 0 upto {vector.length(:Ref roots) - 1} do visit(vector.get(:Ref roots i)) end
+            let index = hashMap.new(:Int :Int intEqual hash.int)
+            for i = 0 upto {n - 1} do
+                if hashMap.contains(:Int :Int number classes[i]) then
+                    hashMap.insert(:Int :Int index i hashMap.find(:Int :Int number classes[i]))
+                end
+            end
+            let t: Table = tuple let types = json.null let index = index end
+            let table = vector.new(:json.Value)
+            for k = 0 upto {vector.length(:Int order) - 1} do
+                let node = vector.get(:Node nodes vector.get(:Int order k))
+                let sh = node.shape
+                let rs = node.children
+                let o = json.newObject()
+                let body = json.newObject()
+                let pairs(labels: Array(String) refs0: Array(Ref) offset: Int): json.Value =
+                    begin
+                        let items = vector.new(:json.Value)
+                        for i = 0 upto {extent labels - 1} do
+                            let pair = vector.new(:json.Value)
+                            vector.append(:json.Value pair json.string(labels[i]))
+                            vector.append(:json.Value pair refJson(refs0[offset + i] t))
+                            vector.append(:json.Value items json.arrayValue(pair))
+                        end
+                        json.arrayValue(items)
+                    end
+                if stringOp.equal(sh.kind "record") then
+                    for i = 0 upto {extent sh.labels - 1} do json.put(body sh.labels[i] refJson(rs[i] t)) end
+                    json.put(o "record" json.object(body))
+                elsif stringOp.equal(sh.kind "tuple") then
+                    json.put(o "tuple" pairs(sh.labels rs 0))
+                elsif stringOp.equal(sh.kind "variant") orif stringOp.equal(sh.kind "option") then
+                    let var next = 0
+                    for i = 0 upto {extent sh.labels - 1} do
+                        if sh.flags[i] then
+                            json.put(body sh.labels[i] refJson(rs[next] t))
+                            next := next + 1
+                        else
+                            json.put(body sh.labels[i] json.null)
+                        end
+                    end
+                    json.put(o sh.kind json.object(body))
+                elsif stringOp.equal(sh.kind "array") then
+                    json.put(o "array" refJson(rs[0] t))
+                elsif stringOp.equal(sh.kind "fun") then
+                    json.put(body "params" pairs(sh.labels rs 0))
+                    json.put(body "result" refJson(rs[extent rs - 1] t))
+                    json.put(o "fun" json.object(body))
+                elsif stringOp.equal(sh.kind "external") then
+                    json.put(o "external" json.string(sh.text))
+                elsif stringOp.equal(sh.kind "abstract") then
+                    json.put(o "abstract" json.string(sh.text))
+                    if sh.count > 0 then
+                        let args = vector.new(:json.Value)
+                        for i = 0 upto {sh.count - 1} do vector.append(:json.Value args refJson(rs[i] t)) end
+                        json.put(o "args" json.arrayValue(args))
+                    end
+                    json.put(o "rep" refJson(rs[extent rs - 1] t))
+                elsif stringOp.equal(sh.kind "auto") then
+                    let hasBound = sh.flags[0]
+                    json.put(body "bound" if hasBound then refJson(rs[0] t) else json.null end)
+                    json.put(body "components" pairs(sh.labels rs if hasBound then 1 else 0 end))
+                    json.put(o "auto" json.object(body))
+                elsif stringOp.equal(sh.kind "param") then
+                    json.put(o "param" json.int(sh.count))
+                else
+                    json.put(o "exception" refJson(rs[0] t))
+                end
+                vector.append(:json.Value table json.object(o))
+            end
+            tuple let types = json.arrayValue(table) let index = index end
+        end
+
+    (* =========================================================================
+     * 4. Writing
+     * ========================================================================= *)
+
+    Let Pair = Tuple value: Value ref: Ref end
+    Let Nested = Tuple target: json.Object witness: Ref end
+
+    (* The identity of a value that may be shared: what `is` compares *)
+    let identityHash(v: Value): word.T =
+        case v
+            when vRecord with x then hash.identityHash(:model.RecordValue x.r)
+            when vArray with x then hash.identityHash(:Array(Value) x.a)
+            when vTuple with x then hash.identityHash(:model.TupleValue x.t)
+            else hash.int(0)
+        end
+    let newIdentityMap(V::TYPE): hashMap.T(Value V) = hashMap.new(:Value :V model.same identityHash)
+
+    Let Writer = Tuple
+        graph: Graph
+        roots: vector.T(Ref)
+        nested: vector.T(Nested)
+        seen: hashMap.T(Value Bool)
+        shared: hashMap.T(Value Bool)
+        ids: hashMap.T(Value Int)
+        (* The witnesses of the auto values being written, innermost last, which param nodes refer to *)
+        witnesses: vector.T(Ref)
+    end
+
+    let rec derefValue(v: Value): Value = case v when vRef with r then derefValue(model.deref(r.r)) else v end
+
+    (* Whether a value may be shared: records, arrays, and nonempty tuples (compiled code has one empty tuple) *)
+    let hasIdentity(v: Value): Bool =
+        case v
+            when vRecord then true
+            when vArray then true
+            when vTuple with x then extent x.t.elements > 0
+            else false
+        end
+
+    let pair(v: Value r: Ref): Pair = tuple let value = v let ref = r end
+
+    (* The type a value of type r is written at: an abstract type's value at its representation, and a value of an
+     * auto type's parameter at the auto value's witness *)
+    let concrete(w: Writer r0: Ref): Ref =
+        begin
+            let var r = r0
+            let var done = false
+            while not(done) andif not(isBuiltin(r)) do
+                let node = nodeOf(w.graph r)
+                if stringOp.equal(node.shape.kind "abstract") then
+                    r := node.children[extent node.children - 1]
+                elsif stringOp.equal(node.shape.kind "param") then
+                    let n = vector.length(:Ref w.witnesses)
+                    if node.shape.count >= n then fail(:Ok) end
+                    r := vector.get(:Ref w.witnesses {{n - 1} - node.shape.count})
+                else
+                    done := true
+                end
+            end
+            r
+        end
+
+    Let AutoParts = Tuple witness: Ref components: vector.T(Pair) end
+
+    (* An auto value's witness, and its components with their types (which refer to the witness by param) *)
+    let autoParts(w: Writer v: Value r: Ref): AutoParts =
+        begin
+            let node = nodeOf(w.graph r)
+            let offset = if node.shape.flags[0] then 1 else 0 end
+            let a = case v when vAuto with x then x.a else fail(:model.AutoValue) end
+            let t = case a.value when vTuple with x then x.t else fail(:model.TupleValue) end
+            if extent t.elements isnot {extent node.children - offset} then fail(:Ok) end
+            let components = vector.new(:Pair)
+            for i = 0 upto {extent t.elements - 1} do
+                vector.append(:Pair components pair(t.elements[i] node.children[offset + i]))
+            end
+            tuple let witness = ref(w.graph a.type) let components = components end
+        end
+
+    let tagged(v: Value): model.Tagged =
+        case v
+            when vVariant with x then x.v
+            when vOption with x then x.v
+            else fail(:model.Tagged)
+        end
+
+    (* The type ref of a variant or option value's payload, or none if it is written as its bare tag *)
+    let casePayload(w: Writer v: Value node: Node): maybe.T(Ref) =
+        begin
+            let tag = tagged(v).tag
+            let var next = 0
+            let var result = maybe.none(:Ref)
+            let var found = false
+            for i = 0 upto {extent node.shape.labels - 1} do
+                let payloadRef = if node.shape.flags[i] then maybe.some(:Ref node.children[next]) else maybe.none(:Ref) end
+                if node.shape.flags[i] then next := next + 1 end
+                if not(found) andif stringOp.equal(fieldName(node.shape.labels[i]) tag) then
+                    found := true
+                    if maybe.isSome(:Ref payloadRef) andif not(isRef(maybe.unwrap(:Ref payloadRef) "Ok")) then
+                        let p = maybe.unwrap(:Ref payloadRef)
+                        if stringOp.equal(node.shape.kind "option") andif not(stringOp.equal(kindOf(w.graph p) "tuple")) then
+                            fail(:Ok)
+                        end
+                        result := payloadRef
+                    end
+                end
+            end
+            if not(found) then fail(:Ok) end
+            result
+        end
+
+    (* The component values of v with their type refs, in the order they are written *)
+    let children(w: Writer v: Value r0: Ref): vector.T(Pair) =
+        begin
+            let r = concrete(w r0)
+            let target = vector.new(:Pair)
+            if isBuiltin(r) then
+                if isRef(r "Dynamic") then
+                    case v
+                        when vAuto with x then
+                            case x.a.value
+                                when vTuple with t then
+                                    if extent t.t.elements isnot 1 then fail(:Ok) end
+                                    vector.append(:Pair target pair(t.t.elements[0] ref(w.graph x.a.type)))
+                                else fail(:Ok)
+                            end
+                        else fail(:Ok)
+                    end
+                end
+            else
+                let node = nodeOf(w.graph r)
+                let kind = node.shape.kind
+                if stringOp.equal(kind "record") then
+                    case v
+                        when vRecord with x then
+                            for i = 0 upto {extent node.shape.labels - 1} do
+                                let name = fieldName(node.shape.labels[i])
+                                if not(hashMap.contains(:String :Value x.r.fields name)) then fail(:Ok) end
+                                vector.append(:Pair target pair(hashMap.find(:String :Value x.r.fields name) node.children[i]))
+                            end
+                        else fail(:Ok)
+                    end
+                elsif stringOp.equal(kind "tuple") then
+                    case v
+                        when vTuple with x then
+                            if extent x.t.elements < extent node.children then fail(:Ok) end
+                            for i = 0 upto {extent node.children - 1} do
+                                vector.append(:Pair target pair(x.t.elements[i] node.children[i]))
+                            end
+                        else fail(:Ok)
+                    end
+                elsif stringOp.equal(kind "array") then
+                    case v
+                        when vArray with x then
+                            for i = 0 upto {extent x.a - 1} do vector.append(:Pair target pair(x.a[i] node.children[0])) end
+                        else fail(:Ok)
+                    end
+                elsif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
+                    let payloadRef = casePayload(w v node)
+                    if maybe.isSome(:Ref payloadRef) then
+                        let p = maybe.unwrap(:Ref payloadRef)
+                        let payload = maybe.unwrapOr(:Value tagged(v).payload model.okValue)
+                        if stringOp.equal(kind "variant") then
+                            vector.append(:Pair target pair(payload p))
+                        else
+                            (* An option's components are stored in the option value itself (as in compiled code), so
+                             * they are written in place and never shared *)
+                            let components = nodeOf(w.graph p).children
+                            case derefValue(payload)
+                                when vTuple with x then
+                                    if extent x.t.elements < extent components then fail(:Ok) end
+                                    for i = 0 upto {extent components - 1} do
+                                        vector.append(:Pair target pair(x.t.elements[i] components[i]))
+                                    end
+                                else fail(:Ok)
+                            end
+                        end
+                    end
+                elsif stringOp.equal(kind "external") then
+                    ok
+                elsif stringOp.equal(kind "auto") then
+                    let parts = autoParts(w v r)
+                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
+                        vector.append(:Pair target vector.get(:Pair parts.components i))
+                    end
+                else
+                    (* Functions and exceptions cannot be externed *)
+                    fail(:Ok)
+                end
+            end
+            target
+        end
+
+    (* Finds the records, tuples, and arrays reached more than once *)
+    let rec scan(w: Writer v0: Value r: Ref): Ok =
+        begin
+            let v = derefValue(v0)
+            let var done = false
+            if hasIdentity(v) then
+                if hashMap.contains(:Value :Bool w.seen v) then
+                    hashMap.insert(:Value :Bool w.shared v true)
+                    done := true
+                else
+                    hashMap.insert(:Value :Bool w.seen v true)
+                    ok
+                end
+            end
+            if not(done) then
+                let c = concrete(w r)
+                if not(isBuiltin(c)) andif stringOp.equal(kindOf(w.graph c) "auto") then
+                    let parts = autoParts(w v c)
+                    vector.append(:Ref w.witnesses parts.witness)
+                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
+                        let p = vector.get(:Pair parts.components i)
+                        scan(w p.value p.ref)
+                    end
+                    vector.pop(:Ref w.witnesses)
+                    ok
+                else
+                    let cs = children(w v r)
+                    for i = 0 upto {vector.length(:Pair cs) - 1} do
+                        let p = vector.get(:Pair cs i)
+                        scan(w p.value p.ref)
+                    end
+                end
+            end
+        end
+
+    let isInfinite(r: Real): Bool = {r >> realOp.maxReal} orif {r << {0.0 -- realOp.maxReal}}
+
+    let rec encodeValue(w: Writer v0: Value r0: Ref): json.Value =
+        begin
+            let v = derefValue(v0)
+            let r = concrete(w r0)
+            if isBuiltin(r) then
+                encodeBuiltin(w v r.name)
+            else
+                let node = nodeOf(w.graph r)
+                let kind = node.shape.kind
+                if stringOp.equal(kind "external") then
+                    case v
+                        when vWord with x then json.number(strutil.wordToString(x.w) true)
+                        else fail(:json.Value)
+                    end
+                elsif stringOp.equal(kind "auto") then
+                    (* As a dynamic value is: its witness, then its components at their types, which refer to it *)
+                    let parts = autoParts(w v r)
+                    let target = json.newObject()
+                    json.put(target "@type" json.null)
+                    json.put(target "@value" json.null)
+                    vector.append(:Ref w.roots parts.witness)
+                    vector.append(:Nested w.nested tuple let target = target let witness = parts.witness end)
+                    vector.append(:Ref w.witnesses parts.witness)
+                    let items = vector.new(:json.Value)
+                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
+                        let p = vector.get(:Pair parts.components i)
+                        vector.append(:json.Value items encodeValue(w p.value p.ref))
+                    end
+                    vector.pop(:Ref w.witnesses)
+                    json.put(target "@value" json.arrayValue(items))
+                    json.object(target)
+                else
+                    let var objId = ~1
+                    let var reference = maybe.none(:json.Value)
+                    if hasIdentity(v) andif hashMap.contains(:Value :Bool w.shared v) then
+                        if hashMap.contains(:Value :Int w.ids v) then
+                            let o = json.newObject()
+                            json.put(o "@ref" json.int(hashMap.find(:Value :Int w.ids v)))
+                            reference := maybe.some(:json.Value json.object(o))
+                        else
+                            objId := hashMap.size(:Value :Int w.ids) + 1
+                            hashMap.insert(:Value :Int w.ids v objId)
+                            ok
+                        end
+                    end
+                    if maybe.isSome(:json.Value reference) then
+                        maybe.unwrap(:json.Value reference)
+                    elsif stringOp.equal(kind "record") then
+                        let target = json.newObject()
+                        if objId > 0 then json.put(target "@id" json.int(objId)) end
+                        let cs = children(w v r)
+                        for i = 0 upto {vector.length(:Pair cs) - 1} do
+                            let p = vector.get(:Pair cs i)
+                            json.put(target fieldName(node.shape.labels[i]) encodeValue(w p.value p.ref))
+                        end
+                        json.object(target)
+                    elsif stringOp.equal(kind "tuple") orif stringOp.equal(kind "array") then
+                        let items = vector.new(:json.Value)
+                        let cs = children(w v r)
+                        for i = 0 upto {vector.length(:Pair cs) - 1} do
+                            let p = vector.get(:Pair cs i)
+                            vector.append(:json.Value items encodeValue(w p.value p.ref))
+                        end
+                        if objId > 0 then
+                            let target = json.newObject()
+                            json.put(target "@id" json.int(objId))
+                            json.put(target "@items" json.arrayValue(items))
+                            json.object(target)
+                        else
+                            json.arrayValue(items)
+                        end
+                    elsif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
+                        let payloadRef = casePayload(w v node)
+                        let tag = tagged(v).tag
+                        if maybe.isNone(:Ref payloadRef) then
+                            json.string(tag)
+                        else
+                            let target = json.newObject()
+                            if stringOp.equal(kind "option") then
+                                let items = vector.new(:json.Value)
+                                let cs = children(w v r)
+                                for i = 0 upto {vector.length(:Pair cs) - 1} do
+                                    let p = vector.get(:Pair cs i)
+                                    vector.append(:json.Value items encodeValue(w p.value p.ref))
+                                end
+                                json.put(target tag json.arrayValue(items))
+                            else
+                                json.put(target tag encodeValue(w maybe.unwrapOr(:Value tagged(v).payload model.okValue)
+                                    maybe.unwrap(:Ref payloadRef)))
+                            end
+                            json.object(target)
+                        end
+                    else
+                        fail(:json.Value)
+                    end
+                end
+            end
+        end
+    and encodeBuiltin(w: Writer v: Value name: String): json.Value =
+        if stringOp.equal(name "Int") then
+            case v when vInt with x then json.int(x.n) else fail(:json.Value) end
+        elsif stringOp.equal(name "Real") then
+            let r = case v
+                when vReal with x then x.r
+                when vInt with x then realOp.int(x.n)
+                else fail(:Real)
+            end
+            if isInfinite(r) then json.string(if r >> 0.0 then "Infinity" else "-Infinity" end) else json.real(r) end
+        elsif stringOp.equal(name "Bool") then
+            case v when vBool with x then json.bool(x.b) else fail(:json.Value) end
+        elsif stringOp.equal(name "Char") then
+            case v when vChar with x then json.string(stringOp.new(1 x.c)) else fail(:json.Value) end
+        elsif stringOp.equal(name "String") then
+            case v when vString with x then json.string(x.s) else fail(:json.Value) end
+        elsif stringOp.equal(name "Ok") then
+            json.null
+        elsif stringOp.equal(name "Dynamic") then
+            let cs = children(w v builtin("Dynamic"))
+            let p = vector.get(:Pair cs 0)
+            let target = json.newObject()
+            json.put(target "@type" json.null)
+            json.put(target "@value" json.null)
+            vector.append(:Ref w.roots p.ref)
+            vector.append(:Nested w.nested tuple let target = target let witness = p.ref end)
+            json.put(target "@value" encodeValue(w p.value p.ref))
+            json.object(target)
+        else
+            fail(:json.Value)
+        end
+
+    let encode(d: Value): String =
+        begin
+            let w: Writer = tuple
+                let graph = newGraph()
+                let roots = vector.new(:Ref)
+                let nested = vector.new(:Nested)
+                let seen = newIdentityMap(:Bool)
+                let shared = newIdentityMap(:Bool)
+                let ids = newIdentityMap(:Int)
+                let witnesses = vector.new(:Ref)
+            end
+            scan(w d builtin("Dynamic"))
+            let a = case d when vAuto with x then x.a else fail(:model.AutoValue) end
+            let element = case a.value
+                when vTuple with t then if extent t.t.elements is 1 then t.t.elements[0] else fail(:Value) end
+                else fail(:Value)
+            end
+            let root = ref(w.graph a.type)
+            vector.append(:Ref w.roots root)
+            let value = encodeValue(w element root)
+            let table = canonicalTable(w.graph.nodes w.roots)
+            for i = 0 upto {vector.length(:Nested w.nested) - 1} do
+                let n = vector.get(:Nested w.nested i)
+                json.put(n.target "@type" refJson(n.witness table))
+            end
+            let document = json.newObject()
+            json.put(document "quest" json.int(formatVersion))
+            json.put(document "types" table.types)
+            json.put(document "type" refJson(root table))
+            json.put(document "value" value)
+            json.dump(json.object(document))
+        end
+
+    (* =========================================================================
+     * 5. Reading
+     * ========================================================================= *)
+
+    let arity(k0: tm.Kind): Int =
+        begin
+            let var n = 0
+            let var k = k0
+            while k.form?kindAll do
+                case k.form when kindAll with a then begin n := n + 1 k := a.resultKind end else ok end
+            end
+            n
+        end
+
+    (* TYPE, or the kind of an operator from n types to TYPE: that of an abstract type of an unlinked module *)
+    let operatorKind(n: Int): tm.Kind =
+        begin
+            let var k = tm.typeKind
+            for i = {n - 1} downto 0 do
+                k := tm.allKind("A" <> intKey(i + 1) symbols.allocateSymbolId() tm.typeKind k)
+            end
+            k
+        end
+
+    let members(v: json.Value): json.Object = case v when jObject with x then x.o else fail(:json.Object) end
+    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else fail(:vector.T(json.Value)) end
+    let text(v: json.Value): String = case v when jString with x then x.s else fail(:String) end
+    let member(o: json.Object name: String): json.Value =
+        begin
+            let found = json.get(o name)
+            if maybe.isNone(:json.Value found) then fail(:Ok) end
+            maybe.unwrap(:json.Value found)
+        end
+    let isNull(v: json.Value): Bool = v?jNull
+    let memberCount(o: json.Object): Int = extent json.names(o)
+    let hasMember(o: json.Object name: String): Bool = maybe.isSome(:json.Value json.get(o name))
+
+    (* A JSON integer that is not a boolean, as an Int *)
+    let integer(v: json.Value): Int =
+        case v
+            when jNumber with x then
+                if not(x.isInteger) then fail(:Ok) end
+                let n = strutil.tryToInt(x.text)
+                if maybe.isNone(:Int n) then fail(:Ok) end
+                maybe.unwrap(:Int n)
+            else fail(:Int)
+        end
+
+    Let Reader = Tuple
+        table: Array(json.Value)
+        types: hashMap.T(Int Type)
+        active: hashMap.T(Int Bool)
+        recursive: hashMap.T(Int Bool)
+        binderIds: Array(Int)
+        binderIdSet: hashMap.T(Int Bool)
+        objects: hashMap.T(Int Value)
+        (* The type parameters of the auto types being built, innermost last, which param nodes refer to; and the
+         * witnesses of the auto values being read, which values of those parameters are read at *)
+        autoParams: vector.T(Type)
+        witnesses: vector.T(Ref)
+    end
+
+    let checkRef(rd: Reader v: json.Value): Ref =
+        case v
+            when jString with x then if isBuiltinName(x.s) then builtin(x.s) else fail(:Ref) end
+            when jNumber with x then
+                let i = integer(v)
+                if {i < 0} orif {i >= extent rd.table} then fail(:Ok) end
+                nodeRef(i)
+            else fail(:Ref)
+        end
+
+    let isPairList(v: json.Value): Bool =
+        case v
+            when jArray with x then
+                let var good = true
+                for i = 0 upto {vector.length(:json.Value x.items) - 1} do
+                    case vector.get(:json.Value x.items i)
+                        when jArray with p then
+                            if {vector.length(:json.Value p.items) isnot 2} orif not(vector.get(:json.Value p.items 0)?jString) then
+                                good := false
+                            end
+                        else good := false
+                    end
+                end
+                good
+            else false
+        end
+
+    let checkPairs(rd: Reader v: json.Value): Ok =
+        begin
+            if not(isPairList(v)) then fail(:Ok) end
+            let ps = items(v)
+            for i = 0 upto {vector.length(:json.Value ps) - 1} do
+                checkRef(rd vector.get(:json.Value items(vector.get(:json.Value ps i)) 1))
+            end
+        end
+
+    let onlyMembers(o: json.Object allowed: Array(String)): Bool =
+        begin
+            let ns = json.names(o)
+            let var good = true
+            for i = 0 upto {extent ns - 1} do
+                let var found = false
+                for j = 0 upto {extent allowed - 1} do if stringOp.equal(ns[i] allowed[j]) then found := true end end
+                if not(found) then good := false end
+            end
+            good
+        end
+
+    let checkNode(rd: Reader node: json.Value): Ok =
+        begin
+            let o = members(node)
+            if hasMember(o "abstract") then
+                if not(onlyMembers(o array of "abstract" "args" "rep" end)) orif not(hasMember(o "rep"))
+                    orif not(member(o "abstract")?jString) then
+                    fail(:Ok)
+                end
+                if hasMember(o "args") then
+                    let args = member(o "args")
+                    if not(args?jArray) orif vector.empty(:json.Value items(args)) then fail(:Ok) end
+                    for i = 0 upto {vector.length(:json.Value items(args)) - 1} do
+                        checkRef(rd vector.get(:json.Value items(args) i))
+                    end
+                end
+                checkRef(rd member(o "rep"))
+                ok
+            else
+                if memberCount(o) isnot 1 then fail(:Ok) end
+                let kind = json.names(o)[0]
+                let body = member(o kind)
+                if stringOp.equal(kind "record") orif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
+                    let b = members(body)
+                    let ns = json.names(b)
+                    for i = 0 upto {extent ns - 1} do
+                        let r = member(b ns[i])
+                        if not(isNull(r)) orif stringOp.equal(kind "record") then checkRef(rd r) end
+                        if stringOp.equal(kind "option") andif not(isNull(r)) then
+                            (* An option case's components are a tuple type *)
+                            let target = checkRef(rd r)
+                            if isBuiltin(target) then fail(:Ok) end
+                            case rd.table[target.index]
+                                when jObject with t then if not(hasMember(t.o "tuple")) then fail(:Ok) end
+                                else fail(:Ok)
+                            end
+                        end
+                    end
+                elsif stringOp.equal(kind "tuple") then
+                    checkPairs(rd body)
+                elsif stringOp.equal(kind "array") orif stringOp.equal(kind "exception") then
+                    checkRef(rd body)
+                    ok
+                elsif stringOp.equal(kind "external") then
+                    if not(body?jString) orif not(stringOp.equal(text(body) wordType)) then fail(:Ok) end
+                elsif stringOp.equal(kind "param") then
+                    if integer(body) < 0 then fail(:Ok) end
+                elsif stringOp.equal(kind "auto") then
+                    let b = members(body)
+                    if {memberCount(b) isnot 2} orif not(hasMember(b "bound")) orif not(hasMember(b "components")) then fail(:Ok) end
+                    if not(isNull(member(b "bound"))) then checkRef(rd member(b "bound")) end
+                    checkPairs(rd member(b "components"))
+                elsif stringOp.equal(kind "fun") then
+                    let b = members(body)
+                    if {memberCount(b) isnot 2} orif not(hasMember(b "params")) orif not(hasMember(b "result"))
+                        orif not(member(b "params")?jArray) then
+                        fail(:Ok)
+                    end
+                    let ps = items(member(b "params"))
+                    for i = 0 upto {vector.length(:json.Value ps) - 1} do
+                        let p = vector.get(:json.Value ps i)
+                        let good = case p
+                            when jArray with x then
+                                if vector.length(:json.Value x.items) is 2 then
+                                    case vector.get(:json.Value x.items 0)
+                                        when jString with m then
+                                            stringOp.equal(m.s "") orif stringOp.equal(m.s "var") orif stringOp.equal(m.s "out")
+                                        else false
+                                    end
+                                else false end
+                            else false
+                        end
+                        if not(good) then fail(:Ok) end
+                        checkRef(rd vector.get(:json.Value items(p) 1))
+                    end
+                    checkRef(rd member(b "result"))
+                    ok
+                else
+                    fail(:Ok)
+                end
+            end
+        end
+
+    let newReader(table: json.Value): Reader =
+        begin
+            let entries = vector.toArray(:json.Value items(table))
+            let binderIds = array of(extent entries 0)
+            let binderIdSet = hashMap.new(:Int :Bool intEqual hash.int)
+            let rd: Reader = tuple
+                let table = entries
+                let types = hashMap.new(:Int :Type intEqual hash.int)
+                let active = hashMap.new(:Int :Bool intEqual hash.int)
+                let recursive = hashMap.new(:Int :Bool intEqual hash.int)
+                let binderIds = binderIds
+                let binderIdSet = binderIdSet
+                let objects = hashMap.new(:Int :Value intEqual hash.int)
+                let autoParams = vector.new(:Type)
+                let witnesses = vector.new(:Ref)
+            end
+            for i = 0 upto {extent entries - 1} do checkNode(rd entries[i]) end
+            for i = 0 upto {extent entries - 1} do
+                binderIds[i] := symbols.allocateSymbolId()
+                hashMap.insert(:Int :Bool binderIdSet binderIds[i] true)
+            end
+            rd
+        end
+
+    (* A node's kind and body: an abstract node is its own body *)
+    Let Entry = Tuple kind: String body: json.Value end
+
+    let entryOf(rd: Reader r: Ref): Entry =
+        begin
+            let o = members(rd.table[r.index])
+            if hasMember(o "abstract") then
+                tuple let kind = "abstract" let body = rd.table[r.index] end
+            else
+                let kind = json.names(o)[0]
+                tuple let kind = kind let body = member(o kind) end
+            end
+        end
+
+    let concreteRef(rd: Reader r0: Ref): Ref =
+        begin
+            let var r = r0
+            let var steps = 0
+            let limit = {extent rd.table + vector.length(:Ref rd.witnesses)} + 1
+            let var done = false
+            while not(done) do
+                if steps >= limit then fail(:Ok) end
+                steps := steps + 1
+                if isBuiltin(r) then
+                    done := true
+                else
+                    let e = entryOf(rd r)
+                    if stringOp.equal(e.kind "abstract") then
+                        r := checkRef(rd member(members(e.body) "rep"))
+                    elsif stringOp.equal(e.kind "param") then
+                        let n = integer(e.body)
+                        let count = vector.length(:Ref rd.witnesses)
+                        if n >= count then fail(:Ok) end
+                        r := vector.get(:Ref rd.witnesses {{count - 1} - n})
+                    else
+                        done := true
+                    end
+                end
+            end
+            r
+        end
+
+    let mentionsAny(t: Type ids: hashMap.T(Int Bool)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent t.fv - 1} do if hashMap.contains(:Int :Bool ids t.fv[i]) then found := true end end
+            found
+        end
+
+    (* The module abstract type name (applied to args), whose recorded representation is rep: the linked module's
+     * type if rep is its representation, or the opaque type of an unlinked module (docs/dynamic.md section 2.3) *)
+    let abstractType(rd: Reader name: String args: Array(Type) rep: Type): Type =
+        begin
+            let var closed = not(mentionsAny(rep rd.binderIdSet))
+            for i = 0 upto {extent args - 1} do if mentionsAny(args[i] rd.binderIdSet) then closed := false end end
+            let found = abstractTypes.abstractTypeByName(name)
+            let entry = if maybe.isNone(:abstractTypes.ModuleAbstractType found) then
+                if not(closed) then fail(:Ok) end
+                let var0 = tm.typeVariable(name abstractTypes.abstractTypeSymbolId(name)
+                    maybe.some(:tm.Kind operatorKind(extent args)))
+                abstractTypes.registerUnlinkedAbstractType(name var0)
+            else
+                maybe.unwrap(:abstractTypes.ModuleAbstractType found)
+            end
+            let bound = boundOf(entry.typeVar)
+            if {arity(bound) isnot extent args} orif not(isUnbounded(bound)) then fail(:Ok) end
+            let known = if not(entry.linked) then
+                try
+                    representation(entry args)
+                when model.runError with err then
+                    if not(closed) then raise model.runError with err end end
+                    vector.append(:abstractTypes.Instance entry.instances tuple let args = args let rep = rep end)
+                    rep
+                end
+            else
+                representation(entry args)
+            end
+            if not(subtyping.isTypeEqual(known rep maybe.none(:tm.Lookup))) then fail(:Ok) end
+            if extent args > 0 then tm.typeApp(entry.typeVar args) else entry.typeVar end
+        end
+
+    let pairsOf(v: json.Value): vector.T(json.Value) = items(v)
+    let pairLabel(p: json.Value): String = text(vector.get(:json.Value items(p) 0))
+    let pairRef(rd: Reader p: json.Value): Ref = checkRef(rd vector.get(:json.Value items(p) 1))
+
+    (* The type of a table entry; a node reached again while it is being built becomes a recursive type *)
+    let rec typeOf(rd: Reader r: Ref): Type =
+        if isBuiltin(r) then
+            builtinType(r.name)
+        elsif hashMap.contains(:Int :Type rd.types r.index) then
+            hashMap.find(:Int :Type rd.types r.index)
+        else
+            let e = entryOf(rd r)
+            if stringOp.equal(e.kind "param") then
+                let n = integer(e.body)
+                let count = vector.length(:Type rd.autoParams)
+                if n >= count then fail(:Ok) end
+                vector.get(:Type rd.autoParams {{count - 1} - n})
+            elsif hashMap.contains(:Int :Bool rd.active r.index) then
+                hashMap.insert(:Int :Bool rd.recursive r.index true)
+                tm.typeVariable("T" <> intKey(r.index) rd.binderIds[r.index] maybe.some(:tm.Kind tm.typeKind))
+            else
+                let binder = rd.binderIds[r.index]
+                hashMap.insert(:Int :Bool rd.active r.index true)
+                let t0 = build(rd e)
+                hashMap.delete(:Int :Bool rd.active r.index)
+                let t = if hashMap.contains(:Int :Bool rd.recursive r.index) then
+                    tm.recType("T" <> intKey(r.index) binder tm.typeKind t0)
+                else
+                    t0
+                end
+                (* A type that mentions a recursive type's binder, or an enclosing auto type's parameter, is that type
+                 * only where it was reached *)
+                let var local = mentionsAny(t rd.binderIdSet)
+                for i = 0 upto {vector.length(:Type rd.autoParams) - 1} do
+                    case vector.get(:Type rd.autoParams i).form
+                        when typeVariable with p then if mentions(t p.symbolId) then local := true end
+                        else ok
+                    end
+                end
+                if not(local) then hashMap.insert(:Int :Type rd.types r.index t) end
+                t
+            end
+        end
+    and build(rd: Reader e: Entry): Type =
+        if stringOp.equal(e.kind "record") then
+            let b = members(e.body)
+            let ns = json.names(b)
+            let fields = vector.new(:tm.RecordField)
+            for i = 0 upto {extent ns - 1} do
+                vector.append(:tm.RecordField fields tuple
+                    let name = fieldName(ns[i]) let type = typeOf(rd checkRef(rd member(b ns[i]))) let isVar = isVarLabel(ns[i])
+                end)
+            end
+            tm.recordType(vector.toArray(:tm.RecordField fields) maybe.none(:String))
+        elsif stringOp.equal(e.kind "tuple") then
+            let ps = pairsOf(e.body)
+            let fields = vector.new(:tm.TupleComponent)
+            for i = 0 upto {vector.length(:json.Value ps) - 1} do
+                let p = vector.get(:json.Value ps i)
+                let label = pairLabel(p)
+                let name = fieldName(label)
+                vector.append(:tm.TupleComponent fields tm.tupleField(
+                    if stringOp.length(name) > 0 then maybe.some(:String name) else maybe.none(:String) end
+                    typeOf(rd pairRef(rd p)) isVarLabel(label)))
+            end
+            tm.tupleType(vector.toArray(:tm.TupleComponent fields))
+        elsif stringOp.equal(e.kind "variant") then
+            let b = members(e.body)
+            let ns = json.names(b)
+            let cases = vector.new(:tm.VariantField)
+            for i = 0 upto {extent ns - 1} do
+                let r = member(b ns[i])
+                vector.append(:tm.VariantField cases tuple
+                    let name = fieldName(ns[i])
+                    let type = if isNull(r) then maybe.none(:Type) else maybe.some(:Type typeOf(rd checkRef(rd r))) end
+                    let isVar = isVarLabel(ns[i])
+                end)
+            end
+            tm.variantType(vector.toArray(:tm.VariantField cases))
+        elsif stringOp.equal(e.kind "option") then
+            let b = members(e.body)
+            let ns = json.names(b)
+            let cases = vector.new(:tm.OptionField)
+            for i = 0 upto {extent ns - 1} do
+                let r = member(b ns[i])
+                vector.append(:tm.OptionField cases tuple
+                    let name = ns[i]
+                    let payload = if isNull(r) then maybe.none(:Type) else maybe.some(:Type typeOf(rd checkRef(rd r))) end
+                end)
+            end
+            tm.optionType(vector.toArray(:tm.OptionField cases))
+        elsif stringOp.equal(e.kind "array") then
+            tm.arrayType(typeOf(rd checkRef(rd e.body)))
+        elsif stringOp.equal(e.kind "external") then
+            tm.externalType(text(e.body) text(e.body))
+        elsif stringOp.equal(e.kind "abstract") then
+            let o = members(e.body)
+            let args = vector.new(:Type)
+            if hasMember(o "args") then
+                let a = items(member(o "args"))
+                for i = 0 upto {vector.length(:json.Value a) - 1} do
+                    vector.append(:Type args typeOf(rd checkRef(rd vector.get(:json.Value a i))))
+                end
+            end
+            let argTypes = vector.toArray(:Type args)
+            abstractType(rd text(member(o "abstract")) argTypes typeOf(rd checkRef(rd member(o "rep"))))
+        elsif stringOp.equal(e.kind "auto") then
+            let b = members(e.body)
+            let boundJson = member(b "bound")
+            let kindBound = if isNull(boundJson) then tm.typeKind else tm.powerKind(typeOf(rd checkRef(rd boundJson))) end
+            let param = tm.typeVariable("A" <> intKey(vector.length(:Type rd.autoParams)) symbols.allocateSymbolId()
+                maybe.some(:tm.Kind kindBound))
+            vector.append(:Type rd.autoParams param)
+            let ps = pairsOf(member(b "components"))
+            let signature = vector.new(:tm.RecordField)
+            for i = 0 upto {vector.length(:json.Value ps) - 1} do
+                let p = vector.get(:json.Value ps i)
+                let label = pairLabel(p)
+                vector.append(:tm.RecordField signature tuple
+                    let name = fieldName(label) let type = typeOf(rd pairRef(rd p)) let isVar = isVarLabel(label)
+                end)
+            end
+            vector.pop(:Type rd.autoParams)
+            case param.form
+                when typeVariable with v then tm.autoType(v.name v.symbolId kindBound vector.toArray(:tm.RecordField signature))
+                else fail(:Type)
+            end
+        elsif stringOp.equal(e.kind "fun") then
+            let b = members(e.body)
+            let ps = items(member(b "params"))
+            let params = vector.new(:tm.Param)
+            for i = 0 upto {vector.length(:json.Value ps) - 1} do
+                let p = vector.get(:json.Value ps i)
+                let mode = pairLabel(p)
+                vector.append(:tm.Param params tuple
+                    let name = "x" <> intKey(i + 1) let type = typeOf(rd pairRef(rd p))
+                    let isVar = stringOp.equal(mode "var") let isOut = stringOp.equal(mode "out")
+                end)
+            end
+            tm.funType(vector.toArray(:tm.Param params) typeOf(rd checkRef(rd member(b "result"))))
+        else
+            tm.exceptionOf(typeOf(rd checkRef(rd e.body)))
+        end
+
+    (* Resolves {"@ref": n}; otherwise the object's @id (if any) and its contents *)
+    Let Shared = Tuple existing: maybe.T(Value) objId: maybe.T(Int) contents: json.Value end
+
+    let sharedOf(rd: Reader data: json.Value kind: String): Shared =
+        case data
+            when jObject with x then
+                if hasMember(x.o "@ref") then
+                    if memberCount(x.o) isnot 1 then fail(:Ok) end
+                    let n = integer(member(x.o "@ref"))
+                    let obj = hashMap.get(:Int :Value rd.objects n)
+                    if maybe.isNone(:Value obj) then fail(:Ok) end
+                    tuple let existing = obj let objId = maybe.none(:Int) let contents = json.null end
+                elsif hasMember(x.o "@id") then
+                    let id = integer(member(x.o "@id"))
+                    if hashMap.contains(:Int :Value rd.objects id) then fail(:Ok) end
+                    if stringOp.equal(kind "record") then
+                        let rest = json.newObject()
+                        let ns = json.names(x.o)
+                        for i = 0 upto {extent ns - 1} do
+                            if not(stringOp.equal(ns[i] "@id")) then json.put(rest ns[i] member(x.o ns[i])) end
+                        end
+                        tuple let existing = maybe.none(:Value) let objId = maybe.some(:Int id) let contents = json.object(rest) end
+                    else
+                        if {memberCount(x.o) isnot 2} orif not(hasMember(x.o "@items")) then fail(:Ok) end
+                        tuple let existing = maybe.none(:Value) let objId = maybe.some(:Int id) let contents = member(x.o "@items") end
+                    end
+                else
+                    tuple let existing = maybe.none(:Value) let objId = maybe.none(:Int) let contents = data end
+                end
+            else tuple let existing = maybe.none(:Value) let objId = maybe.none(:Int) let contents = data end
+        end
+
+    let wordLimit = "18446744073709551615"
+
+    (* A word's integer: 0 to 2^64 - 1 *)
+    let wordOf(v: json.Value): word.T =
+        case v
+            when jNumber with x then
+                let t = x.text
+                let n = stringOp.length(t)
+                let tooLarge = {n > stringOp.length(wordLimit)}
+                    orif {{n is stringOp.length(wordLimit)} andif not(stringOp.precedes(t wordLimit))}
+                if not(x.isInteger) orif tooLarge orif {{n > 0} andif {stringOp.getChar(t 0) is '-'}} then fail(:Ok) end
+                let w = strutil.tryToWord(t)
+                if maybe.isNone(:word.T w) then fail(:Ok) end
+                maybe.unwrap(:word.T w)
+            else fail(:word.T)
+        end
+
+    let labelsOf(ps: vector.T(json.Value)): maybe.T(Array(maybe.T(String))) =
+        begin
+            let labels = array of(vector.length(:json.Value ps) maybe.none(:String))
+            for i = 0 upto {vector.length(:json.Value ps) - 1} do
+                let name = fieldName(pairLabel(vector.get(:json.Value ps i)))
+                labels[i] := if stringOp.length(name) > 0 then maybe.some(:String name) else maybe.none(:String) end
+            end
+            maybe.some(:Array(maybe.T(String)) labels)
+        end
+
+    let rec value(rd: Reader data: json.Value r0: Ref): Value =
+        begin
+            let r = concreteRef(rd r0)
+            if isBuiltin(r) then
+                builtinValue(rd data r.name)
+            else
+                let e = entryOf(rd r)
+                if stringOp.equal(e.kind "external") then
+                    option vWord of Value with let w = wordOf(data) end
+                elsif stringOp.equal(e.kind "auto") then
+                    let o = members(data)
+                    if {memberCount(o) isnot 2} orif not(hasMember(o "@type")) orif not(hasMember(o "@value")) then fail(:Ok) end
+                    let witness = checkRef(rd member(o "@type"))
+                    let b = members(e.body)
+                    if not(isNull(member(b "bound"))) andif not(subtyping.isSubtype(typeOf(rd witness)
+                        typeOf(rd checkRef(rd member(b "bound"))) maybe.none(:tm.Lookup))) then
+                        fail(:Ok)
+                    end
+                    let values = items(member(o "@value"))
+                    let components = pairsOf(member(b "components"))
+                    if vector.length(:json.Value values) isnot vector.length(:json.Value components) then fail(:Ok) end
+                    vector.append(:Ref rd.witnesses witness)
+                    let vs = array of(vector.length(:json.Value values) model.okValue)
+                    for i = 0 upto {extent vs - 1} do
+                        vs[i] := value(rd vector.get(:json.Value values i) pairRef(rd vector.get(:json.Value components i)))
+                    end
+                    vector.pop(:Ref rd.witnesses)
+                    let labels = array of(extent vs maybe.none(:String))
+                    for i = 0 upto {extent vs - 1} do
+                        labels[i] := maybe.some(:String fieldName(pairLabel(vector.get(:json.Value components i))))
+                    end
+                    option vAuto of Value with
+                        let a = tuple
+                            let value = model.tupleValue(vs maybe.some(:Array(maybe.T(String)) labels))
+                            let type = typeOf(rd witness)
+                        end
+                    end
+                elsif stringOp.equal(e.kind "record") then
+                    let s = sharedOf(rd data "record")
+                    if maybe.isSome(:Value s.existing) then
+                        maybe.unwrap(:Value s.existing)
+                    else
+                        let fields = members(s.contents)
+                        let b = members(e.body)
+                        let labels = json.names(b)
+                        (* The fields must be the type's, each once *)
+                        if extent json.names(fields) isnot extent labels then fail(:Ok) end
+                        for i = 0 upto {extent labels - 1} do
+                            if not(hasMember(fields fieldName(labels[i]))) then fail(:Ok) end
+                        end
+                        let map = model.newFields()
+                        let result = model.recordValue(map)
+                        if maybe.isSome(:Int s.objId) then hashMap.insert(:Int :Value rd.objects maybe.unwrap(:Int s.objId) result) end
+                        for i = 0 upto {extent labels - 1} do
+                            let name = fieldName(labels[i])
+                            hashMap.insert(:String :Value map name value(rd member(fields name) checkRef(rd member(b labels[i]))))
+                        end
+                        result
+                    end
+                elsif stringOp.equal(e.kind "array") then
+                    let s = sharedOf(rd data "array")
+                    if maybe.isSome(:Value s.existing) then
+                        maybe.unwrap(:Value s.existing)
+                    else
+                        let its = items(s.contents)
+                        let elements = array of(vector.length(:json.Value its) model.okValue)
+                        let result = option vArray of Value with let a = elements end
+                        if maybe.isSome(:Int s.objId) then hashMap.insert(:Int :Value rd.objects maybe.unwrap(:Int s.objId) result) end
+                        let elementRef = checkRef(rd e.body)
+                        for i = 0 upto {extent elements - 1} do elements[i] := value(rd vector.get(:json.Value its i) elementRef) end
+                        result
+                    end
+                elsif stringOp.equal(e.kind "tuple") then
+                    let s = sharedOf(rd data "tuple")
+                    if maybe.isSome(:Value s.existing) then
+                        maybe.unwrap(:Value s.existing)
+                    else
+                        let its = items(s.contents)
+                        let ps = pairsOf(e.body)
+                        if vector.length(:json.Value its) isnot vector.length(:json.Value ps) then fail(:Ok) end
+                        let elements = array of(vector.length(:json.Value ps) model.okValue)
+                        let result = model.tupleValue(elements labelsOf(ps))
+                        if maybe.isSome(:Int s.objId) then hashMap.insert(:Int :Value rd.objects maybe.unwrap(:Int s.objId) result) end
+                        for i = 0 upto {extent elements - 1} do
+                            elements[i] := value(rd vector.get(:json.Value its i) pairRef(rd vector.get(:json.Value ps i)))
+                        end
+                        result
+                    end
+                elsif stringOp.equal(e.kind "variant") orif stringOp.equal(e.kind "option") then
+                    let isVariant = stringOp.equal(e.kind "variant")
+                    let b = members(e.body)
+                    let labels = json.names(b)
+                    (* The case of a tag, and its payload's ref (none, or Ok, for a bare tag) *)
+                    let caseRef(tag: String): maybe.T(json.Value) =
+                        begin
+                            let var found = maybe.none(:json.Value)
+                            for i = 0 upto {extent labels - 1} do
+                                if stringOp.equal(fieldName(labels[i]) tag) then found := maybe.some(:json.Value member(b labels[i])) end
+                            end
+                            found
+                        end
+                    let isBare(c: json.Value): Bool =
+                        isNull(c) orif case c when jString with x then stringOp.equal(x.s "Ok") else false end
+                    let make(tag: String payload: Value): Value =
+                        if isVariant then model.variantValue(tag maybe.some(:Value payload))
+                        else model.optionValue(tag maybe.some(:Value payload)) end
+                    case data
+                        when jString with x then
+                            let c = caseRef(x.s)
+                            if maybe.isNone(:json.Value c) orif not(isBare(maybe.unwrap(:json.Value c))) then fail(:Ok) end
+                            make(x.s model.okValue)
+                        when jObject with x then
+                            if memberCount(x.o) isnot 1 then fail(:Ok) end
+                            let tag = json.names(x.o)[0]
+                            let payload = member(x.o tag)
+                            let c = caseRef(tag)
+                            if maybe.isNone(:json.Value c) orif isBare(maybe.unwrap(:json.Value c)) then fail(:Ok) end
+                            let payloadRef = checkRef(rd maybe.unwrap(:json.Value c))
+                            if isVariant then
+                                make(tag value(rd payload payloadRef))
+                            else
+                                (* The case's components, written in place *)
+                                let ps = pairsOf(entryOf(rd payloadRef).body)
+                                let its = items(payload)
+                                if vector.length(:json.Value its) isnot vector.length(:json.Value ps) then fail(:Ok) end
+                                let elements = array of(vector.length(:json.Value ps) model.okValue)
+                                for i = 0 upto {extent elements - 1} do
+                                    elements[i] := value(rd vector.get(:json.Value its i) pairRef(rd vector.get(:json.Value ps i)))
+                                end
+                                make(tag model.tupleValue(elements labelsOf(ps)))
+                            end
+                        else fail(:Value)
+                    end
+                else
+                    fail(:Value)
+                end
+            end
+        end
+    and builtinValue(rd: Reader data: json.Value name: String): Value =
+        case data
+            when jNumber with x then
+                if stringOp.equal(name "Int") andif x.isInteger then
+                    model.intValue(integer(data))
+                elsif stringOp.equal(name "Real") then
+                    let r = strutil.tryToReal(x.text)
+                    if maybe.isNone(:Real r) then fail(:Ok) end
+                    model.realValue(maybe.unwrap(:Real r))
+                else
+                    fail(:Value)
+                end
+            when jString with x then
+                if stringOp.equal(name "Real") andif stringOp.equal(x.s "Infinity") then
+                    model.realValue(realOp.maxReal ** 2.0)
+                elsif stringOp.equal(name "Real") andif stringOp.equal(x.s "-Infinity") then
+                    model.realValue(0.0 -- {realOp.maxReal ** 2.0})
+                elsif stringOp.equal(name "Char") andif {stringOp.length(x.s) is 1} then
+                    model.charValue(stringOp.getChar(x.s 0))
+                elsif stringOp.equal(name "String") then
+                    model.stringValue(x.s)
+                else
+                    fail(:Value)
+                end
+            when jBool with x then
+                if stringOp.equal(name "Bool") then model.boolValue(x.b) else fail(:Value) end
+            when jNull then
+                if stringOp.equal(name "Ok") then model.okValue else fail(:Value) end
+            when jObject with x then
+                if stringOp.equal(name "Dynamic") andif {memberCount(x.o) is 2} andif hasMember(x.o "@type")
+                    andif hasMember(x.o "@value") then
+                    dynamic(rd checkRef(rd member(x.o "@type")) member(x.o "@value"))
+                else
+                    fail(:Value)
+                end
+            else fail(:Value)
+        end
+    and dynamic(rd: Reader r: Ref data: json.Value): Value =
+        begin
+            let v = value(rd data r)
+            option vAuto of Value with
+                let a = tuple
+                    let value = model.tupleValue(array of v end maybe.some(:Array(maybe.T(String)) array of maybe.some(:String "a") end))
+                    let type = typeOf(rd r)
+                end
+            end
+        end
+
+    let decode(text0: String): Value =
+        begin
+            let document = try json.parse(text0) when json.error then fail(:json.Value) end
+            let o = members(document)
+            if {memberCount(o) isnot 4} orif not(hasMember(o "quest")) orif not(hasMember(o "types"))
+                orif not(hasMember(o "type")) orif not(hasMember(o "value")) then
+                fail(:Ok)
+            end
+            if integer(member(o "quest")) isnot formatVersion then fail(:Ok) end
+            let rd = newReader(member(o "types"))
+            dynamic(rd checkRef(rd member(o "type")) member(o "value"))
+        end
+end

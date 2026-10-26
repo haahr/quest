@@ -19,7 +19,6 @@ from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
     ASCII_ERROR_EXC,
     INT_ERROR_EXC,
-    LIST_ERROR_EXC,
     QuestRuntimeError,
     READER_ERROR_EXC,
     REAL_ERROR_EXC,
@@ -43,7 +42,6 @@ from quest.values.model import (
     QChar,
     QExceptionVal,
     QInt,
-    QList,
     QOk,
     QReader,
     QReal,
@@ -454,31 +452,6 @@ def _dynamic_intern(rd: QReader) -> QAutoVal:
 
     raw = "".join(buf)
     return jsog_decode(raw)
-
-def _list_nil(*args: Any) -> QList:
-    return QList(())
-
-def _list_cons(item: QValue, l: QList) -> QList:
-    return QList((item,) + l.elements)
-
-def _list_null(l: QList) -> QBool:
-    return TRUE_VALUE if len(l.elements) == 0 else FALSE_VALUE
-
-def _list_head(l: QList) -> QValue:
-    if not l.elements:
-        raise QuestException(LIST_ERROR_EXC)
-    return l.elements[0]
-
-def _list_tail(l: QList) -> QList:
-    if not l.elements:
-        raise QuestException(LIST_ERROR_EXC)
-    return QList(l.elements[1:])
-
-def _list_length(l: QList) -> QInt:
-    return QInt(len(l.elements))
-
-def _list_enum(arr: QArray) -> QList:
-    return QList(tuple(arr.elements))
 
 def _system_exit(code: QInt) -> QOk:
     sys.exit(code.value)

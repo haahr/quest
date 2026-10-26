@@ -54,7 +54,6 @@ from quest.values.model import (
     QClosure,
     QExceptionVal,
     QInt,
-    QList,
     QOk,
     QOption,
     QReal,
@@ -333,8 +332,6 @@ class Interpreter:
                 if len(inst.params) == 0:
                     return run_closure(inst, [])
                 return inst
-            case QBuiltinFun(name="list.nil"):
-                return QList(())
         return callee
 
     def callee(self, var: Optional[ir.Var], module: Optional[ir.ModuleRef], member: Optional[str],

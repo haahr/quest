@@ -52,6 +52,9 @@ export
     addNote(d: Diagnostic note: String): Ok
     setHelp(d: Diagnostic h: String): Ok
     setCode(d: Diagnostic c: String): Ok
+    (* For an uncaught exception, the frames running where it was raised, most recent first, rendered after the source
+     * line and any notes (docs/exceptions.md section 2.1) *)
+    setTrace(d: Diagnostic frames: Array(String)): Ok
 
     (* =========================================================================
      * Formatting & Rendering
@@ -105,6 +108,19 @@ export
     atImport(e: CompilerError offset: Int length: Int file: String): CompilerError
     (* The diagnostic of an error, in its file, or else in file *)
     errorDiagnostic(e: CompilerError file: String): Diagnostic
+
+    (* =========================================================================
+     * The frames of tracebacks (docs/exceptions.md section 2.3)
+     * ========================================================================= *)
+
+    (* The program's phrases *)
+    mainFrame: String
+    (* A module's initializer *)
+    initFrame(moduleName: String): String
+    (* The name of a function bound to binder (none if it is not let-bound) by code running in the frame enclosing:
+     * the binder, or <anon>, qualified by the module's name in a module's initializer, by the enclosing function's
+     * name in a function, and not at all in the program's phrases *)
+    frameName(enclosing: String binder: maybe.T(String)): String
 
     (* =========================================================================
      * Quoting

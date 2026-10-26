@@ -5,11 +5,19 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     stringOp = string : StringOp
 export
-    Let ModuleAbstractType = Tuple globalName: String typeVar: model.Type linked: Bool var rep: maybe.T(model.Type) end
+    Let Instance = Tuple args: Array(model.Type) rep: model.Type end
+    Let ModuleAbstractType = Tuple
+        globalName: String
+        typeVar: model.Type
+        linked: Bool
+        var rep: maybe.T(model.Type)
+        instances: vector.T(Instance)
+    end
 
     let intEqual(a: Int b: Int): Bool = a is b
     let symbolIds = hashMap.new(:String :Int stringOp.equal hash.string)
@@ -43,6 +51,7 @@ export
                 let e: ModuleAbstractType = tuple
                     let globalName = globalName let typeVar = typeVar let linked = linked
                     let var rep = maybe.none(:model.Type)
+                    let instances = vector.new(:Instance)
                 end
                 hashMap.insert(:String :ModuleAbstractType byName globalName e)
                 e
@@ -57,6 +66,9 @@ export
 
     let registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok =
         recordType(globalName typeVar true).rep := maybe.some(:model.Type rep)
+
+    let registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType =
+        recordType(globalName typeVar false)
 
     let abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType) =
         hashMap.get(:Int :ModuleAbstractType bySymbol symbolId)

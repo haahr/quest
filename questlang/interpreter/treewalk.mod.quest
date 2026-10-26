@@ -1,0 +1,1135 @@
+(* Quest Self-Hosted Compiler: The Tree-Walking Interpreter Implementation *)
+
+module treewalk : Treewalk
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/canonical : questlang/types/Canonical
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/values/model : questlang/values/Model
+    questlang/interpreter/primitives : questlang/interpreter/Primitives
+    questlang/interpreter/builtins : questlang/interpreter/Builtins
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Value = model.Value
+    Let Frame = model.Frame
+    Let Expr = typedAst.Expr
+    Let Binding = typedAst.Binding
+    Let Scoped = Tuple value: model.Value frame: model.Frame end
+    Let PhraseResult = Tuple phrase: typedAst.Binding value: model.Value end
+
+    let none = maybe.none(:Int)
+    let at(offset: Int): maybe.T(Int) = maybe.some(:Int offset)
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    (* The loop exit (the bootstrap's _LoopExit) *)
+    let loopExit: Exception = exception loopExit end
+
+    (* Raises an error again, at any type *)
+    let rethrow(A::TYPE e: model.RunError): A = raise model.runError with e end
+
+    (* =========================================================================
+     * 1. Frames
+     * ========================================================================= *)
+
+    let newFrame(parent: maybe.T(Frame) currentDir: maybe.T(String) sourceMap: maybe.T(location.SourceMap)
+            root: model.Root): Frame =
+        tuple
+            let parent = parent
+            let var bindings = model.newFields()
+            let typeBindings = hashMap.new(:Int :tm.Type intEqual hash.int)
+            let madeExceptions = hashMap.new(:Int :model.ExceptionValue intEqual hash.int)
+            let var currentDir = currentDir
+            let var sourceMap = sourceMap
+            let root = root
+        end
+
+    let pushScope(f: Frame): Frame = newFrame(maybe.some(:Frame f) f.currentDir f.sourceMap f.root)
+
+    let define(f: Frame name: String v: Value): Ok =
+        begin hashMap.insert(:String :Value f.bindings name v) ok end
+
+    let rec madeException(f: Frame symbolId: Int): maybe.T(model.ExceptionValue) =
+        begin
+            let found = hashMap.get(:Int :model.ExceptionValue f.madeExceptions symbolId)
+            if maybe.isSome(:model.ExceptionValue found) orif maybe.isNone(:Frame f.parent) then
+                found
+            else
+                madeException(maybe.unwrap(:Frame f.parent) symbolId)
+            end
+        end
+
+    let bindTypes(f: Frame bindings: hashMap.T(Int tm.Type)): Ok =
+        begin
+            let ids = hashMap.keys(:Int :tm.Type bindings)
+            for i = 0 upto {vector.length(:Int ids) - 1} do
+                let id = vector.get(:Int ids i)
+                hashMap.insert(:Int :tm.Type f.typeBindings id hashMap.find(:Int :tm.Type bindings id))
+            end
+        end
+
+    let rec lookupType(f: Frame symbolId: Int): maybe.T(tm.Type) =
+        begin
+            let found = hashMap.get(:Int :tm.Type f.typeBindings symbolId)
+            if maybe.isSome(:tm.Type found) orif maybe.isNone(:Frame f.parent) then
+                found
+            else
+                lookupType(maybe.unwrap(:Frame f.parent) symbolId)
+            end
+        end
+
+    (* t with the run-time type arguments of the type parameters it mentions substituted *)
+    let resolveType(f: Frame t: tm.Type): tm.Type =
+        begin
+            let subst = tm.newSubst()
+            for i = 0 upto {extent t.fv - 1} do
+                let bound = lookupType(f t.fv[i])
+                if maybe.isSome(:tm.Type bound) then
+                    hashMap.insert(:Int :tm.Type subst t.fv[i] maybe.unwrap(:tm.Type bound))
+                end
+            end
+            if hashMap.empty(:Int :tm.Type subst) then t else tm.substitute(t subst) end
+        end
+
+    (* The standard library module named name (or named so but for case), which a program may use without importing
+     * it *)
+    let standardModule(name: String): maybe.T(Array(String)) =
+        begin
+            let var found = maybe.none(:Array(String))
+            for i = 0 upto {extent stdlib.standardModules - 1} do
+                if stringOp.equal(stdlib.standardModules[i][0] name) then
+                    found := maybe.some(:Array(String) stdlib.standardModules[i])
+                end
+            end
+            if maybe.isNone(:Array(String) found) then
+                for i = 0 upto {extent stdlib.standardModules - 1} do
+                    if maybe.isNone(:Array(String) found)
+                        andif stringOp.equal(paths.lower(stdlib.standardModules[i][0]) paths.lower(name)) then
+                        found := maybe.some(:Array(String) stdlib.standardModules[i])
+                    end
+                end
+            end
+            found
+        end
+
+    (* Set by section 5: loads and runs a module (load_module_for_interpreter) *)
+    let hooks = tuple
+        let var loadModule = fun(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value
+            model.okValue
+    end
+
+    let rec lookup(f: Frame name: String offset: maybe.T(Int)): Value =
+        begin
+            let found = hashMap.get(:String :Value f.bindings name)
+            if maybe.isSome(:Value found) then
+                maybe.unwrap(:Value found)
+            elsif maybe.isSome(:Frame f.parent) then
+                lookup(maybe.unwrap(:Frame f.parent) name offset)
+            else
+                let std = standardModule(name)
+                if maybe.isNone(:Array(String) std) then
+                    model.internalError(:Value "Undefined runtime symbol '" <> name <> "'" offset)
+                end
+                let normName = maybe.unwrap(:Array(String) std)[0]
+                let modVal = hooks.loadModule(normName maybe.unwrap(:Array(String) std)[1] f maybe.none(:String))
+                define(f normName modVal)
+                if not(stringOp.equal(name normName)) then define(f name modVal) end
+                modVal
+            end
+        end
+
+    let rec assignName(f: Frame name: String v: Value offset: maybe.T(Int)): Ok =
+        begin
+            let found = hashMap.get(:String :Value f.bindings name)
+            if maybe.isSome(:Value found) then
+                case maybe.unwrap(:Value found)
+                    when vRef with r then model.assign(r.r v)
+                    else define(f name v)
+                end
+            elsif maybe.isSome(:Frame f.parent) then
+                assignName(maybe.unwrap(:Frame f.parent) name v offset)
+            else
+                model.internalError(:Ok "Cannot assign to undefined symbol '" <> name <> "'" offset)
+            end
+        end
+
+    (* The values of two Int operands of an operator, or an error naming their types *)
+    let intOperand(op: String v: Value w: Value offset: maybe.T(Int)): Int =
+        case v
+            when vInt with x then x.n
+            else model.internalError(:Int "Operator '" <> op <> "' requires Int operands, got " <> model.typeName(v)
+                <> " and " <> model.typeName(w) offset)
+        end
+
+    let realOperand(op: String v: Value w: Value offset: maybe.T(Int)): Real =
+        case v
+            when vReal with x then x.r
+            else model.internalError(:Real "Operator '" <> op <> "' requires Real operands, got " <> model.typeName(v)
+                <> " and " <> model.typeName(w) offset)
+        end
+
+    let isOneOf(op: String ops: Array(String)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent ops - 1} do if stringOp.equal(op ops[i]) then found := true end end
+            found
+        end
+
+    let intArithmeticOps = array of "+" "-" "*" "/" "mod" "%" end
+    let intRelationalOps = array of "<" "<=" ">" ">=" end
+    let realArithmeticOps = array of "++" "--" "**" "//" "^^" end
+    let realRelationalOps = array of "<<" "<<=" ">>" ">>=" end
+
+    (* An operator applied to the values of its operands *)
+    let infix(op: String left: Value right: Value offset: maybe.T(Int)): Value =
+        if isOneOf(op intArithmeticOps) then
+            let a = intOperand(op left right offset)
+            let b = intOperand(op right left offset)
+            model.intValue(primitives.intArithmetic(op a b offset))
+        elsif isOneOf(op intRelationalOps) then
+            let a = intOperand(op left right offset)
+            let b = intOperand(op right left offset)
+            model.boolValue(primitives.intRelational(op a b offset))
+        elsif isOneOf(op realArithmeticOps) then
+            let a = realOperand(op left right offset)
+            let b = realOperand(op right left offset)
+            model.realValue(primitives.realArithmetic(op a b offset))
+        elsif isOneOf(op realRelationalOps) then
+            let a = realOperand(op left right offset)
+            let b = realOperand(op right left offset)
+            model.boolValue(primitives.realRelational(op a b offset))
+        elsif stringOp.equal(op "<>") then
+            case left
+                when vString with x then
+                    case right
+                        when vString with y then model.stringValue(x.s <> y.s)
+                        else model.internalError(:Value "Operator '<>' requires String operands, got "
+                            <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+                    end
+                else model.internalError(:Value "Operator '<>' requires String operands, got "
+                    <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+            end
+        elsif stringOp.equal(op "/\\") orif stringOp.equal(op "\\/") then
+            case left
+                when vBool with x then
+                    case right
+                        when vBool with y then
+                            model.boolValue(if stringOp.equal(op "/\\") then x.b andif y.b else x.b orif y.b end)
+                        else model.internalError(:Value "Operator '" <> op <> "' requires Bool operands, got "
+                            <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+                    end
+                else model.internalError(:Value "Operator '" <> op <> "' requires Bool operands, got "
+                    <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+            end
+        elsif stringOp.equal(op "is") then
+            model.boolValue(model.same(left right))
+        elsif stringOp.equal(op "isnot") then
+            model.boolValue(not(model.same(left right)))
+        else
+            model.internalError(:Value "Unsupported infix operator '" <> op <> "'" offset)
+        end
+
+    (* An operator as a function of two values; its errors are located at the start of the file, as the bootstrap's
+     * are (offset 0) *)
+    let operatorFunction(op: String): Value =
+        model.builtinValue(op fun(args: Array(Value)): Value infix(op args[0] args[1] at(0)))
+
+    let newRoot(units: graph.UnitGraph): Frame =
+        begin
+            let root: model.Root = tuple
+                let var includePaths = array of :String end
+                let var programDir = maybe.none(:String)
+                let var units = units
+                let moduleValues = model.newFields()
+                let callStack = vector.new(:String)
+            end
+            let f = newFrame(maybe.none(:Frame) maybe.none(:String) maybe.none(:location.SourceMap) root)
+            define(f "true" model.trueValue)
+            define(f "false" model.falseValue)
+            define(f "ok" model.okValue)
+            let ops = array of
+                "+" "-" "*" "/" "mod" "%" "<" "<=" ">" ">=" "++" "--" "**" "//" "^^" "<<" "<<=" ">>" ">>=" "<>"
+                "/\\" "\\/"
+            end
+            for i = 0 upto {extent ops - 1} do define(f ops[i] operatorFunction(ops[i])) end
+            define(f "not" model.builtinValue("not" fun(args: Array(Value)): Value
+                case args[0] when vBool with x then model.boolValue(not(x.b)) else model.falseValue end))
+            define(f "extent" model.builtinValue("extent" fun(args: Array(Value)): Value
+                case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end))
+            (* ordinal counts in its operand's static type, so its applications are evaluated as such (exprApp) *)
+            define(f "ordinal" model.builtinValue("ordinal" fun(args: Array(Value)): Value
+                model.internalError(:Value "ordinal needs its operand's static type" none)))
+            f
+        end
+
+    (* =========================================================================
+     * 2. Closures and frames of the call stack
+     * ========================================================================= *)
+
+    let makeClosure(fun0: Expr f: Frame binder: maybe.T(String) name: maybe.T(String)): Value =
+        case fun0.form
+            when exprFun with x then
+                begin
+                    let stack = f.root.callStack
+                    let enclosing = if vector.empty(:String stack) then diagnostics.mainFrame
+                        else vector.get(:String stack {vector.length(:String stack) - 1}) end
+                    let params = array of(extent x.params "")
+                    for i = 0 upto {extent x.params - 1} do params[i] := x.params[i].name end
+                    option vClosure of Value with
+                        let c = tuple
+                            let params = params
+                            let body = x.body
+                            let env = f
+                            let name = name
+                            let typeParamIds = x.typeParamIds
+                            let typeBindings = hashMap.new(:Int :tm.Type intEqual hash.int)
+                            let traceName = diagnostics.frameName(enclosing binder)
+                        end
+                    end
+                end
+            else model.internalError(:Value "A closure of a non-function" at(fun0.offset))
+        end
+
+    let bindTypesInto(into: hashMap.T(Int tm.Type) from: hashMap.T(Int tm.Type)): Ok =
+        begin
+            let ids = hashMap.keys(:Int :tm.Type from)
+            for i = 0 upto {vector.length(:Int ids) - 1} do
+                let id = vector.get(:Int ids i)
+                hashMap.insert(:Int :tm.Type into id hashMap.find(:Int :tm.Type from id))
+            end
+        end
+
+    (* The closure with its next unbound type parameters bound to typeArgs (a type application) *)
+    let instantiate(c: model.Closure typeArgs: Array(tm.Type)): model.Closure =
+        begin
+            let bindings = hashMap.new(:Int :tm.Type intEqual hash.int)
+            bindTypesInto(bindings c.typeBindings)
+            let var next = 0
+            for i = 0 upto {extent c.typeParamIds - 1} do
+                let id = c.typeParamIds[i]
+                if not(hashMap.contains(:Int :tm.Type c.typeBindings id)) andif {next < extent typeArgs} then
+                    hashMap.insert(:Int :tm.Type bindings id typeArgs[next])
+                    next := next + 1
+                end
+            end
+            tuple
+                let params = c.params let body = c.body let env = c.env let name = c.name
+                let typeParamIds = c.typeParamIds let typeBindings = bindings let traceName = c.traceName
+            end
+        end
+
+    let reversedStack(f: Frame): Array(String) =
+        begin
+            let n = vector.length(:String f.root.callStack)
+            let frames = array of(n "")
+            for i = 0 upto {n - 1} do frames[i] := vector.get(:String f.root.callStack {{n - 1} - i}) end
+            frames
+        end
+
+    let noteFrames(e: model.RunError f: Frame): Ok =
+        if maybe.isNone(:Array(String) e.frames) then e.frames := maybe.some(:Array(String) reversedStack(f)) end
+
+    (* An error leaving code that ran in f: located in f's file unless code it called located it already, with the
+     * frames running *)
+    let leaving(e: model.RunError f: Frame): Ok =
+        begin
+            if maybe.isNone(:location.SourceMap e.sourceMap) then e.sourceMap := f.sourceMap end
+            noteFrames(e f)
+        end
+
+    let popStack(f: Frame): Ok = begin vector.pop(:String f.root.callStack) ok end
+
+    (* =========================================================================
+     * 3. Named exceptions made in advance
+     * ========================================================================= *)
+
+    (* Makes, before code runs, the named exceptions it makes for its scope, defining their names, and returns the
+     * frame it runs in: one of its own if a name rebinds one of f's frame *)
+    let makeScopeExceptions(exceptions: Array(Expr) f: Frame): Frame =
+        begin
+            let var g = f
+            let var rebinds = false
+            for i = 0 upto {extent exceptions - 1} do
+                case exceptions[i].form
+                    when exprException with x then
+                        if hashMap.contains(:String :Value f.bindings x.name) then rebinds := true end
+                    else ok
+                end
+            end
+            if rebinds then g := pushScope(f) end
+            for i = 0 upto {extent exceptions - 1} do
+                case exceptions[i].form
+                    when exprException with x then
+                        let excVal = model.exceptionValue(x.name)
+                        define(g x.name option vException of Value with let e = excVal end)
+                        hashMap.insert(:Int :model.ExceptionValue g.madeExceptions
+                            maybe.unwrap(:symbols.ValueSymbol x.symbol).symbolId excVal)
+                        ok
+                    else ok
+                end
+            end
+            g
+        end
+
+    (* =========================================================================
+     * 4. Expressions
+     * ========================================================================= *)
+
+    let rec unwrapRefs(v: Value): Value =
+        case v when vRef with r then unwrapRefs(model.deref(r.r)) else v end
+
+    (* The position of an option's case among its type's cases *)
+    let position(names: Array(String) tag: String): Int =
+        begin
+            let var found = ~1
+            for i = 0 upto {extent names - 1} do if {found < 0} andif stringOp.equal(names[i] tag) then found := i end end
+            if found < 0 then model.internalError(:Ok "'" <> tag <> "' is not a case" none) end
+            found
+        end
+
+    let hasTag(tags: Array(String) tag: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent tags - 1} do if stringOp.equal(tags[i] tag) then found := true end end
+            found
+        end
+
+    (* What opt!tag gives for an option: a tuple of the case's ordinal followed by the payload's components *)
+    let optionAssertion(t: model.Tagged caseIndex: Int): Value =
+        begin
+            let ord = model.intValue(caseIndex)
+            let noLabel = maybe.none(:String)
+            if maybe.isNone(:Value t.payload) then
+                model.tupleValue(array of ord end maybe.some(:Array(maybe.T(String)) array of noLabel end))
+            else
+                case maybe.unwrap(:Value t.payload)
+                    when vTuple with x then
+                        let n = extent x.t.elements
+                        let elements = array of({n + 1} ord)
+                        let labels = array of({n + 1} noLabel)
+                        for i = 0 upto {n - 1} do
+                            elements[i + 1] := x.t.elements[i]
+                            if maybe.isSome(:Array(maybe.T(String)) x.t.labels)
+                                andif {i < extent maybe.unwrap(:Array(maybe.T(String)) x.t.labels)} then
+                                labels[i + 1] := maybe.unwrap(:Array(maybe.T(String)) x.t.labels)[i]
+                            end
+                        end
+                        model.tupleValue(elements maybe.some(:Array(maybe.T(String)) labels))
+                    else
+                        model.tupleValue(array of ord maybe.unwrap(:Value t.payload) end
+                            maybe.some(:Array(maybe.T(String)) array of noLabel noLabel end))
+                end
+            end
+        end
+
+    (* The labels of a tuple's components, its types' included, if its type is a tuple type *)
+    let tupleLabels(t: tm.Type): maybe.T(Array(maybe.T(String))) =
+        case t.form
+            when typeTuple with x then
+                let labels = array of(extent x.fields maybe.none(:String))
+                for i = 0 upto {extent x.fields - 1} do labels[i] := tm.componentName(x.fields[i]) end
+                maybe.some(:Array(maybe.T(String)) labels)
+            else maybe.none(:Array(maybe.T(String)))
+        end
+
+    (* The simultaneous group starting at component index, if one does *)
+    let groupAt(groups: Array(Array(Int)) index: Int): maybe.T(Array(Int)) =
+        begin
+            let var found = maybe.none(:Array(Int))
+            for i = 0 upto {extent groups - 1} do
+                if {extent groups[i] > 0} andif {groups[i][0] is index} then found := maybe.some(:Array(Int) groups[i]) end
+            end
+            found
+        end
+
+    let declaresName(b: Binding f: Frame): Bool =
+        begin
+            let members = typedAst.bindingMembers(b)
+            let var found = false
+            for i = 0 upto {extent members - 1} do
+                let name = typedAst.declaredName(members[i])
+                if maybe.isSome(:String name) andif hashMap.contains(:String :Value f.bindings maybe.unwrap(:String name)) then
+                    found := true
+                end
+            end
+            found
+        end
+
+    let rec evalExpr(e: Expr f: Frame): Value =
+        begin
+            let offset = at(e.offset)
+            case e.form
+                when exprInt with x then model.intValue(x.value)
+                when exprReal with x then model.realValue(x.value)
+                when exprBool with x then model.boolValue(x.value)
+                when exprChar with x then model.charValue(x.value)
+                when exprString with x then model.stringValue(x.value)
+                when exprOk then model.okValue
+                when exprExternal with x then builtins.resolveExternal(x.symbol)
+                when exprVar with x then lookup(f x.name offset)
+                when exprVarCell with x then model.cellValue(evalExpr(x.value f))
+                when exprDerefCell with x then
+                    case evalExpr(x.target f) when vRef with r then model.deref(r.r) else evalExpr(x.target f) end
+                when exprSelectRef with x then
+                    case unwrapRefs(evalExpr(x.target f))
+                        when vRecord with r then
+                            let cell = hashMap.find(:String :Value r.r.fields x.field)
+                            if cell?vRef then cell
+                            else model.internalError(:Value "Field '" <> x.field <> "' is not mutable" offset) end
+                        else model.internalError(:Value "Field selection target must be Record" offset)
+                    end
+                when exprIndexRef with x then
+                    let target = unwrapRefs(evalExpr(x.target f))
+                    case target
+                        when vArray with a then
+                            let i = indexOf(evalExpr(x.index f) offset)
+                            if {i < 0} orif {i >= extent a.a} then model.raiseException(:Ok primitives.arrayOpError offset) end
+                            option vRef of Value with
+                                let r = tuple let form = option arrayElement of model.RefForm with
+                                    let arr = a.a let index = i end end
+                            end
+                        else model.internalError(:Value "Index target must be Array, got " <> model.typeName(target) offset)
+                    end
+                when exprTupleSelectRef with x then
+                    let target = unwrapRefs(evalExpr(x.target f))
+                    case target
+                        when vTuple with t then
+                            let var idx = x.index
+                            if {idx < 0} andif maybe.isSome(:String x.field) then
+                                idx := maybe.unwrapOr(:Int hashMap.get(:String :Int t.t.nameToIndex maybe.unwrap(:String x.field)) ~1)
+                            end
+                            if {idx < 0} orif {idx >= extent t.t.elements} then
+                                model.internalError(:Ok "Tuple component out of bounds" offset)
+                            end
+                            let elem = t.t.elements[idx]
+                            if elem?vRef then elem else
+                                option vRef of Value with
+                                    let r = tuple let form = option tupleElement of model.RefForm with
+                                        let tup = t.t let index = idx end end
+                                end
+                            end
+                        else model.internalError(:Value "Tuple select target must be Tuple, got " <> model.typeName(target) offset)
+                    end
+                when exprAssign with x then
+                    let rhs = evalExpr(x.value f)
+                    case x.target.form
+                        when exprVar with v then
+                            case lookup(f v.name offset)
+                                when vRef with r then model.assign(r.r rhs)
+                                else assignName(f v.name rhs offset)
+                            end
+                        when exprSelect with s then
+                            case unwrapRefs(evalExpr(s.target f))
+                                when vRecord with r then
+                                    case hashMap.find(:String :Value r.r.fields s.field)
+                                        when vRef with cell then model.assign(cell.r rhs)
+                                        else begin hashMap.insert(:String :Value r.r.fields s.field rhs) ok end
+                                    end
+                                when vTuple with t then model.tupleSetByName(t.t s.field rhs)
+                                else model.internalError(:Ok "Field assignment target must be Record or Tuple" offset)
+                            end
+                        else model.internalError(:Ok "Unsupported assignment target in interpreter" offset)
+                    end
+                    model.okValue
+
+                (* Functions and application *)
+                when exprFun then makeClosure(e f maybe.none(:String) maybe.none(:String))
+                when exprTypeApp with x then
+                    let var callee = evalExpr(x.func f)
+                    let typeArgs = array of(extent x.typeArgs tm.okType)
+                    for i = 0 upto {extent x.typeArgs - 1} do typeArgs[i] := resolveType(f x.typeArgs[i]) end
+                    case callee
+                        when vClosure with c then
+                            if extent c.c.typeParamIds > 0 then
+                                callee := option vClosure of Value with let c = instantiate(c.c typeArgs) end
+                            end
+                        else ok
+                    end
+                    case callee
+                        when vClosure with c then if extent c.c.params is 0 then runClosure(c.c array of :Value end) else callee end
+                        else callee
+                    end
+                when exprApp with x then
+                    let callee = evalExpr(x.func f)
+                    let args = array of(extent x.args model.okValue)
+                    for i = 0 upto {extent x.args - 1} do args[i] := evalExpr(x.args[i] f) end
+                    case callee
+                        when vBuiltin with b then
+                            if stringOp.equal(b.b.name "ordinal") then
+                                case args[0]
+                                    when vOption with o then
+                                        model.intValue(position(canonical.optionCaseNames(x.args[0].type) o.v.tag))
+                                    else model.internalError(:Value "ordinal expects Option, got " <> model.typeName(args[0]) offset)
+                                end
+                            else
+                                b.b.fn(args)
+                            end
+                        when vClosure with c then runClosure(c.c args)
+                        else model.internalError(:Value "Cannot call non-function of type " <> model.typeName(callee) offset)
+                    end
+                when exprInfix with x then
+                    let left = evalExpr(x.left f)
+                    let right = evalExpr(x.right f)
+                    infix(x.op left right offset)
+
+                (* Control *)
+                when exprIf with x then
+                    case evalExpr(x.cond f)
+                        when vBool with b then if b.b then evalExpr(x.thenBranch f) else evalExpr(x.elseBranch f) end
+                        else model.internalError(:Value "Conditional expression must evaluate to Bool" offset)
+                    end
+                when exprBlock with x then
+                    let var g = pushScope(f)
+                    for i = 0 upto {extent x.bindings - 1} do g := evalScopedBinding(x.bindings[i] g).frame end
+                    evalExpr(x.result g)
+                when exprLoop with x then
+                    try begin loop evalExpr(x.body f) end ok end when loopExit then ok end
+                    model.okValue
+                when exprWhile with x then
+                    let var going = true
+                    while going do
+                        case evalExpr(x.cond f)
+                            when vBool with b then
+                                if b.b then
+                                    try begin evalExpr(x.body f) ok end when loopExit then going := false end
+                                else
+                                    going := false
+                                end
+                            else model.internalError(:Ok "While loop condition must evaluate to Bool" offset)
+                        end
+                    end
+                    model.okValue
+                when exprFor with x then
+                    let startVal = evalExpr(x.start f)
+                    let stopVal = evalExpr(x.stop f)
+                    case startVal
+                        when vInt with s then
+                            case stopVal
+                                when vInt with t then
+                                    let loopEnv = pushScope(f)
+                                    let var cur = s.n
+                                    let var going = true
+                                    while going andif {if x.isDownto then cur >= t.n else cur <= t.n end} do
+                                        define(loopEnv x.varName model.intValue(cur))
+                                        try begin evalExpr(x.body loopEnv) ok end when loopExit then going := false end
+                                        cur := if x.isDownto then cur - 1 else cur + 1 end
+                                    end
+                                    model.okValue
+                                else model.internalError(:Value "For loop bounds must evaluate to Int" offset)
+                            end
+                        else model.internalError(:Value "For loop bounds must evaluate to Int" offset)
+                    end
+                when exprExit then raise loopExit end
+
+                (* Aggregates *)
+                when exprRecord with x then
+                    let fields = model.newFields()
+                    for i = 0 upto {extent x.fields - 1} do
+                        let v = evalExpr(x.fields[i].value f)
+                        hashMap.insert(:String :Value fields x.fields[i].name if x.fields[i].isVar then model.cellValue(v) else v end)
+                    end
+                    model.recordValue(fields)
+                when exprTypeWitness with x then
+                    option vTypeValue of Value with
+                        let t = tuple let type = x.witnessType let bound = x.bound let name = maybe.some(:String x.name) end
+                    end
+                when exprTuple with x then evalTuple(e.type x.elements x.simultaneousGroups f)
+                when exprSelect with x then
+                    let target = unwrapRefs(evalExpr(x.target f))
+                    case target
+                        when vRecord with r then
+                            case hashMap.find(:String :Value r.r.fields x.field)
+                                when vRef with cell then model.deref(cell.r)
+                                else hashMap.find(:String :Value r.r.fields x.field)
+                            end
+                        when vTuple with t then model.tupleGet(t.t x.field)
+                        else model.internalError(:Value "Cannot select field '" <> x.field <> "' from " <> model.typeName(target) offset)
+                    end
+                when exprArray with x then
+                    let a = array of(extent x.elements model.okValue)
+                    for i = 0 upto {extent x.elements - 1} do a[i] := evalExpr(x.elements[i] f) end
+                    option vArray of Value with let a = a end
+                when exprArrayRep with x then
+                    case evalExpr(x.count f)
+                        when vInt with c then
+                            if c.n < 0 then model.raiseException(:Ok primitives.arrayOpError offset) end
+                            let init = evalExpr(x.initVal f)
+                            option vArray of Value with let a = array of(c.n init) end
+                        else model.internalError(:Value "Array count must evaluate to Int" offset)
+                    end
+                when exprIndex with x then
+                    let target = evalExpr(x.target f)
+                    let idx = evalExpr(x.index f)
+                    case target
+                        when vArray with a then
+                            let i = indexOf(idx offset)
+                            if {i < 0} orif {i >= extent a.a} then model.raiseException(:Ok primitives.arrayOpError offset) end
+                            a.a[i]
+                        else model.internalError(:Value "Index target must be Array, got " <> model.typeName(target) offset)
+                    end
+                when exprIndexAssign with x then
+                    let target = evalExpr(x.target f)
+                    let idx = evalExpr(x.index f)
+                    let rhs = evalExpr(x.value f)
+                    case target
+                        when vArray with a then
+                            let i = indexOf(idx offset)
+                            if {i < 0} orif {i >= extent a.a} then model.raiseException(:Ok primitives.arrayOpError offset) end
+                            a.a[i] := rhs
+                            model.okValue
+                        else model.internalError(:Value "Index target must be Array, got " <> model.typeName(target) offset)
+                    end
+
+                (* Variants, options, and auto values *)
+                when exprVariant with x then model.variantValue(x.tag evalMaybe(x.payload f))
+                when exprAuto with x then
+                    option vAuto of Value with
+                        let a = tuple let value = evalExpr(x.payload f) let type = resolveType(f x.witnessType) end
+                    end
+                when exprOption with x then
+                    let payload = evalMaybe(x.payload f)
+                    if maybe.isSome(:Expr x.ordinalExpr) then
+                        case evalExpr(maybe.unwrap(:Expr x.ordinalExpr) f)
+                            when vInt with n then
+                                let optType = tm.evaluateLazily(e.type tm.noLookup)
+                                case optType.form
+                                    when typeOption with o then
+                                        if {n.n < 0} orif {n.n >= extent o.options} then
+                                            model.internalError(:Ok "Option ordinal " <> model.toString(model.intValue(n.n))
+                                                <> " out of bounds (0 <= ordinal < " <> model.toString(model.intValue(extent o.options)) <> ")" offset)
+                                        end
+                                        model.optionValue(o.options[n.n].name payload)
+                                    else model.internalError(:Value "Expected Option type, got " <> tm.show(optType) offset)
+                                end
+                            else model.internalError(:Value "Option ordinal must evaluate to Int, got "
+                                <> model.typeName(evalExpr(maybe.unwrap(:Expr x.ordinalExpr) f)) offset)
+                        end
+                    else
+                        model.optionValue(maybe.unwrapOr(:String x.tag "") payload)
+                    end
+                when exprVariantCheck with x then
+                    let target = evalExpr(x.target f)
+                    case target
+                        when vVariant with v then model.boolValue(stringOp.equal(v.v.tag x.tag))
+                        when vOption with v then model.boolValue(stringOp.equal(v.v.tag x.tag))
+                        else model.internalError(:Value "Variant query target must be Variant or Option, got "
+                            <> model.typeName(target) offset)
+                    end
+                when exprVariantAssert with x then
+                    let target = evalExpr(x.target f)
+                    case target
+                        when vVariant with v then
+                            if not(stringOp.equal(v.v.tag x.tag)) then model.raiseException(:Ok primitives.variantError offset) end
+                            maybe.unwrapOr(:Value v.v.payload model.okValue)
+                        when vOption with v then
+                            if not(stringOp.equal(v.v.tag x.tag)) then model.raiseException(:Ok primitives.variantError offset) end
+                            optionAssertion(v.v position(canonical.optionCaseNames(x.target.type) x.tag))
+                        else model.internalError(:Value "Variant assert target must be Variant or Option, got "
+                            <> model.typeName(target) offset)
+                    end
+                when exprCase with x then
+                    let target = evalExpr(x.target f)
+                    let tagged = case target
+                        when vVariant with v then v.v
+                        when vOption with v then v.v
+                        else model.internalError(:model.Tagged "Case target must be Variant or Option, got "
+                            <> model.typeName(target) offset)
+                    end
+                    let var branch = ~1
+                    for i = 0 upto {extent x.branches - 1} do
+                        if {branch < 0} andif hasTag(x.branches[i].tags tagged.tag) then branch := i end
+                    end
+                    if branch >= 0 then
+                        let b = x.branches[branch]
+                        if maybe.isSome(:symbols.ValueSymbol b.binder) then
+                            let child = pushScope(f)
+                            define(child maybe.unwrap(:symbols.ValueSymbol b.binder).name
+                                maybe.unwrapOr(:Value tagged.payload model.okValue))
+                            evalExpr(b.body child)
+                        else
+                            evalExpr(b.body f)
+                        end
+                    elsif maybe.isSome(:Expr x.elseBranch) then
+                        evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                    else
+                        model.internalError(:Value "Unhandled case tag '" <> tagged.tag <> "'" offset)
+                    end
+
+                (* Exceptions *)
+                when exprException with x then
+                    let made = if maybe.isSome(:symbols.ValueSymbol x.symbol) then
+                        madeException(f maybe.unwrap(:symbols.ValueSymbol x.symbol).symbolId)
+                    else
+                        maybe.none(:model.ExceptionValue)
+                    end
+                    let excVal = option vException of Value with
+                        let e = maybe.unwrapOr(:model.ExceptionValue made model.exceptionValue(x.name))
+                    end
+                    if stringOp.length(x.name) > 0 then define(f x.name excVal) end
+                    excVal
+                when exprRaise with x then
+                    case evalExpr(x.exc f)
+                        when vException with exc then
+                            let payload = evalMaybe(x.payload f)
+                            let payloadType = if maybe.isSome(:Expr x.payload) then
+                                maybe.some(:tm.Type maybe.unwrap(:Expr x.payload).type)
+                            else
+                                maybe.none(:tm.Type)
+                            end
+                            raise model.runError with
+                                tuple
+                                    let cause = option raised of model.Cause with
+                                        let exc = exc.e let payload = payload let payloadType = payloadType
+                                    end
+                                    let offset = offset
+                                    let var sourceMap = maybe.none(:location.SourceMap)
+                                    let var frames = maybe.none(:Array(String))
+                                end
+                            end
+                        else model.internalError(:Value "Target of raise must be Exception, got "
+                            <> model.typeName(evalExpr(x.exc f)) offset)
+                    end
+                when exprTry with x then
+                    try
+                        evalExpr(x.body f)
+                    when model.runError with err then
+                        case err.cause
+                            when raised with r then
+                                let var handled = maybe.none(:Value)
+                                let var i = 0
+                                while maybe.isNone(:Value handled) andif {i < extent x.branches} do
+                                    let b = x.branches[i]
+                                    case evalExpr(b.excPattern f)
+                                        when vException with p then
+                                            if p.e is r.exc then
+                                                handled := maybe.some(:Value
+                                                    if maybe.isSome(:symbols.ValueSymbol b.binder) then
+                                                        let child = pushScope(f)
+                                                        define(child maybe.unwrap(:symbols.ValueSymbol b.binder).name
+                                                            maybe.unwrapOr(:Value r.payload model.okValue))
+                                                        evalExpr(b.body child)
+                                                    else
+                                                        evalExpr(b.body f)
+                                                    end)
+                                            end
+                                        else ok
+                                    end
+                                    i := i + 1
+                                end
+                                if maybe.isSome(:Value handled) then
+                                    maybe.unwrap(:Value handled)
+                                elsif maybe.isSome(:Expr x.elseBranch) then
+                                    evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                                else
+                                    rethrow(:Value err)
+                                end
+                            else rethrow(:Value err)
+                        end
+                    end
+
+                (* Auto values' types *)
+                when exprInspect with x then
+                    case evalExpr(x.target f)
+                        when vAuto with a then
+                            let var result = maybe.none(:Value)
+                            let var i = 0
+                            while maybe.isNone(:Value result) andif {i < extent x.branches} do
+                                let b = x.branches[i]
+                                let matchType = resolveType(f b.matchType)
+                                let matches = if b.exact then
+                                    subtyping.isTypeEqual(a.a.type matchType maybe.none(:tm.Lookup))
+                                else
+                                    subtyping.isSubtype(a.a.type matchType maybe.none(:tm.Lookup))
+                                end
+                                if matches then
+                                    result := maybe.some(:Value
+                                        if extent b.binders > 0 then
+                                            let child = pushScope(f)
+                                            for j = 0 upto {extent b.binders - 1} do define(child b.binders[j].name a.a.value) end
+                                            evalExpr(b.body child)
+                                        else
+                                            evalExpr(b.body f)
+                                        end)
+                                end
+                                i := i + 1
+                            end
+                            if maybe.isSome(:Value result) then
+                                maybe.unwrap(:Value result)
+                            elsif maybe.isSome(:Expr x.elseBranch) then
+                                evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                            else
+                                model.raiseException(:Value model.dynamicError offset)
+                            end
+                        else model.internalError(:Value "Inspect target must be an auto value, got "
+                            <> model.typeName(evalExpr(x.target f)) offset)
+                    end
+            end
+        end
+
+    and evalMaybe(e: maybe.T(Expr) f: Frame): maybe.T(Value) =
+        if maybe.isSome(:Expr e) then maybe.some(:Value evalExpr(maybe.unwrap(:Expr e) f)) else maybe.none(:Value) end
+
+    and indexOf(v: Value offset: maybe.T(Int)): Int =
+        case v
+            when vInt with x then x.n
+            else model.internalError(:Int "Array index must be Int, got " <> model.typeName(v) offset)
+        end
+
+    (* A tuple: each component's label is bound for the components after it; a simultaneous declaration's labels are
+     * bound, in a frame of their own, once all of its members' values are computed *)
+    and evalTuple(type: tm.Type elements: Array(Expr) groups: Array(Array(Int)) f: Frame): Value =
+        begin
+            let labels = tupleLabels(type)
+            let elems = array of(extent elements model.okValue)
+            let var tupEnv = pushScope(f)
+            let var idx = 0
+            while idx < extent elements do
+                let found = groupAt(groups idx)
+                let group = maybe.unwrapOr(:Array(Int) found array of idx end)
+                let values = array of(extent group model.okValue)
+                for i = 0 upto {extent group - 1} do values[i] := evalExpr(elements[group[i]] tupEnv) end
+                if {extent group > 1} orif maybe.isSome(:Array(Int) found) then tupEnv := pushScope(tupEnv) end
+                for i = 0 upto {extent group - 1} do
+                    let j = group[i]
+                    elems[j] := values[i]
+                    if maybe.isSome(:Array(maybe.T(String)) labels) andif {j < extent maybe.unwrap(:Array(maybe.T(String)) labels)} then
+                        let label = maybe.unwrap(:Array(maybe.T(String)) labels)[j]
+                        if maybe.isSome(:String label) then define(tupEnv maybe.unwrap(:String label) values[i]) end
+                    end
+                end
+                idx := idx + extent group
+            end
+            model.tupleValue(elems labels)
+        end
+
+    and runClosure(c: model.Closure args: Array(Value)): Value =
+        begin
+            let env = c.env
+            vector.append(:String env.root.callStack c.traceName)
+            let result = try
+                case c.body.form
+                    when exprExternal with x then
+                        case builtins.resolveExternal(x.symbol)
+                            when vBuiltin with b then b.b.fn(args)
+                            else builtins.resolveExternal(x.symbol)
+                        end
+                    else
+                        let callEnv = pushScope(env)
+                        bindTypes(callEnv c.typeBindings)
+                        for i = 0 upto {extent c.params - 1} do
+                            if i < extent args then define(callEnv c.params[i] args[i]) end
+                        end
+                        evalExpr(c.body makeScopeExceptions(typedAst.exprScopeExceptions(c.body) callEnv))
+                end
+            when model.runError with err then
+                leaving(err env)
+                popStack(env)
+                rethrow(:Value err)
+            end
+            popStack(env)
+            result
+        end
+
+    (* =========================================================================
+     * 5. Bindings and programs
+     * ========================================================================= *)
+
+    (* The value of a let binding of name: a function's closure is bound to the name *)
+    and evalBoundValue(name: String value: Expr f: Frame): Value =
+        if value.form?exprFun then makeClosure(value f maybe.some(:String name) maybe.none(:String))
+        else evalExpr(value f) end
+
+    and defineMembers(members: Array(typedAst.LetValue) values: Array(Value) f: Frame): Ok =
+        for i = 0 upto {extent members - 1} do
+            define(f members[i].name if members[i].symbol.isVar then model.cellValue(values[i]) else values[i] end)
+        end
+
+    and memberNames(members: Array(typedAst.LetValue)): maybe.T(Array(maybe.T(String))) =
+        begin
+            let names = array of(extent members maybe.none(:String))
+            for i = 0 upto {extent members - 1} do names[i] := maybe.some(:String members[i].name) end
+            maybe.some(:Array(maybe.T(String)) names)
+        end
+
+    and evalLetValue(v: typedAst.LetValue f: Frame): Value =
+        if v.isRec andif v.value.form?exprFun then
+            let closure = makeClosure(v.value f maybe.some(:String v.name) maybe.some(:String v.name))
+            define(f v.name closure)
+            closure
+        else
+            let val = evalBoundValue(v.name v.value f)
+            define(f v.name if v.symbol.isVar then model.cellValue(val) else val end)
+            val
+        end
+
+    and runModuleInit(name: String bindings: Array(Binding) modEnv: Frame): Frame =
+        begin
+            vector.append(:String modEnv.root.callStack diagnostics.initFrame(name))
+            let var g = modEnv
+            try
+                for i = 0 upto {extent bindings - 1} do g := evalScopedBinding(bindings[i] g).frame end
+            when model.runError with err then
+                leaving(err modEnv)
+                popStack(modEnv)
+                rethrow(:Ok err)
+            end
+            popStack(modEnv)
+            g
+        end
+
+    and exportsOf(scope: symbols.Scope modEnv: Frame): Value =
+        begin
+            let fields = model.newFields()
+            let names = hashMap.keys(:String :symbols.ValueSymbol scope.values)
+            for i = 0 upto {vector.length(:String names) - 1} do
+                let n = vector.get(:String names i)
+                hashMap.insert(:String :Value fields n lookup(modEnv n none))
+            end
+            model.recordValue(fields)
+        end
+
+    and evalBinding(b: Binding f: Frame): Value =
+        case b.form
+            when bindLetValue with x then evalLetValue(x.value f)
+            when bindLetValueGroup with x then
+                let values = array of(extent x.members model.okValue)
+                if {extent x.members > 0} andif x.members[0].isRec then
+                    (* Each member's closure captures f, where the others are defined before any is called *)
+                    for i = 0 upto {extent x.members - 1} do values[i] := evalLetValue(x.members[i] f) end
+                else
+                    for i = 0 upto {extent x.members - 1} do
+                        values[i] := evalBoundValue(x.members[i].name x.members[i].value f)
+                    end
+                    defineMembers(x.members values f)
+                end
+                model.tupleValue(values memberNames(x.members))
+            when bindLetType then model.okValue
+            when bindLetTypeGroup then model.okValue
+            when bindDefKind then model.okValue
+            when bindInterface then model.okValue
+            when bindModule with x then
+                let modEnv = runModuleInit(x.name x.bindings pushScope(f))
+                let exported = exportsOf(x.scope modEnv)
+                define(f x.name exported)
+                exported
+            when bindImport with x then
+                for i = 0 upto {extent x.items - 1} do
+                    let item = x.items[i]
+                    let modPaths = typedAst.effectiveModulePaths(item)
+                    let canonicals = typedAst.effectiveCanonicalModulePaths(item)
+                    for j = 0 upto {extent item.names - 1} do
+                        let modVal = hooks.loadModule(modPaths[j] typedAst.effectiveInterfacePath(item) f
+                            maybe.some(:String canonicals[j]))
+                        define(f item.names[j] modVal)
+                    end
+                end
+                model.okValue
+            when bindExprStmt with x then evalExpr(x.expr f)
+        end
+
+    and evalScopedBinding(b: Binding f0: Frame): Scoped =
+        begin
+            let var f = makeScopeExceptions(typedAst.scopeExceptions(b) f0)
+            case b.form
+                when bindLetValueGroup with x then
+                    if {extent x.members > 0} andif not(x.members[0].isRec) then
+                        let values = array of(extent x.members model.okValue)
+                        for i = 0 upto {extent x.members - 1} do
+                            values[i] := evalBoundValue(x.members[i].name x.members[i].value f)
+                        end
+                        let g = pushScope(f)
+                        defineMembers(x.members values g)
+                        tuple let value = model.tupleValue(values memberNames(x.members)) let frame = g end
+                    else
+                        if declaresName(b f) then f := pushScope(f) end
+                        tuple let value = evalBinding(b f) let frame = f end
+                    end
+                else
+                    if declaresName(b f) then f := pushScope(f) end
+                    tuple let value = evalBinding(b f) let frame = f end
+            end
+        end
+
+    (* Loads and runs module name, as imported from f's directory (load_module_for_interpreter): the unit f's graph
+     * resolves the import to, run from its typed module, which the type checker elaborated, or which is elaborated
+     * here in an environment of its own (a module the program uses without importing it). Its value is kept by
+     * canonical name, so each module is run once. *)
+    let loadModuleForInterpreter(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value =
+        begin
+            let root = f.root
+            let known = if maybe.isSome(:String canonicalName) then
+                hashMap.get(:String :Value root.moduleValues maybe.unwrap(:String canonicalName))
+            else
+                maybe.none(:Value)
+            end
+            if maybe.isSome(:Value known) then
+                maybe.unwrap(:Value known)
+            else
+                let g = root.units
+                let resolved = graph.resolveModule(g.resolver name f.currentDir graph.rootsOf(root.includePaths root.programDir))
+                let canon = graph.canonicalName(resolved)
+                let loaded = hashMap.get(:String :Value root.moduleValues canon)
+                if maybe.isSome(:Value loaded) then
+                    maybe.unwrap(:Value loaded)
+                else
+                    let var typedMod = graph.typedModule(g canon)
+                    if maybe.isNone(:Binding typedMod) then
+                        let typeEnv = env.new()
+                        typeEnv.units := graph.newGraphWith(g.resolver)
+                        for i = 0 upto {extent root.includePaths - 1} do
+                            vector.append(:String typeEnv.includePaths root.includePaths[i])
+                        end
+                        typeEnv.currentDir := f.currentDir
+                        typeEnv.programDir := root.programDir
+                        typedMod := maybe.some(:Binding elaboration.loadModule(name expectedInterface typeEnv))
+                        graph.unit(g option moduleUnit of units.UnitKind end canon).typedModule := typedMod
+                    end
+                    let modEnv = pushScope(f)
+                    if maybe.isSome(:String resolved.source) then
+                        let file = maybe.unwrap(:String resolved.source)
+                        modEnv.currentDir := maybe.some(:String paths.parent(file))
+                        let sm = location.newSourceMap(paths.displayName(file)
+                            maybe.unwrapOr(:String paths.readText(file) ""))
+                        diagnostics.registerSource(sm)
+                        modEnv.sourceMap := maybe.some(:location.SourceMap sm)
+                    end
+                    case maybe.unwrap(:Binding typedMod).form
+                        when bindModule with m then
+                            let exported = exportsOf(m.scope runModuleInit(m.name m.bindings modEnv))
+                            hashMap.insert(:String :Value root.moduleValues canon exported)
+                            exported
+                        else model.internalError(:Value "Not a module: " <> name none)
+                    end
+                end
+            end
+        end
+
+    let installed = begin hooks.loadModule := loadModuleForInterpreter ok end
+
+    let evalProgramPhrases(p: typedAst.Program f0: Frame on: All(r: PhraseResult) Ok): Array(PhraseResult) =
+        begin
+            let results = vector.new(:PhraseResult)
+            let var f = f0
+            for i = 0 upto {extent p.phrases - 1} do
+                let s = evalScopedBinding(p.phrases[i] f)
+                f := s.frame
+                let r: PhraseResult = tuple let phrase = p.phrases[i] let value = s.value end
+                vector.append(:PhraseResult results r)
+                on(r)
+            end
+            vector.toArray(:PhraseResult results)
+        end
+end

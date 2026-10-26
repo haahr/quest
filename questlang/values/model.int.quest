@@ -1,0 +1,183 @@
+(* Quest Self-Hosted Compiler: Run-Time Values Interface
+ *
+ * The values of bootstrap/python/quest/values/model.py, which the interpreter (questlang/interpreter) computes: a
+ * case of Value for each QValue class. A string, word, reader, writer, or string builder is the native Quest value,
+ * which the standard library's externals act on directly (questlang/interpreter/builtins); a record, tuple, array,
+ * variant, option, closure, reference, auto value, exception, or type value is a tuple (or array) whose identity is
+ * the value's, so that `is` on two values is `is` on what they hold (Cardelli's identity, qvalue_is).
+ *
+ * The bootstrap's closures hold its RuntimeEnvironment, which is the tree-walking interpreter's; in Quest a closure's
+ * type needs the environment's, so the frames (Frame) are declared here, and their operations are treewalk's.
+ * The bootstrap's QList, which no external makes (lib/list is written in Quest), is not ported. *)
+
+interface Model
+import
+    questlang/common/location : questlang/common/Location
+    tm = questlang/types/model : questlang/types/Model
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/graph : questlang/modules/Graph
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    word : Word
+    reader : Reader
+    writer : Writer
+export
+    Def Rec Value = Option
+        vOk
+        vBool with b: Bool end
+        vInt with n: Int end
+        vWord with w: word.T end
+        vReal with r: Real end
+        vChar with c: Char end
+        vString with s: String end
+        vRecord with r: RecordValue end
+        vTuple with t: TupleValue end
+        vArray with a: Array(Value) end
+        vVariant with v: Tagged end
+        vOption with v: Tagged end
+        vClosure with c: Closure end
+        vBuiltin with b: Builtin end
+        vRef with r: Ref end
+        vAuto with a: AutoValue end
+        vException with e: ExceptionValue end
+        vWriter with w: writer.T end
+        vReader with rd: reader.T end
+        vStringBuilder with sb: stringBuilder.T end
+        vTypeValue with t: TypeValue end
+    end
+    (* Fields by name; printed in sorted order *)
+    and RecordValue = Tuple fields: hashMap.T(String Value) end
+    (* Components, and their labels if the tuple's type gives them *)
+    and TupleValue = Tuple
+        elements: Array(Value)
+        labels: maybe.T(Array(maybe.T(String)))
+        nameToIndex: hashMap.T(String Int)
+    end
+    and Tagged = Tuple tag: String payload: maybe.T(Value) end
+    and Closure = Tuple
+        params: Array(String)
+        body: typedAst.Expr
+        env: Frame
+        name: maybe.T(String)
+        (* A polymorphic function's type parameters (symbol ids), and the types bound to them by type applications *)
+        typeParamIds: Array(Int)
+        typeBindings: hashMap.T(Int tm.Type)
+        (* The closure's frame in tracebacks (docs/exceptions.md section 2.3) *)
+        traceName: String
+    end
+    and Builtin = Tuple name: String fn: All(args: Array(Value)) Value end
+    (* A mutable cell, or a reference to an array's element or a tuple's component *)
+    and Ref = Tuple form: RefForm end
+    and RefForm = Option
+        cell with c: Cell end
+        arrayElement with arr: Array(Value) index: Int end
+        tupleElement with tup: TupleValue index: Int end
+    end
+    and Cell = Tuple var value: Value end
+    (* An auto value: its components (a tuple) packaged with the closed type that determines their shape *)
+    and AutoValue = Tuple value: Value type: tm.Type end
+    and ExceptionValue = Tuple name: String payload: maybe.T(Value) end
+    and TypeValue = Tuple type: tm.Type bound: maybe.T(tm.Kind) name: maybe.T(String) end
+
+    (* A frame of the interpreter's lexically scoped environment (the bootstrap's RuntimeEnvironment) *)
+    and Frame = Tuple
+        parent: maybe.T(Frame)
+        var bindings: hashMap.T(String Value)
+        (* The types bound to the type parameters (by symbol id) of the polymorphic functions being run *)
+        typeBindings: hashMap.T(Int tm.Type)
+        (* The named exceptions this frame made before the binding that makes them, by symbol id *)
+        madeExceptions: hashMap.T(Int ExceptionValue)
+        var currentDir: maybe.T(String)
+        (* The source map of the file whose code runs in this frame, where its errors are located *)
+        var sourceMap: maybe.T(location.SourceMap)
+        root: Root
+    end
+    (* What every frame of an environment shares *)
+    and Root = Tuple
+        var includePaths: Array(String)
+        var programDir: maybe.T(String)
+        var units: graph.UnitGraph
+        (* The values of the modules run so far, by canonical name *)
+        moduleValues: hashMap.T(String Value)
+        (* The frames running, outermost first (docs/exceptions.md section 4) *)
+        callStack: vector.T(String)
+    end
+
+    (* =========================================================================
+     * Constructors
+     * ========================================================================= *)
+
+    okValue: Value
+    trueValue: Value
+    falseValue: Value
+    boolValue(b: Bool): Value
+    intValue(n: Int): Value
+    realValue(r: Real): Value
+    charValue(c: Char): Value
+    stringValue(s: String): Value
+    recordValue(fields: hashMap.T(String Value)): Value
+    tupleValue(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): Value
+    tupleOf(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): TupleValue
+    variantValue(tag: String payload: maybe.T(Value)): Value
+    optionValue(tag: String payload: maybe.T(Value)): Value
+    cellValue(v: Value): Value
+    exceptionValue(name: String): ExceptionValue
+    builtinValue(name: String fn: All(args: Array(Value)) Value): Value
+    (* A new map of record fields *)
+    newFields(): hashMap.T(String Value)
+
+    (* =========================================================================
+     * Operations
+     * ========================================================================= *)
+
+    (* The value a reference refers to *)
+    deref(r: Ref): Value
+    assign(r: Ref v: Value): Ok
+    (* A tuple's component by label; raises fieldMissing if it has none *)
+    tupleGet(t: TupleValue name: String): Value
+    tupleSetByName(t: TupleValue name: String v: Value): Ok
+    fieldMissing: Exception(String)
+    (* The human-readable type name of a value (QValue.type_name) *)
+    typeName(v: Value): String
+
+    (* Cardelli's is: value equality for Ok, Bool, Int, Word, Real, and Char, type equality for type values, and
+     * identity for the rest *)
+    same(v1: Value v2: Value): Bool
+    (* The canonical text of a value (qvalue_to_str), with cycles shown as ... *)
+    toString(v: Value): String
+    (* A real as Python's repr writes it *)
+    realString(r: Real): String
+
+    (* =========================================================================
+     * Errors raised while running
+     *
+     * The bootstrap raises a Quest exception as QuestException (values/model.py) and an error of the interpreter
+     * itself as QuestRuntimeError (interpreter/primitives.py), both QuestCompilerErrors, which code running a closure
+     * or a module locates in its file and gives the frames running, the first time they leave a frame. Here both are
+     * runError, whose cause tells them apart.
+     * ========================================================================= *)
+
+    Def Cause = Option
+        raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
+        internal with message: String end
+    end
+    Def RunError = Tuple
+        cause: Cause
+        (* Where it was raised, in the file of sourceMap; none for an error without a raise site *)
+        offset: maybe.T(Int)
+        var sourceMap: maybe.T(location.SourceMap)
+        (* The frames running where it was raised, most recent first *)
+        var frames: maybe.T(Array(String))
+    end
+    runError: Exception(RunError)
+    (* Raises the Quest exception exc, without a payload *)
+    raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A
+    (* Raises an error of the interpreter (QuestRuntimeError) *)
+    internalError(A::TYPE message: String offset: maybe.T(Int)): A
+    (* An error's message: "Exception: name", with a payload other than ok and its type, or the internal message *)
+    runErrorMessage(e: RunError): String
+    (* Raised by the dynamic format's reader and writer, as by the dynamic module *)
+    dynamicError: ExceptionValue
+end

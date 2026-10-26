@@ -1,0 +1,492 @@
+(* Quest Self-Hosted Compiler: Run-Time Values Implementation *)
+
+module model : Model
+import
+    questlang/common/location : questlang/common/Location
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/graph : questlang/modules/Graph
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+    word : Word
+    reader : Reader
+    writer : Writer
+export
+    Let Rec Value = Option
+        vOk
+        vBool with b: Bool end
+        vInt with n: Int end
+        vWord with w: word.T end
+        vReal with r: Real end
+        vChar with c: Char end
+        vString with s: String end
+        vRecord with r: RecordValue end
+        vTuple with t: TupleValue end
+        vArray with a: Array(Value) end
+        vVariant with v: Tagged end
+        vOption with v: Tagged end
+        vClosure with c: Closure end
+        vBuiltin with b: Builtin end
+        vRef with r: Ref end
+        vAuto with a: AutoValue end
+        vException with e: ExceptionValue end
+        vWriter with w: writer.T end
+        vReader with rd: reader.T end
+        vStringBuilder with sb: stringBuilder.T end
+        vTypeValue with t: TypeValue end
+    end
+    and RecordValue = Tuple fields: hashMap.T(String Value) end
+    and TupleValue = Tuple
+        elements: Array(Value)
+        labels: maybe.T(Array(maybe.T(String)))
+        nameToIndex: hashMap.T(String Int)
+    end
+    and Tagged = Tuple tag: String payload: maybe.T(Value) end
+    and Closure = Tuple
+        params: Array(String)
+        body: typedAst.Expr
+        env: Frame
+        name: maybe.T(String)
+        typeParamIds: Array(Int)
+        typeBindings: hashMap.T(Int tm.Type)
+        traceName: String
+    end
+    and Builtin = Tuple name: String fn: All(args: Array(Value)) Value end
+    and Ref = Tuple form: RefForm end
+    and RefForm = Option
+        cell with c: Cell end
+        arrayElement with arr: Array(Value) index: Int end
+        tupleElement with tup: TupleValue index: Int end
+    end
+    and Cell = Tuple var value: Value end
+    and AutoValue = Tuple value: Value type: tm.Type end
+    and ExceptionValue = Tuple name: String payload: maybe.T(Value) end
+    and TypeValue = Tuple type: tm.Type bound: maybe.T(tm.Kind) name: maybe.T(String) end
+    and Frame = Tuple
+        parent: maybe.T(Frame)
+        var bindings: hashMap.T(String Value)
+        typeBindings: hashMap.T(Int tm.Type)
+        madeExceptions: hashMap.T(Int ExceptionValue)
+        var currentDir: maybe.T(String)
+        var sourceMap: maybe.T(location.SourceMap)
+        root: Root
+    end
+    and Root = Tuple
+        var includePaths: Array(String)
+        var programDir: maybe.T(String)
+        var units: graph.UnitGraph
+        moduleValues: hashMap.T(String Value)
+        callStack: vector.T(String)
+    end
+
+    (* =========================================================================
+     * 1. Constructors
+     * ========================================================================= *)
+
+    let okValue: Value = option vOk of Value end
+    let trueValue: Value = option vBool of Value with let b = true end
+    let falseValue: Value = option vBool of Value with let b = false end
+    let boolValue(b: Bool): Value = if b then trueValue else falseValue end
+    let intValue(n: Int): Value = option vInt of Value with let n = n end
+    let realValue(r: Real): Value = option vReal of Value with let r = r end
+    let charValue(c: Char): Value = option vChar of Value with let c = c end
+    let stringValue(s: String): Value = option vString of Value with let s = s end
+
+    let newFields(): hashMap.T(String Value) = hashMap.new(:String :Value stringOp.equal hash.string)
+
+    let recordValue(fields: hashMap.T(String Value)): Value =
+        option vRecord of Value with let r = tuple let fields = fields end end
+
+    let tupleOf(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): TupleValue =
+        begin
+            let nameToIndex = hashMap.new(:String :Int stringOp.equal hash.string)
+            if maybe.isSome(:Array(maybe.T(String)) labels) then
+                let ls = maybe.unwrap(:Array(maybe.T(String)) labels)
+                for i = 0 upto {extent ls - 1} do
+                    if maybe.isSome(:String ls[i]) then
+                        hashMap.insert(:String :Int nameToIndex maybe.unwrap(:String ls[i]) i)
+                    end
+                end
+            end
+            tuple let elements = elements let labels = labels let nameToIndex = nameToIndex end
+        end
+
+    let tupleValue(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): Value =
+        option vTuple of Value with let t = tupleOf(elements labels) end
+
+    let variantValue(tag: String payload: maybe.T(Value)): Value =
+        option vVariant of Value with let v = tuple let tag = tag let payload = payload end end
+
+    let optionValue(tag: String payload: maybe.T(Value)): Value =
+        option vOption of Value with let v = tuple let tag = tag let payload = payload end end
+
+    let cellValue(v: Value): Value =
+        option vRef of Value with
+            let r = tuple let form = option cell of RefForm with let c = tuple let var value = v end end end
+        end
+
+    let exceptionValue(name: String): ExceptionValue = tuple let name = name let payload = maybe.none(:Value) end
+
+    let builtinValue(name: String fn: All(args: Array(Value)) Value): Value =
+        option vBuiltin of Value with let b = tuple let name = name let fn = fn end end
+
+    (* =========================================================================
+     * 2. References and tuples
+     * ========================================================================= *)
+
+    let fieldMissing: Exception(String) = exception fieldMissing: String end
+
+    let tupleIndex(t: TupleValue name: String): Int =
+        begin
+            let found = hashMap.get(:String :Int t.nameToIndex name)
+            if maybe.isNone(:Int found) then
+                raise fieldMissing with "Tuple has no labeled component '" <> name <> "'" end
+            end
+            maybe.unwrap(:Int found)
+        end
+
+    let tupleGet(t: TupleValue name: String): Value = t.elements[tupleIndex(t name)]
+
+    let isDigits(s: String): Bool =
+        begin
+            let var all = stringOp.length(s) > 0
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                if {ascii.val(c) < ascii.val('0')} orif {ascii.val(c) > ascii.val('9')} then all := false end
+            end
+            all
+        end
+
+    let digitsValue(s: String): Int =
+        begin
+            let var n = 0
+            for i = 0 upto {stringOp.length(s) - 1} do
+                n := {n * 10} + {ascii.val(stringOp.getChar(s i)) - ascii.val('0')}
+            end
+            n
+        end
+
+    (* The bootstrap's QTuple.set_by_name: by label, or a numeric name (n or _n) by position *)
+    let tupleSetByName(t: TupleValue name: String v: Value): Ok =
+        if hashMap.contains(:String :Int t.nameToIndex name) then
+            t.elements[tupleIndex(t name)] := v
+        elsif isDigits(name) then
+            t.elements[digitsValue(name)] := v
+        elsif {stringOp.length(name) > 1} andif {stringOp.getChar(name 0) is '_'}
+            andif isDigits(stringOp.getSub(name 1 {stringOp.length(name) - 1})) then
+            t.elements[digitsValue(stringOp.getSub(name 1 {stringOp.length(name) - 1}))] := v
+        else
+            raise fieldMissing with "Tuple has no labeled component '" <> name <> "'" end
+        end
+
+    let rec deref(r: Ref): Value =
+        case r.form
+            when cell with x then x.c.value
+            when arrayElement with x then x.arr[x.index]
+            when tupleElement with x then
+                case x.tup.elements[x.index]
+                    when vRef with inner then deref(inner.r)
+                    else x.tup.elements[x.index]
+                end
+        end
+
+    let rec assign(r: Ref v: Value): Ok =
+        case r.form
+            when cell with x then x.c.value := v
+            when arrayElement with x then x.arr[x.index] := v
+            when tupleElement with x then
+                case x.tup.elements[x.index]
+                    when vRef with inner then assign(inner.r v)
+                    else x.tup.elements[x.index] := v
+                end
+        end
+
+    (* =========================================================================
+     * 3. Type names and identity
+     * ========================================================================= *)
+
+    let rec typeName(v: Value): String =
+        case v
+            when vOk then "Ok"
+            when vBool then "Bool"
+            when vInt then "Int"
+            when vWord then "Word.T"
+            when vReal then "Real"
+            when vChar then "Char"
+            when vString then "String"
+            when vRecord then "Record"
+            when vTuple then "Tuple"
+            when vArray then "Array"
+            when vVariant then "Variant"
+            when vOption then "Option"
+            when vClosure then "Function"
+            when vBuiltin then "BuiltinFunction"
+            when vRef with x then "Ref(" <> typeName(deref(x.r)) <> ")"
+            when vAuto then "Auto"
+            when vException then "Exception"
+            when vWriter then "Writer.T"
+            when vReader then "Reader.T"
+            when vStringBuilder then "StringBuilder.Buffer"
+            when vTypeValue then "Type"
+        end
+
+    let sameType(a: tm.Type b: tm.Type): Bool =
+        tm.same(a b) orif subtyping.isTypeEqual(a b maybe.none(:tm.Lookup))
+
+    let same(v1: Value v2: Value): Bool =
+        case v1
+            when vOk then v2?vOk
+            when vBool with x then case v2 when vBool with y then x.b is y.b else false end
+            when vInt with x then case v2 when vInt with y then x.n is y.n else false end
+            when vWord with x then case v2 when vWord with y then word.toInt(x.w) is word.toInt(y.w) else false end
+            when vReal with x then case v2 when vReal with y then x.r is y.r else false end
+            when vChar with x then case v2 when vChar with y then x.c is y.c else false end
+            when vString with x then case v2 when vString with y then x.s is y.s else false end
+            when vRecord with x then case v2 when vRecord with y then x.r is y.r else false end
+            when vTuple with x then case v2 when vTuple with y then x.t is y.t else false end
+            when vArray with x then case v2 when vArray with y then x.a is y.a else false end
+            when vVariant with x then case v2 when vVariant with y then x.v is y.v else false end
+            when vOption with x then case v2 when vOption with y then x.v is y.v else false end
+            when vClosure with x then case v2 when vClosure with y then x.c is y.c else false end
+            when vBuiltin with x then case v2 when vBuiltin with y then x.b is y.b else false end
+            when vRef with x then case v2 when vRef with y then x.r is y.r else false end
+            when vAuto with x then case v2 when vAuto with y then x.a is y.a else false end
+            when vException with x then case v2 when vException with y then x.e is y.e else false end
+            when vWriter with x then case v2 when vWriter with y then x.w is y.w else false end
+            when vReader with x then case v2 when vReader with y then x.rd is y.rd else false end
+            when vStringBuilder with x then case v2 when vStringBuilder with y then x.sb is y.sb else false end
+            when vTypeValue with x then
+                case v2 when vTypeValue with y then sameType(x.t.type y.t.type) else false end
+        end
+
+    (* =========================================================================
+     * 4. Canonical text
+     * ========================================================================= *)
+
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
+
+    (* A byte as \xNN *)
+    let hexEscape(c: Char): String =
+        "\\x" <> stringOp.new(1 hexDigit({ascii.val(c) / 16})) <> stringOp.new(1 hexDigit({ascii.val(c) % 16}))
+
+    (* A character of a literal, escaped as Python's QChar and QString do, quote being the literal's quote *)
+    let escaped(c: Char quote: Char): String =
+        if c is '\n' then "\\n"
+        elsif c is '\t' then "\\t"
+        elsif c is '\r' then "\\r"
+        elsif c is '\\' then "\\\\"
+        elsif c is quote then "\\" <> stringOp.new(1 c)
+        elsif {ascii.val(c) >= 32} andif {ascii.val(c) <= 126} then stringOp.new(1 c)
+        else hexEscape(c)
+        end
+
+    let charString(c: Char): String = "'" <> escaped(c '\'') <> "'"
+
+    let quotedString(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            b.char('"')
+            for i = 0 upto {stringOp.length(s) - 1} do b.str(escaped(stringOp.getChar(s i) '"')) end
+            b.char('"')
+            b.toString()
+        end
+
+    (* A number as conv writes it, with Python's - for Cardelli's ~ *)
+    let signed(s: String): String =
+        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
+            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
+        else
+            s
+        end
+
+    let realString(r: Real): String = signed(conv.real(r))
+
+    (* A word as 16#digits#, in lowercase hexadecimal without leading zeros *)
+    let wordString(w: word.T): String =
+        begin
+            let digits = stringBuilder.new()
+            let var started = false
+            for i = 15 downto 0 do
+                let nibble = word.toInt(word.extract(w {i * 4} 4))
+                if {nibble isnot 0} orif started orif {i is 0} then
+                    started := true
+                    digits.char(hexDigit(nibble))
+                end
+            end
+            "16#" <> digits.toString() <> "#"
+        end
+
+    let joined(parts: vector.T(String)): String =
+        begin
+            let b = stringBuilder.new()
+            for i = 0 upto {vector.length(:String parts) - 1} do
+                if i > 0 then b.char(' ') end
+                b.str(vector.get(:String parts i))
+            end
+            b.toString()
+        end
+
+    (* The values being printed, for cycles: the aggregates and references on the way down *)
+    Let Visited = vector.T(Value)
+
+    let isVisited(visited: Visited v: Value): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:Value visited) - 1} do
+                if same(vector.get(:Value visited i) v) then found := true end
+            end
+            found
+        end
+
+    let sortedNames(fields: hashMap.T(String Value)): vector.T(String) =
+        sort.sortedVector(:String hashMap.keys(:String :Value fields) sort.stringCompare)
+
+    let rec show(v: Value visited: Visited): String =
+        case v
+            when vOk then "ok"
+            when vBool with x then if x.b then "true" else "false" end
+            when vInt with x then signed(conv.int(x.n))
+            when vWord with x then wordString(x.w)
+            when vReal with x then realString(x.r)
+            when vChar with x then charString(x.c)
+            when vString with x then quotedString(x.s)
+            when vRecord with x then
+                guarded(v visited "record" fun(): String
+                    begin
+                        let names = sortedNames(x.r.fields)
+                        let parts = vector.new(:String)
+                        for i = 0 upto {vector.length(:String names) - 1} do
+                            let name = vector.get(:String names i)
+                            vector.append(:String parts
+                                name <> "=" <> show(hashMap.find(:String :Value x.r.fields name) visited))
+                        end
+                        if vector.empty(:String parts) then "record end" else "record " <> joined(parts) <> " end" end
+                    end)
+            when vTuple with x then
+                guarded(v visited "tuple" fun(): String
+                    begin
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.t.elements - 1} do
+                            let shown = show(x.t.elements[i] visited)
+                            let label = labelAt(x.t i)
+                            vector.append(:String parts
+                                if maybe.isSome(:String label) then maybe.unwrap(:String label) <> "=" <> shown else shown end)
+                        end
+                        if vector.empty(:String parts) then "tuple end" else "tuple " <> joined(parts) <> " end" end
+                    end)
+            when vArray with x then
+                guarded(v visited "array of" fun(): String
+                    begin
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.a - 1} do vector.append(:String parts show(x.a[i] visited)) end
+                        if vector.empty(:String parts) then "array of end" else "array of " <> joined(parts) <> " end" end
+                    end)
+            when vVariant with x then tagged("variant" x.v visited)
+            when vOption with x then tagged("option" x.v visited)
+            when vClosure with x then
+                if maybe.isSome(:String x.c.name) then "<fun:" <> maybe.unwrap(:String x.c.name) <> ">" else "<fun>" end
+            when vBuiltin with x then "<builtin:" <> x.b.name <> ">"
+            when vRef with x then
+                if isVisited(visited v) then
+                    "ref(...)"
+                else
+                    vector.append(:Value visited v)
+                    let shown = show(deref(x.r) visited)
+                    vector.pop(:Value visited)
+                    "ref(" <> shown <> ")"
+                end
+            when vAuto with x then "auto(" <> show(x.a.value visited) <> " : " <> tm.show(x.a.type) <> ")"
+            when vException with x then
+                if maybe.isSome(:Value x.e.payload) then
+                    "exception " <> x.e.name <> " with " <> show(maybe.unwrap(:Value x.e.payload) visited)
+                else
+                    "exception " <> x.e.name
+                end
+            when vWriter then "<writer>"
+            when vReader then "<reader>"
+            when vStringBuilder then "<string builder>"
+            when vTypeValue with x then tm.show(x.t.type)
+        end
+    and guarded(v: Value visited: Visited opening: String body: All() String): String =
+        if isVisited(visited v) then
+            opening <> " ... end"
+        else
+            vector.append(:Value visited v)
+            let shown = body()
+            vector.pop(:Value visited)
+            shown
+        end
+    and tagged(keyword: String t: Tagged visited: Visited): String =
+        if maybe.isSome(:Value t.payload) then
+            keyword <> " " <> t.tag <> " with " <> show(maybe.unwrap(:Value t.payload) visited) <> " end"
+        else
+            keyword <> " " <> t.tag <> " end"
+        end
+    and labelAt(t: TupleValue i: Int): maybe.T(String) =
+        if maybe.isSome(:Array(maybe.T(String)) t.labels) andif {i < extent maybe.unwrap(:Array(maybe.T(String)) t.labels)} then
+            maybe.unwrap(:Array(maybe.T(String)) t.labels)[i]
+        else
+            maybe.none(:String)
+        end
+
+    let toString(v: Value): String = show(v vector.new(:Value))
+
+    (* =========================================================================
+     * 5. Errors raised while running
+     * ========================================================================= *)
+
+    Let Cause = Option
+        raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
+        internal with message: String end
+    end
+    Let RunError = Tuple
+        cause: Cause
+        offset: maybe.T(Int)
+        var sourceMap: maybe.T(location.SourceMap)
+        var frames: maybe.T(Array(String))
+    end
+
+    let runError: Exception(RunError) = exception runError: RunError end
+
+    let raiseError(A::TYPE cause: Cause offset: maybe.T(Int)): A =
+        raise runError with
+            tuple
+                let cause = cause
+                let offset = offset
+                let var sourceMap = maybe.none(:location.SourceMap)
+                let var frames = maybe.none(:Array(String))
+            end
+        end
+
+    let raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A =
+        raiseError(:A option raised of Cause with
+            let exc = exc let payload = maybe.none(:Value) let payloadType = maybe.none(:tm.Type)
+        end offset)
+
+    let internalError(A::TYPE message: String offset: maybe.T(Int)): A =
+        raiseError(:A option internal of Cause with let message = message end offset)
+
+    let runErrorMessage(e: RunError): String =
+        case e.cause
+            when raised with x then
+                let hasPayload = maybe.isSome(:Value x.payload) andif not(maybe.unwrap(:Value x.payload)?vOk)
+                if hasPayload then
+                    let typeStr =
+                        if maybe.isSome(:tm.Type x.payloadType) then ":" <> tm.show(maybe.unwrap(:tm.Type x.payloadType)) else "" end
+                    "Exception: " <> x.exc.name <> " with " <> toString(maybe.unwrap(:Value x.payload)) <> typeStr
+                else
+                    "Exception: " <> x.exc.name
+                end
+            when internal with x then x.message
+        end
+
+    let dynamicError: ExceptionValue = exceptionValue("dynamic.error")
+end

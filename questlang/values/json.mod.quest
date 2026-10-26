@@ -1,0 +1,307 @@
+(* Quest Self-Hosted Compiler: JSON Text Implementation *)
+
+module json : Json
+import
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+export
+    Let Rec Value = Option
+        jNull
+        jBool with b: Bool end
+        jNumber with text: String isInteger: Bool end
+        jString with s: String end
+        jArray with items: vector.T(Value) end
+        jObject with o: Object end
+    end
+    and Object = Tuple names: vector.T(String) members: hashMap.T(String Value) end
+
+    let error: Exception = exception error end
+
+    (* =========================================================================
+     * 1. Constructors
+     * ========================================================================= *)
+
+    let null: Value = option jNull of Value end
+    let bool(b: Bool): Value = option jBool of Value with let b = b end
+    let number(text: String isInteger: Bool): Value = option jNumber of Value with let text = text let isInteger = isInteger end
+    let string(s: String): Value = option jString of Value with let s = s end
+    let arrayValue(items: vector.T(Value)): Value = option jArray of Value with let items = items end
+    let newObject(): Object =
+        tuple let names = vector.new(:String) let members = hashMap.new(:String :Value stringOp.equal hash.string) end
+    let object(o: Object): Value = option jObject of Value with let o = o end
+
+    (* A number as conv writes it, with Python's - for Cardelli's ~ *)
+    let signed(s: String): String =
+        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
+            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
+        else
+            s
+        end
+
+    let int(n: Int): Value = number(signed(conv.int(n)) true)
+    let real(r: Real): Value = number(signed(conv.real(r)) false)
+
+    let put(o: Object name: String v: Value): Ok =
+        begin
+            if not(hashMap.contains(:String :Value o.members name)) then vector.append(:String o.names name) end
+            hashMap.insert(:String :Value o.members name v)
+            ok
+        end
+
+    let get(o: Object name: String): maybe.T(Value) = hashMap.get(:String :Value o.members name)
+    let names(o: Object): Array(String) = vector.toArray(:String o.names)
+
+    (* =========================================================================
+     * 2. Parsing (json.loads)
+     * ========================================================================= *)
+
+    Let Scanner = Tuple text: String var pos: Int end
+
+    let atEnd(s: Scanner): Bool = s.pos >= stringOp.length(s.text)
+    let peek(s: Scanner): Char = if atEnd(s) then '\x00' else stringOp.getChar(s.text s.pos) end
+    let advance(s: Scanner): Ok = s.pos := s.pos + 1
+    let fail(A::TYPE): A = raise error end
+
+    let isSpace(c: Char): Bool = {c is ' '} orif {c is '\t'} orif {c is '\n'} orif {c is '\r'}
+    let isDigit(c: Char): Bool = {ascii.val(c) >= ascii.val('0')} andif {ascii.val(c) <= ascii.val('9')}
+
+    let skipSpace(s: Scanner): Ok = while not(atEnd(s)) andif isSpace(peek(s)) do advance(s) end
+
+    (* Expects the literal word at the scanner's position *)
+    let expectWord(s: Scanner word: String): Ok =
+        begin
+            let n = stringOp.length(word)
+            if {{s.pos + n} > stringOp.length(s.text)} orif not(stringOp.equal(stringOp.getSub(s.text s.pos n) word)) then
+                fail(:Ok)
+            end
+            s.pos := s.pos + n
+        end
+
+    let digits(s: Scanner): Int =
+        begin
+            let start = s.pos
+            while not(atEnd(s)) andif isDigit(peek(s)) do advance(s) end
+            s.pos - start
+        end
+
+    (* An optional minus, 0 or digits not starting with 0, an optional fraction, and an optional exponent *)
+    let parseNumber(s: Scanner): Value =
+        begin
+            let start = s.pos
+            if peek(s) is '-' then advance(s) end
+            if not(isDigit(peek(s))) orif atEnd(s) then fail(:Ok) end
+            if peek(s) is '0' then advance(s) else begin digits(s) ok end end
+            let var isInteger = true
+            if {peek(s) is '.'} andif not(atEnd(s)) then
+                let save = s.pos
+                advance(s)
+                if digits(s) is 0 then s.pos := save else isInteger := false end
+            end
+            if {{peek(s) is 'e'} orif {peek(s) is 'E'}} andif not(atEnd(s)) then
+                let save = s.pos
+                advance(s)
+                if {peek(s) is '+'} orif {peek(s) is '-'} then advance(s) end
+                if digits(s) is 0 then s.pos := save else isInteger := false end
+            end
+            number(stringOp.getSub(s.text start {s.pos - start}) isInteger)
+        end
+
+    let hexValue(c: Char): Int =
+        begin
+            let v = ascii.val(c)
+            if {v >= ascii.val('0')} andif {v <= ascii.val('9')} then v - ascii.val('0')
+            elsif {v >= ascii.val('a')} andif {v <= ascii.val('f')} then {v - ascii.val('a')} + 10
+            elsif {v >= ascii.val('A')} andif {v <= ascii.val('F')} then {v - ascii.val('A')} + 10
+            else fail(:Int)
+            end
+        end
+
+    let parseString(s: Scanner): String =
+        begin
+            advance(s)
+            let b = stringBuilder.new()
+            let var done = false
+            while not(done) do
+                if atEnd(s) then fail(:Ok) end
+                let c = peek(s)
+                advance(s)
+                if c is '"' then
+                    done := true
+                elsif c is '\\' then
+                    if atEnd(s) then fail(:Ok) end
+                    let e = peek(s)
+                    advance(s)
+                    if e is '"' then b.char('"')
+                    elsif e is '\\' then b.char('\\')
+                    elsif e is '/' then b.char('/')
+                    elsif e is 'b' then b.char(ascii.char(8))
+                    elsif e is 'f' then b.char(ascii.char(12))
+                    elsif e is 'n' then b.char('\n')
+                    elsif e is 'r' then b.char('\r')
+                    elsif e is 't' then b.char('\t')
+                    elsif e is 'u' then
+                        if {s.pos + 4} > stringOp.length(s.text) then fail(:Ok) end
+                        let var code = 0
+                        for i = 0 upto 3 do code := {code * 16} + hexValue(stringOp.getChar(s.text {s.pos + i})) end
+                        s.pos := s.pos + 4
+                        (* A character is a byte, so an escape above ÿ gives none *)
+                        if code > 255 then fail(:Ok) end
+                        b.char(ascii.char(code))
+                    else fail(:stringBuilder.T)
+                    end
+                    ok
+                elsif ascii.val(c) < 32 then
+                    fail(:Ok)
+                else
+                    b.char(c)
+                    ok
+                end
+            end
+            b.toString()
+        end
+
+    let rec parseValue(s: Scanner): Value =
+        begin
+            skipSpace(s)
+            if atEnd(s) then fail(:Ok) end
+            let c = peek(s)
+            let v = if c is '{' then
+                advance(s)
+                let o = newObject()
+                skipSpace(s)
+                if peek(s) is '}' then
+                    advance(s)
+                else
+                    let var more = true
+                    while more do
+                        skipSpace(s)
+                        if peek(s) isnot '"' then fail(:Ok) end
+                        let name = parseString(s)
+                        skipSpace(s)
+                        if peek(s) isnot ':' then fail(:Ok) end
+                        advance(s)
+                        put(o name parseValue(s))
+                        skipSpace(s)
+                        if peek(s) is ',' then advance(s)
+                        elsif peek(s) is '}' then begin advance(s) more := false end
+                        else fail(:Ok)
+                        end
+                    end
+                end
+                object(o)
+            elsif c is '[' then
+                advance(s)
+                let items = vector.new(:Value)
+                skipSpace(s)
+                if peek(s) is ']' then
+                    advance(s)
+                else
+                    let var more = true
+                    while more do
+                        vector.append(:Value items parseValue(s))
+                        skipSpace(s)
+                        if peek(s) is ',' then advance(s)
+                        elsif peek(s) is ']' then begin advance(s) more := false end
+                        else fail(:Ok)
+                        end
+                    end
+                end
+                arrayValue(items)
+            elsif c is '"' then
+                string(parseString(s))
+            elsif c is 't' then
+                begin expectWord(s "true") bool(true) end
+            elsif c is 'f' then
+                begin expectWord(s "false") bool(false) end
+            elsif c is 'n' then
+                begin expectWord(s "null") null end
+            elsif {c is '-'} orif isDigit(c) then
+                parseNumber(s)
+            else
+                fail(:Value)
+            end
+            v
+        end
+
+    let parse(text: String): Value =
+        begin
+            let s: Scanner = tuple let text = text let var pos = 0 end
+            let v = parseValue(s)
+            skipSpace(s)
+            if not(atEnd(s)) then fail(:Ok) end
+            v
+        end
+
+    (* =========================================================================
+     * 3. Printing (json.dumps)
+     * ========================================================================= *)
+
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
+
+    let quoted(b: stringBuilder.T text: String): Ok =
+        begin
+            b.char('"')
+            for i = 0 upto {stringOp.length(text) - 1} do
+                let c = stringOp.getChar(text i)
+                let v = ascii.val(c)
+                if c is '"' then b.str("\\\"")
+                elsif c is '\\' then b.str("\\\\")
+                elsif c is '\n' then b.str("\\n")
+                elsif c is '\r' then b.str("\\r")
+                elsif c is '\t' then b.str("\\t")
+                elsif v is 8 then b.str("\\b")
+                elsif v is 12 then b.str("\\f")
+                elsif {v < 32} orif {v > 126} then
+                    b.str("\\u00").char(hexDigit(v / 16)).char(hexDigit(v % 16))
+                else
+                    b.char(c)
+                end
+            end
+            b.char('"')
+            ok
+        end
+
+    let rec write(b: stringBuilder.T v: Value): Ok =
+        case v
+            when jNull then begin b.str("null") ok end
+            when jBool with x then begin b.str(if x.b then "true" else "false" end) ok end
+            when jNumber with x then begin b.str(x.text) ok end
+            when jString with x then quoted(b x.s)
+            when jArray with x then
+                begin
+                    b.char('[')
+                    for i = 0 upto {vector.length(:Value x.items) - 1} do
+                        if i > 0 then b.char(',') end
+                        write(b vector.get(:Value x.items i))
+                    end
+                    b.char(']')
+                    ok
+                end
+            when jObject with x then
+                begin
+                    b.char('{')
+                    for i = 0 upto {vector.length(:String x.o.names) - 1} do
+                        if i > 0 then b.char(',') end
+                        let name = vector.get(:String x.o.names i)
+                        quoted(b name)
+                        b.char(':')
+                        write(b hashMap.find(:String :Value x.o.members name))
+                    end
+                    b.char('}')
+                    ok
+                end
+        end
+
+    let dump(v: Value): String =
+        begin
+            let b = stringBuilder.new()
+            write(b v)
+            b.toString()
+        end
+end

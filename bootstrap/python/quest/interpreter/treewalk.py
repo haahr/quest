@@ -42,7 +42,6 @@ from quest.values.model import (
     QClosure,
     QExceptionVal,
     QInt,
-    QList,
     QOk,
     QOption,
     QReal,
@@ -480,9 +479,6 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             type_args = tuple(env.resolve_type(t) for t in type_args)
             if isinstance(callee, QClosure) and callee.type_param_ids:
                 callee = callee.instantiate(type_args)
-            if isinstance(callee, QBuiltinFun):
-                if callee.name == "list.nil":
-                    return QList(())
             if isinstance(callee, QClosure) and len(callee.params) == 0:
                 return run_closure(callee, [])
             return callee

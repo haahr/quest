@@ -183,7 +183,8 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 
 **Self-hosted compiler:** `python3 run_tests.py --self-hosted` compiles the self-hosted compiler's driver
 (`questlang/driver/main.quest`) to C with the bootstrap, then runs it, instead of the bootstrap's driver, on every test
-of the phases it has (now tokenize, parse, and typecheck; [milestone-2.md](milestone-2.md) §3), against the bootstrap's goldens and
+of the phases it has (now tokenize, parse, typecheck, and interpret; [milestone-2.md](milestone-2.md) §3,
+[milestone-3.md](milestone-3.md) §3), against the bootstrap's goldens and
 error expectations, which it never writes. The driver takes the bootstrap driver's `--stop-after PHASE FILE` and prints
 the phase's dump in the bootstrap's format (it also has `desugar`, which has no goldens). It reports errors after the
 bootstrap's one: an error test passes when the driver's first diagnostic is the expected one and, if it reports more,
@@ -195,7 +196,13 @@ off the list. The tests of several errors, which only the self-hosted driver rep
 and each expectation must be reported.
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
-directory, finds `lib/`.
+directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./quest -o build/questlang/main
+questlang/driver/main.quest`) rather than compiling one, which takes minutes.
+
+The driver's `-e`, which no golden uses, is tested against the bootstrap's: `tests/eval/cases.quest` holds programs,
+one per line, and `python tests/eval/generate.py` writes the bootstrap driver's transcript of them
+(`tests/golden/self-hosted/eval.out`, each program's output, errors, and exit status), which the self-hosted suite
+compares the driver's with (`interpret:self-hosted/eval`).
 
 **Which runs:** a change to the self-hosted compiler alone (`questlang/`) runs the self-hosted suite and the questlang
 tests compiled, `python3 run_tests.py --phase run_c_compiled -k questlang/`; interpreting the self-hosted compiler is

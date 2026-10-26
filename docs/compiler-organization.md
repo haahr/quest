@@ -85,7 +85,8 @@ questlang/
 │   ├── interfacecompiler, modulecompiler, manifest   # .qi and .qm artifacts, compiled modules
 │
 ├── values/                  # Runtime values (Milestone 3)
-│   ├── model                # Values
+│   ├── model                # Values, and the interpreter's frames
+│   ├── json                 # JSON text, as the dynamic format uses it
 │   └── dynamicjson          # The serialized form of dynamic values
 │
 ├── interpreter/             # Interpreters (tree walking, Milestone 3; IR, Milestone 4)
@@ -106,9 +107,10 @@ questlang/
     └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
 ```
 
-So far `common/*`, `syntax/*`, `types/*` (but `canonical`), `typechecker/*`, `modules/*` (but the artifacts'
-`interfacecompiler`, `modulecompiler`, and `manifest`), and `driver/main` (the front end's phases) exist; the rest of
-the tree is the plan.
+So far `common/*`, `syntax/*`, `types/*` (of `canonical`, the part the interpreter uses), `typechecker/*`,
+`modules/*` (but the artifacts' `interfacecompiler`, `modulecompiler`, and `manifest`), `values/*`, `interpreter/*`
+(but `irinterp`), and `driver/main` (the front end's phases, the interpret phase, and `-e`) exist; the rest of the
+tree is the plan.
 
 ---
 
@@ -361,7 +363,8 @@ Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape, lvalues, met
 Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
          scoping
-Layer 8: values/*, interpreter/* | ir/*, types/canonical | codegen/*, modules' artifacts, config/*, build/*
+Layer 8: types/canonical, values/json → values/model → dynamicjson → interpreter/primitives, builtins,
+         formatting → treewalk | ir/* | codegen/*, modules' artifacts, config/*, build/*
 Layer 9: driver/*
 ```
 
@@ -395,9 +398,12 @@ self-hosted suite (`run_tests.py --self-hosted`) verifies it, with the
 generated tests of the types (`types_*`) and of elaboration (`elaborate_*`), and tests of several errors
 (`tests/self-hosted/errors`); see [testing.md](testing.md).
 
-### Milestone 3: Values & the Tree-Walking Interpreter (`values`, `interpreter`)
-- `values/model`, `interpreter/primitives`, `formatting`, `builtins`, and `treewalk`, verified against the
-  `interpret` goldens; `values/dynamicjson` for `dynamic.extern` and `intern`.
+### Milestone 3: Values & the Tree-Walking Interpreter (`values`, `interpreter`) — done
+The plan is [milestone-3.md](milestone-3.md): `values/model`, `interpreter/primitives`, `formatting`, `builtins`
+(which call the native standard library), and `treewalk`; `values/json` and `dynamicjson` for `dynamic.extern` and
+`intern`; and the driver's interpret phase and `-e`. The self-hosted suite verifies it against the run goldens and
+run-time error tests, and `-e` against a generated transcript of the bootstrap's (`tests/eval`); see
+[testing.md](testing.md).
 
 ### Milestone 4: IR (`ir`, `types/canonical`, the IR interpreter)
 - `ir/lower` and the IR passes, `types/canonical`, and `interpreter/irinterp`, which runs the IR of each pass and is

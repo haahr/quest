@@ -420,32 +420,6 @@ class QArray(QValue):
             visited.remove(id(self))
 
 
-class QList(QValue):
-    """Immutable sequence of values representing a Cardelli List."""
-
-    def __init__(self, elements: tuple[QValue, ...] | list[QValue] = ()):
-        self.elements: tuple[QValue, ...] = tuple(elements)
-
-    @property
-    def type_name(self) -> str:
-        return "List"
-
-    def to_str(self, visited: Optional[set[int]] = None) -> str:
-        if visited is None:
-            visited = set()
-        if id(self) in visited:
-            return "list of ... end"
-        visited.add(id(self))
-
-        try:
-            if not self.elements:
-                return "list of end"
-            elems_str = " ".join(e.to_str(visited) for e in self.elements)
-            return f"list of {elems_str} end"
-        finally:
-            visited.remove(id(self))
-
-
 # ============================================================================
 # 4. Sum / Disjoint Union Values
 # ============================================================================
@@ -856,14 +830,6 @@ def qvalue_structural_eq(
             return True
 
         case (QArray(elements=elems1), QArray(elements=elems2)):
-            if len(elems1) != len(elems2):
-                return False
-            for e1, e2 in zip(elems1, elems2):
-                if not qvalue_structural_eq(e1, e2, visited):
-                    return False
-            return True
-
-        case (QList(elements=elems1), QList(elements=elems2)):
             if len(elems1) != len(elems2):
                 return False
             for e1, e2 in zip(elems1, elems2):

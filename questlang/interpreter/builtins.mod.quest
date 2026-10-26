@@ -1,0 +1,366 @@
+(* Quest Self-Hosted Compiler: The Standard Library's Externals Implementation *)
+
+module builtins : Builtins
+import
+    questlang/values/model : questlang/values/Model
+    questlang/values/dynamicJson : questlang/values/DynamicJson
+    questlang/interpreter/primitives : questlang/interpreter/Primitives
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    util/stringBuilder : util/StringBuilder
+    arrayOp : ArrayOp
+    stringOp = string : StringOp
+    intOp = int : IntOp
+    realOp = real : RealOp
+    ascii : Ascii
+    conv : Conv
+    word : Word
+    reader : Reader
+    writer : Writer
+    system : System
+export
+    Let Value = model.Value
+    Let Args = Array(Value)
+
+    (* =========================================================================
+     * 1. Arguments and results
+     * ========================================================================= *)
+
+    let wrong(A::TYPE what: String v: Value): A =
+        model.internalError(:A "Expected argument of type " <> what <> ", got " <> model.typeName(v) maybe.none(:Int))
+
+    let str(v: Value): String = case v when vString with x then x.s else wrong(:String "QString" v) end
+    let int(v: Value): Int = case v when vInt with x then x.n else wrong(:Int "QInt" v) end
+    let chr(v: Value): Char = case v when vChar with x then x.c else wrong(:Char "QChar" v) end
+    let rl(v: Value): Real = case v when vReal with x then x.r else wrong(:Real "QReal" v) end
+    let bool(v: Value): Bool = case v when vBool with x then x.b else wrong(:Bool "QBool" v) end
+    let wd(v: Value): word.T = case v when vWord with x then x.w else wrong(:word.T "QWord" v) end
+    let wr(v: Value): writer.T = case v when vWriter with x then x.w else wrong(:writer.T "QWriter" v) end
+    let rd(v: Value): reader.T = case v when vReader with x then x.rd else wrong(:reader.T "QReader" v) end
+    let sb(v: Value): stringBuilder.T =
+        case v when vStringBuilder with x then x.sb else wrong(:stringBuilder.T "QStringBuilder" v) end
+    let arr(v: Value): Array(Value) = case v when vArray with x then x.a else wrong(:Array(Value) "QArray" v) end
+
+    let unit = model.okValue
+    let vString(s: String): Value = model.stringValue(s)
+    let vInt(n: Int): Value = model.intValue(n)
+    let vChar(c: Char): Value = model.charValue(c)
+    let vReal(r: Real): Value = model.realValue(r)
+    let vBool(b: Bool): Value = model.boolValue(b)
+    let vWord(w: word.T): Value = option vWord of Value with let w = w end
+    let vWriter(w: writer.T): Value = option vWriter of Value with let w = w end
+    let vReader(r: reader.T): Value = option vReader of Value with let rd = r end
+    let vException(e: model.ExceptionValue): Value = option vException of Value with let e = e end
+
+    let strings(xs: Array(String)): Value =
+        begin
+            let a = array of(extent xs unit)
+            for i = 0 upto {extent xs - 1} do a[i] := vString(xs[i]) end
+            option vArray of Value with let a = a end
+        end
+
+    (* fn, with the library's native errors raised as the interpreted ones *)
+    let guarded(fn: All(args: Args) Value): All(args: Args) Value =
+        fun(args: Args): Value
+            try
+                fn(args)
+            when stringOp.error then model.raiseException(:Value primitives.stringError maybe.none(:Int))
+            when writer.error then model.raiseException(:Value primitives.writerError maybe.none(:Int))
+            when reader.error then model.raiseException(:Value primitives.readerError maybe.none(:Int))
+            when ascii.error then model.raiseException(:Value primitives.asciiError maybe.none(:Int))
+            when intOp.error then model.raiseException(:Value primitives.intError maybe.none(:Int))
+            when realOp.error then model.raiseException(:Value primitives.realError maybe.none(:Int))
+            when word.error then model.raiseException(:Value primitives.wordError maybe.none(:Int))
+            when arrayOp.error then model.raiseException(:Value primitives.arrayOpError maybe.none(:Int))
+            when system.error then model.raiseException(:Value primitives.systemError maybe.none(:Int))
+            end
+
+    (* =========================================================================
+     * 2. The table
+     * ========================================================================= *)
+
+    let table = model.newFields()
+    let fn(symbol: String f: All(args: Args) Value): Ok =
+        begin hashMap.insert(:String :Value table symbol model.builtinValue(symbol guarded(f))) ok end
+    let value(symbol: String v: Value): Ok = begin hashMap.insert(:String :Value table symbol v) ok end
+    (* An exception, under its symbol and the symbol's name ((&quest_exc_x) and quest_exc_x) *)
+    let exc(name: String e: model.ExceptionValue): Ok =
+        begin value("(&" <> name <> ")" vException(e)) value(name vException(e)) end
+
+    (* The identity hash of what `is` compares: a scalar's value, or the object a value holds *)
+    let identityHash(v: Value): word.T =
+        case v
+            when vInt with x then hash.identityHash(:Int x.n)
+            when vWord with x then hash.identityHash(:word.T x.w)
+            when vBool with x then hash.identityHash(:Bool x.b)
+            when vChar with x then hash.identityHash(:Char x.c)
+            when vReal with x then hash.identityHash(:Real x.r ++ 0.0)
+            when vOk then hash.identityHash(:Int 0)
+            when vString with x then hash.identityHash(:String x.s)
+            when vRecord with x then hash.identityHash(:model.RecordValue x.r)
+            when vTuple with x then hash.identityHash(:model.TupleValue x.t)
+            when vArray with x then hash.identityHash(:Array(Value) x.a)
+            when vVariant with x then hash.identityHash(:model.Tagged x.v)
+            when vOption with x then hash.identityHash(:model.Tagged x.v)
+            when vClosure with x then hash.identityHash(:model.Closure x.c)
+            when vBuiltin with x then hash.identityHash(:model.Builtin x.b)
+            when vRef with x then hash.identityHash(:model.Ref x.r)
+            when vAuto with x then hash.identityHash(:model.AutoValue x.a)
+            when vException with x then hash.identityHash(:model.ExceptionValue x.e)
+            when vWriter with x then hash.identityHash(:writer.T x.w)
+            when vReader with x then hash.identityHash(:reader.T x.rd)
+            when vStringBuilder with x then hash.identityHash(:stringBuilder.T x.sb)
+            when vTypeValue with x then hash.identityHash(:model.TypeValue x.t)
+        end
+
+    let systemArgs = tuple let var args = array of :String end end
+    let setSystemArgs(args: Array(String)): Ok = systemArgs.args := args
+
+    let dynamicFailure(A::TYPE): A = model.raiseException(:A model.dynamicError maybe.none(:Int))
+
+    (* A dynamic value's copy: a new auto value of the same components *)
+    let dynamicCopy(v: Value): Value =
+        case v
+            when vAuto with x then
+                case x.a.value
+                    when vTuple with t then
+                        let elements = array of(extent t.t.elements unit)
+                        for i = 0 upto {extent elements - 1} do elements[i] := t.t.elements[i] end
+                        option vAuto of Value with
+                            let a = tuple let value = model.tupleValue(elements t.t.labels) let type = x.a.type end
+                        end
+                    else dynamicFailure(:Value)
+                end
+            else dynamicFailure(:Value)
+        end
+
+    let dynamicExtern(w: writer.T d: Value): Value =
+        begin
+            let text = dynamicJson.encode(d)
+            try writer.putString(w text) when writer.error then dynamicFailure(:Ok) end
+            unit
+        end
+
+    (* Reads one JSON value's text from r, as the bootstrap's _dynamic_intern does: an object, an array, or a string
+     * by its brackets and quotes, and anything else up to a delimiter (which is read too: a native reader cannot put
+     * a character back, and a document that is not an object fails anyway) *)
+    let readDocument(r: reader.T): String =
+        begin
+            let b = stringBuilder.new()
+            let next(): Char = if reader.more(r) then reader.getChar(r) else dynamicFailure(:Char) end
+            let var c = next()
+            while {c is ' '} orif {c is '\t'} orif {c is '\r'} orif {c is '\n'} do c := next() end
+            b.char(c)
+            if {c is '{'} orif {c is '['} then
+                let var depth = 1
+                let var inString = false
+                let var escaped = false
+                while depth > 0 do
+                    let d = next()
+                    b.char(d)
+                    if inString then
+                        if escaped then escaped := false
+                        elsif d is '\\' then escaped := true
+                        elsif d is '"' then inString := false
+                        end
+                    elsif d is '"' then inString := true
+                    elsif {d is '{'} orif {d is '['} then depth := depth + 1
+                    elsif {d is '}'} orif {d is ']'} then depth := depth - 1
+                    end
+                end
+            elsif c is '"' then
+                let var escaped = false
+                let var done = false
+                while not(done) do
+                    let d = next()
+                    b.char(d)
+                    if escaped then escaped := false
+                    elsif d is '\\' then escaped := true
+                    elsif d is '"' then done := true
+                    end
+                end
+            else
+                let var done = false
+                while not(done) andif reader.more(r) do
+                    let d = reader.getChar(r)
+                    if {d is ' '} orif {d is '\t'} orif {d is '\r'} orif {d is '\n'} orif {d is ','} orif {d is ']'}
+                        orif {d is '}'} then
+                        done := true
+                    else
+                        b.char(d)
+                        ok
+                    end
+                end
+            end
+            b.toString()
+        end
+
+    let dynamicIntern(r: reader.T): Value =
+        dynamicJson.decode(try readDocument(r) when reader.error then dynamicFailure(:String) end)
+
+    let filled =
+        begin
+            (* Writer *)
+            exc("quest_exc_writer_error" primitives.writerError)
+            value("quest_writer_output" vWriter(writer.output))
+            value("quest_writer_err" vWriter(writer.err))
+            fn("quest_writer_file" fun(a: Args): Value vWriter(writer.file(str(a[0]))))
+            fn("quest_writer_put_string" fun(a: Args): Value begin writer.putString(wr(a[0]) str(a[1])) unit end)
+            fn("quest_writer_put_char" fun(a: Args): Value begin writer.putChar(wr(a[0]) chr(a[1])) unit end)
+            fn("quest_writer_put_substring" fun(a: Args): Value
+                begin writer.putSubString(wr(a[0]) str(a[1]) int(a[2]) int(a[3])) unit end)
+            fn("quest_writer_flush" fun(a: Args): Value begin writer.flush(wr(a[0])) unit end)
+            fn("quest_writer_close" fun(a: Args): Value begin writer.close(wr(a[0])) unit end)
+
+            (* Reader *)
+            exc("quest_exc_reader_error" primitives.readerError)
+            value("quest_reader_input" vReader(reader.input))
+            fn("quest_reader_file" fun(a: Args): Value vReader(reader.file(str(a[0]))))
+            fn("quest_reader_more" fun(a: Args): Value vBool(reader.more(rd(a[0]))))
+            fn("quest_reader_ready" fun(a: Args): Value vInt(reader.ready(rd(a[0]))))
+            fn("quest_reader_get_char" fun(a: Args): Value vChar(reader.getChar(rd(a[0]))))
+            fn("quest_reader_get_string" fun(a: Args): Value vString(reader.getString(rd(a[0]) int(a[1]))))
+            fn("quest_reader_get_substring" fun(a: Args): Value
+                begin reader.getSubString(rd(a[0]) str(a[1]) int(a[2]) int(a[3])) unit end)
+            fn("quest_reader_close" fun(a: Args): Value begin reader.close(rd(a[0])) unit end)
+
+            (* Conv and Ascii *)
+            fn("quest_conv_int" fun(a: Args): Value vString(conv.int(int(a[0]))))
+            fn("quest_conv_real" fun(a: Args): Value vString(conv.real(rl(a[0]))))
+            fn("quest_conv_char" fun(a: Args): Value vString(conv.char(chr(a[0]))))
+            fn("quest_conv_string" fun(a: Args): Value vString(conv.string(str(a[0]))))
+            exc("quest_exc_ascii_error" primitives.asciiError)
+            fn("quest_ascii_char" fun(a: Args): Value vChar(ascii.char(int(a[0]))))
+            fn("quest_ascii_val" fun(a: Args): Value vInt(ascii.val(chr(a[0]))))
+
+            (* IntOp and RealOp *)
+            exc("quest_exc_int_error" primitives.intError)
+            value("QUEST_INT_MIN" vInt(intOp.minInt))
+            value("QUEST_INT_MAX" vInt(intOp.maxInt))
+            exc("quest_exc_real_error" primitives.realError)
+            value("QUEST_REAL_MIN" vReal(realOp.minReal))
+            value("QUEST_REAL_MAX" vReal(realOp.maxReal))
+            value("QUEST_REAL_POS_EPSILON" vReal(realOp.posEpsilon))
+            value("QUEST_REAL_NEG_EPSILON" vReal(realOp.negEpsilon))
+            value("QUEST_REAL_E" vReal(realOp.e))
+            fn("quest_real_from_int" fun(a: Args): Value vReal(realOp.int(int(a[0]))))
+            fn("quest_real_floor" fun(a: Args): Value vInt(realOp.floor(rl(a[0]))))
+            fn("quest_real_round" fun(a: Args): Value vInt(realOp.round(rl(a[0]))))
+            fn("quest_real_log" fun(a: Args): Value vReal(realOp.log(rl(a[0]))))
+            fn("quest_real_div" fun(a: Args): Value vReal(realOp.div(rl(a[0]) rl(a[1]))))
+            fn("quest_real_exp" fun(a: Args): Value vReal(realOp.exp(rl(a[0]) rl(a[1]))))
+
+            (* StringOp *)
+            exc("quest_exc_string_error" primitives.stringError)
+            fn("quest_string_alloc" fun(a: Args): Value vString(stringOp.new(int(a[0]) chr(a[1]))))
+            fn("quest_string_is_empty" fun(a: Args): Value vBool(stringOp.isEmpty(str(a[0]))))
+            fn("quest_string_length" fun(a: Args): Value vInt(stringOp.length(str(a[0]))))
+            fn("quest_string_get_char" fun(a: Args): Value vChar(stringOp.getChar(str(a[0]) int(a[1]))))
+            fn("quest_string_set_char" fun(a: Args): Value begin stringOp.setChar(str(a[0]) int(a[1]) chr(a[2])) unit end)
+            fn("quest_string_get_sub" fun(a: Args): Value vString(stringOp.getSub(str(a[0]) int(a[1]) int(a[2]))))
+            fn("quest_string_set_sub" fun(a: Args): Value
+                begin stringOp.setSub(str(a[0]) int(a[1]) str(a[2]) int(a[3]) int(a[4])) unit end)
+            fn("quest_string_concat" fun(a: Args): Value vString(stringOp.cat(str(a[0]) str(a[1]))))
+            fn("quest_string_cat_sub" fun(a: Args): Value
+                vString(stringOp.catSub(str(a[0]) int(a[1]) int(a[2]) str(a[3]) int(a[4]) int(a[5]))))
+            fn("quest_string_conc" fun(a: Args): Value
+                begin
+                    let parts = arr(a[0])
+                    let ss = array of(extent parts "")
+                    for i = 0 upto {extent parts - 1} do ss[i] := str(parts[i]) end
+                    vString(stringOp.conc(ss))
+                end)
+            fn("quest_string_equal" fun(a: Args): Value vBool(stringOp.equal(str(a[0]) str(a[1]))))
+            fn("quest_string_equal_sub" fun(a: Args): Value
+                vBool(stringOp.equalSub(str(a[0]) int(a[1]) int(a[2]) str(a[3]) int(a[4]) int(a[5]))))
+            fn("quest_string_precedes" fun(a: Args): Value vBool(stringOp.precedes(str(a[0]) str(a[1]))))
+            fn("quest_string_precedes_sub" fun(a: Args): Value
+                vBool(stringOp.precedesSub(str(a[0]) int(a[1]) int(a[2]) str(a[3]) int(a[4]) int(a[5]))))
+            (* strutil.tryToReal has checked the syntax, as nativeToReal's callers do *)
+            fn("quest_strutil_to_real" fun(a: Args): Value vReal(maybe.unwrap(:Real strutil.tryToReal(str(a[0])))))
+
+            (* StringBuilder: the native buffer is a native builder, whose methods the buffer's functions are *)
+            fn("quest_sb_new" fun(a: Args): Value option vStringBuilder of Value with let sb = stringBuilder.new() end)
+            fn("quest_sb_append_string" fun(a: Args): Value begin sb(a[0]).str(str(a[1])) unit end)
+            fn("quest_sb_append_char" fun(a: Args): Value begin sb(a[0]).char(chr(a[1])) unit end)
+            fn("quest_sb_append_int" fun(a: Args): Value begin sb(a[0]).int(int(a[1])) unit end)
+            fn("quest_sb_append_real" fun(a: Args): Value begin sb(a[0]).real(rl(a[1])) unit end)
+            fn("quest_sb_append_bool" fun(a: Args): Value begin sb(a[0]).bool(bool(a[1])) unit end)
+            fn("quest_sb_append_word" fun(a: Args): Value begin sb(a[0]).word(wd(a[1])) unit end)
+            fn("quest_sb_append_sub" fun(a: Args): Value begin sb(a[0]).sub(str(a[1]) int(a[2]) int(a[3])) unit end)
+            fn("quest_sb_append_repeat" fun(a: Args): Value begin sb(a[0]).repeat(chr(a[1]) int(a[2])) unit end)
+            fn("quest_sb_clear" fun(a: Args): Value begin sb(a[0]).clear() unit end)
+            fn("quest_sb_length" fun(a: Args): Value vInt(sb(a[0]).length()))
+            fn("quest_sb_to_string" fun(a: Args): Value vString(sb(a[0]).toString()))
+
+            (* ArrayOp *)
+            exc("quest_exc_arrayOp_error" primitives.arrayOpError)
+            fn("quest_array_size" fun(a: Args): Value vInt(extent arr(a[0])))
+
+            (* Word and Hash *)
+            exc("quest_exc_word_error" primitives.wordError)
+            value("64" vInt(64))
+            fn("quest_word_not_bits" fun(a: Args): Value vWord(word.notBits(wd(a[0]))))
+            fn("quest_word_and_bits" fun(a: Args): Value vWord(word.andBits(wd(a[0]) wd(a[1]))))
+            fn("quest_word_or_bits" fun(a: Args): Value vWord(word.orBits(wd(a[0]) wd(a[1]))))
+            fn("quest_word_xor_bits" fun(a: Args): Value vWord(word.xorBits(wd(a[0]) wd(a[1]))))
+            fn("quest_word_shift_val" fun(a: Args): Value vWord(word.shift(wd(a[0]) int(a[1]))))
+            fn("quest_word_rotate_val" fun(a: Args): Value vWord(word.rotate(wd(a[0]) int(a[1]))))
+            fn("quest_word_extract_val" fun(a: Args): Value vWord(word.extract(wd(a[0]) int(a[1]) int(a[2]))))
+            fn("quest_word_replace_val" fun(a: Args): Value vWord(word.replace(wd(a[0]) wd(a[1]) int(a[2]) int(a[3]))))
+            fn("quest_word_pop_count_val" fun(a: Args): Value vInt(word.popCount(wd(a[0]))))
+            fn("quest_word_count_leading_zeros_val" fun(a: Args): Value vInt(word.countLeadingZeros(wd(a[0]))))
+            fn("quest_word_count_trailing_zeros_val" fun(a: Args): Value vInt(word.countTrailingZeros(wd(a[0]))))
+            fn("quest_word_add" fun(a: Args): Value vWord(word.add(wd(a[0]) wd(a[1]))))
+            fn("quest_word_sub" fun(a: Args): Value vWord(word.sub(wd(a[0]) wd(a[1]))))
+            fn("quest_word_mul" fun(a: Args): Value vWord(word.mul(wd(a[0]) wd(a[1]))))
+            fn("quest_word_div_val" fun(a: Args): Value vWord(word.div(wd(a[0]) wd(a[1]))))
+            fn("quest_word_mod_val" fun(a: Args): Value vWord(word.mod(wd(a[0]) wd(a[1]))))
+            fn("quest_word_to_int" fun(a: Args): Value vInt(word.toInt(wd(a[0]))))
+            fn("quest_word_from_int" fun(a: Args): Value vWord(word.fromInt(int(a[0]))))
+            fn("quest_word_lt" fun(a: Args): Value vBool(word.lt(wd(a[0]) wd(a[1]))))
+            fn("quest_word_le" fun(a: Args): Value vBool(word.le(wd(a[0]) wd(a[1]))))
+            fn("quest_word_gt" fun(a: Args): Value vBool(word.gt(wd(a[0]) wd(a[1]))))
+            fn("quest_word_ge" fun(a: Args): Value vBool(word.ge(wd(a[0]) wd(a[1]))))
+            fn("quest_word_to_real_val" fun(a: Args): Value vReal(word.toReal(wd(a[0]))))
+            fn("quest_word_from_real_val" fun(a: Args): Value vWord(word.fromReal(rl(a[0]))))
+            fn("quest_identity_hash" fun(a: Args): Value vWord(identityHash(a[0])))
+            fn("quest_hash_mix" fun(a: Args): Value vWord(hash.mix(wd(a[0]))))
+            fn("quest_hash_combine" fun(a: Args): Value vWord(hash.combine(wd(a[0]) wd(a[1]))))
+
+            (* System *)
+            exc("quest_exc_system_error" primitives.systemError)
+            fn("quest_system_exit" fun(a: Args): Value begin system.sysexit(int(a[0])) unit end)
+            fn("quest_system_getenv" fun(a: Args): Value vString(system.getEnv(str(a[0]))))
+            fn("quest_system_file_exists" fun(a: Args): Value vBool(system.fileExists(str(a[0]))))
+            fn("quest_system_is_file" fun(a: Args): Value vBool(system.isFile(str(a[0]))))
+            fn("quest_system_is_directory" fun(a: Args): Value vBool(system.isDirectory(str(a[0]))))
+            fn("quest_system_make_directory" fun(a: Args): Value begin system.makeDirectory(str(a[0])) unit end)
+            fn("quest_system_remove_file" fun(a: Args): Value begin system.removeFile(str(a[0])) unit end)
+            fn("quest_system_remove_directory" fun(a: Args): Value begin system.removeDirectory(str(a[0])) unit end)
+            fn("quest_system_rename_file" fun(a: Args): Value begin system.renameFile(str(a[0]) str(a[1])) unit end)
+            fn("quest_system_current_directory" fun(a: Args): Value vString(system.currentDirectory()))
+            fn("quest_system_change_directory" fun(a: Args): Value begin system.changeDirectory(str(a[0])) unit end)
+            fn("quest_system_list_directory" fun(a: Args): Value strings(system.listDirectory(str(a[0]))))
+
+            (* Dynamic *)
+            exc("quest_exc_dynamic_error" model.dynamicError)
+            fn("quest_dynamic_copy" fun(a: Args): Value dynamicCopy(a[0]))
+            fn("quest_dynamic_intern" fun(a: Args): Value dynamicIntern(rd(a[0])))
+            fn("quest_dynamic_extern" fun(a: Args): Value dynamicExtern(wr(a[0]) a[1]))
+            ok
+        end
+
+    let resolveExternal(symbol: String): Value =
+        if stringOp.equal(symbol "quest_system_args") then
+            strings(systemArgs.args)
+        else
+            let found = hashMap.get(:String :Value table symbol)
+            if maybe.isNone(:Value found) then
+                model.internalError(:Value "Undefined external symbol '" <> symbol <> "' in interpreter" maybe.none(:Int))
+            end
+            maybe.unwrap(:Value found)
+        end
+end

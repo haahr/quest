@@ -31,6 +31,7 @@ export
         notes: vector.T(String)
         var help: maybe.T(String)
         var code: maybe.T(String)
+        var trace: Array(String)
     end
 
     let make(sev: Severity msg: String sp: location.Span): Diagnostic =
@@ -42,6 +43,7 @@ export
             let notes = vector.new(:String)
             let var help = maybe.none(:String)
             let var code = maybe.none(:String)
+            let var trace = array of :String end
         end
 
     let fatal(msg: String sp: location.Span): Diagnostic =
@@ -87,6 +89,23 @@ export
         begin
             d.code := maybe.some(:String c)
             ok
+        end
+
+    let setTrace(d: Diagnostic frames: Array(String)): Ok = d.trace := frames
+
+    (* The lines listing a traceback's frames, a run of the same frame shown once with its count *)
+    let traceLines(sb: stringBuilder.T frames: Array(String)): Ok =
+        begin
+            let var i = 0
+            while i < extent frames do
+                let var j = i
+                while {j < extent frames} andif stringOp.equal(frames[j] frames[i]) do j := j + 1 end
+                sb.str("  in ").str(frames[i]).char('\n')
+                if {j - i} > 1 then
+                    sb.str("  ... ").str(frames[i]).str(" repeated ").int({j - i} - 1).str(" more times\n")
+                end
+                i := j
+            end
         end
 
     let sources = tuple let maps = vector.new(:location.SourceMap) end
@@ -176,6 +195,7 @@ export
             if maybe.isSome(:String d.help) then
                 sb.str("  = help: ").str(maybe.unwrap(:String d.help)).char('\n')
             end
+            traceLines(sb d.trace)
 
             sb.toString()
         end
@@ -282,6 +302,24 @@ export
     let raiseError(A::TYPE e: CompilerError): A = raise compilerError with e end
 
     let fail(A::TYPE message: String offset: Int): A = raise compilerError with errorAt(message offset) end
+
+    let mainFrame = "<main>"
+    let initFrameSuffix = ".<init>"
+    let initFrame(moduleName: String): String = moduleName <> initFrameSuffix
+
+    let frameName(enclosing: String binder: maybe.T(String)): String =
+        begin
+            let local = maybe.unwrapOr(:String binder "<anon>")
+            let n = stringOp.length(enclosing)
+            let k = stringOp.length(initFrameSuffix)
+            if stringOp.equal(enclosing mainFrame) then
+                local
+            elsif {n >= k} andif stringOp.equal(stringOp.getSub(enclosing {n - k} k) initFrameSuffix) then
+                stringOp.getSub(enclosing 0 {n - k}) <> "." <> local
+            else
+                enclosing <> "." <> local
+            end
+        end
 
     let errorDiagnostic(e: CompilerError file: String): Diagnostic =
         begin

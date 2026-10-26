@@ -1,0 +1,240 @@
+(* Quest Self-Hosted Compiler: Printing Values by Their Types Implementation *)
+
+module formatting : Formatting
+import
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/dump : questlang/types/Dump
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/values/model : questlang/values/Model
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    Let Value = model.Value
+    Let Visited = vector.T(Value)
+
+    let exposedType(t0: tm.Type): tm.Type =
+        begin
+            let var t = tm.unalias(t0)
+            let var unfolded = kinds.unfoldHead(t)
+            while maybe.isSome(:tm.Type unfolded) do
+                t := tm.unalias(maybe.unwrap(:tm.Type unfolded))
+                unfolded := kinds.unfoldHead(t)
+            end
+            t
+        end
+
+    let isVisited(visited: Visited v: Value): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:Value visited) - 1} do
+                if model.same(vector.get(:Value visited i) v) then found := true end
+            end
+            found
+        end
+
+    let joined(parts: vector.T(String)): String =
+        begin
+            let var s = ""
+            for i = 0 upto {vector.length(:String parts) - 1} do
+                s := if i is 0 then vector.get(:String parts i) else s <> " " <> vector.get(:String parts i) end
+            end
+            s
+        end
+
+    (* s without a prefix and a suffix (removeprefix, removesuffix), then stripped of surrounding spaces *)
+    let stripped(s0: String prefix: String suffix: String): String =
+        begin
+            let var s = s0
+            if strutil.startsWith(s prefix) then s := stringOp.getSub(s stringOp.length(prefix) {stringOp.length(s) - stringOp.length(prefix)}) end
+            if strutil.endsWith(s suffix) then s := stringOp.getSub(s 0 {stringOp.length(s) - stringOp.length(suffix)}) end
+            strutil.strip(s)
+        end
+
+    let hidesValue(t: tm.Type v: Value): Bool =
+        case t.form
+            when typePath then true
+            when typeAbstract then true
+            when typeApp then true
+            when typeVariable then not(v?vWord)
+            else false
+        end
+
+    let isFunction(t: tm.Type): Bool = t.form?typeFun orif t.form?typeAll
+
+    let hiddenType(bound: maybe.T(tm.Kind)): String =
+        if maybe.isSome(:tm.Kind bound) then "<Hidden>::" <> tm.showKind(maybe.unwrap(:tm.Kind bound))
+        else "<Hidden>::TYPE" end
+
+    let rec formatTyped(v0: Value t0: tm.Type visited: Visited): String =
+        begin
+            let v = case v0 when vRef with r then model.deref(r.r) else v0 end
+            let t = exposedType(t0)
+            if hidesValue(t v) then
+                "<hidden>"
+            elsif isFunction(t) then
+                "<fun>"
+            else
+                case v
+                    when vTypeValue with x then hiddenType(x.t.bound)
+                    when vAuto with x then
+                        if t.form?typeAuto then
+                            let components = stripped(formatTyped(x.a.value tm.autoPayloadType(t maybe.some(:tm.Type x.a.type))
+                                visited) "tuple" "end")
+                            let typeName = dump.shortTypeName(x.a.type)
+                            if stringOp.length(components) > 0 then "auto :" <> typeName <> " with " <> components <> " end"
+                            else "auto :" <> typeName <> " with end" end
+                        else
+                            model.toString(v)
+                        end
+                    when vTuple then guarded(v t visited "tuple")
+                    when vRecord then guarded(v t visited "record")
+                    when vArray then guarded(v t visited "array of")
+                    when vOption with x then
+                        case t.form
+                            when typeOption with o then
+                                let found = tm.optionGetField(o.options x.v.tag)
+                                if maybe.isNone(:tm.OptionField found) orif maybe.isNone(:tm.Type maybe.unwrap(:tm.OptionField found).payload)
+                                    orif maybe.isNone(:Value x.v.payload) then
+                                    "option " <> x.v.tag <> " end"
+                                else
+                                    "option " <> x.v.tag <> " with " <> formatTyped(maybe.unwrap(:Value x.v.payload)
+                                        maybe.unwrap(:tm.Type maybe.unwrap(:tm.OptionField found).payload) visited) <> " end"
+                                end
+                            else model.toString(v)
+                        end
+                    when vVariant with x then
+                        case t.form
+                            when typeVariant with o then
+                                let found = tm.variantGetField(o.variants x.v.tag)
+                                let payloadType = if maybe.isSome(:tm.VariantField found) then
+                                    maybe.unwrap(:tm.VariantField found).type else maybe.none(:tm.Type) end
+                                if maybe.isNone(:tm.Type payloadType)
+                                    orif tm.same(tm.unalias(maybe.unwrap(:tm.Type payloadType)) tm.okType)
+                                    orif maybe.isNone(:Value x.v.payload) then
+                                    "variant " <> x.v.tag <> " end"
+                                else
+                                    "variant " <> x.v.tag <> " with " <> formatTyped(maybe.unwrap(:Value x.v.payload)
+                                        maybe.unwrap(:tm.Type payloadType) visited) <> " end"
+                                end
+                            else model.toString(v)
+                        end
+                    else model.toString(v)
+                end
+            end
+        end
+    and guarded(v: Value t: tm.Type visited: Visited opening: String): String =
+        if isVisited(visited v) then
+            opening <> " ... end"
+        else
+            vector.append(:Value visited v)
+            let shown = aggregate(v t visited)
+            vector.pop(:Value visited)
+            shown
+        end
+    and aggregate(v: Value t: tm.Type visited: Visited): String =
+        begin
+            let parts = vector.new(:String)
+            case v
+                when vTuple with x then
+                    case t.form
+                        when typeTuple with tt then
+                            let var elemIdx = 0
+                            for i = 0 upto {extent tt.fields - 1} do
+                                case tt.fields[i]
+                                    when tupleTypeFormal with c then
+                                        vector.append(:String parts "<Hidden>::" <> tm.showKind(c.bound))
+                                        elemIdx := elemIdx + 1
+                                    when tupleTypeBinding with c then
+                                        vector.append(:String parts "Let " <> c.name <> " = " <> tm.show(c.type))
+                                        elemIdx := elemIdx + 1
+                                    when tupleField with c then
+                                        if elemIdx < extent x.t.elements then
+                                            let shown = formatTyped(x.t.elements[elemIdx] c.type visited)
+                                            vector.append(:String parts
+                                                if maybe.isSome(:String c.name) then maybe.unwrap(:String c.name) <> "=" <> shown else shown end)
+                                            elemIdx := elemIdx + 1
+                                        end
+                                end
+                            end
+                            if vector.empty(:String parts) then "tuple end" else "tuple " <> joined(parts) <> " end" end
+                        else model.toString(v)
+                    end
+                when vRecord with x then
+                    case t.form
+                        when typeRecord with rt then
+                            let names = vector.new(:String)
+                            for i = 0 upto {extent rt.fields - 1} do vector.append(:String names rt.fields[i].name) end
+                            let sorted = sort.sortedVector(:String names sort.stringCompare)
+                            for i = 0 upto {vector.length(:String sorted) - 1} do
+                                let name = vector.get(:String sorted i)
+                                if hashMap.contains(:String :Value x.r.fields name) then
+                                    let field = maybe.unwrap(:tm.RecordField tm.recordGetField(rt.fields name))
+                                    vector.append(:String parts
+                                        name <> "=" <> formatTyped(hashMap.find(:String :Value x.r.fields name) field.type visited))
+                                end
+                            end
+                            if vector.empty(:String parts) then "record end" else "record " <> joined(parts) <> " end" end
+                        else model.toString(v)
+                    end
+                when vArray with x then
+                    case t.form
+                        when typeArray with at then
+                            for i = 0 upto {extent x.a - 1} do vector.append(:String parts formatTyped(x.a[i] at.element visited)) end
+                            if vector.empty(:String parts) then "array of end" else "array of " <> joined(parts) <> " end" end
+                        else model.toString(v)
+                    end
+                else model.toString(v)
+            end
+        end
+
+    let formatValueWithType(v: Value t: tm.Type): String = formatTyped(v t vector.new(:Value))
+
+    let formatLetValue(lv: typedAst.LetValue v: Value): String =
+        "let " <> {if lv.symbol.isVar then "var " else "" end} <> lv.name <> ":" <> tm.show(lv.symbol.type) <> " = "
+            <> formatValueWithType(v lv.symbol.type)
+
+    let formatLetType(lt: typedAst.LetType): String =
+        if maybe.isSome(:tm.Type lt.symbol.definition) then
+            "Let " <> lt.name <> "::" <> tm.showKind(lt.symbol.kind) <> " = " <> tm.show(maybe.unwrap(:tm.Type lt.symbol.definition))
+        else
+            "Let " <> lt.name <> "::" <> tm.showKind(lt.symbol.kind)
+        end
+
+    let formatInteractiveResult(phrase: typedAst.Binding v: Value): String =
+        case phrase.form
+            when bindLetValue with x then formatLetValue(x.value v)
+            when bindLetType with x then formatLetType(x.value)
+            when bindLetTypeGroup with x then
+                begin
+                    let lines = vector.new(:String)
+                    for i = 0 upto {extent x.members - 1} do vector.append(:String lines formatLetType(x.members[i])) end
+                    strutil.join("\n" lines)
+                end
+            when bindLetValueGroup with x then
+                case v
+                    when vTuple with t then
+                        begin
+                            let lines = vector.new(:String)
+                            for i = 0 upto {extent x.members - 1} do
+                                vector.append(:String lines formatLetValue(x.members[i] t.t.elements[i]))
+                            end
+                            strutil.join("\n" lines)
+                        end
+                    else ""
+                end
+            when bindDefKind with x then "DEF " <> x.name <> " = " <> tm.showKind(x.symbol.kind)
+            when bindExprStmt with x then
+                case x.expr.form
+                    when exprException with e then "exception " <> e.name
+                    else
+                        if v?vOk then ""
+                        else formatValueWithType(v x.expr.type) <> " : " <> tm.show(x.expr.type) end
+                end
+            else ""
+        end
+end

@@ -30,7 +30,6 @@ class QuestRuntimeError(QuestCompilerError):
 
 
 ARRAY_OP_ERROR_EXC = QExceptionVal("arrayOp.error")
-LIST_ERROR_EXC = QExceptionVal("list.error")
 WRITER_ERROR_EXC = QExceptionVal("writer.error")
 READER_ERROR_EXC = QExceptionVal("reader.error")
 ASCII_ERROR_EXC = QExceptionVal("ascii.error")

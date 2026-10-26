@@ -78,7 +78,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 
 ### Step 3: Bootstrap Tree-Walking Interpreter & REPL (Python) — *Complete*
 - **Runtime Values & Memory (`quest/values/model.py`):** `QValue` hierarchy, primitives, aggregates (`QRecord`,
-  `QTuple`, `QArray`, `QList`, `QVariant`, `QOption`), closures (`QClosure`, `QBuiltinFun`), mutable reference cells
+  `QTuple`, `QArray`, `QVariant`, `QOption`), closures (`QClosure`, `QBuiltinFun`), mutable reference cells
   (`QRef`), auto/dynamic envelopes (`QAutoVal`), Cardelli object identity (`is` / `isnot`), and deep structural
   equality.
 - **Evaluator (`quest/interpreter/`):** Scoped lexical frames (`RuntimeEnvironment`), tree-walking evaluator
