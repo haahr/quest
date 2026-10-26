@@ -91,12 +91,13 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
     follows one program through this phase.
 
     Checking is bidirectional (docs/type-system.md §6.1). check_expr(e, T) requires e to have type T and pushes T down
-    into e, so that context can supply what e leaves unwritten, such as an unannotated parameter's type or a type
-    argument. synth_expr(e) works out e's type from e alone, bottom up. Most forms are synthesized even when checked,
-    and then accepted by subsumption: a value of a subtype of T is accepted where T is expected (_check_subsumption).
-    The forms that an expected type can inform each have one method, _elaborate_X_expr, which check_expr calls with
-    the expected type and synth_expr with None. The methods are spread over mixins, one per family of constructs, purely
-    to divide the code into files (checker.py describes them); at run time a check is one TypeElaborator object.
+    into e, so that context can supply what e leaves unwritten, such as the type argument of list.nil() when it is
+    checked against list.T(Int). synth_expr(e) works out e's type from e alone, bottom up. Most forms are synthesized
+    even when checked, and then accepted by subsumption: a value of a subtype of T is accepted where T is expected
+    (_check_subsumption). The forms that an expected type can inform each have one method, _elaborate_X_expr, which
+    check_expr calls with the expected type and synth_expr with None. The methods are spread over mixins, one per family
+    of constructs, purely to divide the code into files (checker.py describes them); at run time a check is one
+    TypeElaborator object.
 
     The checker's state is env, a mutable Environment holding a stack of scopes, each holding the symbols declared in
     it. Bindings are declared into the current scope as they are elaborated, so elaboration order is scoping order. The

@@ -331,21 +331,21 @@ class ApplicationMixin(Checker):
 
         Type arguments may be written, as in f(:Int 42). They are substituted for f's type parameters, and the rest of
         the call is elaborated as an ordinary call; written ones may cover only the first type parameters, and the rest
-        are then inferred. Omitted, they are inferred, following Cardelli (The Quest Language and System §4). Each
-        type parameter is replaced by a metavariable, a placeholder for the unknown type, and checking the arguments
-        against the parameter types fills the placeholders in. If some remain unsolved, the type the context requires
-        of the result (expected_type) is tried, as when nil() is checked against List(Int). Each solution is then
+        are then inferred. Omitted, they are inferred, following Cardelli (The Quest Language and System §4). Each type
+        parameter is replaced by a metavariable, a placeholder for the unknown type, and checking the arguments against
+        the parameter types fills the placeholders in. If some remain unsolved, the type the context requires of the
+        result (expected_type) is tried, as when list.nil() is checked against list.T(Int). Each solution is then
         checked against its type parameter's bound, which solving ignores.
 
         Inference is local and greedy: is_subtype solves a metavariable with the first type it is compared with, and
-        nothing is backtracked, so the order of the comparisons can matter. For f(a b) with f: All(A) Fun(x: A y: A),
-        if a's type is a proper subtype of b's, A becomes a's type and b is rejected, though the reverse order would
+        nothing is backtracked, so the order of the comparisons can matter. For f(a b) with f: All(A) Fun(x: A y: A), if
+        a's type is a proper subtype of b's, A becomes a's type and b is rejected, though the reverse order would
         succeed. A type argument that cannot be inferred is an error, except in a call nested in another's arguments
         whose expected type still mentions the outer call's unsolved metavariables, as nil() in cons(nil() tail): it
         hands its unsolved ones to the outer call (_pending_type_args), which solves them, and rewrites the nested
         call's node with the solutions, when it finishes.
 
-        An empty application of a polymorphic constant (nil(), for nil: All(A) List(A)) instantiates it.
+        An empty application of a polymorphic constant (list.nil(), for nil: All(A::TYPE) T(A)) instantiates it.
         """
         # 1. Check for explicit type / kind arguments (e.g. f(:Int 42), id(:Int))
         num_targs = 0

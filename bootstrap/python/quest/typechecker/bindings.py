@@ -152,19 +152,25 @@ class BindingMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedExpr:
-        """Elaborates a function abstraction: fun[(type params)](params): RetType Body.
+        """Elaborates a function, fun[(type params)](params)[: R] body, into a TypedFun.
 
-        Against an expected function type, checking accepts what synthesizing the function and requiring a subtype
-        would, and lets the expected type flow into what the function leaves unwritten: each parameter must have its
-        expected parameter's mode, and a type annotation it writes must fit the expected parameter's type as
-        subtyping of function types requires (see `_require_param_type`); a parameter without one takes the expected
-        type. A result type annotation must be a subtype of the expected result type, and the body is checked against
-        it, or else against the expected result type; the function's type has the parameters' types and the
-        expected result type. A function with type parameters is synthesized and must be a subtype. Against
-        an expected polymorphic type, see `_check_polymorphic_fun_expr`; against any other type, the function is
-        synthesized and must be a subtype.
-        Synthesized, every parameter needs an annotation, the body is checked against the result type annotation if
-        there is one, and the result type may not mention the function's parameters.
+        The function opens a scope, declares its type parameters and parameters in it, and elaborates its body inside
+        in_function, so that an exit cannot leave the function and the body's uses of enclosing mutable variables count
+        as captures (see Checker). Its type is assembled from what it declares: Fun(params): R, under All(type params)
+        if it has any. TypedFun.type_param_ids records which type symbols are the function's own, and a type mentioning
+        one of them may occur only inside the function (scoping.py checks this). Likewise, the result type may not
+        mention a path type rooted at a parameter, the type of one of a parameter's hidden type components.
+
+        Checked against an expected function type, the function lets the expected type supply what it leaves unwritten,
+        and holds what it writes to what subsumption would require (docs/type-system.md §6.1). Passed where All(x: Int)
+        Int is expected, fun(x: Int) x + 1 needs no result annotation: its body is checked against Int, and the function
+        has the expected result type. Each parameter must have its expected parameter's mode, a parameter's annotation
+        must fit its expected type (_require_param_type), and a result annotation must be a subtype of the expected
+        result type, the body then being checked against the annotation. A parameter without an annotation would take
+        its expected type, but the grammar requires one, so only an AST built directly (as by the unit tests) omits it.
+        Against an expected polymorphic type, see _check_polymorphic_fun_expr. A function with type parameters checked
+        against a plain function type, or any function checked against a type of another form, is synthesized and must
+        be a subtype. Synthesized, the body is checked against the result annotation if there is one.
         """
         expected_fun: Optional[QFunType] = None
         if expected_type is not None:
@@ -254,14 +260,15 @@ class BindingMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> TypedFun:
-        """Checks a function abstraction against an expected polymorphic type All(X::K ...) T.
+        """Checks a function against an expected polymorphic type, All(B::K) T.
 
-        The function's type parameters are the expected quantifiers renamed by position, with fresh symbols (the
-        expected type's own may be in scope), the names the function gives them (or the expected names, if it writes
-        none), and the expected bounds, with earlier quantifiers renamed. A bound the function writes may be weaker
-        than the expected one, as for subtyping in Cardelli's Quest ([TIncl Pi]), and the body is checked under the
-        expected bound. The function's type is the renamed one, so that its parameters and body refer to its own
-        quantifiers.
+        The function is made polymorphic in the expected type parameters, under its own names. Checking
+        fun(A::TYPE x: A): A x against All(B::TYPE x: B) B declares A, with a fresh symbol and B's bound, and checks the
+        rest of the function against Fun(x: A): A. A function that writes no type parameters, fun(x: B) x, takes the
+        expected ones, names and all. The symbols are fresh because the expected type's own may already be in scope. A
+        bound the function writes may be weaker than the expected one, as subtyping of polymorphic types allows
+        (Cardelli's [TIncl Pi]), and the body is checked under the expected, stronger bound. The function's type is the
+        renamed one, All(A::TYPE) Fun(x: A): A, so that its parameters and body refer to its own type parameters.
         """
         written = tuple(expr.type_params)
         if written and len(written) != len(expected_lazy.quantifiers):
@@ -422,7 +429,25 @@ class BindingMixin(Checker):
         )
 
     def _elaborate_binding(self, binding: ast.BindingNode, env: Environment, loop_depth: int) -> TypedBinding:
-        """Elaborates a single binding or statement inside a block or module."""
+        """Elaborates one binding, a declaration or a statement, in a block, module, or program, declaring what it binds
+        in env's current scope.
+
+        What tells the forms apart is when the name is declared relative to its value. An ordinary let elaborates its
+        value first and declares the name after, so the value cannot refer to the name: a use of it inside refers to
+        whatever earlier binding it shadows. The name's type is its annotation, if written, against which the value is
+        checked, so that let r: Record p: Int end = record p = 1 q = 2 end gives r only a field p; otherwise it is the
+        value's synthesized type. A let rec is declared first instead, so that its value can refer to it. Its type
+        cannot then come from the value and must be written in full, which is why a recursive function needs
+        annotations on all its parameters and its result (_declare_rec_value, then _check_rec_value). The members of a
+        simultaneous declaration (let x = ... and y = ...) are declared together, after all their values or, with rec,
+        before any (_elaborate_value_group). An external function, implemented in C, has no body to synthesize a type
+        from, so its annotations are its type.
+
+        Desugaring has rewritten let f(params) = e, when neither recursive nor external, as let f = fun(params) e, so
+        only those two forms arrive here with parameters. Type and kind declarations are elaborated by
+        elaborate_types.py, and interfaces and modules met inside a block by modules/elaboration.py. A statement, an
+        expression evaluated for its effect, declares nothing.
+        """
         match binding:
             case ast.InterfaceDecl():
                 return elaborate_interface(binding, env)

@@ -247,6 +247,10 @@ class AggregateMixin(Checker):
             expected_tuple = expected_lazy
         checking = expected_tuple is not None
 
+        # 1. Flatten the components. A group (let ... and ..., or a group of type bindings) contributes each of its
+        #    members, so that fields[i] lines up with the expected type's i-th field; the maps below remember the group
+        #    each member came from, since a group's members are declared together. Then the count is checked.
+        #
         # The components, with the manifest kinds declared just before the component that follows them
         # (kinds_before[i] precedes fields[i]). Against an expected type, the names in groups are checked here,
         # before the arity; synthesized, as each group is reached.
@@ -293,6 +297,9 @@ class AggregateMixin(Checker):
                 offset=expr.offset,
             )
 
+        # 2. Elaborate the components in order, in a scope of their own, so that each type component and each label (a
+        #    value component's name) is in scope for the components after it. Each one is one of four cases, chosen by
+        #    what the expected type says of it (checking) or what it is (synthesizing).
         with env.scoped("tuple_check" if checking else "tuple_synth"):
             witness_subst: dict[int, QType] = {}
             elem_typeds: list[TypedExpr] = []
@@ -325,6 +332,10 @@ class AggregateMixin(Checker):
                     elaborate_kind_binding(kind_binding, env)
                 exp_f = expected_tuple.fields[index] if expected_tuple is not None else None
 
+                # A type formal of the expected type, A::K: the component is A's witness, the type hidden behind A. It
+                # must have A's bound. A is declared under the formal's own symbol with the witness as its definition,
+                # so that the later components see through it, while the tuple's type, the expected one, keeps A
+                # abstract; witness_subst carries the witness into the later expected fields.
                 if isinstance(exp_f, QTupleTypeFormal):
                     if not isinstance(b, ast.TypeBinding):
                         raise TypeError(
@@ -357,6 +368,7 @@ class AggregateMixin(Checker):
                         )
                     )
 
+                # A type defined by the expected type, A = T: the component must define A as T
                 elif isinstance(exp_f, QTupleTypeBinding):
                     if not isinstance(b, ast.TypeBinding):
                         raise TypeError(
@@ -393,6 +405,8 @@ class AggregateMixin(Checker):
                         )
                     )
 
+                # Synthesizing, a type component: it is declared for the components after it, and is a defined type
+                # component of the tuple's type
                 elif isinstance(b, ast.TypeBinding):
                     if exp_f is not None:
                         raise TypeError(
@@ -412,6 +426,8 @@ class AggregateMixin(Checker):
                     )
                     q_fields.append(QTupleTypeBinding(name=b.name, type_val=symbol.definition, bound=k_bound))
 
+                # A value component. The members of a let rec are all declared when the first is reached, so that
+                # each can refer to the others; those of a let ... and ... have their labels declared after the last.
                 else:
                     if exp_f is not None:
                         assert isinstance(exp_f, QTupleField)
@@ -518,6 +534,7 @@ class AggregateMixin(Checker):
             for kind_binding in kinds_before.get(len(fields), ()):
                 elaborate_kind_binding(kind_binding, env)
 
+            # 3. Checking, the tuple has the expected type; synthesizing, the type made of its components' types
             return TypedTuple(
                 elements=tuple(elem_typeds),
                 type_val=expected_tuple if expected_tuple is not None else QTupleType(tuple(q_fields)),
