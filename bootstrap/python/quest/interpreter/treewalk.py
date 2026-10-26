@@ -368,7 +368,27 @@ class RuntimeEnvironment:
 # ============================================================================
 
 def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
-    """Evaluates a typed expression within the given runtime environment."""
+    """Evaluates a typed expression in env and returns its value.
+
+    This interpreter is the most direct reading of the typed AST: each node is evaluated by the case for its class,
+    recursively, with Python's stack serving as the program's. Values are QValues (values/model.py): an Int is a QInt, a
+    record a QRecord of named fields, and a function a QClosure holding its parameters' names, its body, and the
+    environment it was made in. A RuntimeEnvironment is a chain of frames mapping names to values. Names suffice,
+    without symbols, because the checker has already resolved every name, and a binding that rebinds a name of its
+    frame gets a frame of its own (eval_scoped_binding), so that closures made before it keep what they captured. A
+    mutable variable is bound to a QRef, a cell, which an explicit dereference (TypedDerefCell) reads, and which a var
+    argument passes in place of its contents.
+
+    Control flow beyond expressions uses Python exceptions: exit raises _LoopExit, which the nearest loop catches, and a
+    Quest raise raises QuestException, which the nearest try with a branch for that exception catches. One that nothing
+    catches propagates out of the interpreter, to be reported as an error.
+
+    Types are mostly unneeded at run time, but a few operations use them: inspect, auto values, and dynamic values. So
+    a polymorphic function's type arguments are carried at run time. A type application (TypedTypeApp) binds them in a
+    copy of the closure (QClosure.instantiate), the body runs with them bound (RuntimeEnvironment.type_bindings), and
+    env.resolve_type replaces a type's parameters by their bindings. A polymorphic constant, such as list.nil, is a
+    closure without value parameters, so instantiating it, as list.nil() does, also runs it.
+    """
     match expr:
         # 1. Literals
         case TypedInt(value=val):

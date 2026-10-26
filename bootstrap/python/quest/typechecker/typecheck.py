@@ -68,8 +68,8 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
     Elaborating means more than checking: the checker builds a new tree in which what the source leaves implicit is
     explicit. Every expression carries its type. Every variable carries its symbol, the record of the declaration it
-    refers to: names can be shadowed, so two variables with one name may be different variables, and later phases
-    identify them by symbol. Reading a mutable variable becomes an explicit dereference, and a call of a polymorphic
+    refers to: names can be shadowed, so two variables with one name may be different variables, and lowering
+    identifies them by symbol. Reading a mutable variable becomes an explicit dereference, and a call of a polymorphic
     function gets its type arguments, written or inferred. Given
 
         let var n = 1
