@@ -279,6 +279,10 @@ be one of the test's inline expectations, and every expectation must be reported
 Empty the pending list; update compiler-organization.md (§2's "so far", §6) and testing.md; record the divergences
 (as §2 and the representations make them) in this document; remove the scratch tooling.
 
+Done but the pending list: it holds Step 5's open question, an import inside a tuple, which needs a decision (the
+self-hosted AST holding imports, interfaces, and modules below the top level, or the test changing). The divergences
+are recorded in Steps 4 to 7; the scratch tooling was never in the repository.
+
 ---
 
 ## 5. Done When

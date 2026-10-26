@@ -106,8 +106,9 @@ questlang/
     └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
 ```
 
-So far `common/*`, `syntax/*`, `types/*` (but `canonical`), and `driver/main` (the front end's phases) exist; the rest
-of the tree is the plan.
+So far `common/*`, `syntax/*`, `types/*` (but `canonical`), `typechecker/*`, `modules/*` (but the artifacts'
+`interfacecompiler`, `modulecompiler`, and `manifest`), and `driver/main` (the front end's phases) exist; the rest of
+the tree is the plan.
 
 ---
 
@@ -385,10 +386,13 @@ Porting proceeds through five self-contained milestones:
   for types, declarations, expressions, operators, and modules (verified against the bootstrap parser by the
   `parser_*` golden tests; see [testing.md](testing.md)).
 
-### Milestone 2: Types & Type Checking (`types`, `typechecker`, `modules` from source)
+### Milestone 2: Types & Type Checking (`types`, `typechecker`, `modules` from source) — done but one open question
 The plan is [milestone-2.md](milestone-2.md): `syntax/desugar`, the semantic types, the type checker (reporting every
 error it can), the module system's loading and elaboration of units from source, and a driver for the front end's
-phases, compiled, which must pass the bootstrap's tokenize, parse, and typecheck goldens and error tests.
+phases, compiled, which passes the bootstrap's tokenize, parse, and typecheck goldens and error tests (all but one,
+an open question of the plan's Step 5). The self-hosted suite (`run_tests.py --self-hosted`) verifies it, with the
+generated tests of the types (`types_*`) and of elaboration (`elaborate_*`), and tests of several errors
+(`tests/self-hosted/errors`); see [testing.md](testing.md).
 
 ### Milestone 3: Values & the Tree-Walking Interpreter (`values`, `interpreter`)
 - `values/model`, `interpreter/primitives`, `formatting`, `builtins`, and `treewalk`, verified against the
